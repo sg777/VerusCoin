@@ -1582,41 +1582,6 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         }
     }
 
-    // extra checks
-    if (tx.vout.size() == 0)
-    {
-        if (!tx.IsCoinBase())
-        {
-            for (int j = 0; j < tx.vin.size(); j++)
-            {
-                if (tx.vin[j].prevout.hash.IsNull())
-                {
-                    return error("AcceptToMemoryPool: non-coinbase with null input tx");
-                }
-                /*
-                CTransaction inputTx;
-                uint256 blkHash;
-                if (myGetTransaction(tx.vin[j].prevout.hash, inputTx, blkHash))
-                {
-                    CPBaaSNotarization p(inputTx);
-                    if (p.IsValid())
-                    {
-                        LogPrintf("transaction input from %s on input %d is a notarization of %s\n", tx.vin[j].prevout.hash.GetHex().c_str(), tx.vin[j].prevout.n, p.chainID.GetHex().c_str());                          
-                        printf("transaction input from %s on input %d is a notarization of %s\n", tx.vin[j].prevout.hash.GetHex().c_str(), tx.vin[j].prevout.n, p.chainID.GetHex().c_str());                          
-                    }
-                    else
-                    {
-                        LogPrintf("transaction input from %s on input %d is not a notarization\n", tx.vin[j].prevout.hash.GetHex().c_str(), tx.vin[j].prevout.n);                          
-                        printf("transaction input from %s on input %d is not a notarization\n", tx.vin[j].prevout.hash.GetHex().c_str(), tx.vin[j].prevout.n);                          
-                    }
-                }
-                */
-            }
-        }
-        //printf("%s%s at height %d has no outputs\n", tx.IsCoinBase() ? "coinbase transaction" : "transaction #", tx.GetHash().GetHex().c_str(), simHeight);
-        //LogPrintf("%s%s at height %d has no outputs\n", tx.IsCoinBase() ? "coinbase transaction" : "transaction #", tx.GetHash().GetHex().c_str(), simHeight);
-    }
-
     auto verifier = libzcash::ProofVerifier::Strict();
     if ( komodo_validate_interest(tx,chainActive.LastTip()->GetHeight()+1,chainActive.LastTip()->GetMedianTimePast() + 777,0) < 0 )
     {
@@ -4766,16 +4731,9 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                                     LogPrintf("transaction input from %s on input %d is a notarization of %s\n", Tx.vin[j].prevout.hash.GetHex().c_str(), Tx.vin[j].prevout.n, p.chainID.GetHex().c_str());                          
                                     printf("transaction input from %s on input %d is a notarization of %s\n", Tx.vin[j].prevout.hash.GetHex().c_str(), Tx.vin[j].prevout.n, p.chainID.GetHex().c_str());                          
                                 }
-                                else
-                                {
-                                    LogPrintf("transaction input from %s on input %d is not a notarization\n", Tx.vin[j].prevout.hash.GetHex().c_str(), Tx.vin[j].prevout.n);                          
-                                    printf("transaction input from %s on input %d is not a notarization\n", Tx.vin[j].prevout.hash.GetHex().c_str(), Tx.vin[j].prevout.n);                          
-                                }
                             }
                         }
                     }
-                    printf("%s%s %s at height %d has no outputs\n", Tx.IsCoinBase() ? "coinbase transaction" : "transaction #", i == 0 ? "" : to_string(i).c_str(), Tx.GetHash().GetHex().c_str(), height);
-                    LogPrintf("%s%s %s at height %d has no outputs\n", Tx.IsCoinBase() ? "coinbase transaction" : "transaction #", i == 0 ? "" : to_string(i).c_str(), Tx.GetHash().GetHex().c_str(), height);
                 }
 
                 if ( myAddtomempool(Tx, &state, height, &missinginputs) == false ) // happens with out of order tx in block on resync
