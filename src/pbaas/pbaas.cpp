@@ -922,7 +922,7 @@ uint32_t CConnectedChains::CombineBlocks(CBlockHeader &bh)
 
 bool CConnectedChains::IsVerusPBaaSAvailable()
 {
-    return notaryChainVersion > "0.6" ||  notaryChainVersion == "0.5.7-1";
+    return notaryChainVersion > "0.6" ||  notaryChainVersion == "0.5.7-2";
 }
 
 extern string PBAAS_HOST, PBAAS_USERPASS;
