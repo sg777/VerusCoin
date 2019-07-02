@@ -390,8 +390,8 @@ void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry)
                 }
 
                 case EVAL_INSTANTSPEND:
-                case EVAL_CROSSCHAIN_INPUT:
-                case EVAL_CROSSCHAIN_OUTPUT:
+                case EVAL_RESERVE_INPUT:
+                case EVAL_RESERVE_OUTPUT:
                 case EVAL_CROSSCHAIN_EXPORT:
                 case EVAL_CROSSCHAIN_IMPORT:
                 case EVAL_STAKEGUARD:

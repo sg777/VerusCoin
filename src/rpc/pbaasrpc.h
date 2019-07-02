@@ -10,6 +10,7 @@
 #include "sync.h"
 #include <stdint.h>
 #include "pbaas/notarization.h"
+#include "pbaas/reserves.h"
 
 #include <boost/assign/list_of.hpp>
 

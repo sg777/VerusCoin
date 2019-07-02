@@ -212,6 +212,7 @@ BITCOIN_CORE_H = \
   pbaas/crosschainrpc.h \
   pbaas/notarization.h \
   pbaas/pbaas.h \
+  pbaas/reserves.h \
   policy/fees.h \
   pow.h \
   prevector.h \
@@ -343,6 +344,7 @@ libbitcoin_server_a_SOURCES = \
   pbaas/crosschainrpc.cpp \
   pbaas/notarization.cpp \
   pbaas/pbaas.cpp \
+  pbaas/reserves.cpp \
   policy/fees.cpp \
   pow.cpp \
   primitives/solutiondata.cpp \

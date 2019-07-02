@@ -396,7 +396,7 @@ void Split(const std::string& strVal, uint64_t *outVals, const uint64_t nDefault
     while ( ss.peek() == ' ' )
         ss.ignore();
 
-    while ( ss >> i )
+    while ( numVals < ASSETCHAINS_MAX_ERAS && ss >> i )
     {
         outVals[numVals] = i;
         numVals += 1;

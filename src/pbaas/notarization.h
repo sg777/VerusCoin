@@ -57,8 +57,8 @@
  * 
  */
 
-#ifndef NOTARIZATION_H
-#define NOTARIZATION_H
+#ifndef PBAAS_NOTARIZATION_H
+#define PBAAS_NOTARIZATION_H
 
 #include "pbaas/pbaas.h"
 #include "key_io.h"

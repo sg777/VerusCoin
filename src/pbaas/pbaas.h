@@ -403,7 +403,6 @@ public:
     static const int64_t MIN_BILLING_PERIOD = 480;  // 8 hour minimum billing period for notarization, typically expect days/weeks/months
     static const int64_t DEFAULT_OUTPUT_VALUE = 100000;  // 0.001 VRSC default output value
     static const int32_t OPTION_RESERVE = 1; // allows reserve conversion using base calculations when set
-    static const int32_t OPTION_CONVERT = 2; // allows conversion to the currency from Verus if set
 
     uint32_t nVersion;                      // version of this chain definition data structure to allow for extensions (not daemon version)
     std::string name;                       // chain name, maximum 64 characters
@@ -799,49 +798,6 @@ public:
     bool IsValid()
     {
         return exportType != EXPORT_INVALID && nValue >= 0 && !chainID.IsNull();
-    }
-};
-
-// convert from $VRSC to fractional reserve coin or vice versa. coinID determines which``
-class CReserveExchange
-{
-public:
-    uint32_t flags;                         // control of direction and constraints
-    CScript scriptPubKey;                   // output script for resulting coinbase output
-    CAmount nLimit;                         // lowest or highest price to sell or buy coin output, may fail if including this tx in block makes price out of range
-    uint32_t nValidBefore;                  // if not filled in this block, mine tx, but refund input
-    uint160 chainID;                        // currently supports convert from or to reserve according to conversion rules, this is ouput type
-
-    CReserveExchange(const std::vector<unsigned char> &asVector)
-    {
-        FromVector(asVector, *this);
-    }
-
-    CReserveExchange() : flags(0), nLimit(0), nValidBefore(0) { }
-
-    CReserveExchange(uint32_t Flags, const CScript &rScrOut, const CAmount Limit, uint32_t ValidBefore, uint160 ChainID) : 
-        flags(Flags), scriptPubKey(rScrOut), nLimit(Limit), nValidBefore(ValidBefore), chainID(ChainID) { }
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(flags);
-        READWRITE(*(CScriptBase*)(&scriptPubKey));
-        READWRITE(VARINT(nLimit));
-        READWRITE(nValidBefore);
-        READWRITE(chainID);
-    }
-
-    std::vector<unsigned char> AsVector()
-    {
-        return ::AsVector(*this);
-    }
-
-    bool IsValid()
-    {
-        // this needs an actual check
-        return nValidBefore != 0 && scriptPubKey.size() != 0 && !chainID.IsNull();
     }
 };
 
