@@ -96,6 +96,8 @@ public:
 
     bool AddTransparentOutput(CTxDestination& to, CAmount value);
 
+    bool AddTransparentOutput(const CScript &scriptPubKey, CAmount value);
+
     void AddOpRet(CScript &s);
 
     bool AddOpRetLast();

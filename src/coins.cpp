@@ -11,6 +11,7 @@
 #include "komodo_defs.h"
 #include "importcoin.h"
 #include "pbaas/notarization.h"
+#include "pbaas/reserves.h"
 
 #include <assert.h>
 
@@ -623,6 +624,43 @@ CAmount CCoinsViewCache::GetValueIn(int32_t nHeight,int64_t *interestp,const CTr
     return nResult;
 }
 
+CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& tx, uint32_t tiptime) const
+{
+    CAmount value, nResult = 0;
+
+    /* we don't support this coin import, so we should add reserve import support and uncomment
+    if ( tx.IsCoinImport() )
+        return GetCoinImportValue(tx);
+    */
+
+    if ( tx.IsCoinBase() != 0 )
+        return 0;
+
+    for (unsigned int i = 0; i < tx.vin.size(); i++)
+    {
+        value = 0;
+        const CCoins* coins = AccessCoins(tx.vin[i].prevout.hash);
+        if (coins && coins->IsAvailable(tx.vin[i].prevout.n))
+        {
+            COptCCParams p;
+            if (::IsPayToCryptoCondition(coins->vout[tx.vin[i].prevout.n].scriptPubKey, p) && p.evalCode == EVAL_RESERVE_OUTPUT && p.vData.size())
+            {
+                CReserveOutput ro(p.vData[0]);
+                if (ro.IsValid())
+                {
+                    value = ro.nValue;
+                }
+            }
+        }
+        else
+        {
+            return 0;
+        }
+
+        nResult += value;
+    }
+    return nResult;
+}
 
 bool CCoinsViewCache::HaveJoinSplitRequirements(const CTransaction& tx) const
 {

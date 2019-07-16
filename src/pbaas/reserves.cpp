@@ -14,7 +14,6 @@
 CReserveExchange::CReserveExchange(const CTransaction &tx, bool validate)
 {
     bool orderFound = false;
-    version = PBAAS_VERSION_INVALID;
     for (auto out : tx.vout)
     {
         COptCCParams p;
@@ -24,7 +23,7 @@ CReserveExchange::CReserveExchange(const CTransaction &tx, bool validate)
             {
                 if (orderFound)
                 {
-                    version = PBAAS_VERSION_INVALID;
+                    flags &= !VALID;        // invalidate
                 }
                 else
                 {
@@ -34,10 +33,6 @@ CReserveExchange::CReserveExchange(const CTransaction &tx, bool validate)
             }
         }
     }
-    if (!orderFound)
-    {
-        version = VERSION_INVALID;
-    }
 
     if (validate)
     {
@@ -45,7 +40,7 @@ CReserveExchange::CReserveExchange(const CTransaction &tx, bool validate)
     }
 }
 
-CFractionalReserveState::CFractionalReserveState(const UniValue &obj)
+CCurrencyState::CCurrencyState(const UniValue &obj)
 {
     int32_t initialRatio = uni_get_int(find_value(obj, "initialratio"));
     if (initialRatio > CReserveExchange::SATOSHIDEN)
@@ -64,7 +59,7 @@ CFractionalReserveState::CFractionalReserveState(const UniValue &obj)
     Reserve = uni_get_int64(find_value(obj, "reserve"));
 }
 
-UniValue CFractionalReserveState::ToUniValue() const
+UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("initialratio", (int32_t)InitialRatio));
@@ -76,25 +71,11 @@ UniValue CFractionalReserveState::ToUniValue() const
     return ret;
 }
 
-bool to_int64(const cpp_dec_float_50 &input, int64_t &outval)
-{
-    std::stringstream ss(input.str(0));
-    try
-    {
-        ss >> outval;
-        return true;
-    }
-    catch(const std::exception& e)
-    {
-        return false;
-    }
-}
-
 // This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it 
 // takes both input amounts of the reserve and the fractional currency to merge the conversion into one calculation
 // with the same price for all transactions in the block. It returns the newly calculated conversion price of the fractional 
 // reserve in the reserve currency.
-CAmount CFractionalReserveState::ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CFractionalReserveState &newState) const
+CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState) const
 {
     newState = *this;
 
@@ -156,7 +137,7 @@ struct CReserveExchangeData
 // From a vector of reserve exchange transactions, match all that can be matched and return a new fractional reserve state,
 // a vector of transactions that are all executable, and the price that they executed at only qualified transactions 
 // based on their limits and the transaction price will be included.
-CFractionalReserveState CFractionalReserveState::MatchOrders(const std::vector<CTransaction *> &orders, 
+CCurrencyState CCurrencyState::MatchOrders(const std::vector<CTransaction *> &orders, 
                                                              std::vector<CTransaction *> &matches, 
                                                              std::vector<CTransaction *> &refunds, 
                                                              std::vector<CTransaction *> &nofill, 
@@ -181,9 +162,14 @@ CFractionalReserveState CFractionalReserveState::MatchOrders(const std::vector<C
             // get input value
             CCoinsViewCache coins(pcoinsTip);
             int64_t interest;           // unused for now
-            CReserveExchangeData rxd = {orders[i], orderParams.flags, orderParams.nLimit, coins.GetValueIn(height, &interest, *(orders[i]), tipTime)};
 
-            if (rxd.flags & CReserveExchange::TO_FRACTIONAL)
+            // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
+            // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
+            CReserveExchangeData rxd = {orders[i], orderParams.flags, orderParams.nLimit, 
+                                        orderParams.flags & CReserveExchange::TO_RESERVE ? coins.GetValueIn(height, &interest, *(orders[i]), tipTime) :
+                                                                                           coins.GetReserveValueIn(height, *(orders[i]), tipTime)};
+
+            if (!(rxd.flags & CReserveExchange::TO_RESERVE))
             {
                 if (rxd.flags & CReserveExchange::LIMIT)
                 {
@@ -235,10 +221,10 @@ CFractionalReserveState CFractionalReserveState::MatchOrders(const std::vector<C
     //    we either run out or cannot add from either side. within a specific limit, orders are sorted by largest first, which means
     //    there is no point in retracing if an element fails to be added
     // 3. calculate a final order price.5
-    // 4. create and return a new, updated CFractionalReserveState
+    // 4. create and return a new, updated CCurrencyState
     CAmount reserveIn = marketBuy;
     CAmount fractionalIn = marketSell;
-    CFractionalReserveState newState(*this);
+    CCurrencyState newState(*this);
 
     // iteratively add limit orders first buy, then sell, until we no longer have anything to add
     // this must iterate because each time we add a buy, it may put another sell's limit within reach and
@@ -260,7 +246,7 @@ CFractionalReserveState CFractionalReserveState::MatchOrders(const std::vector<C
         {
             // any time there are entries above the lower bound, we only actually look at the end, since we mutate the
             // multimap and remove anything we've already added
-            CFractionalReserveState rState;
+            CCurrencyState rState;
 
             // the last is most qualified
             auto it = limitBuys.end();
@@ -305,7 +291,7 @@ CFractionalReserveState CFractionalReserveState::MatchOrders(const std::vector<C
         // if we can only fill an order partially, then do so
         for (auto limitSellsIt = limitSells.begin(); limitSellsIt != limitBuys.end() && exchangeRate > limitSellsIt->second.nLimit; limitSellsIt = limitSells.begin())
         {
-            CFractionalReserveState rState;
+            CCurrencyState rState;
             CReserveExchangeData &currentSell = limitSellsIt->second;
 
             // calculate fresh with all conversions together to see if we still meet the limit

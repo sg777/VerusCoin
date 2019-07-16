@@ -150,6 +150,8 @@ uint64_t komodo_commission(const CBlock *block);
 int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blocktimep,uint32_t *txtimep,uint256 *utxotxidp,int32_t *utxovoutp,uint64_t *utxovaluep,uint8_t *utxosig);
 int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, uint8_t *utxosig, CPubKey &pk);
 int32_t komodo_notaryvin(CMutableTransaction &txNew,uint8_t *notarypub33);
+bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter = uint160());
+bool GetUnspentChainExports(multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs, uint160 chainFilter = uint160());
 
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &nExtraNonce, bool buildMerkle, uint32_t *pSaveBits)
 {
@@ -437,9 +439,65 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             }
         }
 
+        // a PBaaS coinbase must have some additional outputs to enable certain functions to be properly
+        // validated. All but the first chain definition are either optional or not valid on non-fractional reserve PBaaS blockchains,
+        // and the first 3 are for block 1 only. all of these are instant spend outputs that have no maturity wait time and may be spent in the same block.
+        //
+        // 1. chain definition (block 1 required) - in order to confirm the amount of coins converted and issued within the possible range, before chain start,
+        //    new PBaaS chains have a zero-amount, unspendable chain definition output.
+        //
+        // 2. initial import utxo (block 1 - optional) - for any chain with conversion or pre-conversion, the first coinbase must include an initial import utxo
+        //
+        // 3. initial export utxo (block 1 - reserve-only) - reserve chains, or any chain that will use exports to another chain must have an initial export utxo, any chain
+        //    may have one, but currently, they can only be spent with valid exports, which only occur on reserve chains
+        //
+        // 4. (optional for notarization) notarization output - in order to ensure that notarization can occur independent of the availability of fungible
+        //    coins on the network, and also that the notarization can provide a spendable finalization output and possible reward
+        //
+        // 5. (optional) currency conversion output - reserve and native output for total conversions, less fees, of any conversions from Verus reserve to the
+        //    native currency, either through pre-conversion or conversion after the fact. On non-reserve chains, this is output only once at the beginning
+        //    of the chain. All pre-converted outputs get their source currency from a thread that starts with this output in block 1.
+        //
+        // In addition, each PBaaS block can be mined with optional, fee-generating transactions. Inporting transactions from the reserve chain or sending
+        // exported transactions to the reserve chain are optional fee-generating steps that would be easy to do when running multiple daemons.
+        // The types of transactions miners/stakers may facilitate or create for fees are as follows:
+        //
+        // 1. Earned notarization of Verus chain - spends the notarization instant out. must be present and spend the notarization output if there is a notarization output
+        //
+        // 2. Imported transactions from the export thread for this PBaaS chain on the Verus blockchain - imported transactions must spend the import utxo
+        //    thread, represent the export from the alternate chain which spends the export output from the prior import transaction, carry a notary proof, and
+        //    include outputs that map to each of its inputs on the source chain. Outputs can include unconverted reserve outputs only on fractional
+        //    reserve chains, pre-converted outputs for any chain with launch conversion, and post launch outputs to be converted on fractional reserve
+        //    chains. Each are handled in the following way:
+        //      a. Unconverted outputs are left as outputs to the intended destination of Verus reserve token and do not pass through the coinbase
+        //      b. Pre-converted outputs require that the import transaction spend the last pre-conversion output starting at block 1 as the source for
+        //         pre-converted currency.
+        //
+        // 3. Zero or more aggregated exports that combine individual cross-chain transactions and reserve transfer outputs for export to the Verus chain. 
+        //
+        // 4. Conversion distribution transactions for all native and reserve currency conversions, including reserve transfer outputs without conversion as
+        //    a second step for reserve transfers that have conversion included. Any remaining pre-converted reserve must always remain in a change output
+        //    until it is exhausted
+
+        // as each of these fills, it will get a valid scriptPubKey
+        CTxOut chainDefinitionOut, importThreadOut, exportThreadOut, notarizationOut, conversionOut;
+        CMutableTransaction newNotarizationTx, newConversionOutputTx;
+
+        // export transactions can be created here by aggregating all pending transfer requests and either getting 10 or more together, or
+        // waiting n (10) blocks since the last one. each export must spend the output of the one before it
+        std::vector<CMutableTransaction> exportTransactions;
+
+        // all transaction outputs requesting conversion to another currency (PBaaS fractional reserve only)
+        // these will be used to calculate conversion price, fees, and generate coinbase conversion output as well as the
+        // conversion output transaction
+        std::vector<CTxOut> reserveConversionTo;
+        std::vector<CTxOut> reserveConversionFrom;
+
         // if we are a PBaaS chain, first make sure we don't start prematurely, and if
         // we should make an earned notarization, make it and set index to non-zero value
-        int32_t pbaasNotarizationTx = 0;                            // index of transaction if it is added
+        int32_t notarizationTxIndex = 0;                            // index of notarization if it is added
+        int32_t conversionTxIndex = 0;                              // index of conversion transaction if it is added
+
         int64_t pbaasTransparentIn = 0;
         int64_t pbaasTransparentOut = 0;
         int64_t blockSubsidy = GetBlockSubsidy(nHeight, consensusParams);
@@ -447,20 +505,210 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         uint256 mmrRoot;
         vector<CInputDescriptor> notarizationInputs;
 
+        // all chains aggregate export transactions, so aggregate and add all necessary exports to the mem pool
+        {
+            multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferOutputs;
+            bool isVerusActive = IsVerusActive();
+
+            // see if enough blocks have passed since the last export
+            // look for unspent notarization finalization outputs for the requested chain
+            CKeyID exportKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_EXPORT));
+
+            // get all available transfer outputs to aggregate into export transactions
+            if (GetUnspentChainTransfers(transferOutputs))
+            {
+                std::vector<pair<CInputDescriptor, CReserveTransfer>> txInputs;
+
+                std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
+                // we need unspent export outputs to export
+                if (GetUnspentChainExports(exportOutputs))
+                {
+                    uint160 lastChain;
+
+                    // merge all of the common chainID outputs into common export transactions if either 10 blocks have passed since the last
+                    // export of that type, or there are 10 or more outputs to aggregate
+                    for (auto it = transferOutputs.begin(); it != transferOutputs.end(); it++)
+                    {
+                        // get chain target and see if it is the same
+                        if (lastChain.IsNull() || it->first == lastChain)
+                        {
+                            txInputs.push_back(it->second);
+                            lastChain = it->first;
+                        }
+                        else
+                        {
+                            auto recentExportIt = exportOutputs.find(lastChain);
+
+                            if (recentExportIt != exportOutputs.end() &&
+                                ((nHeight - recentExportIt->second.first) >= CCrossChainExport::MIN_BLOCKS) ||
+                                (txInputs.size() >= CCrossChainExport::MIN_INPUTS))
+                            {
+                                // make one or more transactions that spends the last export and all possible cross chain transfers
+                                while (txInputs.size())
+                                {
+                                    TransactionBuilder tb(consensusParams, nHeight);
+                                    boost::optional<CTransaction> oneExport;
+
+                                    int numInputs = (txInputs.size() < CCrossChainExport::MAX_EXPORT_INPUTS) ? txInputs.size() : CCrossChainExport::MAX_EXPORT_INPUTS;
+
+                                    int inputsLeft = txInputs.size() - numInputs;
+
+                                    if (inputsLeft > 0 && inputsLeft < CCrossChainExport::MIN_INPUTS)
+                                    {
+                                        inputsLeft += CCrossChainExport::MIN_INPUTS - inputsLeft;
+                                        numInputs -= CCrossChainExport::MIN_INPUTS - inputsLeft;
+                                        assert(numInputs > 0);
+                                    }
+
+                                    // each time through, we make one export transaction with the remainder or a subset of the
+                                    // reserve transfer inputs. inputs can be:
+                                    // 1. transfers of reserve for fractional reserve chains
+                                    // 2. pre-conversions for pre-launch participation in the premine
+                                    // 3. reserve market conversions to send between Verus and a fractional reserve chain and always output the native coin
+                                    //
+                                    // If we are on the Verus chain, all inputs will include native coins. On a PBaaS chain, inputs can either be native
+                                    // or reserve token inputs.
+                                    //
+                                    // On the Verus chain, total native amount, minus the fee, must be sent to the reserve address of the specific chain
+                                    // as reserve deposit with native coin equivalent. Pre-conversions and conversions will be realized on the PBaaS chain
+                                    // as part of the import process
+                                    // 
+                                    // If we are on the PBaaS chain, conversions must happen before coins are sent this way back to the reserve chain. 
+                                    // Verus reserve outputs can be directly aggregated and transferred, with fees paid through conversion and the 
+                                    // remaining Verus reserve coin considered burned.
+                                    //
+                                    CAmount totalTxFees = 0;
+                                    CAmount totalAmount = 0;
+                                    std::vector<CBaseChainObject *> chainObjects;
+
+                                    // first, we must add the export output from the current export thread to this chain
+                                    if (oneExport.has_value())
+                                    {
+                                        // spend the last export transaction output
+                                        CTransaction &tx = oneExport.get();
+                                        COptCCParams p;
+                                        int j;
+                                        for (j = 0; j < tx.vout.size(); j++)
+                                        {
+                                            if (::IsPayToCryptoCondition(tx.vout[j].scriptPubKey, p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT)
+                                            {
+                                                break;
+                                            }
+                                        }
+
+                                        // had to be found and valid if we made the tx
+                                        assert(j < tx.vout.size() && p.IsValid());
+
+                                        tb.AddTransparentInput(COutPoint(tx.GetHash(), j), tx.vout[j].scriptPubKey, tx.vout[j].nValue);
+                                    }
+                                    else
+                                    {
+                                        // spend the recentExportIt output
+                                        tb.AddTransparentInput(recentExportIt->second.second.txIn.prevout, 
+                                                               recentExportIt->second.second.scriptPubKey, 
+                                                               recentExportIt->second.second.nValue);
+                                    }
+
+                                    for (int j = 0; j < numInputs; j++)
+                                    {
+                                        tb.AddTransparentInput(txInputs[j].first.txIn.prevout, txInputs[j].first.scriptPubKey, txInputs[j].first.nValue, txInputs[j].first.txIn.nSequence);
+                                        totalTxFees += txInputs[j].second.nFees;
+                                        totalAmount += txInputs[j].second.nValue;
+                                        chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
+                                    }
+
+                                    CScript opRet = StoreOpRetArray(chainObjects);
+                                    DeleteOpRetObjects(chainObjects);
+
+                                    CCcontract_info CC;
+                                    CCcontract_info *cp;
+                                    cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
+
+                                    CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                                    // send zero to a cross chain export output of the specific chain
+                                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_CROSSCHAIN_EXPORT))});
+
+                                    CCrossChainExport ccx(lastChain, numInputs, totalAmount, totalTxFees);
+                                    CAmount exportFees = ccx.CalculateExportFee();
+
+                                    CTxOut exportOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, 
+                                                                      0,
+                                                                      pk,
+                                                                      dests,
+                                                                      ccx);
+
+                                    tb.AddTransparentOutput(exportOut.scriptPubKey, 0);
+
+                                    // if we are on Verus chain, send all native funds, less fees to reserve deposit CC, which is equivalent to the reserve account
+                                    // on a PBaaS reserve chain, input is burned
+                                    if (isVerusActive)
+                                    {
+                                        cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
+                                        pk = CPubKey(ParseHex(CC.CChexstr));
+
+                                        // send the entire amount, less fees taken on this chain only, to a reserve transfer output of the specific chain
+                                        dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_RESERVE_DEPOSIT))});
+
+                                        CReserveOutput ro(CReserveOutput::VALID, totalAmount - ccx.CalculateExportFee());
+
+                                        CTxOut outToReserve = MakeCC1of1Vout(EVAL_RESERVE_DEPOSIT, 
+                                                                             ro.nValue,
+                                                                             pk,
+                                                                             dests,
+                                                                             ro);
+
+                                        tb.AddTransparentOutput(outToReserve.scriptPubKey, ro.nValue);
+                                    }
+
+                                    tb.AddOpRet(opRet);
+
+                                    boost::optional<CTransaction> newExport = tb.Build();
+
+                                    if (newExport.has_value())
+                                    {
+                                        // replace the last one only if we have a valid new one
+                                        oneExport = newExport;
+                                        CTransaction &tx = oneExport.get();
+
+                                        LOCK2(cs_main, mempool.cs);
+
+                                        // don't remove conflicts for now
+                                        //std::list<CTransaction> removed;
+                                        //mempool.removeConflicts(tx, removed);
+
+                                        // add to mem pool and relay
+                                        if (myAddtomempool(tx))
+                                        {
+                                            RelayTransaction(tx);
+                                        }
+                                    }
+                                    // erase the inputs we've attempted to spend
+                                    txInputs.erase(txInputs.begin(), txInputs.begin() + numInputs);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // make earned notarization only if this is not the notary chain and we have enough subsidy
-        //
-        // TODO: allow this to proceed if no subsidy and earned notarizations pay no reward as well
-        // we will need to provide a notarization reward option, even for non-fungible chains, just to enable
-        // creation of the notarizations
-        if (!IsVerusActive() && (blockSubsidy > PBAAS_MINNOTARIZATIONOUTPUT * 2))
+        if (!IsVerusActive())
         {
             // if we don't have a connected root PBaaS chain, we can't properly check
-            // and notarize the start block, so we have to pass and wait
-            if (nHeight != 1 || (ConnectedChains.IsVerusPBaaSAvailable() && ConnectedChains.notaryChainHeight >= PBAAS_STARTBLOCK))
+            // and notarize the start block, so we have to pass th notarization and cross chain steps
+            bool notaryConnected = ConnectedChains.IsVerusPBaaSAvailable() && ConnectedChains.notaryChainHeight >= PBAAS_STARTBLOCK;
+            if (nHeight == 1 && !notaryConnected)
+            {
+                // cannt make block 1 unless it is past the start block and we can properly notarize it
+                return NULL;
+            }
+
+            if (notaryConnected)
             {
                 // if we have access to our parent daemon
                 // create a notarization if we would qualify, and add it to the mempool and block
-                CMutableTransaction newNotarizationTx;
                 CTransaction prevTx, crossTx;
                 ChainMerkleMountainView mmv = chainActive.GetMMV();
                 mmrRoot = mmv.GetRoot();
@@ -503,22 +751,31 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     pblock->vtx.push_back(CTransaction(newNotarizationTx));
                     pblocktemplate->vTxFees.push_back(0);
                     pblocktemplate->vTxSigOps.push_back(-1); // updated at end
-                    pbaasNotarizationTx = pblock->vtx.size() - 1;
+
+
+                    notarizationTxIndex = pblock->vtx.size() - 1;
+
+                    // if we are a reserve chain, we need to add reserve outputs and transactions
+                    // transactions to add now:
+                    //  imports                 - get pending imports from the notary chain
+                    //  we only care about export transactions between the beginning of the chain definition and
+                    //  the last confirmed notarization
+                    //
+                    //
+                    // transactions to add later:
+                    //  conversions to native   - all mined reserveexchange output, including from imports w/conversion
+                    //  conversions to reserve  - all mined reserveexchange outputs, reserve imports are direct to recipient
+                    // outputs:
+                    //  reserve state
+                    //  import output (if needed)
+                    //  conversion to native (if needed)
+                    //  conversion to reserve (if needed)
                 }
                 else if (nHeight == 1)
                 {
                     // failed to notarize at block 1
                     return NULL;
                 }
-                else
-                {
-                    printf("Skip creating earned notarization\n");
-                }
-            }
-            else
-            {
-                // can't mine block 1 unless we have a connection to Verus and can notarize
-                return NULL;
             }
         }
 
@@ -882,12 +1139,12 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         assert(txNew.vin[0].scriptSig.size() <= 100);
 
         // add final notarization and instant spend fixups
-        if (pbaasNotarizationTx)
+        if (notarizationTxIndex)
         {
             extern CWallet *pwalletMain;
             LOCK(pwalletMain->cs_wallet);
 
-            CMutableTransaction mntx(pblock->vtx[pbaasNotarizationTx]);
+            CMutableTransaction mntx(pblock->vtx[notarizationTxIndex]);
 
             // determine number of outputs
             int numNotaryOutputs = mntx.vout.size() - (mntx.vout[mntx.vout.size() - 1].scriptPubKey.IsOpReturn() ? 1 : 0);
@@ -914,7 +1171,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
             // output duplicate notarization as coinbase output for instant spend to notarization
             // the output amount is considered part of the total value of this coinbase
-            CPBaaSNotarization pbn(pblock->vtx[pbaasNotarizationTx]);
+            CPBaaSNotarization pbn(pblock->vtx[notarizationTxIndex]);
             txNew.vout.insert(coinbaseOutIt, MakeCC1of1Vout(EVAL_EARNEDNOTARIZATION, needed, pk, vKeys, pbn));
             txNew.vout[0].nValue = txNew.vout[0].nValue - needed;
 
@@ -962,15 +1219,15 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     UpdateTransaction(mntx, i, sigdata);
                 }
             }
-            pblocktemplate->vTxSigOps[pbaasNotarizationTx] = GetLegacySigOpCount(mntx);
+            pblocktemplate->vTxSigOps[notarizationTxIndex] = GetLegacySigOpCount(mntx);
 
             // put now signed notarization back in the block
-            pblock->vtx[pbaasNotarizationTx] = mntx;
+            pblock->vtx[notarizationTxIndex] = mntx;
 
             LogPrintf("Coinbase source tx id: %s\n", txNew.GetHash().GetHex().c_str());
             //printf("Coinbase source tx id: %s\n", txNew.GetHash().GetHex().c_str());
-            LogPrintf("adding notarization tx at height %d, index %d, id: %s\n", nHeight, pbaasNotarizationTx, mntx.GetHash().GetHex().c_str());
-            //printf("adding notarization tx at height %d, index %d, id: %s\n", nHeight, pbaasNotarizationTx, mntx.GetHash().GetHex().c_str());
+            LogPrintf("adding notarization tx at height %d, index %d, id: %s\n", nHeight, notarizationTxIndex, mntx.GetHash().GetHex().c_str());
+            //printf("adding notarization tx at height %d, index %d, id: %s\n", nHeight, notarizationTxIndex, mntx.GetHash().GetHex().c_str());
             {
                 LOCK(cs_main);
                 for (auto input : mntx.vin)

@@ -11,6 +11,7 @@
 #include "cc/eval.h"
 #include "cryptoconditions/include/cryptoconditions.h"
 #include "standard.h"
+#include "pbaas/reserves.h"
 
 using namespace std;
 
@@ -411,6 +412,94 @@ bool CScript::IsPayToCryptoCondition(uint32_t *ecode) const
     if (IsPayToCryptoCondition(&sub, vParams, p))
     {
         *ecode = p.evalCode;
+        return true;
+    }
+    return false;
+}
+
+CScript CScript::ReplaceCCParams(const COptCCParams &params)
+{
+    CScript subScript;
+    std::vector<std::vector<unsigned char>> vParams;
+    COptCCParams p;
+    if (!this->IsPayToCryptoCondition(&subScript, vParams, p) || p.evalCode != params.evalCode)
+    {
+        return CScript();
+    }
+
+    // add the object to the end of the script
+    subScript << params.AsVector() << OP_DROP;
+
+    return subScript;
+}
+
+int64_t CScript::ReserveOutValue() const
+{
+    COptCCParams p;
+    CAmount newVal = 0;
+
+    // already validated above
+    if (::IsPayToCryptoCondition(*this, p) && p.IsValid())
+    {
+        switch (p.evalCode)
+        {
+            case EVAL_RESERVE_OUTPUT:
+            {
+                CReserveOutput ro(p.vData[0]);
+                return ro.nValue;
+                break;
+            }
+            case EVAL_RESERVE_TRANSFER:
+            {
+                CReserveTransfer rt(p.vData[0]);
+                return rt.nValue;
+                break;
+            }
+            case EVAL_RESERVE_EXCHANGE:
+            {
+                CReserveExchange re(p.vData[0]);
+                return re.nValue;
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
+bool CScript::SetReserveOutValue(int64_t newValue)
+{
+    COptCCParams p;
+    CAmount newVal = 0;
+
+    // already validated above
+    if (::IsPayToCryptoCondition(*this, p) && p.IsValid())
+    {
+        switch (p.evalCode)
+        {
+            case EVAL_RESERVE_OUTPUT:
+            {
+                CReserveOutput ro(p.vData[0]);
+                p.vData[0] = ro.AsVector();
+                break;
+            }
+            case EVAL_RESERVE_TRANSFER:
+            {
+                CReserveTransfer rt(p.vData[0]);
+                rt.nValue = newValue;
+                p.vData[0] = rt.AsVector();
+                break;
+            }
+            case EVAL_RESERVE_EXCHANGE:
+            {
+                CReserveExchange re(p.vData[0]);
+                re.nValue = newValue;
+                p.vData[0] = re.AsVector();
+                break;
+            }
+            default:
+                return false;
+        }
+        *this = ReplaceCCParams(p);
         return true;
     }
     return false;

@@ -122,7 +122,7 @@ COptCCParams::COptCCParams(std::vector<unsigned char> &vch)
     }
 }
 
-std::vector<unsigned char> COptCCParams::AsVector()
+std::vector<unsigned char> COptCCParams::AsVector() const
 {
     CScript cData = CScript();
 
@@ -584,4 +584,8 @@ CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys)
 
 bool IsValidDestination(const CTxDestination& dest) {
     return dest.which() != 0;
+}
+
+bool IsTransparentAddress(const CTxDestination& dest) {
+    return dest.which() == 1 || dest.which() == 2;
 }

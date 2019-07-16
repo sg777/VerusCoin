@@ -481,6 +481,16 @@ public:
         return (nValue < GetDustThreshold(minRelayTxFee));
     }
 
+    CAmount ReserveOutValue() const
+    {
+        return scriptPubKey.ReserveOutValue();
+    }
+
+    bool SetReserveOutValue(CAmount newValue)
+    {
+        return scriptPubKey.SetReserveOutValue(newValue);
+    }
+
     friend bool operator==(const CTxOut& a, const CTxOut& b)
     {
         return (a.nValue == b.nValue && a.scriptPubKey == b.scriptPubKey);

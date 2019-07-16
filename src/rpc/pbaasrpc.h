@@ -9,6 +9,7 @@
 #include "uint256.h"
 #include "sync.h"
 #include <stdint.h>
+#include <map>
 #include "pbaas/notarization.h"
 #include "pbaas/reserves.h"
 
@@ -18,6 +19,8 @@
 
 bool GetChainDefinition(std::string &name, CPBaaSChainDefinition &chainDef);
 bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut = NULL);
+bool GetUnspentChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter = uint160());
+bool GetUnspentChainExports(std::multimap<uint160, std::pair<int, CInputDescriptor>> &exportOutputs, uint160 chainFilter = uint160());
 
 UniValue getchaindefinition(const UniValue& params, bool fHelp);
 UniValue getnotarizationdata(const UniValue& params, bool fHelp);

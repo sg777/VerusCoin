@@ -81,8 +81,8 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn)
         case EVAL_RESERVE_OUTPUT:
         case EVAL_CROSSCHAIN_EXPORT:
         case EVAL_CROSSCHAIN_IMPORT:
-        case EVAL_INSTANTSPEND:
-        case EVAL_RESERVE_INPUT:
+        case EVAL_COINBASECONVERSIONOUT:
+        case EVAL_RESERVE_TRANSFER:
             if (!chainActive.LastTip() || CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CActivationHeight::SOLUTION_VERUSV3)
             {
                 // if chain is not able to process this yet, don't drop through to do so

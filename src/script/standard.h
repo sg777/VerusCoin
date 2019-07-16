@@ -61,7 +61,7 @@ class COptCCParams
 
         bool IsValid() { return version != 0; }
 
-        std::vector<unsigned char> AsVector();
+        std::vector<unsigned char> AsVector() const;
 };
 
 static const unsigned int MAX_OP_RETURN_RELAY = 8192;      //! bytes
@@ -148,6 +148,7 @@ class CStakeParams
 
 /** Check whether a CTxDestination is a CNoDestination. */
 bool IsValidDestination(const CTxDestination& dest);
+bool IsTransparentAddress(const CTxDestination& dest);
 
 const char* GetTxnOutputType(txnouttype t);
 

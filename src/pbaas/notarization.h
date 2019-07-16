@@ -62,6 +62,7 @@
 
 #include "pbaas/pbaas.h"
 #include "key_io.h"
+#include "pbaas/reserves.h"
 
 // This is the data for a PBaaS notarization transaction, either of a PBaaS chain into the Verus chain, or the Verus
 // chain into a PBaaS chain.
@@ -267,16 +268,6 @@ public:
     }
 
     UniValue ToUniValue() const;
-};
-
-class CInputDescriptor
-{
-public:
-    CScript scriptPubKey;
-    CAmount nValue;
-    CTxIn txIn;
-    CInputDescriptor() : nValue(0) {}
-    CInputDescriptor(CScript script, CAmount value, CTxIn input) : scriptPubKey(script), nValue(value), txIn(input) {}
 };
 
 bool CreateEarnedNotarization(CMutableTransaction &mnewTx, std::vector<CInputDescriptor> &inputs, CTransaction &lastTx, CTransaction &crossTx, int32_t height, int32_t *confirmedInput, CTxDestination *confirmedDest);

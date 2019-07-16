@@ -54,6 +54,7 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
         const CChainObject<CMerkleBranch> *pNewProof;
         const CChainObject<CHeaderRef> *pNewHeaderRef;
         const CChainObject<CPriorBlocksCommitment> *pPriors;
+        const CChainObject<CReserveTransfer> *pExport;
         const CBaseChainObject *retPtr;
     };
 
@@ -75,6 +76,9 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
 
         case CHAINOBJ_PRIORBLOCKS:
             return pPriors->GetHash();
+
+        case CHAINOBJ_RESERVETRANSFER:
+            return pExport->GetHash();
     }
     return uint256();
 }
@@ -162,6 +166,11 @@ int8_t ObjTypeCode(const CPriorBlocksCommitment &obj)
     return CHAINOBJ_PRIORBLOCKS;
 }
 
+int8_t ObjTypeCode(const CReserveTransfer &obj)
+{
+    return CHAINOBJ_RESERVETRANSFER;
+}
+
 // this adds an opret to a mutable transaction that provides the necessary evidence of a signed, cheating stake transaction
 CScript StoreOpRetArray(std::vector<CBaseChainObject *> &objPtrs)
 {
@@ -228,6 +237,12 @@ void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
             case CHAINOBJ_PRIORBLOCKS:
             {
                 delete (CChainObject<CPriorBlocksCommitment> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_RESERVETRANSFER:
+            {
+                delete (CChainObject<CReserveTransfer> *)pobj;
                 break;
             }
 
@@ -308,6 +323,7 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const UniValue &obj)
     ba.GetKeyID(address);
     premine = uni_get_int64(find_value(obj, "premine"));
     conversion = uni_get_int64(find_value(obj, "conversion"));
+    maxpreconvert = uni_get_int64(find_value(obj, "maxpreconvert"));
     launchFee = uni_get_int64(find_value(obj, "launchfee"));
     startBlock = uni_get_int(find_value(obj, "startblock"));
     endBlock = uni_get_int(find_value(obj, "endblock"));
@@ -403,17 +419,6 @@ CServiceReward::CServiceReward(const CTransaction &tx, bool validate)
     }
 }
 
-
-CCrossChainInput::CCrossChainInput(const CTransaction &tx)
-{
-    // TODO - finish
-}
-
-CCrossChainInput::CCrossChainInput(const UniValue &obj)
-{
-    // TODO - finish
-}
-
 uint160 CPBaaSChainDefinition::GetChainID(std::string name)
 {
     const char *chainName = name.c_str();
@@ -434,6 +439,7 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("paymentaddress", CBitcoinAddress(CTxDestination(address)).ToString()));
     obj.push_back(Pair("premine", (int64_t)premine));
     obj.push_back(Pair("conversion", (int64_t)conversion));
+    obj.push_back(Pair("maxpreconvert", (int64_t)maxpreconvert));
     obj.push_back(Pair("launchfee", (int64_t)launchFee));
     obj.push_back(Pair("conversionpercent", (double)conversion / 100000000));
     obj.push_back(Pair("launchfeepercent", ((double)launchFee / 100000000) * 100));
@@ -627,6 +633,19 @@ bool CheckChainDefinitionOutput(struct CCcontract_info *cp, Eval* eval, const CT
     }
 
     return true;
+}
+
+CAmount CCrossChainExport::CalculateExportFee() const
+{
+    if (numInputs > MAX_EXPORT_INPUTS)
+    {
+        return 0;
+    }
+    static const arith_uint256 satoshis(100000000);
+
+    int64_t ratio = 50000000 + ((25000000 / MAX_EXPORT_INPUTS) * numInputs);
+
+    return (((arith_uint256(totalFees) * arith_uint256(ratio))) / satoshis).GetLow64();
 }
 
 bool CConnectedChains::RemoveMergedBlock(uint160 chainID)

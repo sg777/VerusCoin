@@ -97,6 +97,15 @@ CC *CCcond1(uint8_t evalcode,CPubKey pk)
     return CCNewThreshold(2, {condCC, Sig});
 }
 
+CC *CCcond0(uint8_t evalcode, CPubKey pk)
+{
+    std::vector<CC*> pks;
+    pks.push_back(CCNewSecp256k1(pk));
+    CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
+    CC *Sig = CCNewThreshold(0, pks);
+    return CCNewThreshold(2, {condCC, Sig});
+}
+
 CScript _CCPubKey(const CC *cond)
 {
     unsigned char buf[1000];

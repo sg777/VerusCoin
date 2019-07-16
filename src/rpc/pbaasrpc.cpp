@@ -366,6 +366,121 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
     return ret;
 }
 
+// returns all unspent chain transfer outputs with an optional chainFilter. if the chainFilter is not
+// NULL, only transfers to that chain are returned
+bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter)
+{
+    // look for unspent notarization finalization outputs for the requested chain
+    CKeyID keyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_RESERVE_TRANSFER));
+
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+    bool filter = !chainFilter.IsNull();
+
+    LOCK2(cs_main, mempool.cs);
+
+    if (!GetAddressUnspent(keyID, 1, unspentOutputs))
+    {
+        return false;
+    }
+    else
+    {
+        CCoinsViewCache view(pcoinsTip);
+        // filter out all transactions that do not spend from the notarization thread, or originate as the
+        // chain definition
+        for (auto it = unspentOutputs.begin(); it != unspentOutputs.end(); it++)
+        {
+            // printf("txid: %s\n", it->first.txhash.GetHex().c_str());
+            CTransaction ntx;
+            uint256 blkHash;
+            CCoins coins;
+
+            if (view.GetCoins(it->first.txhash, coins))
+            {
+                for (int i = 0; i < coins.vout.size(); i++)
+                {
+                    if (coins.IsAvailable(i))
+                    {
+                        // if this is a transfer output, optionally to this chain, add it to the input vector
+                        COptCCParams p;
+                        CReserveTransfer rt;
+                        if (::IsPayToCryptoCondition(coins.vout[i].scriptPubKey, p) && p.evalCode == EVAL_RESERVE_TRANSFER &&
+                            p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                            p.vKeys.size() > 1 &&
+                            (!filter || GetDestinationID(p.vKeys[1]) == chainFilter))
+                        {
+                            inputDescriptors.insert(make_pair(GetDestinationID(p.vKeys[1]),
+                                                     make_pair(CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))), rt)));
+                        }
+                    }
+                }
+            }
+            else
+            {
+                printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+// returns all unspent chain transfer outputs with an optional chainFilter. if the chainFilter is not
+// NULL, only transfers to that chain are returned
+bool GetUnspentChainExports(multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs, uint160 chainFilter)
+{
+    // look for unspent notarization finalization outputs for the requested chain
+    CKeyID keyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_EXPORT));
+
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+    bool filter = !chainFilter.IsNull();
+
+    LOCK2(cs_main, mempool.cs);
+
+    if (!GetAddressUnspent(keyID, 1, unspentOutputs))
+    {
+        return false;
+    }
+    else
+    {
+        CCoinsViewCache view(pcoinsTip);
+        // filter out all transactions that do not spend from the notarization thread, or originate as the
+        // chain definition
+        for (auto it = unspentOutputs.begin(); it != unspentOutputs.end(); it++)
+        {
+            // printf("txid: %s\n", it->first.txhash.GetHex().c_str());
+            CTransaction ntx;
+            uint256 blkHash;
+            CCoins coins;
+
+            if (view.GetCoins(it->first.txhash, coins))
+            {
+                for (int i = 0; i < coins.vout.size(); i++)
+                {
+                    if (coins.IsAvailable(i))
+                    {
+                        // if this is a transfer output, optionally to this chain, add it to the input vector
+                        COptCCParams p;
+                        CCrossChainExport cx;
+                        if (::IsPayToCryptoCondition(coins.vout[i].scriptPubKey, p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                            p.vData.size() && (cx = CCrossChainExport(p.vData[0])).IsValid() &&
+                            (!filter || cx.chainID == chainFilter))
+                        {
+                            exportOutputs.insert(make_pair(cx.chainID,
+                                                     make_pair(coins.nHeight, CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))))));
+                        }
+                    }
+                }
+            }
+            else
+            {
+                printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
 bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData &notarizationData, vector<pair<CTransaction, uint256>> *optionalTxOut)
 {
     notarizationData.version = PBAAS_VERSION;
@@ -1497,11 +1612,11 @@ UniValue getreserveinfo(const UniValue& params, bool fHelp)
                 COptCCParams p;
                 if (::IsPayToCryptoCondition(tx.vout[txIndex.first.index].scriptPubKey, p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT)
                 {
-                    CCrossChainExport cce(p.vData[0]);
-                    if (cce.exportType == CCrossChainExport::EXPORT_CONVERSION)
-                    {
-                        premineContributions += txIndex.second;
-                    }
+                    CCrossChainTransfer cct(p.vData[0]);
+
+                    // TODO - FINISH
+                    // loop and search for maxpreconverts
+                    //premineContributions += cct.preConverted;
                 }
             }
         }
@@ -1551,11 +1666,12 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "       {\n"
-            "           \"chain\"          : \"xxxx\",  (string, optional) Verus ecosystem-wide name/symbol of this PBaaS chain, if absent, current chain is assumed\n"
-            //"           \"sourceaddress\"  : \"zsxxx\", \"Rxxx\" (string, optional) source address, uses available transparent addresses in wallet if absent"
+            "           \"chain\"          : \"xxxx\",  (string, optional) Verus ecosystem-wide name/symbol of chain to send to, if absent, current chain is assumed\n"
             "           \"paymentaddress\" : \"Rxxx\",  (string, required) premine and launch fee recipient\n"
             "           \"amount\"         : \"n\",     (int64,  required) amount of coins that will be moved and sent to address on PBaaS chain, network and conversion fees additional\n"
             "           \"convert\"        : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price\n"
+            "           \"launchonly\"     : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price, fail if order cannot be placed before launch\n"
+            "           \"subtractfee\"    : \"bool\",  (bool,   optional) if true, reduce amount to destination by the fee amount, otherwise, add from inputs to cover fee"
             "       }\n"
 
             "\nResult:\n"
@@ -1584,179 +1700,355 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. Must provide a single object that represents valid outputs. see help.");
     }
 
-    const UniValue *pOutputArr = &params[0];
-    UniValue substArr(UniValue::VARR);
-    if (params[0].isObject())
-    {
-        substArr.push_back(params[0]);
-        pOutputArr = &substArr;
-    }
-    const UniValue &objArr = *pOutputArr;
-
     bool isVerusActive = IsVerusActive();
     uint160 thisChainID = ConnectedChains.ThisChain().GetChainID();
 
-    CAmount inputNeeded;
-    CTxOut newOutput;
+    CWalletTx wtx;
 
-    // convert all entries to CRecipient
-    // any failure fails all
-    for (int i = 0; i < objArr.size(); i++)
+    // default double fee for miner of chain definition tx
+    // one output for definition, one for finalization
+    string name = uni_get_str(find_value(params[0], "chain"), "");
+    string paymentAddr = uni_get_str(find_value(params[0], "paymentaddress"), "");
+    CAmount amount = uni_get_int64(find_value(params[0], "amount"), -1);
+    bool convert = uni_get_int(find_value(params[0], "convert"), false);
+    bool launchOnly = uni_get_int(find_value(params[0], "launchonly"), false);
+    bool subtractFee = uni_get_int(find_value(params[0], "subtractfee"), false);
+    uint32_t flags = CReserveOutput::VALID;
+
+    bool sameChain = false;
+    if (name == "")
     {
-        // default double fee for miner of chain definition tx
-        // one output for definition, one for finalization
-        string name = uni_get_str(find_value(params[0], "chain"), "");
-        string paymentAddr = uni_get_str(find_value(params[0], "paymentaddress"), "");
-        //string sourceAddr = uni_get_str(find_value(params[0], "sourceaddress"), "");
-        CAmount amount = uni_get_int64(find_value(params[0], "amount"), -1);
-        bool convert = uni_get_int(find_value(params[0], "convert"), false);
+        name = ASSETCHAINS_SYMBOL;
+        sameChain = true;
+    }
 
-        bool sameChain = false;
-        if (name == "")
+    if (name == "" || paymentAddr == "" || amount < 0)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters");
+    }
+
+    CBitcoinAddress ba(DecodeDestination(paymentAddr));
+    CKeyID kID;
+
+    if (!ba.IsValid() || !ba.GetKeyID(kID))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid payment address");
+    }
+
+    uint160 chainID = CCrossChainRPCData::GetChainID(name);
+
+    CPBaaSChainDefinition chainDef;
+    // validate that the target chain is still running
+    if (!GetChainDefinition(chainID, chainDef) || !chainDef.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified is not a valid chain");
+    }
+
+    bool isReserve = chainDef.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE;
+
+    // non-reserve conversions only work before the chain launches, then they determine the premine allocation
+    // premine claim transactions are basically export transactions of a pre-converted amount of native coin with a neutral
+    // impact on the already accounted for supply based on conversion conditions and contributions to the blockchain before
+    // the start block
+    int32_t height = chainActive.Height();
+    bool beforeStart = chainDef.startBlock > height;
+
+    if (isVerusActive)
+    {
+        if (chainID == thisChainID)
         {
-            name = ASSETCHAINS_SYMBOL;
-            sameChain = true;
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send reserve on a chain that is not a fractional reserve of another currency. See sendtoaddress or z_sendmany.");
         }
-
-        if (name == "" || paymentAddr == "" || amount < 0)
+        else // ensure the PBaaS chain is a fractional reserve or that it's convertible and this is a conversion
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters for object #" + to_string(i));
-        }
-
-        CBitcoinAddress ba(DecodeDestination(paymentAddr));
-        CKeyID kID;
-
-        if (!ba.IsValid() || !ba.GetKeyID(kID))
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid payment address in object #" + to_string(i));
-        }
-
-        uint160 chainID = CCrossChainRPCData::GetChainID(name);
-
-        CPBaaSChainDefinition chainDef;
-        // validate that the target chain is still running
-        if (!GetChainDefinition(chainID, chainDef) || !chainDef.IsValid())
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified in object #" + to_string(i) + " is not a valid chain");
-        }
-
-        bool isReserve = (chainDef.eraOptions.size() && (chainDef.eraOptions[0] & CPBaaSChainDefinition::OPTION_RESERVE));
-
-        // non-reserve conversions only work before the chain launches, then they determine the premine allocation
-        // premine claim transactions are basically export transactions of a pre-converted amount of native coin with a neutral
-        // impact on the already accounted for supply based on conversion conditions and contributions to the blockchain before
-        // the start block
-        bool beforeStart = chainDef.startBlock > chainActive.Height();
-
-        if (isVerusActive)
-        {
-            if (chainID == thisChainID)
+            if (convert)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send reserve on a reserve chain that is not a fractional reserve of another currency. Use sendtoaddress or z_sendmany.");
-            }
-            else if (true) // ensure the PBaaS chain is a fractional reserve or that it's convertible and this is a conversion
-            {
-                // send Verus to a PBaaS chain
-                if (convert)
+                // if chain hasn't started yet, we must use the conversion as a ratio over satoshis to participate in the pre-mine
+                // up to a maximum
+                if (beforeStart)
                 {
-                    // if chain hasn't started yet, we must use the conversion as a ratio over satoshis to participate in the pre-mine
-                    // up to a maximum
-                    if (beforeStart)
+                    if (chainDef.conversion <= 0)
                     {
-                        if (chainDef.conversion <= 0)
-                        {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " is not convertible to " + chainDef.name + (isReserve ? " before the chain starts." : "."));
-                        }
-                        // we need to calculate the required fees and include them in the input we will need for the transaction
-                        // each step takes a default per step fee, and there are 3 steps
-                        inputNeeded = amount + (CReserveSend::DEFAULT_PER_STEP_FEE << 1) + CReserveSend::DEFAULT_PER_STEP_FEE;
-
-                        // make sure we do not exceed the maximum amount of contribution for this chain
-
-                    } else if (!isReserve)
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + std::string(ASSETCHAINS_SYMBOL) + " after chain launch");
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " is not convertible to " + chainDef.name + (isReserve ? " before the chain starts." : "."));
                     }
-                    else
-                    {
-                        /* code */
-                    }
-                }
-            }
-            else
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified in object #" + to_string(i) + " is not a known reserve or fractional reserve chain");
-            }
-        }
-        else
-        {
-            if (chainID == thisChainID)
-            {
-                // it is a reserve token send. reserve token send must take reserve token as inputs only and will only convert
-                // automatically between inputs and outputs if explicitly requested with the convert parameter. if conversion occurs,
-                // it will be at market price. any mining fee required to process this transaction will be calculated from the current price 
-                // before this block and included as a corresponding reduction in the reserve token. exchange fees will be subtracted from 
-                // the total returned at the current blochchain rate. fees are put into the total exchange as purchase of the native coin 
-                // at market, which is then taken by the block validator as a fee
-                if (convert)
-                {
-                }
-            }
-            else if (chainID == ConnectedChains.NotaryChain().GetChainID())
-            {
-                // send Verus from this PBaaS chain to the Verus chain
-                if (convert)
-                {
-                }
-            }
-            else
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified in object #" + to_string(i) + " is not the current chain or this chain's reserve");
-            }
-        }
 
-        // validate that the entry is a valid chain being notarized
-        CChainNotarizationData nData;
-        if (isVerusActive && GetNotarizationData(chainID, EVAL_EARNEDNOTARIZATION, nData))
-        {
-            // if the chain is being notarized and cannot confirm before its end, refuse to send
-            // also, if it hasn't been notarized as recently as the active notarization threshold, refuse as well
-            // TODO: define threshold, for now, only check that last notarization is at least minimum confirmation
-            // distance
-            if ((nData.vtx.size() && 
-                (nData.vtx[nData.bestChain].second.notarizationHeight + (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * CPBaaSNotarization::FINAL_CONFIRMATIONS) >
-                    chainDef.endBlock)) ||
-                (!chainDef.eraOptions.size() || !(chainDef.eraOptions[0] & CPBaaSChainDefinition::OPTION_RESERVE)))
+                    flags |= CReserveTransfer::PRECONVERT;
+                } else if (!isReserve || launchOnly)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + std::string(ASSETCHAINS_SYMBOL) + " after chain launch");
+                }
+                else
+                {
+                    flags |= CReserveTransfer::CONVERT;
+                }
+            }
+            else if (!isReserve)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified in object #" + to_string(i) + " is not a valid fractional reserve chain");
+                // only reserve currencies can have reserve sent to them
+                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " is not a reserve for " + chainDef.name + " and cannot be sent to its chain.");
             }
         }
-        else
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified in object #" + to_string(i) + " is not notarized");
-        }
-
-        // make the output script, either a normal output or a conversion
 
         CCcontract_info CC;
         CCcontract_info *cp;
-        cp = CCinit(&CC, EVAL_RESERVE_INPUT);
+        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
 
         CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-        // TODO: determine dests properly
-        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(chainDef.GetConditionID(EVAL_RESERVE_INPUT))});
-        CCrossChainInput cci; // TODO fill with payment script and amount (adjust amount for fees)
-        CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_INPUT, amount, pk, dests, cci);
-        outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
+
+        // send the entire amount to a reserve transfer output bound to this chain
+        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
+
+        if (subtractFee)
+        {
+            amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
+        }
+
+        // create the transfer object
+        CReserveTransfer rt(flags, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, kID);
+
+        CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, dests, rt);
+        outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
+
+        // create the transaction with native coin as input
+        {
+            LOCK2(cs_main, pwalletMain->cs_wallet);
+
+            CReserveKey reserveKey(pwalletMain);
+            CAmount fee;
+            int nChangePos;
+            string failReason;
+
+            if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
+            {
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
+            }
+            if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+            {
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+            }
+        }
     }
-    // send the specified amount to chain ID as an EVAL_RESERVE_INPUT to the chain ID
-    // the transaction holds the ultimate destination address, and until the transaction
-    // is packaged into an EVAL_CROSSCHAIN_EXPORT bundle, the output can be spent by
-    // the original sender
-    // once bundled, transaction outputs can be transferred to the other chain through a proof of the bundle by anyone and is considered irreversible
-    // all bundled outputs can be moved to and spent on the destination chain as soon as a notarization of the same block
-    // or later has been confirmed. bundling transactions can be done at any time, but moving an export bundle
-    // happens only after is is in a block behind a confirmed notarization.
+    else
+    {
+        if (chainID == thisChainID)
+        {
+            // if we are on a fractional reserve chain, a conversion will convert FROM the fractional reserve currency TO
+            // the reserve. this will happen with an actual reserveexchange transaction
+            if (convert)
+            {
+                if (!isReserve)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + ConnectedChains.ThisChain().name + " into " + ConnectedChains.NotaryChain().chainDefinition.name + ".");
+                }
+
+                CCoinsViewCache view(pcoinsTip);
+                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE, amount);
+
+                // we will send using a reserve output, fee will be paid by converting from reserve
+                CCcontract_info CC;
+                CCcontract_info *cp;
+                cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
+
+                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
+
+                if (subtractFee)
+                {
+                    amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
+                }
+
+                // native cin in output is 0, it is unspendable anyhow
+                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
+
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
+
+                // create a transaction with native coin as input
+                {
+                    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+                    CReserveKey reserveKey(pwalletMain);
+                    CAmount fee;
+                    int nChangePos;
+                    string failReason;
+
+                    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
+                    }
+                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+                    }
+                }
+            }
+            else
+            {
+                // we will send using a reserve output, fee will be paid by converting from reserve
+                CCcontract_info CC;
+                CCcontract_info *cp;
+                cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
+
+                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
+
+                if (subtractFee)
+                {
+                    amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
+                }
+
+                // create the transfer object
+                CReserveOutput ro(flags, amount);
+
+                // native amount in the output is 0
+                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_OUTPUT, 0, pk, dests, ro);
+
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
+
+                // create a transaction with reserve coin as input
+                {
+                    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+                    CReserveKey reserveKey(pwalletMain);
+                    CAmount fee;
+                    int nChangePos;
+                    string failReason;
+
+                    if (!pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
+                    }
+                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+                    }
+                }
+            }
+        }
+        else if (chainID == ConnectedChains.NotaryChain().GetChainID())
+        {
+            // send Verus from this PBaaS chain to the Verus chain, if convert, the inputs will be the PBaaS native coin, and we will convert to
+            // Verus for the send
+            if (convert)
+            {
+                if (!isReserve)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + ConnectedChains.ThisChain().name + " into " + ConnectedChains.NotaryChain().chainDefinition.name + ".");
+                }
+
+                CCoinsViewCache view(pcoinsTip);
+                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE + CReserveExchange::SEND_OUTPUT, amount);
+
+                // we will send using a reserve output, fee will be paid by converting from reserve
+                CCcontract_info CC;
+                CCcontract_info *cp;
+                cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
+
+                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
+
+                if (subtractFee)
+                {
+                    amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
+                }
+
+                // native cin in output is 0
+                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
+
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
+
+                // create a transaction with native coin as input
+                {
+                    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+                    CReserveKey reserveKey(pwalletMain);
+                    CAmount fee;
+                    int nChangePos;
+                    string failReason;
+
+                    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
+                    }
+                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+                    }
+                }
+            }
+            else
+            {
+                // we will send using a reserve output, fee will be paid by converting from reserve
+                // output will be a reserve transfer
+                CCcontract_info CC;
+                CCcontract_info *cp;
+                cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+
+                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                // send the entire amount to a reserve transfer output of the specific chain
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
+
+                if (subtractFee)
+                {
+                    amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
+                }
+
+                // create the transfer object
+                CReserveTransfer rt(flags, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, kID);
+
+                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, dests, rt);
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
+
+                // create a transaction with reserve coin as input
+                {
+                    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+                    CReserveKey reserveKey(pwalletMain);
+                    CAmount fee;
+                    int nChangePos;
+                    string failReason;
+
+                    if (!pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
+                    }
+                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+                    }
+                }
+            }
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified is not the current chain or this chain's reserve");
+        }
+    }
+}
+
+UniValue getconfirmedexports(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getconfirmedexports \"name\" \"lastexporttxid\"\n"
+            "\nThis returns all confirmed exports to the specified chain.\n"
+
+            "\nArguments\n"
+            "   \"name\"                (string, required) name of the chain to get the export transactions for\n"
+            "   \"lastexporttxid\"      (string, required) the last export transaction to follow, return list must start with transaction that spends this\n"
+
+            "\nResult:\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getconfirmedexports", "jsondefinition")
+            + HelpExampleRpc("getconfirmedexports", "jsondefinition")
+        );
+    }
+
 }
 
 UniValue definechain(const UniValue& params, bool fHelp)

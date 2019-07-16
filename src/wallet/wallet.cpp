@@ -25,6 +25,7 @@
 #include "coins.h"
 #include "zcash/zip32.h"
 #include "cc/StakeGuard.h"
+#include "pbaas/reserves.h"
 
 #include <assert.h>
 
@@ -3396,6 +3397,52 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
     }
 }
 
+void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeCoinBase) const
+{
+    vCoins.clear();
+
+    {
+        LOCK2(cs_main, cs_wallet);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+        {
+            const uint256& wtxid = it->first;
+            const CWalletTx* pcoin = &(*it).second;
+
+            if (!CheckFinalTx(*pcoin))
+                continue;
+
+            if (fOnlyConfirmed && !pcoin->IsTrusted())
+                continue;
+
+            if (pcoin->IsCoinBase() && !fIncludeCoinBase)
+                continue;
+
+            if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0)
+                continue;
+
+            int nDepth = pcoin->GetDepthInMainChain();
+            if (nDepth < 0)
+                continue;
+ 
+            for (int i = 0; i < pcoin->vout.size(); i++)
+            {
+                // NOTE: we assume that only zero value outputs can be reserve outputs
+                isminetype mine = IsMine(pcoin->vout[i]);
+                if (!(IsSpent(wtxid, i)) && mine != ISMINE_NO &&
+                    !IsLockedCoin((*it).first, i) && pcoin->vout[i].nValue == 0 &&
+                    (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*it).first, i)))
+                {
+                    COptCCParams p;
+                    if (::IsPayToCryptoCondition(pcoin->vout[i].scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_RESERVE_OUTPUT)
+                    {
+                        vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void ApproximateBestSubset(vector<pair<CAmount, pair<const CWalletTx*,unsigned int> > >vValue, const CAmount& nTotalLower, const CAmount& nTargetValue,vector<char>& vfBest, CAmount& nBest, int iterations = 1000)
 {
     vector<char> vfIncluded;
@@ -3660,6 +3707,211 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*
     else if ( SelectCoinsMinConf(nTargetValue, 1, 1, vCoins, setCoinsRet, nValueRet) != 0 )
         retval = true;
     else if ( bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue, 0, 1, vCoins, setCoinsRet, nValueRet) != 0 )
+        retval = true;
+    // because SelectCoinsMinConf clears the setCoinsRet, we now add the possible inputs to the coinset
+    setCoinsRet.insert(setPresetCoins.begin(), setPresetCoins.end());
+    // add preset inputs to the total value selected
+    nValueRet += nValueFromPresetInputs;
+    return retval;
+}
+
+bool CWallet::SelectReserveCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int nConfTheirs, vector<COutput> vCoins,set<pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet) const
+{
+    int32_t count = 0; //uint64_t lowest_interest = 0;
+    setCoinsRet.clear();
+    //memset(interests,0,sizeof(interests));
+    nValueRet = 0;
+    // List of values less than target
+    pair<CAmount, pair<const CWalletTx*,unsigned int> > coinLowestLarger;
+    coinLowestLarger.first = std::numeric_limits<CAmount>::max();
+    coinLowestLarger.second.first = NULL;
+    vector<pair<CAmount, pair<const CWalletTx*,unsigned int> > > vValue;
+    CAmount nTotalLower = 0;
+
+    random_shuffle(vCoins.begin(), vCoins.end(), GetRandInt);
+
+    BOOST_FOREACH(const COutput &output, vCoins)
+    {
+        if (!output.fSpendable)
+            continue;
+
+        const CWalletTx *pcoin = output.tx;
+
+        if (output.nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? nConfMine : nConfTheirs))
+            continue;
+
+        int i = output.i;
+        CAmount n = pcoin->vout[i].scriptPubKey.ReserveOutValue();
+
+        pair<CAmount,pair<const CWalletTx*,unsigned int> > coin = make_pair(n,make_pair(pcoin, i));
+
+        if (n == nTargetValue)
+        {
+            setCoinsRet.insert(coin.second);
+            nValueRet += coin.first;
+            //if ( KOMODO_EXCHANGEWALLET == 0 )
+            //    *interestp += pcoin->vout[i].interest;
+            return true;
+        }
+        else if (n < nTargetValue + CENT)
+        {
+            vValue.push_back(coin);
+            nTotalLower += n;
+ 
+            if ( nTotalLower > 4*nTargetValue + CENT )
+            {
+                //fprintf(stderr,"why bother with all the utxo if we have double what is needed?\n");
+                break;
+            }
+        }
+        else if (n < coinLowestLarger.first)
+        {
+            coinLowestLarger = coin;
+        }
+    }
+
+    if (nTotalLower == nTargetValue)
+    {
+        for (unsigned int i = 0; i < vValue.size(); ++i)
+        {
+            setCoinsRet.insert(vValue[i].second);
+            nValueRet += vValue[i].first;
+        }
+        return true;
+    }
+
+    if (nTotalLower < nTargetValue)
+    {
+        if (coinLowestLarger.second.first == NULL)
+            return false;
+        setCoinsRet.insert(coinLowestLarger.second);
+        nValueRet += coinLowestLarger.first;
+        return true;
+    }
+
+    // Solve subset sum by stochastic approximation
+    sort(vValue.rbegin(), vValue.rend(), CompareValueOnly());
+    vector<char> vfBest;
+    CAmount nBest;
+
+    ApproximateBestSubset(vValue, nTotalLower, nTargetValue, vfBest, nBest, 1000);
+    if (nBest != nTargetValue && nTotalLower >= nTargetValue + CENT)
+        ApproximateBestSubset(vValue, nTotalLower, nTargetValue + CENT, vfBest, nBest, 1000);
+
+    // If we have a bigger coin and (either the stochastic approximation didn't find a good solution,
+    //                                   or the next bigger coin is closer), return the bigger coin
+    if (coinLowestLarger.second.first &&
+        ((nBest != nTargetValue && nBest < nTargetValue + CENT) || coinLowestLarger.first <= nBest))
+    {
+        setCoinsRet.insert(coinLowestLarger.second);
+        nValueRet += coinLowestLarger.first;
+    }
+    else {
+        for (unsigned int i = 0; i < vValue.size(); i++)
+            if (vfBest[i])
+            {
+                setCoinsRet.insert(vValue[i].second);
+                nValueRet += vValue[i].first;
+            }
+
+        LogPrint("selectcoins", "SelectCoins() best subset: ");
+        for (unsigned int i = 0; i < vValue.size(); i++)
+            if (vfBest[i])
+                LogPrint("selectcoins", "%s", FormatMoney(vValue[i].first));
+        LogPrint("selectcoins", "total %s\n", FormatMoney(nBest));
+    }
+
+    return true;
+}
+
+bool CWallet::SelectReserveCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet,  bool& fOnlyCoinbaseCoinsRet, bool& fNeedCoinbaseCoinsRet, const CCoinControl* coinControl) const
+{
+    // Output parameter fOnlyCoinbaseCoinsRet is set to true when the only available coins are coinbase utxos.
+    uint64_t tmp; int32_t retval;
+    //if ( interestp == 0 )
+    //{
+    //    interestp = &tmp;
+    //    *interestp = 0;
+    //}
+    vector<COutput> vCoinsNoCoinbase, vCoinsWithCoinbase;
+    AvailableReserveCoins(vCoinsNoCoinbase, true, coinControl, false);
+    AvailableReserveCoins(vCoinsWithCoinbase, true, coinControl, true);
+    fOnlyCoinbaseCoinsRet = vCoinsNoCoinbase.size() == 0 && vCoinsWithCoinbase.size() > 0;
+
+    // If coinbase utxos can only be sent to zaddrs, exclude any coinbase utxos from coin selection.
+    bool fProtectCoinbase = Params().GetConsensus().fCoinbaseMustBeProtected;
+    vector<COutput> vCoins = (fProtectCoinbase) ? vCoinsNoCoinbase : vCoinsWithCoinbase;
+
+    // Output parameter fNeedCoinbaseCoinsRet is set to true if coinbase utxos need to be spent to meet target amount
+    if (fProtectCoinbase && vCoinsWithCoinbase.size() > vCoinsNoCoinbase.size()) {
+        CAmount value = 0;
+        for (const COutput& out : vCoinsNoCoinbase) {
+            if (!out.fSpendable) {
+                continue;
+            }
+            value += out.tx->vout[out.i].ReserveOutValue();
+        }
+        if (value <= nTargetValue) {
+            CAmount valueWithCoinbase = 0;
+            for (const COutput& out : vCoinsWithCoinbase) {
+                if (!out.fSpendable) {
+                    continue;
+                }
+                valueWithCoinbase += out.tx->vout[out.i].ReserveOutValue();
+            }
+            fNeedCoinbaseCoinsRet = (valueWithCoinbase >= nTargetValue);
+        }
+    }
+    // coin control -> return all selected outputs (we want all selected to go into the transaction for sure)
+    if (coinControl && coinControl->HasSelected() && !coinControl->fAllowOtherInputs)
+    {
+        BOOST_FOREACH(const COutput& out, vCoins)
+        {
+            if (!out.fSpendable)
+                 continue;
+            nValueRet += out.tx->vout[out.i].ReserveOutValue();
+            setCoinsRet.insert(make_pair(out.tx, out.i));
+        }
+        return (nValueRet >= nTargetValue);
+    }
+    // calculate value from preset inputs and store them
+    set<pair<const CWalletTx*, uint32_t> > setPresetCoins;
+    CAmount nValueFromPresetInputs = 0;
+
+    std::vector<COutPoint> vPresetInputs;
+    if (coinControl)
+        coinControl->ListSelected(vPresetInputs);
+    BOOST_FOREACH(const COutPoint& outpoint, vPresetInputs)
+    {
+        map<uint256, CWalletTx>::const_iterator it = mapWallet.find(outpoint.hash);
+        if (it != mapWallet.end())
+        {
+            const CWalletTx* pcoin = &it->second;
+            // Clearly invalid input, fail
+            if (pcoin->vout.size() <= outpoint.n)
+                return false;
+            nValueFromPresetInputs += pcoin->vout[outpoint.n].ReserveOutValue();
+            setPresetCoins.insert(make_pair(pcoin, outpoint.n));
+        } else
+            return false; // TODO: Allow non-wallet inputs
+    }
+
+    // remove preset inputs from vCoins
+    for (vector<COutput>::iterator it = vCoins.begin(); it != vCoins.end() && coinControl && coinControl->HasSelected();)
+    {
+        if (setPresetCoins.count(make_pair(it->tx, it->i)))
+            it = vCoins.erase(it);
+        else
+            ++it;
+    }
+    retval = false;
+    if ( nTargetValue <= nValueFromPresetInputs )
+        retval = true;
+    else if ( SelectReserveCoinsMinConf(nTargetValue, 1, 6, vCoins, setCoinsRet, nValueRet) != 0 )
+        retval = true;
+    else if ( SelectReserveCoinsMinConf(nTargetValue, 1, 1, vCoins, setCoinsRet, nValueRet) != 0 )
+        retval = true;
+    else if ( bSpendZeroConfChange && SelectReserveCoinsMinConf(nTargetValue, 0, 1, vCoins, setCoinsRet, nValueRet) != 0 )
         retval = true;
     // because SelectCoinsMinConf clears the setCoinsRet, we now add the possible inputs to the coinset
     setCoinsRet.insert(setPresetCoins.begin(), setPresetCoins.end());
@@ -3944,6 +4196,536 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                     // Never create dust outputs; if we would, just
                     // add the dust to the fee.
                     if (newTxOut.IsDust(::minRelayTxFee))
+                    {
+                        nFeeRet += nChange;
+                        reservekey.ReturnKey();
+                    }
+                    else
+                    {
+                        nChangePosRet = txNew.vout.size() - 1; // dont change first or last
+                        vector<CTxOut>::iterator position = txNew.vout.begin()+nChangePosRet;
+                        txNew.vout.insert(position, newTxOut);
+                    }
+                } else reservekey.ReturnKey();
+
+                // Fill vin
+                //
+                // Note how the sequence number is set to max()-1 so that the
+                // nLockTime set above actually works.
+                BOOST_FOREACH(const PAIRTYPE(const CWalletTx*,unsigned int)& coin, setCoins)
+                    txNew.vin.push_back(CTxIn(coin.first->GetHash(),coin.second,CScript(),
+                                              std::numeric_limits<unsigned int>::max()-1));
+
+                // Check mempooltxinputlimit to avoid creating a transaction which the local mempool rejects
+                size_t limit = (size_t)GetArg("-mempooltxinputlimit", 0);
+                {
+                    LOCK(cs_main);
+                    if (NetworkUpgradeActive(chainActive.Height() + 1, Params().GetConsensus(), Consensus::UPGRADE_OVERWINTER)) {
+                        limit = 0;
+                    }
+                }
+                if (limit > 0) {
+                    size_t n = txNew.vin.size();
+                    if (n > limit) {
+                        strFailReason = _(strprintf("Too many transparent inputs %zu > limit %zu", n, limit).c_str());
+                        return false;
+                    }
+                }
+
+                // Grab the current consensus branch ID
+                auto consensusBranchId = CurrentEpochBranchId(chainActive.Height() + 1, Params().GetConsensus());
+
+                // Sign
+                int nIn = 0;
+                CTransaction txNewConst(txNew);
+                BOOST_FOREACH(const PAIRTYPE(const CWalletTx*,unsigned int)& coin, setCoins)
+                {
+                    bool signSuccess;
+                    const CScript& scriptPubKey = coin.first->vout[coin.second].scriptPubKey;
+                    SignatureData sigdata;
+                    if (sign)
+                        signSuccess = ProduceSignature(TransactionSignatureCreator(this, &txNewConst, nIn, coin.first->vout[coin.second].nValue, SIGHASH_ALL), scriptPubKey, sigdata, consensusBranchId);
+                    else
+                        signSuccess = ProduceSignature(DummySignatureCreator(this), scriptPubKey, sigdata, consensusBranchId);
+
+                    if (!signSuccess)
+                    {
+                        strFailReason = _("Signing transaction failed");
+                        return false;
+                    } else {
+                        UpdateTransaction(txNew, nIn, sigdata);
+                    }
+
+                    nIn++;
+                }
+
+                unsigned int nBytes = ::GetSerializeSize(txNew, SER_NETWORK, PROTOCOL_VERSION);
+
+                // Remove scriptSigs if we used dummy signatures for fee calculation
+                if (!sign) {
+                    BOOST_FOREACH (CTxIn& vin, txNew.vin)
+                        vin.scriptSig = CScript();
+                }
+
+                // Embed the constructed transaction data in wtxNew.
+                *static_cast<CTransaction*>(&wtxNew) = CTransaction(txNew);
+
+                // Limit size
+                if (nBytes >= max_tx_size)
+                {
+                    strFailReason = _("Transaction too large");
+                    return false;
+                }
+
+                dPriority = wtxNew.ComputePriority(dPriority, nBytes);
+
+                // Can we complete this as a free transaction?
+                if (fSendFreeTransactions && nBytes <= MAX_FREE_TRANSACTION_CREATE_SIZE)
+                {
+                    // Not enough fee: enough priority?
+                    double dPriorityNeeded = mempool.estimatePriority(nTxConfirmTarget);
+                    // Not enough mempool history to estimate: use hard-coded AllowFree.
+                    if (dPriorityNeeded <= 0 && AllowFree(dPriority))
+                        break;
+
+                    // Small enough, and priority high enough, to send for free
+                    if (dPriorityNeeded > 0 && dPriority >= dPriorityNeeded)
+                        break;
+                }
+
+                CAmount nFeeNeeded = GetMinimumFee(nBytes, nTxConfirmTarget, mempool);
+                if ( nFeeNeeded < 5000 )
+                    nFeeNeeded = 5000;
+
+                // If we made it here and we aren't even able to meet the relay fee on the next pass, give up
+                // because we must be at the maximum allowed fee.
+                if (nFeeNeeded < ::minRelayTxFee.GetFee(nBytes))
+                {
+                    strFailReason = _("Transaction too large for fee policy");
+                    return false;
+                }
+
+                if (nFeeRet >= nFeeNeeded)
+                    break; // Done, enough fee included.
+
+                // Include more fee and try again.
+                nFeeRet = nFeeNeeded;
+                continue;
+            }
+        }
+    }
+
+    return true;
+}
+
+CAmount ConvertReserveAmount(CAmount inAmount, CAmount reservePrice)
+{
+    arith_uint256 satoshiden(100000000);
+    arith_uint256 bigAmount(inAmount);
+    arith_uint256 bigPrice(reservePrice);
+    return ((bigAmount * bigPrice) / satoshiden).GetLow64();
+}
+
+// almost the same as CreateTransaction with the difference being that input and output are assumed to be the
+// reserve currency of this chain, represented as reserve outputs for both input and output. That means that all
+// outputs must be reserve consuming outputs. Fee converted from reserve, which is the difference between reserve
+// input and reserve output, is calculated based on the current reserve conversion price.
+bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CAmount& nFeeRet,
+                                       int& nChangePosRet, std::string& strFailReason, const CCoinControl* coinControl, bool sign)
+{
+    CAmount nValue = 0; 
+    unsigned int nSubtractFeeFromAmount = 0;
+
+    // reserve transactions can only be created on fractional reserve currency blockchains
+    if (IsVerusActive() || !(ConnectedChains.ThisChain().ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE))
+    {
+        strFailReason = _("Transactions that accept reserve currency input can only be created on fractional reserve currency blockchains");
+        return false;
+    }
+
+    // make sure that there are recipients, all recipients expect reserve inputs, and amounts are all non-negative
+    BOOST_FOREACH (const CRecipient& recipient, vecSend)
+    {
+        COptCCParams p;
+        CReserveOutput ro;
+        if (::IsPayToCryptoCondition(recipient.scriptPubKey.IsPayToCryptoCondition(), p) && p.IsValid() && p.vData.size() > 0)
+        {
+            switch (p.evalCode)
+            {
+                case EVAL_RESERVE_OUTPUT:
+                {
+                    ro = CReserveOutput(p.vData[0]);
+                    if (!ro.IsValid())
+                    {
+                        strFailReason = _("Invalid reserve output");
+                        return false;
+                    }
+                    break;
+                }
+                case EVAL_RESERVE_TRANSFER:
+                {
+                    CReserveTransfer rt(p.vData[0]);
+                    if (!rt.IsValid())
+                    {
+                        strFailReason = _("Invalid reserve transfer");
+                        return false;
+                    }
+                    // conversion on a PBaaS reserve chain implies native input
+                    if (rt.flags & CReserveTransfer::CONVERT)
+                    {
+                        strFailReason = _("All reserve transaction outputs must accommodate reserve currency input");
+                        return false;
+                    }
+                    ro = static_cast<CReserveOutput>(rt);
+                    break;
+                }
+                case EVAL_RESERVE_EXCHANGE:
+                {
+                    CReserveExchange re(p.vData[0]);
+                    if (!re.IsValid())
+                    {
+                        strFailReason = _("Invalid reserve exchange");
+                        return false;
+                    }
+                    // conversion to reserve implies native input
+                    if (re.flags & CReserveExchange::TO_RESERVE)
+                    {
+                        strFailReason = _("All reserve transaction outputs must accommodate reserve currency input");
+                        return false;
+                    }
+                    ro = static_cast<CReserveOutput>(re);
+                    break;
+                }
+                default:
+                {
+                    strFailReason = _("All reserve transaction outputs must accommodate reserve currency input");
+                    return false;
+                }
+            }
+        }
+        else if (!recipient.scriptPubKey.IsOpReturn() || recipient.nAmount != 0)
+        {
+            strFailReason = _("All reserve transaction outputs except opret must accommodate reserve currency input");
+            return false;
+        }
+        
+        if (nValue < 0 || recipient.nAmount < 0)
+        {
+            strFailReason = _("Transaction amounts must be positive");
+            return false;
+        }
+        if (!recipient.scriptPubKey.IsOpReturn() && ro.nValue != recipient.nAmount)
+        {
+            strFailReason = _("Transaction amounts must be consistent between script output and recipient amount");
+            return false;
+        }
+        nValue += recipient.nAmount;
+
+        if (recipient.fSubtractFeeFromAmount)
+            nSubtractFeeFromAmount++;
+    }
+
+    if (vecSend.empty() || nValue < 0)
+    {
+        strFailReason = _("Transaction amounts must be positive");
+        return false;
+    }
+
+    wtxNew.fTimeReceivedIsTxTime = true;
+    wtxNew.BindWallet(this);
+    int nextBlockHeight = chainActive.Height() + 1;
+    CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nextBlockHeight);
+    txNew.nLockTime = (uint32_t)chainActive.LastTip()->nTime + 1; // set to a time close to now
+
+    if (txNew.nExpiryHeight >= TX_EXPIRY_HEIGHT_THRESHOLD){
+        strFailReason = _("nExpiryHeight must be less than TX_EXPIRY_HEIGHT_THRESHOLD.");
+        return false;
+    }
+
+    unsigned int max_tx_size = MAX_TX_SIZE_AFTER_SAPLING;
+
+    // Discourage fee sniping.
+    //
+    // However because of a off-by-one-error in previous versions we need to
+    // neuter it by setting nLockTime to at least one less than nBestHeight.
+    // Secondly currently propagation of transactions created for block heights
+    // corresponding to blocks that were just mined may be iffy - transactions
+    // aren't re-accepted into the mempool - we additionally neuter the code by
+    // going ten blocks back. Doesn't yet do anything for sniping, but does act
+    // to shake out wallet bugs like not showing nLockTime'd transactions at
+    // all.
+    txNew.nLockTime = std::max(0, chainActive.Height() - 10);
+
+    // Secondly occasionally randomly pick a nLockTime even further back, so
+    // that transactions that are delayed after signing for whatever reason,
+    // e.g. high-latency mix networks and some CoinJoin implementations, have
+    // better privacy.
+    if (GetRandInt(10) == 0)
+        txNew.nLockTime = std::max(0, (int)txNew.nLockTime - GetRandInt(100));
+
+    assert(txNew.nLockTime <= (unsigned int)chainActive.Height());
+    assert(txNew.nLockTime < LOCKTIME_THRESHOLD);
+
+    {
+        LOCK2(cs_main, cs_wallet);
+        {
+            nFeeRet = 0;
+            while (true)
+            {
+                //interest = 0;
+                txNew.vin.clear();
+                txNew.vout.clear();
+                wtxNew.fFromMe = true;
+                nChangePosRet = -1;
+                bool fFirst = true;
+
+                // TODO: keep this up to date with connect block and coinbase transaction rule
+                CCurrencyState curReserveState;
+
+                cpp_dec_float_50 priceInReserve = curReserveState.GetPriceInReserve();
+                CAmount reservePrice;
+                if (!CCurrencyState::to_int64(priceInReserve, reservePrice))
+                {
+                    strFailReason = _("Invalid fractional reserve price");
+                    return false;
+                }
+
+                // dust threshold of reserve is different than native coin, convert
+                CAmount dustThreshold;
+
+                CAmount nTotalValue = nValue;
+                if (nSubtractFeeFromAmount == 0)
+                    nTotalValue += nFeeRet;
+                double dPriority = 0;
+                // vouts to the payees
+                BOOST_FOREACH (const CRecipient& recipient, vecSend)
+                {
+                    // native output value for a reserve output is always 0. fees are paid by converting from
+                    // reserve token and the difference between input and output in reserve is the fee
+                    // the actual reserve token output value is in the scriptPubKey as extended CC information
+                    CTxOut txout(0, recipient.scriptPubKey);
+
+                    // here, if we know that it isn't an opret, it will have an output that expects reserve input
+                    if (!recipient.scriptPubKey.IsOpReturn())
+                    {
+                        COptCCParams p;
+
+                        // already validated above
+                        ::IsPayToCryptoCondition(txout.scriptPubKey, p);
+
+                        CAmount newVal = 0;
+                        CReserveOutput ro;
+                        CReserveTransfer rt;
+                        CReserveExchange re;
+
+                        switch (p.evalCode)
+                        {
+                            case EVAL_RESERVE_OUTPUT:
+                            {
+                                ro = CReserveOutput(p.vData[0]);
+                                newVal = ro.nValue;
+                                break;
+                            }
+                            case EVAL_RESERVE_TRANSFER:
+                            {
+                                rt = CReserveTransfer(p.vData[0]);
+                                newVal = rt.nValue;
+                                break;
+                            }
+                            case EVAL_RESERVE_EXCHANGE:
+                            {
+                                re = CReserveExchange(p.vData[0]);
+                                newVal = re.nValue;
+                                break;
+                            }
+                            default:
+                                strFailReason = _("Bad reserve output");
+                                return false;
+                        }
+
+                        if (recipient.fSubtractFeeFromAmount)
+                        {
+                            CAmount subFee = nFeeRet / nSubtractFeeFromAmount; // Subtract fee equally from each selected recipient
+
+                            if (fFirst) // first receiver pays the remainder not divisible by output count
+                            {
+                                fFirst = false;
+                                subFee += nFeeRet % nSubtractFeeFromAmount;
+                            }
+
+                            switch (p.evalCode)
+                            {
+                                case EVAL_RESERVE_OUTPUT:
+                                {
+                                    ro.nValue -= subFee;
+                                    newVal = ro.nValue;
+                                    p.vData[0] = ro.AsVector();
+                                    break;
+                                }
+                                case EVAL_RESERVE_TRANSFER:
+                                {
+                                    rt.nValue -= subFee;
+                                    newVal = rt.nValue;
+                                    p.vData[0] = rt.AsVector();
+                                    break;
+                                }
+                                case EVAL_RESERVE_EXCHANGE:
+                                {
+                                    re.nValue -= subFee;
+                                    newVal = re.nValue;
+                                    p.vData[0] = re.AsVector();
+                                    break;
+                                }
+                                default:
+                                    strFailReason = _("Bad reserve output");
+                                    return false;
+                            }
+
+                            txout.scriptPubKey = txout.scriptPubKey.ReplaceCCParams(p);
+                        }
+
+                        dustThreshold = txout.GetDustThreshold(::minRelayTxFee);
+
+                        if (newVal < dustThreshold)
+                        {
+                            if (recipient.fSubtractFeeFromAmount && nFeeRet > 0)
+                            {
+                                if (newVal < 0)
+                                    strFailReason = _("The transaction amount is too small to pay the fee");
+                                else
+                                    strFailReason = _("The transaction amount is too small to send after the fee has been deducted");
+                            }
+                            else
+                                strFailReason = _("Transaction amount too small");
+                            return false;
+                        }
+                    }
+
+                    txNew.vout.push_back(txout);
+                }
+
+                // Choose coins to use
+                set<pair<const CWalletTx*,unsigned int> > setCoins;
+                CAmount nValueIn = 0;
+                bool fOnlyCoinbaseCoins = false;
+                bool fNeedCoinbaseCoins = false;
+
+                if (!SelectReserveCoins(nTotalValue, setCoins, nValueIn, fOnlyCoinbaseCoins, fNeedCoinbaseCoins, coinControl))
+                {
+                    if (fOnlyCoinbaseCoins && Params().GetConsensus().fCoinbaseMustBeProtected) {
+                        strFailReason = _("Coinbase funds can only be sent to a zaddr");
+                    } else if (fNeedCoinbaseCoins) {
+                        strFailReason = _("Insufficient funds, coinbase funds can only be spent after they have been sent to a zaddr");
+                    } else {
+                        strFailReason = _("Insufficient funds");
+                    }
+                    return false;
+                }
+                BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
+                {
+                    CAmount nCredit = pcoin.first->vout[pcoin.second].ReserveOutValue();
+                    //The coin age after the next block (depth+1) is used instead of the current,
+                    //reflecting an assumption the user would accept a bit more delay for
+                    //a chance at a free transaction.
+                    //But mempool inputs might still be in the mempool, so their age stays 0
+                    int age = pcoin.first->GetDepthInMainChain();
+                    if (age != 0)
+                        age += 1;
+                    dPriority += (double)nCredit * age;
+                }
+
+                CAmount nChange = (nValueIn - nValue);
+
+                if (nSubtractFeeFromAmount == 0)
+                    nChange -= nFeeRet;
+
+                if (nChange > 0)
+                {
+                    // Fill a vout to ourself
+                    CPubKey vchPubKey;
+
+                    // coin control: send change to custom address
+
+                    // reserve tokens can currently only be sent to public keys or addresses that are in the current wallet
+                    // since reserve token outputs are CCs by definition
+                    if (coinControl && !boost::get<CNoDestination>(&coinControl->destChange))
+                    {
+                        if (!boost::get<CPubKey>(&coinControl->destChange))
+                        {
+                            strFailReason = _("Change address must be public key");
+                            return false;
+                        }
+                        vchPubKey = *(boost::get<CPubKey>(&coinControl->destChange));
+                    }
+                    else
+                    {
+                        // no coin control: send change to newly generated address
+
+                        // Note: We use a new key here to keep it from being obvious which side is the change.
+                        //  The drawback is that by not reusing a previous key, the change may be lost if a
+                        //  backup is restored, if the backup doesn't have the new private key for the change.
+                        //  If we reused the old key, it would be possible to add code to look for and
+                        //  rediscover unknown transactions that were written with keys of ours to recover
+                        //  post-backup change.
+
+                        // Reserve a new key pair from key pool
+                        extern int32_t USE_EXTERNAL_PUBKEY; extern std::string NOTARY_PUBKEY;
+                        if ( USE_EXTERNAL_PUBKEY == 0 )
+                        {
+                            bool ret;
+                            ret = reservekey.GetReservedKey(vchPubKey);
+                            assert(ret); // should never fail, as we just unlocked
+                        }
+                        else
+                        {
+                            //fprintf(stderr,"use notary pubkey\n");
+                            vchPubKey = CPubKey(ParseHex(NOTARY_PUBKEY));
+                        }
+                    }
+
+                    // we will send using a reserve output, fee will be paid by converting from reserve
+                    CCcontract_info CC;
+                    CCcontract_info *cp;
+                    cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
+
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({vchPubKey.GetID()});
+
+                    // create the transfer object
+                    CReserveOutput ro(CReserveOutput::VALID, nChange);
+
+                    // We do not move dust-change to fees, because the sender would end up paying more than requested.
+                    // This would be against the purpose of the all-inclusive feature.
+                    // So instead we raise the change and deduct from the recipient.
+
+                    // adjust the output amount if possible
+                    if (nSubtractFeeFromAmount > 0 && ro.nValue < dustThreshold)
+                    {
+                        CAmount nDust = dustThreshold - ro.nValue;
+
+                        ro.nValue += nDust; // raise change until no more dust
+
+                        for (unsigned int i = 0; i < vecSend.size(); i++) // subtract from first recipient
+                        {
+                            if (vecSend[i].fSubtractFeeFromAmount)
+                            {
+                                CAmount nValue = txNew.vout[i].ReserveOutValue() - nDust;
+                                if (nValue < dustThreshold)
+                                {
+                                    strFailReason = _("The transaction amount is too small to send after the fee has been deducted");
+                                    return false;
+                                }
+                                txNew.vout[i].SetReserveOutValue(nValue);
+                                break;
+                            }
+                        }
+                    }
+
+                    // native amount in the output should be 0
+                    CTxOut newTxOut = MakeCC1of1Vout(EVAL_RESERVE_OUTPUT, 0, vchPubKey, dests, ro);
+
+                    // Never create reserve dust outputs; if we would, just
+                    // add the dust to the fee.
+                    if (ro.nValue < newTxOut.GetDustThreshold(::minRelayTxFee))
                     {
                         nFeeRet += nChange;
                         reservekey.ReturnKey();

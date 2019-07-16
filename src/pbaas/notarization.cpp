@@ -616,7 +616,6 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     // make the earned notarization output
     cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
-    // send this to EVAL_PBAASDEFINITION address as a destination, locked by the default pubkey
     CPubKey pk(ParseHex(CC.CChexstr));
 
     vKeys.push_back(CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION))));

@@ -16,30 +16,28 @@
 
 #include "pbaas/pbaas.h"
 #include <boost/multiprecision/cpp_dec_float.hpp>
+#include "librustzcash.h"
 
 using boost::multiprecision::cpp_dec_float_50;
 
-class CReserveSend
+// reserve output is a special kind of token output that does not carry it's identifier, as it
+// is always assumed to be the reserve currency of the current chain.
+class CReserveOutput
 {
 public:
-    static const uint32_t VALID = 1;            // convert automatically when sending
-    static const uint32_t CONVERT = 2;          // convert automatically when sending
-    static const uint32_t PRECONVERT = 4;       // considered converted before sending according to before sending
+    static const uint32_t VALID = 1;
 
-    static const CAmount DEFAULT_PER_STEP_FEE = 10000; // default fee for each step of each transfer (initial mining, transfer, mining on new chain)
+    uint32_t flags;
+    CAmount nValue;                 // amount of input reserve coins this UTXO represents before any conversion
 
-    uint32_t flags;     // conversion, etc.
-    CAmount nValue;     // nValue for an auto-conversion must include conversion fee and be (desired nValue + (desired nValue * (50000 / 100000000)))
-    CAmount nFees;      // network fees only, must be 2x standard network fees for the tx, pays for aggregation and mining payout into other chain
-
-    CReserveSend(const std::vector<unsigned char> &asVector)
+    CReserveOutput(const std::vector<unsigned char> &asVector)
     {
         FromVector(asVector, *this);
     }
 
-    CReserveSend() : flags(0), nValue(0), nFees(0) { }
+    CReserveOutput() : flags(0), nValue(0) { }
 
-    CReserveSend(uint32_t Flags, CAmount value, CAmount fees) : flags(Flags), nValue(value), nFees(fees) { }
+    CReserveOutput(uint32_t Flags, CAmount value) : flags(Flags), nValue(value) { }
 
     ADD_SERIALIZE_METHODS;
 
@@ -47,7 +45,6 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(flags);
         READWRITE(VARINT(nValue));
-        READWRITE(VARINT(nFees));
     }
 
     std::vector<unsigned char> AsVector()
@@ -57,26 +54,135 @@ public:
 
     bool IsValid()
     {
-        return (flags & VALID) && nValue > 0 && nFees > 0;
+        // we don't support op returns
+        return (flags & VALID) && (nValue != 0);
     }
 };
 
-// an output that carries a primary value of the native coin's reserve, not the native coin itself
-// there is no need to pay gas in the native coin because reserve can be used and converted to pay fees
-// this uses the destination controls of crypto conditions
-class CReserveOutput
+class CReserveTransfer : public CReserveOutput
 {
 public:
-    CAmount nValue;                         // lowest or highest price to sell or buy coin output, may fail if including this tx in block makes price out of range
+    static const uint32_t CONVERT = 2;
+    static const uint32_t PRECONVERT = 4;
 
-    CReserveOutput(const std::vector<unsigned char> &asVector)
+    static const CAmount DEFAULT_PER_STEP_FEE = 10000; // default fee for each step of each transfer (initial mining, transfer, mining on new chain)
+
+    CAmount nFees;                  // network fees only, separated out to enable market conversions
+    CKeyID destination;             // transparent address to send funds to on the target chain
+
+    CReserveTransfer(const std::vector<unsigned char> &asVector)
     {
         FromVector(asVector, *this);
     }
 
-    CReserveOutput() : nValue(0) { }
+    CReserveTransfer() : CReserveOutput() { }
 
-    CReserveOutput(CAmount value) : nValue(value) { }
+    CReserveTransfer(uint32_t Flags, CAmount value, CAmount fees, CKeyID dest) : CReserveOutput(Flags, value), nFees(fees), destination(dest) { }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        ((CReserveOutput *)this)->SerializationOp(s, ser_action);
+        READWRITE(VARINT(nFees));
+        READWRITE(destination);
+    }
+
+    std::vector<unsigned char> AsVector()
+    {
+        return ::AsVector(*this);
+    }
+
+    bool IsValid()
+    {
+        return CReserveOutput::IsValid() && nFees > 0 && !destination.IsNull();
+    }
+};
+
+// convert from $VRSC to fractional reserve coin or vice versa. coinID determines which
+// in either direction, this is burned in the block. if burned, the block must contain less than a
+// maximum reasonable number of exchange outputs, which must be sorted, hashed, and used to validate
+// the outputs that must match exactly on any transaction spending the output. since fees are not
+// included in outputs, it is assumed that a miner will spend the output in the same block to recover
+// exchange fees
+class CReserveExchange : public CReserveOutput
+{
+public:
+    // flags
+    static const int32_t TO_RESERVE = 8;        // from fractional currency to reserve, default is reserve to fractional
+    static const int32_t LIMIT = 0x10;           // observe the limit when converting
+    static const int32_t FILL_OR_KILL = 0x20;    // if not filled before nValidBefore but before expiry, no execution, mined with fee, output pass through
+    static const int32_t ALL_OR_NONE = 0x40;     // will not execute partial order
+    static const int32_t SEND_OUTPUT = 0x80;     // send the output of this exchange to the target chain, only valid if output is reserve
+
+    // success fee is calculated by multiplying the amount by this number and dividing by satoshis (100,000,000), not less than 10x the absolute SUCCESS_FEE
+    // failure fee, meaning the valid before block is past but it is not expired is the standard fee
+    static const CAmount SUCCESS_FEE = 5000;
+    static const CAmount MIN_PARTIAL = 10000000;        // making partial fill minimum the number at which minimum fee meets standard percent fee,
+    static const int INTERPOLATE_ROUNDS = 4;            // we ensure that there is no peverse motive to partially fill in order to increase fees
+    static const CAmount FILLORKILL_FEE = 10000;
+    static const CAmount SATOSHIDEN = 100000000;
+
+    CAmount nLimit;                         // lowest or highest price to sell or buy coin output, may fail if including this tx in block makes price out of range
+    uint32_t nValidBefore;                  // if not filled before this block and not expired, can mine tx, but refund input
+
+    CReserveExchange(const std::vector<unsigned char> &asVector)
+    {
+        FromVector(asVector, *this);
+    }
+
+    CReserveExchange() : CReserveOutput(), nLimit(0), nValidBefore(0) { }
+
+    CReserveExchange(uint32_t Flags, CAmount amountIn, CAmount Limit=0, uint32_t ValidBefore=0) : 
+        CReserveOutput(Flags, amountIn), nLimit(Limit), nValidBefore(ValidBefore) { }
+
+    CReserveExchange(const CTransaction &tx, bool validate=false);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        ((CReserveOutput *)this)->SerializationOp(s, ser_action);
+        READWRITE(VARINT(nLimit));
+        READWRITE(nValidBefore);
+    }
+
+    std::vector<unsigned char> AsVector()
+    {
+        return ::AsVector(*this);
+    }
+
+    bool IsValid()
+    {
+        // this needs an actual check
+        return CReserveOutput::IsValid();
+    }
+
+    bool IsExpired(int32_t height)
+    {
+        return height >= nValidBefore;
+    }
+};
+
+// This is additional data provided in a CC token output UTXO that defines it to belong to
+// a specific chain by chainID. standard token transfers do not provide conversion services
+// to or from the native underlying coin and do require some amount of native coin input
+// that is not in the output for the transaction to pay fees
+class CTokenOutput
+{
+public:
+    uint32_t flags;                         // flags determining type of token
+    CAmount nValue;                         // token value held by this UTXO
+    uint160 tokenID;                        // token/chain identifier
+
+    CTokenOutput(const std::vector<unsigned char> &asVector)
+    {
+        FromVector(asVector, *this);
+    }
+
+    CTokenOutput() : flags(0), nValue(0) { }
+
+    CTokenOutput(uint32_t Flags, CAmount value) : flags(Flags), nValue(value) { }
 
     ADD_SERIALIZE_METHODS;
 
@@ -97,92 +203,19 @@ public:
     }
 };
 
-// convert from $VRSC to fractional reserve coin or vice versa. coinID determines which
-// in either direction, this is burned in the block. if burned, the block must contain less than a
-// maximum reasonable number of exchange outputs, which must be sorted, hashed, and used to validate
-// the outputs that must match exactly on any transaction spending the output. since fees are not
-// included in outputs, it is assumed that a miner will spend the output in the same block to recover
-// exchange fees
-class CReserveExchange
-{
-public:
-    static const int32_t VERSION_INVALID = 0;
-    static const int32_t VERSION1 = 1;
-
-    // flags
-    static const int32_t TO_RESERVE = 1;    // from fractional currency to reserve
-    static const int32_t TO_FRACTIONAL = 2; // to fractional currency from reserve
-    static const int32_t LIMIT = 4;         // after conversion, send output to the destination recipient on the other chain
-    static const int32_t FILL_OR_KILL = 8;  // if not filled before nValidBefore but before expiry, no execution, mined with maxfee, output pass through
-    static const int32_t ALL_OR_NONE = 0x10; // will not execute partial order
-
-    // success fee is calculated by multiplying the amount by this number and dividing by satoshis (100,000,000), not less than 10x the absolute SUCCESS_FEE
-    // failure fee, meaning the valid before block is past but it is not expired is the standard fee
-    static const CAmount SUCCESS_FEE = 5000;
-    static const CAmount MIN_PARTIAL = 10000000;        // making partial fill minimum the number at which minimum fee meets standard percent fee,
-    static const int INTERPOLATE_ROUNDS = 4;            // we ensures that there is no peverse motive to partially fill in order to increase fees
-    static const CAmount FILLORKILL_FEE = 10000;
-    static const CAmount SATOSHIDEN = 100000000;
-
-    int32_t version;                        // version of order
-    uint32_t flags;                         // control of direction and constraints
-    CAmount nLimit;                         // lowest or highest price to sell or buy coin output, may fail if including this tx in block makes price out of range
-    uint32_t nValidBefore;                  // if not filled before this block and not expired, can mine tx, but refund input
-
-    CReserveExchange(const std::vector<unsigned char> &asVector)
-    {
-        FromVector(asVector, *this);
-    }
-
-    CReserveExchange() : version(VERSION_INVALID), flags(0), nLimit(0), nValidBefore(0) { }
-
-    CReserveExchange(uint32_t Flags, CAmount Limit, uint32_t ValidBefore) : 
-        version(VERSION1), flags(Flags), nLimit(Limit), nValidBefore(ValidBefore) { }
-
-    CReserveExchange(const CTransaction &tx, bool validate=false);
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(version);
-        READWRITE(flags);
-        READWRITE(VARINT(nLimit));
-        READWRITE(nValidBefore);
-    }
-
-    std::vector<unsigned char> AsVector()
-    {
-        return ::AsVector(*this);
-    }
-
-    bool IsValid()
-    {
-        // this needs an actual check
-        return version == VERSION1;
-    }
-
-    bool IsExpired(int32_t height)
-    {
-        return height >= nValidBefore;
-    }
-};
-
-bool to_int64(const cpp_dec_float_50 &input, int64_t &outval);
-
-class CFractionalReserveState
+class CCurrencyState
 {
 public:
     static const int32_t MIN_RESERVE_RATIO = 1000000;
     int32_t InitialRatio;   // starting point reserve percent for initial currency and emission, over SATOSHIs
-    CAmount InitialSupply;  // starting point for reserve currency, baseline for 100% reserve and used to calculate current reserve
+    CAmount InitialSupply;  // initial supply as premine + pre-converted coins, this is used to establish the value at the initial ratio as well
     CAmount Emitted;        // unlike other supply variations, emitted coins reduce the reserve ratio and are used to calculate current ratio
-    CAmount Supply;         // current supply
-    CAmount Reserve;        // current reserve controlled by fractional chain
+    CAmount Supply;         // current supply - total of initial and all emitted coins
+    CAmount Reserve;        // current reserve controlled by fractional chain - only non-zero for reserve currencies
 
-    CFractionalReserveState() : InitialSupply(0), Emitted(0), Supply(0), Reserve(0) {}
+    CCurrencyState() : InitialSupply(0), Emitted(0), Supply(0), Reserve(0) {}
 
-    CFractionalReserveState(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve) : 
+    CCurrencyState(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve) : 
         InitialSupply(initialSupply), Emitted(emitted), Supply(supply), Reserve(reserve)
     {
         if (initialRatio > CReserveExchange::SATOSHIDEN)
@@ -195,7 +228,7 @@ public:
         }
         InitialRatio = initialRatio;
     }
-    CFractionalReserveState(const UniValue &uni);
+    CCurrencyState(const UniValue &uni);
 
     ADD_SERIALIZE_METHODS;
 
@@ -223,6 +256,20 @@ public:
         cpp_dec_float_50 ratio(one / ((one + (cpp_dec_float_50(Emitted) / cpp_dec_float_50(InitialSupply))) * cpp_dec_float_50(InitialRatio)));
     }
 
+    inline static bool to_int64(const cpp_dec_float_50 &input, int64_t &outval)
+    {
+        std::stringstream ss(input.str(0));
+        try
+        {
+            ss >> outval;
+            return true;
+        }
+        catch(const std::exception& e)
+        {
+            return false;
+        }
+    }
+
     // return the current price of the fractional reserve in the reserve currency.
     cpp_dec_float_50 GetPriceInReserve() const
     {
@@ -236,9 +283,9 @@ public:
     // takes both input amounts of the reserve and the fractional currency to merge the conversion into one calculation
     // with the same price for all transactions in the block. It returns the newly calculated conversion price of the fractional 
     // reserve in the reserve currency.
-    CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CFractionalReserveState &newState) const;
+    CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState) const;
 
-    CFractionalReserveState MatchOrders(const std::vector<CTransaction *> &orders, 
+    CCurrencyState MatchOrders(const std::vector<CTransaction *> &orders, 
                                         std::vector<CTransaction *> &matches, 
                                         std::vector<CTransaction *> &refunds, 
                                         std::vector<CTransaction *> &nofill, 
@@ -252,6 +299,40 @@ public:
         return InitialRatio >= MIN_RESERVE_RATIO && InitialRatio <= CReserveExchange::SATOSHIDEN && 
                 Supply >= 0 && 
                 ((Reserve > 0 && InitialSupply > 0) || (Reserve == 0 && InitialSupply == 0));
+    }
+};
+
+class CCoinbaseConversionOut : public CCurrencyState
+{
+public:
+    CAmount ReserveIn;      // reserve currency converted to native
+    CAmount NativeIn;       // native currency converted to reserve
+    CAmount ConversionPrice;// calculated price in reserve for all conversions * 100000000
+    CAmount Fees;           // fee values in native coins for all transaction network fees + conversion fees for the block, output must be reward + this value
+
+    CCoinbaseConversionOut() : ReserveIn(0), NativeIn(0), ConversionPrice(0), Fees(0) {}
+
+    CCoinbaseConversionOut(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve,
+                             CAmount reserveIn, CAmount nativeIn, CAmount conversionPrice, CAmount fees) : 
+        CCurrencyState(initialRatio, supply, initialSupply, emitted, reserve), ReserveIn(reserveIn), NativeIn(nativeIn), ConversionPrice(conversionPrice), Fees(fees) { }
+    CCoinbaseConversionOut(CCurrencyState &currencyState, CAmount reserveIn, CAmount nativeIn, CAmount conversionPrice, CAmount fees) : 
+        CCurrencyState(currencyState), ReserveIn(reserveIn), NativeIn(nativeIn), ConversionPrice(conversionPrice), Fees(fees) { }
+    CCoinbaseConversionOut(const UniValue &uni);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        ((CCurrencyState *)this)->SerializationOp(s, ser_action);
+        READWRITE(VARINT(ReserveIn));
+        READWRITE(VARINT(NativeIn));
+        READWRITE(VARINT(ConversionPrice));
+        READWRITE(VARINT(Fees));
+    }
+
+    std::vector<unsigned char> AsVector() const
+    {
+        return ::AsVector(*this);
     }
 };
 
