@@ -458,7 +458,44 @@ int64_t CScript::ReserveOutValue() const
             case EVAL_RESERVE_EXCHANGE:
             {
                 CReserveExchange re(p.vData[0]);
-                return re.nValue;
+                // reserve out amount when converting to reserve is 0, since the amount cannot be calculated in isolation as an input
+                // if reserve in, we can consider the output the same reserve value as the input
+                return (re.flags & re.TO_RESERVE) ? 0 : re.nValue;
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
+int64_t CScript::ReserveOutValue(const CCurrencyState &currencyState) const
+{
+    COptCCParams p;
+    CAmount newVal = 0;
+
+    // already validated above
+    if (::IsPayToCryptoCondition(*this, p) && p.IsValid())
+    {
+        switch (p.evalCode)
+        {
+            case EVAL_RESERVE_OUTPUT:
+            {
+                CReserveOutput ro(p.vData[0]);
+                return ro.nValue;
+                break;
+            }
+            case EVAL_RESERVE_TRANSFER:
+            {
+                CReserveTransfer rt(p.vData[0]);
+                return rt.nValue;
+                break;
+            }
+            case EVAL_RESERVE_EXCHANGE:
+            {
+                CReserveExchange re(p.vData[0]);
+                // reserve out amount when converting to reserve is 0, since the amount cannot be calculated in isolation as an input
+                // if reserve in, we can consider the output the same reserve value as the input
+                return (re.flags & re.TO_RESERVE) ? currencyState.NativeToReserve(re.nValue) : re.nValue;
                 break;
             }
         }

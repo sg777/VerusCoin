@@ -16,6 +16,8 @@
 #define CROSSCHAINRPC_H
 
 #include <univalue.h>
+#include <sstream>
+#include "streams.h"
 
 static const int DEFAULT_RPC_TIMEOUT=900;
 
@@ -64,6 +66,29 @@ UniValue RPCCall(const std::string& strMethod,
                  int timeout=DEFAULT_RPC_TIMEOUT);
 
 UniValue RPCCallRoot(const std::string& strMethod, const UniValue& params, int timeout=DEFAULT_RPC_TIMEOUT);
+
+template <typename SERIALIZABLE>
+std::vector<unsigned char> AsVector(SERIALIZABLE &obj)
+{
+    CDataStream s = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
+    s << obj;
+    return std::vector<unsigned char>(s.begin(), s.end());
+}
+
+template <typename SERIALIZABLE>
+void FromVector(const std::vector<unsigned char> &vch, SERIALIZABLE &obj)
+{
+    CDataStream s(vch, SER_NETWORK, PROTOCOL_VERSION);
+    obj.Unserialize(s);
+}
+
+template <typename SERIALIZABLE>
+uint256 GetHash(SERIALIZABLE obj)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << obj;
+    return hw.GetHash();
+}
 
 int32_t uni_get_int(UniValue uv, int32_t def=0);
 int64_t uni_get_int64(UniValue uv, int64_t def =0);

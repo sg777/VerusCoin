@@ -97,6 +97,13 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     notarizationPreHash = uint256S(uni_get_str(find_value(obj, "notarizationprehash")));
     compactPower = ArithToUint256((UintToArith256(uint256S(uni_get_str(find_value(obj, "stake")))) << 128) + 
                                    UintToArith256(uint256S(uni_get_str(find_value(obj, "work")))));
+
+    auto currencyObj = find_value(obj, "currencystate");
+    if (currencyObj.isObject())
+    {
+        currencyState = CCurrencyState(currencyObj);
+    }
+
     prevNotarization = uint256S(uni_get_str(find_value(obj, "prevnotarization")));
     prevHeight = uni_get_int(find_value(obj, "prevheight"));
     crossNotarization = uint256S(uni_get_str(find_value(obj, "crossnotarization")));
@@ -123,6 +130,7 @@ UniValue CPBaaSNotarization::ToUniValue() const
     obj.push_back(Pair("notarizationprehash", notarizationPreHash.GetHex()));
     obj.push_back(Pair("work", ((UintToArith256(compactPower) << 128) >> 128).ToString()));
     obj.push_back(Pair("stake", (UintToArith256(compactPower) >> 128).ToString()));
+    obj.push_back(Pair("currencystate", currencyState.ToUniValue()));
     obj.push_back(Pair("prevnotarization", prevNotarization.GetHex()));
     obj.push_back(Pair("prevheight", prevHeight));
     obj.push_back(Pair("crossnotarization", crossNotarization.GetHex()));
@@ -632,6 +640,8 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     // update crypto condition with final notarization output data
     mnewTx.vout[finalizeOutIndex] = MakeCC1of1Vout(EVAL_FINALIZENOTARIZATION, PBAAS_MINNOTARIZATIONOUTPUT, pk, vKeys, nf);
+
+    // if this is block 1, add chain definition output with updated currency numbers
 
     return true;
 }

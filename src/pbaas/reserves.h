@@ -13,10 +13,10 @@
 #define PBAAS_RESERVES_H
 
 #include <sstream>
-
-#include "pbaas/pbaas.h"
+#include "pbaas/crosschainrpc.h"
 #include <boost/multiprecision/cpp_dec_float.hpp>
 #include "librustzcash.h"
+#include "pubkey.h"
 
 using boost::multiprecision::cpp_dec_float_50;
 
@@ -67,7 +67,7 @@ public:
 
     static const CAmount DEFAULT_PER_STEP_FEE = 10000; // default fee for each step of each transfer (initial mining, transfer, mining on new chain)
 
-    CAmount nFees;                  // network fees only, separated out to enable market conversions
+    CAmount nFees;                  // cross-chain network fees only, separated out to enable market conversions, conversion fees are additional
     CKeyID destination;             // transparent address to send funds to on the target chain
 
     CReserveTransfer(const std::vector<unsigned char> &asVector)
@@ -116,8 +116,10 @@ public:
     static const int32_t SEND_OUTPUT = 0x80;     // send the output of this exchange to the target chain, only valid if output is reserve
 
     // success fee is calculated by multiplying the amount by this number and dividing by satoshis (100,000,000), not less than 10x the absolute SUCCESS_FEE
-    // failure fee, meaning the valid before block is past but it is not expired is the standard fee
+    // failure fee, meaning the valid before block is past but it is not expired is the difference between input and output and must follow those rules
+    // it is deducted in the success case from the success fee, so there is no fee beyond the success fee paid
     static const CAmount SUCCESS_FEE = 5000;
+    static const CAmount MIN_SUCCESS_FEE = 50000;
     static const CAmount MIN_PARTIAL = 10000000;        // making partial fill minimum the number at which minimum fee meets standard percent fee,
     static const int INTERPOLATE_ROUNDS = 4;            // we ensure that there is no peverse motive to partially fill in order to increase fees
     static const CAmount FILLORKILL_FEE = 10000;
@@ -164,59 +166,23 @@ public:
     }
 };
 
-// This is additional data provided in a CC token output UTXO that defines it to belong to
-// a specific chain by chainID. standard token transfers do not provide conversion services
-// to or from the native underlying coin and do require some amount of native coin input
-// that is not in the output for the transaction to pay fees
-class CTokenOutput
-{
-public:
-    uint32_t flags;                         // flags determining type of token
-    CAmount nValue;                         // token value held by this UTXO
-    uint160 tokenID;                        // token/chain identifier
-
-    CTokenOutput(const std::vector<unsigned char> &asVector)
-    {
-        FromVector(asVector, *this);
-    }
-
-    CTokenOutput() : flags(0), nValue(0) { }
-
-    CTokenOutput(uint32_t Flags, CAmount value) : flags(Flags), nValue(value) { }
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(VARINT(nValue));
-    }
-
-    std::vector<unsigned char> AsVector()
-    {
-        return ::AsVector(*this);
-    }
-
-    bool IsValid()
-    {
-        // we don't support op returns
-        return nValue != 0;
-    }
-};
-
 class CCurrencyState
 {
 public:
+    static const uint32_t VALID = 1;
+    static const uint32_t ISRESERVE = 2;
     static const int32_t MIN_RESERVE_RATIO = 1000000;
+    uint32_t flags;         // currency flags (valid, reserve currency, etc.)
     int32_t InitialRatio;   // starting point reserve percent for initial currency and emission, over SATOSHIs
     CAmount InitialSupply;  // initial supply as premine + pre-converted coins, this is used to establish the value at the initial ratio as well
     CAmount Emitted;        // unlike other supply variations, emitted coins reduce the reserve ratio and are used to calculate current ratio
     CAmount Supply;         // current supply - total of initial and all emitted coins
     CAmount Reserve;        // current reserve controlled by fractional chain - only non-zero for reserve currencies
 
-    CCurrencyState() : InitialSupply(0), Emitted(0), Supply(0), Reserve(0) {}
+    CCurrencyState() : flags(0), InitialSupply(0), Emitted(0), Supply(0), Reserve(0) {}
 
-    CCurrencyState(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve) : 
-        InitialSupply(initialSupply), Emitted(emitted), Supply(supply), Reserve(reserve)
+    CCurrencyState(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve, uint32_t Flags=VALID) : 
+        flags(Flags), InitialSupply(initialSupply), Emitted(emitted), Supply(supply), Reserve(reserve)
     {
         if (initialRatio > CReserveExchange::SATOSHIDEN)
         {
@@ -228,12 +194,19 @@ public:
         }
         InitialRatio = initialRatio;
     }
+
+    CCurrencyState(const std::vector<unsigned char> &asVector)
+    {
+        FromVector(asVector, *this);
+    }
+
     CCurrencyState(const UniValue &uni);
 
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(flags);
         READWRITE(VARINT(InitialRatio));
         READWRITE(VARINT(InitialSupply));
         READWRITE(VARINT(Emitted));
@@ -248,11 +221,12 @@ public:
 
     cpp_dec_float_50 GetReserveRatio() const
     {
-        cpp_dec_float_50 one(1);
-        if (Emitted == 0)
+        cpp_dec_float_50 initial(InitialRatio);
+        if (!(flags & ISRESERVE))
         {
-            return one;
+            return initial;
         }
+        cpp_dec_float_50 one(1);
         cpp_dec_float_50 ratio(one / ((one + (cpp_dec_float_50(Emitted) / cpp_dec_float_50(InitialSupply))) * cpp_dec_float_50(InitialRatio)));
     }
 
@@ -276,7 +250,8 @@ public:
         cpp_dec_float_50 supply(Supply);
         cpp_dec_float_50 reserve(Reserve);
         cpp_dec_float_50 ratio = GetReserveRatio();
-        return reserve / (supply * ratio);
+
+        return ratio == 0 || supply == 0 ? cpp_dec_float_50(0) : reserve / (supply * ratio);
     }
 
     // This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it 
@@ -285,20 +260,36 @@ public:
     // reserve in the reserve currency.
     CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState) const;
 
-    CCurrencyState MatchOrders(const std::vector<CTransaction *> &orders, 
-                                        std::vector<CTransaction *> &matches, 
-                                        std::vector<CTransaction *> &refunds, 
-                                        std::vector<CTransaction *> &nofill, 
-                                        std::vector<CTransaction *> &rejects, 
+    CCurrencyState MatchOrders(const std::vector<const CTransaction *> &orders, 
+                                        std::vector<const CTransaction *> &matches, 
+                                        std::vector<const CTransaction *> &refunds, 
+                                        std::vector<const CTransaction *> &nofill, 
+                                        std::vector<const CTransaction *> &rejects, 
                                         CAmount &price, int32_t height) const;
+
+    CAmount CalculateConversionFee(CAmount inputAmount, bool convertToNative = false) const;
+    CAmount ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount) const;
+
+    CAmount ReserveToNative(CAmount reserveAmount) const;
+
+    CAmount NativeToReserve(CAmount nativeAmount) const
+    {
+        arith_uint256 bigAmount(nativeAmount);
+
+        int64_t price;
+        cpp_dec_float_50 priceInReserve = GetPriceInReserve();
+        if (!to_int64(priceInReserve, price))
+        {
+            assert(false);
+        }
+        return ((bigAmount * arith_uint256(price)) / arith_uint256(CReserveExchange::SATOSHIDEN)).GetLow64();
+    }
 
     UniValue ToUniValue() const;
 
     bool IsValid() const
     {
-        return InitialRatio >= MIN_RESERVE_RATIO && InitialRatio <= CReserveExchange::SATOSHIDEN && 
-                Supply >= 0 && 
-                ((Reserve > 0 && InitialSupply > 0) || (Reserve == 0 && InitialSupply == 0));
+        return flags & CReserveOutput::VALID;
     }
 };
 

@@ -21,11 +21,10 @@
 #include "script/script.h"
 #include "amount.h"
 #include "pbaas/crosschainrpc.h"
+#include "pbaas/reserves.h"
 #include "mmr.h"
 
 #include <boost/algorithm/string.hpp>
-
-class CReserveTransfer;
 
 // these are output cryptoconditions for the Verus reserve liquidity system
 // VRSC can be proxied to other PBaaS chains and sent back for use with this system
@@ -85,29 +84,6 @@ enum CHAIN_OBJECT_TYPES
     CHAINOBJ_PRIORBLOCKS = 5,       // prior block commitments to ensure recognition of overlapping notarizations
     CHAINOBJ_RESERVETRANSFER = 6    // serialized transaction, sometimes without an opret, which will be reconstructed
 };
-
-template <typename SERIALIZABLE>
-std::vector<unsigned char> AsVector(SERIALIZABLE &obj)
-{
-    CDataStream s = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
-    s << obj;
-    return std::vector<unsigned char>(s.begin(), s.end());
-}
-
-template <typename SERIALIZABLE>
-void FromVector(const std::vector<unsigned char> &vch, SERIALIZABLE &obj)
-{
-    CDataStream s(vch, SER_NETWORK, PROTOCOL_VERSION);
-    obj.Unserialize(s);
-}
-
-template <typename SERIALIZABLE>
-uint256 GetHash(SERIALIZABLE obj)
-{
-    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
-    hw << obj;
-    return hw.GetHash();
-}
 
 // the proof of an opret transaction, which is simply the types of objects and hashes of each
 class COpRetProof
@@ -250,6 +226,7 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
         CChainObject<CMerkleBranch> *pNewProof;
         CChainObject<CHeaderRef> *pNewHeaderRef;
         CChainObject<CPriorBlocksCommitment> *pPriors;
+        CChainObject<CReserveTransfer> *pExport;
         CBaseChainObject *retPtr;
     };
 
@@ -295,6 +272,14 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
             {
                 s >> pPriors->object;
                 pPriors->objectType = objType;
+            }
+            break;
+        case CHAINOBJ_RESERVETRANSFER:
+            pExport = new CChainObject<CReserveTransfer>();
+            if (pExport)
+            {
+                s >> pExport->object;
+                pExport->objectType = objType;
             }
             break;
     }
@@ -407,7 +392,9 @@ public:
     std::string name;                       // chain name, maximum 64 characters
     CKeyID address;                         // non-purchased/converted premine and fee recipient address
     int64_t premine;                        // initial supply that is distributed to the premine output address, but not purchased
-    int64_t maxpreconvert;                  // maximum or when put into block 1, actual amount that can be available for pre-conversion
+    int64_t initialcontribution;            // optional initial contribution by this transaction. this serves to ensure the option to participate by whoever defines the chain
+    int64_t maxpreconvert;                  // maximum amount of reserve that can be pre-converted
+    int64_t preconverted;                   // actual converted amount if known
     int64_t conversion;                     // initial reserve ratio, also value in Verus if premine is 0, otherwise value is conversion * maxpreconvert/(maxpreconvert + premine)
     int64_t launchFee;                      // fee deducted from reserve purchase before conversion. always 100000000 (100%) for non-reserve currencies
     int32_t startBlock;                     // parent chain block # that must kickoff the notarization of block 0, cannot be before this block
@@ -435,7 +422,7 @@ public:
 
     CPBaaSChainDefinition(const CTransaction &tx, bool validate = false);
 
-    CPBaaSChainDefinition(std::string Name, std::string Address, int64_t Premine, int64_t Conversion, int64_t preConversion, int64_t LaunchFee,
+    CPBaaSChainDefinition(std::string Name, std::string Address, int64_t Premine, int64_t Conversion, int64_t maxPreConvert, int64_t preConverted, int64_t LaunchFee,
                           int32_t StartBlock, int32_t EndBlock, int32_t chainEras,
                           const std::vector<int64_t> &chainRewards, const std::vector<int64_t> &chainRewardsDecay,
                           const std::vector<int32_t> &chainHalving, const std::vector<int32_t> &chainEraEnd, std::vector<int32_t> &chainCurrencyOptions,
@@ -444,7 +431,8 @@ public:
                             name(Name),
                             premine(Premine),
                             conversion(Conversion),
-                            maxpreconvert(preConversion),
+                            maxpreconvert(maxPreConvert),
+                            preconverted(preConverted),
                             launchFee(LaunchFee),
                             startBlock(StartBlock),
                             endBlock(EndBlock),
@@ -477,6 +465,7 @@ public:
         READWRITE(VARINT(premine));
         READWRITE(VARINT(conversion));
         READWRITE(VARINT(maxpreconvert));
+        READWRITE(VARINT(preconverted));
         READWRITE(VARINT(launchFee));
         READWRITE(startBlock);
         READWRITE(endBlock);
@@ -696,6 +685,7 @@ public:
     int32_t numInputs;                              // number of inputs aggregated to calculate the fee percentage
     CAmount totalAmount;                            // total amount of inputs, including fees
     CAmount totalFees;                              // total amount of fees
+    CAmount preConversion;                          // amount from inputs that should be taken from pre-conversion funds
 
     CCrossChainExport() {}
 
@@ -948,7 +938,24 @@ CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2
 
     std::vector<CPubKey> vpk({pk1, pk2});
     std::vector<std::vector<unsigned char>> vvch({::AsVector(obj)});
-    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, 1, vpk, vvch);
+    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, 2, vpk, vvch);
+
+    // add the object to the end of the script
+    vout.scriptPubKey << vParams.AsVector() << OP_DROP;
+    return(vout);
+}
+
+template <typename TOBJ>
+CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2, std::vector<CTxDestination> vDest, TOBJ &obj)
+{
+    CTxOut vout;
+    CC *payoutCond = MakeCCcond1of2(evalcode, pk1, pk2);
+    vout = CTxOut(nValue,CCPubKey(payoutCond));
+    cc_free(payoutCond);
+
+    std::vector<CPubKey> vpk({pk1, pk2});
+    std::vector<std::vector<unsigned char>> vvch({::AsVector(obj)});
+    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, 2, vDest, vvch);
 
     // add the object to the end of the script
     vout.scriptPubKey << vParams.AsVector() << OP_DROP;

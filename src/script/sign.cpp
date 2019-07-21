@@ -209,10 +209,6 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     {
                         keys.push_back(CPubKey(vkch));
                     }
-                    else
-                    {
-                        return false;
-                    }
                 }
 
                 // if we only have one key, and this is version 2, add the cc pub key
@@ -221,7 +217,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     keys.push_back(CPubKey(ParseHex(C.CChexstr)));
                 }
 
-                // we need two keys
+                // we need at least two keys for a 1 of 2
                 if (keys.size() < 2)
                 {
                     return false;

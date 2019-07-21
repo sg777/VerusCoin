@@ -322,8 +322,10 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const UniValue &obj)
     CBitcoinAddress ba(uni_get_str(find_value(obj, "paymentaddress")));
     ba.GetKeyID(address);
     premine = uni_get_int64(find_value(obj, "premine"));
+    initialcontribution = uni_get_int64(find_value(obj, "initialcontribution"));
     conversion = uni_get_int64(find_value(obj, "conversion"));
     maxpreconvert = uni_get_int64(find_value(obj, "maxpreconvert"));
+    preconverted = uni_get_int64(find_value(obj, "preconverted"));
     launchFee = uni_get_int64(find_value(obj, "launchfee"));
     startBlock = uni_get_int(find_value(obj, "startblock"));
     endBlock = uni_get_int(find_value(obj, "endblock"));
@@ -438,8 +440,10 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("name", name));
     obj.push_back(Pair("paymentaddress", CBitcoinAddress(CTxDestination(address)).ToString()));
     obj.push_back(Pair("premine", (int64_t)premine));
+    obj.push_back(Pair("initialcontribution", (int64_t)initialcontribution));
     obj.push_back(Pair("conversion", (int64_t)conversion));
     obj.push_back(Pair("maxpreconvert", (int64_t)maxpreconvert));
+    obj.push_back(Pair("preconverted", (int64_t)preconverted));
     obj.push_back(Pair("launchfee", (int64_t)launchFee));
     obj.push_back(Pair("conversionpercent", (double)conversion / 100000000));
     obj.push_back(Pair("launchfeepercent", ((double)launchFee / 100000000) * 100));

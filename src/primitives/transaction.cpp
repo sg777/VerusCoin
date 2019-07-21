@@ -8,6 +8,7 @@
 #include "hash.h"
 #include "tinyformat.h"
 #include "utilstrencodings.h"
+#include "pbaas/reserves.h"
 
 #include "librustzcash.h"
 
@@ -300,6 +301,20 @@ CAmount CTransaction::GetValueOut() const
             throw std::runtime_error("CTransaction::GetValueOut(): value out of range");
     }
     return nValueOut;
+}
+
+CAmount CTransaction::GetReserveValueOut(const CCurrencyState &currencyState) const
+{
+    CAmount nReserveValueOut = 0;
+    for (std::vector<CTxOut>::const_iterator it(vout.begin()); it != vout.end(); ++it)
+    {
+        CAmount oneOut = 0;
+        nReserveValueOut += (oneOut = it->scriptPubKey.ReserveOutValue());
+        // cannot have an output larger than the whole reserve
+        if (oneOut > currencyState.Reserve)
+            throw std::runtime_error("CTransaction::GetReserveValueOut(): value exceeds actual reserves");
+    }
+    return nReserveValueOut;
 }
 
 CAmount CTransaction::GetShieldedValueOut() const

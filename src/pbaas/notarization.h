@@ -62,7 +62,6 @@
 
 #include "pbaas/pbaas.h"
 #include "key_io.h"
-#include "pbaas/reserves.h"
 
 // This is the data for a PBaaS notarization transaction, either of a PBaaS chain into the Verus chain, or the Verus
 // chain into a PBaaS chain.
@@ -91,6 +90,8 @@ public:
     uint256 notarizationPreHash;            // combination of block hash, merkle root, and compact power for the notarization height
     uint256 compactPower;                   // compact power of the block height notarization to compare
 
+    CCurrencyState currencyState;           // currency state of this chain
+
     uint256 prevNotarization;               // txid of the prior notarization on this chain that we agree with, even those not accepted yet
     int32_t prevHeight;
     uint256 crossNotarization;              // hash of previous notarization transaction on the other chain, which is the first tx object in the opret input
@@ -109,6 +110,7 @@ public:
                        uint256 MMRRoot,
                        uint256 preHash,
                        uint256 compactpower,
+                       CCurrencyState currencystate,
                        uint256 prevnotarization,
                        int32_t prevheight,
                        uint256 crossnotarization,
@@ -123,6 +125,7 @@ public:
                        mmrRoot(MMRRoot),
                        notarizationPreHash(preHash),
                        compactPower(compactpower),
+                       currencyState(currencystate),
 
                        prevNotarization(prevnotarization),
                        prevHeight(prevheight),
@@ -154,6 +157,7 @@ public:
         READWRITE(mmrRoot);
         READWRITE(notarizationPreHash);
         READWRITE(compactPower);
+        READWRITE(currencyState);
         READWRITE(prevNotarization);
         READWRITE(prevHeight);
         READWRITE(crossNotarization);

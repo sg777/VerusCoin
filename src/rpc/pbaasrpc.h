@@ -18,7 +18,10 @@
 #include <univalue.h>
 
 bool GetChainDefinition(std::string &name, CPBaaSChainDefinition &chainDef);
+bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_t *pDefHeight = NULL);
 bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut = NULL);
+bool GetChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, 
+                            uint160 chainFilter = uint160(), int start=0, int end=0, uint32_t flags=CReserveTransfer::VALID);
 bool GetUnspentChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter = uint160());
 bool GetUnspentChainExports(std::multimap<uint160, std::pair<int, CInputDescriptor>> &exportOutputs, uint160 chainFilter = uint160());
 

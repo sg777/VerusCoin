@@ -624,7 +624,7 @@ CAmount CCoinsViewCache::GetValueIn(int32_t nHeight,int64_t *interestp,const CTr
     return nResult;
 }
 
-CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& tx, uint32_t tiptime) const
+CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& tx) const
 {
     CAmount value, nResult = 0;
 
@@ -633,6 +633,7 @@ CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& 
         return GetCoinImportValue(tx);
     */
 
+    // coinbases have no inputs
     if ( tx.IsCoinBase() != 0 )
         return 0;
 

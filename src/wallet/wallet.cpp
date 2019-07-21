@@ -25,7 +25,7 @@
 #include "coins.h"
 #include "zcash/zip32.h"
 #include "cc/StakeGuard.h"
-#include "pbaas/reserves.h"
+#include "pbaas/pbaas.h"
 
 #include <assert.h>
 

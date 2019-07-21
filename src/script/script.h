@@ -24,6 +24,8 @@
 #define OPRETTYPE_OBJECT 4
 #define OPRETTYPE_OBJECTARR 5
 
+class CCurrencyState;
+
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 1024; // bytes
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_PRE_PBAAS = 520;
 
@@ -593,6 +595,7 @@ public:
     CScript ReplaceCCParams(const COptCCParams &params);
 
     int64_t ReserveOutValue() const;
+    int64_t ReserveOutValue(const CCurrencyState &currencyState) const; // with conversion from native for calculating vs. 0 when only native is known
     bool SetReserveOutValue(int64_t newValue);
 
     bool IsCoinImport() const;

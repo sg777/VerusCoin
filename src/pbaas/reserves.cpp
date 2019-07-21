@@ -9,6 +9,7 @@
  */
 
 #include "main.h"
+#include "pbaas/pbaas.h"
 #include "pbaas/reserves.h"
 
 CReserveExchange::CReserveExchange(const CTransaction &tx, bool validate)
@@ -42,6 +43,7 @@ CReserveExchange::CReserveExchange(const CTransaction &tx, bool validate)
 
 CCurrencyState::CCurrencyState(const UniValue &obj)
 {
+    uint32_t flags = uni_get_int(find_value(obj, "flags"));
     int32_t initialRatio = uni_get_int(find_value(obj, "initialratio"));
     if (initialRatio > CReserveExchange::SATOSHIDEN)
     {
@@ -62,6 +64,7 @@ CCurrencyState::CCurrencyState(const UniValue &obj)
 UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("flags", (int32_t)flags));
     ret.push_back(Pair("initialratio", (int32_t)InitialRatio));
     ret.push_back(Pair("initialsupply", (int64_t)InitialSupply));
     ret.push_back(Pair("emitted", (int64_t)Emitted));
@@ -80,7 +83,7 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
     newState = *this;
 
     // if both conversions are zero, nothing to do but return current price
-    if (!inputReserve && !inputFractional)
+    if ((!inputReserve && !inputFractional) || !(flags & ISRESERVE))
     {
         return 0;
     }
@@ -128,7 +131,7 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
 
 struct CReserveExchangeData
 {
-    CTransaction *ptx;
+    const CTransaction *ptx;
     uint32_t flags;
     CAmount nLimit;
     CAmount nInputValue;
@@ -137,12 +140,12 @@ struct CReserveExchangeData
 // From a vector of reserve exchange transactions, match all that can be matched and return a new fractional reserve state,
 // a vector of transactions that are all executable, and the price that they executed at only qualified transactions 
 // based on their limits and the transaction price will be included.
-CCurrencyState CCurrencyState::MatchOrders(const std::vector<CTransaction *> &orders, 
-                                                             std::vector<CTransaction *> &matches, 
-                                                             std::vector<CTransaction *> &refunds, 
-                                                             std::vector<CTransaction *> &nofill, 
-                                                             std::vector<CTransaction *> &rejects, 
-                                                             CAmount &price, int32_t height) const
+CCurrencyState CCurrencyState::MatchOrders(const std::vector<const CTransaction *> &orders, 
+                                            std::vector<const CTransaction *> &matches, 
+                                            std::vector<const CTransaction *> &refunds, 
+                                            std::vector<const CTransaction *> &nofill, 
+                                            std::vector<const CTransaction *> &rejects, 
+                                            CAmount &price, int32_t height) const
 {
     // synthetic order book of limitBuys and limitSells sorted by limit, order of preference beyond limit sorting is random
     std::multimap<CAmount, CReserveExchangeData> limitBuys;
@@ -150,6 +153,11 @@ CCurrencyState CCurrencyState::MatchOrders(const std::vector<CTransaction *> &or
     std::vector<int> ret;
     CAmount marketBuy = 0;
     CAmount marketSell = 0;
+
+    if (!(flags & ISRESERVE))
+    {
+        return CCurrencyState();
+    }
 
     uint32_t tipTime = (chainActive.Height() >= height) ? chainActive[height]->nTime : chainActive.LastTip()->nTime;
 
@@ -167,7 +175,7 @@ CCurrencyState CCurrencyState::MatchOrders(const std::vector<CTransaction *> &or
             // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
             CReserveExchangeData rxd = {orders[i], orderParams.flags, orderParams.nLimit, 
                                         orderParams.flags & CReserveExchange::TO_RESERVE ? coins.GetValueIn(height, &interest, *(orders[i]), tipTime) :
-                                                                                           coins.GetReserveValueIn(height, *(orders[i]), tipTime)};
+                                                                                           coins.GetReserveValueIn(height, *(orders[i]))};
 
             if (!(rxd.flags & CReserveExchange::TO_RESERVE))
             {
@@ -327,3 +335,49 @@ CCurrencyState CCurrencyState::MatchOrders(const std::vector<CTransaction *> &or
     return newState;
 }
 
+CAmount CCurrencyState::CalculateConversionFee(CAmount inputAmount, bool convertToNative) const
+{
+    arith_uint256 bigAmount(inputAmount);
+    arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
+
+    // we need to calculate a fee based either on the amount to convert or the last price
+    // times the reserve
+    if (convertToNative)
+    {
+        int64_t price;
+        cpp_dec_float_50 priceInReserve = GetPriceInReserve();
+        if (!to_int64(priceInReserve, price))
+        {
+            assert(false);
+        }
+        bigAmount = price ? (bigAmount * bigSatoshi) / arith_uint256(price) : 0;
+    }
+
+    CAmount fee = 0;
+    fee = ((bigAmount * arith_uint256(CReserveExchange::SUCCESS_FEE)) / bigSatoshi).GetLow64();
+    if (fee < CReserveExchange::MIN_SUCCESS_FEE)
+    {
+        fee = CReserveExchange::MIN_SUCCESS_FEE;
+    }
+    return fee;
+}
+
+CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount) const
+{
+    arith_uint256 bigAmount(reserveAmount);
+
+    int64_t price;
+    cpp_dec_float_50 priceInReserve = GetPriceInReserve();
+    if (!to_int64(priceInReserve, price))
+    {
+        assert(false);
+    }
+    bigAmount = price ? (bigAmount * arith_uint256(CReserveExchange::SATOSHIDEN)) / arith_uint256(price) : 0;
+
+    return bigAmount.GetLow64();
+}
+
+CAmount CCurrencyState::ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount) const
+{
+    return ReserveToNative(inputAmount - outputAmount);
+}
