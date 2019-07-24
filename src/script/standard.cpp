@@ -140,19 +140,7 @@ std::vector<unsigned char> COptCCParams::AsVector() const
 
 bool IsPayToCryptoCondition(const CScript &scr, COptCCParams &ccParams)
 {
-    CScript subScript;
-    std::vector<std::vector<unsigned char>> vParams;
-    COptCCParams p;
-
-    if (scr.IsPayToCryptoCondition(&subScript, vParams))
-    {
-        if (!vParams.empty())
-        {
-            ccParams = COptCCParams(vParams[0]);
-        }
-        return true;
-    }
-    return false;
+    return scr.IsPayToCryptoCondition(ccParams);
 }
 
 CScriptID::CScriptID(const CScript& in) : uint160(Hash160(in.begin(), in.end())) {}

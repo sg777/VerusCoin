@@ -571,8 +571,10 @@ public:
      *
      * @param[in] tx	transaction for which we are checking input total
      * @return	Sum of value of all inputs (scriptSigs), (positive valueBalance or zero) and JoinSplit vpub_new
+     * 
+     * prevblocktime is not currently use and defaults to 0
      */
-    CAmount GetValueIn(int32_t nHeight,int64_t *interestp,const CTransaction& tx,uint32_t prevblocktime) const;
+    CAmount GetValueIn(int32_t nHeight,int64_t *interestp,const CTransaction& tx, uint32_t prevblocktime=0) const;
 
     // for fractional reserve chains only
     CAmount GetReserveValueIn(int32_t nHeight, const CTransaction& tx) const;

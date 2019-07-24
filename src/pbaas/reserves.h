@@ -19,6 +19,7 @@
 #include "pubkey.h"
 
 using boost::multiprecision::cpp_dec_float_50;
+class CCoinsViewCache;
 
 // reserve output is a special kind of token output that does not carry it's identifier, as it
 // is always assumed to be the reserve currency of the current chain.
@@ -121,12 +122,13 @@ public:
     static const CAmount SUCCESS_FEE = 5000;
     static const CAmount MIN_SUCCESS_FEE = 50000;
     static const CAmount MIN_PARTIAL = 10000000;        // making partial fill minimum the number at which minimum fee meets standard percent fee,
+    static const CAmount MIN_NET_CONVERSION = 10000000; // minimum conversion for input
     static const int INTERPOLATE_ROUNDS = 4;            // we ensure that there is no peverse motive to partially fill in order to increase fees
-    static const CAmount FILLORKILL_FEE = 10000;
+    static const CAmount FILL_OR_KILL_FEE = 10000;
     static const CAmount SATOSHIDEN = 100000000;
 
     CAmount nLimit;                         // lowest or highest price to sell or buy coin output, may fail if including this tx in block makes price out of range
-    uint32_t nValidBefore;                  // if not filled before this block and not expired, can mine tx, but refund input
+    uint32_t nValidBefore;                  // if not filled on or after this block, can mine tx, but is spendable to refund input
 
     CReserveExchange(const std::vector<unsigned char> &asVector)
     {
@@ -166,12 +168,66 @@ public:
     }
 };
 
+struct CReserveExchangeData
+{
+    const CTransaction *ptx;
+    uint32_t flags;
+    CAmount nLimit;
+    CAmount nFee;
+    CAmount nInputValue;
+};
+
+class CReserveExchangeTransactionDescriptor
+{
+public:
+    const CTransaction *ptx;                // pointer to the actual transaction if valid
+    bool isInvalid;                         // if false, it is known to be invalid and all other values are undefined
+    bool isReserveExchange;
+    bool isLimit;
+    bool isFillOrKillFail;
+    int64_t reserveInTotal = 0;
+    int64_t reserveOutConverted = 0;
+    int64_t nativeInTotal = 0;
+    int64_t nativeOutConverted = 0;
+    int64_t nativeConversionFees = 0;       // non-zero only if there is a conversion
+    int64_t reserveConversionFees = 0;
+    int64_t reserveOutChange = 0;           // total of non-converting outputs
+    int64_t nativeOutChange = 0;
+    int32_t numBuys = 0;                    // each limit conversion that is valid before a certain block should account for FILL_OR_KILL_FEE
+    int32_t numSells = 0;
+    std::vector<std::pair<int, CReserveExchange>> vRex; // index and rehydrated, validated reserve exchange output
+
+    CReserveExchangeTransactionDescriptor() : 
+        isInvalid(true),
+        isReserveExchange(false),
+        isLimit(false),
+        isFillOrKillFail(false),
+        reserveInTotal(0),
+        reserveOutConverted(0),
+        nativeInTotal(0),
+        nativeOutConverted(0),
+        nativeConversionFees(0),            // non-zero only if there is a conversion
+        reserveConversionFees(0),
+        reserveOutChange(0),                // total of non-converting outputs
+        nativeOutChange(0),
+        numBuys(0),                         // each limit conversion that is valid before a certain block should account for FILL_OR_KILL_FEE
+        numSells(0) {}
+
+    bool IsValid() { return !isInvalid; }
+    bool IsReserveExchange() { return isReserveExchange; }
+    bool IsLimit() { return isLimit; }
+    bool IsMarket() { return isReserveExchange && !isLimit; }
+    bool IsFillOrKillFail() { return isFillOrKillFail; }
+};
+
 class CCurrencyState
 {
 public:
     static const uint32_t VALID = 1;
     static const uint32_t ISRESERVE = 2;
     static const int32_t MIN_RESERVE_RATIO = 1000000;
+    static const int32_t CONVERSION_TX_SIZE_MIN = 1024;
+    static const int32_t CONVERSION_TX_SIZE_PEROUTPUT = 200;
     uint32_t flags;         // currency flags (valid, reserve currency, etc.)
     int32_t InitialRatio;   // starting point reserve percent for initial currency and emission, over SATOSHIs
     CAmount InitialSupply;  // initial supply as premine + pre-converted coins, this is used to establish the value at the initial ratio as well
@@ -260,17 +316,23 @@ public:
     // reserve in the reserve currency.
     CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState) const;
 
+    bool CheckReserveExchangeTransaction(const CTransaction *ptx, 
+                                         CReserveExchangeTransactionDescriptor &descriptor, 
+                                         int32_t nHeight=0, CCoinsViewCache *pview=NULL, bool checkInputs=false) const;
+
     CCurrencyState MatchOrders(const std::vector<const CTransaction *> &orders, 
-                                        std::vector<const CTransaction *> &matches, 
-                                        std::vector<const CTransaction *> &refunds, 
-                                        std::vector<const CTransaction *> &nofill, 
-                                        std::vector<const CTransaction *> &rejects, 
-                                        CAmount &price, int32_t height) const;
+                                std::vector<CReserveExchangeTransactionDescriptor> &matches, 
+                                std::vector<const CTransaction *> &refunds, 
+                                std::vector<const CTransaction *> &nofill, 
+                                std::vector<const CTransaction *> &rejects, 
+                                CAmount &price, int32_t height, int64_t maxSerializedSize=LONG_MAX, 
+                                int64_t *ptotalSerializeSize=NULL, CAmount *pInOutTotalFees=NULL) const;
 
     CAmount CalculateConversionFee(CAmount inputAmount, bool convertToNative = false) const;
     CAmount ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount) const;
 
     CAmount ReserveToNative(CAmount reserveAmount) const;
+    CAmount ReserveToNative(CAmount reserveAmount, CAmount exchangeRate) const;
 
     CAmount NativeToReserve(CAmount nativeAmount) const
     {

@@ -391,6 +391,22 @@ bool CScript::IsInstantSpend() const
     return ecode == EVAL_EARNEDNOTARIZATION;
 }
 
+bool CScript::IsPayToCryptoCondition(COptCCParams &ccParams) const
+{
+    CScript subScript;
+    std::vector<std::vector<unsigned char>> vParams;
+
+    if (IsPayToCryptoCondition(&subScript, vParams))
+    {
+        if (!vParams.empty())
+        {
+            ccParams = COptCCParams(vParams[0]);
+        }
+        return true;
+    }
+    return false;
+}
+
 bool CScript::IsPayToCryptoCondition(CScript *ccSubScript, std::vector<std::vector<unsigned char>> &vParams, COptCCParams &optParams) const
 {
     if (IsPayToCryptoCondition(ccSubScript, vParams))

@@ -706,15 +706,16 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             // and notarize the start block, so we have to pass th notarization and cross chain steps
             bool notaryConnected = ConnectedChains.IsVerusPBaaSAvailable() && ConnectedChains.notaryChainHeight >= PBAAS_STARTBLOCK;
 
-            // get current currency state
+            // get current currency state differently, depending on height
             if (nHeight == 1)
             {
                 if (!notaryConnected)
                 {
-                    // cannt make block 1 unless it is past the start block and we can properly notarize it
+                    // cannt make block 1 unless we can properly notarize that the launch chain is past the start block
                     return NULL;
                 }
 
+                // if some amount of pre-conversion was allowed
                 if (thisChain.maxpreconvert)
                 {
                     // this is invalid
@@ -746,13 +747,14 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 }
                 else
                 {
-                    // if we have no preconvert, we cannot be a reserve currency, so start as normal with no preconvert
+                    // if we have no preconvert, we cannot be a reserve currency, so start as normal with no preconversion
                     currencyState = CCurrencyState(thisChain.conversion, thisChain.premine, thisChain.premine, 0, 0);
                 }
             }
             else
             {
                 CBlock block;
+                assert(nHeight > 1);
                 if (thisChain.ChainOptions() & thisChain.OPTION_RESERVE)
                 {
                     // get currency state from last coinbase of last block if this is a reserve currency
@@ -773,7 +775,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 COptCCParams p;
                 for (auto txOut : block.vtx[0].vout)
                 {
-                    if (::IsPayToCryptoCondition(txOut.scriptPubKey, p) && p.evalCode == EVAL_COINBASECONVERSIONOUT)
+                    if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.evalCode == EVAL_COINBASECONVERSIONOUT)
                     {
                         // get the current currency state
                         currencyState = CCurrencyState(p.vData[0]);
@@ -853,7 +855,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     pblocktemplate->vTxFees.push_back(0);
                     pblocktemplate->vTxSigOps.push_back(-1); // updated at end
 
-
                     notarizationTxIndex = pblock->vtx.size() - 1;
 
                     // if we are a reserve chain, we need to add reserve outputs and transactions
@@ -878,56 +879,22 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     return NULL;
                 }
             }
-
-            // update the currency state
-            CPBaaSChainDefinition &thisChain = ConnectedChains.ThisChain();
-            currencyState = CCurrencyState(thisChain.conversion, thisChain.premine + thisChain.preconverted, thisChain.premine + thisChain.preconverted, 0, 0);
-
-            // if there is any option for preconversion, and this is block one, get the total preconverted from the launching chain
-            if (notaryConnected && thisChain.maxpreconvert && nHeight == 1)
-            {
-                // get the total amount pre-converted
-                UniValue params(UniValue::VARR);
-                params.push_back(ASSETCHAINS_CHAINID.GetHex());
-
-                UniValue result;
-                try
-                {
-                    result = find_value(RPCCallRoot("getinitialcurrencystate", params), "result");
-                } catch (exception e)
-                {
-                    result = NullUniValue;
-                }
-
-                if (result.isNull() || !(currencyState = CCurrencyState(result)).IsValid())
-                {
-                    // no matter what happens, we should be able to get a valid currency state of some sort
-                    return NULL;
-                }
-            }
-
-            if (thisChain.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE)
-            {
-                if (nHeight == 1)
-                {
-                    // we need to get the total 
-                }
-                else
-                {
-                    CBlock block;
-                    if (!ReadBlockFromDisk(block, chainActive[nHeight - 1], false))
-                    {
-                        return NULL;
-                    }
-                }
-            }
         }
 
         uint160 reserveExchangeAddress = CCrossChainRPCData::GetConditionID(thisChainID, EVAL_RESERVE_EXCHANGE);
-        std::map<uint256, CAmount> reserveExchangeFees; // hashes of all potentially valid reserve/exchange transactions and their associated native fee
+        std::map<uint256, CReserveExchangeTransactionDescriptor> reserveExchangeTxes; // hashes of all potentially valid reserve/exchange transactions and their associated information
+        std::set<uint256> failedReserveExchange;        // transactions rejected due to limits or size, this does not include refunds for expired or rejects
 
+        int64_t maxReserveExchangeSize = nBlockMaxSize >> 2; // no more than 1/2 the block devoted to conversion
+        int64_t totalReserveExchangeSize = 0;
+        CAmount totalReserveExchangeFees = 0;
+        CAmount exchangeRate;
+
+        if (!isVerusActive && (thisChain.ChainOptions() & thisChain.OPTION_RESERVE))
         {
-            // convert all transactions that are valid when mined
+            std::vector<const CTransaction *> orders;
+
+            // look for all exchange transactions that were valid when mined
             std::vector<pair<uint160, int>> lookForAddresses;
             std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> memAddressIndex;
 
@@ -935,8 +902,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             lookForAddresses.push_back(make_pair(reserveExchangeAddress, 1));
             if (mempool.getAddressIndex(lookForAddresses, memAddressIndex))
             {
-                std::vector<const CTransaction *> orders;
-
                 for (auto ai : memAddressIndex)
                 {
                     CSpentIndexKey spentKey = CSpentIndexKey(ai.first.txhash, ai.first.index);
@@ -950,12 +915,42 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                         // if expired, will not be an exchange, just a send with normal fee calculation
                         if (rex.IsValid() && !rex.IsExpired(nHeight))
                         {
-                            reserveExchangeFees.insert(make_pair(ai.first.txhash, currencyState.CalculateConversionFee(rex.nValue, !(rex.flags & CReserveExchange::TO_RESERVE))));
+                            orders.push_back(&otx);
                         }
                     }
                 }
             }
+
+            // remove transactions to create a subset of orders if necessary
+            // all reserve exchange transactions from the mem pool are here,
+            // solve them all and shrink the results to fit
+            std::vector<CReserveExchangeTransactionDescriptor> matches;
+            std::vector<const CTransaction *> refunds;
+            std::vector<const CTransaction *> nofill;
+            std::vector<const CTransaction *> rejects;
+
+            CCurrencyState newState = currencyState.MatchOrders(orders, matches, refunds, nofill, rejects, exchangeRate, nHeight, maxReserveExchangeSize, 
+                                                                &totalReserveExchangeSize, &totalReserveExchangeFees);
+
+            // remove rejects from mempool, they will never be valid
+            for (auto ptx : rejects)
+            {
+                std::list<CTransaction> removed;
+                mempool.remove(*ptx, removed);
+            }
+
+            // add matches to exchange transaction map and nofills to failed exchange set to keep them out
+            for (auto order : matches) 
+            {
+                reserveExchangeTxes[order.ptx->GetHash()] = order;
+            }
+            for (auto orderTx : nofill)
+            {
+                failedReserveExchange.insert(orderTx->GetHash());
+            }
         }
+
+        // we have all reserve exchange transactions to add, fill up the block's remaining space
 
         // now add transactions from the mem pool
         for (CTxMemPool::indexed_transaction_set::iterator mi = mempool.mapTx.begin();
@@ -1089,6 +1084,10 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 vecPriority.push_back(TxPriority(dPriority, feeRate, &(mi->GetTx())));
         }
 
+
+        // TODO: now, pre-prune the priority queue match and confirm all conversion orders in priority queue and remove any that no longer qualify
+
+
         // Collect transactions into block
         uint64_t nBlockSize = 1000;
         uint64_t nBlockTx = 0;
@@ -1172,53 +1171,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 continue;
             }
 
-            /*
-            {
-                // remove transactions to create a subset of orders if necessary
-                // all reserve exchange transactions from the mem pool are here,
-                // solve them all and shrink the results to fit
-                std::vector<const CTransaction *> matches;
-                std::vector<const CTransaction *> refunds;
-                std::vector<const CTransaction *> nofill;
-                std::vector<const CTransaction *> rejects;
-                CAmount exchangeRate;
-
-                for (auto ai : memAddressIndex)
-                {
-                    CSpentIndexKey spentKey = CSpentIndexKey(ai.first.txhash, ai.first.index);
-                    CSpentIndexValue spentValue;
-                    if (!ai.first.spending && !mempool.getSpentIndex(spentKey, spentValue))
-                    {
-                        // valid output to convert
-                        CTransaction txRef;
-                        orders.push_back(&(mempool.mapTx.find(ai.first.txhash)->GetTx()));
-                    }
-                }
-                CCurrencyState newState = cState.MatchOrders(orders, matches, refunds, nofill, rejects, exchangeRate, nHeight);
-
-                // remove rejects
-                for (auto ptx : rejects)
-                {
-                    std::list<CTransaction> removed;
-                    mempool.remove(*ptx, removed);
-                }
-
-                // get total serialized size, separate into limit and market, and determine a priority for each
-                // to be in the next block
-                int64_t serializeSize = 0;
-                for (auto ptx : matches)
-                {
-                    serializeSize += ::GetSerializeSize(*ptx, SER_NETWORK, PROTOCOL_VERSION);
-                }
-
-                // if we're bigger than 1/2 the max size of the block, we need to make it smaller
-                if (serializeSize > (nBlockMaxSize >> 1))
-                {
-                    // TODO: figure out best algorithm for removing transactions for size, then try again
-                }
-            }
-            */
-
             UpdateCoins(tx, view, nHeight);
 
             BOOST_FOREACH(const OutputDescription &outDescription, tx.vShieldedOutput) {
@@ -1256,7 +1208,9 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 }
             }
         }
-        
+
+        // TODO: add as many of the reserve/exchange transactions as we are able. remove any that cannot execute
+
         nLastBlockTx = nBlockTx;
         nLastBlockSize = nBlockSize;
         blocktime = 1 + std::max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
