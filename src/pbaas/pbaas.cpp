@@ -421,6 +421,40 @@ CServiceReward::CServiceReward(const CTransaction &tx, bool validate)
     }
 }
 
+CCrossChainImport::CCrossChainImport(const CTransaction &tx)
+{
+    for (auto out : tx.vout)
+    {
+        COptCCParams p;
+        if (IsPayToCryptoCondition(out.scriptPubKey, p))
+        {
+            // always take the first for now
+            if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+            {
+                FromVector(p.vData[0], *this);
+                break;
+            }
+        }
+    }
+}
+
+CCrossChainExport::CCrossChainExport(const CTransaction &tx)
+{
+    for (auto out : tx.vout)
+    {
+        COptCCParams p;
+        if (IsPayToCryptoCondition(out.scriptPubKey, p))
+        {
+            // always take the first for now
+            if (p.evalCode == EVAL_CROSSCHAIN_EXPORT)
+            {
+                FromVector(p.vData[0], *this);
+                break;
+            }
+        }
+    }
+}
+
 uint160 CPBaaSChainDefinition::GetChainID(std::string name)
 {
     const char *chainName = name.c_str();
@@ -998,6 +1032,23 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
     }
     notaryChainVersion = "";
     return false;
+}
+
+CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
+{
+    CCoinbaseCurrencyState currencyState;
+    CBlock block;
+    LOCK(cs_main);
+    if (!IsVerusActive() && 
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::SOLUTION_VERUSV3 &&
+        height != 0 && 
+        height <= chainActive.Height() && 
+        chainActive[height] && 
+        ReadBlockFromDisk(block, chainActive[height], false))
+    {
+        currencyState = CCoinbaseCurrencyState(block.vtx[0]);
+    }
+    return currencyState;
 }
 
 void CConnectedChains::SubmissionThread()

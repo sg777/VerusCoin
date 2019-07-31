@@ -11,6 +11,21 @@
 #include "main.h"
 #include "pbaas/pbaas.h"
 #include "pbaas/reserves.h"
+#include "key_io.h"
+
+CReserveOutput::CReserveOutput(const UniValue &obj)
+{
+    uint32_t flags = uni_get_int(find_value(obj, "flags"));
+    int32_t nValue = uni_get_int(find_value(obj, "value"));
+}
+
+UniValue CReserveOutput::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("flags", (int32_t)flags));
+    ret.push_back(Pair("value", (int64_t)nValue));
+    return ret;
+}
 
 CReserveExchange::CReserveExchange(const CTransaction &tx, bool validate)
 {
@@ -74,6 +89,51 @@ UniValue CCurrencyState::ToUniValue() const
     return ret;
 }
 
+CCoinbaseCurrencyState::CCoinbaseCurrencyState(const CTransaction &tx)
+{
+    bool currencyStateFound = false;
+    for (auto out : tx.vout)
+    {
+        COptCCParams p;
+        if (IsPayToCryptoCondition(out.scriptPubKey, p))
+        {
+            if (p.evalCode == EVAL_CURRENCYSTATE)
+            {
+                if (currencyStateFound)
+                {
+                    flags &= !VALID;        // invalidate
+                }
+                else
+                {
+                    FromVector(p.vData[0], *this);
+                    currencyStateFound = true;
+                }
+            }
+        }
+    }
+}
+
+CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyState(obj)
+{
+    ReserveIn = uni_get_int64(find_value(obj, "reservein"));
+    NativeIn = uni_get_int64(find_value(obj, "nativein"));
+    ReserveOut = CReserveOutput(find_value(obj, "reserveout"));
+    ConversionPrice = uni_get_int64(find_value(obj, "conversionprice"));
+    Fees = uni_get_int64(find_value(obj, "fees"));
+}
+
+UniValue CCoinbaseCurrencyState::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret = ((CCurrencyState *)this)->ToUniValue();
+    ret.push_back(Pair("reservein", (int64_t)ReserveIn));
+    ret.push_back(Pair("nativein", (int64_t)NativeIn));
+    ret.push_back(Pair("reserveout", ReserveOut.ToUniValue()));
+    ret.push_back(Pair("conversionprice", (int64_t)ConversionPrice));
+    ret.push_back(Pair("fees", (int64_t)Fees));
+    return ret;
+}
+
 // This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it 
 // takes both input amounts of the reserve and the fractional currency to merge the conversion into one calculation
 // with the same price for all transactions in the block. It returns the newly calculated conversion price of the fractional 
@@ -129,14 +189,102 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
     return (newState.Supply - Supply) / (newState.Reserve - Reserve);
 }
 
+void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &rex, int32_t outputIndex, int32_t nHeight)
+{
+    CAmount fee;
+
+    bool wasMarket = IsMarket();
+
+    flags |= IS_RESERVE + IS_RESERVEEXCHANGE;
+
+    if (IsLimit() || rex.flags & CReserveExchange::LIMIT)
+    {
+        if (wasMarket || (vRex.size() && (vRex.back().second.flags != rex.flags || (vRex.back().second.nValidBefore != rex.nValidBefore))))
+        {
+            flags |= IS_REJECT;
+            return;
+        }
+
+        flags |= IS_LIMIT;
+
+        if (rex.nValidBefore > nHeight)
+        {
+            flags |= IS_FILLORKILL;
+            // fill or kill fee must be pre-subtracted, but is added back on success, making conversion the only
+            // requred fee on success
+            fee = CalculateConversionFee(rex.nValue + rex.FILL_OR_KILL_FEE);
+            if (rex.flags & CReserveExchange::TO_RESERVE)
+            {
+                numSells += 1;
+                nativeConversionFees += fee;
+                nativeOutConverted += (rex.nValue + rex.FILL_OR_KILL_FEE) - fee;    // only explicitly converted
+                nativeOut += (rex.nValue + rex.FILL_OR_KILL_FEE) - fee;             // output is always less fees
+            }
+            else
+            {
+                numBuys += 1;
+                reserveConversionFees += fee;
+                reserveOutConverted += rex.nValue + rex.FILL_OR_KILL_FEE - fee;
+                reserveOut += (rex.nValue + rex.FILL_OR_KILL_FEE) - fee;
+            }
+        }
+        else
+        {
+            flags &= !IS_RESERVEEXCHANGE;                       // no longer a reserve exchange transaction, falls back to normal reserve tx
+            flags |= IS_FILLORKILLFAIL;
+
+            if (rex.flags & CReserveExchange::TO_RESERVE)
+            {
+                numSells += 1;
+                nativeOut += rex.nValue;
+            }
+            else
+            {
+                numBuys += 1;
+                reserveOut += rex.nValue;
+            }
+        }
+    }
+    else
+    {
+        fee = CalculateConversionFee(rex.nValue);
+        if (rex.flags & CReserveExchange::TO_RESERVE)
+        {
+            numSells += 1;
+            nativeConversionFees += fee;
+            nativeOutConverted += rex.nValue - fee;     // fee will not be converted from native, so is not included in converted out
+            nativeOut += rex.nValue - fee;              // fee is not considered part of the total native out, since it will go to miner
+        }
+        else
+        {
+            numBuys += 1;
+            reserveConversionFees += fee;
+            reserveOutConverted += rex.nValue;
+            reserveOut += rex.nValue - fee;
+        }
+    }                        
+    vRex.push_back(std::make_pair(outputIndex, rex));
+}
+
+CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyState &currencyState) const
+{
+    return NativeFees() + currencyState.ReserveToNative(ReserveFees());
+}
+
+CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyState &currencyState, CAmount exchangeRate) const
+{
+    return NativeFees() + currencyState.ReserveToNative(ReserveFees(), exchangeRate);
+}
+
+CAmount CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyState &currencyState) const
+{
+    return currencyState.NativeToReserve(NativeFees()) + ReserveFees();
+}
+
 /*
  * Checks all structural aspects of the reserve part of a transaction that may have reserve inputs and/or outputs
  */
-bool CCurrencyState::CheckReserveExchangeTransaction(const CTransaction *ptx, 
-                                                    CReserveExchangeTransactionDescriptor &desc, 
-                                                    int32_t nHeight,
-                                                    CCoinsViewCache *pview,
-                                                    bool checkInputs) const
+CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction &tx, CCoinsViewCache &view, int32_t nHeight)
 {
     // market conversions can have any number of both buy and sell conversion outputs, this is used to make efficient, aggregated
     // reserve transfer operations with conversion
@@ -152,30 +300,12 @@ bool CCurrencyState::CheckReserveExchangeTransaction(const CTransaction *ptx,
         IsVerusActive() ||
         !(ConnectedChains.ThisChain().ChainOptions() & ConnectedChains.ThisChain().OPTION_RESERVE))
     {
-        return false;
+        return;
     }
 
-    desc.isInvalid = true;
-
-    std::vector<CReserveExchange> vRex;
-    bool isValid = false;
-    bool isLimit = false;
-    bool isMarket = false;
-    bool isFillOrKillFail = false;
-    
-    int64_t reserveInTotal = 0;
-    int64_t reserveOutConverted = 0;
-    int64_t nativeInTotal = 0;
-    int64_t nativeOutConverted = 0;
-    int64_t nativeConversionFees = 0;       // non-zero only if there is a conversion
-    int64_t reserveConversionFees = 0;
-    int64_t reserveOutChange = 0;           // total of non-converting outputs
-    int64_t nativeOutChange = 0;
-    int32_t numBuys = 0;                    // each limit conversion that is valid before a certain block should account for FILL_OR_KILL_FEE
-    int32_t numSells = 0;
-
-    for (auto txOut : ptx->vout)
+    for (int i = 0; i < tx.vout.size(); i++)
     {
+        const CTxOut &txOut = tx.vout[i];
         COptCCParams p;
         if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
         {
@@ -186,11 +316,10 @@ bool CCurrencyState::CheckReserveExchangeTransaction(const CTransaction *ptx,
                         CReserveOutput ro;
                         if (!p.vData.size() && !(ro = CReserveOutput(p.vData[0])).IsValid())
                         {
-                            return false;
+                            flags |= IS_REJECT;
+                            return;
                         }
-                        // on a PBaaS reserve chain, a reserve transfer is always denominated in reserve, as exchange must happen before it is
-                        // created. explicit fees in transfer object are for export and import, not initial mining
-                        reserveOutChange += ro.nValue;
+                        AddReserveOutput(ro);
                     }
                     break;
 
@@ -199,11 +328,12 @@ bool CCurrencyState::CheckReserveExchangeTransaction(const CTransaction *ptx,
                         CReserveTransfer rt;
                         if (!p.vData.size() && !(rt = CReserveTransfer(p.vData[0])).IsValid())
                         {
-                            return false;
+                            flags |= IS_REJECT;
+                            return;
                         }
                         // on a PBaaS reserve chain, a reserve transfer is always denominated in reserve, as exchange must happen before it is
                         // created. explicit fees in transfer object are for export and import, not initial mining
-                        reserveOutChange += rt.nValue;
+                        AddReserveTransfer(rt);
                     }
                     break;
 
@@ -212,86 +342,45 @@ bool CCurrencyState::CheckReserveExchangeTransaction(const CTransaction *ptx,
                         CReserveExchange rex;
                         if (!p.vData.size() && !(rex = CReserveExchange(p.vData[0])).IsValid())
                         {
-                            return false;
+                            flags |= IS_REJECT;
+                            return;
                         }
 
-
-                        CAmount fee;
-                        
-                        if (isLimit || rex.flags & CReserveExchange::LIMIT)
+                        // if we send the output to the reserve chain, it must be a TO_RESERVE transaction
+                        if (!(rex.flags & rex.TO_RESERVE) && rex.flags & rex.SEND_OUTPUT)
                         {
-                            if (isMarket || (vRex.size() && (vRex.back().flags != rex.flags || (vRex.back().nValidBefore != rex.nValidBefore))))
-                            {
-                                return false;
-                            }
-                            isLimit = true;
-
-                            if (rex.flags & CReserveExchange::FILL_OR_KILL && rex.nValidBefore > nHeight)
-                            {
-                                // fill or kill fee must be pre-subtracted, but is added back on success, making conversion the only
-                                // requred fee on success
-                                fee = CalculateConversionFee(rex.nValue + rex.FILL_OR_KILL_FEE);
-                                if (rex.flags & CReserveExchange::TO_RESERVE)
-                                {
-                                    numSells += 1;
-                                    nativeConversionFees += fee;
-                                    nativeOutConverted += (rex.nValue + rex.FILL_OR_KILL_FEE) - fee;
-                                }
-                                else
-                                {
-                                    numBuys += 1;
-                                    reserveConversionFees += fee;
-                                    reserveOutConverted += rex.nValue + rex.FILL_OR_KILL_FEE;
-                                }
-                            }
-                            else
-                            {
-                                isFillOrKillFail = true;
-                                if (rex.flags & CReserveExchange::TO_RESERVE)
-                                {
-                                    numSells += 1;
-                                    nativeOutChange += rex.nValue;
-                                }
-                                else
-                                {
-                                    numBuys += 1;
-                                    reserveOutChange += rex.nValue;
-                                }
-                            }
+                            flags |= IS_REJECT;
+                            return;
                         }
-                        else
+
+                        AddReserveExchange(rex, i, nHeight);
+
+                        if (IsReject())
                         {
-                            isMarket = true;
-                            fee = CalculateConversionFee(rex.nValue);
-                            if (rex.flags & CReserveExchange::TO_RESERVE)
-                            {
-                                numSells += 1;
-                                nativeConversionFees += fee;
-                                nativeOutConverted += rex.nValue - fee;
-                            }
-                            else
-                            {
-                                numBuys += 1;
-                                reserveConversionFees += fee;
-                                reserveOutConverted += rex.nValue;
-                            }
-                        }                        
-                        vRex.push_back(rex);
+                            return;
+                        }
                     }
                     break;
 
-                // the following outputs are incompatible with reserve exchange tranactions
+                // this check will need to be made complete by preventing mixing both here and where the others
+                // are seen
                 case EVAL_RESERVE_DEPOSIT:
                 case EVAL_CROSSCHAIN_EXPORT:
                 case EVAL_CROSSCHAIN_IMPORT:
                     {
-                        return false;
+                        // the following outputs are incompatible with reserve exchange tranactions
+                        if (IsReserveExchange())
+                        {
+                            flags |= IS_REJECT;
+                            return;
+                        }
+                        return;
                     }
                     break;
                 
                 default:
                     {
-                        nativeOutChange += txOut.nValue;
+                        nativeOut += txOut.nValue;
                     }
             }
         }
@@ -299,14 +388,18 @@ bool CCurrencyState::CheckReserveExchangeTransaction(const CTransaction *ptx,
 
     // we have all inputs, outputs, and fees, if check inputs, we can check all for consistency
     // inputs may be in the memory pool or on the blockchain
-    if (pview && checkInputs)
-    {
-        // no inputs are valid at height 0
-        if (!nHeight)
-        {
-            return false;
-        }
 
+    // no inputs are valid at height 0
+    if (!nHeight)
+    {
+        flags |= IS_REJECT;
+        return;
+    }
+
+    // if we don't have a reserve transaction, we're done
+    // don't try to replace basic transaction validation
+    if (IsReserve())
+    {
         int64_t interest;
         CAmount nValueIn = 0;
         {
@@ -315,64 +408,119 @@ bool CCurrencyState::CheckReserveExchangeTransaction(const CTransaction *ptx,
             int64_t interest;           // unused for now
             // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
             // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
-            nativeInTotal = pview->GetValueIn(nHeight, &interest, *ptx);
-            reserveInTotal = pview->GetReserveValueIn(nHeight, *ptx);
+            nativeIn = view.GetValueIn(nHeight, &interest, tx);
+            nativeIn += tx.GetShieldedValueIn();
+
+            reserveIn = view.GetReserveValueIn(nHeight, tx);
         }
 
-        CAmount minReserveFee = CReserveExchange::FILL_OR_KILL_FEE * numBuys;
-        CAmount minNativeFee = CReserveExchange::FILL_OR_KILL_FEE * numSells;
+        CAmount minReserveFee;
+        CAmount minNativeFee;
+
+        if (IsReserveExchange())
+        {
+            minReserveFee = reserveConversionFees;
+
+            minNativeFee = nativeConversionFees;
+        }
+        else
+        {
+            minReserveFee = CReserveExchange::FILL_OR_KILL_FEE * numBuys;
+            minNativeFee = CReserveExchange::FILL_OR_KILL_FEE * numSells;
+        }
 
         // we have total inputs, outputs and fee calculations, ensure that
         // everything balances and fees are covered in all cases
         CAmount reserveFeesAvailable;
         CAmount nativeFeesAvailable;
-        if (isFillOrKillFail || !(reserveOutConverted || nativeOutConverted))
+
+        if (ReserveFees() < minReserveFee || NativeFees() < minNativeFee)
         {
-            // we have failed conversions, so we must have at least enough fees available between input and output to cover
-            // the minimum FILL_OR_KILL_FEES
-            reserveFeesAvailable = reserveInTotal - reserveOutChange;
-            nativeFeesAvailable = nativeInTotal - nativeOutChange;
+            // not enough fees
+            flags |= IS_REJECT;
+            return;
+        }
+        flags |= IS_VALID;
+        ptx = &tx;
+    }
+}
+
+CMutableTransaction &CReserveTransactionDescriptor::AddPlaceHolderOutputs(CMutableTransaction &conversionTx) const
+{
+    if (!IsReserveExchange() || IsFillOrKillFail())
+    {
+        return conversionTx;
+    }
+    for (auto &indexRex : vRex)
+    {
+        COptCCParams p;
+        ptx->vout[indexRex.first].scriptPubKey.IsPayToCryptoCondition(p);
+
+        // must emit reserve transfer
+        CCcontract_info CC;
+        CCcontract_info *cp;
+        CAmount amount = indexRex.second.nValue - CalculateConversionFee(indexRex.second.nValue);
+
+        // if we should emit a reserve transfer or normal reserve output
+        if (indexRex.second.flags && indexRex.second.SEND_OUTPUT)
+        {
+            assert(indexRex.second.flags & indexRex.second.TO_RESERVE);
+            cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+
+            CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+            // send the entire amount to a reserve transfer output of the specific chain
+            std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), 
+                                                                                CKeyID(ConnectedChains.NotaryChain().GetChainID())});
+
+            // create the transfer output with the unconverted amount less fees
+            CReserveTransfer rt(CReserveTransfer::VALID, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, GetDestinationID(p.vKeys[0]));
+
+            conversionTx.vout.push_back(MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt));
         }
         else
         {
-            // make sure that we have the rght amount of conversion fee and also that if it didn't convert, we'd still have enough
-            reserveFeesAvailable = reserveInTotal - ((reserveOutConverted + reserveOutChange) - minReserveFee);
-            nativeFeesAvailable = nativeInTotal - ((nativeOutConverted + nativeOutChange) - minNativeFee);
-        }
-        if (numBuys && reserveFeesAvailable < minReserveFee)
-        {
-            // not enough fees
-            return false;
-        }
-        if (numSells && nativeFeesAvailable < minNativeFee)
-        {
-            // not enough fees
-            return false;
+            // check reserve or normal output
+            if (indexRex.second.flags & indexRex.second.TO_RESERVE)
+            {
+                // send the entire amount to a reserve transfer output of the specific chain
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({p.vKeys[0]});
+
+                // create the transfer output with the unconverted amount less fees
+                CReserveTransfer rt(CReserveTransfer::VALID, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, GetDestinationID(p.vKeys[0]));
+
+                conversionTx.vout.push_back(MakeCC0of0Vout(EVAL_RESERVE_TRANSFER, 0, dests, rt));
+            }
+            else
+            {
+                conversionTx.vout.push_back(CTxOut(amount, GetScriptForDestination(p.vKeys[0])));
+            }
         }
     }
-
-    // TODO fill in desc and return true
+    return conversionTx;
 }
 
-// From a vector of reserve exchange transactions, match all that can be matched and return a new fractional reserve state,
-// a vector of transactions that are all executable, and the price that they executed at only qualified transactions 
-// based on their limits and the transaction price will be included.
+// From a vector of transaction pointers, match all that are valid orders and can be matched,
+// put them into a vector of reserve transaction descriptors, and return a new fractional reserve state,
+// if pConversionTx is present, this will add one output to it for each transaction included
+// and consider its size wen comparing to maxSerializeSize
 CCurrencyState CCurrencyState::MatchOrders(const std::vector<const CTransaction *> &orders, 
-                                            std::vector<CReserveExchangeTransactionDescriptor> &matches, 
-                                            std::vector<const CTransaction *> &refunds, 
-                                            std::vector<const CTransaction *> &nofill, 
-                                            std::vector<const CTransaction *> &rejects, 
-                                            CAmount &price, int32_t height, int64_t maxSerializeSize, 
-                                            int64_t *pInOutTotalSerializeSize, CAmount *pInOutTotalFees) const
+                                           std::vector<CReserveTransactionDescriptor> &reserveFills, 
+                                           std::vector<const CTransaction *> &expiredFillOrKills, 
+                                           std::vector<const CTransaction *> &noFills, 
+                                           std::vector<const CTransaction *> &rejects, 
+                                           CAmount &price, int32_t height, int64_t maxSerializeSize, 
+                                           int64_t *pInOutTotalSerializeSize, CAmount *pInOutTotalFees, CMutableTransaction *pConversionTx) const
 {
     // synthetic order book of limitBuys and limitSells sorted by limit, order of preference beyond limit sorting is random
-    std::multimap<CAmount, CReserveExchangeTransactionDescriptor> limitBuys;
-    std::multimap<CAmount, CReserveExchangeTransactionDescriptor> limitSells;        // limit orders are prioritized by limit
-    std::multimap<CAmount, CReserveExchangeTransactionDescriptor> marketOrders;      // prioritized by fee rate
+    std::multimap<CAmount, CReserveTransactionDescriptor> limitBuys;
+    std::multimap<CAmount, CReserveTransactionDescriptor> limitSells;        // limit orders are prioritized by limit
+    std::multimap<CAmount, CReserveTransactionDescriptor> marketOrders;      // prioritized by fee rate
     CAmount marketBuy = 0;
     CAmount marketSell = 0;
 
     int64_t totalSerializedSize = pInOutTotalSerializeSize ? *pInOutTotalSerializeSize + CCurrencyState::CONVERSION_TX_SIZE_MIN : CCurrencyState::CONVERSION_TX_SIZE_MIN;
+    int64_t conversionSizeOverhead = 0;
     int64_t totalNativeFees = 0;
     int64_t totalReserveFees = 0;
 
@@ -388,36 +536,35 @@ CCurrencyState CCurrencyState::MatchOrders(const std::vector<const CTransaction 
     // orders that should be treated as normal will go into refunds and invalid transactions into rejects
     for (int i = 0; i < orders.size(); i++)
     {
-        CReserveExchangeTransactionDescriptor orderParams;
-        orderParams.ptx = orders[i];
+        CReserveTransactionDescriptor txDesc(*orders[i], view, height);
 
-        if (CheckReserveExchangeTransaction(orderParams.ptx, orderParams, height, &view, true) && orderParams.IsReserveExchange() && !orderParams.IsFillOrKillFail() && orderParams.IsValid())
+        if (txDesc.IsValid() && txDesc.IsReserveExchange())
         {
             // if this is a market order, put it in, if limit, put it in an order book, sorted by limit
-            if (orderParams.IsMarket())
+            if (txDesc.IsMarket())
             {
-                CAmount fee = ReserveToNative(orderParams.reserveConversionFees) + orderParams.nativeConversionFees;
-                CFeeRate feeRate = CFeeRate(fee, GetSerializeSize(CDataStream(SER_NETWORK, PROTOCOL_VERSION), *orderParams.ptx));
-                marketOrders.insert(std::make_pair(feeRate.GetFeePerK(), orderParams));
+                CAmount fee = ReserveToNative(txDesc.reserveConversionFees) + txDesc.nativeConversionFees;
+                CFeeRate feeRate = CFeeRate(fee, GetSerializeSize(CDataStream(SER_NETWORK, PROTOCOL_VERSION), *txDesc.ptx));
+                marketOrders.insert(std::make_pair(feeRate.GetFeePerK(), txDesc));
             }
             else
             {
-                assert(orderParams.IsLimit());
+                assert(txDesc.IsLimit());
                 // limit order, so put it in buy or sell
-                if (orderParams.numBuys)
+                if (txDesc.numBuys)
                 {
-                    limitBuys.insert(std::make_pair(orderParams.vRex[0].second.nLimit, orderParams));
+                    limitBuys.insert(std::make_pair(txDesc.vRex[0].second.nLimit, txDesc));
                 }
                 else
                 {
-                    assert(orderParams.numSells);
-                    limitSells.insert(std::make_pair(orderParams.vRex[0].second.nLimit, orderParams));
+                    assert(txDesc.numSells);
+                    limitSells.insert(std::make_pair(txDesc.vRex[0].second.nLimit, txDesc));
                 }
             }
         }
-        else if (orderParams.IsValid())
+        else if (txDesc.IsValid())
         {
-            refunds.push_back(orders[i]);
+            expiredFillOrKills.push_back(orders[i]);
         }
         else
         {
@@ -432,27 +579,73 @@ CCurrencyState CCurrencyState::MatchOrders(const std::vector<const CTransaction 
     int64_t numMarketOrders = marketOrders.size();
 
     // if nothing to do, we are done, don't update anything
-    if (!(numLimitOrders + numMarketOrders))
+    if (!(reserveFills.size() + numLimitOrders + numMarketOrders))
     {
         return *this;
     }
 
-    int64_t marketOrdersSizeLimit = ((arith_uint256(numMarketOrders) * arith_uint256(maxSerializeSize)) / arith_uint256(numLimitOrders + numMarketOrders)).GetLow64();
-    int64_t limitOrdersSizeLimit = maxSerializeSize - marketOrdersSizeLimit;
+    // 1. start from the current state and calculate what the price would be with market orders
+    // 2. add orders, first buys, as many as we can from the highest value and number downward, one at a time, until we run out or
+    //    cannot add any more due to not meeting the price. then we do the same for sells if there are any available, and alternate until
+    //    we either run out or cannot add from either side. within a specific limit, orders are sorted by largest first, which means
+    //    there is no point in retracing if an element fails to be added
+    // 3. calculate a final order price.5
+    // 4. create and return a new, updated CCurrencyState
+    CAmount reserveIn = 0;
+    CAmount fractionalIn = 0;
+    CCurrencyState newState;
+    CAmount exchangeRate;
+
+    // the ones that are passed may be any valid reserve related transaction
+    // we need to first process those with the assumption that they are included
+    for (auto txDesc : reserveFills)
+    {
+        // add up the starting point for conversions
+        if (txDesc.IsReserveExchange())
+        {
+            // native is only converted as needed, so the amount to convert is already correct irrespective of fees
+            reserveIn = txDesc.reserveOutConverted + txDesc.ReserveFees();
+            fractionalIn = txDesc.nativeOutConverted;
+            if (pConversionTx)
+            {
+                txDesc.AddPlaceHolderOutputs(*pConversionTx);
+            }
+        }
+        else
+        {
+            // convert all reserve fees to native
+            reserveIn += txDesc.ReserveFees();
+        }
+        totalReserveFees += txDesc.ReserveFees();
+        totalNativeFees += txDesc.NativeFees();
+    }
+
+    int64_t curSpace = maxSerializeSize - (totalSerializedSize + conversionSizeOverhead);
+    int64_t marketOrdersSizeLimit = ((arith_uint256(numMarketOrders) * arith_uint256(curSpace)) / arith_uint256(numLimitOrders + numMarketOrders)).GetLow64();
+    int64_t limitOrdersSizeLimit = curSpace - marketOrdersSizeLimit;
     if (limitOrdersSizeLimit < 1024 && maxSerializeSize > 2048)
     {
         marketOrdersSizeLimit = maxSerializeSize - 1024;
         limitOrdersSizeLimit = 1024;
     }
 
-    CDataStream sizeStream(SER_NETWORK, PROTOCOL_VERSION);
-
     for (auto marketOrder : marketOrders)
     {
-        // add as many as we can fit
-        int64_t thisSerializeSize = GetSerializeSize(sizeStream, *marketOrder.second.ptx);
-        if (totalSerializedSize + thisSerializeSize <= marketOrdersSizeLimit)
+        // add as many as we can fit, if we are able to, consider the output transaction overhead as well
+        int64_t thisSerializeSize = GetSerializeSize(*marketOrder.second.ptx, SER_NETWORK, PROTOCOL_VERSION);
+        CMutableTransaction mtx;
+        if (pConversionTx)
         {
+            mtx = *pConversionTx;
+            marketOrder.second.AddPlaceHolderOutputs(mtx);
+            conversionSizeOverhead = GetSerializeSize(mtx, SER_NETWORK, PROTOCOL_VERSION);
+        }
+        if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= marketOrdersSizeLimit)
+        {
+            if (pConversionTx)
+            {
+                *pConversionTx = mtx;
+            }
             if (marketOrder.second.numSells)
             {
                 // total amount of native currency out that must be converted
@@ -463,35 +656,26 @@ CCurrencyState CCurrencyState::MatchOrders(const std::vector<const CTransaction 
                 // convert the total input to fractional, fee is subtracted after
                 marketBuy += marketOrder.second.reserveOutConverted;
             }
-            matches.push_back(marketOrder.second);
+            reserveFills.push_back(marketOrder.second);
             totalSerializedSize += thisSerializeSize;
-            totalNativeFees += marketOrder.second.nativeConversionFees;
-            totalReserveFees += marketOrder.second.reserveConversionFees;
+            totalNativeFees += marketOrder.second.NativeFees();
+            totalReserveFees += marketOrder.second.ReserveFees();
         }
         else
         {
             // can't fit, no fill
-            nofill.push_back(marketOrder.second.ptx);
+            noFills.push_back(marketOrder.second.ptx);
         }
     }
 
-    // 1. start from the current state and calculate what the price would be with market orders
-    // 2. add orders, first buys, as many as we can from the highest value and number downward, one at a time, until we run out or
-    //    cannot add any more due to not meeting the price. then we do the same for sells if there are any available, and alternate until
-    //    we either run out or cannot add from either side. within a specific limit, orders are sorted by largest first, which means
-    //    there is no point in retracing if an element fails to be added
-    // 3. calculate a final order price.5
-    // 4. create and return a new, updated CCurrencyState
-    CAmount reserveIn = marketBuy;
-    CAmount fractionalIn = marketSell;
-    CCurrencyState newState;
-    CAmount exchangeRate;
+    reserveIn += marketBuy;
+    fractionalIn += marketSell;
 
     // iteratively add limit orders first buy, then sell, until we no longer have anything to add
     // this must iterate because each time we add a buy, it may put another sell's limit within reach and
     // vice versa
-    std::pair<std::multimap<CAmount, CReserveExchangeTransactionDescriptor>::iterator, CAmount> buyPartial = make_pair(limitBuys.end(), 0); // valid in loop for partial fill
-    std::pair<std::multimap<CAmount, CReserveExchangeTransactionDescriptor>::iterator, CAmount> sellPartial = make_pair(limitSells.end(), 0);
+    std::pair<std::multimap<CAmount, CReserveTransactionDescriptor>::iterator, CAmount> buyPartial = make_pair(limitBuys.end(), 0); // valid in loop for partial fill
+    std::pair<std::multimap<CAmount, CReserveTransactionDescriptor>::iterator, CAmount> sellPartial = make_pair(limitSells.end(), 0);
 
     limitOrdersSizeLimit = maxSerializeSize - totalSerializedSize;
     int64_t buyLimitSizeLimit = totalSerializedSize + ((arith_uint256(limitBuys.size()) * arith_uint256(limitOrdersSizeLimit)) / arith_uint256(numLimitOrders)).GetLow64();
@@ -513,20 +697,34 @@ CCurrencyState CCurrencyState::MatchOrders(const std::vector<const CTransaction 
             // search space each iteration and remove anything we've already added, making the end always the most in-the-money
             CCurrencyState rState;
 
-            CReserveExchangeTransactionDescriptor &currentBuy = limitBuysIt->second;
+            CReserveTransactionDescriptor &currentBuy = limitBuysIt->second;
 
             // it must first fit, space-wise
-            int64_t thisSerializeSize = GetSerializeSize(sizeStream, *(currentBuy.ptx));
-            if (totalSerializedSize + thisSerializeSize <= buyLimitSizeLimit)
+            int64_t thisSerializeSize = GetSerializeSize(*(currentBuy.ptx), SER_NETWORK, PROTOCOL_VERSION);
+
+            CMutableTransaction mtx;
+            if (pConversionTx)
+            {
+                mtx = *pConversionTx;
+                currentBuy.AddPlaceHolderOutputs(mtx);
+                conversionSizeOverhead = GetSerializeSize(mtx, SER_NETWORK, PROTOCOL_VERSION);
+            }
+            if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= buyLimitSizeLimit)
             {
                 // calculate fresh with all conversions together to see if we still meet the limit
                 CAmount newExchange = ConvertAmounts(reserveIn + currentBuy.reserveOutConverted, fractionalIn, rState);
                 if (newExchange <= currentBuy.vRex[0].second.nLimit)
                 {
+                    // update conversion transaction if we have one
+                    if (pConversionTx)
+                    {
+                        *pConversionTx = mtx;
+                    }
+
                     // add to the current buys, we will never do something to disqualify this, since all orders left are either
                     // the same limit or lower
-                    matches.push_back(currentBuy);
-                    totalReserveFees += currentBuy.reserveConversionFees;
+                    reserveFills.push_back(currentBuy);
+                    totalReserveFees += currentBuy.ReserveFees();
                     totalSerializedSize += thisSerializeSize;
 
                     reserveIn += currentBuy.reserveOutConverted;
@@ -566,19 +764,34 @@ CCurrencyState CCurrencyState::MatchOrders(const std::vector<const CTransaction 
         for (auto limitSellsIt = limitSells.begin(); limitSellsIt != limitSells.end() && exchangeRate > limitSellsIt->second.vRex.front().second.nLimit; limitSellsIt = limitSells.begin())
         {
             CCurrencyState rState;
-            CReserveExchangeTransactionDescriptor &currentSell = limitSellsIt->second;
+            CReserveTransactionDescriptor &currentSell = limitSellsIt->second;
 
-            int64_t thisSerializeSize = GetSerializeSize(sizeStream, *currentSell.ptx);
-            if (totalSerializedSize + thisSerializeSize <= maxSerializeSize)
+            int64_t thisSerializeSize = GetSerializeSize(*currentSell.ptx, SER_NETWORK, PROTOCOL_VERSION);
+
+            CMutableTransaction mtx;
+            if (pConversionTx)
+            {
+                mtx = *pConversionTx;
+                currentSell.AddPlaceHolderOutputs(mtx);
+                conversionSizeOverhead = GetSerializeSize(mtx, SER_NETWORK, PROTOCOL_VERSION);
+            }
+
+            if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= maxSerializeSize)
             {
                 // calculate fresh with all conversions together to see if we still meet the limit
                 CAmount newExchange = ConvertAmounts(reserveIn, fractionalIn + currentSell.nativeOutConverted, rState);
                 if (newExchange >= currentSell.vRex.front().second.nLimit)
                 {
+                    // update conversion transaction if we have one
+                    if (pConversionTx)
+                    {
+                        *pConversionTx = mtx;
+                    }
+
                     // add to the current sells, we will never do something to disqualify this, since all orders left are either
                     // the same limit or higher
-                    matches.push_back(currentSell);
-                    totalNativeFees += currentSell.nativeConversionFees;
+                    reserveFills.push_back(currentSell);
+                    totalNativeFees += currentSell.NativeFees();
                     totalSerializedSize += thisSerializeSize;
 
                     fractionalIn += currentSell.nativeOutConverted;
@@ -593,20 +806,21 @@ CCurrencyState CCurrencyState::MatchOrders(const std::vector<const CTransaction 
                 }
             }
         }
+        buyLimitSizeLimit = maxSerializeSize;
     }
 
     for (auto entry : limitBuys)
     {
-        nofill.push_back(entry.second.ptx);
+        noFills.push_back(entry.second.ptx);
     }
 
     for (auto entry : limitSells)
     {
-        nofill.push_back(entry.second.ptx);
+        noFills.push_back(entry.second.ptx);
     }
 
     // if no matches, no state updates
-    if (!matches.size())
+    if (!reserveFills.size())
     {
         return *this;
     }
@@ -641,6 +855,20 @@ CAmount CCurrencyState::CalculateConversionFee(CAmount inputAmount, bool convert
         }
         bigAmount = price ? (bigAmount * bigSatoshi) / arith_uint256(price) : 0;
     }
+
+    CAmount fee = 0;
+    fee = ((bigAmount * arith_uint256(CReserveExchange::SUCCESS_FEE)) / bigSatoshi).GetLow64();
+    if (fee < CReserveExchange::MIN_SUCCESS_FEE)
+    {
+        fee = CReserveExchange::MIN_SUCCESS_FEE;
+    }
+    return fee;
+}
+
+CAmount CReserveTransactionDescriptor::CalculateConversionFee(CAmount inputAmount) const
+{
+    arith_uint256 bigAmount(inputAmount);
+    arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
 
     CAmount fee = 0;
     fee = ((bigAmount * arith_uint256(CReserveExchange::SUCCESS_FEE)) / bigSatoshi).GetLow64();

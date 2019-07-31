@@ -19,6 +19,8 @@
 #include "boost/multi_index_container.hpp"
 #include "boost/multi_index/ordered_index.hpp"
 
+#include "pbaas/reserves.h"
+
 class CAutoFile;
 
 inline double AllowFreeThreshold()
@@ -53,12 +55,13 @@ private:
     unsigned int nHeight; //! Chain height when entering the mempool
     bool hadNoDependencies; //! Not dependent on any other txs when it entered the mempool
     bool spendsCoinbase; //! keep track of transactions that spend a coinbase
+    bool hasReserve; //! keep track of transactions that spend a coinbase
     uint32_t nBranchId; //! Branch ID this transaction is known to commit to, cached for efficiency
 
 public:
     CTxMemPoolEntry(const CTransaction& _tx, const CAmount& _nFee,
                     int64_t _nTime, double _dPriority, unsigned int _nHeight,
-                    bool poolHasNoInputsOf, bool spendsCoinbase, uint32_t nBranchId);
+                    bool poolHasNoInputsOf, bool spendsCoinbase, uint32_t nBranchId, bool hasreserve=false);
     CTxMemPoolEntry();
     CTxMemPoolEntry(const CTxMemPoolEntry& other);
 
@@ -136,6 +139,9 @@ private:
     std::map<uint256, const CTransaction*> mapSproutNullifiers;
     std::map<uint256, const CTransaction*> mapSaplingNullifiers;
 
+    std::map<uint256, std::pair<double, CAmount> > mapDeltas;
+    std::map<uint256, CReserveTransactionDescriptor> mapReserveTransactions;    // all reserve transactions in the mempool go here
+
     void checkNullifiers(ShieldedType type) const;
     
 public:
@@ -170,7 +176,6 @@ private:
 
 public:
     std::map<COutPoint, CInPoint> mapNextTx;
-    std::map<uint256, std::pair<double, CAmount> > mapDeltas;
 
     CTxMemPool(const CFeeRate& _minRelayFee);
     ~CTxMemPool();
@@ -213,7 +218,9 @@ public:
     bool HasNoInputsOf(const CTransaction& tx) const;
 
     /** Affect CreateNewBlock prioritisation of transactions */
-    void PrioritiseTransaction(const uint256 hash, const std::string strHash, double dPriorityDelta, const CAmount& nFeeDelta);
+    void PrioritiseTransaction(const uint256 &hash, const std::string strHash, double dPriorityDelta, const CAmount& nFeeDelta);
+    void PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyState &currencyState);
+    bool IsKnownReserveTransaction(const uint256 &hash, CReserveTransactionDescriptor &txDesc) const;  // know to be reserve transaction, get descriptor
     void ApplyDeltas(const uint256 hash, double &dPriorityDelta, CAmount &nFeeDelta);
     void ClearPrioritisation(const uint256 hash);
 

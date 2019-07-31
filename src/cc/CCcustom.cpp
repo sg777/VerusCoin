@@ -330,7 +330,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             cp->ismyvin = IsServiceRewardInput;
             break;
 
-        case EVAL_COINBASECONVERSIONOUT:
+        case EVAL_CURRENCYSTATE:
         case EVAL_RESERVE_TRANSFER:
         case EVAL_RESERVE_OUTPUT:
         case EVAL_CROSSCHAIN_IMPORT:

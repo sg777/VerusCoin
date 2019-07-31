@@ -646,21 +646,24 @@ class CCrossChainImport
 {
 public:
     uint160 chainID;                                            // usually the reserve currency, but here for generality
-    CAmount nValue;                                             // amount of proxy coin for final output (difference from actual output divided into 2 fees)
+    CAmount nValue;                                             // total amount of foreign coins imported from chain without conversion
 
     CCrossChainImport() : nValue(0) { }
-    CCrossChainImport(const CAmount value) : nValue(value) { }
+    CCrossChainImport(const uint160 &cID, const CAmount value) : chainID(cID), nValue(value) { }
 
     CCrossChainImport(const std::vector<unsigned char> &asVector)
     {
         FromVector(asVector, *this);
     }
 
+    CCrossChainImport(const CTransaction &tx);
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(VARINT(nValue));
+        READWRITE(chainID);
     }
 
     std::vector<unsigned char> AsVector()
@@ -670,7 +673,7 @@ public:
 
     bool IsValid()
     {
-        return nValue >= 0 && !chainID.IsNull();
+        return !chainID.IsNull();
     }
 };
 
@@ -684,8 +687,7 @@ public:
     uint160 chainID;                                // target chain ID
     int32_t numInputs;                              // number of inputs aggregated to calculate the fee percentage
     CAmount totalAmount;                            // total amount of inputs, including fees
-    CAmount totalFees;                              // total amount of fees
-    CAmount preConversion;                          // amount from inputs that should be taken from pre-conversion funds
+    CAmount totalFees;                              // total amount of fees to split between miner on exporting chain and importing chain
 
     CCrossChainExport() {}
 
@@ -695,6 +697,8 @@ public:
     }
 
     CCrossChainExport(uint160 cID, int32_t numin, CAmount value, CAmount fees) : chainID(cID), numInputs(numin),totalAmount(value), totalFees(fees) {}
+
+    CCrossChainExport(const CTransaction &tx);
 
     ADD_SERIALIZE_METHODS;
 
@@ -897,6 +901,8 @@ public:
         return thisChain;
     }
 
+    CCoinbaseCurrencyState GetCurrencyState(int32_t height);
+
     bool CheckVerusPBaaSAvailable(UniValue &chainInfo, UniValue &chainDef);
     bool CheckVerusPBaaSAvailable();      // may use RPC to call Verus
     bool IsVerusPBaaSAvailable();
@@ -913,7 +919,7 @@ public:
 };
 
 template <typename TOBJ>
-CTxOut MakeCC1of1Vout(uint8_t evalcode, CAmount nValue, CPubKey pk, std::vector<CTxDestination> vDest, TOBJ &obj)
+CTxOut MakeCC1of1Vout(uint8_t evalcode, CAmount nValue, CPubKey pk, std::vector<CTxDestination> vDest, const TOBJ &obj)
 {
     CTxOut vout;
     CC *payoutCond = MakeCCcond1(evalcode, pk);
@@ -929,7 +935,23 @@ CTxOut MakeCC1of1Vout(uint8_t evalcode, CAmount nValue, CPubKey pk, std::vector<
 }
 
 template <typename TOBJ>
-CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2, TOBJ &obj)
+CTxOut MakeCC0of0Vout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestination> vDest, const TOBJ &obj)
+{
+    CTxOut vout;
+    CC *payoutCond = MakeCCcond0(evalcode);
+    vout = CTxOut(nValue, CCPubKey(payoutCond));
+    cc_free(payoutCond);
+
+    std::vector<std::vector<unsigned char>> vvch({::AsVector(obj)});
+    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, 1, vDest, vvch);
+
+    // add the object to the end of the script
+    vout.scriptPubKey << vParams.AsVector() << OP_DROP;
+    return(vout);
+}
+
+template <typename TOBJ>
+CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2, const TOBJ &obj)
 {
     CTxOut vout;
     CC *payoutCond = MakeCCcond1of2(evalcode, pk1, pk2);
@@ -946,7 +968,7 @@ CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2
 }
 
 template <typename TOBJ>
-CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2, std::vector<CTxDestination> vDest, TOBJ &obj)
+CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2, std::vector<CTxDestination> vDest, const TOBJ &obj)
 {
     CTxOut vout;
     CC *payoutCond = MakeCCcond1of2(evalcode, pk1, pk2);

@@ -36,6 +36,8 @@ public:
         FromVector(asVector, *this);
     }
 
+    CReserveOutput(const UniValue &obj);
+
     CReserveOutput() : flags(0), nValue(0) { }
 
     CReserveOutput(uint32_t Flags, CAmount value) : flags(Flags), nValue(value) { }
@@ -52,6 +54,8 @@ public:
     {
         return ::AsVector(*this);
     }
+
+    UniValue ToUniValue() const;
 
     bool IsValid()
     {
@@ -177,47 +181,91 @@ struct CReserveExchangeData
     CAmount nInputValue;
 };
 
-class CReserveExchangeTransactionDescriptor
+class CReserveTransactionDescriptor
 {
 public:
-    const CTransaction *ptx;                // pointer to the actual transaction if valid
-    bool isInvalid;                         // if false, it is known to be invalid and all other values are undefined
-    bool isReserveExchange;
-    bool isLimit;
-    bool isFillOrKillFail;
-    int64_t reserveInTotal = 0;
-    int64_t reserveOutConverted = 0;
-    int64_t nativeInTotal = 0;
-    int64_t nativeOutConverted = 0;
-    int64_t nativeConversionFees = 0;       // non-zero only if there is a conversion
-    int64_t reserveConversionFees = 0;
-    int64_t reserveOutChange = 0;           // total of non-converting outputs
-    int64_t nativeOutChange = 0;
-    int32_t numBuys = 0;                    // each limit conversion that is valid before a certain block should account for FILL_OR_KILL_FEE
+    static const uint32_t IS_VALID=1;           // known to be valid
+    static const uint32_t IS_REJECT=2;          // if set, tx is known to be invalid
+    static const uint32_t IS_RESERVE=4;         // if set, this transaction affects reserves and/or price if mined
+    static const uint32_t IS_RESERVEEXCHANGE=8; // is this a reserve/exchange transaction?
+    static const uint32_t IS_LIMIT=0x10;        // if reserve exchange, is it a limit order?
+    static const uint32_t IS_FILLORKILL=0x20;   // If set, this can expire
+    static const uint32_t IS_FILLORKILLFAIL=0x40; // If set, this is an expired fill or kill in a valid tx
+
+    const CTransaction *ptx;                    // pointer to the actual transaction if valid
+    uint32_t flags;                             // indicates transaction state
+    int32_t numBuys = 0;                        // each limit conversion that is valid before a certain block should account for FILL_OR_KILL_FEE
     int32_t numSells = 0;
-    std::vector<std::pair<int, CReserveExchange>> vRex; // index and rehydrated, validated reserve exchange output
+    int32_t numTransfers = 0;                   // number of transfers, each of which also requires a transfer fee
+    int64_t reserveIn = 0;
+    int64_t reserveOutConverted = 0;
+    int64_t reserveOut = 0;                     // total value of both converting and non-converting reserve outputs
+    int64_t nativeIn = 0;
+    int64_t nativeOutConverted = 0;
+    int64_t nativeOut = 0;
+    int64_t nativeConversionFees = 0;           // non-zero only if there is a conversion
+    int64_t reserveConversionFees = 0;
+    std::vector<std::pair<int, CReserveExchange>> vRex; // index and rehydrated, validated reserve exchange outputs
 
-    CReserveExchangeTransactionDescriptor() : 
-        isInvalid(true),
-        isReserveExchange(false),
-        isLimit(false),
-        isFillOrKillFail(false),
-        reserveInTotal(0),
+    CReserveTransactionDescriptor() : 
+        flags(0),
+        ptx(NULL),
+        numBuys(0),                             // each limit conversion that is valid before a certain block should account for FILL_OR_KILL_FEE
+        numSells(0),
+        numTransfers(0),
+        reserveIn(0),
         reserveOutConverted(0),
-        nativeInTotal(0),
+        reserveOut(0),                          // total of both converting and non-converting outputs
+        nativeIn(0),
         nativeOutConverted(0),
-        nativeConversionFees(0),            // non-zero only if there is a conversion
-        reserveConversionFees(0),
-        reserveOutChange(0),                // total of non-converting outputs
-        nativeOutChange(0),
-        numBuys(0),                         // each limit conversion that is valid before a certain block should account for FILL_OR_KILL_FEE
-        numSells(0) {}
+        nativeOut(0),
+        nativeConversionFees(0),                // non-zero only if there is a conversion, stored vs. calculated to get exact number with each calculated seperately
+        reserveConversionFees(0)  {}
 
-    bool IsValid() { return !isInvalid; }
-    bool IsReserveExchange() { return isReserveExchange; }
-    bool IsLimit() { return isLimit; }
-    bool IsMarket() { return isReserveExchange && !isLimit; }
-    bool IsFillOrKillFail() { return isFillOrKillFail; }
+    CReserveTransactionDescriptor(const CTransaction &tx, CCoinsViewCache &view, int32_t nHeight);
+
+    bool IsValid() const { return flags & IS_VALID; }
+    bool IsReject() const { return flags & IS_REJECT; }
+    bool IsReserveExchange() const { return flags & IS_RESERVEEXCHANGE; }
+    bool IsReserve() const { return flags & IS_RESERVE; }
+    bool IsLimit() const { return flags & IS_LIMIT; }
+    bool IsFillOrKill() const { return flags & IS_FILLORKILL; }
+    bool IsMarket() const { return IsReserveExchange() && !IsLimit(); }
+    bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
+
+    CAmount CalculateConversionFee(CAmount inputAmount) const;
+
+    CAmount NativeFees() const
+    {
+        return nativeIn - nativeOut;                                // native out converted does not include conversion
+    }
+
+    CAmount ReserveFees() const
+    {
+        return reserveIn - reserveOut;
+    }
+
+    CAmount AllFeesAsNative(const CCurrencyState &currencyState) const;
+    CAmount AllFeesAsNative(const CCurrencyState &currencyState, CAmount exchangeRate) const;
+    CAmount AllFeesAsReserve(const CCurrencyState &currencyState) const;
+
+    void AddReserveOutput(CReserveOutput &ro)
+    {
+        flags |= IS_RESERVE;
+        reserveOut += ro.nValue;
+    }
+
+    // is boolean, since it can fail, which would render the tx invalid
+    void AddReserveExchange(const CReserveExchange &rex, int32_t outputIndex, int32_t nHeight);
+
+    void AddReserveTransfer(CReserveTransfer &rt)
+    {
+        flags |= IS_RESERVE;
+        reserveOut += rt.nValue;
+        numTransfers++;
+    }
+
+    CMutableTransaction &AddPlaceHolderOutputs(CMutableTransaction &conversionTx) const;
 };
 
 class CCurrencyState
@@ -316,17 +364,13 @@ public:
     // reserve in the reserve currency.
     CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState) const;
 
-    bool CheckReserveExchangeTransaction(const CTransaction *ptx, 
-                                         CReserveExchangeTransactionDescriptor &descriptor, 
-                                         int32_t nHeight=0, CCoinsViewCache *pview=NULL, bool checkInputs=false) const;
-
     CCurrencyState MatchOrders(const std::vector<const CTransaction *> &orders, 
-                                std::vector<CReserveExchangeTransactionDescriptor> &matches, 
-                                std::vector<const CTransaction *> &refunds, 
-                                std::vector<const CTransaction *> &nofill, 
+                                std::vector<CReserveTransactionDescriptor> &reserveFills, 
+                                std::vector<const CTransaction *> &expiredFillOrKills, 
+                                std::vector<const CTransaction *> &noFills, 
                                 std::vector<const CTransaction *> &rejects, 
                                 CAmount &price, int32_t height, int64_t maxSerializedSize=LONG_MAX, 
-                                int64_t *ptotalSerializeSize=NULL, CAmount *pInOutTotalFees=NULL) const;
+                                int64_t *ptotalSerializeSize=NULL, CAmount *pInOutTotalFees=NULL, CMutableTransaction *pConversionTx=NULL) const;
 
     CAmount CalculateConversionFee(CAmount inputAmount, bool convertToNative = false) const;
     CAmount ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount) const;
@@ -347,6 +391,12 @@ public:
         return ((bigAmount * arith_uint256(price)) / arith_uint256(CReserveExchange::SATOSHIDEN)).GetLow64();
     }
 
+    CAmount NativeToReserve(CAmount nativeAmount, CAmount exchangeRate) const
+    {
+        arith_uint256 bigAmount(nativeAmount);
+        return ((bigAmount * arith_uint256(exchangeRate)) / arith_uint256(CReserveExchange::SATOSHIDEN)).GetLow64();
+    }
+
     UniValue ToUniValue() const;
 
     bool IsValid() const
@@ -355,22 +405,32 @@ public:
     }
 };
 
-class CCoinbaseConversionOut : public CCurrencyState
+class CCoinbaseCurrencyState : public CCurrencyState
 {
 public:
     CAmount ReserveIn;      // reserve currency converted to native
     CAmount NativeIn;       // native currency converted to reserve
+    CReserveOutput ReserveOut; // output can have both normal and reserve output value, if non-0, this is spent by the required conversion output transactions
     CAmount ConversionPrice;// calculated price in reserve for all conversions * 100000000
     CAmount Fees;           // fee values in native coins for all transaction network fees + conversion fees for the block, output must be reward + this value
 
-    CCoinbaseConversionOut() : ReserveIn(0), NativeIn(0), ConversionPrice(0), Fees(0) {}
+    CCoinbaseCurrencyState() : ReserveIn(0), NativeIn(0), ConversionPrice(0), Fees(0) {}
 
-    CCoinbaseConversionOut(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve,
-                             CAmount reserveIn, CAmount nativeIn, CAmount conversionPrice, CAmount fees) : 
+    CCoinbaseCurrencyState(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve,
+                             CAmount reserveIn, CAmount nativeIn, CReserveOutput reserveOut, CAmount conversionPrice, CAmount fees) : 
         CCurrencyState(initialRatio, supply, initialSupply, emitted, reserve), ReserveIn(reserveIn), NativeIn(nativeIn), ConversionPrice(conversionPrice), Fees(fees) { }
-    CCoinbaseConversionOut(CCurrencyState &currencyState, CAmount reserveIn, CAmount nativeIn, CAmount conversionPrice, CAmount fees) : 
-        CCurrencyState(currencyState), ReserveIn(reserveIn), NativeIn(nativeIn), ConversionPrice(conversionPrice), Fees(fees) { }
-    CCoinbaseConversionOut(const UniValue &uni);
+
+    CCoinbaseCurrencyState(const CCurrencyState &currencyState, CAmount reserveIn, CAmount nativeIn, CReserveOutput reserveOut, CAmount conversionPrice, CAmount fees) : 
+        CCurrencyState(currencyState), ReserveIn(reserveIn), NativeIn(nativeIn), ReserveOut(reserveOut), ConversionPrice(conversionPrice), Fees(fees) { }
+
+    CCoinbaseCurrencyState(const UniValue &uni);
+
+    CCoinbaseCurrencyState(const std::vector<unsigned char> asVector)
+    {
+        ::FromVector(asVector, *this);
+    }
+
+    CCoinbaseCurrencyState(const CTransaction &tx);
 
     ADD_SERIALIZE_METHODS;
 
@@ -379,6 +439,7 @@ public:
         ((CCurrencyState *)this)->SerializationOp(s, ser_action);
         READWRITE(VARINT(ReserveIn));
         READWRITE(VARINT(NativeIn));
+        READWRITE(ReserveOut);
         READWRITE(VARINT(ConversionPrice));
         READWRITE(VARINT(Fees));
     }
@@ -387,6 +448,9 @@ public:
     {
         return ::AsVector(*this);
     }
+
+    UniValue ToUniValue() const;
+
 };
 
 #endif // PBAAS_RESERVES_H

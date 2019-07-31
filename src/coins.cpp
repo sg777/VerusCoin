@@ -722,7 +722,7 @@ bool CCoinsViewCache::HaveInputs(const CTransaction& tx) const
     return true;
 }
 
-double CCoinsViewCache::GetPriority(const CTransaction &tx, int nHeight) const
+double CCoinsViewCache::GetPriority(const CTransaction &tx, int nHeight, const CReserveTransactionDescriptor *desc, const CCurrencyState *currencyState) const
 {
     if (tx.IsCoinBase())
         return 0.0;
@@ -744,7 +744,26 @@ double CCoinsViewCache::GetPriority(const CTransaction &tx, int nHeight) const
         assert(coins);
         if (!coins->IsAvailable(txin.prevout.n)) continue;
         if (coins->nHeight < nHeight) {
-            dResult += coins->vout[txin.prevout.n].nValue * (nHeight-coins->nHeight);
+            if (currencyState && desc)
+            {
+                if (coins->nHeight < nHeight) {
+                    double confs = nHeight - coins->nHeight;
+                    CAmount nativeVal = coins->vout[txin.prevout.n].nValue;
+                    CAmount reserveVal = coins->vout[txin.prevout.n].ReserveOutValue();
+                    if (nativeVal)
+                    {
+                        dResult += nativeVal * confs;
+                    }
+                    if (reserveVal)
+                    {
+                        dResult += reserveVal * confs;
+                    }
+                }
+            }
+            else
+            {
+                dResult += coins->vout[txin.prevout.n].nValue * (nHeight-coins->nHeight);
+            }
         }
     }
 

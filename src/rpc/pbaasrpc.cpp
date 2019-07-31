@@ -90,53 +90,8 @@ protected:
     };
 };
 
-bool GetChainDefinition(string &name, CPBaaSChainDefinition &chainDef)
-{
-    CCcontract_info CC;
-    CCcontract_info *cp;
-
-    if (name == ASSETCHAINS_SYMBOL)
-    {
-        chainDef = ConnectedChains.ThisChain();
-        return true;
-    }
-
-    // make the chain definition output
-    cp = CCinit(&CC, EVAL_PBAASDEFINITION);
-
-    CBitcoinAddress bca(CC.unspendableCCaddr);
-
-    CKeyID id;
-    bca.GetKeyID(id);
-
-    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-    bool found = false;
-
-    if (GetAddressIndex(id, 1, addressIndex))
-    {
-        for (auto txidx : addressIndex)
-        {
-            CTransaction tx;
-            uint256 blkHash;
-            if (GetTransaction(txidx.first.txhash, tx, blkHash))
-            {
-                chainDef = CPBaaSChainDefinition(tx);
-                found = chainDef.IsValid() && chainDef.name == name;
-                if (found)
-                {
-                    break;
-                }
-            }
-        }
-    }
-    return found;
-}
-
 bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_t *pDefHeight)
 {
-    CCcontract_info CC;
-    CCcontract_info *cp;
-
     if (chainID == ConnectedChains.ThisChain().GetChainID())
     {
         chainDef = ConnectedChains.ThisChain();
@@ -160,18 +115,10 @@ bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_
         }
     }
 
-    // make the chain definition output
-    cp = CCinit(&CC, EVAL_PBAASDEFINITION);
-
-    CBitcoinAddress bca(CC.unspendableCCaddr);
-
-    CKeyID id;
-    bca.GetKeyID(id);
-
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
     bool found = false;
 
-    if (GetAddressIndex(id, 1, addressIndex))
+    if (GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, addressIndex))
     {
         for (auto txidx : addressIndex)
         {
@@ -197,22 +144,19 @@ bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_
     return found;
 }
 
+bool GetChainDefinition(string &name, CPBaaSChainDefinition &chainDef)
+{
+    return GetChainDefinition(CCrossChainRPCData::GetChainID(name), chainDef);
+}
+
 void GetDefinedChains(vector<CPBaaSChainDefinition> &chains, bool includeExpired)
 {
     CCcontract_info CC;
     CCcontract_info *cp;
 
-    // make the chain definition output
-    cp = CCinit(&CC, EVAL_PBAASDEFINITION);
-
-    CBitcoinAddress bca(CC.unspendableCCaddr);
-
-    CKeyID id;
-    bca.GetKeyID(id);
-
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
-    if (GetAddressIndex(id, 1, addressIndex))
+    if (GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, addressIndex))
     {
         for (auto txidx : addressIndex)
         {
@@ -2211,10 +2155,11 @@ UniValue getconfirmedexports(const UniValue& params, bool fHelp)
 
 }
 
-CCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t definitionHeight)
+CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t definitionHeight)
 {
     std::multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferInputs;
     CAmount preconvertedAmount = 0;
+    bool isReserve = chainDef.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE;
 
     if (GetChainTransfers(transferInputs, chainDef.GetChainID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
     {
@@ -2226,22 +2171,14 @@ CCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t 
         }
     }
 
-    CCurrencyState currencyState;
-    if (chainDef.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE)
-    {
-        currencyState = CCurrencyState(chainDef.conversion, chainDef.premine, chainDef.premine, 0, preconvertedAmount);
-    }
-    else
-    {
-        currencyState = CCurrencyState(chainDef.conversion, chainDef.premine, chainDef.premine, 0, 0);
-    }
+    uint32_t Flags = isReserve ? CCurrencyState::VALID : CCurrencyState::VALID + CCurrencyState::ISRESERVE;
+    CCurrencyState currencyState(chainDef.conversion, chainDef.premine, 0, 0, isReserve ? preconvertedAmount : 0, Flags);
 
-    currencyState.Supply += currencyState.ReserveToNative(preconvertedAmount);
-    if (chainDef.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE)
-    {
-        currencyState.flags |= CCurrencyState::ISRESERVE;
-    }
-    return currencyState;
+    CAmount preconvertedNative = currencyState.ReserveToNative(preconvertedAmount, chainDef.conversion);
+    currencyState.InitialSupply = preconvertedNative;
+    currencyState.Supply += preconvertedNative;
+
+    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(), chainDef.conversion, 0);
 }
 
 UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
@@ -2256,10 +2193,6 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
             "   \"name\"                    (string, required) name or chain ID of the chain to get the export transactions for\n"
 
             "\nResult:\n"
-            "      {\n"
-            "           \"satoshis\"        (int64) net total number of satoshis, including fees that were/will be transfered to the fractional reserve chain\n"
-            "           \"numconversions\"  (int) total number of outputs\n"
-            "      }\n"
 
             "\nExamples:\n"
             + HelpExampleCli("getinitialcurrencystate", "name")
@@ -2389,10 +2322,8 @@ UniValue definechain(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_PBAASDEFINITION);
     // need to be able to send this to EVAL_PBAASDEFINITION address as a destination, locked by the default pubkey
     CPubKey pk(ParseHex(CC.CChexstr));
-    CBitcoinAddress bca(CC.unspendableCCaddr);
-    CKeyID id;
-    bca.GetKeyID(id);
-    std::vector<CTxDestination> dests({id});
+
+    std::vector<CTxDestination> dests({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION))});
     CTxOut defOut = MakeCC1of1Vout(EVAL_PBAASDEFINITION, DEFAULT_TRANSACTION_FEE, pk, dests, newChain);
     outputs.push_back(CRecipient({defOut.scriptPubKey, CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE, false}));
 

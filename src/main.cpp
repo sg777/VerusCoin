@@ -1746,11 +1746,47 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             fprintf(stderr,"accept failure.4\n");
             return state.DoS(1, error("AcceptToMemoryPool: too many sigops %s, %d > %d", hash.ToString(), nSigOps, MAX_STANDARD_TX_SIGOPS),REJECT_NONSTANDARD, "bad-txns-too-many-sigops");
         }
-        
-        CAmount nValueOut = tx.GetValueOut();
-        CAmount nFees = nValueIn-nValueOut;
-        double dPriority = view.GetPriority(tx, chainActive.Height());
-        
+
+        CReserveTransactionDescriptor txDesc;
+        CCurrencyState currencyState;
+        if (!IsVerusActive())
+        {
+            LOCK(mempool.cs);
+            // if we don't recognize it, process and check
+            CCurrencyState currencyState = ConnectedChains.GetCurrencyState(chainActive.Height());
+            if (!mempool.IsKnownReserveTransaction(hash, txDesc))
+            {
+                // we need the current currency state
+                txDesc = CReserveTransactionDescriptor(tx, view, nextBlockHeight);
+                // if we have a reserve transaction
+                if (txDesc.IsValid())
+                {
+                    mempool.PrioritiseReserveTransaction(txDesc, currencyState);
+                }
+                else if (txDesc.IsReject())
+                {
+                    return state.DoS(1, error("AcceptToMemoryPool: invalid reserve transaction %", hash.ToString()),REJECT_NONSTANDARD, "bad-txns-invalid-reserve");
+                }
+            }
+        }
+
+        CAmount nValueOut;
+        CAmount nFees;
+        double dPriority;
+
+        nValueOut = tx.GetValueOut();
+        nFees = nValueIn-nValueOut;
+
+        // need to fix GetPriority to incorporate reserve
+        if (txDesc.IsValid() && currencyState.IsValid())
+        {
+            dPriority = view.GetPriority(tx, chainActive.Height(), &txDesc, &currencyState);
+        }
+        else
+        {
+            dPriority = view.GetPriority(tx, chainActive.Height());
+        }
+
         // Keep track of transactions that spend a coinbase and are not "InstantSpend:", which we re-scan
         // during reorgs to ensure COINBASE_MATURITY is still met.
         bool fSpendsCoinbase = false;
@@ -1769,7 +1805,8 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // it has passed ContextualCheckInputs and therefore this is correct.
         auto consensusBranchId = CurrentEpochBranchId(chainActive.Height() + 1, Params().GetConsensus());
         
-        CTxMemPoolEntry entry(tx, nFees, GetTime(), dPriority, chainActive.Height(), mempool.HasNoInputsOf(tx), fSpendsCoinbase, consensusBranchId);
+        CTxMemPoolEntry entry(tx, nFees, GetTime(), dPriority, chainActive.Height(), mempool.HasNoInputsOf(tx), fSpendsCoinbase, consensusBranchId, txDesc.IsValid() && txDesc.reserveIn != 0);
+
         unsigned int nSize = entry.GetTxSize();
         
         // Accept a tx if it contains joinsplits and has at least the default fee specified by z_sendmany.
@@ -1817,6 +1854,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             dFreeCount += nSize;
         }
 
+        // TODO:PBAAS - make sure this will not fail with exchanges, exports or imports
         if (fRejectAbsurdFee && nFees > ::minRelayTxFee.GetFee(nSize) * 10000 && nFees > nValueOut/19) 
         {
             string errmsg = strprintf("absurdly high fees %s, %d > %d",

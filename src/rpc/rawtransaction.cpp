@@ -389,7 +389,7 @@ void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry)
                     break;
                 }
 
-                case EVAL_COINBASECONVERSIONOUT:
+                case EVAL_CURRENCYSTATE:
                 case EVAL_RESERVE_TRANSFER:
                 case EVAL_RESERVE_OUTPUT:
                 case EVAL_CROSSCHAIN_EXPORT:
