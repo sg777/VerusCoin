@@ -265,7 +265,7 @@ public:
         numTransfers++;
     }
 
-    CMutableTransaction &AddPlaceHolderOutputs(CMutableTransaction &conversionTx) const;
+    CMutableTransaction &AddConversionOutputs(CMutableTransaction &conversionTx, CAmount exchangeRate=0, CCurrencyState *pCurrencyState=NULL) const;
 };
 
 class CCurrencyState
@@ -364,14 +364,6 @@ public:
     // reserve in the reserve currency.
     CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState) const;
 
-    CCurrencyState MatchOrders(const std::vector<const CTransaction *> &orders, 
-                                std::vector<CReserveTransactionDescriptor> &reserveFills, 
-                                std::vector<const CTransaction *> &expiredFillOrKills, 
-                                std::vector<const CTransaction *> &noFills, 
-                                std::vector<const CTransaction *> &rejects, 
-                                CAmount &price, int32_t height, int64_t maxSerializedSize=LONG_MAX, 
-                                int64_t *ptotalSerializeSize=NULL, CAmount *pInOutTotalFees=NULL, CMutableTransaction *pConversionTx=NULL) const;
-
     CAmount CalculateConversionFee(CAmount inputAmount, bool convertToNative = false) const;
     CAmount ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount) const;
 
@@ -451,6 +443,13 @@ public:
 
     UniValue ToUniValue() const;
 
+    CCoinbaseCurrencyState MatchOrders(const std::vector<const CTransaction *> &orders, 
+                                        std::vector<CReserveTransactionDescriptor> &reserveFills, 
+                                        std::vector<const CTransaction *> &expiredFillOrKills, 
+                                        std::vector<const CTransaction *> &noFills, 
+                                        std::vector<const CTransaction *> &rejects, 
+                                        CAmount &price, int32_t height, int64_t maxSerializedSize=LONG_MAX, 
+                                        int64_t *ptotalSerializeSize=NULL, CMutableTransaction *pConversionTx=NULL) const;
 };
 
 #endif // PBAAS_RESERVES_H

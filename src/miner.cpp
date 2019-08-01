@@ -247,6 +247,18 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
     // mining reward based on its weight relative to the total
     std::vector<pair<int, CScript>> minerOutputs({make_pair((int)1, scriptPubKeyIn)});
 
+    // TODO: when we accept a parameter of the minerOutputs vector, remove this comment but not the check
+    int64_t shareCheck = 0;
+    for (auto output : minerOutputs)
+    {
+        shareCheck += output.first;
+    }
+    if (shareCheck < 0 || shareCheck > INT_MAX)
+    {
+        fprintf(stderr,"Invalid miner outputs share specifications\n");
+        return NULL;
+    }
+
     CPubKey pk = CPubKey();
     std::vector<std::vector<unsigned char>> vAddrs;
     txnouttype txT;
@@ -727,8 +739,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         // 4. Conversion distribution transactions for all native and reserve currency conversions, including reserve transfer outputs without conversion as
         //    a second step for reserve transfers that have conversion included. Any remaining pre-converted reserve must always remain in a change output
         //    until it is exhausted
-        std::vector<CTxOut> normalCoinbaseOuts;
-        CTxOut currencyStateOut, chainDefinitionOut, premineOut, importThreadOut, exportThreadOut, notarizationOut;
+        CTxOut premineOut, chainDefinitionOut, importThreadOut, exportThreadOut, currencyStateOut, notarizationOut;
         CMutableTransaction newNotarizationTx, newConversionOutputTx;
 
         // size of conversion tx
@@ -811,12 +822,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             }
         }
 
-        // save the outputs off of the coinbase, so we can reset it and adjust later
-        for (auto txOut : coinbaseTx.vout)
-        {
-            normalCoinbaseOuts.push_back(txOut);
-        }
-
         // make earned notarization only if this is not the notary chain and we have enough subsidy
         if (!isVerusActive)
         {
@@ -866,9 +871,9 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 }
 
                 // add needed block one coinbase outputs
-                // first, send normal reward to the miner, premine to the address in the chain definition, and pre-converted to the
+                // send normal reward to the miner, premine to the address in the chain definition, and pre-converted to the
                 // import thread out
-                if (currencyState.Supply)
+                if (currencyState.Supply > currencyState.InitialSupply)
                 {
                     premineOut = CTxOut(GetBlockOnePremine(), GetScriptForDestination(CTxDestination(ConnectedChains.ThisChain().address)));
                     coinbaseTx.vout.push_back(premineOut);
@@ -1271,20 +1276,13 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             CReserveTransactionDescriptor txDesc;
             bool isReserve = mempool.IsKnownReserveTransaction(hash, txDesc);
 
-            if (isReserve)
+            nTxFees = view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime)-tx.GetValueOut();
+            
+            nTxSigOps += GetP2SHSigOpCount(tx, view);
+            if (nBlockSigOps + nTxSigOps >= MAX_BLOCK_SIGOPS-1)
             {
-                nTxFees = 0;            // we will adjust all reserve transaction fees when we get a conversion rate
-            }
-            else
-            {
-                nTxFees = view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime)-tx.GetValueOut();
-                
-                nTxSigOps += GetP2SHSigOpCount(tx, view);
-                if (nBlockSigOps + nTxSigOps >= MAX_BLOCK_SIGOPS-1)
-                {
-                    //fprintf(stderr,"B nBlockSigOps %d + %d nTxSigOps >= %d MAX_BLOCK_SIGOPS-1\n",(int32_t)nBlockSigOps,(int32_t)nTxSigOps,(int32_t)MAX_BLOCK_SIGOPS);
-                    continue;
-                }
+                //fprintf(stderr,"B nBlockSigOps %d + %d nTxSigOps >= %d MAX_BLOCK_SIGOPS-1\n",(int32_t)nBlockSigOps,(int32_t)nTxSigOps,(int32_t)MAX_BLOCK_SIGOPS);
+                continue;
             }
 
             // Note that flags: we don't want to set mempool/IsStandard()
@@ -1302,6 +1300,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
             if (isReserve)
             {
+                nTxFees = 0;            // we will adjust all reserve transaction fees when we get an accurate conversion rate
                 reservePositions.push_back(nBlockTx);
                 haveReserveTransactions = true;
             }
@@ -1366,16 +1365,20 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             // now, we need to have room for the transaction which will spend the coinbase
             // and output all conversions mined/staked
             newConversionOutputTx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
+            newConversionOutputTx.vin.resize(2); // placeholder for size calculation
 
             int64_t newBlockSize = nBlockSize;
-            int64_t allReserveFeesAsNative = 0;
+
+            // TODO - NEED TO ADD SIGOPS LIMIT TO THIS FOR HARDENING
             CCurrencyState newState = currencyState.MatchOrders(limitOrders, 
                                                                 reserveFills, 
                                                                 expiredFillOrKills, 
                                                                 noFills, 
                                                                 rejects, 
                                                                 exchangeRate, nHeight, nBlockMaxSize - autoTxSize, 
-                                                                &newBlockSize, &allReserveFeesAsNative, &newConversionOutputTx);
+                                                                &newBlockSize, &newConversionOutputTx);
+
+            assert(reserveFills.size() >= reservePositions.size());
 
             // create the conversion transaction and all outputs indicated by every single mined transaction
             CAmount nativeConversionFees = 0;
@@ -1387,181 +1390,193 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 currencyState.ConversionPrice = exchangeRate;
             }
 
-            // TODO: loop through all of the newConversionOutputTx outputs and update the amounts and fees for each,
-            // first with known positions of those in the block prior to match, then add the remaining tranactions
-            int curOutputIndex = 0;
-            for (int i = 0; i < reservePositions.size(); i++)
+            int oldRPSize = reservePositions.size();
+
+            // add the rest of the reserve fills that have not yet been added to the block,
+            for (int i = oldRPSize; i < reserveFills.size(); i++)
             {
-                CAmount convertedValueOut;
-                CAmount nativeFee;
-                for (auto rexIndex : reserveFills[i].vRex)
-                {
-                    // TODO: update the index with the current rex output and exchange rate
-                    curOutputIndex++;
-                }
-            }
+                // add these transactions to the block
+                reservePositions.push_back(nBlockTx);
+                pblock->vtx.push_back(*reserveFills[i].ptx);
+                const CTransaction &tx = pblock->vtx.back();
 
+                UpdateCoins(tx, view, nHeight);
 
-
-
-            for (const auto &TxDesc : reserveFills)
-            {
-                currencyState.NativeIn += TxDesc.nativeOutConverted;
-                currencyState.ReserveIn += TxDesc.reserveOutConverted + TxDesc.ReserveFees();
-                if (TxDesc.IsReserveExchange() && !TxDesc.IsFillOrKillFail())
-                {
-                    for (auto txout : TxDesc.ptx->vout)
-                    {
-                        COptCCParams p;
-                        CReserveExchange rex;
-
-                        // outputs are generated for all reserve exchanges, other outputs are managed on their own
-                        if (txout.scriptPubKey.IsPayToCryptoCondition(p) && 
-                            p.evalCode == EVAL_RESERVE_EXCHANGE && 
-                            (rex = CReserveExchange(p.vData[0])).IsValid())
-                        {
-                            if (rex.flags & rex.TO_RESERVE)
-                            {
-                                CAmount value = rex.nValue;
-                                if (rex.flags & rex.FILL_OR_KILL)
-                                {
-                                    // if it's fill or kill, we add the failure fee back in before taking the conversion fee
-                                    value += rex.FILL_OR_KILL_FEE;
-                                }
-
-                                CAmount nativeConversionFee = newState.CalculateConversionFee(value);
-                                value = value - nativeConversionFee;
-                                nativeConversionFees += nativeConversionFee;
-
-                                // create a reserve output
-                                vKeys.clear();
-                                cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
-                                CReserveOutput ro(CReserveOutput::VALID, newState.NativeToReserve(value, exchangeRate));
-                                newConversionOutputTx.vout.push_back(MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, p.vKeys, ro));
-                            }
-                            else
-                            {
-                                CAmount value = rex.nValue;
-                                if (rex.flags & rex.FILL_OR_KILL)
-                                {
-                                    // if it's fill or kill, we add the failure fee back in before taking the conversion fee
-                                    value += rex.FILL_OR_KILL_FEE;
-                                }
-
-                                CAmount reserveConversionFee = newState.CalculateConversionFee(value);
-                                value = value - reserveConversionFee;
-                                reserveConversionFees += reserveConversionFee;
-
-                                // converting to native can only create a basic native output
-                                newConversionOutputTx.vout.push_back(CTxOut(newState.ReserveToNative(value, exchangeRate), GetScriptForDestination(p.vKeys[0])));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // TODO: fixup fees and conversion output amounts in the block to be accurate, confirm we have the right totals
-            for (int i = 0; i < reservePositions.size(); i++)
-            {
-                CAmount nativeFees = reserveFills[i].AllFeesAsNative(currencyState, exchangeRate);
-
-                pblocktemplate->vTxFees[reservePositions[i]] = nativeFees;
-                nFees += nativeFees;
-            }
-
-            // all match entries from reserveFills[numReserveTxes] to the end should be cleared for addition to the block
-            for (int i = reservePositions.size(); i < reserveFills.size(); i++)
-            {
-                UpdateCoins(*reserveFills[i].ptx, view, nHeight);
-
-                for (const OutputDescription &outDescription : reserveFills[i].ptx->vShieldedOutput) {
+                BOOST_FOREACH(const OutputDescription &outDescription, tx.vShieldedOutput) {
                     sapling_tree.append(outDescription.cm);
                 }
 
-                // calculate fees at the final exchange rate
-                CAmount nativeFees = reserveFills[i].AllFeesAsNative(currencyState, exchangeRate);
+                CAmount nTxFees = reserveFills[i].AllFeesAsNative(currencyState, exchangeRate);
+                uint32_t nTxSigOps = GetLegacySigOpCount(tx);
 
-                pblock->vtx.push_back(*reserveFills[i].ptx);
-                pblocktemplate->vTxFees.push_back(nativeFees);
-                pblocktemplate->vTxSigOps.push_back(0);
+                // size was already updated
+                pblocktemplate->vTxFees.push_back(nTxFees);
+                pblocktemplate->vTxSigOps.push_back(nTxSigOps);
                 ++nBlockTx;
-                nFees += nativeFees;
+                nBlockSigOps += nTxSigOps;
+                nFees += nTxFees;
             }
+
+            // update block size with the calculation from the function called, which includes all additional transactions, 
+            // but does not include the conversion transaction, since its final size is still unknown
             nBlockSize = newBlockSize;
+
+            // fixup the transaction block template fees that were added before we knew the correct exchange rate and
+            // add them to the block fee total
+            for (int i = 0; i < oldRPSize; i++)
+            {
+                assert(pblocktemplate->vTxFees.size() > reservePositions[i]);
+                CAmount nTxFees = reserveFills[i].AllFeesAsNative(currencyState, exchangeRate);
+                pblocktemplate->vTxFees[reservePositions[i]] = nTxFees;
+                nFees += nTxFees;
+            }
+
+            // remake the newConversionOutputTx, right now, it has dummy inputs and placeholder outputs, just remake it correctly
+            newConversionOutputTx.vin.clear();
+            newConversionOutputTx.vout.clear();
+            
+            // add all correct outputs to the transaction and update currency deltas
+            for (auto fill : reserveFills)
+            {
+                fill.AddConversionOutputs(newConversionOutputTx, exchangeRate, &currencyState);
+            }
 
             // update the currency state
             currencyState.ConversionPrice = exchangeRate;
-            currencyState.Emitted = blockSubsidy;
-            currencyState.Fees = nFees;
         }
 
+        currencyState.Emitted = blockSubsidy;
+        currencyState.Fees = nFees;
 
-        // fix up coinbase outputs to correct numbers for coinbase conversion and fees
-        // and place special transactions before the stake transaction
+        // first calculate and distribute block rewards, including fees as specified in the minerOutputs vector
+        CAmount rewardTotalShareAmount = 0;
+        CAmount rewardTotal = blockSubsidy + nFees;
+        CAmount rewardLeft = rewardTotal;
 
-        // make conversion tx
+        for (auto &outputShare : minerOutputs)
+        {
+            rewardTotalShareAmount += outputShare.first;
+        }
 
+        int cbOutIdx;
+        for (cbOutIdx = 0; cbOutIdx < minerOutputs.size(); cbOutIdx++)
+        {
+            CAmount amount = (arith_uint256(rewardTotal) * arith_uint256(minerOutputs[cbOutIdx].first) / arith_uint256(rewardTotalShareAmount)).GetLow64();
+            if (rewardLeft <= amount || (cbOutIdx + 1) == minerOutputs.size())
+            {
+                amount = rewardLeft;
+            }
+            rewardLeft -= amount;
+            coinbaseTx.vout[cbOutIdx].nValue = amount;
+            // the only valid CC output we currently support on coinbases is stake guard, which does not need to be modified for this
+        }
 
-        // finally add the stake transaction
-        pblock->vtx.push_back(txStaked);
-        pblocktemplate->vTxFees.push_back(0);
-        pblocktemplate->vTxSigOps.push_back(GetLegacySigOpCount(txStaked));
-        nBlockTx++;
+        // update all remaining coinbase outputs
+
+        // premineOut - done
+        if (premineOut.scriptPubKey.size())
+        {
+            cbOutIdx++;
+        }
+
+        // chainDefinitionOut - done
+        if (chainDefinitionOut.scriptPubKey.size())
+        {
+            cbOutIdx++;
+        }
+
+        // importThreadOut - done
+        if (importThreadOut.scriptPubKey.size())
+        {
+            cbOutIdx++;
+        }
+
+        // exportThreadOut - done
+        if (importThreadOut.scriptPubKey.size())
+        {
+            cbOutIdx++;
+        }
+
+        // currencyStateOut - update currency state
+        // put what is needed for all reserve and native outputs into currency state output
+        // the transaction itself pays no fees, but all conversion fees are included for each conversion transaction between its input and this output
+        if (newConversionOutputTx.vout.size())
+        {
+            CTransaction convertTx(newConversionOutputTx);
+            CAmount nativeOut = convertTx.GetValueOut();
+            CAmount reserveOut = convertTx.GetReserveValueOut(currencyState);
+
+            currencyStateOut.nValue = nativeOut;
+
+            COptCCParams p;
+            currencyStateOut.scriptPubKey.IsPayToCryptoCondition(p);
+            CCoinbaseCurrencyState convOutState(p.vData[0]);
+            convOutState.ReserveOut.nValue = reserveOut;
+            p.vData[0] = convOutState.AsVector();
+            currencyStateOut.scriptPubKey.ReplaceCCParams(p);
+
+            coinbaseTx.vout[cbOutIdx] = currencyStateOut;
+
+            // the coinbase is not finished, store placeholder now and fixup later
+            newConversionOutputTx.vin.push_back(CTxIn(uint256(), cbOutIdx));
+
+            cbOutIdx++;
+        }
+
+        // notarizationOut - update currencyState in notarization
+        if (notarizationTxIndex)
+        {
+            COptCCParams p;
+            int i;
+            for (i = 0; i < newNotarizationTx.vout.size(); i++)
+            {
+                if (newNotarizationTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.evalCode == EVAL_EARNEDNOTARIZATION)
+                {
+                    break;
+                }
+            }
+            if (i >= newNotarizationTx.vout.size())
+            {
+                LogPrintf("CreateNewBlock: bad notarization\n");
+                fprintf(stderr,"CreateNewBlock: bad notarization\n");
+                return NULL;
+            }
+            CPBaaSNotarization nz(p.vData[0]);
+            nz.currencyState = currencyState;
+            p.vData[0] = nz.AsVector();
+            newNotarizationTx.vout[i].scriptPubKey.ReplaceCCParams(p);
+
+            notarizationOut.scriptPubKey.IsPayToCryptoCondition(p);
+            p.vData[0] = nz.AsVector();
+            notarizationOut.scriptPubKey.ReplaceCCParams(p);
+
+            coinbaseTx.vout[cbOutIdx] = notarizationOut;
+
+            // now that the coinbase is finished, finish and place conversion transaction before the stake transaction
+            newNotarizationTx.vin.push_back(CTxIn(uint256(), cbOutIdx));
+
+            cbOutIdx++;
+
+            pblock->vtx[notarizationTxIndex] = newNotarizationTx;
+        }
+
+        // this should be the end of the outputs
+        assert(cbOutIdx == coinbaseTx.vout.size());
 
         nLastBlockTx = nBlockTx;
         nLastBlockSize = nBlockSize;
 
         blocktime = std::max(pindexPrev->GetMedianTimePast(), GetAdjustedTime());
 
-        //pblock->nTime = blocktime + 1;
         pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, Params().GetConsensus());
 
-        // account for them above when adding in reserve transactions
-
-        coinbaseTx.vout.resize(1);
-        coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
-        coinbaseTx.vout[0].nValue = blockSubsidy + nFees;
-
-        // once we get to Sapling, enable CC StakeGuard for stake transactions
-        if (isStake && sapling)
-        {
-            // if there is a specific destination, use it
-            CTransaction stakeTx = pblock->vtx[pblock->vtx.size() - 1];
-            CStakeParams p;
-            if (ValidateStakeTransaction(stakeTx, p, false))
-            {
-                if (!p.pk.IsValid() || !MakeGuardedOutput(coinbaseTx.vout[0].nValue, p.pk, stakeTx, coinbaseTx.vout[0]))
-                {
-                    LogPrintf("CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
-                    fprintf(stderr,"CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
-                    return 0;
-                }
-            }
-            else
-            {
-                LogPrintf("CreateNewBlock: invalid stake transaction\n");
-                fprintf(stderr,"CreateNewBlock: invalid stake transaction\n");
-                return 0;
-            }
-        }
-        else if (!IsVerusActive() && nHeight == 1)
-        {
-            // first block, send normal reward to the miner, and premine to the specified address in the
-            // chain definition
-            if (!ConnectedChains.ThisChain().address.IsNull() && GetBlockOnePremine())
-            {
-                // move miner output to output 1 and put premine in output 0
-                coinbaseTx.vout.push_back(CTxOut(coinbaseTx.vout[0].nValue - GetBlockOnePremine(), coinbaseTx.vout[0].scriptPubKey));
-                coinbaseTx.vout[0] = CTxOut(GetBlockOnePremine(), GetScriptForDestination(CTxDestination(ConnectedChains.ThisChain().address)));
-            }
-        }
-
         coinbaseTx.nExpiryHeight = 0;
-        coinbaseTx.nLockTime = std::max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
+        coinbaseTx.nLockTime = blocktime;
 
         if ( ASSETCHAINS_SYMBOL[0] == 0 && IS_KOMODO_NOTARY != 0 && My_notaryid >= 0 )
             coinbaseTx.vout[0].nValue += 5000;
 
+        /*
         // check if coinbase transactions must be time locked at current subsidy and prepend the time lock
         // to transaction if so, cast for GTE operator
         CAmount cbValueOut = 0;
@@ -1605,53 +1620,53 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             ptr[34] = OP_CHECKSIG;
             //printf("autocreate commision vout\n");
         }
+        */
 
         // finalize input of coinbase
         coinbaseTx.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(0)) + COINBASE_FLAGS;
         assert(coinbaseTx.vin[0].scriptSig.size() <= 100);
 
-        // add final notarization and instant spend fixups
+        // coinbase is done
+        pblock->vtx[0] = coinbaseTx;
+        uint256 cbHash = coinbaseTx.GetHash();
+
+        // if there is a conversion, update the correct coinbase hash and add it to the block
+        if (newConversionOutputTx.vin.size() == 1)
+        {
+            newConversionOutputTx.vin[0].prevout.hash = cbHash;
+            UpdateCoins(newConversionOutputTx, view, nHeight);
+            pblock->vtx.push_back(newConversionOutputTx);
+            pblocktemplate->vTxFees.push_back(0);
+            int txSigOps = GetLegacySigOpCount(newConversionOutputTx);
+            pblocktemplate->vTxSigOps.push_back(txSigOps);
+            nBlockSize += GetSerializeSize(newConversionOutputTx, SER_NETWORK, PROTOCOL_VERSION);
+            ++nBlockTx;
+            nBlockSigOps += txSigOps;
+        }
+
+        // if there is a stake transaction, add it to the very end
+        if (isStake)
+        {
+            UpdateCoins(txStaked, view, nHeight);
+            pblock->vtx.push_back(txStaked);
+            pblocktemplate->vTxFees.push_back(0);
+            int txSigOps = GetLegacySigOpCount(txStaked);
+            pblocktemplate->vTxSigOps.push_back(txSigOps);
+            // already added to the block size above
+            ++nBlockTx;
+            nBlockSigOps += txSigOps;
+        }
+
+        extern CWallet *pwalletMain;
+
+        // add final notarization and instant spend coinbase output hash fixup
         if (notarizationTxIndex)
         {
-            extern CWallet *pwalletMain;
             LOCK(pwalletMain->cs_wallet);
 
-            CMutableTransaction mntx(pblock->vtx[notarizationTxIndex]);
+            newNotarizationTx.vin.back().prevout.hash = cbHash;
 
-            // determine number of outputs
-            int numNotaryOutputs = mntx.vout.size() - (mntx.vout[mntx.vout.size() - 1].scriptPubKey.IsOpReturn() ? 1 : 0);
-
-            // either minimum or minimum times two for block 1
-            int64_t needed = mntx.vin.size() == 0 ? PBAAS_MINNOTARIZATIONOUTPUT << 1 : PBAAS_MINNOTARIZATIONOUTPUT;
-            int32_t pbaasCoinbaseInstantSpendOut;
-
-            // the new instant spend out will go at the end and before any opret
-            pbaasCoinbaseInstantSpendOut = coinbaseTx.vout.size() - (coinbaseTx.vout[coinbaseTx.vout.size() - 1].scriptPubKey.IsOpReturn() ? 1 : 0);
-
-            auto coinbaseOutIt = coinbaseTx.vout.begin() + pbaasCoinbaseInstantSpendOut;
-
-            CCcontract_info CC;
-            CCcontract_info *cp;
-            vector<CTxDestination> vKeys;
-
-            // make the earned notarization output
-            cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
-
-            // send this to EVAL_EARNEDNOTARIZATION address as a destination, locked by the default pubkey
-            CPubKey pk(ParseHex(cp->CChexstr));
-            vKeys.push_back(CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION))));
-
-            // output duplicate notarization as coinbase output for instant spend to notarization
-            // the output amount is considered part of the total value of this coinbase
-            CPBaaSNotarization pbn(pblock->vtx[notarizationTxIndex]);
-            coinbaseTx.vout.insert(coinbaseOutIt, MakeCC1of1Vout(EVAL_EARNEDNOTARIZATION, needed, pk, vKeys, pbn));
-            coinbaseTx.vout[0].nValue = coinbaseTx.vout[0].nValue - needed;
-
-            // bind to the right output of the coinbase
-            mntx.vin.push_back(CTxIn(coinbaseTx.GetHash(), pbaasCoinbaseInstantSpendOut));
-            uint256 cbHash = mntx.vin[mntx.vin.size() - 1].prevout.hash;
-
-            CTransaction ntx(mntx);
+            CTransaction ntx(newNotarizationTx);
 
             for (int i = 0; i < ntx.vin.size(); i++)
             {
@@ -1688,37 +1703,31 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     printf("CreateNewBlock: failure to sign earned notarization for input %d from output %d of %s\n", i, ntx.vin[i].prevout.n, ntx.vin[i].prevout.hash.GetHex().c_str());
                     return NULL;
                 } else {
-                    UpdateTransaction(mntx, i, sigdata);
+                    UpdateTransaction(newNotarizationTx, i, sigdata);
                 }
             }
-            pblocktemplate->vTxSigOps[notarizationTxIndex] = GetLegacySigOpCount(mntx);
+            pblocktemplate->vTxSigOps[notarizationTxIndex] = GetLegacySigOpCount(newNotarizationTx);
 
             // put now signed notarization back in the block
-            pblock->vtx[notarizationTxIndex] = mntx;
+            pblock->vtx[notarizationTxIndex] = newNotarizationTx;
 
             LogPrintf("Coinbase source tx id: %s\n", coinbaseTx.GetHash().GetHex().c_str());
             //printf("Coinbase source tx id: %s\n", coinbaseTx.GetHash().GetHex().c_str());
-            LogPrintf("adding notarization tx at height %d, index %d, id: %s\n", nHeight, notarizationTxIndex, mntx.GetHash().GetHex().c_str());
+            LogPrintf("adding notarization tx at height %d, index %d, id: %s\n", nHeight, notarizationTxIndex, newNotarizationTx.GetHash().GetHex().c_str());
             //printf("adding notarization tx at height %d, index %d, id: %s\n", nHeight, notarizationTxIndex, mntx.GetHash().GetHex().c_str());
             {
                 LOCK(cs_main);
-                for (auto input : mntx.vin)
+                for (auto input : newNotarizationTx.vin)
                 {
                     LogPrintf("Earned notarization input n: %d, hash: %s, HaveCoins: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str(), pcoinsTip->HaveCoins(input.prevout.hash) ? "true" : "false");
                     //printf("Earned notarization input n: %d, hash: %s, HaveCoins: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str(), pcoinsTip->HaveCoins(input.prevout.hash) ? "true" : "false");
                 }
             }
-
-            /*
-            for (auto inp : mntx.vin)
-            {
-                printf("Spending n: %d, hash: %s\n", inp.prevout.n, inp.prevout.hash.GetHex().c_str());
-            }
-            */
         }
 
         pblock->vtx[0] = coinbaseTx;
         pblocktemplate->vTxFees[0] = -nFees;
+        pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0]);
 
         // if not Verus stake, setup nonce, otherwise, leave it alone
         if (!isStake || ASSETCHAINS_LWMAPOS == 0)
@@ -1742,8 +1751,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
             pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, Params().GetConsensus());
         }
-
-        pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0]);
 
         if ( ASSETCHAINS_SYMBOL[0] == 0 && IS_KOMODO_NOTARY != 0 && My_notaryid >= 0 )
         {
