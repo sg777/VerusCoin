@@ -175,6 +175,288 @@ void GetDefinedChains(vector<CPBaaSChainDefinition> &chains, bool includeExpired
     }
 }
 
+bool CConnectedChains::GetLastImport(const uint160 &chainID, 
+                                     CTransaction &lastImport, 
+                                     CTransaction &crossChainExport, 
+                                     CCrossChainImport &ccImport, 
+                                     CCrossChainExport &ccCrossExport)
+{
+    CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT);
+
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+
+    LOCK2(cs_main, mempool.cs);
+
+    // get last import from the specified chain
+    if (!GetAddressUnspent(keyID, 1, unspentOutputs))
+    {
+        return false;
+    }
+    
+    // make sure it isn't just a burned transaction to that address, drop out on first match
+    const std::pair<CAddressUnspentKey, CAddressUnspentValue> *pOutput = NULL;
+    COptCCParams p;
+    for (const auto &output : unspentOutputs)
+    {
+        if (output.second.script.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+        {
+            pOutput = &output;
+            break;
+        }
+    }
+    if (!pOutput)
+    {
+        return false;
+    }
+    uint256 hashBlk;
+    if (!myGetTransaction(pOutput->first.txhash, lastImport, hashBlk) || !(lastImport.vout.size() && lastImport.vout.back().scriptPubKey.IsOpReturn()))
+    {
+        return false;
+    }
+    ccImport = CCrossChainImport(p.vData[0]);
+    auto opRetArr = RetrieveOpRetArray(lastImport.vout.back().scriptPubKey);
+    if (!opRetArr.size() || opRetArr[0]->objectType != CHAINOBJ_TRANSACTION)
+    {
+        DeleteOpRetObjects(opRetArr);
+    }
+    else
+    {
+        crossChainExport = ((CChainObject<CTransaction> *)opRetArr[0])->object;
+        if (!(ccCrossExport = CCrossChainExport(crossChainExport)).IsValid())
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// returns newly created import transactions to the specified chain from exports on this chain specified chain
+// nHeight is the height for which we have an MMR that the chainID chain considers confirmed for this chain. it will
+// accept proofs of any transactions with that MMR and height.
+// Parameters shuold be validated before this call.
+void CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef, 
+                                           const CTransaction &lastCrossChainImport, 
+                                           const CTransaction &lastExport,
+                                           const CTransaction &importTxTemplate,
+                                           uint32_t confirmedHeight,
+                                           std::vector<CTransaction> &newImports)
+{
+    uint160 chainID = chainDef.GetChainID();
+
+    // we are passed the latest import transaction from the chain specified, and
+    // we continue from there, creating import transactions from all of the confirmed exports after the one passed
+    uint256 lastExportHash = lastExport.GetHash();
+
+    // which transaction are we in this block?
+    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+    std::set<uint256> countedTxes;                  // don't count twice
+
+    CCrossChainImport lastCCI(lastCrossChainImport);
+    if (!lastCCI.IsValid())
+    {
+        LogPrintf("%s: Invalid lastCrossChainImport transaction\n", __func__);
+        printf("%s: Invalid lastCrossChainImport transaction\n", __func__);
+        return;
+    }
+
+    // look for the exports
+    CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
+
+    LOCK2(cs_main, mempool.cs);
+    CTransaction lastExportTx;
+    uint256 blkHash;
+    CBlockIndex *pIndex;
+    BlockMap::iterator blkMapIt;
+
+    // get all export transactions including and since this one up to the confirmed height
+    if (myGetTransaction(lastExportHash, lastExportTx, blkHash) && 
+                         (blkMapIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() && 
+                         chainActive.Contains(blkMapIt->second) &&
+                         blkMapIt->second->GetHeight() <= confirmedHeight &&
+                         GetAddressIndex(keyID, 1, addressIndex, blkMapIt->second->GetHeight(), confirmedHeight))
+    {
+        // find this export, then check the next one that spends it and use it if still valid
+        bool found = false;
+        uint256 lastHash = lastExportHash;
+
+        // indexed by input hash
+        std::map<uint256, std::pair<CAddressIndexKey, CTransaction>> validExports;
+
+        // validate, order, and relate them with their inputs
+        for (auto utxo : addressIndex)
+        {
+            // if current tx spends lastHash, then we have our next valid transaction to create an import with
+            CTransaction tx, inputtx;
+            uint256 blkHash1, blkHash2;
+            BlockMap::iterator blkIt;
+            CCrossChainExport ccx;
+            if (myGetTransaction(utxo.first.txhash, tx, blkHash1) &&
+                (ccx = CCrossChainExport(tx)).IsValid() &&
+                (tx.IsCoinBase() && (blkIt = mapBlockIndex.find(blkHash1)) != mapBlockIndex.end() && blkIt->second->GetHeight() == 1) || 
+                (!tx.IsCoinBase() && tx.vin.size() && myGetTransaction(tx.vin[0].prevout.hash, inputtx, blkHash2)))
+            {
+                // either this is the first import as a chain definition from the coinbase of block 1, or it must spend a valid import
+                if (!tx.IsCoinBase())
+                {
+                    COptCCParams p;
+                    // validate the input as a chain export input
+                    if (!(inputtx.vout[tx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_EXPORT))
+                    {
+                        printf("%s: invalid export: input tx %s is not in valid export thread\n", __func__, inputtx.GetHash().GetHex().c_str());
+                        continue;
+                    }
+                    validExports.insert(make_pair(tx.vin[0].prevout.hash, make_pair(utxo.first, tx)));
+                }
+            }
+            else
+            {
+                printf("%s: cannot retrieve transaction %s or transaction is an invalid export\n", __func__, utxo.first.txhash.GetHex().c_str());
+                continue;
+            }
+        }
+
+        CTransaction lastImport(lastCrossChainImport);
+        for (auto aixIt = validExports.find(lastExportHash); 
+             aixIt != validExports.end(); 
+             aixIt = validExports.find(lastExportHash))
+        {
+            // One pass - create an import transaction that spends the last import transaction from a confirmed export transaction that spends the last one of those
+            // 1. Creates preconvert outputs that spend from the initial supply, which comes from the import transaction thread without fees
+            // 2. Creates reserve outputs for unconverted imports
+            // 3. Creates reserveExchange transactions requesting conversion at market for convert transfers
+            // 4. Creates reserveTransfer outputs for outputs with the SEND_BACK flag set, unless they are under 5x the normal network fee
+            // 5. Creates a pass-through EVAL_CROSSCHAIN_IMPORT output with the remainder of the non-preconverted coins
+            // then signs the transaction considers it the latest import and the new export the latest export and
+            // loops until there are no more confirmed, consecutive, valid export transactions to export
+
+            // aixIt has an input from the export thread of last transaction, an optional deposit to the reserve, and an opret of all outputs + 1 fee
+            assert(aixIt->second.second.vout.back().scriptPubKey.IsOpReturn());
+
+            std::vector<CBaseChainObject *> exportOutputs = RetrieveOpRetArray(aixIt->second.second.vout.back().scriptPubKey);
+
+            CMutableTransaction newImportTx(importTxTemplate);
+            newImportTx.vin.clear();
+            newImportTx.vin.push_back(CTxIn(lastImport.GetHash(), 0));          // must spend output 0
+            newImportTx.vout.clear();
+            newImportTx.vout.push_back(CTxOut()); // placeholder for the first output
+
+            // emit a reserve exchange output
+            // we will send using a reserve output, fee will be paid by converting from reserve
+            CCcontract_info CC;
+            CCcontract_info *cp;
+
+            CAmount totalPreconvert = 0;
+            CAmount totalImport = 0;
+
+            for (auto pRT : exportOutputs)
+            {
+                if (pRT->objectType != CHAINOBJ_RESERVETRANSFER)
+                {
+                    LogPrintf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
+                    printf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
+                    break;
+                }
+                CReserveTransfer &curTransfer = ((CChainObject<CReserveTransfer> *)pRT)->object;
+                if (curTransfer.IsValid())
+                {
+                    CTxOut newOut;
+
+                    totalImport += curTransfer.nFees + curTransfer.nValue;
+
+                    if (curTransfer.flags & curTransfer.CONVERT)
+                    {
+                        // emit a reserve exchange output
+                        // we will send using a reserve output, fee will be paid by converting from reserve
+                        cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
+
+                        CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
+                        CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
+
+                        newOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
+                    }
+                    else if (curTransfer.flags & curTransfer.PRECONVERT)
+                    {
+                        // calculate the amount and generate a normal output that spends the input of the import
+                        CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue, chainDef.conversion);
+                        totalPreconvert += nativeConverted;
+                        newOut = CTxOut(nativeConverted, GetScriptForDestination(curTransfer.destination));
+                    }
+                    else if (curTransfer.flags & curTransfer.SEND_BACK && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
+                    {
+                        // generate a reserve transfer back to the source chain if we have at least double the fee, otherwise leave it on
+                        // this chain to be claimed
+                        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
+                        CAmount fees = curTransfer.DEFAULT_PER_STEP_FEE << 1;
+                        CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, curTransfer.destination);
+
+                        newOut = MakeCC0of0Vout(EVAL_RESERVE_TRANSFER, 0, dests, rt);
+                    }
+                    else
+                    {
+                        // generate a reserve output of the amount indicated, less fees
+                        // emit a reserve exchange output
+                        // we will send using a reserve output, fee will be paid by converting from reserve
+                        cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
+                        CReserveOutput ro = CReserveOutput(CReserveExchange::VALID, curTransfer.nValue);
+
+                        newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
+                    }
+                    newImportTx.vout.push_back(newOut);
+                }
+            }
+
+            // emit a reserve exchange output
+            // we will send using a reserve output, fee will be paid by converting from reserve
+            cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
+
+            CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+            CKeyID dest();
+
+            std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(chainDef.GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
+            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), totalImport);
+
+            newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, lastCCI.nValue - totalPreconvert, pk, dests, cci);
+
+            //
+            // sign the transaction and addto our vector
+
+            CTransaction ntx(newImportTx);
+
+            uint32_t consensusBranchId = CurrentEpochBranchId(chainActive.LastTip()->GetHeight(), Params().GetConsensus());
+
+            bool signSuccess;
+            SignatureData sigdata;
+            CAmount value;
+            const CScript *pScriptPubKey;
+
+            const CScript virtualCC;
+            CTxOut virtualCCOut;
+
+            pScriptPubKey = &lastImport.vout[0].scriptPubKey;
+            value = lastCCI.nValue;
+
+            signSuccess = ProduceSignature(
+                TransactionSignatureCreator(pwalletMain, &ntx, 0, lastCCI.nValue, SIGHASH_ALL), lastImport.vout[0].scriptPubKey, sigdata, consensusBranchId);
+
+            if (signSuccess)
+            {
+                UpdateTransaction(newImportTx, 0, sigdata);
+            }
+
+            // we now have a signed Import transaction for the chainID chain, it is the latest, and the export we used is now the latest as well
+            newImports.push_back(newImportTx);
+            lastImport = newImportTx;
+            lastExportHash = aixIt->second.first.txhash;
+        }
+    }
+}
+
 void CheckPBaaSAPIsValid()
 {
     if (!chainActive.LastTip() ||
@@ -1427,7 +1709,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             else
             {
                 // get index in the block as our transaction index for proofs
-                txIndex = addressIndex[txIndex].first.txindex;
+                txIndex = addressIndex[txIndex].first.index;
             }
 
             // if bock headers are merge mined, keep header refs, not headers
@@ -1731,6 +2013,37 @@ UniValue listreservetransactions(const UniValue& params, bool fHelp)
     // lists all transactions in a wallet that are 
 }
 
+UniValue reserveexchange(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "reserveexchange '[{\"toreserve\": 1, \"recipient\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'\n"
+            "\nThis sends a Verus output as a JSON object or lists of Verus outputs as a list of objects to an address on the same or another chain.\n"
+            "\nFunds are sourced automatically from the current wallet, which must be present, as in sendtoaddress.\n"
+
+            "\nArguments\n"
+            "       {\n"
+            "           \"toreserve\"      : \"bool\",  (bool,   optional) if present, conversion is to the underlying reserve (Verus), if false, from Verus\n"
+            "           \"recipient\"      : \"Rxxx\",  (string, required) recipient of converted funds or funds that failed to convert\n"
+            "           \"amount\"         : \"n\",     (int64,  required) amount of source coins that will be converted, depending on the toreserve flag, the rest is change\n"
+            "           \"limit\"          : \"n\",     (int64,  optional) price in reserve limit, below which for buys and above which for sells, execution will occur\n"
+            "           \"validbefore\"    : \"n\",     (int,    optional) block before which this can execute as a conversion, otherwise, it executes as a send with normal network fee\n"
+            "           \"subtractfee\"    : \"bool\",  (bool,   optional) if true, reduce amount to destination by the fee amount, otherwise, add from inputs to cover fee"
+            "       }\n"
+
+            "\nResult:\n"
+            "       \"txid\" : \"transactionid\" (string) The transaction id.\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("reserveexchange", "'[{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'")
+            + HelpExampleRpc("reserveexchange", "'[{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+}
+
 UniValue sendreserve(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
@@ -1742,12 +2055,12 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "       {\n"
-            "           \"chain\"          : \"xxxx\",  (string, optional) Verus ecosystem-wide name/symbol of chain to send to, if absent, current chain is assumed\n"
+            "           \"name\"           : \"xxxx\",  (string, optional) Verus ecosystem-wide name/symbol of chain to send to, if absent, current chain is assumed\n"
             "           \"paymentaddress\" : \"Rxxx\",  (string, required) premine and launch fee recipient\n"
             "           \"refundaddress\"  : \"Rxxx\",  (string, required) if a pre-convert is not mined in time, funds can be spent by the owner of this address\n"
             "           \"amount\"         : \"n\",     (int64,  required) amount of coins that will be moved and sent to address on PBaaS chain, network and conversion fees additional\n"
             "           \"convert\"        : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price\n"
-            "           \"launchonly\"     : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price, fail if order cannot be placed before launch\n"
+            "           \"preconvert\"     : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price, fail if order cannot be placed before launch\n"
             "           \"subtractfee\"    : \"bool\",  (bool,   optional) if true, reduce amount to destination by the fee amount, otherwise, add from inputs to cover fee"
             "       }\n"
 
@@ -1789,6 +2102,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     string refundAddr = uni_get_str(find_value(params[0], "refundaddress"), paymentAddr);
     CAmount amount = uni_get_int64(find_value(params[0], "amount"), -1);
     bool convert = uni_get_int(find_value(params[0], "convert"), false);
+    bool preconvert = uni_get_int(find_value(params[0], "preconvert"), false);
     bool subtractFee = uni_get_int(find_value(params[0], "subtractfee"), false);
     uint32_t flags = CReserveOutput::VALID;
 
@@ -1839,8 +2153,6 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     int32_t height = chainActive.Height();
     bool beforeStart = chainDef.startBlock > height;
 
-    bool launchOnly = uni_get_int(find_value(params[0], "launchonly"), beforeStart);
-
     if (isVerusActive)
     {
         if (chainID == thisChainID)
@@ -1849,7 +2161,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         }
         else // ensure the PBaaS chain is a fractional reserve or that it's convertible and this is a conversion
         {
-            if (convert)
+            if (convert || preconvert)
             {
                 // if chain hasn't started yet, we must use the conversion as a ratio over satoshis to participate in the pre-mine
                 // up to a maximum
@@ -1861,9 +2173,9 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     }
 
                     flags |= CReserveTransfer::PRECONVERT;
-                } else if (!isReserve || launchOnly)
+                } else if (!isReserve || preconvert)
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + std::string(ASSETCHAINS_SYMBOL) + " after chain launch");
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot preconvert " + std::string(ASSETCHAINS_SYMBOL) + " after chain launch");
                 }
                 else
                 {

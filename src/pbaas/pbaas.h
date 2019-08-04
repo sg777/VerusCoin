@@ -26,6 +26,8 @@
 
 #include <boost/algorithm/string.hpp>
 
+class CPBaaSNotarization;
+
 // these are output cryptoconditions for the Verus reserve liquidity system
 // VRSC can be proxied to other PBaaS chains and sent back for use with this system
 // The assumption that Verus is either the proxy on the PBaaS chain or the native
@@ -393,6 +395,7 @@ public:
     CKeyID address;                         // non-purchased/converted premine and fee recipient address
     int64_t premine;                        // initial supply that is distributed to the premine output address, but not purchased
     int64_t initialcontribution;            // optional initial contribution by this transaction. this serves to ensure the option to participate by whoever defines the chain
+    int64_t minpreconvert;                  // zero for now, later can be used for Kickstarter-like launch and return all non-network fees upon failure to meet minimum
     int64_t maxpreconvert;                  // maximum amount of reserve that can be pre-converted
     int64_t preconverted;                   // actual converted amount if known
     int64_t conversion;                     // initial reserve ratio, also value in Verus if premine is 0, otherwise value is conversion * maxpreconvert/(maxpreconvert + premine)
@@ -422,7 +425,7 @@ public:
 
     CPBaaSChainDefinition(const CTransaction &tx, bool validate = false);
 
-    CPBaaSChainDefinition(std::string Name, std::string Address, int64_t Premine, int64_t Conversion, int64_t maxPreConvert, int64_t preConverted, int64_t LaunchFee,
+    CPBaaSChainDefinition(std::string Name, std::string Address, int64_t Premine, int64_t Conversion, int64_t minPreConvert, int64_t maxPreConvert, int64_t preConverted, int64_t LaunchFee,
                           int32_t StartBlock, int32_t EndBlock, int32_t chainEras,
                           const std::vector<int64_t> &chainRewards, const std::vector<int64_t> &chainRewardsDecay,
                           const std::vector<int32_t> &chainHalving, const std::vector<int32_t> &chainEraEnd, std::vector<int32_t> &chainCurrencyOptions,
@@ -431,6 +434,7 @@ public:
                             name(Name),
                             premine(Premine),
                             conversion(Conversion),
+                            minpreconvert(minPreConvert),
                             maxpreconvert(maxPreConvert),
                             preconverted(preConverted),
                             launchFee(LaunchFee),
@@ -464,6 +468,7 @@ public:
         READWRITE(address);        
         READWRITE(VARINT(premine));
         READWRITE(VARINT(conversion));
+        READWRITE(VARINT(minpreconvert));
         READWRITE(VARINT(maxpreconvert));
         READWRITE(VARINT(preconverted));
         READWRITE(VARINT(launchFee));
@@ -480,26 +485,26 @@ public:
         READWRITE(nodes);
     }
 
-    std::vector<unsigned char> AsVector()
+    std::vector<unsigned char> AsVector() const
     {
         return ::AsVector(*this);
     }
 
     static uint160 GetChainID(std::string name);
 
-    uint160 GetChainID()
+    uint160 GetChainID() const
     {
         return GetChainID(name);
     }
 
-    uint160 GetConditionID(int32_t condition);
+    uint160 GetConditionID(int32_t condition) const;
 
-    bool IsValid()
+    bool IsValid() const
     {
         return (nVersion != PBAAS_VERSION_INVALID) && (name.size() && eras > 0) && (eras <= ASSETCHAINS_MAX_ERAS);
     }
 
-    int32_t ChainOptions()
+    int32_t ChainOptions() const
     {
         return eraOptions.size() ? eraOptions[0] : 0;
     }
@@ -852,6 +857,9 @@ public:
     CRPCChainData notaryChain;                  // notary chain information
 
     CPBaaSChainDefinition thisChain;
+    std::vector<std::pair<int, CScript>> latestMiningOutputs; // accessible from all merge miners - can be invalid
+    CTxDestination  latestDestination;          // latest destination from miner output 0 - can be invalid
+    int64_t lastAggregation = 0;                // adjusted time of last aggregation
 
     int32_t earnedNotarizationHeight;           // zero or the height of one or more potential submissions
     CBlock earnedNotarizationBlock;
@@ -890,6 +898,32 @@ public:
     bool GetChainInfo(uint160 chainID, CRPCChainData &rpcChainData);
     uint32_t PruneOldChains(uint32_t pruneBefore);
     uint32_t CombineBlocks(CBlockHeader &bh);
+
+    // returns false if destinations are empty or first is not either pubkey or pubkeyhash
+    bool SetLatestMiningOutputs(const std::vector<std::pair<int, CScript>> minerOutputs, CTxDestination &firstDestinationOut);
+    void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
+
+    // send new imports from this chain to the specified chain, which generally will be the notary chain
+    void SendNewImports(const uint160 &chainID, 
+                        const CPBaaSNotarization &notarization, 
+                        const uint256 &lastExportTx, 
+                        const CTransaction &lastCrossImport, 
+                        const CTransaction &lastExport);
+
+    bool GetLastImport(const uint160 &chainID, 
+                       CTransaction &lastImport, 
+                       CTransaction &crossChainExport, 
+                       CCrossChainImport &ccImport, 
+                       CCrossChainExport &ccCrossExport);
+
+    // returns newly created import transactions to the specified chain from exports on this chain specified chain
+    void CreateLatestImports(const CPBaaSChainDefinition &chainDef, 
+                             const CTransaction &lastCrossChainImport, 
+                             const CTransaction &lastExport,
+                             const CTransaction &importTxTemplate,
+                             uint32_t confirmedHeight,
+                             std::vector<CTransaction> &newImports);
+
 
     CRPCChainData &NotaryChain()
     {

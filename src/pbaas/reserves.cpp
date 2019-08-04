@@ -463,7 +463,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionOutputs(CMutabl
 
     CCurrencyState dummy;
     CCurrencyState &currencyState = pCurrencyState ? *pCurrencyState : dummy;
-    // if no exchange rate is specified, it is unity
+    // if no exchange rate is specified, first from the currency if present, then it is unity
     if (!exchangeRate)
     {
         int64_t price;
@@ -517,28 +517,24 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionOutputs(CMutabl
 
             conversionTx.vout.push_back(MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt));
         }
+        else if (indexRex.second.flags & indexRex.second.TO_RESERVE)
+        {
+            // convert amount to reserve from native
+            amount = currencyState.NativeToReserve(amount, exchangeRate);
+
+            // send the net amount to the indicated destination
+            std::vector<CTxDestination> dests = std::vector<CTxDestination>({p.vKeys[0]});
+
+            // create the output with the unconverted amount less fees
+            CReserveOutput ro(CReserveOutput::VALID, amount);
+
+            conversionTx.vout.push_back(MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro));
+        }
         else
         {
-            // check reserve or normal output
-            if (indexRex.second.flags & indexRex.second.TO_RESERVE)
-            {
-                // convert amount to reserve from native
-                amount = currencyState.NativeToReserve(amount, exchangeRate);
-
-                // send the net amount to the indicated destination
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({p.vKeys[0]});
-
-                // create the output with the unconverted amount less fees
-                CReserveTransfer rt(CReserveTransfer::VALID, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, GetDestinationID(p.vKeys[0]));
-
-                conversionTx.vout.push_back(MakeCC0of0Vout(EVAL_RESERVE_TRANSFER, 0, dests, rt));
-            }
-            else
-            {
-                // convert amount to native from reserve
-                amount = currencyState.ReserveToNative(amount, exchangeRate);
-                conversionTx.vout.push_back(CTxOut(amount, GetScriptForDestination(p.vKeys[0])));
-            }
+            // convert amount to native from reserve and send as normal output
+            amount = currencyState.ReserveToNative(amount, exchangeRate);
+            conversionTx.vout.push_back(CTxOut(amount, GetScriptForDestination(p.vKeys[0])));
         }
     }
     return conversionTx;
@@ -897,7 +893,7 @@ CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount) const
     return bigAmount.GetLow64();
 }
 
-CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount, CAmount exchangeRate) const
+CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount, CAmount exchangeRate)
 {
     arith_uint256 bigAmount(reserveAmount);
 

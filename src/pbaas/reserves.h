@@ -69,11 +69,13 @@ class CReserveTransfer : public CReserveOutput
 public:
     static const uint32_t CONVERT = 2;
     static const uint32_t PRECONVERT = 4;
+    static const uint32_t FEE_OUTPUT = 8;               // one per import, amount must match total percentage of fees for exporter, no pre-convert allowed
+    static const uint32_t SEND_BACK = 0x10;             // fee is sent back immediately to destination on exporting chain
 
-    static const CAmount DEFAULT_PER_STEP_FEE = 10000; // default fee for each step of each transfer (initial mining, transfer, mining on new chain)
+    static const CAmount DEFAULT_PER_STEP_FEE = 10000;  // default fee for each step of each transfer (initial mining, transfer, mining on new chain)
 
-    CAmount nFees;                  // cross-chain network fees only, separated out to enable market conversions, conversion fees are additional
-    CKeyID destination;             // transparent address to send funds to on the target chain
+    CAmount nFees;                                      // cross-chain network fees only, separated out to enable market conversions, conversion fees are additional
+    CKeyID destination;                                 // transparent address to send funds to on the target chain
 
     CReserveTransfer(const std::vector<unsigned char> &asVector)
     {
@@ -368,7 +370,7 @@ public:
     CAmount ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount) const;
 
     CAmount ReserveToNative(CAmount reserveAmount) const;
-    CAmount ReserveToNative(CAmount reserveAmount, CAmount exchangeRate) const;
+    static CAmount ReserveToNative(CAmount reserveAmount, CAmount exchangeRate);
 
     CAmount NativeToReserve(CAmount nativeAmount) const
     {

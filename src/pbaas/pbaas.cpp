@@ -17,6 +17,7 @@
 #include "base58.h"
 #include "timedata.h"
 #include "main.h"
+#include "transaction_builder.h"
 
 using namespace std;
 
@@ -423,16 +424,15 @@ CServiceReward::CServiceReward(const CTransaction &tx, bool validate)
 
 CCrossChainImport::CCrossChainImport(const CTransaction &tx)
 {
-    for (auto out : tx.vout)
+    if (tx.vout.size())
     {
         COptCCParams p;
-        if (IsPayToCryptoCondition(out.scriptPubKey, p))
+        if (IsPayToCryptoCondition(tx.vout[0].scriptPubKey, p))
         {
             // always take the first for now
             if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
             {
                 FromVector(p.vData[0], *this);
-                break;
             }
         }
     }
@@ -462,7 +462,7 @@ uint160 CPBaaSChainDefinition::GetChainID(std::string name)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
-uint160 CPBaaSChainDefinition::GetConditionID(int32_t condition)
+uint160 CPBaaSChainDefinition::GetConditionID(int32_t condition) const
 {
     return CCrossChainRPCData::GetConditionID(name, condition);
 }
@@ -1051,6 +1051,249 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
     return currencyState;
 }
 
+bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScript>> minerOutputs, CTxDestination &firstDestinationOut)
+{
+    LOCK(cs_mergemining);
+    {
+        txnouttype outType;
+        std::vector<std::vector<unsigned char>> vSolutions;
+
+        if (!minerOutputs.size() || !Solver(minerOutputs[0].second, outType, vSolutions))
+        {
+            return false;
+        }
+
+        if (outType == TX_PUBKEY)
+        {
+            CPubKey pubKey(vSolutions[0]);
+            if (!pubKey.IsValid())
+            {
+                return false;
+            }
+            firstDestinationOut = CTxDestination(pubKey);
+        }
+        else if (outType == TX_PUBKEYHASH)
+        {
+            firstDestinationOut = CTxDestination(CKeyID(uint160(vSolutions[0])));
+        }
+        else
+        {
+            return false;
+        }
+    }
+    latestMiningOutputs = minerOutputs;
+    latestDestination = firstDestinationOut;
+}
+
+void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight)
+{
+    // all chains aggregate reserve transfer transactions, so aggregate and add all necessary export transactions to the mem pool
+    {
+        if (!nHeight)
+        {
+            return;
+        }
+
+        multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferOutputs;
+
+        CKeyID exportKeyID(CCrossChainRPCData::GetConditionID(ThisChain().GetChainID(), EVAL_CROSSCHAIN_EXPORT));
+
+        // get all available transfer outputs to aggregate into export transactions
+        if (GetUnspentChainTransfers(transferOutputs))
+        {
+            std::vector<pair<CInputDescriptor, CReserveTransfer>> txInputs;
+            std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
+
+            // we need unspent export outputs to export
+            if (GetUnspentChainExports(exportOutputs))
+            {
+                uint160 lastChain;
+
+                // merge all of the common chainID outputs into common export transactions if either MIN_BLOCKS blocks have passed since the last
+                // export of that type, or there are MIN_INPUTS or more outputs to aggregate
+                for (auto it = transferOutputs.begin(); it != transferOutputs.end(); it++)
+                {
+                    // get chain target and see if it is the same
+                    if (lastChain.IsNull() || it->first == lastChain)
+                    {
+                        txInputs.push_back(it->second);
+                        lastChain = it->first;
+                    }
+                    else
+                    {
+                        auto recentExportIt = exportOutputs.find(lastChain);
+                        // TODO: we cannot have a duplicate here, check for it
+
+                        if (recentExportIt != exportOutputs.end() &&
+                            ((nHeight - recentExportIt->second.first) >= CCrossChainExport::MIN_BLOCKS) ||
+                            (txInputs.size() >= CCrossChainExport::MIN_INPUTS))
+                        {
+                            boost::optional<CTransaction> oneExport;
+
+                            // make one or more transactions that spends the last export and all possible cross chain transfers
+                            while (txInputs.size())
+                            {
+                                TransactionBuilder tb(Params().GetConsensus(), nHeight);
+
+                                int numInputs = (txInputs.size() < CCrossChainExport::MAX_EXPORT_INPUTS) ? txInputs.size() : CCrossChainExport::MAX_EXPORT_INPUTS;
+
+                                int inputsLeft = txInputs.size() - numInputs;
+
+                                if (inputsLeft > 0 && inputsLeft < CCrossChainExport::MIN_INPUTS)
+                                {
+                                    inputsLeft += CCrossChainExport::MIN_INPUTS - inputsLeft;
+                                    numInputs -= CCrossChainExport::MIN_INPUTS - inputsLeft;
+                                    assert(numInputs > 0);
+                                }
+
+                                // each time through, we make one export transaction with the remainder or a subset of the
+                                // reserve transfer inputs. inputs can be:
+                                // 1. transfers of reserve for fractional reserve chains
+                                // 2. pre-conversions for pre-launch participation in the premine
+                                // 3. reserve market conversions to send between Verus and a fractional reserve chain and always output the native coin
+                                //
+                                // If we are on the Verus chain, all inputs will include native coins. On a PBaaS chain, inputs can either be native
+                                // or reserve token inputs.
+                                //
+                                // On the Verus chain, total native amount, minus the fee, must be sent to the reserve address of the specific chain
+                                // as reserve deposit with native coin equivalent. Pre-conversions and conversions will be realized on the PBaaS chain
+                                // as part of the import process
+                                // 
+                                // If we are on the PBaaS chain, conversions must happen before coins are sent this way back to the reserve chain. 
+                                // Verus reserve outputs can be directly aggregated and transferred, with fees paid through conversion and the 
+                                // remaining Verus reserve coin considered burned.
+                                //
+                                CAmount totalTxFees = 0;
+                                CAmount totalAmount = 0;
+                                std::vector<CBaseChainObject *> chainObjects;
+
+                                // first, we must add the export output from the current export thread to this chain
+                                if (oneExport.has_value())
+                                {
+                                    // spend the last export transaction output
+                                    CTransaction &tx = oneExport.get();
+                                    COptCCParams p;
+                                    int j;
+                                    for (j = 0; j < tx.vout.size(); j++)
+                                    {
+                                        if (::IsPayToCryptoCondition(tx.vout[j].scriptPubKey, p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT)
+                                        {
+                                            break;
+                                        }
+                                    }
+
+                                    // had to be found and valid if we made the tx
+                                    assert(j < tx.vout.size() && p.IsValid());
+
+                                    tb.AddTransparentInput(COutPoint(tx.GetHash(), j), tx.vout[j].scriptPubKey, tx.vout[j].nValue);
+                                }
+                                else
+                                {
+                                    // spend the recentExportIt output
+                                    tb.AddTransparentInput(recentExportIt->second.second.txIn.prevout, 
+                                                            recentExportIt->second.second.scriptPubKey, 
+                                                            recentExportIt->second.second.nValue);
+                                }
+
+                                for (int j = 0; j < numInputs; j++)
+                                {
+                                    tb.AddTransparentInput(txInputs[j].first.txIn.prevout, txInputs[j].first.scriptPubKey, txInputs[j].first.nValue, txInputs[j].first.txIn.nSequence);
+                                    totalTxFees += txInputs[j].second.nFees;
+                                    totalAmount += txInputs[j].second.nValue;
+                                    chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
+                                }
+
+                                CCrossChainExport ccx(lastChain, numInputs, totalAmount, totalTxFees);
+                                CAmount exportFees = ccx.CalculateExportFee();
+                                CReserveTransfer feeOut = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::SEND_BACK + CReserveTransfer::FEE_OUTPUT,
+                                                                            exportFees, 0, GetDestinationID(feeOutput));
+                                chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
+
+                                CScript opRet = StoreOpRetArray(chainObjects);
+                                DeleteOpRetObjects(chainObjects);
+
+                                CCcontract_info CC;
+                                CCcontract_info *cp;
+                                cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
+
+                                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                                // send zero to a cross chain export output of the specific chain
+                                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_CROSSCHAIN_EXPORT))});
+
+                                CTxOut exportOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, 
+                                                                    0,
+                                                                    pk,
+                                                                    dests,
+                                                                    ccx);
+
+                                tb.AddTransparentOutput(exportOut.scriptPubKey, 0);
+
+                                // if we are on Verus chain, send all native funds, less fees to reserve deposit CC, which is equivalent to the reserve account
+                                // on a PBaaS reserve chain, input is burned
+                                if (IsVerusActive())
+                                {
+                                    cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
+                                    pk = CPubKey(ParseHex(CC.CChexstr));
+
+                                    // send the entire amount to a reserve transfer output of the specific chain
+                                    // we receive our fee on the other chain or when it comes back
+                                    dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_RESERVE_DEPOSIT))});
+
+                                    CReserveOutput ro(CReserveOutput::VALID, totalAmount - ccx.CalculateExportFee());
+
+                                    CTxOut outToReserve = MakeCC1of1Vout(EVAL_RESERVE_DEPOSIT, 
+                                                                            ro.nValue,
+                                                                            pk,
+                                                                            dests,
+                                                                            ro);
+
+                                    tb.AddTransparentOutput(outToReserve.scriptPubKey, ro.nValue);
+                                }
+
+                                tb.AddOpRet(opRet);
+
+                                boost::optional<CTransaction> newExport = tb.Build();
+
+                                if (newExport.has_value())
+                                {
+                                    // replace the last one only if we have a valid new one
+                                    oneExport = newExport;
+                                    CTransaction &tx = oneExport.get();
+
+                                    LOCK2(cs_main, mempool.cs);
+                                    static int lastHeight = 0;
+                                    // remove conflicts, so that we are the now
+                                    std::list<CTransaction> removed;
+                                    mempool.removeConflicts(tx, removed);
+
+                                    // add to mem pool and relay
+                                    if (myAddtomempool(tx))
+                                    {
+                                        RelayTransaction(tx);
+                                    }
+                                }
+                                // erase the inputs we've attempted to spend
+                                txInputs.erase(txInputs.begin(), txInputs.begin() + numInputs);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// send new imports from this chain to the specified chain, which generally will be the notary chain
+void CConnectedChains::SendNewImports(const uint160 &chainID, 
+                                      const CPBaaSNotarization &notarization, 
+                                      const uint256 &lastExportTx, 
+                                      const CTransaction &lastCrossImport, 
+                                      const CTransaction &lastExport)
+{
+    // currently only support sending imports to  
+}
+
 void CConnectedChains::SubmissionThread()
 {
     try
@@ -1060,11 +1303,13 @@ void CConnectedChains::SubmissionThread()
         // wait for something to check on, then submit blocks that should be submitted
         while (true)
         {
+            boost::this_thread::interruption_point();
+
             if (IsVerusActive())
             {
                 // blocks get discarded after no refresh for 5 minutes by default, probably should be more often
                 //printf("SubmissionThread: pruning\n");
-                ConnectedChains.PruneOldChains(GetAdjustedTime() - 300);
+                PruneOldChains(GetAdjustedTime() - 300);
                 bool submit = false;
                 {
                     LOCK(cs_mergemining);
