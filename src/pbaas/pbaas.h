@@ -84,7 +84,8 @@ enum CHAIN_OBJECT_TYPES
     CHAINOBJ_PROOF = 3,             // merkle proof of preceding block or transaction
     CHAINOBJ_HEADER_REF = 4,        // equivalent to header, but only includes non-canonical data, assuming merge mine reconstruction
     CHAINOBJ_PRIORBLOCKS = 5,       // prior block commitments to ensure recognition of overlapping notarizations
-    CHAINOBJ_RESERVETRANSFER = 6    // serialized transaction, sometimes without an opret, which will be reconstructed
+    CHAINOBJ_RESERVETRANSFER = 6,   // serialized transaction, sometimes without an opret, which will be reconstructed
+    CHAINOBJ_CROSSCHAINPROOF = 7    // proof that references a notarization
 };
 
 // the proof of an opret transaction, which is simply the types of objects and hashes of each
@@ -161,6 +162,29 @@ public:
     }
 };
 
+class CCrossChainProof
+{
+public:
+    uint256 notarizationRoot;               // notarization txid used as the root of proof
+    CMerkleBranch branch;                   // proof of the transaction on the other chain and import, transaction is stored separately
+
+    CCrossChainProof() {}
+    CCrossChainProof(const uint256 &rootTxId, const CMerkleBranch &b) : notarizationRoot(rootTxId), branch(b) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(notarizationRoot);
+        READWRITE(branch);
+    }
+
+    bool IsValid()
+    {
+        return !notarizationRoot.IsNull();
+    }
+};
+
 class CBaseChainObject
 {
 public:
@@ -229,6 +253,7 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
         CChainObject<CHeaderRef> *pNewHeaderRef;
         CChainObject<CPriorBlocksCommitment> *pPriors;
         CChainObject<CReserveTransfer> *pExport;
+        CChainObject<CCrossChainProof> *pCrossChainProof;
         CBaseChainObject *retPtr;
     };
 
@@ -284,6 +309,14 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
                 pExport->objectType = objType;
             }
             break;
+        case CHAINOBJ_CROSSCHAINPROOF:
+            pCrossChainProof = new CChainObject<CCrossChainProof>();
+            if (pCrossChainProof)
+            {
+                s >> pCrossChainProof->object;
+                pCrossChainProof->objectType = objType;
+            }
+            break;
     }
     return retPtr;
 }
@@ -328,6 +361,11 @@ bool DehydrateChainObject(OStream &s, const CBaseChainObject *pobj)
         case CHAINOBJ_RESERVETRANSFER:
         {
             s << *(CChainObject<CReserveTransfer> *)pobj;
+            return true;
+        }
+        case CHAINOBJ_CROSSCHAINPROOF:
+        {
+            s << *(CChainObject<CCrossChainProof> *)pobj;
             return true;
         }
     }
@@ -608,32 +646,6 @@ public:
     }
 };
 
-class CCrossChainProof
-{
-public:
-    uint256 notarizationRoot;               // notarization txid used as the root of proof
-    CMerkleBranch branch;                   // proof of the transaction on the other chain and import, transaction is stored separately
-    int32_t opretIndex;                     // index of the tx in the opret
-
-    CCrossChainProof() : opretIndex(-1) {}
-    CCrossChainProof(uint256 &rootTxId, uint256 &nTX, MerkleBranch &b);
-    CCrossChainProof(uint256 &rootTxId, MerkleBranch &b);  // this will locate notarization transactions
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(notarizationRoot);
-        READWRITE(branch);
-        READWRITE(opretIndex);
-    }
-
-    bool IsValid()
-    {
-        return !notarizationRoot.IsNull();
-    }
-};
-
 class CInputDescriptor
 {
 public:
@@ -680,6 +692,8 @@ public:
     {
         return !chainID.IsNull();
     }
+
+    UniValue ToUniValue() const;
 };
 
 // describes an entire output that will be realized on a target chain. target is specified as part of an aggregated transaction.
@@ -731,6 +745,8 @@ public:
     {
         return totalFees - CalculateExportFee();
     }
+    
+    UniValue ToUniValue() const;
 };
 
 // Export some number of cross chain transaction sends to another chain by creating an aggregated transaction with all
@@ -917,13 +933,12 @@ public:
                        CCrossChainExport &ccCrossExport);
 
     // returns newly created import transactions to the specified chain from exports on this chain specified chain
-    void CreateLatestImports(const CPBaaSChainDefinition &chainDef, 
+    bool CreateLatestImports(const CPBaaSChainDefinition &chainDef, 
                              const CTransaction &lastCrossChainImport, 
                              const CTransaction &lastExport,
                              const CTransaction &importTxTemplate,
-                             uint32_t confirmedHeight,
+                             const CTransaction &lastConfirmedNotarization,
                              std::vector<CTransaction> &newImports);
-
 
     CRPCChainData &NotaryChain()
     {

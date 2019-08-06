@@ -56,6 +56,7 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
         const CChainObject<CHeaderRef> *pNewHeaderRef;
         const CChainObject<CPriorBlocksCommitment> *pPriors;
         const CChainObject<CReserveTransfer> *pExport;
+        const CChainObject<CCrossChainProof> *pCrossChainProof;
         const CBaseChainObject *retPtr;
     };
 
@@ -80,6 +81,10 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
 
         case CHAINOBJ_RESERVETRANSFER:
             return pExport->GetHash();
+
+        case CHAINOBJ_CROSSCHAINPROOF:
+            return pCrossChainProof->GetHash();
+
     }
     return uint256();
 }
@@ -172,6 +177,11 @@ int8_t ObjTypeCode(const CReserveTransfer &obj)
     return CHAINOBJ_RESERVETRANSFER;
 }
 
+int8_t ObjTypeCode(const CCrossChainProof &obj)
+{
+    return CHAINOBJ_CROSSCHAINPROOF;
+}
+
 // this adds an opret to a mutable transaction that provides the necessary evidence of a signed, cheating stake transaction
 CScript StoreOpRetArray(std::vector<CBaseChainObject *> &objPtrs)
 {
@@ -244,6 +254,12 @@ void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
             case CHAINOBJ_RESERVETRANSFER:
             {
                 delete (CChainObject<CReserveTransfer> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_CROSSCHAINPROOF:
+            {
+                delete (CChainObject<CCrossChainProof> *)pobj;
                 break;
             }
 
@@ -507,6 +523,24 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     }
     obj.push_back(Pair("nodes", nodeArr));
 
+    return obj;
+}
+
+UniValue CCrossChainExport::ToUniValue() const
+{
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("chainid", chainID.GetHex()));
+    obj.push_back(Pair("numinputs", numInputs));
+    obj.push_back(Pair("totalamount", totalAmount));
+    obj.push_back(Pair("totalfees", totalFees));
+    return obj;
+}
+
+UniValue CCrossChainImport::ToUniValue() const
+{
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("chainid", chainID.GetHex()));
+    obj.push_back(Pair("valuein", nValue));
     return obj;
 }
 

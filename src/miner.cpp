@@ -251,7 +251,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
     CTxDestination firstDestination;
     if (!ConnectedChains.SetLatestMiningOutputs(minerOutputs, firstDestination))
     {
-        fprintf(stderr,"%s: Must have valid miner outputs, including script with valid PK or PKH destination.\n");
+        fprintf(stderr,"%s: Must have valid miner outputs, including script with valid PK or PKH destination.\n", __func__);
         return NULL;
     }
 
@@ -639,6 +639,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             }
         }
 
+        CAmount totalEmission = blockSubsidy;
+
         // make earned notarization only if this is not the notary chain and we have enough subsidy
         if (!isVerusActive)
         {
@@ -694,6 +696,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 {
                     premineOut = CTxOut(GetBlockOnePremine(), GetScriptForDestination(CTxDestination(ConnectedChains.ThisChain().address)));
                     coinbaseTx.vout.push_back(premineOut);
+                    totalEmission += GetBlockOnePremine();
                 }
 
                 // chain definition - always
@@ -750,6 +753,9 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     return NULL;
                 }
             }
+
+            // update the currency state to include emissions before calculating conversions
+            currencyState.UpdateWithEmission(totalEmission);
 
             // always add currency state output for coinbase
             vKeys.clear();
@@ -860,6 +866,10 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     return NULL;
                 }
             }
+        }
+        else
+        {
+            currencyState.UpdateWithEmission(totalEmission);
         }
 
         // coinbase should have all necessary outputs (TODO: timelock is not supported or finished yet)
@@ -1259,17 +1269,17 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             newConversionOutputTx.vin.clear();
             newConversionOutputTx.vout.clear();
             
-            // add all correct outputs to the transaction and update currency deltas
+            // add one placeholder for txCoinbase output and all correct inputs and outputs for conversion to the transaction - update currency deltas
+            newConversionOutputTx.vin.resize(1);
             for (auto fill : reserveFills)
             {
-                fill.AddConversionOutputs(newConversionOutputTx, exchangeRate, &currencyState);
+                fill.AddConversionInOuts(newConversionOutputTx, exchangeRate, &currencyState);
             }
 
             // update the currency state
             currencyState.ConversionPrice = exchangeRate;
         }
 
-        currencyState.Emitted = blockSubsidy;
         currencyState.Fees = nFees;
 
         // first calculate and distribute block rewards, including fees as specified in the minerOutputs vector
@@ -1341,8 +1351,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
             coinbaseTx.vout[cbOutIdx] = currencyStateOut;
 
-            // the coinbase is not finished, store placeholder now and fixup later
-            newConversionOutputTx.vin.push_back(CTxIn(uint256(), cbOutIdx));
+            // the coinbase is not finished, store index placeholder here now and fixup hash later
+            newConversionOutputTx.vin[0] = CTxIn(uint256(), cbOutIdx);
 
             cbOutIdx++;
         }
@@ -1455,7 +1465,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         uint256 cbHash = coinbaseTx.GetHash();
 
         // if there is a conversion, update the correct coinbase hash and add it to the block
-        if (newConversionOutputTx.vin.size() == 1)
+        // we also need to sign the conversion transaction
+        if (newConversionOutputTx.vin.size() > 1)
         {
             newConversionOutputTx.vin[0].prevout.hash = cbHash;
             UpdateCoins(newConversionOutputTx, view, nHeight);

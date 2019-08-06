@@ -465,6 +465,12 @@ int64_t CScript::ReserveOutValue() const
                 return ro.nValue;
                 break;
             }
+            case EVAL_CURRENCYSTATE:
+            {
+                CCoinbaseCurrencyState cbcs(p.vData[0]);
+                return cbcs.ReserveOut.nValue;
+                break;
+            }
             case EVAL_RESERVE_TRANSFER:
             {
                 CReserveTransfer rt(p.vData[0]);

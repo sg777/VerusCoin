@@ -222,6 +222,7 @@ bool CConnectedChains::GetLastImport(const uint160 &chainID,
     else
     {
         crossChainExport = ((CChainObject<CTransaction> *)opRetArr[0])->object;
+        DeleteOpRetObjects(opRetArr);
         if (!(ccCrossExport = CCrossChainExport(crossChainExport)).IsValid())
         {
             return false;
@@ -234,14 +235,22 @@ bool CConnectedChains::GetLastImport(const uint160 &chainID,
 // nHeight is the height for which we have an MMR that the chainID chain considers confirmed for this chain. it will
 // accept proofs of any transactions with that MMR and height.
 // Parameters shuold be validated before this call.
-void CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef, 
+bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef, 
                                            const CTransaction &lastCrossChainImport, 
                                            const CTransaction &lastExport,
                                            const CTransaction &importTxTemplate,
-                                           uint32_t confirmedHeight,
+                                           const CTransaction &lastConfirmedNotarization,
                                            std::vector<CTransaction> &newImports)
 {
     uint160 chainID = chainDef.GetChainID();
+
+    CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
+    if (!lastConfirmed.IsValid() || !chainActive.LastTip() || lastConfirmed.notarizationHeight >= chainActive.LastTip()->GetHeight());
+    {
+        LogPrintf("%s: Invalid lastConfirmedNotarization transaction\n", __func__);
+        printf("%s: Invalid lastConfirmedNotarization transaction\n", __func__);
+        return false;
+    }
 
     // we are passed the latest import transaction from the chain specified, and
     // we continue from there, creating import transactions from all of the confirmed exports after the one passed
@@ -256,24 +265,25 @@ void CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
     {
         LogPrintf("%s: Invalid lastCrossChainImport transaction\n", __func__);
         printf("%s: Invalid lastCrossChainImport transaction\n", __func__);
-        return;
+        return false;
     }
 
     // look for the exports
     CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
 
-    LOCK2(cs_main, mempool.cs);
     CTransaction lastExportTx;
     uint256 blkHash;
     CBlockIndex *pIndex;
     BlockMap::iterator blkMapIt;
 
+    LOCK2(cs_main, mempool.cs);
+
     // get all export transactions including and since this one up to the confirmed height
     if (myGetTransaction(lastExportHash, lastExportTx, blkHash) && 
                          (blkMapIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() && 
                          chainActive.Contains(blkMapIt->second) &&
-                         blkMapIt->second->GetHeight() <= confirmedHeight &&
-                         GetAddressIndex(keyID, 1, addressIndex, blkMapIt->second->GetHeight(), confirmedHeight))
+                         blkMapIt->second->GetHeight() <= lastConfirmed.notarizationHeight &&
+                         GetAddressIndex(keyID, 1, addressIndex, blkMapIt->second->GetHeight(), lastConfirmed.notarizationHeight))
     {
         // find this export, then check the next one that spends it and use it if still valid
         bool found = false;
@@ -354,7 +364,7 @@ void CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                 {
                     LogPrintf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                     printf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
-                    break;
+                    return false;
                 }
                 CReserveTransfer &curTransfer = ((CChainObject<CReserveTransfer> *)pRT)->object;
                 if (curTransfer.IsValid())
@@ -369,12 +379,10 @@ void CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         // we will send using a reserve output, fee will be paid by converting from reserve
                         cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
 
-                        CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
                         CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
 
-                        newOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
+                        newOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
                     }
                     else if (curTransfer.flags & curTransfer.PRECONVERT)
                     {
@@ -411,8 +419,10 @@ void CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                 }
             }
 
-            // emit a reserve exchange output
-            // we will send using a reserve output, fee will be paid by converting from reserve
+            // free the memory
+            DeleteOpRetObjects(exportOutputs);
+
+            // emit a crosschain import output as summary
             cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
 
             CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
@@ -422,6 +432,40 @@ void CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), totalImport);
 
             newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, lastCCI.nValue - totalPreconvert, pk, dests, cci);
+
+            // add the opret, which is the export transaction this imports and its proof for the height passed
+            std::vector<CBaseChainObject *> chainObjects;
+            CChainObject<CTransaction> exportTx(CHAINOBJ_TRANSACTION, aixIt->second.second);
+            chainObjects.push_back(&exportTx);
+
+            // add a proof of the export transaction at the notarization height
+            CBlock block;
+            if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], false))
+            {
+                LogPrintf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[lastConfirmed.notarizationHeight]->GetBlockHash().GetHex().c_str());
+                printf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[lastConfirmed.notarizationHeight]->GetBlockHash().GetHex().c_str());
+                return false;
+            }
+
+            CMerkleBranch exportProof(aixIt->second.first.index, block.GetMerkleBranch(aixIt->second.first.index));
+            auto mmrView = chainActive.GetMMV();
+            mmrView.resize(lastConfirmed.notarizationHeight);
+
+            if (mmrView.GetRoot() != lastConfirmed.mmrRoot)
+            {
+                LogPrintf("%s: notarization mmrRoot, %s, does not match the mmrRoot of the chain, %s\n", __func__, lastConfirmed.mmrRoot.GetHex().c_str(), mmrView.GetRoot().GetHex().c_str());
+                printf("%s: notarization mmrRoot, %s, does not match the mmrRoot of the chain, %s\n", __func__, lastConfirmed.mmrRoot.GetHex().c_str(), mmrView.GetRoot().GetHex().c_str());
+                return false;
+            }
+
+            chainActive[aixIt->second.first.blockHeight]->AddMerkleProofBridge(exportProof);
+            mmrView.GetProof(exportProof, aixIt->second.first.blockHeight);
+
+            CChainObject<CCrossChainProof> exportXProof(CHAINOBJ_CROSSCHAINPROOF, CCrossChainProof(lastConfirmedNotarization.GetHash(), exportProof));
+            chainObjects.push_back(&exportXProof);
+
+            // add the opret with the transaction and its proof that references the notarization with the correct MMR
+            newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(chainObjects)));
 
             //
             // sign the transaction and addto our vector
@@ -455,6 +499,7 @@ void CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             lastExportHash = aixIt->second.first.txhash;
         }
     }
+    return true;
 }
 
 void CheckPBaaSAPIsValid()
@@ -2265,8 +2310,6 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 CCcontract_info *cp;
                 cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
 
-                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
                 if (subtractFee)
@@ -2275,7 +2318,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 }
 
                 // native cin in output is 0, it is unspendable anyhow
-                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
+                CTxOut ccOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
 
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
 
@@ -2361,8 +2404,6 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 CCcontract_info *cp;
                 cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
 
-                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
                 if (subtractFee)
@@ -2371,7 +2412,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 }
 
                 // native cin in output is 0
-                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
+                CTxOut ccOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
 
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
 
@@ -2445,26 +2486,207 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     }
 }
 
-UniValue getconfirmedexports(const UniValue& params, bool fHelp)
+bool GetLastImportIn(uint160 chainID, CTransaction &lastImportTx)
+{
+    // look for unspent chain transfer outputs for all chains
+    CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT);
+
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+
+    LOCK(cs_main);
+
+    if (!GetAddressUnspent(keyID, 1, unspentOutputs))
+    {
+        return false;
+    }
+
+    for (auto output : unspentOutputs)
+    {
+        // find the first one that is either in block 1, part of a chain definition transaction, or spends a prior
+        // import output in input 0, which cannot be done unless the output is rooted in a valid import thread. anyone can try to send
+        // coins to this address without being part of the chain, but they will be wasted and unspendable.
+        COptCCParams p;
+        if (output.second.script.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+        {
+            // we actually don't care what is in the transaction here, only that it is a valid cross chain import tx
+            // that is either the first in a chain or spends a valid cross chain import output
+            CCrossChainImport cci(p.vData[0]);
+            CTransaction lastTx;
+            uint256 blkHash;
+            if (cci.IsValid() && myGetTransaction(output.first.txhash, lastTx, blkHash))
+            {
+                if (output.second.blockHeight == 1 && lastTx.IsCoinBase())
+                {
+                    lastImportTx = lastTx;
+                    return true;
+                }
+                else
+                {
+                    if (IsVerusActive())
+                    {
+                        // if this is the Verus chain, then we need to either be part of a chain definition transaction
+                        // or spend a valid import output
+                        if (CPBaaSChainDefinition(lastTx).IsValid())
+                        {
+                            lastImportTx = lastTx;
+                            return true;
+                        }
+                        // if we get here, we must spend a valid import output
+                        CTransaction inputTx;
+                        uint256 inputBlkHash;
+                        if (lastTx.vin.size() && myGetTransaction(lastTx.vin[0].prevout.hash, inputTx, inputBlkHash) && CCrossChainImport(lastTx).IsValid())
+                        {
+                            lastImportTx = lastTx;
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+UniValue getlastimportin(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "getconfirmedexports \"name\" \"lastexporttxid\"\n"
-            "\nThis returns all confirmed exports to the specified chain.\n"
+            "getlastimportin \"fromname\"\n"
+            "\nThis returns the last import transaction from the chain specified and a blank transaction template to use when making new\n"
+            "\nimport transactions. Since the typical use for this call is to make new import transactions from the other chain that will be then\n"
+            "\nbroadcast to this chain, we include the template by default.\n"
 
             "\nArguments\n"
-            "   \"name\"                (string, required) name of the chain to get the export transactions for\n"
-            "   \"lastexporttxid\"      (string, required) the last export transaction to follow, return list must start with transaction that spends this\n"
+            "   \"fromname\"                (string, required) name of the chain to get the last import transaction in from\n"
 
             "\nResult:\n"
+            "   {\n"
+            "       \"lastimporttransaction\": \"hex\"      Hex encoded serialized import transaction\n"
+            "       \"importtxtemplate\": \"hex\"           Hex encoded import template for new import transactions\n"
+            "   }\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getconfirmedexports", "jsondefinition")
-            + HelpExampleRpc("getconfirmedexports", "jsondefinition")
+            + HelpExampleCli("getlastimportin", "jsondefinition")
+            + HelpExampleRpc("getlastimportin", "jsondefinition")
+        );
+    }
+    // starting from that last transaction id, see if we have any newer to export for the indicated chain, and if so, return them as
+    // import transactions using the importtxtemplate as a template
+    CheckPBaaSAPIsValid();
+
+    uint160 chainID = GetChainIDFromParam(params[0]);
+
+    if (chainID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
+    }
+
+    CTransaction lastImportTx;
+    UniValue ret(UniValue::VOBJ);
+
+    if (GetLastImportIn(chainID, lastImportTx))
+    {
+        LOCK(cs_main);
+        CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), chainActive.Height());
+        ret.push_back(Pair("lastimporttransaction", EncodeHexTx(lastImportTx)));
+        ret.push_back(Pair("importtxtemplate", EncodeHexTx(txTemplate)));
+    }
+    return ret;
+}
+
+UniValue getlatestimportsout(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getlatestimportsout \"name\" \"lastimporttransaction\" \"importtxtemplate\"\n"
+            "\nThis creates and returns all new imports for the specified chain that are exported from this blockchain.\n"
+
+            "\nArguments\n"
+            "{\n"
+            "   \"name\" : \"string\"           (string, required) name of the chain to get the export transactions for\n"
+            "   \"lastimporttx\" : \"hex\"      (hex,    required) the last import transaction to follow, return list starts with import that spends this\n"
+            "   \"importtxtemplate\" : \"hex\"  (hex,    required) template transaction to use, so we create a transaction compatible with the other chain\n"
+            "}\n"
+
+            "\nResult:\n"
+            "UniValue array of hex transactions"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getlatestimportsout", "jsonargs")
+            + HelpExampleRpc("getlatestimportsout", "jsonargs")
         );
     }
 
+    // starting from that last transaction id, see if we have any newer to export for the indicated chain, and if so, return them as
+    // import transactions using the importtxtemplate as a template
+    CheckPBaaSAPIsValid();
+
+    bool isVerusActive = IsVerusActive();
+
+    uint160 chainID = GetChainIDFromParam(find_value(params[0], "name"));
+
+    if (chainID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
+    }
+
+    // starting from that last transaction id, see if we have any newer to export for the indicated chain, and if so, return them as
+    // import transactions using the importtxtemplate as a template
+    CPBaaSChainDefinition chainDef;
+
+    if (!GetChainDefinition(chainID, chainDef))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain definition not found");
+    }
+
+    std::string lastImportHex = uni_get_str(params[0], "lastimporttx");
+    CTransaction lastImportTx;
+
+    std::string templateTxHex = uni_get_str(params[0], "importtxtemplate");
+    CTransaction templateTx;
+
+    std::vector<CBaseChainObject *> chainObjs;
+    if (!(DecodeHexTx(lastImportTx, lastImportHex) && 
+          DecodeHexTx(templateTx, templateTxHex) &&
+          CCrossChainImport(lastImportTx).IsValid() && 
+          lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
+          (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() >= 2 &&
+          chainObjs[0]->objectType == CHAINOBJ_TRANSACTION) &&
+          chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF)
+    {
+        DeleteOpRetObjects(chainObjs);
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid last import tx");
+    }
+
+    CTransaction lastExportTx = ((CChainObject<CTransaction> *)chainObjs[0])->object;
+    DeleteOpRetObjects(chainObjs);
+
+    CChainNotarizationData cnd;
+    vector<pair<CTransaction, uint256>> txesOut;
+    CTransaction lastConfirmedNotarization;
+
+
+    if (!(GetNotarizationData(chainID, isVerusActive ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd, &txesOut) && cnd.lastConfirmed >= 0))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Found no confirmed notarization");
+    }
+
+    lastConfirmedNotarization = txesOut[cnd.lastConfirmed].first;
+
+    std::vector<CTransaction> newImports;
+    if (!ConnectedChains.CreateLatestImports(chainDef, lastImportTx, lastExportTx, templateTx, lastConfirmedNotarization, newImports))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Failure creating new imports");
+    }
+    UniValue ret(UniValue::VARR);
+
+    for (auto import : newImports)
+    {
+        ret.push_back(EncodeHexTx(import));
+    }
+    return ret;
 }
 
 CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t definitionHeight)
@@ -3251,7 +3473,9 @@ static const CRPCCommand commands[] =
     { "pbaas",        "definechain",                  &definechain,            true  },
     { "pbaas",        "sendreserve",                  &sendreserve,            true  },
     { "pbaas",        "getinitialcurrencystate",      &getinitialcurrencystate, true  },
-    { "pbaas",        "submitacceptednotarization",   &submitacceptednotarization, true  },
+    { "pbaas",        "getlatestimportsout",          &getlatestimportsout,    true  },
+    { "pbaas",        "getlastimportin",              &getlastimportin,        true  },
+    { "pbaas",        "submitacceptednotarization",   &submitacceptednotarization, true },
     { "pbaas",        "paynotarizationrewards",       &paynotarizationrewards, true  },
     { "pbaas",        "addmergedblock",               &addmergedblock,         true  }
 };

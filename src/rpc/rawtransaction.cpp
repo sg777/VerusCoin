@@ -390,10 +390,60 @@ void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry)
                 }
 
                 case EVAL_CURRENCYSTATE:
+                {
+                    CCoinbaseCurrencyState cbcs;
+
+                    if (p.vData.size() && (cbcs = CCoinbaseCurrencyState(p.vData[0])).IsValid())
+                    {
+                        out.push_back(Pair("currencystate", cbcs.ToUniValue()));
+                    }
+                    break;
+                }
+
                 case EVAL_RESERVE_TRANSFER:
+                {
+                    CReserveTransfer rt;
+
+                    if (p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid())
+                    {
+                        out.push_back(Pair("reservetransfer", rt.ToUniValue()));
+                    }
+                    break;
+                }
+
                 case EVAL_RESERVE_OUTPUT:
+                {
+                    CReserveOutput ro;
+
+                    if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
+                    {
+                        out.push_back(Pair("reserveoutput", ro.ToUniValue()));
+                    }
+                    break;
+                }
+
                 case EVAL_CROSSCHAIN_EXPORT:
+                {
+                    CCrossChainExport ccx;
+
+                    if (p.vData.size() && (ccx = CCrossChainExport(p.vData[0])).IsValid())
+                    {
+                        out.push_back(Pair("crosschainexport", ccx.ToUniValue()));
+                    }
+                    break;
+                }
+
                 case EVAL_CROSSCHAIN_IMPORT:
+                {
+                    CCrossChainImport cci;
+
+                    if (p.vData.size() && (cci = CCrossChainImport(p.vData[0])).IsValid())
+                    {
+                        out.push_back(Pair("crosschainimport", cci.ToUniValue()));
+                    }
+                    break;
+                }
+
                 case EVAL_STAKEGUARD:
                     break;
             }

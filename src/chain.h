@@ -619,7 +619,7 @@ public:
         return mmr;
     }
 
-    /** Get the Merkle Mountain Range for this chain. */
+    /** Get a Merkle Mountain Range view for this chain. */
     CMerkleMountainView<CMMRPowerNode, CChunkedLayer<CMMRPowerNode>, COverlayNodeLayer<CMMRPowerNode, CChain>> GetMMV()
     {
         return CMerkleMountainView<CMMRPowerNode, CChunkedLayer<CMMRPowerNode>, COverlayNodeLayer<CMMRPowerNode, CChain>>(mmr, mmr.size());

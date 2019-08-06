@@ -454,7 +454,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     }
 }
 
-CMutableTransaction &CReserveTransactionDescriptor::AddConversionOutputs(CMutableTransaction &conversionTx, CAmount exchangeRate, CCurrencyState *pCurrencyState) const
+CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutableTransaction &conversionTx, CAmount exchangeRate, CCurrencyState *pCurrencyState) const
 {
     if (!IsReserveExchange() || IsFillOrKillFail())
     {
@@ -467,7 +467,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionOutputs(CMutabl
     if (!exchangeRate)
     {
         int64_t price;
-        if (pCurrencyState && currencyState.to_int64(pCurrencyState->GetPriceInReserve(), price))
+        if (pCurrencyState && currencyState.to_int64(pCurrencyState->GetPriceInReserve(), price) && price != 0)
         {
             exchangeRate = price;
         }
@@ -479,12 +479,13 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionOutputs(CMutabl
 
     CAmount feesLeft = nativeConversionFees + currencyState.ReserveToNative(reserveConversionFees, exchangeRate);
 
+    uint256 txHash = ptx->GetHash();
+
     for (auto &indexRex : vRex)
     {
         COptCCParams p;
         ptx->vout[indexRex.first].scriptPubKey.IsPayToCryptoCondition(p);
 
-        // must emit reserve transfer
         CCcontract_info CC;
         CCcontract_info *cp;
 
@@ -496,6 +497,9 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionOutputs(CMutabl
         feesLeft -= fee;
 
         CAmount amount = indexRex.second.nValue - fee;
+
+        // add input
+        conversionTx.vin.push_back(CTxIn(txHash, indexRex.first, CScript()));
 
         // if we should emit a reserve transfer or normal reserve output
         if (indexRex.second.flags && indexRex.second.SEND_OUTPUT)
@@ -644,7 +648,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             newState.NativeIn += txDesc.nativeOutConverted;
             if (pConversionTx)
             {
-                txDesc.AddConversionOutputs(*pConversionTx);
+                txDesc.AddConversionInOuts(*pConversionTx);
             }
         }
         else
@@ -671,7 +675,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
         if (pConversionTx)
         {
             mtx = *pConversionTx;
-            marketOrder.second.AddConversionOutputs(mtx);
+            marketOrder.second.AddConversionInOuts(mtx);
             conversionSizeOverhead = GetSerializeSize(mtx, SER_NETWORK, PROTOCOL_VERSION);
         }
         if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= marketOrdersSizeLimit)
@@ -727,7 +731,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             if (pConversionTx)
             {
                 mtx = *pConversionTx;
-                currentBuy.AddConversionOutputs(mtx);
+                currentBuy.AddConversionInOuts(mtx);
                 conversionSizeOverhead = GetSerializeSize(mtx, SER_NETWORK, PROTOCOL_VERSION);
             }
             if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= buyLimitSizeLimit)
@@ -772,7 +776,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             if (pConversionTx)
             {
                 mtx = *pConversionTx;
-                currentSell.AddConversionOutputs(mtx);
+                currentSell.AddConversionInOuts(mtx);
                 conversionSizeOverhead = GetSerializeSize(mtx, SER_NETWORK, PROTOCOL_VERSION);
             }
 

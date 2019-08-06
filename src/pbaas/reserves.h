@@ -267,7 +267,7 @@ public:
         numTransfers++;
     }
 
-    CMutableTransaction &AddConversionOutputs(CMutableTransaction &conversionTx, CAmount exchangeRate=0, CCurrencyState *pCurrencyState=NULL) const;
+    CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx, CAmount exchangeRate=0, CCurrencyState *pCurrencyState=NULL) const;
 };
 
 class CCurrencyState
@@ -275,7 +275,8 @@ class CCurrencyState
 public:
     static const uint32_t VALID = 1;
     static const uint32_t ISRESERVE = 2;
-    static const int32_t MIN_RESERVE_RATIO = 1000000;
+    static const int32_t MIN_RESERVE_RATIO = 1000000;       // we will not start a chain with this reserve ratio
+    static const int32_t SHUTDOWN_RESERVE_RATIO = 500000;   // if we hit this reserve ratio through selling and emission, initiate chain shutdown
     static const int32_t CONVERSION_TX_SIZE_MIN = 1024;
     static const int32_t CONVERSION_TX_SIZE_PEROUTPUT = 200;
     uint32_t flags;         // currency flags (valid, reserve currency, etc.)
@@ -325,15 +326,43 @@ public:
         return ::AsVector(*this);
     }
 
+    // this should be done no more that once to prepare a currency state to be moved to the next state
+    // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
+    CCurrencyState UpdateWithEmission(CAmount emitted)
+    {
+        InitialSupply = Supply;
+        Emitted = 0;
+
+        // if supply is 0, reserve must be zero, and we cannot function as a reserve currency
+        if (Supply <= 0 || Reserve <= 0)
+        {
+            Emitted = Supply = emitted;
+            if (Reserve > 0 && InitialRatio == 0)
+            {
+                InitialRatio = Emitted / Reserve;
+            }
+            return *this;
+        }
+
+        cpp_dec_float_50 initial(InitialRatio);
+        cpp_dec_float_50 one(1);
+
+        // update initial supply to be what we currently have
+        int64_t newRatio;
+        if (!(to_int64(cpp_dec_float_50((one / ((one + (cpp_dec_float_50(emitted) / cpp_dec_float_50(Supply))))) * cpp_dec_float_50(InitialRatio)), newRatio) &&
+            newRatio <= CReserveExchange::SATOSHIDEN))
+        {
+            return *this; 
+        }
+        Emitted = emitted;
+        InitialRatio = newRatio;
+        Supply = InitialSupply + emitted;
+        return *this; 
+    }
+
     cpp_dec_float_50 GetReserveRatio() const
     {
-        cpp_dec_float_50 initial(InitialRatio);
-        if (!(flags & ISRESERVE))
-        {
-            return initial;
-        }
-        cpp_dec_float_50 one(1);
-        cpp_dec_float_50 ratio(one / ((one + (cpp_dec_float_50(Emitted) / cpp_dec_float_50(InitialSupply))) * cpp_dec_float_50(InitialRatio)));
+        return cpp_dec_float_50(InitialRatio);
     }
 
     inline static bool to_int64(const cpp_dec_float_50 &input, int64_t &outval)
