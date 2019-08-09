@@ -333,6 +333,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
     boost::optional<CTransaction> cheatSpend;
     uint256 cbHash;
 
+    extern CWallet *pwalletMain;
+
     CBlockIndex* pindexPrev = 0;
     {
         LOCK2(cs_main, mempool.cs);
@@ -404,7 +406,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     // send to the same pub key as the destination of this block reward
                     if (MakeCheatEvidence(mtx, b.vtx[0], voutNum, cheatTx))
                     {
-                        extern CWallet *pwalletMain;
                         LOCK(pwalletMain->cs_wallet);
                         TransactionBuilder tb = TransactionBuilder(consensusParams, nHeight);
                         cb = b.vtx[0];
@@ -686,7 +687,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                         printf("Failure to get initial currency state. Cannot create block.\n");
                         return NULL;
                     }
-
                 }
 
                 // add needed block one coinbase outputs
@@ -773,12 +773,12 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             {
                 // if we have access to our notary daemon
                 // create a notarization if we would qualify, and add it to the mempool and block
-                CTransaction prevTx, crossTx;
+                CTransaction prevTx, crossTx, lastConfirmed, lastImportTx;
                 ChainMerkleMountainView mmv = chainActive.GetMMV();
                 mmrRoot = mmv.GetRoot();
                 int32_t confirmedInput = -1;
                 CTxDestination confirmedDest;
-                if (CreateEarnedNotarization(newNotarizationTx, notarizationInputs, prevTx, crossTx, nHeight, &confirmedInput, &confirmedDest))
+                if (CreateEarnedNotarization(newNotarizationTx, notarizationInputs, prevTx, crossTx, lastConfirmed, nHeight, &confirmedInput, &confirmedDest))
                 {
                     // we have a valid, earned notarization transaction. we still need to complete it as follows:
                     // 1. Add an instant-spend input from the coinbase transaction to fund the finalization output
@@ -864,6 +864,103 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 {
                     // failed to notarize at block 1
                     return NULL;
+                }
+
+                // if we have a last confirmed notarization, then check for new imports from the notary chain
+                if (lastConfirmed.vout.size())
+                {
+                    // we need to find the last unspent import transaction
+                    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+
+                    bool found = false;
+
+                    // we cannot get export to a chain that has shut down
+                    // if the chain definition is spent, a chain is inactive
+                    if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.NotaryChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
+                    {
+                        for (auto txidx : unspentOutputs)
+                        {
+                            CPBaaSChainDefinition localChainDef;
+                            uint256 blkHash;
+                            CTransaction itx;
+                            if (myGetTransaction(txidx.first.txhash, lastImportTx, blkHash) &&
+                                CCrossChainImport(lastImportTx).IsValid() &&
+                                (lastImportTx.IsCoinBase() ||
+                                (myGetTransaction(lastImportTx.vin[0].prevout.hash, itx, blkHash) &&
+                                CCrossChainImport(itx).IsValid())))
+                            {
+                                found = true;
+                            }
+                        }
+                    }
+
+                    if (found)
+                    {
+                        UniValue params(UniValue::VARR);
+                        UniValue param(UniValue::VOBJ);
+
+                        param.push_back(Pair("name", thisChain.name));
+                        param.push_back(Pair("lastimporttx", EncodeHexTx(lastImportTx)));
+                        param.push_back(Pair("lastconfirmednotarization", EncodeHexTx(lastConfirmed)));
+                        param.push_back(Pair("importtxtemplate", EncodeHexTx(CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight))));
+                        params.push_back(param);
+
+                        UniValue result;
+                        try
+                        {
+                            result = find_value(RPCCallRoot("getlatestimportsout", params), "result");
+                        } catch (exception e)
+                        {
+                            result = NullUniValue;
+                        }
+
+                        if (result.isArray() && result.size() && pwalletMain)
+                        {
+                            LOCK(pwalletMain->cs_wallet);
+
+                            uint256 lastImportHash = lastImportTx.GetHash();
+                            for (int i = 0; i < result.size(); i++)
+                            {
+                                CTransaction itx;
+                                if (result[i].isStr() && DecodeHexTx(itx, result[i].get_str()) && itx.vin.size() && itx.vin[0].prevout.hash == lastImportHash)
+                                {
+                                    // sign the transaction and add to mempool
+                                    CMutableTransaction mtx(itx);
+                                    CCrossChainImport cci(lastImportTx);
+
+                                    bool signSuccess;
+                                    SignatureData sigdata;
+                                    CAmount value;
+                                    const CScript *pScriptPubKey;
+
+                                    const CScript virtualCC;
+                                    CTxOut virtualCCOut;
+
+                                    pScriptPubKey = &lastImportTx.vout[0].scriptPubKey;
+                                    value = cci.nValue;
+
+                                    signSuccess = ProduceSignature(
+                                        TransactionSignatureCreator(pwalletMain, &itx, 0, cci.nValue, SIGHASH_ALL), lastImportTx.vout[0].scriptPubKey, sigdata, consensusBranchId);
+
+                                    if (signSuccess)
+                                    {
+                                        UpdateTransaction(mtx, 0, sigdata);
+                                    }
+
+                                    // commit to mempool and remove any conflicts
+                                    std::list<CTransaction> removed;
+                                    mempool.removeConflicts(itx, removed);
+                                    CValidationState state;
+                                    if (!myAddtomempool(itx, &state))
+                                    {
+                                        LogPrintf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason());
+                                        printf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason());
+                                        break;  // if we failed to add one, the others will fail to spend it
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

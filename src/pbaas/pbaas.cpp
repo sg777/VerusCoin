@@ -1333,6 +1333,8 @@ void CConnectedChains::SubmissionThread()
     try
     {
         arith_uint256 lastHash;
+        int64_t lastImportTime = 0;
+        uint32_t lastHeight = 0;
         
         // wait for something to check on, then submit blocks that should be submitted
         while (true)
@@ -1392,7 +1394,7 @@ void CConnectedChains::SubmissionThread()
                     if (txIndex != -1)
                     {
                         //printf("SubmissionThread: testing notarization\n");
-
+                        CTransaction lastConfirmed;
                         uint256 txId = CreateAcceptedNotarization(blk, txIndex, height);
 
                         if (!txId.IsNull())
@@ -1402,7 +1404,81 @@ void CConnectedChains::SubmissionThread()
                         }
                     }
                 }
-                sleep(1);
+
+                if ((GetAdjustedTime() - lastImportTime) >= 30 || lastHeight < (chainActive.LastTip() ? 0 : chainActive.LastTip()->GetHeight()))
+                {
+                    lastImportTime = GetAdjustedTime();
+                    lastHeight = (chainActive.LastTip() ? 0 : chainActive.LastTip()->GetHeight());
+
+                    // see if our notary has a confirmed notarization for us
+                    UniValue params(UniValue::VARR);
+                    UniValue result;
+
+                    params.push_back(thisChain.name);
+
+                    try
+                    {
+                        result = find_value(RPCCallRoot("getlastimportin", params), "result");
+                    } catch (exception e)
+                    {
+                        result = NullUniValue;
+                    }
+
+                    if (!result.isNull())
+                    {
+                        auto txUniStr = find_value(result, "lastimporttransaction");
+                        auto txLastConfirmedStr = find_value(result, "lastconfirmednotarization");
+                        auto txTemplateStr = find_value(result, "importtxtemplate");
+
+                        CTransaction lastImportTx, lastConfirmedTx, templateTx;
+
+                        if (txUniStr.isStr() && txTemplateStr.isStr() && 
+                            DecodeHexTx(lastImportTx, txUniStr.get_str()) && 
+                            DecodeHexTx(lastConfirmedTx, txLastConfirmedStr.get_str()) && 
+                            DecodeHexTx(templateTx, txTemplateStr.get_str()))
+                        {
+                            std::vector<CTransaction> importTxes;
+                            if (CreateLatestImports(thisChain, lastImportTx, templateTx, lastConfirmedTx, importTxes))
+                            {
+                                for (auto importTx : importTxes)
+                                {
+                                    UniValue txResult;
+                                    params.clear();
+                                    params.push_back(EncodeHexTx(importTx));
+
+                                    try
+                                    {
+                                        txResult = find_value(RPCCallRoot("signrawtransaction", params), "result");
+                                        if (txResult.isStr() && txResult.get_str().size())
+                                        {
+                                            params.clear();
+                                            params.push_back(txResult);
+                                            txResult = find_value(RPCCallRoot("sendrawtransaction", params), "result");
+                                        }
+                                        else
+                                        {
+                                            txResult = NullUniValue;
+                                        }
+                                        
+                                    } catch (exception e)
+                                    {
+                                        txResult = NullUniValue;
+                                    }
+                                    uint256 testId;
+                                    if (txResult.isStr())
+                                    {
+                                        testId.SetHex(txResult.get_str());
+                                    }
+                                    if (testId.IsNull())
+                                    {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                sleep(3);
             }
             boost::this_thread::interruption_point();
         }

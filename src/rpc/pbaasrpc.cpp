@@ -237,7 +237,6 @@ bool CConnectedChains::GetLastImport(const uint160 &chainID,
 // Parameters shuold be validated before this call.
 bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef, 
                                            const CTransaction &lastCrossChainImport, 
-                                           const CTransaction &lastExport,
                                            const CTransaction &importTxTemplate,
                                            const CTransaction &lastConfirmedNotarization,
                                            std::vector<CTransaction> &newImports)
@@ -252,14 +251,6 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
         return false;
     }
 
-    // we are passed the latest import transaction from the chain specified, and
-    // we continue from there, creating import transactions from all of the confirmed exports after the one passed
-    uint256 lastExportHash = lastExport.GetHash();
-
-    // which transaction are we in this block?
-    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-    std::set<uint256> countedTxes;                  // don't count twice
-
     CCrossChainImport lastCCI(lastCrossChainImport);
     if (!lastCCI.IsValid())
     {
@@ -268,22 +259,93 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
         return false;
     }
 
-    // look for the exports
-    CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
-
-    CTransaction lastExportTx;
-    uint256 blkHash;
-    CBlockIndex *pIndex;
-    BlockMap::iterator blkMapIt;
+    std::vector<CBaseChainObject *> chainObjs;
+    // either a fully valid import with an export or the first import either in block 1 or the chain definition
+    // on the Verus chain
+    if (!(lastCrossChainImport.vout.back().scriptPubKey.IsOpReturn() &&
+          (chainObjs = RetrieveOpRetArray(lastCrossChainImport.vout.back().scriptPubKey)).size() >= 2 &&
+          chainObjs[0]->objectType == CHAINOBJ_TRANSACTION &&
+          chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF) &&
+        !(chainObjs.size() == 0 && lastCrossChainImport.IsCoinBase() || (CPBaaSChainDefinition(lastCrossChainImport).IsValid() && !IsVerusActive())))
+    {
+        DeleteOpRetObjects(chainObjs);
+        LogPrintf("%s: Invalid last import tx\n", __func__);
+        printf("%s: Invalid last import tx\n", __func__);
+        return false;
+    }
 
     LOCK2(cs_main, mempool.cs);
 
+    uint256 lastExportHash;
+    CTransaction lastExportTx;
+    CTransaction tx;
+    uint256 blkHash;
+    uint32_t blkHeight = 0;
+    bool found = false;
+    if (chainObjs.size())
+    {
+        lastExportTx = ((CChainObject<CTransaction> *)chainObjs[0])->object;
+        lastExportHash = lastExportTx.GetHash();
+        BlockMap::iterator blkMapIt;
+        DeleteOpRetObjects(chainObjs);
+        if (myGetTransaction(lastExportHash, tx, blkHash) &&
+            (blkMapIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() && 
+            blkMapIt->second)
+        {
+            found = true;
+            blkHeight = blkMapIt->second->GetHeight();
+        }
+    }
+    else
+    {
+        std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+
+        // we cannot get export to a chain that has shut down
+        // if the chain definition is spent, a chain is inactive
+        if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, unspentOutputs))
+        {
+            for (auto txidx : unspentOutputs)
+            {
+                CPBaaSChainDefinition localChainDef;
+                BlockMap::iterator blkMapIt;
+                if (myGetTransaction(txidx.first.txhash, tx, blkHash) &&
+                    (blkMapIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() && 
+                    blkMapIt->second)
+                {
+                    CPBaaSChainDefinition localChainDef(tx);
+                    CCrossChainExport ccx(tx);
+                    if (localChainDef.IsValid() && 
+                        ccx.IsValid() &&
+                        ((IsVerusActive() && localChainDef.GetChainID() == chainID) || 
+                         (!IsVerusActive() && tx.IsCoinBase() && localChainDef.GetChainID() == thisChain.GetChainID() && chainID == notaryChain.GetChainID())))
+                    {
+                        found = true;
+                        lastExportTx = tx;
+                        lastExportHash = lastExportTx.GetHash();
+                        blkHeight = blkMapIt->second->GetHeight();
+                    }
+                }
+            }
+        }
+        if (!found)
+        {
+            LogPrintf("%s: No export thread found\n", __func__);
+            printf("%s: No export thread found\n", __func__);
+            return false;
+        }
+    }
+
+    // which transaction are we in this block?
+    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+    std::set<uint256> countedTxes;                  // don't count twice
+
+    // look for new exports
+    CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
+
+    CBlockIndex *pIndex;
+
     // get all export transactions including and since this one up to the confirmed height
-    if (myGetTransaction(lastExportHash, lastExportTx, blkHash) && 
-                         (blkMapIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() && 
-                         chainActive.Contains(blkMapIt->second) &&
-                         blkMapIt->second->GetHeight() <= lastConfirmed.notarizationHeight &&
-                         GetAddressIndex(keyID, 1, addressIndex, blkMapIt->second->GetHeight(), lastConfirmed.notarizationHeight))
+    if (blkHeight <= lastConfirmed.notarizationHeight && GetAddressIndex(keyID, 1, addressIndex, blkHeight, lastConfirmed.notarizationHeight))
     {
         // find this export, then check the next one that spends it and use it if still valid
         bool found = false;
@@ -326,6 +388,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
         }
 
         CTransaction lastImport(lastCrossChainImport);
+        CMutableTransaction newImportTx(importTxTemplate);
+
         for (auto aixIt = validExports.find(lastExportHash); 
              aixIt != validExports.end(); 
              aixIt = validExports.find(lastExportHash))
@@ -344,9 +408,14 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             std::vector<CBaseChainObject *> exportOutputs = RetrieveOpRetArray(aixIt->second.second.vout.back().scriptPubKey);
 
-            CMutableTransaction newImportTx(importTxTemplate);
-            newImportTx.vin.clear();
-            newImportTx.vin.push_back(CTxIn(lastImport.GetHash(), 0));          // must spend output 0
+            if (newImportTx.vin.size())
+            {
+                newImportTx.vin[0] = CTxIn(lastImport.GetHash(), 0);
+            }
+            else
+            {
+                newImportTx.vin.push_back(CTxIn(lastImport.GetHash(), 0));          // must spend output 0
+            }
             newImportTx.vout.clear();
             newImportTx.vout.push_back(CTxOut()); // placeholder for the first output
 
@@ -355,8 +424,9 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             CCcontract_info CC;
             CCcontract_info *cp;
 
-            CAmount totalPreconvert = 0;
+            CAmount totalNativeOut = 0;
             CAmount totalImport = 0;
+            bool isVerusActive = IsVerusActive();
 
             for (auto pRT : exportOutputs)
             {
@@ -388,7 +458,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                     {
                         // calculate the amount and generate a normal output that spends the input of the import
                         CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue, chainDef.conversion);
-                        totalPreconvert += nativeConverted;
+                        totalNativeOut += nativeConverted;
                         newOut = CTxOut(nativeConverted, GetScriptForDestination(curTransfer.destination));
                     }
                     else if (curTransfer.flags & curTransfer.SEND_BACK && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
@@ -405,15 +475,26 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                     }
                     else
                     {
-                        // generate a reserve output of the amount indicated, less fees
-                        // emit a reserve exchange output
-                        // we will send using a reserve output, fee will be paid by converting from reserve
-                        cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
+                        // if Verus is active, we are creating an import for a PBaaS reserve chain
+                        if (isVerusActive)
+                        {
+                            // generate a reserve output of the amount indicated, less fees
+                            // emit a reserve exchange output
+                            // we will send using a reserve output, fee will be paid by converting from reserve
+                            cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
 
-                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
-                        CReserveOutput ro = CReserveOutput(CReserveExchange::VALID, curTransfer.nValue);
+                            std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
+                            CReserveOutput ro = CReserveOutput(CReserveExchange::VALID, curTransfer.nValue);
 
-                        newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
+                            newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
+                        }
+                        else
+                        {
+                            // we are creating an import for the Verus chain, move the value specified, which will spend from
+                            // the RESERVE_DEPOSIT outputs
+                            newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(curTransfer.destination));
+                            totalNativeOut += curTransfer.nValue;
+                        }
                     }
                     newImportTx.vout.push_back(newOut);
                 }
@@ -426,14 +507,28 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
 
             CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-            CKeyID dest();
 
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(chainDef.GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
             CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), totalImport);
 
-            newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, lastCCI.nValue - totalPreconvert, pk, dests, cci);
+            // need to add in the reserve deposits
+            if (newImportTx.vout.size())
+            {
+                newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, lastCCI.nValue - totalNativeOut, pk, dests, cci);
+            }
+            else
+            {
+                newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, newImportTx.vout[0].nValue + (lastCCI.nValue - totalNativeOut), pk, dests, cci);
+            }
 
-            // add the opret, which is the export transaction this imports and its proof for the height passed
+            if (newImportTx.vout[0].nValue < 0)
+            {
+                LogPrintf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
+                printf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
+                return false;
+            }
+
+            // add the opret, which is the export transaction this imports
             std::vector<CBaseChainObject *> chainObjects;
             CChainObject<CTransaction> exportTx(CHAINOBJ_TRANSACTION, aixIt->second.second);
             chainObjects.push_back(&exportTx);
@@ -467,35 +562,11 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             // add the opret with the transaction and its proof that references the notarization with the correct MMR
             newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(chainObjects)));
 
-            //
-            // sign the transaction and addto our vector
-
-            CTransaction ntx(newImportTx);
-
-            uint32_t consensusBranchId = CurrentEpochBranchId(chainActive.LastTip()->GetHeight(), Params().GetConsensus());
-
-            bool signSuccess;
-            SignatureData sigdata;
-            CAmount value;
-            const CScript *pScriptPubKey;
-
-            const CScript virtualCC;
-            CTxOut virtualCCOut;
-
-            pScriptPubKey = &lastImport.vout[0].scriptPubKey;
-            value = lastCCI.nValue;
-
-            signSuccess = ProduceSignature(
-                TransactionSignatureCreator(pwalletMain, &ntx, 0, lastCCI.nValue, SIGHASH_ALL), lastImport.vout[0].scriptPubKey, sigdata, consensusBranchId);
-
-            if (signSuccess)
-            {
-                UpdateTransaction(newImportTx, 0, sigdata);
-            }
-
             // we now have a signed Import transaction for the chainID chain, it is the latest, and the export we used is now the latest as well
             newImports.push_back(newImportTx);
             lastImport = newImportTx;
+            newImportTx.vin.clear();
+            newImportTx.vout.clear();
             lastExportHash = aixIt->second.first.txhash;
         }
     }
@@ -2563,6 +2634,7 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "   {\n"
             "       \"lastimporttransaction\": \"hex\"      Hex encoded serialized import transaction\n"
+            "       \"lastconfirmednotarization\" : \"hex\" Hex encoded last confirmed notarization transaction\n"
             "       \"importtxtemplate\": \"hex\"           Hex encoded import template for new import transactions\n"
             "   }\n"
 
@@ -2582,17 +2654,53 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
 
-    CTransaction lastImportTx;
-    UniValue ret(UniValue::VOBJ);
+    CTransaction lastImportTx, lastConfirmedTx;
 
-    if (GetLastImportIn(chainID, lastImportTx))
+    CChainNotarizationData cnd;
+    std::vector<std::pair<CTransaction, uint256>> txesOut;
+
+    LOCK(cs_main);
+
+    if (!GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd, &txesOut))
     {
-        LOCK(cs_main);
-        CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), chainActive.Height());
-        ret.push_back(Pair("lastimporttransaction", EncodeHexTx(lastImportTx)));
-        ret.push_back(Pair("importtxtemplate", EncodeHexTx(txTemplate)));
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No chain notarizations for " + uni_get_str(params[0]) + " found");
     }
-    return ret;
+
+    if (cnd.IsConfirmed())
+    {
+        lastConfirmedTx = txesOut[cnd.lastConfirmed].first;
+        if (GetLastImportIn(chainID, lastImportTx))
+        {
+            UniValue ret(UniValue::VOBJ);
+            CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), chainActive.Height());
+            txTemplate.vin.push_back(CTxIn(lastImportTx.GetHash(), 0, CScript()));
+            // if Verus is active, our template import will gather all RESERVE_DEPOSITS that it can to spend into the
+            // import thread
+            if (IsVerusActive())
+            {
+                std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > reserveDeposits;
+
+                LOCK2(cs_main, mempool.cs);
+
+                if (!GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_DEPOSIT)), 1, reserveDeposits))
+                {
+                    for (auto deposit : reserveDeposits)
+                    {
+                        COptCCParams p;
+                        if (deposit.second.script.IsPayToCryptoCondition(p) && p.evalCode == EVAL_RESERVE_DEPOSIT)
+                        {
+                            txTemplate.vin.push_back(CTxIn(deposit.first.txhash, deposit.first.index, CScript()));
+                        }
+                    }
+                }
+            }
+            ret.push_back(Pair("lastimporttransaction", EncodeHexTx(lastImportTx)));
+            ret.push_back(Pair("lastconfirmednotarization", EncodeHexTx(lastConfirmedTx)));
+            ret.push_back(Pair("importtxtemplate", EncodeHexTx(txTemplate)));
+        }
+    }
+
+    return NullUniValue;
 }
 
 UniValue getlatestimportsout(const UniValue& params, bool fHelp)
@@ -2605,9 +2713,10 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "{\n"
-            "   \"name\" : \"string\"           (string, required) name of the chain to get the export transactions for\n"
-            "   \"lastimporttx\" : \"hex\"      (hex,    required) the last import transaction to follow, return list starts with import that spends this\n"
-            "   \"importtxtemplate\" : \"hex\"  (hex,    required) template transaction to use, so we create a transaction compatible with the other chain\n"
+            "   \"name\" : \"string\"                   (string, required) name of the chain to get the export transactions for\n"
+            "   \"lastimporttransaction\" : \"hex\"     (hex,    required) the last import transaction to follow, return list starts with import that spends this\n"
+            "   \"lastconfirmednotarization\" : \"hex\" (hex,    required) the last confirmed notarization transaction\n"
+            "   \"importtxtemplate\" : \"hex\"          (hex,    required) template transaction to use, so we create a transaction compatible with the other chain\n"
             "}\n"
 
             "\nResult:\n"
@@ -2667,7 +2776,6 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     vector<pair<CTransaction, uint256>> txesOut;
     CTransaction lastConfirmedNotarization;
 
-
     if (!(GetNotarizationData(chainID, isVerusActive ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd, &txesOut) && cnd.lastConfirmed >= 0))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Found no confirmed notarization");
@@ -2676,7 +2784,7 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     lastConfirmedNotarization = txesOut[cnd.lastConfirmed].first;
 
     std::vector<CTransaction> newImports;
-    if (!ConnectedChains.CreateLatestImports(chainDef, lastImportTx, lastExportTx, templateTx, lastConfirmedNotarization, newImports))
+    if (!ConnectedChains.CreateLatestImports(chainDef, lastImportTx, templateTx, lastConfirmedNotarization, newImports))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Failure creating new imports");
     }
@@ -2727,6 +2835,17 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
             "   \"name\"                    (string, required) name or chain ID of the chain to get the export transactions for\n"
 
             "\nResult:\n"
+            "   [\n"
+            "       {\n"
+            "           \"flags\" : n,\n"
+            "           \"initialratio\" : n,\n"
+            "           \"initialsupply\" : n,\n"
+            "           \"emitted\" : n,\n"
+            "           \"supply\" : n,\n"
+            "           \"reserve\" : n,\n"
+            "           \"currentratio\" : n,\n"
+            "       },\n"
+            "   ]\n"
 
             "\nExamples:\n"
             + HelpExampleCli("getinitialcurrencystate", "name")
@@ -2750,6 +2869,98 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
     }
 
     return GetInitialCurrencyState(chainDef, definitionHeight).ToUniValue();
+}
+
+UniValue getcurrencystate(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() <= 1)
+    {
+        throw runtime_error(
+            "getcurrencystate \"n\"\n"
+            "\nReturns the total amount of preconversions that have been confirmed on the blockchain for the specified chain.\n"
+
+            "\nArguments\n"
+            "   \"n\" or \"m,n\" or \"m,n,o\"         (int or string, optional) height or inclusive range with optional step at which to get the currency state\n"
+            "                                                                   If not specified, the latest currency state and height is returned\n"
+
+            "\nResult:\n"
+            "   [\n"
+            "       {\n"
+            "           \"height\": n,\n"
+            "           \"blocktime\": n,\n"
+            "           \"priceinreserve\": n,          number of satoshis of reserve for each native coin\n"
+            "           \"currencystate\": {\n"
+            "               \"flags\" : n,\n"
+            "               \"initialratio\" : n,\n"
+            "               \"initialsupply\" : n,\n"
+            "               \"emitted\" : n,\n"
+            "               \"supply\" : n,\n"
+            "               \"reserve\" : n,\n"
+            "               \"currentratio\" : n,\n"
+            "           \"}\n"
+            "       },\n"
+            "   ]\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getcurrencystate", "name")
+            + HelpExampleRpc("getcurrencystate", "name")
+        );
+    }
+    CheckPBaaSAPIsValid();
+
+    uint64_t lStart;
+    uint64_t startEnd[3] = {0};
+
+    lStart = startEnd[1] = startEnd[0] = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 1;
+
+    if (params.size() == 1)
+    {
+        if (uni_get_int(params[0], -1) == -1 && params[0].isStr())
+        {
+            Split(params[0].get_str(), startEnd, startEnd[0], 3);
+        }
+    }
+
+    if (startEnd[1] > lStart)
+    {
+        startEnd[1] = lStart;
+    }
+
+    if (startEnd[1] < startEnd[0])
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid block range for currency state");
+    }
+
+    if (startEnd[2] == 0)
+    {
+        startEnd[2] = 1;
+    }
+
+    if (startEnd[2] > INT_MAX)
+    {
+        startEnd[2] = INT_MAX;
+    }
+
+    uint32_t start = startEnd[0], end = startEnd[1], step = startEnd[2];
+
+    UniValue ret(UniValue::VARR);
+
+    for (int i = start; i <= end; i += step)
+    {
+        CCoinbaseCurrencyState currencyState = ConnectedChains.GetCurrencyState(i);
+        UniValue entry(UniValue::VOBJ);
+        entry.push_back(Pair("height", i));
+        entry.push_back(Pair("blocktime", (uint64_t)chainActive.LastTip()->nTime));
+        CAmount price;
+        if (!currencyState.to_int64(currencyState.GetPriceInReserve(), price))
+        {
+            price = 0;
+        }
+        entry.push_back(Pair("priceinreserve", price));
+        entry.push_back(Pair("currencystate", currencyState.ToUniValue()));
+        ret.push_back(entry);
+    }
+    return ret;
 }
 
 UniValue definechain(const UniValue& params, bool fHelp)
@@ -3473,6 +3684,7 @@ static const CRPCCommand commands[] =
     { "pbaas",        "definechain",                  &definechain,            true  },
     { "pbaas",        "sendreserve",                  &sendreserve,            true  },
     { "pbaas",        "getinitialcurrencystate",      &getinitialcurrencystate, true  },
+    { "pbaas",        "getcurrencystate",             &getcurrencystate,       true  },
     { "pbaas",        "getlatestimportsout",          &getlatestimportsout,    true  },
     { "pbaas",        "getlastimportin",              &getlastimportin,        true  },
     { "pbaas",        "submitacceptednotarization",   &submitacceptednotarization, true },

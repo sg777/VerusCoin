@@ -274,7 +274,7 @@ public:
     UniValue ToUniValue() const;
 };
 
-bool CreateEarnedNotarization(CMutableTransaction &mnewTx, std::vector<CInputDescriptor> &inputs, CTransaction &lastTx, CTransaction &crossTx, int32_t height, int32_t *confirmedInput, CTxDestination *confirmedDest);
+bool CreateEarnedNotarization(CMutableTransaction &mnewTx, std::vector<CInputDescriptor> &inputs, CTransaction &lastTx, CTransaction &crossTx, CTransaction &lastConfirmed, int32_t height, int32_t *confirmedInput, CTxDestination *confirmedDest);
 uint256 CreateAcceptedNotarization(const CBlock &blk, int32_t txIndex, int32_t height);
 std::vector<CInputDescriptor> AddSpendsAndFinalizations(const CChainNotarizationData &cnd, 
                                                         const uint256 &lastNotarizationID, 

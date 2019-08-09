@@ -424,7 +424,11 @@ bool GetNotarizationAndFinalization(int32_t ecode, CMutableTransaction mtx, CPBa
 // 10th validation to a notarization in our lineage, we finalize it as validated and finalize any conflicting notarizations
 // as invalidated.
 // Currently may return with insufficient or excess input relative to outputs.
-bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescriptor> &inputs, CTransaction &lastTx, CTransaction &crossTx, int32_t height, int32_t *pConfirmedInput, CTxDestination *pConfirmedDest)
+// If there is a notary connection availabe, lastConfirmed is set with the last confirmed notarization
+// that enables a check for any cross chain imports that could be mined into a block, whether it is a notarization block or not.
+// Usually, a miner will do this when they creat an earned notarization, but we should do it at every chance to prevent that from
+// being a significant point of failure and earn more in return
+bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescriptor> &inputs, CTransaction &lastTx, CTransaction &crossTx, CTransaction &lastConfirmed, int32_t height, int32_t *pConfirmedInput, CTxDestination *pConfirmedDest)
 {
     char funcname[] = "CreateEarnedNotarization: ";
 
@@ -443,8 +447,14 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     UniValue txidArr(UniValue::VARR);
 
-    if (GetNotarizationData(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION, cnd))
+    std::vector<pair<CTransaction, uint256>> txes;
+    if (GetNotarizationData(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION, cnd, &txes))
     {
+        if (cnd.IsConfirmed())
+        {
+            lastConfirmed = txes[cnd.lastConfirmed].first;
+        }
+
         // make an array of all possible txids on this chain
         for (auto it : cnd.vtx)
         {
@@ -554,6 +564,25 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
         else
         {
             compressedChainObjs.push_back(chainObjs[j]);
+        }
+        // at block one, we use the compact target of the main chain divided by 8 as the default difficulty. if a chain can interest
+        // at least 1/8th of the mining public, it launches at speed, otherwise slower or faster and adjusts
+        if (height == 1)
+        {
+            CChainParams &params = Params(CBaseChainParams::MAIN);
+
+            // TODO:PBAAS uncomment this and add a block 1 check that establishes the powAlternate and validity of block 1
+            // block 1 must then be processed before others to confirm the notarization header target and validate a chain
+            /*
+            if (chainObjs[j]->objectType == CHAINOBJ_HEADER)
+            {
+                params.consensus.powAlternate = arith_uint256(((CChainObject<CBlockHeader> *)chainObjs[j])->object.nBits) >> (VERUSHASH2_SHIFT + 3);
+            }
+            else if (chainObjs[j]->objectType == CHAINOBJ_HEADER_REF)
+            {
+                params.consensus.powAlternate = arith_uint256(((CChainObject<CHeaderRef> *)chainObjs[j])->object.preHeader.nBits) >> (VERUSHASH2_SHIFT + 3);
+            }
+            */
         }
     }
 

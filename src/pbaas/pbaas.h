@@ -935,7 +935,6 @@ public:
     // returns newly created import transactions to the specified chain from exports on this chain specified chain
     bool CreateLatestImports(const CPBaaSChainDefinition &chainDef, 
                              const CTransaction &lastCrossChainImport, 
-                             const CTransaction &lastExport,
                              const CTransaction &importTxTemplate,
                              const CTransaction &lastConfirmedNotarization,
                              std::vector<CTransaction> &newImports);
