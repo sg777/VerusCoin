@@ -2158,6 +2158,7 @@ UniValue reserveexchange(const UniValue& params, bool fHelp)
     }
 
     CheckPBaaSAPIsValid();
+
 }
 
 UniValue sendreserve(const UniValue& params, bool fHelp)
@@ -3683,6 +3684,7 @@ static const CRPCCommand commands[] =
     { "pbaas",        "getcrossnotarization",         &getcrossnotarization,   true  },
     { "pbaas",        "definechain",                  &definechain,            true  },
     { "pbaas",        "sendreserve",                  &sendreserve,            true  },
+    { "pbaas",        "reserveexchange",              &reserveexchange,        true  },
     { "pbaas",        "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "pbaas",        "getcurrencystate",             &getcurrencystate,       true  },
     { "pbaas",        "getlatestimportsout",          &getlatestimportsout,    true  },

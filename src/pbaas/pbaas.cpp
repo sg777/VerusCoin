@@ -91,16 +91,21 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
 
 // used to export coins from one chain to another, if they are not native, they are represented on the other
 // chain as tokens
-bool ValidateChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
 {
-
+    return true;
+}
+bool IsCrossChainExportInput(const CScript &scriptSig)
+{
 }
 
 // used to validate import of coins from one chain to another. if they are not native and are supported,
 // they are represented o the chain as tokens
-bool ValidateChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
 {
-
+}
+bool IsCrossChainImportInput(const CScript &scriptSig)
+{
 }
 
 // used to validate a specific service reward based on the spending transaction
@@ -112,23 +117,47 @@ bool ValidateServiceReward(struct CCcontract_info *cp, Eval* eval, const CTransa
     // applies to the correct billing period
     return true;
 }
+bool IsServiceRewardInput(const CScript &scriptSig)
+{
+}
 
 // used as a proxy token output for a reserve currency on its fractional reserve chain
 bool ValidateReserveOutput(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
 {
+    return true;
+}
+bool IsReserveOutputInput(const CScript &scriptSig)
+{
+}
 
+bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+{
+    return true;
+}
+bool IsReserveTransferInput(const CScript &scriptSig)
+{
+}
+
+bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+{
+    return true;
+}
+bool IsReserveDepositInput(const CScript &scriptSig)
+{
+}
+
+bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+{
+    return true;
+}
+bool IsCurrencyStateInput(const CScript &scriptSig)
+{
 }
 
 // used to convert a fractional reserve currency into its reserve and back 
 bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
 {
-
-}
-
-// used for distribution of premine
-bool ValidatePremineOutput(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
-{
-
+    return true;
 }
 
 /*
@@ -144,7 +173,6 @@ bool ValidateOpretProof(CScript &opRet, COpRetProof &orProof)
 {
     // enumerate through the objects and validate that they are objects of the expected type that hash
     // to the value expected. return true if so
-        
 }
 
 int8_t ObjTypeCode(const CBlockHeader &obj)
@@ -1514,9 +1542,3 @@ bool IsChainDefinitionInput(const CScript &scriptSig)
     return scriptSig.IsPayToCryptoCondition(&ecode) && ecode == EVAL_PBAASDEFINITION;
 }
 
-bool IsServiceRewardInput(const CScript &scriptSig)
-{
-    // this is an output check, and is incorrect. need to change to input
-    uint32_t ecode;
-    return scriptSig.IsPayToCryptoCondition(&ecode) && ecode == EVAL_SERVICEREWARD;
-}
