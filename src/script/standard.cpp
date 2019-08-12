@@ -126,7 +126,7 @@ std::vector<unsigned char> COptCCParams::AsVector() const
 {
     CScript cData = CScript();
 
-    cData << std::vector<unsigned char>({version, evalCode, n, m});
+    cData << std::vector<unsigned char>({version, evalCode, m, n});
     for (auto k : vKeys)
     {
         cData << GetDestinationBytes(k);

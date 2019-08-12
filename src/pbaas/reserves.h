@@ -289,7 +289,7 @@ public:
     CCurrencyState() : flags(0), InitialSupply(0), Emitted(0), Supply(0), Reserve(0) {}
 
     CCurrencyState(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve, uint32_t Flags=VALID) : 
-        flags(Flags), InitialSupply(initialSupply), Emitted(emitted), Supply(supply), Reserve(reserve)
+        flags(Flags), Supply(supply), InitialSupply(initialSupply), Emitted(emitted), Reserve(reserve)
     {
         if (initialRatio > CReserveExchange::SATOSHIDEN)
         {
@@ -336,10 +336,18 @@ public:
         // if supply is 0, reserve must be zero, and we cannot function as a reserve currency
         if (Supply <= 0 || Reserve <= 0)
         {
-            Emitted = Supply = emitted;
+            if (Supply < 0)
+            {
+                Emitted = Supply = emitted;
+            }
+            else
+            {
+                Emitted = emitted;
+                Supply += emitted;
+            }
             if (Reserve > 0 && InitialRatio == 0)
             {
-                InitialRatio = Emitted / Reserve;
+                InitialRatio = Supply / Reserve;
             }
             return *this;
         }

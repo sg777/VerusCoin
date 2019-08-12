@@ -369,6 +369,7 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const UniValue &obj)
     premine = uni_get_int64(find_value(obj, "premine"));
     initialcontribution = uni_get_int64(find_value(obj, "initialcontribution"));
     conversion = uni_get_int64(find_value(obj, "conversion"));
+    minpreconvert = uni_get_int64(find_value(obj, "minpreconvert"));
     maxpreconvert = uni_get_int64(find_value(obj, "maxpreconvert"));
     preconverted = uni_get_int64(find_value(obj, "preconverted"));
     launchFee = uni_get_int64(find_value(obj, "launchfee"));
@@ -520,6 +521,7 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("premine", (int64_t)premine));
     obj.push_back(Pair("initialcontribution", (int64_t)initialcontribution));
     obj.push_back(Pair("conversion", (int64_t)conversion));
+    obj.push_back(Pair("minpreconvert", (int64_t)minpreconvert));
     obj.push_back(Pair("maxpreconvert", (int64_t)maxpreconvert));
     obj.push_back(Pair("preconverted", (int64_t)preconverted));
     obj.push_back(Pair("launchfee", (int64_t)launchFee));
@@ -1145,6 +1147,7 @@ bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScrip
     }
     latestMiningOutputs = minerOutputs;
     latestDestination = firstDestinationOut;
+    return true;
 }
 
 void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight)
@@ -1163,6 +1166,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
         // get all available transfer outputs to aggregate into export transactions
         if (GetUnspentChainTransfers(transferOutputs))
         {
+            if (!transferOutputs.size())
+            {
+                return;
+            }
             std::vector<pair<CInputDescriptor, CReserveTransfer>> txInputs;
             std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
 

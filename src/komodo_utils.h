@@ -1790,7 +1790,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_supply"] = "0";
         mapArgs["-ac_eras"] = "3";
         mapArgs["-ac_reward"] = "50000000000,38400000000,38400000000";
-        mapArgs["-ac_halving"] = GetArg("-ac_halving", "1,43200,43209");    // allow testing easily with different default ports
+        mapArgs["-ac_halving"] = GetArg("-ac_halving", "1,43200,43220");    // allow testing easily with different default ports
         mapArgs["-ac_decay"] = "100000000,0,0";
         mapArgs["-ac_end"] = "10080,226080,0";
         mapArgs["-ac_veruspos"] = "50";

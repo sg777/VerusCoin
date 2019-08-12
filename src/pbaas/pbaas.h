@@ -463,7 +463,8 @@ public:
 
     CPBaaSChainDefinition(const CTransaction &tx, bool validate = false);
 
-    CPBaaSChainDefinition(std::string Name, std::string Address, int64_t Premine, int64_t Conversion, int64_t minPreConvert, int64_t maxPreConvert, int64_t preConverted, int64_t LaunchFee,
+    CPBaaSChainDefinition(std::string Name, std::string Address, int64_t Premine, int64_t initialContribution,
+                          int64_t Conversion, int64_t minPreConvert, int64_t maxPreConvert, int64_t preConverted, int64_t LaunchFee,
                           int32_t StartBlock, int32_t EndBlock, int32_t chainEras,
                           const std::vector<int64_t> &chainRewards, const std::vector<int64_t> &chainRewardsDecay,
                           const std::vector<int32_t> &chainHalving, const std::vector<int32_t> &chainEraEnd, std::vector<int32_t> &chainCurrencyOptions,
@@ -471,6 +472,7 @@ public:
                             nVersion(PBAAS_VERSION),
                             name(Name),
                             premine(Premine),
+                            initialcontribution(initialContribution),
                             conversion(Conversion),
                             minpreconvert(minPreConvert),
                             maxpreconvert(maxPreConvert),
@@ -505,6 +507,7 @@ public:
         READWRITE(name);        
         READWRITE(address);        
         READWRITE(VARINT(premine));
+        READWRITE(VARINT(initialcontribution));
         READWRITE(VARINT(conversion));
         READWRITE(VARINT(minpreconvert));
         READWRITE(VARINT(maxpreconvert));

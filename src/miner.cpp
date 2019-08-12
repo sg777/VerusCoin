@@ -245,24 +245,27 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
     // instead of one scriptPubKeyIn, we take a vector of them along with relative weight. each is assigned a percentage of the block subsidy and
     // mining reward based on its weight relative to the total
-    std::vector<pair<int, CScript>> minerOutputs({make_pair((int)1, scriptPubKeyIn)});
+    std::vector<pair<int, CScript>> minerOutputs = scriptPubKeyIn.size() ? std::vector<pair<int, CScript>>({make_pair((int)1, scriptPubKeyIn)}) : std::vector<pair<int, CScript>>();
 
     // TODO: when we accept a parameter of the minerOutputs vector, remove this comment but not the check
     CTxDestination firstDestination;
-    if (!ConnectedChains.SetLatestMiningOutputs(minerOutputs, firstDestination))
+    if (!(scriptPubKeyIn.size() && ConnectedChains.SetLatestMiningOutputs(minerOutputs, firstDestination) || isStake))
     {
         fprintf(stderr,"%s: Must have valid miner outputs, including script with valid PK or PKH destination.\n", __func__);
         return NULL;
     }
 
-    int64_t shareCheck = 0;
-    for (auto output : minerOutputs)
+    if (minerOutputs.size())
     {
-        shareCheck += output.first;
-        if (shareCheck < 0 || shareCheck > INT_MAX)
+        int64_t shareCheck = 0;
+        for (auto output : minerOutputs)
         {
-            fprintf(stderr,"Invalid miner outputs share specifications\n");
-            return NULL;
+            shareCheck += output.first;
+            if (shareCheck < 0 || shareCheck > INT_MAX)
+            {
+                fprintf(stderr,"Invalid miner outputs share specifications\n");
+                return NULL;
+            }
         }
     }
 
@@ -461,8 +464,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             }
         }
 
-        ConnectedChains.AggregateChainTransfers(firstDestination, nHeight);
-
         //
         // Now start solving the block
         //
@@ -510,7 +511,29 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             pblock->nTime = blocktime;
             nStakeTxSize = GetSerializeSize(txStaked, SER_NETWORK, PROTOCOL_VERSION);
             nBlockSize += nStakeTxSize;
+
+            // get the public key and make a miner output if needed for this
+            if (!minerOutputs.size())
+            {
+                minerOutputs.push_back(make_pair((int)1, txStaked.vout[0].scriptPubKey));
+                txnouttype typeRet;
+                std::vector<std::vector<unsigned char>> vSolutions;
+                if (Solver(txStaked.vout[0].scriptPubKey, typeRet, vSolutions))
+                {
+                    if (typeRet == TX_PUBKEY)
+                    {
+                        pk = CPubKey(vSolutions[0]);
+                    }
+                    else
+                    {
+                        pwalletMain->GetPubKey(CKeyID(uint160(vSolutions[0])), pk);
+                    }
+                }
+                ConnectedChains.SetLatestMiningOutputs(minerOutputs, firstDestination);
+            }
         }
+
+        ConnectedChains.AggregateChainTransfers(firstDestination, nHeight);
 
         // Now the coinbase -
         // A PBaaS coinbase must have some additional outputs to enable certain chain state and functions to be properly
@@ -588,8 +611,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         uint256 mmrRoot;
         vector<CInputDescriptor> notarizationInputs;
 
-        std::map<uint160, CPBaaSChainDefinition> chainDefinitions;  // chain definition cache for targets of cross-chain transactions
-
         // used as scratch for making CCs, should be reinitialized each time
         CCcontract_info CC;
         CCcontract_info *cp;
@@ -598,7 +619,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
         // Create coinbase tx and set up the null input with height
         CMutableTransaction coinbaseTx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
-        coinbaseTx.vin.push_back(CTxIn(uint256(), 0, CScript() << nHeight << OP_0));
+        coinbaseTx.vin.push_back(CTxIn(uint256(), (uint32_t)-1, CScript() << nHeight << OP_0));
 
         // default outputs for mining and before stake guard or fee calculation
         // store the relative weight in the amount output to convert later to a relative portion
@@ -852,13 +873,13 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     notarizationOut = MakeCC1of1Vout(EVAL_EARNEDNOTARIZATION, needed, pkCC, vKeys, pbn);
                     coinbaseTx.vout.push_back(notarizationOut);
 
-                    // we need to create and send any newly confirmed
-                    if (confirmedInput != -1)
-                    {
-
-                    }
-                    // exports as import transactions to the notary chain - may want to set a flag and do that on submissionthread
-                    //
+                    // place the notarization
+                    pblock->vtx.push_back(CTransaction(newNotarizationTx));
+                    pblocktemplate->vTxFees.push_back(0);
+                    pblocktemplate->vTxSigOps.push_back(-1); // updated at end
+                    nBlockSize += GetSerializeSize(newNotarizationTx, SER_NETWORK, PROTOCOL_VERSION);
+                    notarizationTxIndex = pblock->vtx.size() - 1;
+                    nBlockTx++;
                 }
                 else if (nHeight == 1)
                 {
@@ -953,8 +974,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                     CValidationState state;
                                     if (!myAddtomempool(itx, &state))
                                     {
-                                        LogPrintf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason());
-                                        printf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason());
+                                        LogPrintf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason().c_str());
+                                        printf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason().c_str());
                                         break;  // if we failed to add one, the others will fail to spend it
                                     }
                                 }
@@ -1130,16 +1151,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
         //
         // NOW -- REALLY START TO FILL THE BLOCK
-        // first, create any stake transaction and possible notary transaction to include its size,
+        //
         // estimate number of conversions, staking transaction size, and additional coinbase outputs that will be required
-
-        // place the notarization
-        pblock->vtx.push_back(CTransaction(newNotarizationTx));
-        pblocktemplate->vTxFees.push_back(0);
-        pblocktemplate->vTxSigOps.push_back(-1); // updated at end
-        nBlockSize += GetSerializeSize(newNotarizationTx, SER_NETWORK, PROTOCOL_VERSION);
-        notarizationTxIndex = pblock->vtx.size() - 1;
-        nBlockTx++;
 
         int32_t maxPreLimitOrderBlockSize = nBlockMaxSize - std::min(nBlockMaxSize >> 2, reserveExchangeLimitSize);
 

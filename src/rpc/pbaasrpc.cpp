@@ -3125,7 +3125,7 @@ UniValue definechain(const UniValue& params, bool fHelp)
         newChain.initialcontribution = 0;
     }
     
-    CCurrencyState currencyState(newChain.conversion, newChain.premine + initialConversion, newChain.premine + initialConversion, 0, initialReserve);
+    CCurrencyState currencyState(newChain.conversion, newChain.premine + initialConversion, initialConversion, 0, initialReserve);
 
     CPBaaSNotarization pbn = CPBaaSNotarization(CPBaaSNotarization::CURRENT_VERSION,
                                                 newChain.GetChainID(),
@@ -3165,8 +3165,11 @@ UniValue definechain(const UniValue& params, bool fHelp)
         outputs.push_back(CRecipient({reserveTransferOut.scriptPubKey, initialToConvert, false}));
 
         // if there is a fee output, send it to the payment address
-        CTxDestination feeOutAddr(newChain.address);
-        outputs.push_back(CRecipient({GetScriptForDestination(feeOutAddr), initialFee, false}));
+        if (initialFee)
+        {
+            CTxDestination feeOutAddr(newChain.address);
+            outputs.push_back(CRecipient({GetScriptForDestination(feeOutAddr), initialFee, false}));
+        }
     }
 
     // create the transaction
