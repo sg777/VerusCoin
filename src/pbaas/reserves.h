@@ -90,7 +90,7 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        ((CReserveOutput *)this)->SerializationOp(s, ser_action);
+        READWRITE(*(CReserveOutput *)this);
         READWRITE(VARINT(nFees));
         READWRITE(destination);
     }
@@ -152,7 +152,7 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        ((CReserveOutput *)this)->SerializationOp(s, ser_action);
+        READWRITE(*(CReserveOutput *)this);
         READWRITE(VARINT(nLimit));
         READWRITE(nValidBefore);
     }
@@ -467,7 +467,7 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        ((CCurrencyState *)this)->SerializationOp(s, ser_action);
+        READWRITE(*(CCurrencyState *)this);
         READWRITE(VARINT(ReserveIn));
         READWRITE(VARINT(NativeIn));
         READWRITE(ReserveOut);

@@ -2326,7 +2326,8 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         CTxOut ccOut;
         if (flags && CReserveTransfer::PRECONVERT)
         {
-            ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, dests, rt);
+            // cast object to most derived class
+            ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, dests, (CReserveTransfer)rt);
         }
         else
         {
@@ -2528,7 +2529,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 // create the transfer object
                 CReserveTransfer rt(flags, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, kID);
 
-                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, dests, rt);
+                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, dests, (CReserveTransfer)rt);
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
 
                 // create a transaction with reserve coin as input
@@ -3161,7 +3162,7 @@ UniValue definechain(const UniValue& params, bool fHelp)
         dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(newChain.GetChainID())});
 
         CReserveTransfer rt = CReserveTransfer(CReserveTransfer::PRECONVERT + CReserveTransfer::VALID, initialToConvert, currencyState.CalculateConversionFee(initialToConvert), newChain.address);
-        CTxOut reserveTransferOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, initialToConvert, pk, dests, rt);
+        CTxOut reserveTransferOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, initialToConvert, pk, dests, (CReserveTransfer)rt);
         outputs.push_back(CRecipient({reserveTransferOut.scriptPubKey, initialToConvert, false}));
 
         // if there is a fee output, send it to the payment address

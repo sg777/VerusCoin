@@ -519,7 +519,8 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
             // create the transfer output with the converted amount less fees
             CReserveTransfer rt(CReserveTransfer::VALID, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, GetDestinationID(p.vKeys[0]));
 
-            conversionTx.vout.push_back(MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt));
+            // cast object to the most derived class to avoid compiler errors to a least derived class
+            conversionTx.vout.push_back(MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, (CReserveTransfer)rt));
         }
         else if (indexRex.second.flags & indexRex.second.TO_RESERVE)
         {

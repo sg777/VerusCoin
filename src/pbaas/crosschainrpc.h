@@ -79,7 +79,14 @@ template <typename SERIALIZABLE>
 void FromVector(const std::vector<unsigned char> &vch, SERIALIZABLE &obj)
 {
     CDataStream s(vch, SER_NETWORK, PROTOCOL_VERSION);
-    obj.Unserialize(s);
+    try
+    {
+        obj.Unserialize(s);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
 }
 
 template <typename SERIALIZABLE>
