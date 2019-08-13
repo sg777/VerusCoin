@@ -51,9 +51,140 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
     if (fIncludeHex)
         out.push_back(Pair("hex", HexStr(scriptPubKey.begin(), scriptPubKey.end())));
 
+    bool noDests = true;
     if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired))
     {
         out.push_back(Pair("type", GetTxnOutputType(type)));
+    }
+    else
+    {
+        noDests = false;
+    }
+
+    COptCCParams p;
+    if (IsPayToCryptoCondition(scriptPubKey, p) && p.version >= COptCCParams::VERSION_V2)
+    {
+        switch(p.evalCode)
+        {
+            case EVAL_PBAASDEFINITION:
+            {
+                CPBaaSChainDefinition definition;
+
+                if (p.vData.size() && (definition = CPBaaSChainDefinition(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("pbaasChainDefinition", definition.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_SERVICEREWARD:
+            {
+                CServiceReward reward;
+
+                if (p.vData.size() && (reward = CServiceReward(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("pbaasServiceReward", reward.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_EARNEDNOTARIZATION:
+            case EVAL_ACCEPTEDNOTARIZATION:
+            {
+                CPBaaSNotarization notarization;
+
+                if (p.vData.size() && (notarization = CPBaaSNotarization(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("pbaasNotarization", notarization.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_FINALIZENOTARIZATION:
+            {
+                CNotarizationFinalization finalization;
+
+                if (p.vData.size() && (finalization = CNotarizationFinalization(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("pbaasFinalization", finalization.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_CURRENCYSTATE:
+            {
+                CCoinbaseCurrencyState cbcs;
+
+                if (p.vData.size() && (cbcs = CCoinbaseCurrencyState(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("currencystate", cbcs.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_RESERVE_TRANSFER:
+            {
+                CReserveTransfer rt;
+
+                if (p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("reservetransfer", rt.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_RESERVE_OUTPUT:
+            {
+                CReserveOutput ro;
+
+                if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("reserveoutput", ro.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_RESERVE_DEPOSIT:
+            {
+                CReserveOutput ro;
+
+                if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("reservedeposit", ro.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_CROSSCHAIN_EXPORT:
+            {
+                CCrossChainExport ccx;
+
+                if (p.vData.size() && (ccx = CCrossChainExport(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("crosschainexport", ccx.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_CROSSCHAIN_IMPORT:
+            {
+                CCrossChainImport cci;
+
+                if (p.vData.size() && (cci = CCrossChainImport(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("crosschainimport", cci.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_STAKEGUARD:
+                out.push_back(Pair("stakeguard", ""));
+                break;
+        }
+    }
+
+    if (noDests)
+    {
         return;
     }
 
@@ -255,128 +386,6 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
             out.push_back(Pair("spentIndex", (int)spentInfo.inputIndex));
             out.push_back(Pair("spentHeight", spentInfo.blockHeight));
         }
-
-        COptCCParams p;
-        if (IsPayToCryptoCondition(txout.scriptPubKey, p) && p.version >= COptCCParams::VERSION_V2)
-        {
-            switch(p.evalCode)
-            {
-                case EVAL_PBAASDEFINITION:
-                {
-                    CPBaaSChainDefinition definition;
-
-                    if (p.vData.size() && (definition = CPBaaSChainDefinition(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasChainDefinition", definition.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_SERVICEREWARD:
-                {
-                    CServiceReward reward;
-
-                    if (p.vData.size() && (reward = CServiceReward(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasServiceReward", reward.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_EARNEDNOTARIZATION:
-                case EVAL_ACCEPTEDNOTARIZATION:
-                {
-                    CPBaaSNotarization notarization;
-
-                    if (p.vData.size() && (notarization = CPBaaSNotarization(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasNotarization", notarization.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_FINALIZENOTARIZATION:
-                {
-                    CNotarizationFinalization finalization;
-
-                    if (p.vData.size() && (finalization = CNotarizationFinalization(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasFinalization", finalization.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_CURRENCYSTATE:
-                {
-                    CCoinbaseCurrencyState cbcs;
-
-                    if (p.vData.size() && (cbcs = CCoinbaseCurrencyState(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("currencystate", cbcs.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_RESERVE_TRANSFER:
-                {
-                    CReserveTransfer rt;
-
-                    if (p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("reservetransfer", rt.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_RESERVE_OUTPUT:
-                {
-                    CReserveOutput ro;
-
-                    if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("reserveoutput", ro.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_RESERVE_DEPOSIT:
-                {
-                    CReserveOutput ro;
-
-                    if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("reservedeposit", ro.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_CROSSCHAIN_EXPORT:
-                {
-                    CCrossChainExport ccx;
-
-                    if (p.vData.size() && (ccx = CCrossChainExport(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("crosschainexport", ccx.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_CROSSCHAIN_IMPORT:
-                {
-                    CCrossChainImport cci;
-
-                    if (p.vData.size() && (cci = CCrossChainImport(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("crosschainimport", cci.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_STAKEGUARD:
-                    break;
-            }
-        }
-
         vout.push_back(out);
     }
     entry.push_back(Pair("vout", vout));
@@ -459,115 +468,6 @@ void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry)
         ScriptPubKeyToJSON(txout.scriptPubKey, o, true);
         out.push_back(Pair("scriptPubKey", o));
         vout.push_back(out);
-        COptCCParams p;
-        if (IsPayToCryptoCondition(txout.scriptPubKey, p) && p.version >= COptCCParams::VERSION_V2)
-        {
-            switch(p.evalCode)
-            {
-                case EVAL_PBAASDEFINITION:
-                {
-                    CPBaaSChainDefinition definition;
-
-                    if (p.vData.size() && (definition = CPBaaSChainDefinition(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasChainDefinition", definition.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_SERVICEREWARD:
-                {
-                    CServiceReward reward;
-
-                    if (p.vData.size() && (reward = CServiceReward(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasServiceReward", reward.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_EARNEDNOTARIZATION:
-                case EVAL_ACCEPTEDNOTARIZATION:
-                {
-                    CPBaaSNotarization notarization;
-
-                    if (p.vData.size() && (notarization = CPBaaSNotarization(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasNotarization", notarization.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_FINALIZENOTARIZATION:
-                {
-                    CNotarizationFinalization finalization;
-
-                    if (p.vData.size() && (finalization = CNotarizationFinalization(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasFinalization", finalization.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_CURRENCYSTATE:
-                {
-                    CCoinbaseCurrencyState cbcs;
-
-                    if (p.vData.size() && (cbcs = CCoinbaseCurrencyState(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("currencystate", cbcs.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_RESERVE_TRANSFER:
-                {
-                    CReserveTransfer rt;
-
-                    if (p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("reservetransfer", rt.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_RESERVE_OUTPUT:
-                {
-                    CReserveOutput ro;
-
-                    if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("reserveoutput", ro.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_CROSSCHAIN_EXPORT:
-                {
-                    CCrossChainExport ccx;
-
-                    if (p.vData.size() && (ccx = CCrossChainExport(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("crosschainexport", ccx.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_CROSSCHAIN_IMPORT:
-                {
-                    CCrossChainImport cci;
-
-                    if (p.vData.size() && (cci = CCrossChainImport(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("crosschainimport", cci.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_STAKEGUARD:
-                    break;
-            }
-        }
     }
     entry.push_back(Pair("vout", vout));
 
