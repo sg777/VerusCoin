@@ -48,8 +48,6 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
     int nRequired;
 
     out.push_back(Pair("asm", ScriptToAsmStr(scriptPubKey)));
-    if (fIncludeHex)
-        out.push_back(Pair("hex", HexStr(scriptPubKey.begin(), scriptPubKey.end())));
 
     bool noDests = true;
     if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired))
@@ -74,6 +72,10 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 {
                     out.push_back(Pair("pbaasChainDefinition", definition.ToUniValue()));
                 }
+                else
+                {
+                    out.push_back(Pair("pbaasChainDefinition", "invalid"));
+                }
                 break;
             }
 
@@ -84,6 +86,10 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 if (p.vData.size() && (reward = CServiceReward(p.vData[0])).IsValid())
                 {
                     out.push_back(Pair("pbaasServiceReward", reward.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("pbaasServiceReward", "invalid"));
                 }
                 break;
             }
@@ -97,6 +103,10 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 {
                     out.push_back(Pair("pbaasNotarization", notarization.ToUniValue()));
                 }
+                else
+                {
+                    out.push_back(Pair("pbaasNotarization", "invalid"));
+                }
                 break;
             }
 
@@ -104,8 +114,9 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
             {
                 CNotarizationFinalization finalization;
 
-                if (p.vData.size() && (finalization = CNotarizationFinalization(p.vData[0])).IsValid())
+                if (p.vData.size())
                 {
+                    finalization = CNotarizationFinalization(p.vData[0]);
                     out.push_back(Pair("pbaasFinalization", finalization.ToUniValue()));
                 }
                 break;
@@ -119,6 +130,10 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 {
                     out.push_back(Pair("currencystate", cbcs.ToUniValue()));
                 }
+                else
+                {
+                    out.push_back(Pair("currencystate", "invalid"));
+                }
                 break;
             }
 
@@ -129,6 +144,10 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 if (p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid())
                 {
                     out.push_back(Pair("reservetransfer", rt.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("reservetransfer", "invalid"));
                 }
                 break;
             }
@@ -141,6 +160,10 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 {
                     out.push_back(Pair("reserveoutput", ro.ToUniValue()));
                 }
+                else
+                {
+                    out.push_back(Pair("reserveoutput", "invalid"));
+                }
                 break;
             }
 
@@ -151,6 +174,10 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
                 {
                     out.push_back(Pair("reservedeposit", ro.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("reservedeposit", "invalid"));
                 }
                 break;
             }
@@ -163,6 +190,10 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 {
                     out.push_back(Pair("crosschainexport", ccx.ToUniValue()));
                 }
+                else
+                {
+                    out.push_back(Pair("crosschainexport", "invalid"));
+                }
                 break;
             }
 
@@ -174,14 +205,24 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 {
                     out.push_back(Pair("crosschainimport", cci.ToUniValue()));
                 }
+                else
+                {
+                    out.push_back(Pair("crosschainimport", "invalid"));
+                }
                 break;
             }
 
             case EVAL_STAKEGUARD:
                 out.push_back(Pair("stakeguard", ""));
                 break;
+
+            default:
+                out.push_back(Pair("unknown", ""));
         }
     }
+
+    if (fIncludeHex)
+        out.push_back(Pair("hex", HexStr(scriptPubKey.begin(), scriptPubKey.end())));
 
     if (noDests)
     {
