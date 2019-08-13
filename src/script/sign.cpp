@@ -154,7 +154,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
             if (!is1of2)
             {
                 uint160 keyID = GetDestinationID(p.vKeys[0]);
-                bool havePriv = creator.KeyStore().GetKey(keyID, privKey);
+                bool havePriv = creator.IsKeystoreValid() && creator.KeyStore().GetKey(keyID, privKey);
                 CPubKey pubk;
 
                 // if we don't have the private key, it must be the unspendable address

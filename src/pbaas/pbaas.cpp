@@ -1304,7 +1304,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     // we receive our fee on the other chain or when it comes back
                                     dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_RESERVE_DEPOSIT))});
 
-                                    CReserveOutput ro(CReserveOutput::VALID, totalAmount - ccx.CalculateExportFee());
+                                    CReserveOutput ro(CReserveOutput::VALID, totalAmount);
 
                                     CTxOut outToReserve = MakeCC1of1Vout(EVAL_RESERVE_DEPOSIT, 
                                                                          ro.nValue,
