@@ -3186,7 +3186,7 @@ UniValue definechain(const UniValue& params, bool fHelp)
 
     uvret.push_back(Pair("txid", wtx.GetHash().GetHex()));
 
-    UniValue txJSon;
+    UniValue txJSon(UniValue::VOBJ);
     TxToJSON(wtx, uint256(), txJSon);
     uvret.push_back(Pair("tx",  txJSon));
 
