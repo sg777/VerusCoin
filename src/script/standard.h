@@ -60,7 +60,7 @@ class COptCCParams
 
         COptCCParams(std::vector<unsigned char> &vch);
 
-        bool IsValid() { return version != 0; }
+        bool IsValid() const { return version != 0; }
 
         std::vector<unsigned char> AsVector() const;
 };
@@ -144,7 +144,7 @@ class CStakeParams
             return ret;
         }
 
-        bool IsValid() { return srcHeight != 0; }
+        bool IsValid() const { return srcHeight != 0; }
 };
 
 /** Check whether a CTxDestination is a CNoDestination. */

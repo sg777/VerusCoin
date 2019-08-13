@@ -57,7 +57,7 @@ public:
 
     UniValue ToUniValue() const;
 
-    bool IsValid()
+    bool IsValid() const
     {
         // we don't support op returns
         return (flags & VALID) && (nValue != 0);
@@ -100,7 +100,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return CReserveOutput::IsValid() && nFees > 0 && !destination.IsNull();
     }
@@ -162,7 +162,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         // this needs an actual check
         return CReserveOutput::IsValid();

@@ -179,7 +179,7 @@ public:
         READWRITE(branch);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return !notarizationRoot.IsNull();
     }
@@ -587,7 +587,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return nBits != 0;
     }
@@ -643,7 +643,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return serviceType != SERVICE_INVALID;
     }
@@ -691,7 +691,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return !chainID.IsNull();
     }
@@ -737,9 +737,9 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
-        return chainID.IsNull();
+        return !chainID.IsNull();
     }
 
     CAmount CalculateExportFee() const;
@@ -789,7 +789,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return !chainID.IsNull();
     }
@@ -822,7 +822,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return chainDefinition.IsValid();
     }

@@ -171,7 +171,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return !mmrRoot.IsNull();
     }
@@ -199,7 +199,7 @@ public:
         READWRITE(confirmedInput);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return confirmedInput != -1;
     }
@@ -260,7 +260,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         // this needs an actual check
         return version != 0;
