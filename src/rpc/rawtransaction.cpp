@@ -49,15 +49,13 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
     out.push_back(Pair("asm", ScriptToAsmStr(scriptPubKey)));
 
-    bool noDests = true;
+    bool noDests = false;
     if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired))
     {
-        out.push_back(Pair("type", GetTxnOutputType(type)));
+        noDests = true;
     }
-    else
-    {
-        noDests = false;
-    }
+
+    out.push_back(Pair("type", GetTxnOutputType(type)));
 
     COptCCParams p;
     if (IsPayToCryptoCondition(scriptPubKey, p) && p.version >= COptCCParams::VERSION_V2)
@@ -230,7 +228,6 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
     }
 
     out.push_back(Pair("reqSigs", nRequired));
-    out.push_back(Pair("type", GetTxnOutputType(type)));
 
     UniValue a(UniValue::VARR);
     for (const CTxDestination& addr : addresses) {
