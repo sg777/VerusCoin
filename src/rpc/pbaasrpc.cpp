@@ -3141,7 +3141,7 @@ UniValue definechain(const UniValue& params, bool fHelp)
     pk = CPubKey(ParseHex(CC.CChexstr));
     dests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_EXPORT)));
 
-    CTxOut exportThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, DEFAULT_TRANSACTION_FEE, pk, dests, CCrossChainExport(ConnectedChains.NotaryChain().GetChainID(), 0, 0, 0));
+    CTxOut exportThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, DEFAULT_TRANSACTION_FEE, pk, dests, CCrossChainExport(newChainID, 0, 0, 0));
     outputs.push_back(CRecipient({exportThreadOut.scriptPubKey, DEFAULT_TRANSACTION_FEE, false}));
 
     // make the reserve transfer and fee outputs if there is an initial contribution
@@ -3149,7 +3149,7 @@ UniValue definechain(const UniValue& params, bool fHelp)
     {
         cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
         pk = CPubKey(ParseHex(CC.CChexstr));
-        dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(newChain.GetChainID())});
+        dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(newChainID)});
 
         CReserveTransfer rt = CReserveTransfer(CReserveTransfer::PRECONVERT + CReserveTransfer::VALID, initialToConvert, currencyState.CalculateConversionFee(initialToConvert), newChain.address);
         CTxOut reserveTransferOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, initialToConvert, pk, dests, (CReserveTransfer)rt);

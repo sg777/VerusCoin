@@ -718,7 +718,7 @@ public:
         FromVector(asVector, *this);
     }
 
-    CCrossChainExport(uint160 cID, int32_t numin, CAmount value, CAmount fees) : chainID(cID), numInputs(numin),totalAmount(value), totalFees(fees) {}
+    CCrossChainExport(uint160 cID, int32_t numin, CAmount value, CAmount fees) : chainID(cID), numInputs(numin), totalAmount(value), totalFees(fees) {}
 
     CCrossChainExport(const CTransaction &tx);
 
