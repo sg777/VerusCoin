@@ -1176,14 +1176,19 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             // we need unspent export outputs to export
             if (GetUnspentChainExports(exportOutputs))
             {
-                uint160 lastChain;
+                uint160 bookEnd;
+                bookEnd.SetHex("ffffffffffffffffffffffffffffffffffffffff");
+                uint160 lastChain = bookEnd;
+
+                // add a bookend entry at the end of transfer outputs to ensure that we try to export all before it
+                transferOutputs.insert(make_pair(bookEnd, make_pair(CInputDescriptor(), CReserveTransfer())));
 
                 // merge all of the common chainID outputs into common export transactions if either MIN_BLOCKS blocks have passed since the last
                 // export of that type, or there are MIN_INPUTS or more outputs to aggregate
                 for (auto it = transferOutputs.begin(); it != transferOutputs.end(); it++)
                 {
                     // get chain target and see if it is the same
-                    if (lastChain.IsNull() || it->first == lastChain)
+                    if (lastChain == bookEnd || it->first == lastChain)
                     {
                         txInputs.push_back(it->second);
                         lastChain = it->first;

@@ -972,13 +972,15 @@ public:
 template <typename TOBJ>
 CTxOut MakeCC1of1Vout(uint8_t evalcode, CAmount nValue, CPubKey pk, std::vector<CTxDestination> vDest, const TOBJ &obj)
 {
+    assert(vDest.size() < 256);
+
     CTxOut vout;
     CC *payoutCond = MakeCCcond1(evalcode, pk);
     vout = CTxOut(nValue, CCPubKey(payoutCond));
     cc_free(payoutCond);
 
-    std::vector<std::vector<unsigned char>> vvch({::AsVector(obj)});
-    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, 1, vDest, vvch);
+    std::vector<std::vector<unsigned char>> vvch({::AsVector((const TOBJ)obj)});
+    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, (uint8_t)(vDest.size()), vDest, vvch);
 
     // add the object to the end of the script
     vout.scriptPubKey << vParams.AsVector() << OP_DROP;
@@ -993,8 +995,8 @@ CTxOut MakeCC0of0Vout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestinati
     vout = CTxOut(nValue, CCPubKey(payoutCond));
     cc_free(payoutCond);
 
-    std::vector<std::vector<unsigned char>> vvch({::AsVector(obj)});
-    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, 1, vDest, vvch);
+    std::vector<std::vector<unsigned char>> vvch({::AsVector((const TOBJ)obj)});
+    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, (uint8_t)(vDest.size()), vDest, vvch);
 
     // add the object to the end of the script
     vout.scriptPubKey << vParams.AsVector() << OP_DROP;
@@ -1010,7 +1012,7 @@ CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2
     cc_free(payoutCond);
 
     std::vector<CPubKey> vpk({pk1, pk2});
-    std::vector<std::vector<unsigned char>> vvch({::AsVector(obj)});
+    std::vector<std::vector<unsigned char>> vvch({::AsVector((const TOBJ)obj)});
     COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, 2, vpk, vvch);
 
     // add the object to the end of the script
@@ -1027,8 +1029,8 @@ CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2
     cc_free(payoutCond);
 
     std::vector<CPubKey> vpk({pk1, pk2});
-    std::vector<std::vector<unsigned char>> vvch({::AsVector(obj)});
-    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, 2, vDest, vvch);
+    std::vector<std::vector<unsigned char>> vvch({::AsVector((const TOBJ)obj)});
+    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, (uint8_t)(vDest.size()), vDest, vvch);
 
     // add the object to the end of the script
     vout.scriptPubKey << vParams.AsVector() << OP_DROP;
