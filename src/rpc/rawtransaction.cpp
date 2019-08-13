@@ -47,8 +47,6 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
     vector<CTxDestination> addresses;
     int nRequired;
 
-    out.push_back(Pair("asm", ScriptToAsmStr(scriptPubKey)));
-
     bool noDests = false;
     if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired))
     {
@@ -219,21 +217,21 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
         }
     }
 
+    if (!noDests)
+    {
+        out.push_back(Pair("reqSigs", nRequired));
+
+        UniValue a(UniValue::VARR);
+        for (const CTxDestination& addr : addresses) {
+            a.push_back(EncodeDestination(addr));
+        }
+        out.push_back(Pair("addresses", a));
+    }
+
+    out.push_back(Pair("asm", ScriptToAsmStr(scriptPubKey)));
+
     if (fIncludeHex)
         out.push_back(Pair("hex", HexStr(scriptPubKey.begin(), scriptPubKey.end())));
-
-    if (noDests)
-    {
-        return;
-    }
-
-    out.push_back(Pair("reqSigs", nRequired));
-
-    UniValue a(UniValue::VARR);
-    for (const CTxDestination& addr : addresses) {
-        a.push_back(EncodeDestination(addr));
-    }
-    out.push_back(Pair("addresses", a));
 }
 
 UniValue TxJoinSplitToJSON(const CTransaction& tx) {
