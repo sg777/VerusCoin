@@ -467,7 +467,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         // this chain to be claimed
                         cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
 
-                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(lastCCI.chainID)});
                         CAmount fees = curTransfer.DEFAULT_PER_STEP_FEE << 1;
                         CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, curTransfer.destination);
 
