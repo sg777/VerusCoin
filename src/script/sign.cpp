@@ -204,21 +204,30 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                 for (auto pk : p.vKeys)
                 {
                     uint160 keyID = GetDestinationID(pk);
-                    std::vector<unsigned char> vkch = GetDestinationBytes(pk);
-                    if (vkch.size() == 33)
+                    CPubKey foundKey;
+                    if (!(creator.IsKeystoreValid() && creator.KeyStore().GetPubKey(keyID, foundKey)))
                     {
-                        keys.push_back(CPubKey(vkch));
+                        std::vector<unsigned char> vkch = GetDestinationBytes(pk);
+                        if (vkch.size() == 33)
+                        {
+                            foundKey = CPubKey(vkch);
+                        }
+                    }
+
+                    if (foundKey.IsFullyValid())
+                    {
+                        keys.push_back(foundKey);
                     }
                 }
 
                 // if we only have one key, and this is version 2, add the cc pub key
-                if (keys.size() == 1 && p.version == p.VERSION_V2)
+                if (keys.size() <= 1 && p.version == p.VERSION_V2)
                 {
                     keys.push_back(CPubKey(ParseHex(C.CChexstr)));
                 }
 
-                // we need at least two keys for a 1 of 2
-                if (keys.size() < 2)
+                // we need something to sign with
+                if (!keys.size())
                 {
                     return false;
                 }
