@@ -508,7 +508,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-            std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(chainDef.GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
+            std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
             CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), totalImport);
 
             // need to add in the reserve deposits
@@ -899,13 +899,12 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
 
 // returns all unspent chain transfer outputs with an optional chainFilter. if the chainFilter is not
 // NULL, only transfers to that chain are returned
-bool GetUnspentChainExports(multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs, uint160 chainFilter)
+bool GetUnspentChainExports(uint160 chainID, multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs)
 {
     // look for unspent notarization finalization outputs for the requested chain
-    CKeyID keyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_EXPORT));
+    CKeyID keyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT));
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
-    bool filter = !chainFilter.IsNull();
 
     LOCK2(cs_main, mempool.cs);
 
@@ -931,8 +930,7 @@ bool GetUnspentChainExports(multimap<uint160, pair<int, CInputDescriptor>> &expo
                         COptCCParams p;
                         CCrossChainExport cx;
                         if (::IsPayToCryptoCondition(coins.vout[i].scriptPubKey, p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                            p.vData.size() && (cx = CCrossChainExport(p.vData[0])).IsValid() &&
-                            (!filter || cx.chainID == chainFilter))
+                            p.vData.size() && (cx = CCrossChainExport(p.vData[0])).IsValid())
                         {
                             exportOutputs.insert(make_pair(cx.chainID,
                                                      make_pair(coins.nHeight, CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))))));
@@ -2018,6 +2016,7 @@ UniValue paynotarizationrewards(const UniValue& params, bool fHelp)
 
 }
 
+// TODO - this was written before much was complete and needs to be rewritten
 UniValue getreserveinfo(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() > 1 || (params.size() == 1 || !params[0].isStr()))
@@ -2065,46 +2064,6 @@ UniValue getreserveinfo(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "No information available for chain " + name);
     }
 
-    CKeyID conditionID = CCrossChainRPCData::GetConditionID(name, EVAL_CROSSCHAIN_EXPORT);
-    CAmount premineContributions = 0;
-
-    // if we are on the reserve chain, we get the starting info
-    if (IsVerusActive())
-    {
-        // get all outputs to the cross chain export that could have been sent before chain start
-        if (GetAddressIndex(conditionID, 1, addressIndex, 0, chainDef.startBlock)) {
-            // loop through and include only valid cc outs
-            for (auto txIndex : addressIndex)
-            {
-                CTransaction tx;
-                uint256 hashBlock;
-                if (!myGetTransaction(txIndex.first.txhash, tx, hashBlock))
-                {
-                    throw JSONRPCError(RPC_DATABASE_ERROR, "Could not retrieve reserve transactions found in index from blockchain. Local database is likely corrupt.");
-                }
-                // any cross chain export that happens before chain launch with convert converts to premine contributions
-                COptCCParams p;
-                if (::IsPayToCryptoCondition(tx.vout[txIndex.first.index].scriptPubKey, p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT)
-                {
-                    CCrossChainTransfer cct(p.vData[0]);
-
-                    // TODO - FINISH
-                    // loop and search for maxpreconverts
-                    //premineContributions += cct.preConverted;
-                }
-            }
-        }
-    }
-    else if (chainDef.conversion > 0)
-    {
-        // determine the initial premine contributions by dividing premine with
-        // the conversion rate and adding back in the fee if applicable
-        arith_uint256 premine256(chainDef.premine);
-        arith_uint256 satoshiden(CReserveExchange::SATOSHIDEN);
-        premineContributions = ((premine256 * satoshiden) / arith_uint256(chainDef.conversion)).GetLow64();
-        // TODO : finish
-    }
-    
     UniValue result(UniValue::VOBJ);
     return result;
 }
@@ -2965,6 +2924,8 @@ UniValue getcurrencystate(const UniValue& params, bool fHelp)
     return ret;
 }
 
+extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
+
 UniValue definechain(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
@@ -3001,7 +2962,8 @@ UniValue definechain(const UniValue& params, bool fHelp)
 
             "\nResult:\n"
             "{\n"
-            "  \"txid\" : \"transactionid\", (string) The transaction id.\n"
+            "  \"txid\" : \"transactionid\", (string) The transaction id\n"
+            "  \"tx\"   : \"json\",          (json)   The transaction decoded as a transaction\n"
             "  \"hex\"  : \"data\"           (string) Raw data for signed transaction\n"
             "}\n"
 
@@ -3154,6 +3116,34 @@ UniValue definechain(const UniValue& params, bool fHelp)
     CTxOut finalizationOut = MakeCC1of1Vout(EVAL_FINALIZENOTARIZATION, DEFAULT_TRANSACTION_FEE, pk, dests, nf);
     outputs.push_back(CRecipient({finalizationOut.scriptPubKey, CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE, false}));
 
+    // create import and export threads
+    // import - only spendable for reserve currency or currency with preconversion to allow import of conversions, this output will include
+    // all pre-converted coins
+    // chain definition - always
+    // make the chain definition output
+    dests.clear();
+    cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
+
+    pk = CPubKey(ParseHex(CC.CChexstr));
+
+    CKeyID newChainID(newChain.GetChainID());
+
+    // import thread is specific to the chain importing from
+    dests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_IMPORT)));
+
+    CTxOut importThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, DEFAULT_TRANSACTION_FEE, pk, dests, CCrossChainImport(newChainID, 0));
+    outputs.push_back(CRecipient({importThreadOut.scriptPubKey, DEFAULT_TRANSACTION_FEE, false}));
+
+    // export - currently only spendable for reserve currency, but added for future capabilities
+    dests.clear();
+    cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
+
+    pk = CPubKey(ParseHex(CC.CChexstr));
+    dests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_EXPORT)));
+
+    CTxOut exportThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, DEFAULT_TRANSACTION_FEE, pk, dests, CCrossChainExport(ConnectedChains.NotaryChain().GetChainID(), 0, 0, 0));
+    outputs.push_back(CRecipient({exportThreadOut.scriptPubKey, DEFAULT_TRANSACTION_FEE, false}));
+
     // make the reserve transfer and fee outputs if there is an initial contribution
     if (newChain.initialcontribution)
     {
@@ -3195,6 +3185,10 @@ UniValue definechain(const UniValue& params, bool fHelp)
     uvret.push_back(Pair("basenotarization", CPBaaSNotarization(wtx).ToUniValue()));
 
     uvret.push_back(Pair("txid", wtx.GetHash().GetHex()));
+
+    UniValue txJSon;
+    TxToJSON(wtx, uint256(), txJSon);
+    uvret.push_back(Pair("tx",  txJSon));
 
     string strHex = EncodeHexTx(static_cast<CTransaction>(wtx));
     uvret.push_back(Pair("hex", strHex));

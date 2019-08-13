@@ -23,7 +23,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
 bool GetChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, 
                             uint160 chainFilter = uint160(), int start=0, int end=0, uint32_t flags=CReserveTransfer::VALID);
 bool GetUnspentChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter = uint160());
-bool GetUnspentChainExports(std::multimap<uint160, std::pair<int, CInputDescriptor>> &exportOutputs, uint160 chainFilter = uint160());
+bool GetUnspentChainExports(uint160 chainID, std::multimap<uint160, std::pair<int, CInputDescriptor>> &exportOutputs);
 
 UniValue getchaindefinition(const UniValue& params, bool fHelp);
 UniValue getnotarizationdata(const UniValue& params, bool fHelp);

@@ -1161,8 +1161,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
         multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferOutputs;
 
-        CKeyID exportKeyID(CCrossChainRPCData::GetConditionID(ThisChain().GetChainID(), EVAL_CROSSCHAIN_EXPORT));
-
         // get all available transfer outputs to aggregate into export transactions
         if (GetUnspentChainTransfers(transferOutputs))
         {
@@ -1173,34 +1171,32 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             std::vector<pair<CInputDescriptor, CReserveTransfer>> txInputs;
             std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
 
-            // we need unspent export outputs to export
-            if (GetUnspentChainExports(exportOutputs))
+            uint160 bookEnd;
+            bookEnd.SetHex("ffffffffffffffffffffffffffffffffffffffff");
+            uint160 lastChain = bookEnd;
+
+            // add a bookend entry at the end of transfer outputs to ensure that we try to export all before it
+            transferOutputs.insert(make_pair(bookEnd, make_pair(CInputDescriptor(), CReserveTransfer())));
+
+            // merge all of the common chainID outputs into common export transactions if either MIN_BLOCKS blocks have passed since the last
+            // export of that type, or there are MIN_INPUTS or more outputs to aggregate
+            for (auto it = transferOutputs.begin(); it != transferOutputs.end(); it++)
             {
-                uint160 bookEnd;
-                bookEnd.SetHex("ffffffffffffffffffffffffffffffffffffffff");
-                uint160 lastChain = bookEnd;
-
-                // add a bookend entry at the end of transfer outputs to ensure that we try to export all before it
-                transferOutputs.insert(make_pair(bookEnd, make_pair(CInputDescriptor(), CReserveTransfer())));
-
-                // merge all of the common chainID outputs into common export transactions if either MIN_BLOCKS blocks have passed since the last
-                // export of that type, or there are MIN_INPUTS or more outputs to aggregate
-                for (auto it = transferOutputs.begin(); it != transferOutputs.end(); it++)
+                // get chain target and see if it is the same
+                if (lastChain == bookEnd || it->first == lastChain)
                 {
-                    // get chain target and see if it is the same
-                    if (lastChain == bookEnd || it->first == lastChain)
+                    txInputs.push_back(it->second);
+                    lastChain = it->first;
+                }
+                else
+                {
+                    // when we get here, we have a consecutive number of transfer outputs to consume in txInputs
+                    // we need an unspent export output to export
+                    if (GetUnspentChainExports(lastChain, exportOutputs) && exportOutputs.size())
                     {
-                        txInputs.push_back(it->second);
-                        lastChain = it->first;
-                    }
-                    else
-                    {
-                        auto recentExportIt = exportOutputs.find(lastChain);
-                        // TODO: we cannot have a duplicate here, check for it
+                        auto lastExport = *exportOutputs.begin();
 
-                        if (recentExportIt != exportOutputs.end() &&
-                            ((nHeight - recentExportIt->second.first) >= CCrossChainExport::MIN_BLOCKS) ||
-                            (txInputs.size() >= CCrossChainExport::MIN_INPUTS))
+                        if (((nHeight - lastExport.second.first) >= CCrossChainExport::MIN_BLOCKS) || (txInputs.size() >= CCrossChainExport::MIN_INPUTS))
                         {
                             boost::optional<CTransaction> oneExport;
 
@@ -1264,9 +1260,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 else
                                 {
                                     // spend the recentExportIt output
-                                    tb.AddTransparentInput(recentExportIt->second.second.txIn.prevout, 
-                                                            recentExportIt->second.second.scriptPubKey, 
-                                                            recentExportIt->second.second.nValue);
+                                    tb.AddTransparentInput(lastExport.second.second.txIn.prevout, lastExport.second.second.scriptPubKey, lastExport.second.second.nValue);
                                 }
 
                                 for (int j = 0; j < numInputs; j++)
@@ -1292,14 +1286,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                 CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                                // send zero to a cross chain export output of the specific chain
+                                // send native amount of zero to a cross chain export output of the specific chain
                                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_CROSSCHAIN_EXPORT))});
 
-                                CTxOut exportOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, 
-                                                                    0,
-                                                                    pk,
-                                                                    dests,
-                                                                    ccx);
+                                CTxOut exportOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, 0, pk, dests, ccx);
 
                                 tb.AddTransparentOutput(exportOut.scriptPubKey, 0);
 
@@ -1317,10 +1307,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     CReserveOutput ro(CReserveOutput::VALID, totalAmount - ccx.CalculateExportFee());
 
                                     CTxOut outToReserve = MakeCC1of1Vout(EVAL_RESERVE_DEPOSIT, 
-                                                                            ro.nValue,
-                                                                            pk,
-                                                                            dests,
-                                                                            ro);
+                                                                         ro.nValue,
+                                                                         pk,
+                                                                         dests,
+                                                                         ro);
 
                                     tb.AddTransparentOutput(outToReserve.scriptPubKey, ro.nValue);
                                 }
