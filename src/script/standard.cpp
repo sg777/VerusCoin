@@ -70,7 +70,7 @@ COptCCParams::COptCCParams(std::vector<unsigned char> &vch)
                 evalCode = param[1];
                 m = param[2];
                 n = param[3];
-                if (version == 0 || version > VERSION_V2 || m != 1 || (n != 1 && n != 2) || data.size() <= n)
+                if (version == 0 || version > VERSION_V2 || m != 1 || (n < 1 || n > 4) || data.size() <= n)
                 {
                     // set invalid
                     version = 0;

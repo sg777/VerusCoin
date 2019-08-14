@@ -165,6 +165,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     // pbaas
     { "definechain", 0},
     { "getdefinedchains", 0},
+    { "sendreserve", 0},
 };
 
 class CRPCConvertTable

@@ -2161,7 +2161,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     vector<CRecipient> outputs;
     vector<bool> vConvert;
 
-    if (params.size() != 1 || (!params[0].isObject()))
+    if ((!params[0].isObject()))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. Must provide a single object that represents valid outputs. see help.");
     }
@@ -2173,7 +2173,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
     // default double fee for miner of chain definition tx
     // one output for definition, one for finalization
-    string name = uni_get_str(find_value(params[0], "chain"), "");
+    string name = uni_get_str(find_value(params[0], "name"), "");
     string paymentAddr = uni_get_str(find_value(params[0], "paymentaddress"), "");
     string refundAddr = uni_get_str(find_value(params[0], "refundaddress"), paymentAddr);
     CAmount amount = uni_get_int64(find_value(params[0], "amount"), -1);
