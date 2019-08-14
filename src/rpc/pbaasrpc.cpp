@@ -767,17 +767,8 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
     bool nofilter = chainFilter.IsNull();
     CKeyID keyID;
 
-    // if we have no chain filter, search for all
-    if (nofilter)
-    {
-        // look for unspent chain transfer outputs for all chains
-        keyID = CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_RESERVE_TRANSFER);
-    }
-    else
-    {
-        // look for all targeted outputs for the specific chain
-        keyID = chainFilter;
-    }
+    // look for unspent chain transfer outputs for all chains
+    keyID = CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_RESERVE_TRANSFER);
 
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
