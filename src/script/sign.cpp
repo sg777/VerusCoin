@@ -144,14 +144,14 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
 
     if (p.IsValid() && p.vKeys.size() >= p.n)
     {
-        bool is1of2 = (p.m == 1 && p.n == 2);
+        bool is1ofn = (p.m == 1 && p.n >= 2);
         CKey privKey;
 
         // must be a valid cc eval code
         if (CCinit(&C, p.evalCode))
         {
             // pay to cc address is a valid tx
-            if (!is1of2)
+            if (!is1ofn)
             {
                 uint160 keyID = GetDestinationID(p.vKeys[0]);
                 bool havePriv = creator.IsKeystoreValid() && creator.KeyStore().GetKey(keyID, privKey);
