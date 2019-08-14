@@ -260,7 +260,6 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                 {
                     cc = CCcond1(p.evalCode, keys[0]);
                 }
-                
 
                 if (cc)
                 {
