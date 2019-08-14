@@ -2283,7 +2283,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         CReserveTransfer rt(flags, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, kID);
 
         CTxOut ccOut;
-        if (flags && CReserveTransfer::PRECONVERT)
+        if (!(flags & CReserveTransfer::PRECONVERT))
         {
             // cast object to most derived class
             ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, dests, (CReserveTransfer)rt);
