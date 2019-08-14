@@ -251,7 +251,16 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                 if (!privKey.IsValid())
                     return false;
 
-                CC *cc = CCcond1of2(p.evalCode, keys[0], keys[1]);
+                CC *cc;
+                if (keys.size() > 1)
+                {
+                    cc = CCcond1of2(p.evalCode, keys[0], keys[1]);
+                }
+                else
+                {
+                    cc = CCcond1(p.evalCode, keys[0]);
+                }
+                
 
                 if (cc)
                 {

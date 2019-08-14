@@ -3149,6 +3149,8 @@ UniValue definechain(const UniValue& params, bool fHelp)
     {
         cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
         pk = CPubKey(ParseHex(CC.CChexstr));
+        assert(pk.IsFullyValid());
+
         dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(newChainID)});
 
         CReserveTransfer rt = CReserveTransfer(CReserveTransfer::PRECONVERT + CReserveTransfer::VALID, initialToConvert, currencyState.CalculateConversionFee(initialToConvert), newChain.address);
