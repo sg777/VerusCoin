@@ -1336,7 +1336,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     if (myAddtomempool(tx))
                                     {
                                         uint256 hash = tx.GetHash();
-                                        mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(exportFees << 1), exportFees)
+                                        mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(exportFees << 1), exportFees);
                                         RelayTransaction(tx);
                                     }
                                 }
