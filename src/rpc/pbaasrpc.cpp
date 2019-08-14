@@ -2220,6 +2220,8 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     int32_t height = chainActive.Height();
     bool beforeStart = chainDef.startBlock > height;
 
+    UniValue ret = NullUniValue;
+
     if (isVerusActive)
     {
         if (chainID == thisChainID)
@@ -2288,7 +2290,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot retrieve public key for refund address. Refund address must be public key or accesible from the current wallet.");
             }
             dests.push_back(pk2);
-            ccOut = MakeCC1of2Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, pk2, dests, rt);
+            ccOut = MakeCC1of2Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, pk2, dests, (CReserveTransfer)rt);
         }
 
         outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
@@ -2310,6 +2312,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             {
                 throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
             }
+            ret = UniValue(wtx.GetHash().GetHex());
         }
     }
     else
@@ -2362,6 +2365,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     {
                         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
                     }
+                    ret = UniValue(wtx.GetHash().GetHex());
                 }
             }
             else
@@ -2405,6 +2409,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     {
                         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
                     }
+                    ret = UniValue(wtx.GetHash().GetHex());
                 }
             }
         }
@@ -2456,6 +2461,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     {
                         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
                     }
+                    ret = UniValue(wtx.GetHash().GetHex());
                 }
             }
             else
@@ -2499,6 +2505,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     {
                         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
                     }
+                    ret = UniValue(wtx.GetHash().GetHex());
                 }
             }
         }
@@ -2507,6 +2514,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified is not the current chain or this chain's reserve");
         }
     }
+    return ret;
 }
 
 bool GetLastImportIn(uint160 chainID, CTransaction &lastImportTx)
