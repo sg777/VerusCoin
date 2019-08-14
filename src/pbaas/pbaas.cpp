@@ -1316,6 +1316,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 }
 
                                 tb.AddOpRet(opRet);
+                                tb.SetFee(0);
 
                                 boost::optional<CTransaction> newExport = tb.Build();
 
@@ -1331,9 +1332,11 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     std::list<CTransaction> removed;
                                     mempool.removeConflicts(tx, removed);
 
-                                    // add to mem pool and relay
+                                    // add to mem pool, prioritize according to the fee we will get, and relay
                                     if (myAddtomempool(tx))
                                     {
+                                        uint256 hash = tx.GetHash();
+                                        mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(exportFees << 1), exportFees)
                                         RelayTransaction(tx);
                                     }
                                 }
