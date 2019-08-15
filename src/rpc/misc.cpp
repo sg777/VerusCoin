@@ -63,6 +63,7 @@ extern uint32_t ASSETCHAINS_MAGIC;
 extern uint64_t ASSETCHAINS_COMMISSION,ASSETCHAINS_STAKED,ASSETCHAINS_SUPPLY,ASSETCHAINS_LASTERA;
 extern int32_t ASSETCHAINS_LWMAPOS;
 extern uint64_t ASSETCHAINS_ENDSUBSIDY[],ASSETCHAINS_REWARD[],ASSETCHAINS_HALVING[],ASSETCHAINS_DECAY[];
+extern uint64_t ASSETCHAINS_ERAOPTIONS[];
 
 UniValue getinfo(const UniValue& params, bool fHelp)
 {
@@ -179,6 +180,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
         {
             std::string acReward = "", acHalving = "", acDecay = "", acEndSubsidy = "";
             int lastEra = (int)ASSETCHAINS_LASTERA;     // this is done to work around an ARM cross compiler
+            bool isReserve = false;
             for (int i = 0; i <= lastEra; i++)
             {
                 if (i == 0)
@@ -187,6 +189,10 @@ UniValue getinfo(const UniValue& params, bool fHelp)
                     acHalving = std::to_string(ASSETCHAINS_HALVING[i]);
                     acDecay = std::to_string(ASSETCHAINS_DECAY[i]);
                     acEndSubsidy = std::to_string(ASSETCHAINS_ENDSUBSIDY[i]);
+                    if (ASSETCHAINS_ERAOPTIONS[i] & CPBaaSChainDefinition::OPTION_RESERVE)
+                    {
+                        isReserve = true;
+                    }
                 }
                 else
                 {
@@ -202,6 +208,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
             obj.push_back(Pair("halving", acHalving));
             obj.push_back(Pair("decay", acDecay));
             obj.push_back(Pair("endsubsidy", acEndSubsidy));
+            obj.push_back(Pair("isreserve", isReserve ? "true" : "false"));
         }
 
         if ( ASSETCHAINS_COMMISSION != 0 )

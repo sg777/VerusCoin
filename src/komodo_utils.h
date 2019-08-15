@@ -1440,6 +1440,7 @@ void komodo_configfile(char *symbol,uint16_t rpcport)
                     fprintf(fp,"ac_reward=%s\n", (charPtr = mapArgs["-ac_reward"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_eras=%s\n", (charPtr = mapArgs["-ac_eras"].c_str())[0] == 0 ? "1" : charPtr);
                     fprintf(fp,"ac_end=%s\n", (charPtr = mapArgs["-ac_end"].c_str())[0] == 0 ? "0" : charPtr);
+                    fprintf(fp,"ac_options=%s\n", (charPtr = mapArgs["-ac_options"].c_str())[0] == 0 ? "0" : charPtr);
 
                     if (GetArg("-port", 0))
                     {
@@ -1690,7 +1691,7 @@ void komodo_args(char *argv0)
 
     std::string name, addn; 
     char *dirname,fname[512],arg0str[64],magicstr[9]; 
-    uint8_t magic[4],extrabuf[256],*extraptr=0; FILE *fp; 
+    uint8_t magic[4],extrabuf[384],*extraptr=0; FILE *fp; 
     uint64_t val; 
     uint16_t port; 
     int32_t baseid,len,n,extralen = 0;
@@ -1930,6 +1931,7 @@ void komodo_args(char *argv0)
             Split(GetArg("-ac_reward",""),  ASSETCHAINS_REWARD, 0);
             Split(GetArg("-ac_halving",""),  ASSETCHAINS_HALVING, 0);
             Split(GetArg("-ac_decay",""),  ASSETCHAINS_DECAY, 0);
+            Split(GetArg("-ac_options",""),  ASSETCHAINS_ERAOPTIONS, 0);
 
             for (int j = 0; j < ASSETCHAINS_LASTERA; j++)
             {
@@ -1941,7 +1943,11 @@ void komodo_args(char *argv0)
                 else if ( ASSETCHAINS_DECAY[j] > 100000000 )
                 {
                     ASSETCHAINS_DECAY[j] = 0;
-                    printf("ERA%u: ASSETCHAINS_DECAY cant be more than 100000000\n", j);
+                    printf("ERA%u: ASSETCHAINS_DECAY can't be more than 100000000\n", j);
+                }
+                if (ASSETCHAINS_ERAOPTIONS[j] > UINT_MAX)
+                {
+                    printf("ERA%u: ASSETCHAINS_ERAOPTIONS can't be more than max uint32_t\n", j);
                 }
             }
 
@@ -2030,6 +2036,12 @@ void komodo_args(char *argv0)
 
             val = ASSETCHAINS_COMMISSION | (((uint64_t)ASSETCHAINS_STAKED & 0xff) << 32) | (((uint64_t)ASSETCHAINS_CC & 0xffff) << 40) | ((ASSETCHAINS_PUBLIC != 0) << 7) | ((ASSETCHAINS_PRIVATE != 0) << 6);
             extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(val),(void *)&val);
+
+            if (ASSETCHAINS_LASTERA > 0 && ASSETCHAINS_ERAOPTIONS[0] & CPBaaSChainDefinition::OPTION_RESERVE)
+            {
+                uint32_t options = ASSETCHAINS_ERAOPTIONS[0];
+                extralen += iguana_rwnum(1, &extraptr[extralen], sizeof(options), (void *)&options);
+            }
         }
 
         addn = GetArg("-seednode","");

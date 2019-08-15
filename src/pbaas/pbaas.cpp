@@ -639,6 +639,7 @@ bool SetThisChain(UniValue &chainDefinition)
         mapArgs["-ac_reward"] = "";
         mapArgs["-ac_halving"] = "";
         mapArgs["-ac_decay"] = "";
+        mapArgs["-ac_options"] = "";
 
         for (int j = 0; j < ASSETCHAINS_MAX_ERAS; j++)
         {
@@ -661,6 +662,7 @@ bool SetThisChain(UniValue &chainDefinition)
                     mapArgs["-ac_decay"] = to_string(ASSETCHAINS_DECAY[j]);
                     mapArgs["-ac_halving"] = to_string(ASSETCHAINS_HALVING[j]);
                     mapArgs["-ac_end"] = to_string(ASSETCHAINS_ENDSUBSIDY[j]);
+                    mapArgs["-ac_options"] = to_string(ASSETCHAINS_OPTIONS[j]);
                 }
                 else
                 {
@@ -668,6 +670,7 @@ bool SetThisChain(UniValue &chainDefinition)
                     mapArgs["-ac_decay"] += "," + to_string(ASSETCHAINS_DECAY[j]);
                     mapArgs["-ac_halving"] += "," + to_string(ASSETCHAINS_HALVING[j]);
                     mapArgs["-ac_end"] += "," + to_string(ASSETCHAINS_ENDSUBSIDY[j]);
+                    mapArgs["-ac_options"] += "," + to_string(ASSETCHAINS_OPTIONS[j]);
                 }
             }
         }
