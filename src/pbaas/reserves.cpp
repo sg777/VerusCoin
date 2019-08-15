@@ -15,8 +15,8 @@
 
 CReserveOutput::CReserveOutput(const UniValue &obj)
 {
-    uint32_t flags = uni_get_int(find_value(obj, "flags"));
-    int32_t nValue = uni_get_int(find_value(obj, "value"));
+    flags = uni_get_int(find_value(obj, "flags"));
+    nValue = uni_get_int(find_value(obj, "value"));
 }
 
 UniValue CReserveOutput::ToUniValue() const
