@@ -432,7 +432,7 @@ public:
 
     bool IsValid() const
     {
-        return flags & CReserveOutput::VALID;
+        return flags & CCurrencyState::VALID;
     }
 };
 

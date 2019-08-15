@@ -58,7 +58,7 @@ CReserveExchange::CReserveExchange(const CTransaction &tx, bool validate)
 
 CCurrencyState::CCurrencyState(const UniValue &obj)
 {
-    uint32_t flags = uni_get_int(find_value(obj, "flags"));
+    flags = uni_get_int(find_value(obj, "flags"));
     int32_t initialRatio = uni_get_int(find_value(obj, "initialratio"));
     if (initialRatio > CReserveExchange::SATOSHIDEN)
     {
