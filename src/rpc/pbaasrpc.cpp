@@ -1006,7 +1006,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
 
         if (!sorted.size())
         {
-            printf("no notarizations found\n");
+            //printf("no notarizations found\n");
             return false;
         }
 
