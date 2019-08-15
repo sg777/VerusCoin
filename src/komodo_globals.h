@@ -98,9 +98,9 @@ int32_t VERUS_CONSECUTIVE_POS_THRESHOLD = 7;
 int32_t VERUS_NOPOS_THRESHHOLD = 150;   // if we have no POS blocks in this many blocks, set to default difficulty
 int32_t PBAAS_STARTBLOCK = 0;           // the parent blockchain must be notarized at this value in block 1 for it to be accepted
 int32_t PBAAS_ENDBLOCK = 0;             // end of life block for the PBaaS blockchain
-uint64_t PBAAS_PRECONVERSION = 0;
-uint64_t PBAAS_MINPRECONVERT = 0;
-uint64_t PBAAS_MAXPRECONVERT = 0;
+int64_t PBAAS_PRECONVERSION = 0;
+int64_t PBAAS_MINPRECONVERT = 0;
+int64_t PBAAS_MAXPRECONVERT = 0;
 
 
 int32_t ASSETCHAINS_SAPLING;

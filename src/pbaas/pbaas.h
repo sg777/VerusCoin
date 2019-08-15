@@ -58,6 +58,10 @@ static const int64_t PBAAS_MINNOTARIZATIONOUTPUT = 10000;   // enough for one fe
 static const int32_t PBAAS_MINSTARTBLOCKDELTA = 100;        // minimum number of blocks to wait for starting a chain after definition
 static const int32_t PBAAS_MAXPRIORBLOCKS = 16;             // maximum prior block commitments to include in prior blocks chain object
 
+extern int64_t PBAAS_PRECONVERSION;
+extern int64_t PBAAS_MINPRECONVERT;
+extern int64_t PBAAS_MAXPRECONVERT;
+
 enum CURRENCY_OPTIONS {
     CURRENCY_FUNGIBLE = 1,
     CURRENCY_FRACTIONAL = 2
