@@ -649,6 +649,7 @@ bool SetThisChain(UniValue &chainDefinition)
                 ASSETCHAINS_DECAY[j] = ASSETCHAINS_DECAY[j-1];
                 ASSETCHAINS_HALVING[j] = ASSETCHAINS_HALVING[j-1];
                 ASSETCHAINS_ENDSUBSIDY[j] = 0;
+                ASSETCHAINS_ERAOPTIONS[j] = 0;
             }
             else
             {
@@ -656,6 +657,7 @@ bool SetThisChain(UniValue &chainDefinition)
                 ASSETCHAINS_DECAY[j] = ConnectedChains.ThisChain().rewardsDecay[j];
                 ASSETCHAINS_HALVING[j] = ConnectedChains.ThisChain().halving[j];
                 ASSETCHAINS_ENDSUBSIDY[j] = ConnectedChains.ThisChain().eraEnd[j];
+                ASSETCHAINS_ERAOPTIONS[j] = ConnectedChains.ThisChain().eraOptions[j];
                 if (j == 0)
                 {
                     mapArgs["-ac_reward"] = to_string(ASSETCHAINS_REWARD[j]);
