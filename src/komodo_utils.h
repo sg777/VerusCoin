@@ -2156,6 +2156,10 @@ void komodo_args(char *argv0)
             obj.push_back(Pair("nodes", nodes));
             */
 
+            obj.push_back(Pair("conversion", PBAAS_PRECONVERSION));
+            obj.push_back(Pair("minpreconvert", PBAAS_MINPRECONVERT));
+            obj.push_back(Pair("maxpreconvert", PBAAS_MAXPRECONVERT));
+
             SetThisChain(obj);
             paramsLoaded = true;
         }
