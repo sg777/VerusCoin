@@ -1431,9 +1431,9 @@ void komodo_configfile(char *symbol,uint16_t rpcport)
                 {
                     const char *charPtr;
                     // all basic coin parameters
+                    fprintf(fp,"ac_algo=verushash\nac_veruspos=50\nac_cc=1\n");
                     fprintf(fp,"startblock=%d\n", ConnectedChains.thisChain.startBlock);
                     fprintf(fp,"endblock=%d\n", ConnectedChains.thisChain.endBlock);
-                    fprintf(fp,"ac_algo=verushash\nac_veruspos=50\nac_cc=1\n");
                     fprintf(fp,"ac_supply=%s\n", (charPtr = mapArgs["-ac_supply"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_halving=%s\n", (charPtr = mapArgs["-ac_halving"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_decay=%s\n", (charPtr = mapArgs["-ac_decay"].c_str())[0] == 0 ? "0" : charPtr);
@@ -1441,6 +1441,9 @@ void komodo_configfile(char *symbol,uint16_t rpcport)
                     fprintf(fp,"ac_eras=%s\n", (charPtr = mapArgs["-ac_eras"].c_str())[0] == 0 ? "1" : charPtr);
                     fprintf(fp,"ac_end=%s\n", (charPtr = mapArgs["-ac_end"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_options=%s\n", (charPtr = mapArgs["-ac_options"].c_str())[0] == 0 ? "0" : charPtr);
+                    fprintf(fp,"ac_minpreconvert=%s\n", (charPtr = mapArgs["-ac_minpreconvert"].c_str())[0] == 0 ? "0" : charPtr);
+                    fprintf(fp,"ac_maxpreconvert=%s\n", (charPtr = mapArgs["-ac_maxpreconvert"].c_str())[0] == 0 ? "0" : charPtr);
+                    fprintf(fp,"ac_conversion=%s\n", (charPtr = mapArgs["-ac_conversion"].c_str())[0] == 0 ? "0" : charPtr);
 
                     if (GetArg("-port", 0))
                     {
@@ -1964,6 +1967,10 @@ void komodo_args(char *argv0)
             PBAAS_STARTBLOCK = GetArg("-startblock", 0);
             PBAAS_ENDBLOCK = GetArg("-endblock", 0);
 
+            PBAAS_PRECONVERSION = GetArg("-ac_conversion", 0);
+            PBAAS_MINPRECONVERT = GetArg("-ac_minpreconvert", 0);
+            PBAAS_MAXPRECONVERT = GetArg("-ac_maxpreconvert", 0);
+
             ASSETCHAINS_RPCHOST = GetArg("-rpchost", "127.0.0.1");
         }
 
@@ -2028,10 +2035,14 @@ void komodo_args(char *argv0)
                 extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(ASSETCHAINS_LWMAPOS),(void *)&ASSETCHAINS_LWMAPOS);
             }
 
-            if ( PBAAS_STARTBLOCK || PBAAS_ENDBLOCK )
+            // if we have extended PBaaS parameters
+            if ( PBAAS_STARTBLOCK || PBAAS_ENDBLOCK || PBAAS_PRECONVERSION )
             {
                 extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_STARTBLOCK),(void *)&PBAAS_STARTBLOCK);
                 extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_ENDBLOCK),(void *)&PBAAS_ENDBLOCK);
+                extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_PRECONVERSION),(void *)&PBAAS_PRECONVERSION);
+                extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_MINPRECONVERT),(void *)&PBAAS_MINPRECONVERT);
+                extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_MAXPRECONVERT),(void *)&PBAAS_MAXPRECONVERT);
             }
 
             val = ASSETCHAINS_COMMISSION | (((uint64_t)ASSETCHAINS_STAKED & 0xff) << 32) | (((uint64_t)ASSETCHAINS_CC & 0xffff) << 40) | ((ASSETCHAINS_PUBLIC != 0) << 7) | ((ASSETCHAINS_PRIVATE != 0) << 6);

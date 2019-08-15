@@ -1436,7 +1436,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         }
 
         // exportThreadOut - done
-        if (importThreadOut.scriptPubKey.size())
+        if (exportThreadOut.scriptPubKey.size())
         {
             cbOutIdx++;
         }

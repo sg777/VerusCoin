@@ -682,6 +682,12 @@ bool SetThisChain(UniValue &chainDefinition)
         PBAAS_ENDBLOCK = ConnectedChains.ThisChain().endBlock;
         mapArgs["-endblock"] = to_string(PBAAS_ENDBLOCK);
 
+        PBAAS_PRECONVERSION = ConnectedChains.ThisChain().conversion;
+        PBAAS_MINPRECONVERT = ConnectedChains.ThisChain().minpreconvert;
+        PBAAS_MAXPRECONVERT = ConnectedChains.ThisChain().maxpreconvert;
+        mapArgs["-ac_conversion"] = to_string(PBAAS_PRECONVERSION);
+        mapArgs["-ac_minpreconvert"] = to_string(PBAAS_MINPRECONVERT);
+        mapArgs["-ac_maxpreconvert"] = to_string(PBAAS_MAXPRECONVERT);
         return true;
     }
     else
