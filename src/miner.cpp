@@ -1441,29 +1441,32 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             cbOutIdx++;
         }
 
-        // currencyStateOut - update currency state
-        // put what is needed for all reserve and native outputs into currency state output
+        // currencyStateOut - update currency state, output is present whether or not there is a conversion transaction
         // the transaction itself pays no fees, but all conversion fees are included for each conversion transaction between its input and this output
-        if (newConversionOutputTx.vout.size())
+        if (currencyStateOut.scriptPubKey.size())
         {
-            CTransaction convertTx(newConversionOutputTx);
-            CAmount nativeOut = convertTx.GetValueOut();
-            CAmount reserveOut = convertTx.GetReserveValueOut(currencyState);
+            if (newConversionOutputTx.vout.size())
+            {
+                CAmount nativeOut = 0;
+                CAmount reserveOut = 0;
+                CTransaction convertTx(newConversionOutputTx);
+                nativeOut = convertTx.GetValueOut();
+                reserveOut = convertTx.GetReserveValueOut(currencyState);
 
-            currencyStateOut.nValue = nativeOut;
+                currencyStateOut.nValue = nativeOut;
 
-            COptCCParams p;
-            currencyStateOut.scriptPubKey.IsPayToCryptoCondition(p);
-            CCoinbaseCurrencyState convOutState(p.vData[0]);
-            convOutState.ReserveOut.nValue = reserveOut;
-            p.vData[0] = convOutState.AsVector();
-            currencyStateOut.scriptPubKey.ReplaceCCParams(p);
+                COptCCParams p;
+                currencyStateOut.scriptPubKey.IsPayToCryptoCondition(p);
+                CCoinbaseCurrencyState convOutState(p.vData[0]);
+                convOutState.ReserveOut.nValue = reserveOut;
+                p.vData[0] = convOutState.AsVector();
+                currencyStateOut.scriptPubKey.ReplaceCCParams(p);
+
+                // the coinbase is not finished, store index placeholder here now and fixup hash later
+                newConversionOutputTx.vin[0] = CTxIn(uint256(), cbOutIdx);
+            }
 
             coinbaseTx.vout[cbOutIdx] = currencyStateOut;
-
-            // the coinbase is not finished, store index placeholder here now and fixup hash later
-            newConversionOutputTx.vin[0] = CTxIn(uint256(), cbOutIdx);
-
             cbOutIdx++;
         }
 
