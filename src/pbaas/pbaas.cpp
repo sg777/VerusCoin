@@ -591,7 +591,7 @@ int CPBaaSChainDefinition::GetDefinedPort() const
 
 #define _ASSETCHAINS_TIMELOCKOFF 0xffffffffffffffff
 extern uint64_t ASSETCHAINS_TIMELOCKGTE, ASSETCHAINS_TIMEUNLOCKFROM, ASSETCHAINS_TIMEUNLOCKTO;
-extern int64_t ASSETCHAINS_SUPPLY, ASSETCHAINS_REWARD[3], ASSETCHAINS_DECAY[3], ASSETCHAINS_HALVING[3], ASSETCHAINS_ENDSUBSIDY[3];
+extern int64_t ASSETCHAINS_SUPPLY, ASSETCHAINS_REWARD[3], ASSETCHAINS_DECAY[3], ASSETCHAINS_HALVING[3], ASSETCHAINS_ENDSUBSIDY[3], ASSETCHAINS_ERAOPTIONS[3];
 extern int32_t PBAAS_STARTBLOCK, PBAAS_ENDBLOCK, ASSETCHAINS_LWMAPOS;
 extern uint32_t ASSETCHAINS_ALGO, ASSETCHAINS_VERUSHASH, ASSETCHAINS_LASTERA;
 extern std::string VERUS_CHAINNAME;
@@ -662,7 +662,7 @@ bool SetThisChain(UniValue &chainDefinition)
                     mapArgs["-ac_decay"] = to_string(ASSETCHAINS_DECAY[j]);
                     mapArgs["-ac_halving"] = to_string(ASSETCHAINS_HALVING[j]);
                     mapArgs["-ac_end"] = to_string(ASSETCHAINS_ENDSUBSIDY[j]);
-                    mapArgs["-ac_options"] = to_string(ASSETCHAINS_OPTIONS[j]);
+                    mapArgs["-ac_options"] = to_string(ASSETCHAINS_ERAOPTIONS[j]);
                 }
                 else
                 {
@@ -670,7 +670,7 @@ bool SetThisChain(UniValue &chainDefinition)
                     mapArgs["-ac_decay"] += "," + to_string(ASSETCHAINS_DECAY[j]);
                     mapArgs["-ac_halving"] += "," + to_string(ASSETCHAINS_HALVING[j]);
                     mapArgs["-ac_end"] += "," + to_string(ASSETCHAINS_ENDSUBSIDY[j]);
-                    mapArgs["-ac_options"] += "," + to_string(ASSETCHAINS_OPTIONS[j]);
+                    mapArgs["-ac_options"] += "," + to_string(ASSETCHAINS_ERAOPTIONS[j]);
                 }
             }
         }
