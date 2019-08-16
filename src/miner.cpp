@@ -662,6 +662,10 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         }
 
         CAmount totalEmission = blockSubsidy;
+        if (nHeight == 1)
+        {
+            blockSubsidy -= GetBlockOnePremine();       // separate subsidy, which can go to miner, from premine
+        }
 
         // make earned notarization only if this is not the notary chain and we have enough subsidy
         if (!isVerusActive)
@@ -701,7 +705,12 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                         result = NullUniValue;
                     }
 
-                    if (result.isNull() || !((CCurrencyState)currencyState = CCurrencyState(result)).IsValid())
+                    if (!result.isNull())
+                    {
+                        currencyState = CCoinbaseCurrencyState(result);
+                    }
+
+                    if (result.isNull() || !currencyState.IsValid())
                     {
                         // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
                         LogPrintf("Unable to get initial currency state to create block.\n");
@@ -717,7 +726,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 {
                     premineOut = CTxOut(GetBlockOnePremine(), GetScriptForDestination(CTxDestination(ConnectedChains.ThisChain().address)));
                     coinbaseTx.vout.push_back(premineOut);
-                    totalEmission += GetBlockOnePremine();
                 }
 
                 // chain definition - always
@@ -776,6 +784,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             }
 
             // update the currency state to include emissions before calculating conversions
+            // premine is an emission that is factored in before this
             currencyState.UpdateWithEmission(totalEmission);
 
             // always add currency state output for coinbase
