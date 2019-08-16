@@ -2784,7 +2784,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
     currencyState.InitialSupply = preconvertedNative;
     currencyState.Supply += preconvertedNative;
 
-    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(), chainDef.conversion, fees);
+    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(CReserveOutput::VALID, fees), chainDef.conversion, 0);
 }
 
 UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
