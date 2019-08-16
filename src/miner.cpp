@@ -752,9 +752,10 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 // import thread is specific to the chain importing from
                 vKeys.push_back(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.notaryChain.GetChainID(), EVAL_CROSSCHAIN_IMPORT)));
 
+                // log import of all reserve in as well as the fees that are passed through the initial ReserveOut in the initial import
                 importThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, 
                                                  currencyState.ReserveToNative(thisChain.preconverted, thisChain.conversion), pkCC, vKeys, 
-                                                 CCrossChainImport(ConnectedChains.NotaryChain().GetChainID(), currencyState.Fees));
+                                                 CCrossChainImport(ConnectedChains.NotaryChain().GetChainID(), currencyState.ReserveIn + currencyState.ReserveOut.nValue));
 
                 coinbaseTx.vout.push_back(importThreadOut);
 
