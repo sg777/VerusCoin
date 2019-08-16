@@ -2769,7 +2769,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
         {
             // total amount will be transferred to the chain, with fee split between aggregator and miner in
             // Verus reserve
-            preconvertedAmount += transfer.second.second.nValue;
+            preconvertedAmount += transfer.second.first.nValue;
         }
     }
 
