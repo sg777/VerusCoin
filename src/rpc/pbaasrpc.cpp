@@ -2774,7 +2774,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
     }
 
     uint32_t Flags = isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID;
-    CCurrencyState currencyState(chainDef.conversion, chainDef.premine, 0, 0, isReserve ? preconvertedAmount : 0, Flags);
+    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, isReserve ? preconvertedAmount : 0, Flags);
 
     CAmount preconvertedNative = currencyState.ReserveToNative(preconvertedAmount, chainDef.conversion);
     currencyState.InitialSupply = preconvertedNative;
