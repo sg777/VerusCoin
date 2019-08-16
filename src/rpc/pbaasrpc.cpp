@@ -446,7 +446,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                     if (curTransfer.flags & curTransfer.CONVERT)
                     {
                         // emit a reserve exchange output
-                        // we will send using a reserve output, fee will be paid by converting from reserve
+                        // we will send using a reserve output, fee will be paid when converting from reserve
                         cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
@@ -456,8 +456,10 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                     }
                     else if (curTransfer.flags & curTransfer.PRECONVERT)
                     {
-                        // calculate the amount and generate a normal output that spends the input of the import
-                        CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue, chainDef.conversion);
+                        // output the amount, minus conversion fees, and generate a normal output that spends the net input of the import as native
+                        // difference between all potential value out and what we took unconverted as a fee in our fee output
+                        CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.nValue),
+                                                                                  chainDef.conversion);
                         totalNativeOut += nativeConverted;
                         newOut = CTxOut(nativeConverted, GetScriptForDestination(curTransfer.destination));
                     }
@@ -2760,7 +2762,7 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
 CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t definitionHeight)
 {
     std::multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferInputs;
-    CAmount preconvertedAmount = 0;
+    CAmount preconvertedAmount = 0, fees = 0;
     bool isReserve = chainDef.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE;
 
     if (GetChainTransfers(transferInputs, chainDef.GetChainID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
@@ -2769,7 +2771,9 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
         {
             // total amount will be transferred to the chain, with fee split between aggregator and miner in
             // Verus reserve
-            preconvertedAmount += transfer.second.first.nValue;
+            CAmount fee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.first.nValue);
+            preconvertedAmount += transfer.second.first.nValue - fee;
+            fees += fee;
         }
     }
 
@@ -2780,7 +2784,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
     currencyState.InitialSupply = preconvertedNative;
     currencyState.Supply += preconvertedNative;
 
-    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(), chainDef.conversion, 0);
+    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(), chainDef.conversion, fees);
 }
 
 UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)

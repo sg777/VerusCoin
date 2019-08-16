@@ -504,7 +504,7 @@ class CCrossChainImport
 {
 public:
     uint160 chainID;                                            // usually the reserve currency, but here for generality
-    CAmount nValue;                                             // total amount of foreign coins imported from chain without conversion
+    CAmount nValue;                                             // total amount of foreign coins imported from chain with or without conversion, including fees
 
     CCrossChainImport() : nValue(0) { }
     CCrossChainImport(const uint160 &cID, const CAmount value) : chainID(cID), nValue(value) { }

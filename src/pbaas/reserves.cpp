@@ -869,7 +869,7 @@ CAmount CCurrencyState::CalculateConversionFee(CAmount inputAmount, bool convert
     return fee;
 }
 
-CAmount CReserveTransactionDescriptor::CalculateConversionFee(CAmount inputAmount) const
+CAmount CReserveTransactionDescriptor::CalculateConversionFee(CAmount inputAmount)
 {
     arith_uint256 bigAmount(inputAmount);
     arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);

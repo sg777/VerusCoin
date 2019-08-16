@@ -235,7 +235,7 @@ public:
     bool IsMarket() const { return IsReserveExchange() && !IsLimit(); }
     bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
 
-    CAmount CalculateConversionFee(CAmount inputAmount) const;
+    static CAmount CalculateConversionFee(CAmount inputAmount);
 
     CAmount NativeFees() const
     {
