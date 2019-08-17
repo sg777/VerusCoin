@@ -85,7 +85,7 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn)
         case EVAL_CROSSCHAIN_EXPORT:
         case EVAL_CROSSCHAIN_IMPORT:
         case EVAL_CURRENCYSTATE:
-            if (!chainActive.LastTip() || CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CActivationHeight::SOLUTION_VERUSV3)
+            if (!chainActive.LastTip() || CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight() + 1) < CActivationHeight::SOLUTION_VERUSV3)
             {
                 // if chain is not able to process this yet, don't drop through to do so
                 break;
