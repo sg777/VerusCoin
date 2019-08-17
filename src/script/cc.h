@@ -22,6 +22,15 @@ const int CCEnabledTypes = 1 << CC_Secp256k1 | \
 
 const int CCSigningNodes = 1 << CC_Ed25519 | 1 << CC_Secp256k1;
 
+const int CCEvalNode = 1 << CC_Eval;
+
+const int CCFirstEvalOnly = 2;
+const int CCLastEvalOnly = 0x0d;
+
+/*
+ * Return the eval code if there is one on a crypto condition, otherwise 0
+ */
+int GetEvalCode(const CC *cond);
 
 /*
  * Check if the server can accept the condition based on it's structure / types

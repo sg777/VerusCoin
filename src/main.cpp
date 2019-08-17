@@ -761,6 +761,7 @@ bool IsStandardTx(const CTransaction& tx, string& reason, const int nHeight)
     {
         if (!::IsStandard(txout.scriptPubKey, whichType))
         {
+            ::IsStandard(txout.scriptPubKey, whichType);
             reason = "scriptpubkey";
             //fprintf(stderr,">>>>>>>>>>>>>>> vout.%d nDataout.%d\n",v,nDataOut);
             return false;

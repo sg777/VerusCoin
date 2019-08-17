@@ -201,7 +201,13 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
         std::vector<std::vector<unsigned char>> vParams;
         if (scriptPubKey.IsPayToCryptoCondition(&ccSubScript, vParams))
         {
-            if (scriptPubKey.MayAcceptCryptoCondition())
+            COptCCParams cp;
+            if (vParams.size())
+            {
+                cp = COptCCParams(vParams[0]);
+            }
+
+            if (scriptPubKey.MayAcceptCryptoCondition(cp.evalCode))
             {
                 typeRet = TX_CRYPTOCONDITION;
                 vector<unsigned char> hashBytes; uint160 x; int32_t i; uint8_t hash20[20],*ptr;;
@@ -214,7 +220,6 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                 vSolutionsRet.push_back(hashBytes);
                 if (vParams.size())
                 {
-                    COptCCParams cp = COptCCParams(vParams[0]);
                     if (cp.IsValid())
                     {
                         for (auto k : cp.vKeys)
@@ -227,7 +232,6 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     {
                         return false;
                     }
-                    
                 }
                 return true;
             }

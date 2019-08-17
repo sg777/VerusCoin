@@ -601,6 +601,7 @@ public:
 
     bool IsCoinImport() const;
     bool MayAcceptCryptoCondition() const;
+    bool MayAcceptCryptoCondition(int evalCode) const;
     bool IsInstantSpend() const;
 
 

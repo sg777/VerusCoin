@@ -581,6 +581,24 @@ bool CScript::MayAcceptCryptoCondition() const
     return out;
 }
 
+// also checks if the eval code is consistent
+bool CScript::MayAcceptCryptoCondition(int evalCode) const
+{
+    // Get the type mask of the condition
+    const_iterator pc = this->begin();
+    vector<unsigned char> data;
+    opcodetype opcode;
+    if (!this->GetOp(pc, opcode, data)) return false;
+    if (!(opcode > OP_0 && opcode < OP_PUSHDATA1)) return false;
+    CC *cond = cc_readConditionBinary(data.data(), data.size());
+    if (!cond) return false;
+
+    bool out = IsSupportedCryptoCondition(cond) && GetEvalCode(cond) == evalCode;
+
+    cc_free(cond);
+    return out;
+}
+
 bool CScript::IsCoinImport() const
 {
     const_iterator pc = this->begin();
