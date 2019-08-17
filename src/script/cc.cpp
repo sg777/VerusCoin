@@ -7,39 +7,11 @@ bool IsCryptoConditionsEnabled()
     return 0 != ASSETCHAINS_CC;
 }
 
-int GetEvalCode(const CC *cond)
-{
-    int evalCode = 0;
-
-    if (1 << cc_typeId(cond) & CCEvalNode)
-    {
-        for (int i = cond->codeLength - 1; i >= 0; i--)
-        {
-            evalCode = (evalCode << 8) | cond->code[i];
-        }
-        return evalCode;
-    }
-    if (cc_typeId(cond) == CC_Threshold)
-    {
-        for (int i=0; i<cond->size; i++)
-        {
-            int retVal = GetEvalCode(cond->subconditions[i]);
-            if (retVal)
-            {
-                return retVal;
-            }
-        }
-    }
-    return 0;
-}
-
-bool IsSupportedCryptoCondition(const CC *cond)
+bool IsSupportedCryptoCondition(const CC *cond, int evalCode)
 {
     int mask = cc_typeMask(cond);
 
     if (mask & ~CCEnabledTypes) return false;
-
-    int evalCode = GetEvalCode(cond);
 
     // Also require that the condition have at least one signable node or be a PBaaS compatible condition
     // and at least have an eval node instead

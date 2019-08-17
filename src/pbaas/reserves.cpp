@@ -454,7 +454,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     }
 }
 
-CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutableTransaction &conversionTx, CAmount exchangeRate, CCurrencyState *pCurrencyState) const
+CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, CAmount exchangeRate, CCurrencyState *pCurrencyState) const
 {
     if (!IsReserveExchange() || IsFillOrKillFail())
     {
@@ -498,8 +498,12 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
 
         CAmount amount = indexRex.second.nValue - fee;
 
-        // add input
+        // add input...
         conversionTx.vin.push_back(CTxIn(txHash, indexRex.first, CScript()));
+
+        // ... and input descriptor. we leave the CTxIn empty and use the one in the corresponding input, using the input descriptor for only
+        // script and value
+        conversionInputs.push_back(CInputDescriptor(ptx->vout[indexRex.first].scriptPubKey, ptx->vout[indexRex.first].nValue, CTxIn()));
 
         // if we should emit a reserve transfer or normal reserve output
         if (indexRex.second.flags && indexRex.second.SEND_OUTPUT)
@@ -554,8 +558,8 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
                                                             std::vector<const CTransaction *> &expiredFillOrKills, 
                                                             std::vector<const CTransaction *> &noFills, 
                                                             std::vector<const CTransaction *> &rejects, 
-                                                            CAmount &price, int32_t height, int64_t maxSerializeSize, 
-                                                            int64_t *pInOutTotalSerializeSize, CMutableTransaction *pConversionTx) const
+                                                            CAmount &price, int32_t height, std::vector<CInputDescriptor> &conversionInputs,
+                                                            int64_t maxSerializeSize, int64_t *pInOutTotalSerializeSize, CMutableTransaction *pConversionTx) const
 {
     // synthetic order book of limitBuys and limitSells sorted by limit, order of preference beyond limit sorting is random
     std::multimap<CAmount, CReserveTransactionDescriptor> limitBuys;
@@ -649,7 +653,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             newState.NativeIn += txDesc.nativeOutConverted;
             if (pConversionTx)
             {
-                txDesc.AddConversionInOuts(*pConversionTx);
+                txDesc.AddConversionInOuts(*pConversionTx, conversionInputs);
             }
         }
         else
@@ -676,7 +680,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
         if (pConversionTx)
         {
             mtx = *pConversionTx;
-            marketOrder.second.AddConversionInOuts(mtx);
+            marketOrder.second.AddConversionInOuts(mtx, conversionInputs);
             conversionSizeOverhead = GetSerializeSize(mtx, SER_NETWORK, PROTOCOL_VERSION);
         }
         if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= marketOrdersSizeLimit)
@@ -732,7 +736,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             if (pConversionTx)
             {
                 mtx = *pConversionTx;
-                currentBuy.AddConversionInOuts(mtx);
+                currentBuy.AddConversionInOuts(mtx, conversionInputs);
                 conversionSizeOverhead = GetSerializeSize(mtx, SER_NETWORK, PROTOCOL_VERSION);
             }
             if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= buyLimitSizeLimit)
@@ -777,7 +781,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             if (pConversionTx)
             {
                 mtx = *pConversionTx;
-                currentSell.AddConversionInOuts(mtx);
+                currentSell.AddConversionInOuts(mtx, conversionInputs);
                 conversionSizeOverhead = GetSerializeSize(mtx, SER_NETWORK, PROTOCOL_VERSION);
             }
 

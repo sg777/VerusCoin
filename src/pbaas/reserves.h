@@ -20,6 +20,7 @@
 
 using boost::multiprecision::cpp_dec_float_50;
 class CCoinsViewCache;
+class CInputDescriptor;
 
 // reserve output is a special kind of token output that does not carry it's identifier, as it
 // is always assumed to be the reserve currency of the current chain.
@@ -267,7 +268,7 @@ public:
         numTransfers++;
     }
 
-    CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx, CAmount exchangeRate=0, CCurrencyState *pCurrencyState=NULL) const;
+    CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, CAmount exchangeRate=0, CCurrencyState *pCurrencyState=NULL) const;
 };
 
 class CCurrencyState
@@ -487,8 +488,8 @@ public:
                                         std::vector<const CTransaction *> &expiredFillOrKills, 
                                         std::vector<const CTransaction *> &noFills, 
                                         std::vector<const CTransaction *> &rejects, 
-                                        CAmount &price, int32_t height, int64_t maxSerializedSize=LONG_MAX, 
-                                        int64_t *ptotalSerializeSize=NULL, CMutableTransaction *pConversionTx=NULL) const;
+                                        CAmount &price, int32_t height, std::vector<CInputDescriptor> &conversionInputs, 
+                                        int64_t maxSerializedSize=LONG_MAX, int64_t *ptotalSerializeSize=NULL, CMutableTransaction *pConversionTx=NULL) const;
 };
 
 #endif // PBAAS_RESERVES_H

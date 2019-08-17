@@ -28,14 +28,9 @@ const int CCFirstEvalOnly = 2;
 const int CCLastEvalOnly = 0x0d;
 
 /*
- * Return the eval code if there is one on a crypto condition, otherwise 0
- */
-int GetEvalCode(const CC *cond);
-
-/*
  * Check if the server can accept the condition based on it's structure / types
  */
-bool IsSupportedCryptoCondition(const CC *cond);
+bool IsSupportedCryptoCondition(const CC *cond, int evalCode);
 
 
 /*

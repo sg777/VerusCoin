@@ -575,7 +575,13 @@ bool CScript::MayAcceptCryptoCondition() const
     CC *cond = cc_readConditionBinary(data.data(), data.size());
     if (!cond) return false;
 
-    bool out = IsSupportedCryptoCondition(cond);
+    uint32_t eCode;
+    if (!IsPayToCryptoCondition(&eCode))
+    {
+        return false;
+    }
+
+    bool out = IsSupportedCryptoCondition(cond, eCode);
 
     cc_free(cond);
     return out;
@@ -593,7 +599,7 @@ bool CScript::MayAcceptCryptoCondition(int evalCode) const
     CC *cond = cc_readConditionBinary(data.data(), data.size());
     if (!cond) return false;
 
-    bool out = IsSupportedCryptoCondition(cond) && GetEvalCode(cond) == evalCode;
+    bool out = IsSupportedCryptoCondition(cond, evalCode);
 
     cc_free(cond);
     return out;

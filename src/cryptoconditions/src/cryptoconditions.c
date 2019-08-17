@@ -245,7 +245,6 @@ end:
     return error;
 }
 
-
 int cc_visit(CC *cond, CCVisitor visitor) {
     int out = visitor.visit(cond, visitor);
     if (out && cond->type->visitChildren) {

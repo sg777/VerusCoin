@@ -584,8 +584,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         CMutableTransaction newNotarizationTx, newConversionOutputTx;
 
         // size of conversion tx
-        int64_t nConversionTxSize = 0;          // if we make a conversion transaction, serialized size as it accomodates additional conversions
-
+        std::vector<CInputDescriptor> conversionInputs;
 
         // if we are a PBaaS chain, first make sure we don't start prematurely, and if
         // we should make an earned notarization, make it and set index to non-zero value
@@ -955,7 +954,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                 CTransaction itx;
                                 if (result[i].isStr() && DecodeHexTx(itx, result[i].get_str()) && itx.vin.size() && itx.vin[0].prevout.hash == lastImportHash)
                                 {
-                                    // sign the transaction and add to mempool
+                                    // sign the transaction spending the last import and add to mempool
                                     CMutableTransaction mtx(itx);
                                     CCrossChainImport cci(lastImportTx);
 
@@ -967,16 +966,15 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                     const CScript virtualCC;
                                     CTxOut virtualCCOut;
 
-                                    pScriptPubKey = &lastImportTx.vout[0].scriptPubKey;
-                                    value = cci.nValue;
-
                                     signSuccess = ProduceSignature(
-                                        TransactionSignatureCreator(pwalletMain, &itx, 0, cci.nValue, SIGHASH_ALL), lastImportTx.vout[0].scriptPubKey, sigdata, consensusBranchId);
+                                        TransactionSignatureCreator(pwalletMain, &itx, 0, lastImportTx.vout[0].nValue, SIGHASH_ALL), lastImportTx.vout[0].scriptPubKey, sigdata, consensusBranchId);
 
-                                    if (signSuccess)
+                                    if (!signSuccess)
                                     {
-                                        UpdateTransaction(mtx, 0, sigdata);
+                                        break;
                                     }
+
+                                    UpdateTransaction(mtx, 0, sigdata);
 
                                     // commit to mempool and remove any conflicts
                                     std::list<CTransaction> removed;
@@ -988,6 +986,9 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                         printf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason().c_str());
                                         break;  // if we failed to add one, the others will fail to spend it
                                     }
+
+                                    lastImportTx = itx;
+                                    lastImportHash = itx.GetHash();
                                 }
                             }
                         }
@@ -1329,8 +1330,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                                                 expiredFillOrKills, 
                                                                 noFills, 
                                                                 rejects, 
-                                                                exchangeRate, nHeight, nBlockMaxSize - autoTxSize, 
-                                                                &newBlockSize, &newConversionOutputTx);
+                                                                exchangeRate, nHeight, conversionInputs,
+                                                                nBlockMaxSize - autoTxSize, &newBlockSize, &newConversionOutputTx);
 
             assert(reserveFills.size() >= reservePositions.size());
 
@@ -1388,12 +1389,13 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             // remake the newConversionOutputTx, right now, it has dummy inputs and placeholder outputs, just remake it correctly
             newConversionOutputTx.vin.clear();
             newConversionOutputTx.vout.clear();
-            
+            conversionInputs.clear();
+
             // add one placeholder for txCoinbase output and all correct inputs and outputs for conversion to the transaction - update currency deltas
             newConversionOutputTx.vin.resize(1);
             for (auto fill : reserveFills)
             {
-                fill.AddConversionInOuts(newConversionOutputTx, exchangeRate, &currencyState);
+                fill.AddConversionInOuts(newConversionOutputTx, conversionInputs, exchangeRate, &currencyState);
             }
 
             // update the currency state
@@ -1592,6 +1594,49 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         if (newConversionOutputTx.vin.size() > 1)
         {
             newConversionOutputTx.vin[0].prevout.hash = cbHash;
+
+            CTransaction ncoTx(newConversionOutputTx);
+
+            // sign transaction for cb output and conversions
+            for (int i = 0; i < ncoTx.vin.size(); i++)
+            {
+                bool signSuccess;
+                SignatureData sigdata;
+                CAmount value;
+                const CScript *pScriptPubKey;
+
+                const CScript virtualCC;
+                CTxOut virtualCCOut;
+
+                // if this is our coinbase input, different signing
+                if (i)
+                {
+                    pScriptPubKey = &conversionInputs[i - 1].scriptPubKey;
+                    value = conversionInputs[i - 1].nValue;
+                }
+                else
+                {
+                    pScriptPubKey = &coinbaseTx.vout[ncoTx.vin[i].prevout.n].scriptPubKey;
+                    value = coinbaseTx.vout[ncoTx.vin[i].prevout.n].nValue;
+                }
+
+                signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &ncoTx, i, value, SIGHASH_ALL), *pScriptPubKey, sigdata, consensusBranchId);
+
+                if (!signSuccess)
+                {
+                    if (ncoTx.vin[i].prevout.hash == coinbaseTx.GetHash())
+                    {
+                        LogPrintf("Coinbase conversion source tx id: %s\n", coinbaseTx.GetHash().GetHex().c_str());
+                        printf("Coinbase conversion source tx - amount: %lu, n: %d, id: %s\n", coinbaseTx.vout[ncoTx.vin[i].prevout.n].nValue, ncoTx.vin[i].prevout.n, coinbaseTx.GetHash().GetHex().c_str());
+                    }
+                    LogPrintf("CreateNewBlock: failure to sign conversion tx for input %d from output %d of %s\n", i, ncoTx.vin[i].prevout.n, ncoTx.vin[i].prevout.hash.GetHex().c_str());
+                    printf("CreateNewBlock: failure to sign conversion tx for input %d from output %d of %s\n", i, ncoTx.vin[i].prevout.n, ncoTx.vin[i].prevout.hash.GetHex().c_str());
+                    return NULL;
+                } else {
+                    UpdateTransaction(newConversionOutputTx, i, sigdata);
+                }
+            }
+
             UpdateCoins(newConversionOutputTx, view, nHeight);
             pblock->vtx.push_back(newConversionOutputTx);
             pblocktemplate->vTxFees.push_back(0);

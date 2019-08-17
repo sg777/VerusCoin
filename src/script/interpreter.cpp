@@ -6,6 +6,7 @@
 #include <cryptoconditions.h>
 
 #include "interpreter.h"
+#include "standard.h"
 
 #include "consensus/upgrades.h"
 #include "primitives/transaction.h"
@@ -1358,9 +1359,15 @@ int TransactionSignatureChecker::CheckCryptoCondition(
     int error = cc_readFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
     if (error || !cond) return -1;
 
-    if (!IsSupportedCryptoCondition(cond)) return 0;
+    COptCCParams p;
+    if (!scriptCode.IsPayToCryptoCondition(p))
+    {
+        return false;
+    }
+
+    if (!IsSupportedCryptoCondition(cond, p.IsValid() ? p.evalCode : 0)) return 0;
     if (!IsSignedCryptoCondition(cond)) return 0;
-    
+
     uint256 sighash;
     int nHashType = ffillBin.back();
     try {
