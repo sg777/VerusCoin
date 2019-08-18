@@ -705,6 +705,20 @@ unsigned int LimitOrphanTxSize(unsigned int nMaxOrphans) EXCLUSIVE_LOCKS_REQUIRE
     return nEvicted;
 }
 
+// is this bound to the coinbase output?
+bool IsBlockBoundTransaction(const CTransaction &tx, const uint256 &cbHash)
+{
+    bool bindingFound = false;
+    for (auto input : tx.vin)
+    {
+        if (input.prevout.hash == cbHash)
+        {
+            bindingFound = true;
+            break;
+        }
+    }
+    return bindingFound;
+}
 
 bool IsStandardTx(const CTransaction& tx, string& reason, const int nHeight)
 {
@@ -3357,11 +3371,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                              REJECT_INVALID, "bad-blk-sigops");
         //fprintf(stderr,"ht.%d vout0 t%u\n",pindex->GetHeight(),tx.nLockTime);
         CPBaaSNotarization tpbn;
-        bool isBlockBoundSmartTx = (IsBlockBoundTransaction(tx) &&
-                                    block.vtx[0].vout.size() > tx.vin.back().prevout.n && 
-                                    block.vtx[0].vout[tx.vin.back().prevout.n].scriptPubKey.IsInstantSpend() &&
-                                    (tpbn = CPBaaSNotarization(tx)).IsValid() &&    // these need to be generic tests vs. notarization
-                                    ::GetHash(CPBaaSNotarization(block.vtx[0])) == ::GetHash(tpbn));
+        bool isBlockBoundSmartTx = (IsBlockBoundTransaction(tx, block.vtx[0].GetHash()));
 
         if (!tx.IsMint())
         {
@@ -3553,6 +3563,32 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     LogPrint("bench", "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs]\n", (unsigned)block.vtx.size(), 0.001 * (nTime1 - nTimeStart), 0.001 * (nTime1 - nTimeStart) / block.vtx.size(), nInputs <= 1 ? 0 : 0.001 * (nTime1 - nTimeStart) / (nInputs-1), nTimeConnect * 0.000001);
     
     CAmount blockReward = nFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus()) + sum;
+
+    bool isBlock1 = pindex->GetHeight() == 1;
+    bool isVerusActive = IsVerusActive();
+    if (isBlock1 && !isVerusActive && ConnectedChains.ThisChain().maxpreconvert && ConnectedChains.ThisChain().conversion)
+    {
+        // if we can have a pre-conversion output on block 1, add pre-conversion
+        blockReward += CCurrencyState::ReserveToNative(ConnectedChains.ThisChain().preconverted, ConnectedChains.ThisChain().conversion);
+    }
+
+    // on reserve chains, output on currency state output, which are checked as conversions, are in addition to the normal emission
+    if (ConnectedChains.ThisChain().ChainOptions() & ConnectedChains.ThisChain().OPTION_RESERVE)
+    {
+        COptCCParams p;
+        for (auto txOut : block.vtx[0].vout)
+        {
+            if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+            {
+                if (p.evalCode == EVAL_CURRENCYSTATE)
+                {
+                    blockReward += txOut.nValue;
+                    break;
+                }
+            }
+        }
+    }
+
     if ( ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 && ASSETCHAINS_COMMISSION != 0 )
     {
         uint64_t checktoshis;
@@ -3568,7 +3604,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         return state.DoS(100, error("ConnectBlock(): coinbase for block 1 pays wrong amount (actual=%d vs correct=%d)", block.vtx[0].GetValueOut(), blockReward),
                             REJECT_INVALID, "bad-cb-amount");
     }
-    if ( block.vtx[0].GetValueOut() > blockReward+1 )
+    if ( block.vtx[0].GetValueOut() > blockReward )
     {
         if ( ASSETCHAINS_SYMBOL[0] != 0 || pindex->GetHeight() >= KOMODO_NOTARIES_HEIGHT1 || block.vtx[0].vout[0].nValue > blockReward )
         {

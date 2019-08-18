@@ -2142,6 +2142,7 @@ void komodo_args(char *argv0)
                 era.push_back(Pair("decay", ASSETCHAINS_DECAY[i]));
                 era.push_back(Pair("halving", ASSETCHAINS_HALVING[i]));
                 era.push_back(Pair("eraend", ASSETCHAINS_ENDSUBSIDY[i]));
+                era.push_back(Pair("eraoptions", ASSETCHAINS_ERAOPTIONS[i]));
                 eras.push_back(era);
             }
             obj.push_back(Pair("eras", eras));

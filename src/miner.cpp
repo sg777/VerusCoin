@@ -721,7 +721,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 // add needed block one coinbase outputs
                 // send normal reward to the miner, premine to the address in the chain definition, and pre-converted to the
                 // import thread out
-                if (currencyState.Supply > currencyState.InitialSupply)
+                if (GetBlockOnePremine())
                 {
                     premineOut = CTxOut(GetBlockOnePremine(), GetScriptForDestination(CTxDestination(ConnectedChains.ThisChain().address)));
                     coinbaseTx.vout.push_back(premineOut);
@@ -795,7 +795,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             vKeys.push_back(CTxDestination(CKeyID(thisChain.address)));
 
             // make an output that either carries zero coins pre-converting, or the initial supply for block 1, conversion amounts will be adjusted later
-            currencyStateOut = MakeCC0of0Vout(EVAL_CURRENCYSTATE, nHeight == 1 ? currencyState.InitialSupply : 0, vKeys, currencyState);
+            currencyStateOut = MakeCC0of0Vout(EVAL_CURRENCYSTATE, 0, vKeys, currencyState);
 
             coinbaseTx.vout.push_back(currencyStateOut);
 
