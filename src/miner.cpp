@@ -1407,7 +1407,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         // first calculate and distribute block rewards, including fees as specified in the minerOutputs vector
         CAmount rewardTotalShareAmount = 0;
         CAmount rewardTotal = blockSubsidy + nFees;
-        CAmount rewardLeft = rewardTotal;
+        CAmount rewardLeft = notarizationTxIndex ? rewardTotal - notarizationOut.nValue : rewardTotal;
 
         for (auto &outputShare : minerOutputs)
         {
