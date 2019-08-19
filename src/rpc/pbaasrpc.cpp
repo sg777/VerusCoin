@@ -2635,7 +2635,21 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
         {
             UniValue ret(UniValue::VOBJ);
             CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), chainActive.Height());
-            txTemplate.vin.push_back(CTxIn(lastImportTx.GetHash(), 0, CScript()));
+            // find the import output
+            COptCCParams p;
+            int importIdx;
+            for (importIdx = 0; importIdx < lastImportTx.vout.size(); importIdx++)
+            {
+                if (lastImportTx.vout[importIdx].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+                {
+                    break;
+                }
+            }
+            if (importIdx >= lastImportTx.vout.size())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid lastImport transaction");
+            }
+            txTemplate.vin.push_back(CTxIn(lastImportTx.GetHash(), importIdx, CScript()));
             // if Verus is active, our template import will gather all RESERVE_DEPOSITS that it can to spend into the
             // import thread
             if (IsVerusActive())
