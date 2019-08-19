@@ -1407,7 +1407,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         uint32_t notarizationIdx = -1, finalizationIdx = -1;
         CPBaaSNotarization dummy;
 
-        notarizationInputs = AddSpendsAndFinalizations(nData, pbn.prevNotarization, lastTx, mnewTx, &confirmedInput, &confirmedIndex, &payee);
+        notarizationInputs = AddSpendsAndFinalizations(nData, pbn.prevNotarization, mnewTx, &confirmedInput, &confirmedIndex, &payee);
 
         for (auto input : notarizationInputs)
         {

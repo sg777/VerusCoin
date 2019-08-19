@@ -245,9 +245,8 @@ UniValue CChainNotarizationData::ToUniValue() const
     return obj;
 }
 
-vector<CInputDescriptor> AddSpendsAndFinalizations(const CChainNotarizationData &cnd, 
+vector<CInputDescriptor> AddSpendsAndFinalizations(CChainNotarizationData &cnd, 
                                                    const uint256 &lastNotarizationID, 
-                                                   const CTransaction &lastTx, 
                                                    CMutableTransaction &mnewTx, 
                                                    int32_t *pConfirmedInput, 
                                                    int32_t *pConfirmedIdx, 
@@ -268,6 +267,7 @@ vector<CInputDescriptor> AddSpendsAndFinalizations(const CChainNotarizationData 
     if (cnd.vtx.size() == 1 && !IsVerusActive() && cnd.lastConfirmed != -1)
     {
         finalized.insert(cnd.lastConfirmed);
+        confirmedIdx = cnd.lastConfirmed;
     }
 
     // now, create inputs from the most recent notarization in cnd and the finalization outputs that we either confirm or invalidate
@@ -394,6 +394,7 @@ vector<CInputDescriptor> AddSpendsAndFinalizations(const CChainNotarizationData 
             {
                 *pConfirmedInput = mnewTx.vin.size() - 1;
                 *pConfirmedDest = CTxDestination(CKeyID(pbn.notaryKeyID));
+                cnd.lastConfirmed = nidx;
             }
         }
     }
@@ -653,8 +654,13 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
     }
 
     // determine all finalized transactions that should be spent as input
-    int32_t confirmedIndex;
-    inputs = AddSpendsAndFinalizations(cnd, lastNotarizationID, lastTx, mnewTx, pConfirmedInput, &confirmedIndex, pConfirmedDest);
+    int32_t confirmedIndex = -1;
+    inputs = AddSpendsAndFinalizations(cnd, lastNotarizationID, mnewTx, pConfirmedInput, &confirmedIndex, pConfirmedDest);
+    // update lastConfirmed if we should
+    if (confirmedIndex != -1)
+    {
+        lastConfirmed = txes[confirmedIndex].first;
+    }
 
     CCcontract_info CC;
     CCcontract_info *cp;
