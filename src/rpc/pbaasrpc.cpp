@@ -1003,8 +1003,8 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
             }
             else
             {
-                printf("cannot retrieve transaction %s\n", it->first.txhash.GetHex().c_str());
-                return false;
+                printf("cannot retrieve transaction %s, may need to reindex\n", it->first.txhash.GetHex().c_str());
+                //return false;
             }
         }
 
