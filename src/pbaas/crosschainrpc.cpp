@@ -126,15 +126,6 @@ static void http_error_cb(enum evhttp_request_error err, void *ctx)
 }
 #endif
 
-UniValue CCrossChainRPCData::ToUniValue() const
-{
-    UniValue obj(UniValue::VOBJ);
-    obj.push_back(Pair("host", host));
-    obj.push_back(Pair("port", port));
-    obj.push_back(Pair("credentials", credentials));
-    return obj;
-}
-
 static CCrossChainRPCData LoadFromConfig(std::string name)
 {
     map<string, string> settings;
@@ -288,6 +279,15 @@ std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def)
     {
         return def;
     }
+}
+
+UniValue CCrossChainRPCData::ToUniValue() const
+{
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("host", host));
+    obj.push_back(Pair("port", port));
+    obj.push_back(Pair("credentials", credentials));
+    return obj;
 }
 
 uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)

@@ -172,6 +172,15 @@ const char* GetOpName(opcodetype opcode)
     }
 }
 
+uint160 GetConditionID(uint160 cid, int32_t condition)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
 unsigned int CScript::GetSigOpCount(bool fAccurate) const
 {
     unsigned int n = 0;
@@ -391,7 +400,7 @@ bool CScript::IsInstantSpend() const
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
         if ((p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_CURRENCYSTATE || p.evalCode == EVAL_CROSSCHAIN_IMPORT) && 
-            (p.vKeys.size() == 1 && GetDestinationID(p.vKeys[0]) == CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, p.evalCode)))
+            (p.vKeys.size() == 1 && GetDestinationID(p.vKeys[0]) == GetConditionID(ASSETCHAINS_CHAINID, p.evalCode)))
         {
             isInstantSpend = true;
         }
