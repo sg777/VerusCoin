@@ -1246,6 +1246,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 //
                                 CAmount totalTxFees = 0;
                                 CAmount totalAmount = 0;
+                                CAmount exportOutVal = 0;
                                 std::vector<CBaseChainObject *> chainObjects;
 
                                 // first, we must add the export output from the current export thread to this chain
@@ -1267,11 +1268,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     assert(j < tx.vout.size() && p.IsValid());
 
                                     tb.AddTransparentInput(COutPoint(tx.GetHash(), j), tx.vout[j].scriptPubKey, tx.vout[j].nValue);
+                                    exportOutVal = tx.vout[j].nValue;
                                 }
                                 else
                                 {
                                     // spend the recentExportIt output
                                     tb.AddTransparentInput(lastExport.second.second.txIn.prevout, lastExport.second.second.scriptPubKey, lastExport.second.second.nValue);
+                                    exportOutVal = lastExport.second.second.nValue;
                                 }
 
                                 for (int j = 0; j < numInputs; j++)
@@ -1300,9 +1303,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 // send native amount of zero to a cross chain export output of the specific chain
                                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_CROSSCHAIN_EXPORT))});
 
-                                CTxOut exportOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, 0, pk, dests, ccx);
+                                CTxOut exportOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, exportOutVal, pk, dests, ccx);
 
-                                tb.AddTransparentOutput(exportOut.scriptPubKey, 0);
+                                tb.AddTransparentOutput(exportOut.scriptPubKey, exportOutVal);
 
                                 // if we are on Verus chain, send all native funds, less fees to reserve deposit CC, which is equivalent to the reserve account
                                 // on a PBaaS reserve chain, input is burned
