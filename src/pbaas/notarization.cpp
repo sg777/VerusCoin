@@ -495,15 +495,20 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
     auto uv3 = find_value(result, "rawtx");
     auto uv4 = find_value(result, "newtx");
 
+    uint256 lastNotarizationID;
+
     // if we passed no prior notarizations, the crosstxid returned can be null
-    if ((!uv1.isStr() && (cnd.vtx.size() != 0)) || !uv2.isStr() || !uv3.isStr() || !uv4.isStr())
+    if (uv1.isStr())
+    {
+        lastNotarizationID.SetHex((uv1.get_str()));
+    }
+
+    if ((lastNotarizationID.IsNull() && (cnd.vtx.size() != 0)) || !uv2.isStr() || !uv3.isStr() || !uv4.isStr())
     {
         printf("%sinvalid parameters\n", funcname);
         return false;
     }
 
-    uint256 lastNotarizationID;
-    lastNotarizationID.SetHex((uv1.get_str()));
     uint256 crossNotarizationID;
     crossNotarizationID.SetHex((uv2.get_str()));
 
