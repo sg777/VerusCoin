@@ -1485,7 +1485,7 @@ void CConnectedChains::SubmissionThread()
                             DecodeHexTx(templateTx, txTemplateStr.get_str()))
                         {
                             std::vector<CTransaction> importTxes;
-                            if (CreateLatestImports(thisChain, lastImportTx, templateTx, lastConfirmedTx, importTxes))
+                            if (CreateLatestImports(notaryChain.chainDefinition, lastImportTx, templateTx, lastConfirmedTx, importTxes))
                             {
                                 for (auto importTx : importTxes)
                                 {
