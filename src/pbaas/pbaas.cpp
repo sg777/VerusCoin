@@ -469,10 +469,10 @@ CServiceReward::CServiceReward(const CTransaction &tx, bool validate)
 
 CCrossChainImport::CCrossChainImport(const CTransaction &tx)
 {
-    if (tx.vout.size())
+    for (auto out : tx.vout)
     {
         COptCCParams p;
-        if (IsPayToCryptoCondition(tx.vout[0].scriptPubKey, p))
+        if (IsPayToCryptoCondition(out.scriptPubKey, p))
         {
             // always take the first for now
             if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
