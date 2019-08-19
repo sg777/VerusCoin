@@ -12,6 +12,7 @@
 #include "cryptoconditions/include/cryptoconditions.h"
 #include "standard.h"
 #include "pbaas/reserves.h"
+#include "key_io.h"
 
 using namespace std;
 
@@ -380,15 +381,22 @@ bool CScript::IsPayToCryptoCondition() const
     return IsPayToCryptoCondition((CScript *)NULL);
 }
 
+extern uint160 ASSETCHAINS_CHAINID;
+
 bool CScript::IsInstantSpend() const
 {
-    uint32_t ecode;
-    if (!IsPayToCryptoCondition(&ecode))
+    COptCCParams p;
+    bool isInstantSpend = false;
+    if (IsPayToCryptoCondition(p))
     {
-        ecode = 0;
+        // instant spends must be to expected instant spend crypto conditions and to the right address as well
+        if ((p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_CURRENCYSTATE || p.evalCode == EVAL_CROSSCHAIN_IMPORT) && 
+            (p.vKeys.size() == 1 && GetDestinationID(p.vKeys[0]) == CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, p.evalCode)))
+        {
+            isInstantSpend = true;
+        }
     }
-    // only instant spend for now
-    return ecode == EVAL_EARNEDNOTARIZATION;
+    return isInstantSpend;
 }
 
 bool CScript::IsPayToCryptoCondition(COptCCParams &ccParams) const
