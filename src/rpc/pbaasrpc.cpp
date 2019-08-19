@@ -951,6 +951,8 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
     CPBaaSChainDefinition chainDef;
 
+    bool isEarned = ecode == EVAL_EARNEDNOTARIZATION;
+
     LOCK2(cs_main, mempool.cs);
 
     if (!GetAddressUnspent(keyID, 1, unspentOutputs))
@@ -992,8 +994,8 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
                             sortedTxs.insert(make_pair(blkit->second->GetHeight(), make_pair(ntx, blkHash)));
                         }
                     }
-                    // if we are have a first notarization not confirmed, none can be confirmed yet
-                    if (notarization.prevHeight == 0)
+                    // if we are not on block 1 of a PBaaS chain and we are a first notarization that is not confirmed, none can be confirmed yet
+                    if (notarization.prevHeight == 0 && !isEarned)
                     {
                         notarizationData.lastConfirmed = -1;
                     }
@@ -1012,7 +1014,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
             return false;
         }
 
-        if (!chainDef.IsValid() && !(ecode == EVAL_EARNEDNOTARIZATION && notarizationData.lastConfirmed == -1))
+        if (!chainDef.IsValid())
         {
             // the first entry of all forks must reference a confirmed transaction if there is one
             CTransaction rootTx;
@@ -1050,11 +1052,14 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
             {
                 notarizationData.lastConfirmed = -1;
             }
-         }
+        }
         else
         {
-            // we still have the chain definition or block 1 in our forks, so no notarization has been confirmed yet
-            notarizationData.lastConfirmed = -1;
+            if (!isEarned)
+            {
+                // we still have the chain definition in our forks, so no notarization has been confirmed yet
+                notarizationData.lastConfirmed = -1;
+            }
         }
 
         multimap<uint256, pair<int32_t, int32_t>> references;       // associates the txid, the fork index, and the index in the fork

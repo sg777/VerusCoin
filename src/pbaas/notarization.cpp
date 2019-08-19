@@ -260,7 +260,15 @@ vector<CInputDescriptor> AddSpendsAndFinalizations(const CChainNotarizationData 
     set<int32_t> finalized;
     int32_t &confirmedIdx = *pConfirmedIdx;
     confirmedIdx = -1;
+
     int32_t confirmOffset = (cnd.lastConfirmed == -1) ? 0 : 1;
+
+    // if we are the second notarization after a block 1 notarization that is considered confirmed,
+    // spend the one before us
+    if (cnd.vtx.size() == 1 && !IsVerusActive() && cnd.lastConfirmed != -1)
+    {
+        finalized.insert(cnd.lastConfirmed);
+    }
 
     // now, create inputs from the most recent notarization in cnd and the finalization outputs that we either confirm or invalidate
     for (int j = 0; j < cnd.forks.size(); j++)
@@ -281,6 +289,7 @@ vector<CInputDescriptor> AddSpendsAndFinalizations(const CChainNotarizationData 
                     int32_t confirmedEntry = k - CPBaaSNotarization::FINAL_CONFIRMATIONS;
                     confirmedIdx = cnd.forks[j][confirmedEntry];
                     finalized.insert(confirmedIdx);
+
                     // if we would add the 10th confirmation to the second in this fork, we are confirming 
                     // a new notarization, spend it's finalization output and all those that disagree with it
                     // the only chains that are confirmed to disagree will have a different index in the
