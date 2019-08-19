@@ -2628,12 +2628,14 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No chain notarizations for " + uni_get_str(params[0]) + " found");
     }
 
+    UniValue ret(UniValue::VNULL);
+
     if (cnd.IsConfirmed())
     {
         lastConfirmedTx = txesOut[cnd.lastConfirmed].first;
         if (GetLastImportIn(chainID, lastImportTx))
         {
-            UniValue ret(UniValue::VOBJ);
+            ret = UniValue(UniValue::VOBJ);
             CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), chainActive.Height());
             // find the import output
             COptCCParams p;
@@ -2675,8 +2677,7 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
             ret.push_back(Pair("importtxtemplate", EncodeHexTx(txTemplate)));
         }
     }
-
-    return NullUniValue;
+    return ret;
 }
 
 UniValue getlatestimportsout(const UniValue& params, bool fHelp)
