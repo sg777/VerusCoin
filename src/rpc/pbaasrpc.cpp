@@ -266,7 +266,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
           (chainObjs = RetrieveOpRetArray(lastCrossChainImport.vout.back().scriptPubKey)).size() >= 2 &&
           chainObjs[0]->objectType == CHAINOBJ_TRANSACTION &&
           chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF) &&
-        !(chainObjs.size() == 0 && lastCrossChainImport.IsCoinBase() || (CPBaaSChainDefinition(lastCrossChainImport).IsValid() && !IsVerusActive())))
+        !(chainObjs.size() == 0 && CPBaaSChainDefinition(lastCrossChainImport).IsValid()))
     {
         DeleteOpRetObjects(chainObjs);
         LogPrintf("%s: Invalid last import tx\n", __func__);
@@ -2744,11 +2744,12 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     std::vector<CBaseChainObject *> chainObjs;
     if (!(DecodeHexTx(lastImportTx, lastImportHex) && 
           DecodeHexTx(templateTx, templateTxHex) &&
-          CCrossChainImport(lastImportTx).IsValid() && 
-          lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
+          CCrossChainImport(lastImportTx).IsValid() &&
+          (CPBaaSChainDefinition(lastImportTx).IsValid() ||
+          (lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
           (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() >= 2 &&
-          chainObjs[0]->objectType == CHAINOBJ_TRANSACTION) &&
-          chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF)
+          chainObjs[0]->objectType == CHAINOBJ_TRANSACTION &&
+          chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF))))
     {
         DeleteOpRetObjects(chainObjs);
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid last import tx");
