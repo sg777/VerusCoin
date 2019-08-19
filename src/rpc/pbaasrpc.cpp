@@ -2735,10 +2735,10 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain definition not found");
     }
 
-    std::string lastImportHex = uni_get_str(params[0], "lastimporttx");
+    std::string lastImportHex = uni_get_str(find_value(params[0], "lastimporttx"));
     CTransaction lastImportTx;
 
-    std::string templateTxHex = uni_get_str(params[0], "importtxtemplate");
+    std::string templateTxHex = uni_get_str(find_value(params[0], "importtxtemplate"));
     CTransaction templateTx;
 
     std::vector<CBaseChainObject *> chainObjs;
