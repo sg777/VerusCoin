@@ -1050,7 +1050,10 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
             }
             else
             {
-                notarizationData.lastConfirmed = -1;
+                if (!isEarned)
+                {
+                    notarizationData.lastConfirmed = -1;
+                }
             }
         }
         else
