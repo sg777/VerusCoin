@@ -947,7 +947,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                             param.push_back(Pair("name", thisChain.name));
                             param.push_back(Pair("lastimporttx", EncodeHexTx(lastImportTx)));
                             param.push_back(Pair("lastconfirmednotarization", EncodeHexTx(lastConfirmed)));
-                            param.push_back(Pair("importtxtemplate", EncodeHexTx()));
+                            param.push_back(Pair("importtxtemplate", EncodeHexTx(txTemplate)));
                             params.push_back(param);
 
                             try
