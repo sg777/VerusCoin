@@ -2741,9 +2741,13 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     std::string templateTxHex = uni_get_str(find_value(params[0], "importtxtemplate"));
     CTransaction templateTx;
 
+    std::string lastConfirmedTxHex = uni_get_str(find_value(params[0], "lastconfirmednotarization"));
+    CTransaction lastConfirmedNotarization;
+
     std::vector<CBaseChainObject *> chainObjs;
     if (!(DecodeHexTx(lastImportTx, lastImportHex) && 
           DecodeHexTx(templateTx, templateTxHex) &&
+          DecodeHexTx(lastConfirmedNotarization, lastConfirmedTxHex) &&
           CCrossChainImport(lastImportTx).IsValid() &&
           (CPBaaSChainDefinition(lastImportTx).IsValid() ||
           (lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
@@ -2756,17 +2760,6 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     }
 
     DeleteOpRetObjects(chainObjs);
-
-    CChainNotarizationData cnd;
-    vector<pair<CTransaction, uint256>> txesOut;
-    CTransaction lastConfirmedNotarization;
-
-    if (!(GetNotarizationData(chainID, isVerusActive ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd, &txesOut) && cnd.lastConfirmed >= 0))
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Found no confirmed notarization");
-    }
-
-    lastConfirmedNotarization = txesOut[cnd.lastConfirmed].first;
 
     std::vector<CTransaction> newImports;
     if (!ConnectedChains.CreateLatestImports(chainDef, lastImportTx, templateTx, lastConfirmedNotarization, newImports))

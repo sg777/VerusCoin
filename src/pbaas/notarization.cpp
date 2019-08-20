@@ -497,7 +497,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     uint256 lastNotarizationID;
 
-    // if we passed no prior notarizations, the crosstxid returned can be null
+    // if we passed no notarizations known to the other chain, the crosstxid returned can be null
     if (uv1.isStr())
     {
         lastNotarizationID.SetHex((uv1.get_str()));
@@ -505,7 +505,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     if ((lastNotarizationID.IsNull() && (cnd.vtx.size() != 0)) || !uv2.isStr() || !uv3.isStr() || !uv4.isStr())
     {
-        printf("%sinvalid parameters\n", funcname);
+        printf("%sno corresponding cross-notarization found\n", funcname);
         return false;
     }
 
