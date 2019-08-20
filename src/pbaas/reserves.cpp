@@ -79,6 +79,7 @@ CCurrencyState::CCurrencyState(const UniValue &obj)
 UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
+    cpp_dec_float_50 priceInReserve = GetPriceInReserve() / boost::multiprecision::cpp_dec_float_50(CReserveExchange::SATOSHIDEN);
     ret.push_back(Pair("flags", (int32_t)flags));
     ret.push_back(Pair("initialratio", (int32_t)InitialRatio));
     ret.push_back(Pair("initialsupply", (int64_t)InitialSupply));
@@ -86,6 +87,7 @@ UniValue CCurrencyState::ToUniValue() const
     ret.push_back(Pair("supply", (int64_t)Supply));
     ret.push_back(Pair("reserve", (int64_t)Reserve));
     ret.push_back(Pair("currentratio", GetReserveRatio().convert_to<float>()));
+    ret.push_back(Pair("priceinreserve", priceInReserve.convert_to<std::string>()));
     return ret;
 }
 
@@ -118,7 +120,7 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
     ReserveIn = uni_get_int64(find_value(obj, "reservein"));
     NativeIn = uni_get_int64(find_value(obj, "nativein"));
     ReserveOut = CReserveOutput(find_value(obj, "reserveout"));
-    ConversionPrice = uni_get_int64(find_value(obj, "conversionprice"));
+    ConversionPrice = uni_get_int64(find_value(obj, "lastconversionprice"));
     Fees = uni_get_int64(find_value(obj, "fees"));
 }
 
@@ -129,7 +131,8 @@ UniValue CCoinbaseCurrencyState::ToUniValue() const
     ret.push_back(Pair("reservein", (int64_t)ReserveIn));
     ret.push_back(Pair("nativein", (int64_t)NativeIn));
     ret.push_back(Pair("reserveout", ReserveOut.ToUniValue()));
-    ret.push_back(Pair("conversionprice", (int64_t)ConversionPrice));
+    ret.push_back(Pair("lastconversionprice", (int64_t)ConversionPrice));
+    ret.push_back(Pair("currentprice", (int64_t)ConversionPrice));
     ret.push_back(Pair("fees", (int64_t)Fees));
     return ret;
 }

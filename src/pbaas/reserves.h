@@ -371,7 +371,7 @@ public:
 
     cpp_dec_float_50 GetReserveRatio() const
     {
-        return cpp_dec_float_50(InitialRatio);
+        return cpp_dec_float_50(InitialRatio) / cpp_dec_float_50(CReserveExchange::SATOSHIDEN);
     }
 
     inline static bool to_int64(const cpp_dec_float_50 &input, int64_t &outval)
@@ -388,14 +388,14 @@ public:
         }
     }
 
-    // return the current price of the fractional reserve in the reserve currency.
+    // return the current price of the fractional reserve in the reserve currency in Satoshis
     cpp_dec_float_50 GetPriceInReserve() const
     {
         cpp_dec_float_50 supply(Supply);
         cpp_dec_float_50 reserve(Reserve);
         cpp_dec_float_50 ratio = GetReserveRatio();
 
-        return ratio == 0 || supply == 0 ? cpp_dec_float_50(0) : reserve / (supply * ratio);
+        return (ratio == 0 || supply == 0) ? cpp_dec_float_50(0) : (reserve / (supply * ratio)) * cpp_dec_float_50(CReserveExchange::SATOSHIDEN);
     }
 
     // This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it 
@@ -420,13 +420,13 @@ public:
         {
             assert(false);
         }
-        return ((bigAmount * arith_uint256(price)) / arith_uint256(CReserveExchange::SATOSHIDEN)).GetLow64();
+        return (bigAmount * arith_uint256(price)).GetLow64();
     }
 
     CAmount NativeToReserve(CAmount nativeAmount, CAmount exchangeRate) const
     {
         arith_uint256 bigAmount(nativeAmount);
-        return ((bigAmount * arith_uint256(exchangeRate)) / arith_uint256(CReserveExchange::SATOSHIDEN)).GetLow64();
+        return (bigAmount * arith_uint256(exchangeRate)).GetLow64();
     }
 
     UniValue ToUniValue() const;

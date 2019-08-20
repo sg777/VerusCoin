@@ -26,6 +26,7 @@
 #include <univalue.h>
 
 #include "zcash/Address.hpp"
+#include "pbaas/pbaas.h"
 
 using namespace std;
 
@@ -209,7 +210,15 @@ UniValue getinfo(const UniValue& params, bool fHelp)
             obj.push_back(Pair("halving", acHalving));
             obj.push_back(Pair("decay", acDecay));
             obj.push_back(Pair("endsubsidy", acEndSubsidy));
-            obj.push_back(Pair("isreserve", isReserve ? "true" : "false"));
+            if (isReserve)
+            {
+                obj.push_back(Pair("isreserve", "true"));
+                obj.push_back(Pair("currencystate", ConnectedChains.GetCurrencyState((int)chainActive.Height()).ToUniValue()));
+            }
+            else
+            {
+                obj.push_back(Pair("isreserve", "false"));
+            }
         }
 
         if ( ASSETCHAINS_COMMISSION != 0 )
