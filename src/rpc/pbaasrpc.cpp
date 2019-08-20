@@ -408,11 +408,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             std::vector<CBaseChainObject *> exportOutputs = RetrieveOpRetArray(aixIt->second.second.vout.back().scriptPubKey);
 
-            if (newImportTx.vin.size())
-            {
-                newImportTx.vin[0] = CTxIn(lastImport.GetHash(), 0);
-            }
-            else
+            // if no prepared input, make one
+            if (!newImportTx.vin.size())
             {
                 newImportTx.vin.push_back(CTxIn(lastImport.GetHash(), 0));          // must spend output 0
             }
