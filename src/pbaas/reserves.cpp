@@ -11,6 +11,7 @@
 #include "main.h"
 #include "pbaas/pbaas.h"
 #include "pbaas/reserves.h"
+#include "rpc/server.h"
 #include "key_io.h"
 
 CReserveOutput::CReserveOutput(const UniValue &obj)
@@ -70,24 +71,23 @@ CCurrencyState::CCurrencyState(const UniValue &obj)
     }
     InitialRatio = initialRatio;
 
-    InitialSupply = uni_get_int64(find_value(obj, "initialsupply"));
-    Emitted = uni_get_int64(find_value(obj, "emitted"));
-    Supply = uni_get_int64(find_value(obj, "supply"));
-    Reserve = uni_get_int64(find_value(obj, "reserve"));
+    InitialSupply = AmountFromValue(find_value(obj, "initialsupply"));
+    Emitted = AmountFromValue(find_value(obj, "emitted"));
+    Supply = AmountFromValue(find_value(obj, "supply"));
+    Reserve = AmountFromValue(find_value(obj, "reserve"));
 }
 
 UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
-    cpp_dec_float_50 priceInReserve = GetPriceInReserve() / boost::multiprecision::cpp_dec_float_50(CReserveExchange::SATOSHIDEN);
     ret.push_back(Pair("flags", (int32_t)flags));
     ret.push_back(Pair("initialratio", (int32_t)InitialRatio));
-    ret.push_back(Pair("initialsupply", (int64_t)InitialSupply));
-    ret.push_back(Pair("emitted", (int64_t)Emitted));
-    ret.push_back(Pair("supply", (int64_t)Supply));
-    ret.push_back(Pair("reserve", (int64_t)Reserve));
-    ret.push_back(Pair("currentratio", GetReserveRatio().convert_to<float>()));
-    ret.push_back(Pair("priceinreserve", priceInReserve.convert_to<std::string>()));
+    ret.push_back(Pair("initialsupply", ValueFromAmount(InitialSupply)));
+    ret.push_back(Pair("emitted", ValueFromAmount(Emitted)));
+    ret.push_back(Pair("supply", ValueFromAmount(Supply)));
+    ret.push_back(Pair("reserve", ValueFromAmount(Reserve)));
+    ret.push_back(Pair("decimalratio", ValueFromAmount(InitialRatio)));
+    ret.push_back(Pair("priceinreserve", ValueFromAmount(PriceInReserve())));
     return ret;
 }
 
@@ -132,7 +132,6 @@ UniValue CCoinbaseCurrencyState::ToUniValue() const
     ret.push_back(Pair("nativein", (int64_t)NativeIn));
     ret.push_back(Pair("reserveout", ReserveOut.ToUniValue()));
     ret.push_back(Pair("lastconversionprice", (int64_t)ConversionPrice));
-    ret.push_back(Pair("currentprice", (int64_t)ConversionPrice));
     ret.push_back(Pair("fees", (int64_t)Fees));
     return ret;
 }
@@ -470,7 +469,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
     if (!exchangeRate)
     {
         int64_t price;
-        if (pCurrencyState && currencyState.to_int64(pCurrencyState->GetPriceInReserve(), price) && price != 0)
+        if (pCurrencyState && (price = currencyState.PriceInReserve()) != 0)
         {
             exchangeRate = price;
         }
@@ -890,16 +889,26 @@ CAmount CReserveTransactionDescriptor::CalculateConversionFee(CAmount inputAmoun
     return fee;
 }
 
+// this calculates a fee that will be added to an amount and result in the same percentage as above,
+// such that a total of the inputAmount + this returned fee, if passed to CalculateConversionFee, would return
+// the same amount
+CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFee(CAmount inputAmount)
+{
+    arith_uint256 bigAmount(inputAmount);
+    arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
+    arith_uint256 conversionFee(CReserveExchange::SUCCESS_FEE);
+
+    CAmount newAmount = ((bigAmount * bigSatoshi) / (bigSatoshi - conversionFee)).GetLow64();
+    CAmount fee = CalculateConversionFee(newAmount);
+    fee += inputAmount - (newAmount - fee);
+    return fee;
+}
+
 CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount) const
 {
     arith_uint256 bigAmount(reserveAmount);
 
-    int64_t price;
-    cpp_dec_float_50 priceInReserve = GetPriceInReserve();
-    if (!to_int64(priceInReserve, price))
-    {
-        assert(false);
-    }
+    int64_t price = PriceInReserve();
     bigAmount = price ? (bigAmount * arith_uint256(CReserveExchange::SATOSHIDEN)) / arith_uint256(price) : 0;
 
     return bigAmount.GetLow64();
@@ -909,14 +918,7 @@ CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount, CAmount exchangeR
 {
     arith_uint256 bigAmount(reserveAmount);
 
-    int64_t price;
-    cpp_dec_float_50 priceInReserve(exchangeRate);
-    if (!to_int64(priceInReserve, price))
-    {
-        assert(false);
-    }
-    bigAmount = price ? (bigAmount * arith_uint256(CReserveExchange::SATOSHIDEN)) / arith_uint256(price) : 0;
-
+    bigAmount = exchangeRate ? (bigAmount * arith_uint256(CReserveExchange::SATOSHIDEN)) / arith_uint256(exchangeRate) : 0;
     return bigAmount.GetLow64();
 }
 

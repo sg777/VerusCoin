@@ -736,6 +736,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 pkCC = CPubKey(ParseHex(CC.CChexstr));
                 vKeys.push_back(CKeyID(CCrossChainRPCData::GetConditionID(thisChainID, EVAL_PBAASDEFINITION)));
                 thisChain.preconverted = currencyState.ReserveIn;   // update known, preconverted amount
+
                 chainDefinitionOut = MakeCC1of1Vout(EVAL_PBAASDEFINITION, 0, pkCC, vKeys, thisChain);
                 coinbaseTx.vout.push_back(chainDefinitionOut);
 

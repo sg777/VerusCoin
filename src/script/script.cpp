@@ -390,7 +390,7 @@ bool CScript::IsPayToCryptoCondition() const
     return IsPayToCryptoCondition((CScript *)NULL);
 }
 
-extern uint160 ASSETCHAINS_CHAINID;
+extern uint160 ASSETCHAINS_CHAINID, VERUS_CHAINID;
 
 bool CScript::IsInstantSpend() const
 {
@@ -399,8 +399,10 @@ bool CScript::IsInstantSpend() const
     if (IsPayToCryptoCondition(p))
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
-        if ((p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_CURRENCYSTATE || p.evalCode == EVAL_CROSSCHAIN_IMPORT) && 
-            (p.vKeys.size() == 1 && GetDestinationID(p.vKeys[0]) == GetConditionID(ASSETCHAINS_CHAINID, p.evalCode)))
+        if ((p.evalCode == EVAL_EARNEDNOTARIZATION && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)) || 
+            (p.evalCode == EVAL_CURRENCYSTATE && GetDestinationID(p.vKeys[0]) == GetConditionID(ASSETCHAINS_CHAINID, p.evalCode)) || 
+            (p.evalCode == EVAL_CROSSCHAIN_IMPORT && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)) ||
+            (p.evalCode == EVAL_CROSSCHAIN_EXPORT && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)))
         {
             isInstantSpend = true;
         }

@@ -408,6 +408,15 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             std::vector<CBaseChainObject *> exportOutputs = RetrieveOpRetArray(aixIt->second.second.vout.back().scriptPubKey);
 
+            CCrossChainExport ccx(aixIt->second.second);
+            lastCCI = CCrossChainImport(lastImport);
+            if (!lastCCI.IsValid() || !ccx.IsValid())
+            {
+                LogPrintf("%s: POSSIBLE CORRUPTION bad import/export data in transaction %s (import) or %s (export)\n", __func__, lastImport.GetHash().GetHex().c_str(), aixIt->first.GetHex().c_str());
+                printf("%s: POSSIBLE CORRUPTION bad import/export data transaction %s (import) or %s (export)\n", __func__, lastImport.GetHash().GetHex().c_str(), aixIt->first.GetHex().c_str());
+                return false;
+            }
+
             // if no prepared input, make one
             if (!newImportTx.vin.size())
             {
@@ -422,8 +431,14 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             CCcontract_info *cp;
 
             CAmount totalNativeOut = 0;
+            CAmount totalReserveOut = 0;
             CAmount totalImport = 0;
             bool isVerusActive = IsVerusActive();
+
+            CAmount availableNative = lastImport.vout[newImportTx.vin[0].prevout.n].nValue;
+            CAmount availableReserveFees = ccx.totalFees;
+            CAmount exportFees = ccx.CalculateExportFee();
+            CAmount importFees = ccx.CalculateImportFee();
 
             for (auto pRT : exportOutputs)
             {
@@ -438,7 +453,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                 {
                     CTxOut newOut;
 
-                    totalImport += curTransfer.nFees + curTransfer.nValue;
+                    totalImport += curTransfer.nValue;
 
                     if (curTransfer.flags & curTransfer.CONVERT)
                     {
@@ -450,15 +465,15 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
 
                         newOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
+                        totalReserveOut += rex.nValue;
                     }
                     else if (curTransfer.flags & curTransfer.PRECONVERT)
                     {
                         // output the amount, minus conversion fees, and generate a normal output that spends the net input of the import as native
                         // difference between all potential value out and what we took unconverted as a fee in our fee output
-                        CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.nValue),
-                                                                                  chainDef.conversion);
-                        totalNativeOut += nativeConverted;
+                        CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue, chainDef.conversion);
                         newOut = CTxOut(nativeConverted, GetScriptForDestination(curTransfer.destination));
+                        totalNativeOut += nativeConverted;
                     }
                     else if (curTransfer.flags & curTransfer.SEND_BACK && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
                     {
@@ -474,7 +489,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                     }
                     else
                     {
-                        // if Verus is active, we are creating an import for a PBaaS reserve chain
+                        // if Verus is active, we are creating a reserve import for a PBaaS reserve chain
                         if (isVerusActive)
                         {
                             // generate a reserve output of the amount indicated, less fees
@@ -489,7 +504,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         }
                         else
                         {
-                            // we are creating an import for the Verus chain, move the value specified, which will spend from
+                            // we are creating an import for the Verus chain to spend from a PBaaS account of a reserve currency, move the value specified, which will spend from
                             // the RESERVE_DEPOSIT outputs
                             newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(curTransfer.destination));
                             totalNativeOut += curTransfer.nValue;
@@ -510,15 +525,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
             CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), totalImport);
 
-            // need to add in the reserve deposits
-            if (newImportTx.vout.size())
-            {
-                newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, lastCCI.nValue - totalNativeOut, pk, dests, cci);
-            }
-            else
-            {
-                newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, newImportTx.vout[0].nValue + (lastCCI.nValue - totalNativeOut), pk, dests, cci);
-            }
+            newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, availableNative - totalNativeOut, pk, dests, cci);
 
             if (newImportTx.vout[0].nValue < 0)
             {
@@ -561,7 +568,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             // add the opret with the transaction and its proof that references the notarization with the correct MMR
             newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(chainObjects)));
 
-            // we now have a signed Import transaction for the chainID chain, it is the latest, and the export we used is now the latest as well
+            // we now have an Import transaction for the chainID chain, it is the latest, and the export we used is now the latest as well
+            // work our way forward
             newImports.push_back(newImportTx);
             lastImport = newImportTx;
             newImportTx.vin.clear();
@@ -2135,7 +2143,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             "           \"amount\"         : \"n\",     (int64,  required) amount of coins that will be moved and sent to address on PBaaS chain, network and conversion fees additional\n"
             "           \"convert\"        : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price\n"
             "           \"preconvert\"     : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price, fail if order cannot be placed before launch\n"
-            "           \"subtractfee\"    : \"bool\",  (bool,   optional) if true, reduce amount to destination by the fee amount, otherwise, add from inputs to cover fee"
+            "           \"subtractfee\"    : \"bool\",  (bool,   optional) if true, reduce amount to destination by the transfer and conversion fee amount. normal network fees are never subtracted"
             "       }\n"
 
             "\nResult:\n"
@@ -2274,33 +2282,54 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         // send the entire amount to a reserve transfer output bound to this chain
         std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
 
+        // determine fee for this send
+        CAmount transferFee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
+        if (flags & CReserveTransfer::PRECONVERT)
+        {
+            if (subtractFee)
+            {
+                transferFee = CReserveTransactionDescriptor::CalculateConversionFee(amount);
+            }
+            else
+            {
+                // convert exactly the specified amount and calculate the fee that would make the conversion correct
+                transferFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
+            }
+        }
+
         if (subtractFee)
         {
-            amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
+            amount -= transferFee;
+        }        
+
+        if (amount <= (transferFee << 1))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must send more than twice the cost of the fee. Fee for this transaction is " + ValueFromAmount(transferFee).get_str());
         }
 
         // create the transfer object
-        CReserveTransfer rt(flags, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, kID);
+        CReserveTransfer rt(flags, amount, transferFee, kID);
 
         CTxOut ccOut;
-        if (!(flags & CReserveTransfer::PRECONVERT))
-        {
-            // cast object to most derived class
-            ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, dests, (CReserveTransfer)rt);
-        }
-        else
+        // if preconversion and we have a minpreconvert, prepare for refund output
+        if (flags & CReserveTransfer::PRECONVERT && chainDef.minpreconvert)
         {
             LOCK2(cs_main, pwalletMain->cs_wallet);
             CPubKey pk2(GetDestinationBytes(refundDest));
             if (!pk2.IsFullyValid() && !pwalletMain->GetPubKey(refundID, pk2))
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot retrieve public key for refund address. Refund address must be public key or accesible from the current wallet.");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot retrieve public key for refund address. Refund address must either be public key or address that is accesible from the current wallet.");
             }
             dests.push_back(pk2);
-            ccOut = MakeCC1of2Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, pk2, dests, (CReserveTransfer)rt);
+            ccOut = MakeCC1of2Vout(EVAL_RESERVE_TRANSFER, amount + transferFee, pk, pk2, dests, (CReserveTransfer)rt);
+        }
+        else
+        {
+            // cast object to most derived class
+            ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + transferFee, pk, dests, (CReserveTransfer)rt);
         }
 
-        outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
+        outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + transferFee, false}));
 
         // create the transaction with native coin as input
         {
@@ -2327,7 +2356,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         if (chainID == thisChainID)
         {
             // if we are on a fractional reserve chain, a conversion will convert FROM the fractional reserve currency TO
-            // the reserve. this will happen with an actual reserveexchange transaction
+            // the reserve. this will basically turn into a reserveexchange transaction
             if (convert)
             {
                 if (!isReserve)
@@ -2345,15 +2374,20 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
+                CAmount conversionFee;
+
                 if (subtractFee)
                 {
-                    amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
+                    conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(amount);
+                    amount -= conversionFee;
+                }
+                else
+                {
+                    conversionFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
                 }
 
-                // native cin in output is 0, it is unspendable anyhow
-                CTxOut ccOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
-
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
+                CTxOut ccOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex);
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + conversionFee, false}));
 
                 // create a transaction with native coin as input
                 {
@@ -2386,18 +2420,13 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
-                if (subtractFee)
-                {
-                    amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
-                }
-
                 // create the transfer object
                 CReserveOutput ro(flags, amount);
 
                 // native amount in the output is 0
                 CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_OUTPUT, 0, pk, dests, ro);
 
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
 
                 // create a transaction with reserve coin as input
                 {
@@ -2431,8 +2460,19 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + ConnectedChains.ThisChain().name + " into " + ConnectedChains.NotaryChain().chainDefinition.name + ".");
                 }
 
+                CAmount conversionFee;
+                if (subtractFee)
+                {
+                    conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(amount);
+                    amount -= conversionFee;
+                }
+                else
+                {
+                    conversionFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
+                }
+
                 CCoinsViewCache view(pcoinsTip);
-                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE + CReserveExchange::SEND_OUTPUT, amount);
+                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE + CReserveExchange::SEND_OUTPUT, amount + conversionFee);
 
                 // we will send using a reserve output, fee will be paid by converting from reserve
                 CCcontract_info CC;
@@ -2441,15 +2481,10 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
-                if (subtractFee)
-                {
-                    amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
-                }
+                // native amount in output is 0
+                CTxOut ccOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex);
 
-                // native cin in output is 0
-                CTxOut ccOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
-
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + conversionFee, false}));
 
                 // create a transaction with native coin as input
                 {
@@ -2484,16 +2519,17 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 // send the entire amount to a reserve transfer output of the specific chain
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
 
+                CAmount transferFee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
                 if (subtractFee)
                 {
-                    amount -= (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
+                    amount -= transferFee;
                 }
 
                 // create the transfer object
                 CReserveTransfer rt(flags, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, kID);
 
-                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1), pk, dests, (CReserveTransfer)rt);
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
+                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + transferFee, pk, dests, (CReserveTransfer)rt);
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + transferFee, subtractFee}));
 
                 // create a transaction with reserve coin as input
                 {

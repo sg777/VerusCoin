@@ -1277,6 +1277,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     exportOutVal = lastExport.second.second.nValue;
                                 }
 
+                                COptCCParams p;
                                 for (int j = 0; j < numInputs; j++)
                                 {
                                     tb.AddTransparentInput(txInputs[j].first.txIn.prevout, txInputs[j].first.scriptPubKey, txInputs[j].first.nValue, txInputs[j].first.txIn.nSequence);
@@ -1287,8 +1288,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                 CCrossChainExport ccx(lastChain, numInputs, totalAmount, totalTxFees);
                                 CAmount exportFees = ccx.CalculateExportFee();
-                                CReserveTransfer feeOut = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::SEND_BACK + CReserveTransfer::FEE_OUTPUT,
-                                                                            exportFees, 0, GetDestinationID(feeOutput));
+                                CReserveTransfer feeOut = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::SEND_BACK + CReserveTransfer::FEE_OUTPUT, exportFees, 0, GetDestinationID(feeOutput));
                                 chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
 
                                 CScript opRet = StoreOpRetArray(chainObjects);
@@ -1332,17 +1332,16 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 tb.AddOpRet(opRet);
                                 tb.SetFee(0);
 
-                                boost::optional<CTransaction> newExport = tb.Build();
+                                oneExport = tb.Build();
 
-                                if (newExport.has_value())
+                                if (oneExport.has_value())
                                 {
                                     // replace the last one only if we have a valid new one
-                                    oneExport = newExport;
                                     CTransaction &tx = oneExport.get();
 
                                     LOCK2(cs_main, mempool.cs);
                                     static int lastHeight = 0;
-                                    // remove conflicts, so that we are the now
+                                    // remove conflicts, so that we get in
                                     std::list<CTransaction> removed;
                                     mempool.removeConflicts(tx, removed);
 
@@ -1353,6 +1352,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(exportFees << 1), exportFees);
                                         RelayTransaction(tx);
                                     }
+                                }
+                                else
+                                {
+                                    // we can't do any more useful work for this chain if we failed here
+                                    printf("Failed to create import transaction\n");
+                                    LogPrintf("Failed to create import transaction\n");
+                                    break;
                                 }
                                 // erase the inputs we've attempted to spend
                                 txInputs.erase(txInputs.begin(), txInputs.begin() + numInputs);

@@ -237,6 +237,7 @@ public:
     bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
 
     static CAmount CalculateConversionFee(CAmount inputAmount);
+    static CAmount CalculateAdditionalConversionFee(CAmount inputAmount);
 
     CAmount NativeFees() const
     {
@@ -388,14 +389,19 @@ public:
         }
     }
 
+    CAmount PriceInReserve() const
+    {
+        arith_uint256 supply(Supply);
+        arith_uint256 reserve(Reserve);
+        arith_uint256 ratio(InitialRatio);
+
+        return ((reserve * arith_uint256(CReserveExchange::SATOSHIDEN) * arith_uint256(CReserveExchange::SATOSHIDEN)) / (supply * ratio)).GetLow64();
+    }
+
     // return the current price of the fractional reserve in the reserve currency in Satoshis
     cpp_dec_float_50 GetPriceInReserve() const
     {
-        cpp_dec_float_50 supply(Supply);
-        cpp_dec_float_50 reserve(Reserve);
-        cpp_dec_float_50 ratio = GetReserveRatio();
-
-        return (ratio == 0 || supply == 0) ? cpp_dec_float_50(0) : (reserve / (supply * ratio)) * cpp_dec_float_50(CReserveExchange::SATOSHIDEN);
+        return cpp_dec_float_50(PriceInReserve());
     }
 
     // This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it 
@@ -413,13 +419,7 @@ public:
     CAmount NativeToReserve(CAmount nativeAmount) const
     {
         arith_uint256 bigAmount(nativeAmount);
-
-        int64_t price;
-        cpp_dec_float_50 priceInReserve = GetPriceInReserve();
-        if (!to_int64(priceInReserve, price))
-        {
-            assert(false);
-        }
+        arith_uint256 price = arith_uint256(PriceInReserve());
         return (bigAmount * arith_uint256(price)).GetLow64();
     }
 
