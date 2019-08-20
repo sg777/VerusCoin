@@ -1006,6 +1006,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                     }
 
                                     UpdateTransaction(mtx, 0, sigdata);
+                                    itx = CTransaction(mtx);
 
                                     // commit to mempool and remove any conflicts
                                     std::list<CTransaction> removed;
