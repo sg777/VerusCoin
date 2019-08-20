@@ -929,19 +929,34 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                         UniValue params(UniValue::VARR);
                         UniValue param(UniValue::VOBJ);
 
-                        param.push_back(Pair("name", thisChain.name));
-                        param.push_back(Pair("lastimporttx", EncodeHexTx(lastImportTx)));
-                        param.push_back(Pair("lastconfirmednotarization", EncodeHexTx(lastConfirmed)));
-                        param.push_back(Pair("importtxtemplate", EncodeHexTx(CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight))));
-                        params.push_back(param);
+                        CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
+                        int i;
+                        for (i = 0; i < lastImportTx.vout.size(); i++)
+                        {
+                            COptCCParams p;
+                            if (lastImportTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+                            {
+                                txTemplate.vin.push_back(CTxIn(lastImportTx.GetHash(), (uint32_t)i));
+                                break;
+                            }
+                        }
 
-                        UniValue result;
-                        try
+                        UniValue result = NullUniValue;
+                        if (i < lastImportTx.vout.size())
                         {
-                            result = find_value(RPCCallRoot("getlatestimportsout", params), "result");
-                        } catch (exception e)
-                        {
-                            result = NullUniValue;
+                            param.push_back(Pair("name", thisChain.name));
+                            param.push_back(Pair("lastimporttx", EncodeHexTx(lastImportTx)));
+                            param.push_back(Pair("lastconfirmednotarization", EncodeHexTx(lastConfirmed)));
+                            param.push_back(Pair("importtxtemplate", EncodeHexTx()));
+                            params.push_back(param);
+
+                            try
+                            {
+                                result = find_value(RPCCallRoot("getlatestimportsout", params), "result");
+                            } catch (exception e)
+                            {
+                                printf("Could not get latest imports from notary chain\n");
+                            }
                         }
 
                         if (result.isArray() && result.size() && pwalletMain)
