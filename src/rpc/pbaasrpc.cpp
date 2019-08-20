@@ -244,7 +244,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
     uint160 chainID = chainDef.GetChainID();
 
     CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
-    if (!lastConfirmed.IsValid() || (chainActive.LastTip() == NULL) || lastConfirmed.notarizationHeight >= chainActive.LastTip()->GetHeight())
+    if (!lastConfirmed.IsValid() || (chainActive.LastTip() == NULL) || lastConfirmed.notarizationHeight > chainActive.LastTip()->GetHeight())
     {
         LogPrintf("%s: Invalid lastConfirmedNotarization transaction\n", __func__);
         printf("%s: Invalid lastConfirmedNotarization transaction\n", __func__);
