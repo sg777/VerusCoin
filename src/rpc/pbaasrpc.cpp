@@ -302,7 +302,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
         // we cannot get export to a chain that has shut down
         // if the chain definition is spent, a chain is inactive
-        if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, unspentOutputs))
+        if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, unspentOutputs) && unspentOutputs.size())
         {
             for (auto txidx : unspentOutputs)
             {
@@ -367,8 +367,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                 (tx.IsCoinBase() && (blkIt = mapBlockIndex.find(blkHash1)) != mapBlockIndex.end() && blkIt->second->GetHeight() == 1) || 
                 (!tx.IsCoinBase() && tx.vin.size() && myGetTransaction(tx.vin[0].prevout.hash, inputtx, blkHash2)))
             {
-                // either this is the first import as a chain definition from the coinbase of block 1, or it must spend a valid import
-                if (!tx.IsCoinBase())
+                // either this is the first export as part of a chain definition on the notary chain, or it must spend a valid export output
+                if (!(tx.GetHash() == lastExportHash))
                 {
                     COptCCParams p;
                     // validate the input as a chain export input
