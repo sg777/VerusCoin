@@ -2755,7 +2755,6 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid last import tx");
     }
 
-    CTransaction lastExportTx = ((CChainObject<CTransaction> *)chainObjs[0])->object;
     DeleteOpRetObjects(chainObjs);
 
     CChainNotarizationData cnd;
