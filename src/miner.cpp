@@ -981,8 +981,24 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                     const CScript virtualCC;
                                     CTxOut virtualCCOut;
 
+                                    // if we're spending the last import, we need to respect its n out
+                                    for (i = 0; i < lastImportTx.vout.size(); i++)
+                                    {
+                                        COptCCParams p;
+                                        if (lastImportTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+                                        {
+                                            txTemplate.vin.push_back(CTxIn(lastImportTx.GetHash(), (uint32_t)i));
+                                            break;
+                                        }
+                                    }
+                                    if (i >= lastImportTx.vout.size())
+                                    {
+                                        // can't continue if this tx was invalid
+                                        break;
+                                    }
+
                                     signSuccess = ProduceSignature(
-                                        TransactionSignatureCreator(pwalletMain, &itx, 0, lastImportTx.vout[0].nValue, SIGHASH_ALL), lastImportTx.vout[0].scriptPubKey, sigdata, consensusBranchId);
+                                        TransactionSignatureCreator(pwalletMain, &itx, 0, lastImportTx.vout[i].nValue, SIGHASH_ALL), lastImportTx.vout[i].scriptPubKey, sigdata, consensusBranchId);
 
                                     if (!signSuccess)
                                     {
