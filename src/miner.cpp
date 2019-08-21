@@ -873,7 +873,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
                     // send this to EVAL_EARNEDNOTARIZATION address as a destination, locked by the default pubkey
                     pkCC = CPubKey(ParseHex(cp->CChexstr));
-                    vKeys.push_back(CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, EVAL_EARNEDNOTARIZATION))));
+                    vKeys.push_back(CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION))));
 
                     int64_t needed = nHeight == 1 ? PBAAS_MINNOTARIZATIONOUTPUT << 1 : PBAAS_MINNOTARIZATIONOUTPUT;
 
