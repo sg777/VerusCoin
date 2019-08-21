@@ -577,17 +577,36 @@ CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount emitted)
         return *this;
     }
 
-    arith_uint256 bigInitial(InitialRatio);
-    arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
-    arith_uint256 bigEmission(emitted);
-    arith_uint256 bigSupply(Supply);
+    if (emitted)
+    {
+        // to balance rounding with truncation, we statistically add a satoshi to the initial ratio
+        arith_uint256 bigInitial(InitialRatio);
+        arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
+        arith_uint256 bigEmission(emitted);
+        arith_uint256 bigSupply(Supply);
 
-    int64_t newRatio = (((bigInitial * bigSupply * bigSatoshi) / (bigSupply + bigEmission)) / bigSatoshi).GetLow64();
+        arith_uint256 bigScratch = (bigInitial * bigSupply * bigSatoshi) / (bigSupply + bigEmission);
+        arith_uint256 bigRatio = bigScratch / bigSatoshi;
+        // cap ratio at 1
+        if (bigRatio >= bigSatoshi)
+        {
+            bigScratch = arith_uint256(CReserveExchange::SATOSHIDEN * CReserveExchange::SATOSHIDEN);
+            bigRatio = bigSatoshi;
+        }
 
-    // update initial supply to be what we currently have
-    Emitted = emitted;
-    InitialRatio = newRatio;
-    Supply = InitialSupply + emitted;
+        int64_t newRatio = bigRatio.GetLow64();
+        int64_t remainder = bigScratch.GetLow64() - (newRatio * CReserveExchange::SATOSHIDEN);
+        // form of bankers rounding, if odd, round up at half, if even, round down at half
+        if (remainder > (CReserveExchange::SATOSHIDEN >> 1) || (remainder == (CReserveExchange::SATOSHIDEN >> 1) && newRatio & 1))
+        {
+            newRatio += 1;
+        }
+
+        // update initial supply to be what we currently have
+        Emitted = emitted;
+        InitialRatio = newRatio;
+        Supply = InitialSupply + emitted;
+    }
     return *this; 
 }
 
