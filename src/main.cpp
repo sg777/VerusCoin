@@ -4797,17 +4797,6 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                             {
                                 success = false;
                             }
-                            CTransaction inputTx;
-                            uint256 blkHash;
-                            if (myGetTransaction(Tx.vin[j].prevout.hash, inputTx, blkHash))
-                            {
-                                CPBaaSNotarization p(inputTx);
-                                if (p.IsValid())
-                                {
-                                    LogPrintf("transaction input from %s on input %d is a notarization of %s\n", Tx.vin[j].prevout.hash.GetHex().c_str(), Tx.vin[j].prevout.n, p.chainID.GetHex().c_str());                          
-                                    printf("transaction input from %s on input %d is a notarization of %s\n", Tx.vin[j].prevout.hash.GetHex().c_str(), Tx.vin[j].prevout.n, p.chainID.GetHex().c_str());                          
-                                }
-                            }
                         }
                     }
                 }
@@ -4826,11 +4815,11 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                                !((missinginputs || state.GetRejectCode() == REJECT_DUPLICATE) && (!fCheckTxInputs || chainActive.Height() < height - 1)))
                     {
                         //printf("Rejected transaction for %s, reject code %d\n", state.GetRejectReason().c_str(), state.GetRejectCode());
-                        for (auto input : Tx.vin)
-                        {
-                            LogPrintf("input n: %d, hash: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str());
-                            printf("chainActive.Height(): %d, height: %d, input n: %d, hash: %s\n", chainActive.Height(), height, input.prevout.n, input.prevout.hash.GetHex().c_str());
-                        }
+                        //for (auto input : Tx.vin)
+                        //{
+                        //    LogPrintf("input n: %d, hash: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str());
+                        //    printf("chainActive.Height(): %d, height: %d, input n: %d, hash: %s\n", chainActive.Height(), height, input.prevout.n, input.prevout.hash.GetHex().c_str());
+                        //}
                         rejects++;
                     }
                 }

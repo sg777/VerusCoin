@@ -1930,8 +1930,13 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             }
             else
             {
-                printf("No notary public key recipient has been set, so this node cannot receive rewards for notarization\n");
-                LogPrintf("No notary public key recipient has been set, so this node cannot receive rewards for notarization\n");
+                static bool printMsg = true;
+                if (printMsg)
+                {
+                    printf("No notary public key recipient has been set, so this node cannot receive rewards for notarization\n");
+                    LogPrintf("No notary public key recipient has been set, so this node cannot receive rewards for notarization\n");
+                    printMsg = false;
+                }
             }
 
             CBlockIndex *nzIndex = chainActive[proofheight];
