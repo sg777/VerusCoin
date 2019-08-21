@@ -354,16 +354,13 @@ public:
             return *this;
         }
 
-        cpp_dec_float_50 initial(InitialRatio);
-        cpp_dec_float_50 one(1);
+        arith_uint256 bigInitial(InitialRatio);
+        arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
+        arith_uint256 bigEmission(emitted);
+
+        int64_t newRatio = ((bigInitial * ((bigSatoshi * bigSatoshi) / (bigSatoshi + ((bigSatoshi * bigEmission) / arith_uint256(Supply))))) / bigSatoshi).GetLow64();
 
         // update initial supply to be what we currently have
-        int64_t newRatio;
-        if (!(to_int64(cpp_dec_float_50((one / ((one + (cpp_dec_float_50(emitted) / cpp_dec_float_50(Supply))))) * cpp_dec_float_50(InitialRatio)), newRatio) &&
-            newRatio <= CReserveExchange::SATOSHIDEN))
-        {
-            return *this; 
-        }
         Emitted = emitted;
         InitialRatio = newRatio;
         Supply = InitialSupply + emitted;
