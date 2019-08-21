@@ -1940,7 +1940,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             }
 
             CBlockIndex *nzIndex = chainActive[proofheight];
-            CCurrencyState currencyState;
+            CCurrencyState currencyState = ConnectedChains.GetCurrencyState(proofheight);
 
             // TODO: get currency state as of proofHeight
             if (ConnectedChains.ThisChain().ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE)

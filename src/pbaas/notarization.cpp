@@ -1071,6 +1071,8 @@ uint256 CreateAcceptedNotarization(const CBlock &blk, int32_t txIndex, int32_t h
         pbn.notarizationPreHash = preHash;
         pbn.compactPower = node->power;
 
+        pbn.currencyState = ConnectedChains.GetCurrencyState(height);
+
         pbn.prevNotarization = crosspbn.crossNotarization;
         pbn.prevHeight = crosspbn.crossHeight;
         pbn.crossNotarization = entx.GetHash();

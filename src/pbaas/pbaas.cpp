@@ -1121,9 +1121,10 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
         height != 0 && 
         height <= chainActive.Height() && 
         chainActive[height] && 
-        ReadBlockFromDisk(block, chainActive[height], false))
+        ReadBlockFromDisk(block, chainActive[height], false) &&
+        (currencyState = CCoinbaseCurrencyState(block.vtx[0])).IsValid())
     {
-        currencyState = CCoinbaseCurrencyState(block.vtx[0]);
+        return currencyState;
     }
     else
     {
@@ -1134,9 +1135,8 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
         cState.InitialSupply = preconvertedNative;
         cState.Supply += preconvertedNative;
 
-        currencyState = CCoinbaseCurrencyState(cState, thisChain.initialcontribution, 0, CReserveOutput(CReserveOutput::VALID, 0), thisChain.conversion, 0);
+        return CCoinbaseCurrencyState(cState, thisChain.initialcontribution, 0, CReserveOutput(CReserveOutput::VALID, 0), thisChain.conversion, 0);
     }
-    return currencyState;
 }
 
 bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScript>> minerOutputs, CTxDestination &firstDestinationOut)
