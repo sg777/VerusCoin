@@ -95,6 +95,7 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
 {
     return true;
 }
+
 bool IsCrossChainExportInput(const CScript &scriptSig)
 {
 }
@@ -103,6 +104,7 @@ bool IsCrossChainExportInput(const CScript &scriptSig)
 // they are represented o the chain as tokens
 bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
 {
+    return true;
 }
 bool IsCrossChainImportInput(const CScript &scriptSig)
 {
