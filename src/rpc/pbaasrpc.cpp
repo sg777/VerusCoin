@@ -486,6 +486,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, curTransfer.destination);
 
                         newOut = MakeCC0of0Vout(EVAL_RESERVE_TRANSFER, 0, dests, rt);
+                        totalReserveOut += curTransfer.nValue;
                     }
                     else
                     {
@@ -501,13 +502,14 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                             CReserveOutput ro = CReserveOutput(CReserveExchange::VALID, curTransfer.nValue);
 
                             newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
+                            totalReserveOut += curTransfer.nValue;
                         }
                         else
                         {
                             // we are creating an import for the Verus chain to spend from a PBaaS account of a reserve currency, move the value specified, which will spend from
                             // the RESERVE_DEPOSIT outputs
                             newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(curTransfer.destination));
-                            totalNativeOut += curTransfer.nValue;
+                            totalNativeOut += newOut.nValue;
                         }
                     }
                     newImportTx.vout.push_back(newOut);
@@ -2286,9 +2288,33 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         CAmount transferFee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
         if (flags & CReserveTransfer::PRECONVERT)
         {
+            arith_uint256 bigAmount(amount);
+            static const arith_uint256 bigsatoshi(CReserveExchange::SATOSHIDEN);
+            arith_uint256 feeRate(chainDef.launchFee);
+
+            // if preconvert and there is a launch fee, first subtract the launch fee. for now, this does create a bias, in that
+            // not subtrac
+            if (chainDef.launchFee)
+            {
+                CAmount launchFee;
+
+                if (!subtractFee)
+                {
+                    bigAmount = ((bigAmount * bigsatoshi) / (bigsatoshi - feeRate)).GetLow64();
+                }
+                launchFee = ((bigAmount * feeRate) / bigsatoshi).GetLow64();
+
+                amount -= launchFee;
+
+                // add the output to this transaction
+                CTxDestination feeOutAddr(chainDef.address);
+                outputs.push_back(CRecipient({GetScriptForDestination(feeOutAddr), launchFee, false}));
+            }
+
             if (subtractFee)
             {
                 transferFee = CReserveTransactionDescriptor::CalculateConversionFee(amount);
+                amount -= transferFee;
             }
             else
             {
@@ -2296,11 +2322,6 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 transferFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
             }
         }
-
-        if (subtractFee)
-        {
-            amount -= transferFee;
-        }        
 
         if (amount <= (transferFee << 1))
         {
@@ -2311,6 +2332,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         CReserveTransfer rt(flags, amount, transferFee, kID);
 
         CTxOut ccOut;
+
         // if preconversion and we have a minpreconvert, prepare for refund output
         if (flags & CReserveTransfer::PRECONVERT && chainDef.minpreconvert)
         {
@@ -2332,24 +2354,22 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + transferFee, false}));
 
         // create the transaction with native coin as input
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+
+        CReserveKey reserveKey(pwalletMain);
+        CAmount fee;
+        int nChangePos;
+        string failReason;
+
+        if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
         {
-            LOCK2(cs_main, pwalletMain->cs_wallet);
-
-            CReserveKey reserveKey(pwalletMain);
-            CAmount fee;
-            int nChangePos;
-            string failReason;
-
-            if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
-            {
-                throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
-            }
-            if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-            {
-                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
-            }
-            ret = UniValue(wtx.GetHash().GetHex());
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
         }
+        if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+        {
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+        }
+        ret = UniValue(wtx.GetHash().GetHex());
     }
     else
     {
@@ -2820,8 +2840,8 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
         {
             // total amount will be transferred to the chain, with fee split between aggregator and miner in
             // Verus reserve
-            CAmount fee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.first.nValue);
-            preconvertedAmount += transfer.second.first.nValue - fee;
+            CAmount fee = transfer.second.second.nFees;
+            preconvertedAmount += transfer.second.first.nValue;
             fees += fee;
         }
     }
@@ -3118,6 +3138,7 @@ UniValue definechain(const UniValue& params, bool fHelp)
     CAmount initialConversion = 0;
     CAmount initialReserve = 0;
     CAmount initialFee = 0;
+    CAmount conversionFee = 0;
 
     // add initial conversion payment if present for reserve to reserve
     // any initial contribution must be at least 1 coin
@@ -3205,9 +3226,11 @@ UniValue definechain(const UniValue& params, bool fHelp)
 
         dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(newChainID)});
 
-        CReserveTransfer rt = CReserveTransfer(CReserveTransfer::PRECONVERT + CReserveTransfer::VALID, initialToConvert, currencyState.CalculateConversionFee(initialToConvert), newChain.address);
-        CTxOut reserveTransferOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, initialToConvert, pk, dests, (CReserveTransfer)rt);
-        outputs.push_back(CRecipient({reserveTransferOut.scriptPubKey, initialToConvert, false}));
+        CAmount fee = currencyState.CalculateConversionFee(initialToConvert);
+
+        CReserveTransfer rt = CReserveTransfer(CReserveTransfer::PRECONVERT + CReserveTransfer::VALID, initialToConvert, fee, newChain.address);
+        CTxOut reserveTransferOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, initialToConvert + fee, pk, dests, (CReserveTransfer)rt);
+        outputs.push_back(CRecipient({reserveTransferOut.scriptPubKey, initialToConvert + fee, false}));
 
         // if there is a fee output, send it to the payment address
         if (initialFee)
