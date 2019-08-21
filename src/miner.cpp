@@ -909,9 +909,9 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     // if the chain definition is spent, a chain is inactive
                     if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.NotaryChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
                     {
+                        // if one spends the prior one, get the one that is not spent
                         for (auto txidx : unspentOutputs)
                         {
-                            CPBaaSChainDefinition localChainDef;
                             uint256 blkHash;
                             CTransaction itx;
                             if (myGetTransaction(txidx.first.txhash, lastImportTx, blkHash) &&
@@ -921,6 +921,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                 CCrossChainImport(itx).IsValid())))
                             {
                                 found = true;
+                                break;
                             }
                         }
                     }
