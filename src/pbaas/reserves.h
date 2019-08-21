@@ -357,8 +357,9 @@ public:
         arith_uint256 bigInitial(InitialRatio);
         arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
         arith_uint256 bigEmission(emitted);
+        arith_uint256 bigSupply(Supply);
 
-        int64_t newRatio = ((bigInitial * ((bigSatoshi * bigSatoshi) / (bigSatoshi + ((bigSatoshi * bigEmission) / arith_uint256(Supply))))) / bigSatoshi).GetLow64();
+        int64_t newRatio = ((bigInitial * bigSupply) / (bigSupply + bigEmission)).GetLow64();
 
         // update initial supply to be what we currently have
         Emitted = emitted;
