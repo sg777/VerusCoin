@@ -330,43 +330,7 @@ public:
 
     // this should be done no more that once to prepare a currency state to be moved to the next state
     // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
-    CCurrencyState UpdateWithEmission(CAmount emitted)
-    {
-        InitialSupply = Supply;
-        Emitted = 0;
-
-        // if supply is 0, reserve must be zero, and we cannot function as a reserve currency
-        if (Supply <= 0 || Reserve <= 0)
-        {
-            if (Supply < 0)
-            {
-                Emitted = Supply = emitted;
-            }
-            else
-            {
-                Emitted = emitted;
-                Supply += emitted;
-            }
-            if (Reserve > 0 && InitialRatio == 0)
-            {
-                InitialRatio = Supply / Reserve;
-            }
-            return *this;
-        }
-
-        arith_uint256 bigInitial(InitialRatio);
-        arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
-        arith_uint256 bigEmission(emitted);
-        arith_uint256 bigSupply(Supply);
-
-        int64_t newRatio = ((bigInitial * bigSupply) / (bigSupply + bigEmission)).GetLow64();
-
-        // update initial supply to be what we currently have
-        Emitted = emitted;
-        InitialRatio = newRatio;
-        Supply = InitialSupply + emitted;
-        return *this; 
-    }
+    CCurrencyState &UpdateWithEmission(CAmount emitted);
 
     cpp_dec_float_50 GetReserveRatio() const
     {
