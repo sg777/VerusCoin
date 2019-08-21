@@ -353,6 +353,10 @@ public:
 
     CAmount PriceInReserve() const
     {
+        if (Supply == 0 || InitialRatio == 0)
+        {
+            return 0;
+        }
         arith_uint256 supply(Supply);
         arith_uint256 reserve(Reserve);
         arith_uint256 ratio(InitialRatio);

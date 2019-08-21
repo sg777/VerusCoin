@@ -2926,7 +2926,6 @@ UniValue getcurrencystate(const UniValue& params, bool fHelp)
             "       {\n"
             "           \"height\": n,\n"
             "           \"blocktime\": n,\n"
-            "           \"priceinreserve\": n,          number of satoshis of reserve for each native coin\n"
             "           \"currencystate\": {\n"
             "               \"flags\" : n,\n"
             "               \"initialratio\" : n,\n"
@@ -2990,11 +2989,6 @@ UniValue getcurrencystate(const UniValue& params, bool fHelp)
         entry.push_back(Pair("height", i));
         entry.push_back(Pair("blocktime", (uint64_t)chainActive.LastTip()->nTime));
         CAmount price;
-        if (!currencyState.to_int64(currencyState.GetPriceInReserve(), price))
-        {
-            price = 0;
-        }
-        entry.push_back(Pair("priceinreserve", price));
         entry.push_back(Pair("currencystate", currencyState.ToUniValue()));
         ret.push_back(entry);
     }

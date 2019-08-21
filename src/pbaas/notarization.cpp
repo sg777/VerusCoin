@@ -505,7 +505,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     if ((lastNotarizationID.IsNull() && (cnd.vtx.size() != 0)) || !uv2.isStr() || !uv3.isStr() || !uv4.isStr())
     {
-        printf("%sno corresponding cross-notarization found\n", funcname);
+        //printf("%sno corresponding cross-notarization found\n", funcname);
         return false;
     }
 
@@ -653,7 +653,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
         if (blocksToWait > 0)
         {
             // can't make another notarization yet
-            printf("%sWaiting for %d blocks to notarize - prevHeight.%d, notarizationHeight.%d\n", funcname, blocksToWait, pbn.prevHeight, pbn.notarizationHeight);
+            printf("%sWaiting for %d blocks to notarize - current height.%d\n", funcname, blocksToWait, pbn.notarizationHeight);
             return false;
         }
     }

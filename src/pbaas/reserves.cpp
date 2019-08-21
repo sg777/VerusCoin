@@ -582,9 +582,7 @@ CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount emitted)
     arith_uint256 bigEmission(emitted);
     arith_uint256 bigSupply(Supply);
 
-    bigEmission = (bigEmission * bigInitial) / bigSatoshi;
-
-    int64_t newRatio = ((bigInitial * bigSupply) / (bigSupply + bigEmission)).GetLow64();
+    int64_t newRatio = (((bigInitial * bigSupply * bigSatoshi) / (bigSupply + bigEmission)) / bigSatoshi).GetLow64();
 
     // update initial supply to be what we currently have
     Emitted = emitted;
