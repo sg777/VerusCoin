@@ -1318,7 +1318,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     // we receive our fee on the other chain or when it comes back
                                     dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_RESERVE_DEPOSIT))});
 
-                                    CReserveOutput ro(CReserveOutput::VALID, totalAmount);
+                                    CReserveOutput ro(CReserveOutput::VALID, totalAmount + totalTxFees);
 
                                     CTxOut outToReserve = MakeCC1of1Vout(EVAL_RESERVE_DEPOSIT, 
                                                                          ro.nValue,
@@ -1356,8 +1356,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 else
                                 {
                                     // we can't do any more useful work for this chain if we failed here
-                                    printf("Failed to create import transaction\n");
-                                    LogPrintf("Failed to create import transaction\n");
+                                    printf("Failed to create export transaction\n");
+                                    LogPrintf("Failed to create export transaction\n");
                                     break;
                                 }
                                 // erase the inputs we've attempted to spend
