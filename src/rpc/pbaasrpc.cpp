@@ -368,6 +368,23 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                 (!tx.IsCoinBase() && tx.vin.size() && myGetTransaction(tx.vin[0].prevout.hash, inputtx, blkHash2)))
             {
                 // either this is the first export as part of a chain definition on the notary chain, or it must spend a valid export output
+                //DEBUG
+                CCrossChainExport ccx(tx);
+                COptCCParams p;
+                if (ccx.IsValid())
+                {
+                    for (int i = 0; i < tx.vout.size(); i++)
+                    {
+                        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT)
+                        {
+                            break;
+                        }
+                        p = COptCCParams();
+                    }
+                    printf("Export sent to %s: %s\n", p.vKeys.size() ? GetDestinationID(p.vKeys[0]).GetHex().c_str() : "INVALID", ccx.ToUniValue().write().c_str());
+                }
+                //DEBUG
+
                 if (!(tx.GetHash() == lastExportHash))
                 {
                     COptCCParams p;
@@ -466,6 +483,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
                         newOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
                         totalReserveOut += rex.nValue;
+                        LogPrintf("%s: Outputting reserve exchange conversion %s\n", __func__, rex.ToUniValue().write().c_str());
                     }
                     else if (curTransfer.flags & curTransfer.PRECONVERT)
                     {
@@ -474,6 +492,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue, chainDef.conversion);
                         newOut = CTxOut(nativeConverted, GetScriptForDestination(curTransfer.destination));
                         totalNativeOut += nativeConverted;
+                        LogPrintf("%s: Outputting native output pre-conversion %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                     }
                     else if (curTransfer.flags & curTransfer.SEND_BACK && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
                     {
@@ -487,6 +506,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
                         newOut = MakeCC0of0Vout(EVAL_RESERVE_TRANSFER, 0, dests, rt);
                         totalReserveOut += curTransfer.nValue;
+                        LogPrintf("%s: Outputting reserve to send back %s\n", __func__, rt.ToUniValue().write().c_str());
                     }
                     else
                     {
@@ -503,6 +523,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
                             newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
                             totalReserveOut += curTransfer.nValue;
+                            LogPrintf("%s: Outputting reserve import from Verus chain %s\n", __func__, ro.ToUniValue().write().c_str());
                         }
                         else
                         {
@@ -510,6 +531,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                             // the RESERVE_DEPOSIT outputs
                             newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(curTransfer.destination));
                             totalNativeOut += newOut.nValue;
+                            LogPrintf("%s: Outputting reserve import back to Verus chain %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         }
                     }
                     newImportTx.vout.push_back(newOut);
