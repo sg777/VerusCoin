@@ -297,6 +297,7 @@ void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
                 delete pobj;
         }
     }
+    ora.clear();
 }
 
 std::vector<CBaseChainObject *> RetrieveOpRetArray(const CScript &opRetScript)

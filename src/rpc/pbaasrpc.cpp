@@ -548,7 +548,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
-            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), totalImport);
+            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), totalImport + ccx.totalFees);
 
             newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, availableNative - totalNativeOut, pk, dests, cci);
 
