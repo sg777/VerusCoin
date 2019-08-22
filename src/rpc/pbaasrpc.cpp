@@ -381,9 +381,10 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         }
                         p = COptCCParams();
                     }
-                    printf("Export sent to %s: %s\n", p.vKeys.size() ? GetDestinationID(p.vKeys[0]).GetHex().c_str() : "INVALID", ccx.ToUniValue().write().c_str());
+                    printf("transaction ID: %s\n", tx.GetHash().GetHex().c_str());
+                    printf("Export to %s: %s\n", p.vKeys.size() ? GetDestinationID(p.vKeys[0]).GetHex().c_str() : "INVALID", ccx.ToUniValue().write().c_str());
                 }
-                //DEBUG
+                //DEBUG END
 
                 if (!(tx.GetHash() == lastExportHash))
                 {
