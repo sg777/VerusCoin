@@ -1360,6 +1360,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     mempool.removeConflicts(tx, removed);
 
                                     // add to mem pool, prioritize according to the fee we will get, and relay
+                                    printf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
+                                    LogPrintf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
                                     if (myAddtomempool(tx))
                                     {
                                         uint256 hash = tx.GetHash();
