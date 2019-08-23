@@ -362,10 +362,11 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             uint256 blkHash1, blkHash2;
             BlockMap::iterator blkIt;
             CCrossChainExport ccx;
-            if (myGetTransaction(utxo.first.txhash, tx, blkHash1) &&
+            COptCCParams p;
+            if (!(utxo.first.txhash == lastExportHash) && myGetTransaction(utxo.first.txhash, tx, blkHash1) &&
                 (ccx = CCrossChainExport(tx)).IsValid() &&
-                (tx.IsCoinBase() && (blkIt = mapBlockIndex.find(blkHash1)) != mapBlockIndex.end() && blkIt->second->GetHeight() == 1) || 
-                (!tx.IsCoinBase() && tx.vin.size() && myGetTransaction(tx.vin[0].prevout.hash, inputtx, blkHash2)))
+                (!tx.IsCoinBase() && tx.vin.size() && myGetTransaction(tx.vin[0].prevout.hash, inputtx, blkHash2)) &&
+                inputtx.vout[tx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_EXPORT)
             {
                 // either this is the first export as part of a chain definition on the notary chain, or it must spend a valid export output
                 //DEBUG
@@ -386,17 +387,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                 }
                 //DEBUG END
 
-                if (!(tx.GetHash() == lastExportHash))
-                {
-                    COptCCParams p;
-                    // validate the input as a chain export input
-                    if (!(inputtx.vout[tx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_EXPORT))
-                    {
-                        printf("%s: invalid export: input tx %s is not in valid export thread\n", __func__, inputtx.GetHash().GetHex().c_str());
-                        continue;
-                    }
-                    validExports.insert(make_pair(tx.vin[0].prevout.hash, make_pair(utxo.first, tx)));
-                }
+                validExports.insert(make_pair(tx.vin[0].prevout.hash, make_pair(utxo.first, tx)));
             }
             else
             {
