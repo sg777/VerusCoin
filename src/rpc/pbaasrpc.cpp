@@ -719,7 +719,7 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
 
 UniValue getchainexports(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() == 1)
+    if (fHelp || params.size() != 1)
     {
         throw runtime_error(
             "getchainexports \"chainname\"\n"
@@ -733,8 +733,8 @@ UniValue getchainexports(const UniValue& params, bool fHelp)
             "  }\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getchaindefinition", "\"chainname\"")
-            + HelpExampleRpc("getchaindefinition", "\"chainname\"")
+            + HelpExampleCli("getchainexports", "\"chainname\"")
+            + HelpExampleRpc("getchainexports", "\"chainname\"")
         );
     }
 
@@ -816,7 +816,7 @@ UniValue getchainexports(const UniValue& params, bool fHelp)
 
 UniValue getchainimports(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() == 1)
+    if (fHelp || params.size() != 1)
     {
         throw runtime_error(
             "getchainimports \"chainname\"\n"
@@ -830,8 +830,8 @@ UniValue getchainimports(const UniValue& params, bool fHelp)
             "  }\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getchaindefinition", "\"chainname\"")
-            + HelpExampleRpc("getchaindefinition", "\"chainname\"")
+            + HelpExampleCli("getchainimports", "\"chainname\"")
+            + HelpExampleRpc("getchainimports", "\"chainname\"")
         );
     }
 
