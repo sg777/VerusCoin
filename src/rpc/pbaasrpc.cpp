@@ -699,12 +699,15 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
         CChainNotarizationData cnd;
         GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
         ret.push_back(Pair("chaindefinition", chainDef.ToUniValue()));
-        ret.push_back(Pair("bestnotarization", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.ToUniValue()));
-        ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.GetHex().c_str()));
-        if (cnd.IsConfirmed())
+        if (cnd.vtx.size())
         {
-            ret.push_back(Pair("confirmednotarization", cnd.vtx[cnd.lastConfirmed].second.ToUniValue()));
-            ret.push_back(Pair("confirmedtxid", cnd.vtx[cnd.lastConfirmed].first.GetHex().c_str()));
+            ret.push_back(Pair("bestnotarization", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.ToUniValue()));
+            ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.GetHex().c_str()));
+            if (cnd.IsConfirmed())
+            {
+                ret.push_back(Pair("confirmednotarization", cnd.vtx[cnd.lastConfirmed].second.ToUniValue()));
+                ret.push_back(Pair("confirmedtxid", cnd.vtx[cnd.lastConfirmed].first.GetHex().c_str()));
+            }
         }
         return ret;
     }
