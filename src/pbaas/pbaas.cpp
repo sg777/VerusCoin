@@ -613,25 +613,25 @@ bool SetThisChain(UniValue &chainDefinition)
         {
             // setup Verus test parameters
             notaryChainDef.name = "VRSCTEST";
-            notaryChainDef.premine = "0";
+            notaryChainDef.premine = 0;
             notaryChainDef.eras = 3;
             notaryChainDef.rewards = std::vector<int64_t>({50000000000,38400000000,38400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
-            notaryChainDef.halving = std::vector<int64_t>({1,43200,43220});
-            notaryChainDef.eraEnd = std::vector<int64_t>({10080,226080,0});
-            notaryChainDef.eraOptions = std::vector<int64_t>({0,0,0});
+            notaryChainDef.halving = std::vector<int32_t>({1,43200,43220});
+            notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
+            notaryChainDef.eraOptions = std::vector<int32_t>({0,0,0});
         }
         else
         {
             // first setup Verus parameters
             notaryChainDef.name = "VRSC";
-            notaryChainDef.premine = "0";
+            notaryChainDef.premine = 0;
             notaryChainDef.eras = 3;
             notaryChainDef.rewards = std::vector<int64_t>({0,38400000000,2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
-            notaryChainDef.halving = std::vector<int64_t>({1,43200,1051920});
-            notaryChainDef.eraEnd = std::vector<int64_t>({10080,226080,0});
-            notaryChainDef.eraOptions = std::vector<int64_t>({0,0,0});
+            notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
+            notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
+            notaryChainDef.eraOptions = std::vector<int32_t>({0,0,0});
         }
     }
 
