@@ -92,6 +92,7 @@ protected:
 
 bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_t *pDefHeight)
 {
+    LOCK(cs_main);
     if (chainID == ConnectedChains.ThisChain().GetChainID())
     {
         chainDef = ConnectedChains.ThisChain();
@@ -363,30 +364,17 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             BlockMap::iterator blkIt;
             CCrossChainExport ccx;
             COptCCParams p;
-            if (!(utxo.first.txhash == lastExportHash) && myGetTransaction(utxo.first.txhash, tx, blkHash1) &&
+            if (!(utxo.first.txhash == lastExportHash) &&
+                myGetTransaction(utxo.first.txhash, tx, blkHash1) &&
                 (ccx = CCrossChainExport(tx)).IsValid() &&
-                (!tx.IsCoinBase() && tx.vin.size() && myGetTransaction(tx.vin[0].prevout.hash, inputtx, blkHash2)) &&
-                inputtx.vout[tx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_EXPORT)
+                ccx.numInputs &&
+                (!tx.IsCoinBase() && 
+                tx.vin.size() && 
+                myGetTransaction(tx.vin[0].prevout.hash, inputtx, blkHash2)) &&
+                inputtx.vout[tx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && 
+                p.IsValid() && 
+                p.evalCode == EVAL_CROSSCHAIN_EXPORT)
             {
-                // either this is the first export as part of a chain definition on the notary chain, or it must spend a valid export output
-                //DEBUG
-                CCrossChainExport ccx(tx);
-                COptCCParams p;
-                if (ccx.IsValid())
-                {
-                    for (int i = 0; i < tx.vout.size(); i++)
-                    {
-                        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT)
-                        {
-                            break;
-                        }
-                        p = COptCCParams();
-                    }
-                    printf("transaction ID: %s\n", tx.GetHash().GetHex().c_str());
-                    printf("Export to %s: %s\n", p.vKeys.size() ? GetDestinationID(p.vKeys[0]).GetHex().c_str() : "INVALID", ccx.ToUniValue().write().c_str());
-                }
-                //DEBUG END
-
                 validExports.insert(make_pair(tx.vin[0].prevout.hash, make_pair(utxo.first, tx)));
             }
             else
@@ -652,28 +640,37 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
 
             "\nResult:\n"
             "  {\n"
-            "    \"version\" : \"n\",             (int) version of this chain definition\n"
-            "    \"name\" : \"string\",           (string) name or symbol of the chain, same as passed\n"
-            "    \"address\" : \"string\",        (string) cryptocurrency address to send fee and non-converted premine\n"
-            "    \"chainid\" : \"hex-string\",    (string) 40 char string that represents the chain ID, calculated from the name\n"
-            "    \"premine\" : \"n\",             (int) amount of currency paid out to the premine address in block #1, may be smart distribution\n"
-            "    \"convertible\" : \"xxxx\"       (bool) if this currency is a fractional reserve currency of Verus\n"
-            "    \"launchfee\" : \"n\",           (int) (launchfee * total converted) / 100000000 sent directly to premine address\n"
-            "    \"startblock\" : \"n\",          (int) block # on this chain, which must be notarized into block one of the chain\n"
-            "    \"endblock\" : \"n\",            (int) block # after which, this chain's useful life is considered to be over\n"
-            "    \"eras\" : \"[obj, ...]\",       (objarray) different chain phases of rewards and convertibility\n"
-            "    {\n"
-            "      \"reward\" : \"[n, ...]\",     (int) reward start for each era in native coin\n"
-            "      \"decay\" : \"[n, ...]\",      (int) exponential or linear decay of rewards during each era\n"
-            "      \"halving\" : \"[n, ...]\",    (int) blocks between halvings during each era\n"
-            "      \"eraend\" : \"[n, ...]\",     (int) block marking the end of each era\n"
-            "      \"eraoptions\" : \"[n, ...]\", (int) options for each era (reserved)\n"
-            "    }\n"
-            "    \"nodes\"      : \"[obj, ..]\",  (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
-            "      [{\n"
-            "         \"nodeaddress\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
-            "         \"paymentaddress\" : \"n\", (int,     optional) rewards payment address\n"
-            "       }, .. ]\n"
+            "     \"chaindefinition\" : {\n"
+            "        \"version\" : \"n\",             (int) version of this chain definition\n"
+            "        \"name\" : \"string\",           (string) name or symbol of the chain, same as passed\n"
+            "        \"address\" : \"string\",        (string) cryptocurrency address to send fee and non-converted premine\n"
+            "        \"chainid\" : \"hex-string\",    (string) 40 char string that represents the chain ID, calculated from the name\n"
+            "        \"premine\" : \"n\",             (int) amount of currency paid out to the premine address in block #1, may be smart distribution\n"
+            "        \"convertible\" : \"xxxx\"       (bool) if this currency is a fractional reserve currency of Verus\n"
+            "        \"launchfee\" : \"n\",           (int) (launchfee * total converted) / 100000000 sent directly to premine address\n"
+            "        \"startblock\" : \"n\",          (int) block # on this chain, which must be notarized into block one of the chain\n"
+            "        \"endblock\" : \"n\",            (int) block # after which, this chain's useful life is considered to be over\n"
+            "        \"eras\" : \"[obj, ...]\",       (objarray) different chain phases of rewards and convertibility\n"
+            "        {\n"
+            "          \"reward\" : \"[n, ...]\",     (int) reward start for each era in native coin\n"
+            "          \"decay\" : \"[n, ...]\",      (int) exponential or linear decay of rewards during each era\n"
+            "          \"halving\" : \"[n, ...]\",    (int) blocks between halvings during each era\n"
+            "          \"eraend\" : \"[n, ...]\",     (int) block marking the end of each era\n"
+            "          \"eraoptions\" : \"[n, ...]\", (int) options for each era (reserved)\n"
+            "        }\n"
+            "        \"nodes\"      : \"[obj, ..]\",  (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
+            "          [{\n"
+            "             \"nodeaddress\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
+            "             \"paymentaddress\" : \"n\", (int,     optional) rewards payment address\n"
+            "           }, .. ]\n"
+            "      }\n"
+            "    \"bestnotarization\" : {\n"
+            "     }\n"
+            "    \"besttxid\" : \"txid\"\n"
+            "     }\n"
+            "    \"confirmednotarization\" : {\n"
+            "     }\n"
+            "    \"confirmedtxid\" : \"txid\"\n"
             "  }\n"
 
             "\nExamples:\n"
@@ -695,14 +692,232 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
 
     CPBaaSChainDefinition chainDef;
 
+    LOCK(cs_main);
+
     if (GetChainDefinition(chainID, chainDef))
     {
-        return chainDef.ToUniValue();
+        CChainNotarizationData cnd;
+        GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
+        ret.push_back(Pair("chaindefinition", chainDef.ToUniValue()));
+        ret.push_back(Pair("bestnotarization", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.ToUniValue()));
+        ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.GetHex().c_str()));
+        if (cnd.IsConfirmed())
+        {
+            ret.push_back(Pair("confirmednotarization", cnd.vtx[cnd.lastConfirmed].second.ToUniValue()));
+            ret.push_back(Pair("confirmedtxid", cnd.vtx[cnd.lastConfirmed].first.GetHex().c_str()));
+        }
+        return ret;
     }
     else
     {
         return NullUniValue;
     }
+}
+
+UniValue getchainexports(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() == 1)
+    {
+        throw runtime_error(
+            "getchainexports \"chainname\"\n"
+            "\nReturns all pending export transfers that are not yet provable with confirmed notarizations.\n"
+
+            "\nArguments\n"
+            "1. \"chainname\"                     (string, optional) name of the chain to look for. no parameter returns current chain in daemon.\n"
+
+            "\nResult:\n"
+            "  {\n"
+            "  }\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getchaindefinition", "\"chainname\"")
+            + HelpExampleRpc("getchaindefinition", "\"chainname\"")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+
+    uint160 chainID = GetChainIDFromParam(params[0]);
+
+    if (chainID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
+    }
+
+    CPBaaSChainDefinition chainDef;
+    int32_t defHeight;
+
+    LOCK(cs_main);
+
+    if ((IsVerusActive() && GetChainDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetChainID() == chainID)
+    {
+        // which transaction are we in this block?
+        std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+        std::set<uint256> countedTxes;                  // don't count twice
+
+        // look for new exports
+        CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
+
+        CBlockIndex *pIndex;
+
+        CChainNotarizationData cnd;
+        if (GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd))
+        {
+            // get all export transactions including and since this one up to the confirmed height
+            if (GetAddressIndex(keyID, 1, addressIndex, cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.crossHeight : defHeight))
+            {
+                UniValue ret(UniValue::VARR);
+
+                for (auto &idx : addressIndex)
+                {
+                    uint256 blkHash;
+                    CTransaction exportTx;
+                    if (!idx.first.spending && myGetTransaction(idx.first.txhash, exportTx, blkHash))
+                    {
+                        std::vector<CBaseChainObject *> opretTransfers;
+                        CCrossChainExport ccx;
+                        if ((ccx = CCrossChainExport(exportTx)).IsValid() && exportTx.vout.back().scriptPubKey.IsOpReturn())
+                        {
+                            UniValue oneExport(UniValue::VOBJ);
+                            UniValue transferArray(UniValue::VARR);
+                            opretTransfers = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
+                            oneExport.push_back(Pair("exportid", idx.first.txhash.GetHex()));
+                            oneExport.push_back(Pair("description", ccx.ToUniValue()));
+                            for (auto oneTransfer : opretTransfers)
+                            {
+                                if (oneTransfer->objectType == CHAINOBJ_RESERVETRANSFER)
+                                {
+                                    transferArray.push_back(((CChainObject<CReserveTransfer> *)oneTransfer)->object.ToUniValue());
+                                }
+                            }
+                            DeleteOpRetObjects(opretTransfers);
+                            oneExport.push_back(Pair("transfers", transferArray));
+                            ret.push_back(oneExport);
+                        }
+                    }
+                }
+                if (ret.size())
+                {
+                    return ret;
+                }
+            }
+        }
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unrecognized chain name or chain ID");
+    }
+    
+    return NullUniValue;
+}
+
+UniValue getchainimports(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() == 1)
+    {
+        throw runtime_error(
+            "getchainimports \"chainname\"\n"
+            "\nReturns all imports from a specific chain.\n"
+
+            "\nArguments\n"
+            "1. \"chainname\"                     (string, optional) name of the chain to look for. no parameter returns current chain in daemon.\n"
+
+            "\nResult:\n"
+            "  {\n"
+            "  }\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getchaindefinition", "\"chainname\"")
+            + HelpExampleRpc("getchaindefinition", "\"chainname\"")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+
+    uint160 chainID = GetChainIDFromParam(params[0]);
+
+    if (chainID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
+    }
+
+    CPBaaSChainDefinition chainDef;
+    int32_t defHeight;
+
+    LOCK(cs_main);
+
+    if ((IsVerusActive() && GetChainDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetChainID() == chainID)
+    {
+        // which transaction are we in this block?
+        std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+        std::set<uint256> countedTxes;                  // don't count twice
+
+        // look for new exports
+        CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT);
+
+        CBlockIndex *pIndex;
+
+        CChainNotarizationData cnd;
+        // get all export transactions including and since this one up to the confirmed height
+        if (GetAddressIndex(keyID, 1, addressIndex))
+        {
+            UniValue ret(UniValue::VARR);
+
+            for (auto &idx : addressIndex)
+            {
+                uint256 blkHash;
+                CTransaction importTx;
+                if (!idx.first.spending && myGetTransaction(idx.first.txhash, importTx, blkHash))
+                {
+                    CCrossChainImport cci;
+                    if ((cci = CCrossChainImport(importTx)).IsValid() && importTx.vout.back().scriptPubKey.IsOpReturn())
+                    {
+                        std::vector<CBaseChainObject *> opretImports;
+                        CTransaction exportTx;
+                        CCrossChainExport ccx;
+
+                        opretImports = RetrieveOpRetArray(importTx.vout.back().scriptPubKey);
+
+                        if (opretImports.size() >= 2 && 
+                            opretImports[0]->objectType == CHAINOBJ_TRANSACTION && 
+                            (ccx = CCrossChainExport(exportTx = ((CChainObject<CTransaction> *)opretImports[0])->object)).IsValid() && 
+                            ccx.numInputs &&
+                            exportTx.vout.size() && 
+                            exportTx.vout.back().scriptPubKey.IsOpReturn())
+                        {
+                            std::vector<CBaseChainObject *> opretTransfers;
+
+                            UniValue oneImport(UniValue::VOBJ);
+                            UniValue transferArray(UniValue::VARR);
+                            opretTransfers = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
+                            oneImport.push_back(Pair("importid", idx.first.txhash.GetHex()));
+                            oneImport.push_back(Pair("description", cci.ToUniValue()));
+                            for (auto oneTransfer : opretTransfers)
+                            {
+                                if (oneTransfer->objectType == CHAINOBJ_RESERVETRANSFER)
+                                {
+                                    transferArray.push_back(((CChainObject<CReserveTransfer> *)oneTransfer)->object.ToUniValue());
+                                }
+                            }
+                            DeleteOpRetObjects(opretTransfers);
+                            oneImport.push_back(Pair("transfers", transferArray));
+                            ret.push_back(oneImport);
+                        }
+                        DeleteOpRetObjects(opretImports);
+                    }
+                }
+            }
+            if (ret.size())
+            {
+                return ret;
+            }
+        }
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unrecognized chain name or chain ID");
+    }
+    return NullUniValue;
 }
 
 UniValue getdefinedchains(const UniValue& params, bool fHelp)
@@ -3772,6 +3987,8 @@ static const CRPCCommand commands[] =
     { "pbaas",        "getcrossnotarization",         &getcrossnotarization,   true  },
     { "pbaas",        "definechain",                  &definechain,            true  },
     { "pbaas",        "sendreserve",                  &sendreserve,            true  },
+    { "pbaas",        "getchainexports",              &getchainexports,        true  },
+    { "pbaas",        "getchainimports",              &getchainimports,        true  },
     { "pbaas",        "reserveexchange",              &reserveexchange,        true  },
     { "pbaas",        "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "pbaas",        "getcurrencystate",             &getcurrencystate,       true  },
