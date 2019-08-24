@@ -452,6 +452,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
                 // DEBUGGING
                 printf("%s\n", curTransfer.ToUniValue().write().c_str());
+                LogPrintf("%s\n", curTransfer.ToUniValue().write().c_str());
 
                 if (curTransfer.IsValid())
                 {
@@ -471,6 +472,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
                         newOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
                         totalReserveOut += rex.nValue;
+                        printf("%s: Outputting reserve exchange conversion %s\n", __func__, rex.ToUniValue().write().c_str());
                         LogPrintf("%s: Outputting reserve exchange conversion %s\n", __func__, rex.ToUniValue().write().c_str());
                     }
                     else if (curTransfer.flags & curTransfer.PRECONVERT)
@@ -480,6 +482,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue, chainDef.conversion);
                         newOut = CTxOut(nativeConverted, GetScriptForDestination(curTransfer.destination));
                         totalNativeOut += nativeConverted;
+                        printf("%s: Outputting native output pre-conversion %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         LogPrintf("%s: Outputting native output pre-conversion %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                     }
                     else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
@@ -495,6 +498,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
                         newOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt);
                         totalReserveOut += curTransfer.nValue;
+                        printf("%s: Outputting reserve to send back %s\n", __func__, rt.ToUniValue().write().c_str());
                         LogPrintf("%s: Outputting reserve to send back %s\n", __func__, rt.ToUniValue().write().c_str());
                     }
                     else
@@ -512,6 +516,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
                             newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
                             totalReserveOut += curTransfer.nValue;
+                            printf("%s: Outputting reserve import from Verus chain %s\n", __func__, ro.ToUniValue().write().c_str());
                             LogPrintf("%s: Outputting reserve import from Verus chain %s\n", __func__, ro.ToUniValue().write().c_str());
                         }
                         else
@@ -520,10 +525,16 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                             // the RESERVE_DEPOSIT outputs
                             newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(curTransfer.destination));
                             totalNativeOut += newOut.nValue;
+                            printf("%s: Outputting reserve import back to Verus chain %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                             LogPrintf("%s: Outputting reserve import back to Verus chain %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         }
                     }
                     newImportTx.vout.push_back(newOut);
+                }
+                else
+                {
+                    printf("%s: Invalid reserve transfer on export\n", __func__);
+                    LogPrintf("%s: Invalid reserve transfer on export\n", __func__);
                 }
             }
 
