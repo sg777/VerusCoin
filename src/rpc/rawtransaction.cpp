@@ -169,11 +169,11 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
                 if (p.vData.size() && (rex = CReserveExchange(p.vData[0])).IsValid())
                 {
-                    out.push_back(Pair("reserveoutput", rex.ToUniValue()));
+                    out.push_back(Pair("reserveexchange", rex.ToUniValue()));
                 }
                 else
                 {
-                    out.push_back(Pair("reserveoutput", "invalid"));
+                    out.push_back(Pair("reserveexchange", "invalid"));
                 }
                 break;
             }

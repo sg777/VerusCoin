@@ -42,6 +42,7 @@ UniValue CReserveExchange::ToUniValue() const
 {
     UniValue ret(((CReserveOutput *)this)->ToUniValue());
     ret.push_back(Pair("toreserve", (bool)(flags & TO_RESERVE)));
+    ret.push_back(Pair("tonative", !((bool)(flags & TO_RESERVE))));
     ret.push_back(Pair("limitorder", (bool)(flags & LIMIT)));
     if (flags & LIMIT)
     {
