@@ -402,11 +402,25 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     }
                     break;
 
+                case EVAL_CROSSCHAIN_IMPORT:
+                {
+                    // if this is an import, add the amount imported to the reserve input and the amount of reserve output as
+                    // the amount available to take from this transaction in reserve as an import fee
+                    CCrossChainImport cci;
+                    if (!p.vData.size() && !(cci = CCrossChainImport(p.vData[0])).IsValid())
+                    {
+                        flags |= IS_REJECT;
+                        return;
+                    }
+
+                    flags |= IS_IMPORT;
+                    reserveIn = cci.nValue;
+                }
+                break;
+
                 // this check will need to be made complete by preventing mixing both here and where the others
                 // are seen
-                case EVAL_RESERVE_DEPOSIT:
                 case EVAL_CROSSCHAIN_EXPORT:
-                case EVAL_CROSSCHAIN_IMPORT:
                     {
                         // the following outputs are incompatible with reserve exchange tranactions
                         if (IsReserveExchange())
@@ -417,12 +431,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         return;
                     }
                     break;
-                
-                default:
-                    {
-                        nativeOut += txOut.nValue;
-                    }
             }
+            nativeOut += txOut.nValue;
         }
     }
 

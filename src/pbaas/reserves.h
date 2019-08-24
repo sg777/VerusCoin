@@ -198,6 +198,8 @@ public:
     static const uint32_t IS_LIMIT=0x10;        // if reserve exchange, is it a limit order?
     static const uint32_t IS_FILLORKILL=0x20;   // If set, this can expire
     static const uint32_t IS_FILLORKILLFAIL=0x40; // If set, this is an expired fill or kill in a valid tx
+    static const uint32_t IS_IMPORT=0x80;       // If set, this is an expired fill or kill in a valid tx
+    static const uint32_t IS_EXPORT=0x100;      // If set, this is an expired fill or kill in a valid tx
 
     const CTransaction *ptx;                    // pointer to the actual transaction if valid
     uint32_t flags;                             // indicates transaction state
@@ -231,8 +233,8 @@ public:
 
     CReserveTransactionDescriptor(const CTransaction &tx, CCoinsViewCache &view, int32_t nHeight);
 
-    bool IsValid() const { return flags & IS_VALID; }
     bool IsReject() const { return flags & IS_REJECT; }
+    bool IsValid() const { return flags & IS_VALID && !IsReject(); }
     bool IsReserveExchange() const { return flags & IS_RESERVEEXCHANGE; }
     bool IsReserve() const { return flags & IS_RESERVE; }
     bool IsLimit() const { return flags & IS_LIMIT; }
