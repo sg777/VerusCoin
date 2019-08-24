@@ -476,7 +476,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         totalNativeOut += nativeConverted;
                         LogPrintf("%s: Outputting native output pre-conversion %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                     }
-                    else if (curTransfer.flags & curTransfer.SEND_BACK && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
+                    else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
                     {
                         // generate a reserve transfer back to the source chain if we have at least double the fee, otherwise leave it on
                         // this chain to be claimed

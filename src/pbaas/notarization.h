@@ -78,8 +78,10 @@
 class CPBaaSNotarization
 {
 public:
-    static const int FINAL_CONFIRMATIONS = 10;
-    static const int MIN_BLOCKS_BETWEEN_ACCEPTED = 8;
+    //static const int FINAL_CONFIRMATIONS = 10;
+    //static const int MIN_BLOCKS_BETWEEN_ACCEPTED = 8;
+    static const int FINAL_CONFIRMATIONS = 3;
+    static const int MIN_BLOCKS_BETWEEN_ACCEPTED = 5;
     static const int CURRENT_VERSION = PBAAS_VERSION;
     uint32_t nVersion;                      // PBAAS version
     uint160 chainID;                        // chain being notarized
