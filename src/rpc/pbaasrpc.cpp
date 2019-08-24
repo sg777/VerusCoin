@@ -384,11 +384,6 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             {
                 validExports.insert(make_pair(tx.vin[0].prevout.hash, make_pair(utxo.first, tx)));
             }
-            else
-            {
-                printf("%s: cannot retrieve transaction %s or transaction is an invalid export\n", __func__, utxo.first.txhash.GetHex().c_str());
-                continue;
-            }
         }
 
         CTransaction lastImport(lastCrossChainImport);
