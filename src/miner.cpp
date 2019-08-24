@@ -1096,7 +1096,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     {
                         limitOrders.push_back(&tx);
                         reserveExchangeLimitSize += GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
-                        haveReserveTransactions = true;
                         continue;
                     }
                 }
