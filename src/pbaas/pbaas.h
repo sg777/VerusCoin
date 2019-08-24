@@ -26,6 +26,9 @@
 
 #include <boost/algorithm/string.hpp>
 
+extern CAmount AmountFromValue(const UniValue& value);
+extern UniValue ValueFromAmount(const CAmount& amount);
+
 class CPBaaSNotarization;
 
 // these are output cryptoconditions for the Verus reserve liquidity system

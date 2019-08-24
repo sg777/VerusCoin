@@ -14,9 +14,6 @@
 #include "rpc/server.h"
 #include "key_io.h"
 
-extern CAmount AmountFromValue(const UniValue& value);
-extern UniValue ValueFromAmount(const CAmount& amount);
-
 CReserveOutput::CReserveOutput(const UniValue &obj)
 {
     flags = uni_get_int(find_value(obj, "flags"));
