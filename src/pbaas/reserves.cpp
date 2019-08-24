@@ -16,15 +16,43 @@
 
 CReserveOutput::CReserveOutput(const UniValue &obj)
 {
-    flags = uni_get_int(find_value(obj, "flags"));
+    flags = uni_get_int(find_value(obj, "isvalid")) ? flags | VALID : flags & ~VALID;
     nValue = AmountFromValue(find_value(obj, "value"));
 }
 
 UniValue CReserveOutput::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
-    ret.push_back(Pair("flags", (int32_t)flags));
+    ret.push_back(Pair("isvalid", (bool)(flags & VALID)));
     ret.push_back(Pair("value", ValueFromAmount(nValue)));
+    return ret;
+}
+
+UniValue CReserveTransfer::ToUniValue() const
+{
+    UniValue ret(((CReserveOutput *)this)->ToUniValue());
+    ret.push_back(Pair("convert", (bool)(flags & CONVERT)));
+    ret.push_back(Pair("preconvert", (bool)(flags & PRECONVERT)));
+    ret.push_back(Pair("feeoutput", (bool)(flags & FEE_OUTPUT)));
+    ret.push_back(Pair("sendback", (bool)(flags & SEND_BACK)));
+    return ret;
+}
+
+UniValue CReserveExchange::ToUniValue() const
+{
+    UniValue ret(((CReserveOutput *)this)->ToUniValue());
+    ret.push_back(Pair("toreserve", (bool)(flags & TO_RESERVE)));
+    ret.push_back(Pair("limitorder", (bool)(flags & LIMIT)));
+    if (flags & LIMIT)
+    {
+        ret.push_back(Pair("limitprice", ValueFromAmount(nLimit)));
+    }
+    ret.push_back(Pair("fillorkill", (bool)(flags & FILL_OR_KILL)));
+    if (flags & FILL_OR_KILL)
+    {
+        ret.push_back(Pair("validbeforeblock", (int32_t)nValidBefore));
+    }
+    ret.push_back(Pair("sendoutput", (bool)(flags & SEND_OUTPUT)));
     return ret;
 }
 

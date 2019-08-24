@@ -101,6 +101,8 @@ public:
         return ::AsVector(*this);
     }
 
+    UniValue ToUniValue() const;
+
     bool IsValid() const
     {
         return CReserveOutput::IsValid() && nFees > 0 && !destination.IsNull();
@@ -168,6 +170,8 @@ public:
         // this needs an actual check
         return CReserveOutput::IsValid();
     }
+
+    UniValue ToUniValue() const;
 
     bool IsExpired(int32_t height)
     {
