@@ -266,7 +266,7 @@ public:
         return version != 0;
     }
 
-    bool IsConfirmed()
+    bool IsConfirmed() const
     {
         return lastConfirmed != -1;
     }

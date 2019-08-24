@@ -229,7 +229,6 @@ UniValue CChainNotarizationData::ToUniValue() const
         notarizations.push_back(notarization);
     }
     obj.push_back(Pair("notarizations", notarizations));
-    obj.push_back(Pair("lastconfirmed", lastConfirmed));
     UniValue Forks(UniValue::VARR);
     for (int32_t i = 0; i < forks.size(); i++)
     {
@@ -241,6 +240,12 @@ UniValue CChainNotarizationData::ToUniValue() const
         Forks.push_back(Fork);
     }
     obj.push_back(Pair("forks", Forks));
+    obj.push_back(Pair("lastconfirmed", lastConfirmed));
+    if (IsConfirmed())
+    {
+        obj.push_back(Pair("lastconfirmedheight", vtx[lastConfirmed].second.notarizationHeight));
+    }
+    obj.push_back(Pair("lastconfirmed", lastConfirmed));
     obj.push_back(Pair("bestchain", bestChain));
     return obj;
 }
