@@ -698,7 +698,7 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
     {
         CChainNotarizationData cnd;
         GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
-        ret.push_back(Pair("chaindefinition", chainDef.ToUniValue()));
+        ret = chainDef.ToUniValue();
         if (cnd.vtx.size())
         {
             ret.push_back(Pair("bestnotarization", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.ToUniValue()));
