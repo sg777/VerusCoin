@@ -243,7 +243,7 @@ UniValue CChainNotarizationData::ToUniValue() const
     obj.push_back(Pair("lastconfirmed", lastConfirmed));
     if (IsConfirmed())
     {
-        obj.push_back(Pair("lastconfirmedheight", vtx[lastConfirmed].second.notarizationHeight));
+        obj.push_back(Pair("lastconfirmedheight", (int32_t)vtx[lastConfirmed].second.notarizationHeight));
     }
     obj.push_back(Pair("lastconfirmed", lastConfirmed));
     obj.push_back(Pair("bestchain", bestChain));
