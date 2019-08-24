@@ -275,6 +275,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
         return false;
     }
 
+    bool isVerusActive = IsVerusActive();
+
     LOCK2(cs_main, mempool.cs);
 
     uint256 lastExportHash;
@@ -305,40 +307,44 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
         // if the chain definition is spent, a chain is inactive
         if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, unspentOutputs) && unspentOutputs.size())
         {
+            std::pair<CAddressUnspentKey, CAddressUnspentValue> lastIdx;
+            CPBaaSChainDefinition localChainDef;
+
             for (auto txidx : unspentOutputs)
             {
-                CPBaaSChainDefinition localChainDef;
-                BlockMap::iterator blkMapIt;
-                if (myGetTransaction(txidx.first.txhash, tx, blkHash) &&
-                    (blkMapIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() && 
-                    blkMapIt->second)
+                COptCCParams p;
+                if (txidx.second.script.IsPayToCryptoCondition(p) && 
+                    p.IsValid() && 
+                    p.evalCode == EVAL_PBAASDEFINITION && 
+                    p.vData[0].size() && 
+                    (localChainDef = CPBaaSChainDefinition(p.vData[0])).IsValid() &&
+                    ((isVerusActive && localChainDef.GetChainID() == chainID) || 
+                         (!isVerusActive && localChainDef.GetChainID() == thisChain.GetChainID() && chainID == notaryChain.GetChainID())))
                 {
-                    CPBaaSChainDefinition localChainDef(tx);
-                    CCrossChainExport ccx(tx);
-                    if (localChainDef.IsValid() && 
-                        ccx.IsValid() &&
-                        ((IsVerusActive() && localChainDef.GetChainID() == chainID) || 
-                         (!IsVerusActive() && tx.IsCoinBase() && localChainDef.GetChainID() == thisChain.GetChainID() && chainID == notaryChain.GetChainID())))
+                    if (myGetTransaction(txidx.first.txhash, tx, blkHash))
                     {
-                        found = true;
-                        lastExportTx = tx;
-                        lastExportHash = lastExportTx.GetHash();
-                        blkHeight = blkMapIt->second->GetHeight();
+                        CCrossChainExport ccx(tx);
+                        if (ccx.IsValid() && (isVerusActive || tx.IsCoinBase()))
+                        {
+                            found = true;
+                            lastExportTx = tx;
+                            lastExportHash = txidx.first.txhash;
+                            blkHeight = txidx.second.blockHeight;
+                        }
                     }
                 }
             }
         }
-        if (!found)
-        {
-            LogPrintf("%s: No export thread found\n", __func__);
-            printf("%s: No export thread found\n", __func__);
-            return false;
-        }
+    }
+    if (!found)
+    {
+        LogPrintf("%s: No export thread found\n", __func__);
+        printf("%s: No export thread found\n", __func__);
+        return false;
     }
 
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-    std::set<uint256> countedTxes;                  // don't count twice
 
     // look for new exports
     CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
@@ -364,7 +370,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             BlockMap::iterator blkIt;
             CCrossChainExport ccx;
             COptCCParams p;
-            if (!(utxo.first.txhash == lastExportHash) &&
+            if (!utxo.first.spending &&
+                !(utxo.first.txhash == lastExportHash) &&
                 myGetTransaction(utxo.first.txhash, tx, blkHash1) &&
                 (ccx = CCrossChainExport(tx)).IsValid() &&
                 ccx.numInputs &&
@@ -447,6 +454,10 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                     return false;
                 }
                 CReserveTransfer &curTransfer = ((CChainObject<CReserveTransfer> *)pRT)->object;
+
+                // DEBUGGING
+                printf("%s\n", curTransfer.ToUniValue().write().c_str());
+
                 if (curTransfer.IsValid())
                 {
                     CTxOut newOut;
@@ -759,7 +770,6 @@ UniValue getchainexports(const UniValue& params, bool fHelp)
     {
         // which transaction are we in this block?
         std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-        std::set<uint256> countedTxes;                  // don't count twice
 
         // look for new exports
         CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
@@ -857,7 +867,6 @@ UniValue getchainimports(const UniValue& params, bool fHelp)
     {
         // which transaction are we in this block?
         std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-        std::set<uint256> countedTxes;                  // don't count twice
 
         // look for new exports
         CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT);
