@@ -426,6 +426,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             // we will send using a reserve output, fee will be paid by converting from reserve
             CCcontract_info CC;
             CCcontract_info *cp;
+            CPubKey pk;
 
             CAmount totalNativeOut = 0;
             CAmount totalReserveOut = 0;
@@ -457,11 +458,12 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         // emit a reserve exchange output
                         // we will send using a reserve output, fee will be paid when converting from reserve
                         cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
+                        pk = CPubKey(ParseHex(CC.CChexstr));
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
                         CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
 
-                        newOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
+                        newOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
                         totalReserveOut += rex.nValue;
                         LogPrintf("%s: Outputting reserve exchange conversion %s\n", __func__, rex.ToUniValue().write().c_str());
                     }
@@ -479,12 +481,13 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         // generate a reserve transfer back to the source chain if we have at least double the fee, otherwise leave it on
                         // this chain to be claimed
                         cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+                        pk = CPubKey(ParseHex(CC.CChexstr));
 
-                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(lastCCI.chainID)});
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_TRANSFER)), CKeyID(lastCCI.chainID)});
                         CAmount fees = curTransfer.DEFAULT_PER_STEP_FEE << 1;
                         CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, curTransfer.destination);
 
-                        newOut = MakeCC0of0Vout(EVAL_RESERVE_TRANSFER, 0, dests, rt);
+                        newOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt);
                         totalReserveOut += curTransfer.nValue;
                         LogPrintf("%s: Outputting reserve to send back %s\n", __func__, rt.ToUniValue().write().c_str());
                     }
@@ -2630,6 +2633,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 CCcontract_info CC;
                 CCcontract_info *cp;
                 cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
+                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
@@ -2645,7 +2649,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     conversionFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
                 }
 
-                CTxOut ccOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex);
+                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, pk, dests, rex);
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + conversionFee, false}));
 
                 // create a transaction with native coin as input
@@ -2675,15 +2679,13 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 CCcontract_info *cp;
                 cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
 
-                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
                 // create the transfer object
                 CReserveOutput ro(flags, amount);
 
                 // native amount in the output is 0
-                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_OUTPUT, 0, pk, dests, ro);
+                CTxOut ccOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
 
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
 
