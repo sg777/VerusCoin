@@ -14,17 +14,20 @@
 #include "rpc/server.h"
 #include "key_io.h"
 
+extern CAmount AmountFromValue(const UniValue& value);
+extern UniValue ValueFromAmount(const CAmount& amount);
+
 CReserveOutput::CReserveOutput(const UniValue &obj)
 {
     flags = uni_get_int(find_value(obj, "flags"));
-    nValue = uni_get_int(find_value(obj, "value"));
+    nValue = AmountFromValue(find_value(obj, "value"));
 }
 
 UniValue CReserveOutput::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("flags", (int32_t)flags));
-    ret.push_back(Pair("value", (int64_t)nValue));
+    ret.push_back(Pair("value", ValueFromAmount(nValue)));
     return ret;
 }
 
@@ -117,22 +120,22 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const CTransaction &tx)
 
 CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyState(obj)
 {
-    ReserveIn = uni_get_int64(find_value(obj, "reservein"));
-    NativeIn = uni_get_int64(find_value(obj, "nativein"));
+    ReserveIn = AmountFromValue(find_value(obj, "reservein"));
+    NativeIn = AmountFromValue(find_value(obj, "nativein"));
     ReserveOut = CReserveOutput(find_value(obj, "reserveout"));
-    ConversionPrice = uni_get_int64(find_value(obj, "lastconversionprice"));
-    Fees = uni_get_int64(find_value(obj, "fees"));
+    ConversionPrice = AmountFromValue(find_value(obj, "lastconversionprice"));
+    Fees = AmountFromValue(find_value(obj, "fees"));
 }
 
 UniValue CCoinbaseCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret = ((CCurrencyState *)this)->ToUniValue();
-    ret.push_back(Pair("reservein", (int64_t)ReserveIn));
-    ret.push_back(Pair("nativein", (int64_t)NativeIn));
+    ret.push_back(Pair("reservein", ValueFromAmount(ReserveIn)));
+    ret.push_back(Pair("nativein", ValueFromAmount(NativeIn)));
     ret.push_back(Pair("reserveout", ReserveOut.ToUniValue()));
-    ret.push_back(Pair("lastconversionprice", (int64_t)ConversionPrice));
-    ret.push_back(Pair("fees", (int64_t)Fees));
+    ret.push_back(Pair("lastconversionprice", ValueFromAmount(ConversionPrice)));
+    ret.push_back(Pair("fees", ValueFromAmount(Fees)));
     return ret;
 }
 
