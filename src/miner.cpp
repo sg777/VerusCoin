@@ -1344,7 +1344,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             for (int i = 0; i < reservePositions.size(); i++)
             {
                 CReserveTransactionDescriptor txDesc;
-                if (mempool.IsKnownReserveTransaction(pblock->vtx[i].GetHash(), txDesc))
+                if (mempool.IsKnownReserveTransaction(pblock->vtx[reservePositions[i]].GetHash(), txDesc))
                 {
                     reserveFills.push_back(txDesc);
                 }
