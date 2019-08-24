@@ -105,7 +105,7 @@ public:
 
     bool IsValid() const
     {
-        return CReserveOutput::IsValid() && nFees > 0 && !destination.IsNull();
+        return CReserveOutput::IsValid() && (nFees > 0 || flags & FEE_OUTPUT) && !destination.IsNull();
     }
 };
 
