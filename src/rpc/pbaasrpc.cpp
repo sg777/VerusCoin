@@ -784,6 +784,7 @@ UniValue getchainexports(const UniValue& params, bool fHelp)
                             UniValue oneExport(UniValue::VOBJ);
                             UniValue transferArray(UniValue::VARR);
                             opretTransfers = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
+                            oneExport.push_back(Pair("blockheight", idx.first.blockHeight));
                             oneExport.push_back(Pair("exportid", idx.first.txhash.GetHex()));
                             oneExport.push_back(Pair("description", ccx.ToUniValue()));
                             for (auto oneTransfer : opretTransfers)
@@ -893,6 +894,7 @@ UniValue getchainimports(const UniValue& params, bool fHelp)
                             UniValue oneImport(UniValue::VOBJ);
                             UniValue transferArray(UniValue::VARR);
                             opretTransfers = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
+                            oneImport.push_back(Pair("blockheight", idx.first.blockHeight));
                             oneImport.push_back(Pair("importid", idx.first.txhash.GetHex()));
                             oneImport.push_back(Pair("description", cci.ToUniValue()));
                             for (auto oneTransfer : opretTransfers)
