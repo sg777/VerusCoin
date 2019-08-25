@@ -440,7 +440,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 // are seen
                 case EVAL_CROSSCHAIN_EXPORT:
                     {
-                        // the following outputs are incompatible with reserve exchange tranactions
+                        // cross chain export is incompatible with reserve exchange outputs
                         if (IsReserveExchange())
                         {
                             flags |= IS_REJECT;

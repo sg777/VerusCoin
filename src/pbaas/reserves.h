@@ -128,7 +128,7 @@ public:
     // success fee is calculated by multiplying the amount by this number and dividing by satoshis (100,000,000), not less than 10x the absolute SUCCESS_FEE
     // failure fee, meaning the valid before block is past but it is not expired is the difference between input and output and must follow those rules
     // it is deducted in the success case from the success fee, so there is no fee beyond the success fee paid
-    static const CAmount SUCCESS_FEE = 5000;
+    static const CAmount SUCCESS_FEE = 10000;
     static const CAmount MIN_SUCCESS_FEE = 50000;
     static const CAmount MIN_PARTIAL = 10000000;        // making partial fill minimum the number at which minimum fee meets standard percent fee,
     static const CAmount MIN_NET_CONVERSION = 10000000; // minimum conversion for input
