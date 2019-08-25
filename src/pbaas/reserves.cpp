@@ -777,8 +777,14 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
     }
 
     int64_t curSpace = maxSerializeSize - (totalSerializedSize + conversionSizeOverhead);
-    int64_t marketOrdersSizeLimit = ((arith_uint256(numMarketOrders) * arith_uint256(curSpace)) / arith_uint256(numLimitOrders + numMarketOrders)).GetLow64();
-    int64_t limitOrdersSizeLimit = curSpace - marketOrdersSizeLimit;
+    int64_t marketOrdersSizeLimit = curSpace;
+    int64_t limitOrdersSizeLimit = curSpace;
+    if (numLimitOrders + numMarketOrders)
+    {
+        marketOrdersSizeLimit = ((arith_uint256(numMarketOrders) * arith_uint256(curSpace)) / arith_uint256(numLimitOrders + numMarketOrders)).GetLow64();
+        limitOrdersSizeLimit = curSpace - marketOrdersSizeLimit;
+    }
+    
     if (limitOrdersSizeLimit < 1024 && maxSerializeSize > 2048)
     {
         marketOrdersSizeLimit = maxSerializeSize - 1024;
