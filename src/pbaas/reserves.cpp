@@ -324,7 +324,20 @@ CAmount CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyState &cu
 /*
  * Checks all structural aspects of the reserve part of a transaction that may have reserve inputs and/or outputs
  */
-CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction &tx, CCoinsViewCache &view, int32_t nHeight)
+CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction &tx, CCoinsViewCache &view, int32_t nHeight) :
+        flags(0),
+        ptx(NULL),
+        numBuys(0),
+        numSells(0),
+        numTransfers(0),
+        reserveIn(0),
+        reserveOutConverted(0),
+        reserveOut(0),
+        nativeIn(0),
+        nativeOutConverted(0),
+        nativeOut(0),
+        nativeConversionFees(0),
+        reserveConversionFees(0)
 {
     // market conversions can have any number of both buy and sell conversion outputs, this is used to make efficient, aggregated
     // reserve transfer operations with conversion
@@ -461,7 +474,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
             nativeIn = view.GetValueIn(nHeight, &interest, tx);
             nativeIn += tx.GetShieldedValueIn();
 
-            reserveIn = view.GetReserveValueIn(nHeight, tx);
+            reserveIn += view.GetReserveValueIn(nHeight, tx);
         }
 
         CAmount minReserveFee;
