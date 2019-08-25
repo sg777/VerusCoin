@@ -1135,12 +1135,10 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                         porphan->setDependsOn.insert(txin.prevout.hash);
 
                         const CTransaction &otx = mempool.mapTx.find(txin.prevout.hash)->GetTx();
-                        nTotalIn += otx.vout[txin.prevout.n].nValue;
                         // consider reserve outputs and set priority according to their value here as well
-                        if (isReserve)
+                        if (!isReserve)
                         {
-                            // determine the type of transaction and what we should consider the actual fee
-                            nTotalReserveIn += otx.vout[txin.prevout.n].ReserveOutValue();
+                            nTotalIn += otx.vout[txin.prevout.n].nValue;
                         }
                         continue;
                     }
@@ -1157,8 +1155,13 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     int nConf = nHeight - coins->nHeight;
 
                     dPriority += ((double)((nReserveValueIn ? currencyState.ReserveToNative(nReserveValueIn) : 0) + nValueIn)) * nConf;
-                    nTotalIn += nValueIn;
-                    nTotalReserveIn += nReserveValueIn;
+
+                    // reserve is totaled differently
+                    if (!isReserve)
+                    {
+                        nTotalIn += nValueIn;
+                        nTotalReserveIn += nReserveValueIn;
+                    }
                 }
                 nTotalIn += tx.GetShieldedValueIn();
             }
@@ -1173,16 +1176,16 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             CAmount nFeeValueIn = nDeltaValueIn;
             mempool.ApplyDeltas(hash, dPriority, nDeltaValueIn);
 
-            CAmount reserveEquivalentOut = 0;
+            CAmount nativeEquivalentOut = 0;
 
             // if there is reserve in, or this is a reserveexchange transaction, calculate fee properly
             if (isReserve & rtxd.reserveOut)
             {
                 // if this has reserve currency out, convert it to native currency for fee calculation
-                reserveEquivalentOut = currencyState.ReserveToNative(rtxd.reserveOut);
+                nativeEquivalentOut = currencyState.ReserveToNative(rtxd.reserveOut);
             }
 
-            CFeeRate feeRate(isReserve ? rtxd.AllFeesAsNative(currencyState) : nFeeValueIn - (tx.GetValueOut() + reserveEquivalentOut), nTxSize);
+            CFeeRate feeRate(isReserve ? rtxd.AllFeesAsNative(currencyState) : nFeeValueIn - (tx.GetValueOut() + nativeEquivalentOut), nTxSize);
 
             if (porphan)
             {
