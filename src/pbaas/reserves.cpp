@@ -827,7 +827,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
     std::pair<std::multimap<CAmount, CReserveTransactionDescriptor>::iterator, CAmount> sellPartial = make_pair(limitSells.end(), 0);
 
     limitOrdersSizeLimit = maxSerializeSize - totalSerializedSize;
-    int64_t buyLimitSizeLimit = totalSerializedSize + ((arith_uint256(limitBuys.size()) * arith_uint256(limitOrdersSizeLimit)) / arith_uint256(numLimitOrders)).GetLow64();
+    int64_t buyLimitSizeLimit = numLimitOrders ? totalSerializedSize + ((arith_uint256(limitBuys.size()) * arith_uint256(limitOrdersSizeLimit)) / arith_uint256(numLimitOrders)).GetLow64() : limitOrdersSizeLimit;
 
     CCurrencyState latestState = newState;
 
@@ -934,7 +934,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
                 }
             }
         }
-        buyLimitSizeLimit = maxSerializeSize;
+        buyLimitSizeLimit = maxSerializeSize - totalSerializedSize;
     }
 
     (CCurrencyState)newState = latestState;
