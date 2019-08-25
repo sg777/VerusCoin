@@ -546,8 +546,14 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             pk = CPubKey(ParseHex(CC.CChexstr));
 
+            if (ccx.totalAmount != totalImport)
+            {
+                LogPrintf("%s: ERROR - import does not match amount\n", __func__);
+                printf("%s: ERROR - import does not match amount\n", __func__);
+            }
+
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
-            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), totalImport + ccx.totalFees);
+            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), ccx.totalAmount + ccx.totalFees);
 
             newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, availableNative - totalNativeOut, pk, dests, cci);
 

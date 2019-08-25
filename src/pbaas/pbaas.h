@@ -523,8 +523,8 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(VARINT(nValue));
         READWRITE(chainID);
+        READWRITE(VARINT(nValue));
     }
 
     std::vector<unsigned char> AsVector()
