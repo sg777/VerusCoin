@@ -318,7 +318,12 @@ CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyState &cur
 
 CAmount CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyState &currencyState) const
 {
-    return currencyState.NativeToReserve(NativeFees()) + ReserveFees();
+    return ReserveFees() + currencyState.NativeToReserve(NativeFees());
+}
+
+CAmount CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyState &currencyState, CAmount exchangeRate) const
+{
+    return ReserveFees() + currencyState.NativeToReserve(NativeFees(), exchangeRate);
 }
 
 /*
@@ -672,12 +677,15 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
                                                             std::vector<const CTransaction *> &noFills, 
                                                             std::vector<const CTransaction *> &rejects, 
                                                             CAmount &price, int32_t height, std::vector<CInputDescriptor> &conversionInputs,
-                                                            int64_t maxSerializeSize, int64_t *pInOutTotalSerializeSize, CMutableTransaction *pConversionTx) const
+                                                            int64_t maxSerializeSize, int64_t *pInOutTotalSerializeSize, CMutableTransaction *pConversionTx,
+                                                            bool feesAsReserve) const
 {
     // synthetic order book of limitBuys and limitSells sorted by limit, order of preference beyond limit sorting is random
     std::multimap<CAmount, CReserveTransactionDescriptor> limitBuys;
     std::multimap<CAmount, CReserveTransactionDescriptor> limitSells;        // limit orders are prioritized by limit
     std::multimap<CAmount, CReserveTransactionDescriptor> marketOrders;      // prioritized by fee rate
+    CAmount totalNativeFees = 0;
+    CAmount totalReserveFees = 0;
 
     int64_t totalSerializedSize = pInOutTotalSerializeSize ? *pInOutTotalSerializeSize + CCurrencyState::CONVERSION_TX_SIZE_MIN : CCurrencyState::CONVERSION_TX_SIZE_MIN;
     int64_t conversionSizeOverhead = 0;
@@ -749,8 +757,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
     //    there is no point in retracing if an element fails to be added
     // 3. calculate a final order price.5
     // 4. create and return a new, updated CCoinbaseCurrencyState
-    CCoinbaseCurrencyState newState;
-    (CCurrencyState)newState = *this;   // leave extended information zeroed for now
+    CCoinbaseCurrencyState newState(*(CCurrencyState *)this, 0, 0, CReserveOutput(), PriceInReserve(), 0);
 
     CAmount exchangeRate;
 
@@ -758,12 +765,24 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
     // we need to first process those with the assumption that they are included
     for (auto txDesc : reserveFills)
     {
+        totalNativeFees += txDesc.NativeFees();
+        totalReserveFees += txDesc.ReserveFees();
+
         // add up the starting point for conversions
         if (txDesc.IsReserveExchange())
         {
             // native is only converted as needed, so the amount to convert is already correct irrespective of fees
-            newState.ReserveIn += txDesc.reserveOutConverted + txDesc.ReserveFees();
-            newState.NativeIn += txDesc.nativeOutConverted;
+            if (feesAsReserve)
+            {
+                newState.ReserveIn += txDesc.reserveOutConverted;
+                newState.NativeIn += txDesc.nativeOutConverted + txDesc.NativeFees();
+            }
+            else
+            {
+                newState.ReserveIn += txDesc.reserveOutConverted + txDesc.ReserveFees();
+                newState.NativeIn += txDesc.nativeOutConverted;
+            }
+            
             if (pConversionTx)
             {
                 txDesc.AddConversionInOuts(*pConversionTx, conversionInputs);
@@ -771,8 +790,14 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
         }
         else
         {
-            // convert all reserve fees to native
-            newState.ReserveIn += txDesc.ReserveFees();
+            if (feesAsReserve)
+            {
+                newState.NativeIn += txDesc.NativeFees();
+            }
+            else
+            {
+                newState.ReserveIn += txDesc.ReserveFees();
+            }
         }
     }
 
@@ -804,12 +829,22 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
         }
         if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= marketOrdersSizeLimit)
         {
+            totalNativeFees += marketOrder.second.NativeFees();
+            totalReserveFees += marketOrder.second.ReserveFees();
             if (pConversionTx)
             {
                 *pConversionTx = mtx;
             }
-            newState.NativeIn += marketOrder.second.nativeOutConverted;
-            newState.ReserveIn += marketOrder.second.reserveOutConverted + marketOrder.second.ReserveFees();
+            if (feesAsReserve)
+            {
+                newState.ReserveIn += marketOrder.second.reserveOutConverted;
+                newState.NativeIn += marketOrder.second.nativeOutConverted + marketOrder.second.NativeFees();
+            }
+            else
+            {
+                newState.ReserveIn += marketOrder.second.reserveOutConverted + marketOrder.second.ReserveFees();
+                newState.NativeIn += marketOrder.second.nativeOutConverted;
+            }
             reserveFills.push_back(marketOrder.second);
             totalSerializedSize += thisSerializeSize;
         }
@@ -860,9 +895,21 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             }
             if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= buyLimitSizeLimit)
             {
+                CAmount newReserveIn, newNativeIn;
+                if (feesAsReserve)
+                {
+                    newReserveIn = currentBuy.reserveOutConverted;
+                    newNativeIn = currentBuy.nativeOutConverted + currentBuy.NativeFees();
+                }
+                else
+                {
+                    newReserveIn = currentBuy.reserveOutConverted + currentBuy.ReserveFees();
+                    newNativeIn = currentBuy.nativeOutConverted;
+                }
+
                 // calculate fresh with all conversions together to see if we still meet the limit
-                CAmount newExchange = ConvertAmounts(newState.ReserveIn + currentBuy.reserveOutConverted + currentBuy.ReserveFees(),
-                                                     newState.NativeIn, latestState);
+                CAmount newExchange = ConvertAmounts(newState.ReserveIn + newReserveIn, newState.NativeIn + newNativeIn, latestState);
+
                 if (newExchange <= currentBuy.vRex[0].second.nLimit)
                 {
                     // update conversion transaction if we have one
@@ -876,13 +923,17 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
                     reserveFills.push_back(currentBuy);
                     totalSerializedSize += thisSerializeSize;
 
-                    newState.ReserveIn += currentBuy.reserveOutConverted + currentBuy.ReserveFees();
+                    totalNativeFees += currentBuy.NativeFees();
+                    totalReserveFees += currentBuy.ReserveFees();
+                    newState.ReserveIn += newReserveIn;
+                    newState.NativeIn += newNativeIn;
+
                     exchangeRate = newExchange;
                     limitBuys.erase(--limitBuys.end());
                 }
                 else
                 {
-                    // TODO: support partial fills
+                    // TODO:PBAAS support partial fills
                     break;
                 }
             }
@@ -906,8 +957,20 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
 
             if ((totalSerializedSize + thisSerializeSize + conversionSizeOverhead) <= maxSerializeSize)
             {
+                CAmount newReserveIn, newNativeIn;
+                if (feesAsReserve)
+                {
+                    newReserveIn = currentSell.reserveOutConverted;
+                    newNativeIn = currentSell.nativeOutConverted + currentSell.NativeFees();
+                }
+                else
+                {
+                    newReserveIn = currentSell.reserveOutConverted + currentSell.ReserveFees();
+                    newNativeIn = currentSell.nativeOutConverted;
+                }
+
                 // calculate fresh with all conversions together to see if we still meet the limit
-                CAmount newExchange = ConvertAmounts(newState.ReserveIn + currentSell.ReserveFees(), newState.NativeIn + currentSell.nativeOutConverted, latestState);
+                CAmount newExchange = ConvertAmounts(newState.ReserveIn + newReserveIn, newState.NativeIn + newNativeIn, latestState);
                 if (newExchange >= currentSell.vRex.front().second.nLimit)
                 {
                     // update conversion transaction if we have one
@@ -922,8 +985,11 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
                     totalSerializedSize += thisSerializeSize;
                     exchangeRate = newExchange;
 
-                    newState.ReserveIn += currentSell.ReserveFees();
-                    newState.NativeIn += currentSell.nativeOutConverted;
+                    totalNativeFees += currentSell.NativeFees();
+                    totalReserveFees += currentSell.ReserveFees();
+                    newState.ReserveIn += newReserveIn;
+                    newState.NativeIn += newNativeIn;
+
                     limitSells.erase(limitSellsIt);
                     tryagain = true;
                 }
@@ -937,7 +1003,31 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
         buyLimitSizeLimit = maxSerializeSize - totalSerializedSize;
     }
 
-    (CCurrencyState)newState = latestState;
+    // if we have converted native to reserve, setup a valid reserve out
+    if (newState.NativeIn)
+    {
+        newState.ReserveOut = CReserveOutput(CReserveOutput::VALID, 0);
+    }
+
+    newState = CCoinbaseCurrencyState(latestState, newState.ReserveIn, newState.NativeIn, newState.ReserveOut, exchangeRate, 0);
+
+    // we can calculate total fees now, but to avoid a rounding error when converting native to reserve or vice versa on fees, 
+    //we must loop through once more to calculate all fees for the currency state
+    CAmount totalFees = 0;
+    for (auto fill : reserveFills)
+    {
+        newState.ReserveOut.nValue += NativeToReserve(fill.nativeOutConverted);
+        if (feesAsReserve)
+        {
+            totalFees += fill.AllFeesAsReserve(newState, exchangeRate);
+        }
+        else
+        {
+            totalFees += fill.AllFeesAsNative(newState, exchangeRate);
+        }    
+    }
+
+    newState.Fees = totalFees;
     price = exchangeRate;
 
     for (auto entry : limitBuys)

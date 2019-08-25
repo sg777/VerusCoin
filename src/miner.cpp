@@ -1361,11 +1361,11 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             int64_t newBlockSize = nBlockSize;
 
             // TODO - NEED TO ADD SIGOPS LIMIT TO THIS FOR HARDENING
-            CCurrencyState newState = currencyState.MatchOrders(limitOrders, 
-                                                                reserveFills, 
-                                                                expiredFillOrKills, 
-                                                                noFills, 
-                                                                rejects, 
+            CCurrencyState newState = currencyState.MatchOrders(limitOrders,
+                                                                reserveFills,
+                                                                expiredFillOrKills,
+                                                                noFills,
+                                                                rejects,
                                                                 exchangeRate, nHeight, conversionInputs,
                                                                 nBlockMaxSize - autoTxSize, &newBlockSize, &newConversionOutputTx);
 

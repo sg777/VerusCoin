@@ -258,6 +258,7 @@ public:
     CAmount AllFeesAsNative(const CCurrencyState &currencyState) const;
     CAmount AllFeesAsNative(const CCurrencyState &currencyState, CAmount exchangeRate) const;
     CAmount AllFeesAsReserve(const CCurrencyState &currencyState) const;
+    CAmount AllFeesAsReserve(const CCurrencyState &currencyState, CAmount exchangeRate) const;
 
     void AddReserveOutput(CReserveOutput &ro)
     {
@@ -461,7 +462,8 @@ public:
                                         std::vector<const CTransaction *> &noFills, 
                                         std::vector<const CTransaction *> &rejects, 
                                         CAmount &price, int32_t height, std::vector<CInputDescriptor> &conversionInputs, 
-                                        int64_t maxSerializedSize=LONG_MAX, int64_t *ptotalSerializeSize=NULL, CMutableTransaction *pConversionTx=NULL) const;
+                                        int64_t maxSerializedSize=LONG_MAX, int64_t *ptotalSerializeSize=NULL, CMutableTransaction *pConversionTx=NULL,
+                                        bool feesAsReserve=false) const;
 };
 
 #endif // PBAAS_RESERVES_H
