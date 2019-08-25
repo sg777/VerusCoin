@@ -514,7 +514,7 @@ public:
 
     CCrossChainImport(const std::vector<unsigned char> &asVector)
     {
-        FromVector(asVector, *this);
+        ::FromVector(asVector, *this);
     }
 
     CCrossChainImport(const CTransaction &tx);

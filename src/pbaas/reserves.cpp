@@ -420,7 +420,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     // if this is an import, add the amount imported to the reserve input and the amount of reserve output as
                     // the amount available to take from this transaction in reserve as an import fee
                     CCrossChainImport cci;
-                    if (!p.vData.size() && !(cci = CCrossChainImport(p.vData[0])).IsValid())
+                    if (!p.vData.size() || !(cci = CCrossChainImport(p.vData[0])).IsValid())
                     {
                         flags |= IS_REJECT;
                         return;
