@@ -1027,8 +1027,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
         buyLimitSizeLimit = maxSerializeSize - totalSerializedSize;
     }
 
-    // if we have converted native to reserve, setup a valid reserve out
-    if (newState.NativeIn)
+    if (!newState.ReserveOut.IsValid())
     {
         newState.ReserveOut = CReserveOutput(CReserveOutput::VALID, 0);
     }
@@ -1036,11 +1035,11 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
     newState = CCoinbaseCurrencyState(latestState, newState.ReserveIn, newState.NativeIn, newState.ReserveOut, exchangeRate, 0);
 
     // we can calculate total fees now, but to avoid a rounding error when converting native to reserve or vice versa on fees, 
-    //we must loop through once more to calculate all fees for the currency state
+    // we must loop through once more to calculate all fees for the currency state
     CAmount totalFees = 0;
     for (auto fill : reserveFills)
     {
-        newState.ReserveOut.nValue += NativeToReserve(fill.nativeOutConverted);
+        newState.ReserveOut.nValue += NativeToReserve(fill.nativeOutConverted, exchangeRate);
         if (feesAsReserve)
         {
             totalFees += fill.AllFeesAsReserve(newState, exchangeRate);
@@ -1075,6 +1074,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
         {
             *pInOutTotalSerializeSize = totalSerializedSize;
         }
+        printf("%s: %s\n", __func__, newState.ToUniValue().write().c_str());
         return newState;
     }
 }
