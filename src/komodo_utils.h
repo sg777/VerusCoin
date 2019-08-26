@@ -1791,12 +1791,12 @@ void komodo_args(char *argv0)
         // setup Verus test parameters
         mapArgs["-ac_algo"] = "verushash";
         mapArgs["-ac_cc"] = "1";
-        mapArgs["-ac_supply"] = "0";
-        mapArgs["-ac_eras"] = "3";
-        mapArgs["-ac_reward"] = "50000000000,38400000000,38400000000";
-        mapArgs["-ac_halving"] = GetArg("-ac_halving", "1,43200,43220");    // allow testing easily with different default ports
-        mapArgs["-ac_decay"] = "100000000,0,0";
-        mapArgs["-ac_end"] = "10080,226080,0";
+        mapArgs["-ac_supply"] = "500000000000000";
+        mapArgs["-ac_eras"] = "1";
+        mapArgs["-ac_reward"] = "2400000000";
+        mapArgs["-ac_halving"] = GetArg("-ac_halving", "226080");    // allow testing easily with different values here
+        mapArgs["-ac_decay"] = "0";
+        mapArgs["-ac_end"] = "0";
         mapArgs["-ac_veruspos"] = "50";
 
         if (!ReadConfigFile("VRSCTEST", mapArgs, mapMultiArgs))
