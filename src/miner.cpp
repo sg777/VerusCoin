@@ -661,14 +661,15 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         }
 
         CAmount totalEmission = blockSubsidy;
-        if (nHeight == 1)
-        {
-            blockSubsidy -= GetBlockOnePremine();       // separate subsidy, which can go to miner, from premine
-        }
 
         // make earned notarization only if this is not the notary chain and we have enough subsidy
         if (!isVerusActive)
         {
+            if (nHeight == 1)
+            {
+                blockSubsidy -= GetBlockOnePremine();       // separate subsidy, which can go to miner, from premine
+            }
+
             // if we don't have a connected root PBaaS chain, we can't properly check
             // and notarize the start block, so we have to pass the notarization and cross chain steps
             bool notaryConnected = ConnectedChains.IsVerusPBaaSAvailable() && ConnectedChains.notaryChainHeight >= PBAAS_STARTBLOCK;
