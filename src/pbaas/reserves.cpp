@@ -465,7 +465,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 }
                 break;
             }
-            nativeOut += txOut.nValue;
         }
     }
 
@@ -479,6 +478,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         return;
     }
 
+    int64_t interest;
+    nativeOut = tx.GetValueOut();
+    nativeIn = view.GetValueIn(nHeight, &interest, tx);
+
     // if we don't have a reserve transaction, we're done
     // don't try to replace basic transaction validation
     if (IsReserve())
@@ -488,10 +491,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         {
             LOCK2(cs_main, mempool.cs);
 
-            int64_t interest;           // unused for now
             // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
             // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
-            nativeIn = view.GetValueIn(nHeight, &interest, tx);
             reserveIn += view.GetReserveValueIn(nHeight, tx);
         }
 
