@@ -424,7 +424,7 @@ public:
 
     CCoinbaseCurrencyState(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve,
                              CAmount reserveIn, CAmount nativeIn, CReserveOutput reserveOut, CAmount conversionPrice, CAmount fees) : 
-        CCurrencyState(initialRatio, supply, initialSupply, emitted, reserve), ReserveIn(reserveIn), NativeIn(nativeIn), ConversionPrice(conversionPrice), Fees(fees) { }
+        CCurrencyState(initialRatio, supply, initialSupply, emitted, reserve), ReserveIn(reserveIn), NativeIn(nativeIn), ReserveOut(reserveOut), ConversionPrice(conversionPrice), Fees(fees) { }
 
     CCoinbaseCurrencyState(const CCurrencyState &currencyState, CAmount reserveIn, CAmount nativeIn, const CReserveOutput &reserveOut, CAmount conversionPrice, CAmount fees) : 
         CCurrencyState(currencyState), ReserveIn(reserveIn), NativeIn(nativeIn), ReserveOut(reserveOut), ConversionPrice(conversionPrice), Fees(fees) { }

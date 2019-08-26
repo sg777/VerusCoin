@@ -927,7 +927,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                         }
                     }
 
-                    if (found)
+                    if (found && pwalletMain)
                     {
                         UniValue params(UniValue::VARR);
                         UniValue param(UniValue::VOBJ);
@@ -962,7 +962,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                             }
                         }
 
-                        if (result.isArray() && result.size() && pwalletMain)
+                        if (result.isArray() && result.size())
                         {
                             LOCK(pwalletMain->cs_wallet);
 
@@ -984,24 +984,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                     const CScript virtualCC;
                                     CTxOut virtualCCOut;
 
-                                    // if we're spending the last import, we need to respect its n out
-                                    for (i = 0; i < lastImportTx.vout.size(); i++)
-                                    {
-                                        COptCCParams p;
-                                        if (lastImportTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
-                                        {
-                                            txTemplate.vin.push_back(CTxIn(lastImportTx.GetHash(), (uint32_t)i));
-                                            break;
-                                        }
-                                    }
-                                    if (i >= lastImportTx.vout.size())
-                                    {
-                                        // can't continue if this tx was invalid
-                                        break;
-                                    }
-
                                     signSuccess = ProduceSignature(
-                                        TransactionSignatureCreator(pwalletMain, &itx, 0, lastImportTx.vout[i].nValue, SIGHASH_ALL), lastImportTx.vout[i].scriptPubKey, sigdata, consensusBranchId);
+                                        TransactionSignatureCreator(pwalletMain, &itx, 0, lastImportTx.vout[itx.vin[0].prevout.n].nValue, SIGHASH_ALL), lastImportTx.vout[itx.vin[0].prevout.n].scriptPubKey, sigdata, consensusBranchId);
 
                                     if (!signSuccess)
                                     {

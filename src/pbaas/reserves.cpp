@@ -14,7 +14,7 @@
 #include "rpc/server.h"
 #include "key_io.h"
 
-CReserveOutput::CReserveOutput(const UniValue &obj)
+CReserveOutput::CReserveOutput(const UniValue &obj) : flags(0)
 {
     flags = uni_get_int(find_value(obj, "isvalid")) ? flags | VALID : flags & ~VALID;
     nValue = AmountFromValue(find_value(obj, "value"));
