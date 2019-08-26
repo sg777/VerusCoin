@@ -3449,8 +3449,27 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         }
         
         txdata.emplace_back(tx);
-        
-        if (!tx.IsCoinBase() && !isBlockBoundSmartTx)
+
+        // on non-Verus chains, if this is a reserve transaction, calculate reserve fees as native
+        // TODO:PBAAS - we need to add the ability to pay native fees in reserve
+        CReserveTransactionDescriptor rtxd;
+        CCoinbaseCurrencyState currencyState;
+
+        if (!isVerusActive)
+        {
+            currencyState = CCoinbaseCurrencyState(block.vtx[0]);
+            if (!currencyState.IsValid())
+            {
+                return state.DoS(100, error("ConnectBlock(): invalid currency state"), REJECT_INVALID, "bad-blk-currency");
+            }
+            CReserveTransactionDescriptor rtxd(tx, view, chainActive.LastTip()->GetHeight());
+            if (rtxd.IsValid())
+            {
+                nFees += currencyState.ReserveToNative(rtxd.ReserveFees(), currencyState.ConversionPrice);
+            }
+        }
+
+        if (!tx.IsCoinBase() && (!isBlockBoundSmartTx || !CPBaaSNotarization(tx).IsValid()))
         {
             nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime) - tx.GetValueOut();
             sum += interest;
@@ -3459,7 +3478,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             if (!ContextualCheckInputs(tx, state, view, fExpensiveChecks, flags, false, txdata[i], chainparams.GetConsensus(), consensusBranchId, nScriptCheckThreads ? &vChecks : NULL))
                 return false;
             control.Add(vChecks);
-        }
+        }        
 
         if (fAddressIndex) {
             for (unsigned int k = 0; k < tx.vout.size(); k++) {
@@ -3532,7 +3551,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         BOOST_FOREACH(const JSDescription &joinsplit, tx.vjoinsplit) {
             BOOST_FOREACH(const uint256 &note_commitment, joinsplit.commitments) {
                 // Insert the note commitments into our temporary tree.
-
                 sprout_tree.append(note_commitment);
             }
         }

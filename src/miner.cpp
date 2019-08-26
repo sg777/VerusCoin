@@ -1377,9 +1377,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             CAmount reserveConversionFees = 0;
             if (reserveFills.size())
             {
-                (CCurrencyState)currencyState = newState;
-                currencyState.ReserveOut.flags |= currencyState.ReserveOut.VALID;
-                currencyState.ConversionPrice = exchangeRate;
+                currencyState = newState;
             }
 
             int oldRPSize = reservePositions.size();
@@ -2531,7 +2529,7 @@ void static BitcoinMiner_noeq()
                                 if (ourMerkle == lastChainTipPrinted->hashMerkleRoot)
                                 {
                                     LogPrintf("proof-of-work found  \n  hash: %s  \ntarget: %s\n", lastChainTipPrinted->GetBlockHash().GetHex().c_str(), ArithToUint256(ourTarget).GetHex().c_str());
-                                    printf("Found block %d \n", Mining_height - 1);
+                                    printf("Found block %d \n", lastChainTipPrinted->GetHeight());
                                     printf("mining reward %.8f %s!\n", (double)subsidy / (double)COIN, ASSETCHAINS_SYMBOL);
                                     printf("  hash: %s\ntarget: %s\n", lastChainTipPrinted->GetBlockHash().GetHex().c_str(), ArithToUint256(ourTarget).GetHex().c_str());
                                 }

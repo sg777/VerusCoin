@@ -176,28 +176,20 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
     // if both conversions are zero, nothing to do but return current price
     if ((!inputReserve && !inputFractional) || !(flags & ISRESERVE))
     {
-        cpp_dec_float_50 price = GetPriceInReserve();
-        int64_t intPrice;
-        if (!to_int64(price, intPrice))
-        {
-            return 0;
-        }
-        else
-        {
-            return intPrice;
-        }
+        return PriceInReserve();
     }
 
-    cpp_dec_float_50 reservein(inputReserve);
-    cpp_dec_float_50 fractionalin(inputFractional);
-    cpp_dec_float_50 supply(Supply);
-    cpp_dec_float_50 reserve(Reserve);
+    cpp_dec_float_50 reservein(std::to_string(inputReserve));
+    cpp_dec_float_50 fractionalin(std::to_string(inputFractional));
+    cpp_dec_float_50 supply(std::to_string((Supply)));
+    cpp_dec_float_50 reserve(std::to_string(Reserve));
     cpp_dec_float_50 ratio = GetReserveRatio();
+    cpp_dec_float_50 one("1");
 
     // first buy if anything to buy
     if (inputReserve)
     {
-        supply = supply + (supply * (pow((reservein / reserve + 1.0), ratio) - 1));
+        supply = supply + (supply * (pow((reservein / reserve) + one, ratio) - one));
 
         int64_t newSupply;
         if (!to_int64(supply, newSupply))
@@ -214,7 +206,7 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
     {
         cpp_dec_float_50 reserveout;
         int64_t reserveOut;
-        reserveout = reserve * (pow((fractionalin / supply + 1.0), (1 / ratio)) - 1);
+        reserveout = reserve * (pow((fractionalin / supply + one), (one / ratio)) - one);
         if (!to_int64(reserveout, reserveOut))
         {
             assert(false);
@@ -226,7 +218,9 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
 
     // determine the change in both supply and reserve and return the execution price in reserve by calculating it from
     // the actual conversion numbers
-    return (newState.Supply - Supply) / (newState.Reserve - Reserve);
+    CAmount returnVal = (CReserveExchange::SATOSHIDEN * (newState.Supply - Supply)) / (newState.Reserve - Reserve);
+    printf("newState.Supply:%lu - Supply:%lu) / (newState.Reserve:%lu - Reserve:%lu == %lu\n", newState.Supply, Supply, newState.Reserve, Reserve, returnVal);
+    return (CReserveExchange::SATOSHIDEN * (newState.Supply - Supply)) / (newState.Reserve - Reserve);
 }
 
 void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &rex, int32_t outputIndex, int32_t nHeight)
@@ -537,7 +531,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     }
 }
 
-CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, CAmount exchangeRate, CCurrencyState *pCurrencyState) const
+CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, CAmount exchangeRate, const CCurrencyState *pCurrencyState) const
 {
     if (!IsReserveExchange() || IsFillOrKillFail())
     {
@@ -545,7 +539,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
     }
 
     CCurrencyState dummy;
-    CCurrencyState &currencyState = pCurrencyState ? *pCurrencyState : dummy;
+    const CCurrencyState &currencyState = pCurrencyState ? *pCurrencyState : dummy;
     // if no exchange rate is specified, first from the currency if present, then it is unity
     if (!exchangeRate)
     {

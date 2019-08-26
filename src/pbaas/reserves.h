@@ -276,7 +276,7 @@ public:
         numTransfers++;
     }
 
-    CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, CAmount exchangeRate=0, CCurrencyState *pCurrencyState=NULL) const;
+    CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, CAmount exchangeRate=0, const CCurrencyState *pCurrencyState=NULL) const;
 };
 
 class CCurrencyState
@@ -341,10 +341,11 @@ public:
 
     cpp_dec_float_50 GetReserveRatio() const
     {
-        return cpp_dec_float_50(InitialRatio) / cpp_dec_float_50(CReserveExchange::SATOSHIDEN);
+        return cpp_dec_float_50(std::to_string(InitialRatio)) / cpp_dec_float_50("100000000");
     }
 
-    inline static bool to_int64(const cpp_dec_float_50 &input, int64_t &outval)
+    template<typename cpp_dec_float_type>
+    inline static bool to_int64(const cpp_dec_float_type &input, int64_t &outval)
     {
         std::stringstream ss(input.str(0));
         try
