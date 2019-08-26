@@ -501,7 +501,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         {
             if (cci.nValue == ccx.totalAmount + ccx.totalFees)
             {
-                reserveIn == cci.nValue;
+                reserveIn = cci.nValue;
                 reserveOut = reserveIn - ccx.CalculateImportFee();
             }
         }

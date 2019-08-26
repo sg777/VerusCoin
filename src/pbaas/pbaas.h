@@ -552,7 +552,7 @@ public:
     CAmount totalAmount;                            // total amount of inputs, including fees
     CAmount totalFees;                              // total amount of fees to split between miner on exporting chain and importing chain
 
-    CCrossChainExport() {}
+    CCrossChainExport() : numInputs(0), totalAmount(0), totalFees(0) {}
 
     CCrossChainExport(const std::vector<unsigned char> &asVector)
     {
