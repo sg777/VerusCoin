@@ -361,94 +361,109 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         return;
     }
 
+    CCrossChainImport cci;
+    CCrossChainExport ccx;
+
     for (int i = 0; i < tx.vout.size(); i++)
     {
         const CTxOut &txOut = tx.vout[i];
         COptCCParams p;
+
         if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
         {
             switch (p.evalCode)
             {
                 case EVAL_RESERVE_OUTPUT:
+                {
+                    CReserveOutput ro;
+                    if (!p.vData.size() && !(ro = CReserveOutput(p.vData[0])).IsValid())
                     {
-                        CReserveOutput ro;
-                        if (!p.vData.size() && !(ro = CReserveOutput(p.vData[0])).IsValid())
-                        {
-                            flags |= IS_REJECT;
-                            return;
-                        }
-                        AddReserveOutput(ro);
+                        flags |= IS_REJECT;
+                        return;
                     }
-                    break;
+                    AddReserveOutput(ro);
+                }
+                break;
 
                 case EVAL_RESERVE_TRANSFER:
+                {
+                    CReserveTransfer rt;
+                    if (!p.vData.size() && !(rt = CReserveTransfer(p.vData[0])).IsValid())
                     {
-                        CReserveTransfer rt;
-                        if (!p.vData.size() && !(rt = CReserveTransfer(p.vData[0])).IsValid())
-                        {
-                            flags |= IS_REJECT;
-                            return;
-                        }
-                        // on a PBaaS reserve chain, a reserve transfer is always denominated in reserve, as exchange must happen before it is
-                        // created. explicit fees in transfer object are for export and import, not initial mining
-                        AddReserveTransfer(rt);
+                        flags |= IS_REJECT;
+                        return;
                     }
-                    break;
+                    // on a PBaaS reserve chain, a reserve transfer is always denominated in reserve, as exchange must happen before it is
+                    // created. explicit fees in transfer object are for export and import, not initial mining
+                    AddReserveTransfer(rt);
+                }
+                break;
 
                 case EVAL_RESERVE_EXCHANGE:
+                {
+                    CReserveExchange rex;
+                    if (!p.vData.size() && !(rex = CReserveExchange(p.vData[0])).IsValid())
                     {
-                        CReserveExchange rex;
-                        if (!p.vData.size() && !(rex = CReserveExchange(p.vData[0])).IsValid())
-                        {
-                            flags |= IS_REJECT;
-                            return;
-                        }
-
-                        // if we send the output to the reserve chain, it must be a TO_RESERVE transaction
-                        if (!(rex.flags & rex.TO_RESERVE) && rex.flags & rex.SEND_OUTPUT)
-                        {
-                            flags |= IS_REJECT;
-                            return;
-                        }
-
-                        AddReserveExchange(rex, i, nHeight);
-
-                        if (IsReject())
-                        {
-                            return;
-                        }
+                        flags |= IS_REJECT;
+                        return;
                     }
-                    break;
+
+                    // if we send the output to the reserve chain, it must be a TO_RESERVE transaction
+                    if (!(rex.flags & rex.TO_RESERVE) && rex.flags & rex.SEND_OUTPUT)
+                    {
+                        flags |= IS_REJECT;
+                        return;
+                    }
+
+                    AddReserveExchange(rex, i, nHeight);
+
+                    if (IsReject())
+                    {
+                        return;
+                    }
+                }
+                break;
 
                 case EVAL_CROSSCHAIN_IMPORT:
                 {
                     // if this is an import, add the amount imported to the reserve input and the amount of reserve output as
                     // the amount available to take from this transaction in reserve as an import fee
-                    CCrossChainImport cci;
-                    if (!p.vData.size() || !(cci = CCrossChainImport(p.vData[0])).IsValid())
+                    if (flags & IS_IMPORT || !p.vData.size() || !(cci = CCrossChainImport(p.vData[0])).IsValid())
                     {
                         flags |= IS_REJECT;
                         return;
                     }
 
                     flags |= IS_IMPORT;
-                    reserveIn = cci.nValue;
+
+                    std::vector<CBaseChainObject *> chainObjs;
+                    // either a fully valid import with an export or the first import either in block 1 or the chain definition
+                    // on the Verus chain
+                    if ((tx.vout.back().scriptPubKey.IsOpReturn() &&
+                        (chainObjs = RetrieveOpRetArray(tx.vout.back().scriptPubKey)).size() >= 2 &&
+                        chainObjs[0]->objectType == CHAINOBJ_TRANSACTION &&
+                        chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF))
+                    {
+                        ccx = CCrossChainExport(((CChainObject<CTransaction> *)chainObjs[0])->object);
+                    }
+                    DeleteOpRetObjects(chainObjs);
                 }
                 break;
 
                 // this check will need to be made complete by preventing mixing both here and where the others
                 // are seen
                 case EVAL_CROSSCHAIN_EXPORT:
+                {
+                    // cross chain export is incompatible with reserve exchange outputs
+                    if (IsReserveExchange())
                     {
-                        // cross chain export is incompatible with reserve exchange outputs
-                        if (IsReserveExchange())
-                        {
-                            flags |= IS_REJECT;
-                            return;
-                        }
+                        flags |= IS_REJECT;
                         return;
                     }
-                    break;
+                    flags |= IS_EXPORT;
+                    return;
+                }
+                break;
             }
             nativeOut += txOut.nValue;
         }
@@ -477,9 +492,18 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
             // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
             // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
             nativeIn = view.GetValueIn(nHeight, &interest, tx);
-            nativeIn += tx.GetShieldedValueIn();
-
             reserveIn += view.GetReserveValueIn(nHeight, tx);
+        }
+
+        // if we have a valid import, override all normal fee calculations
+        // in lieu of the import fee calculations
+        if (cci.IsValid() && ccx.IsValid())
+        {
+            if (cci.nValue == ccx.totalAmount + ccx.totalFees)
+            {
+                reserveIn == cci.nValue;
+                reserveOut = reserveIn - ccx.CalculateImportFee();
+            }
         }
 
         CAmount minReserveFee;
@@ -488,7 +512,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         if (IsReserveExchange())
         {
             minReserveFee = reserveConversionFees;
-
             minNativeFee = nativeConversionFees;
         }
         else
