@@ -2500,7 +2500,7 @@ void static BitcoinMiner_noeq()
                 continue;
             }
 
-            int64_t subsidy = (int64_t)(pblock->vtx[0].GetValueOut());
+            int64_t subsidy = (int64_t)(pblock->vtx[0].vout[0].nValue);
             count = ((ASSETCHAINS_NONCEMASK[ASSETCHAINS_ALGO] >> 3) + 1) / ASSETCHAINS_HASHESPERROUND[ASSETCHAINS_ALGO];
             CVerusHashV2 *vh2 = &ss2.GetState();
             u128 *hashKey;
@@ -2531,7 +2531,7 @@ void static BitcoinMiner_noeq()
                                 if (ourMerkle == lastChainTipPrinted->hashMerkleRoot)
                                 {
                                     LogPrintf("proof-of-work found  \n  hash: %s  \ntarget: %s\n", lastChainTipPrinted->GetBlockHash().GetHex().c_str(), ArithToUint256(ourTarget).GetHex().c_str());
-                                    printf("Found block %d \n", Mining_height );
+                                    printf("Found block %d \n", Mining_height - 1);
                                     printf("mining reward %.8f %s!\n", (double)subsidy / (double)COIN, ASSETCHAINS_SYMBOL);
                                     printf("  hash: %s\ntarget: %s\n", lastChainTipPrinted->GetBlockHash().GetHex().c_str(), ArithToUint256(ourTarget).GetHex().c_str());
                                 }
