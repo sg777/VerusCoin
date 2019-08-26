@@ -805,27 +805,39 @@ void CTxMemPool::ClearPrioritisation(const uint256 hash)
     mapReserveTransactions.erase(hash);
 }
 
-void CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyState &currencyState)
+bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyState &currencyState)
 {
     LOCK(cs);
     uint256 hash = txDesc.ptx->GetHash();
     auto it = mapReserveTransactions.find(hash);
-    if (txDesc.IsValid() && it == mapReserveTransactions.end())
+    if (txDesc.IsValid())
     {
         mapReserveTransactions[hash] = txDesc;
-        CDataStream ds(SER_NETWORK, PROTOCOL_VERSION);
-        CFeeRate feeRate = CFeeRate((txDesc.AllFeesAsNative(currencyState), GetSerializeSize(ds, *txDesc.ptx)));
+        PrioritiseTransaction(hash, hash.GetHex().c_str(), currencyState.ReserveToNative(txDesc.ReserveFees()), currencyState.ReserveToNative(txDesc.ReserveFees()));
+        return true;
     }
+    return false;
 }
 
-bool CTxMemPool::IsKnownReserveTransaction(const uint256 &hash, CReserveTransactionDescriptor &txDesc) const
+bool CTxMemPool::IsKnownReserveTransaction(const uint256 &hash, CReserveTransactionDescriptor &txDesc)
 {
     LOCK(cs);
     auto it = mapReserveTransactions.find(hash);
     if (it != mapReserveTransactions.end() && it->second.IsValid())
     {
-        txDesc = it->second;
-        return true;
+        // refresh transaction from mempool or delete it
+        indexed_transaction_set::const_iterator i = mapTx.find(hash);
+        if (i == mapTx.end())
+        {
+            ClearPrioritisation(hash);
+        }
+        else
+        {
+            it->second.ptx = &(i->GetTx());
+
+            txDesc = it->second;
+            return true;
+        }
     }
     return false;
 }

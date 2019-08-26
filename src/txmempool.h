@@ -219,8 +219,8 @@ public:
 
     /** Affect CreateNewBlock prioritisation of transactions */
     void PrioritiseTransaction(const uint256 &hash, const std::string strHash, double dPriorityDelta, const CAmount& nFeeDelta);
-    void PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyState &currencyState);
-    bool IsKnownReserveTransaction(const uint256 &hash, CReserveTransactionDescriptor &txDesc) const;  // know to be reserve transaction, get descriptor
+    bool PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyState &currencyState);
+    bool IsKnownReserveTransaction(const uint256 &hash, CReserveTransactionDescriptor &txDesc);  // know to be reserve transaction, get descriptor, update mempool
     void ApplyDeltas(const uint256 hash, double &dPriorityDelta, CAmount &nFeeDelta);
     void ClearPrioritisation(const uint256 hash);
 
