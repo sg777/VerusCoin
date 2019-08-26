@@ -1774,11 +1774,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                 // we need the current currency state
                 txDesc = CReserveTransactionDescriptor(tx, view, nextBlockHeight);
                 // if we have a reserve transaction
-                if (txDesc.IsValid())
-                {
-                    mempool.PrioritiseReserveTransaction(txDesc, currencyState);
-                }
-                else if (txDesc.IsReject())
+                if (!txDesc.IsValid() && txDesc.IsReject())
                 {
                     return state.DoS(1, error("AcceptToMemoryPool: invalid reserve transaction %", hash.ToString()),REJECT_NONSTANDARD, "bad-txns-invalid-reserve");
                 }
@@ -1924,6 +1920,12 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         if ( komodo_is_notarytx(tx) == 0 )
             KOMODO_ON_DEMAND++;
         pool.addUnchecked(hash, entry, !IsInitialBlockDownload());
+
+        if (txDesc.IsValid())
+        {
+            txDesc.ptx = &(entry.GetTx());
+            mempool.PrioritiseReserveTransaction(txDesc, currencyState);
+        }
 
         if (!tx.IsCoinImport())
         {

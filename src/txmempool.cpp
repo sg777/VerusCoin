@@ -825,7 +825,7 @@ bool CTxMemPool::IsKnownReserveTransaction(const uint256 &hash, CReserveTransact
     auto it = mapReserveTransactions.find(hash);
     if (it != mapReserveTransactions.end() && it->second.IsValid())
     {
-        // refresh transaction from mempool or delete it
+        // refresh transaction from mempool or delete it if not found (we may not need this at all)
         indexed_transaction_set::const_iterator i = mapTx.find(hash);
         if (i == mapTx.end())
         {
