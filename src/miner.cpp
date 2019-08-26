@@ -820,29 +820,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                     //
                     // 3. make sure the currency state is correct
 
-                    // if there is any option for preconversion, and this is block one, get the total preconverted from the launching chain
-                    if (thisChain.maxpreconvert && nHeight == 1)
-                    {
-                        // get the total amount pre-converted
-                        UniValue params(UniValue::VARR);
-                        params.push_back(ASSETCHAINS_CHAINID.GetHex());
-
-                        UniValue result;
-                        try
-                        {
-                            result = find_value(RPCCallRoot("getinitialcurrencystate", params), "result");
-                        } catch (exception e)
-                        {
-                            result = NullUniValue;
-                        }
-
-                        if (result.isNull() || !(currencyState = CCoinbaseCurrencyState(result)).IsValid())
-                        {
-                            // no matter what happens, we should be able to get a valid currency state of some sort
-                            return NULL;
-                        }
-                    }
-
                     // input should either be 0 or PBAAS_MINNOTARIZATIONOUTPUT + all finalized outputs
                     // we will add PBAAS_MINNOTARIZATIONOUTPUT from a coinbase instant spend in all cases and double that when it is 0 for block 1
                     for (const CTxIn& txin : newNotarizationTx.vin)

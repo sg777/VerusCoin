@@ -1073,7 +1073,8 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                     // if this is a transfer output, optionally to this chain, add it to the input vector
                     COptCCParams p;
                     CReserveTransfer rt;
-                    if (::IsPayToCryptoCondition(ntx.vout[i].scriptPubKey, p) && p.evalCode == EVAL_RESERVE_TRANSFER &&
+                    if (ntx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                        p.evalCode == EVAL_RESERVE_TRANSFER &&
                         p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
                         p.vKeys.size() > 1 &&
                         (nofilter || GetDestinationID(p.vKeys[1]) == chainFilter) &&
@@ -3107,9 +3108,8 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
         {
             // total amount will be transferred to the chain, with fee split between aggregator and miner in
             // Verus reserve
-            CAmount fee = transfer.second.second.nFees;
-            preconvertedAmount += transfer.second.first.nValue;
-            fees += fee;
+            preconvertedAmount += transfer.second.second.nValue;
+            fees += transfer.second.second.nFees;
         }
     }
 
