@@ -2608,7 +2608,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             CPubKey pk2(GetDestinationBytes(refundDest));
             if (!pk2.IsFullyValid() && !pwalletMain->GetPubKey(refundID, pk2))
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot retrieve public key for refund address. Refund address must either be public key or address that is accesible from the current wallet.");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot retrieve public key for refund address. Refund address must either be public key or address that is accessible from the current wallet.");
             }
             dests.push_back(pk2);
             ccOut = MakeCC1of2Vout(EVAL_RESERVE_TRANSFER, amount + transferFee, pk, pk2, dests, (CReserveTransfer)rt);

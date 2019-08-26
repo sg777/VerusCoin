@@ -3359,7 +3359,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     // Grab the consensus branch ID for the block's height
     auto consensusBranchId = CurrentEpochBranchId(pindex->GetHeight(), Params().GetConsensus());
-    
+    bool isVerusActive = IsVerusActive();
+
     std::vector<PrecomputedTransactionData> txdata;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
     for (unsigned int i = 0; i < block.vtx.size(); i++)
@@ -3585,7 +3586,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CAmount blockReward = nFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus()) + sum;
 
     bool isBlock1 = pindex->GetHeight() == 1;
-    bool isVerusActive = IsVerusActive();
     if (isBlock1 && !isVerusActive && ConnectedChains.ThisChain().maxpreconvert && ConnectedChains.ThisChain().conversion)
     {
         // if we can have a pre-conversion output on block 1, add pre-conversion
