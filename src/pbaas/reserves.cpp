@@ -306,7 +306,7 @@ void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &r
         {
             numBuys += 1;
             reserveConversionFees += fee;
-            reserveOutConverted += rex.nValue;
+            reserveOutConverted += rex.nValue - fee;
             reserveOut += rex.nValue - fee;
         }
     }                        
@@ -806,13 +806,13 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             // native is only converted as needed, so the amount to convert is already correct irrespective of fees
             if (feesAsReserve)
             {
-                newState.ReserveIn += txDesc.reserveIn - txDesc.ReserveFees();
-                newState.NativeIn += txDesc.nativeIn;
+                newState.ReserveIn += txDesc.reserveOutConverted;
+                newState.NativeIn += txDesc.nativeOutConverted + txDesc.NativeFees();
             }
             else
             {
-                newState.ReserveIn += txDesc.reserveIn;
-                newState.NativeIn += txDesc.nativeIn - txDesc.NativeFees();
+                newState.ReserveIn += txDesc.reserveOutConverted + txDesc.ReserveFees();
+                newState.NativeIn += txDesc.nativeOutConverted;
             }
             
             if (pConversionTx)
