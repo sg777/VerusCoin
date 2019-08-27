@@ -1780,7 +1780,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                 // if we have a reserve transaction
                 if (!txDesc.IsValid() && txDesc.IsReject())
                 {
-                    return state.DoS(1, error("AcceptToMemoryPool: invalid reserve transaction %", hash.ToString()),REJECT_NONSTANDARD, "bad-txns-invalid-reserve");
+                    return state.DoS(1, error("AcceptToMemoryPool: invalid reserve transaction %s", hash.ToString()), REJECT_NONSTANDARD, "bad-txns-invalid-reserve");
                 }
             }
         }

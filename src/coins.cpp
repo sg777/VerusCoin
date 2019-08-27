@@ -595,7 +595,7 @@ CAmount CCoinsViewCache::GetValueIn(int32_t nHeight,int64_t *interestp,const CTr
         const CCoins* coins = AccessCoins(tx.vin[i].prevout.hash);
         if (coins && coins->IsAvailable(tx.vin[i].prevout.n))
         {
-            // if we are a PBaaS chain with a coinbase currency state input, all non-shielded inputs are effectively considered burned, since this must be the
+            // if we are a PBaaS chain tx with a coinbase currency state input, all non-shielded inputs are effectively considered burned, since this must be the
             // block's conversion transaction and they are assumed to all be converted
             COptCCParams p;
             if (!_IsVerusActive() && coins->fCoinBase && coins->vout[tx.vin[i].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.evalCode == EVAL_CURRENCYSTATE)

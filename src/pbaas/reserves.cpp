@@ -390,7 +390,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 case EVAL_RESERVE_EXCHANGE:
                 {
                     CReserveExchange rex;
-                    if (!p.vData.size() && !(rex = CReserveExchange(p.vData[0])).IsValid())
+                    if (!p.vData.size() || !(rex = CReserveExchange(p.vData[0])).IsValid())
                     {
                         flags |= IS_REJECT;
                         return;
@@ -488,10 +488,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         // in lieu of the import fee calculations
         if (cci.IsValid() && ccx.IsValid())
         {
-            if (cci.nValue == ccx.totalAmount + ccx.totalFees)
+            if (!(cci.nValue == ccx.totalAmount + ccx.totalFees))
             {
-                reserveIn = cci.nValue;
-                reserveOut = reserveIn - ccx.CalculateImportFee();
+                printf("%s: export value does not match import value\n", __func__);
+                flags |= IS_REJECT;
+                return;
             }
         }
 
