@@ -1453,24 +1453,26 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         // the transaction itself pays no fees, but all conversion fees are included for each conversion transaction between its input and this output
         if (currencyStateOut.scriptPubKey.size())
         {
+            COptCCParams p;
+            currencyStateOut.scriptPubKey.IsPayToCryptoCondition(p);
+            p.vData[0] = currencyState.AsVector();
+            currencyStateOut.scriptPubKey.ReplaceCCParams(p);
+
             if (newConversionOutputTx.vout.size())
             {
                 CTransaction convertTx(newConversionOutputTx);
 
                 assert(convertTx.GetValueOut() < currencyState.ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice));
 
-                currencyStateOut.nValue = convertTx.GetValueOut();
-
-                COptCCParams p;
-                currencyStateOut.scriptPubKey.IsPayToCryptoCondition(p);
-                p.vData[0] = currencyState.AsVector();
-                currencyStateOut.scriptPubKey.ReplaceCCParams(p);
-
                 // the coinbase is not finished, store index placeholder here now and fixup hash later
                 newConversionOutputTx.vin[0] = CTxIn(uint256(), cbOutIdx);
             }
 
             coinbaseTx.vout[cbOutIdx] = currencyStateOut;
+
+            currencyStateOut.scriptPubKey.IsPayToCryptoCondition(p);
+            printf("Source currency state %s\n", currencyState.ToUniValue().write().c_str());
+            printf("Cross check currency state %s\n", CCoinbaseCurrencyState(p.vData[0]).ToUniValue().write().c_str());
             cbOutIdx++;
         }
 

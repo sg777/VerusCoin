@@ -593,7 +593,7 @@ public:
     bool IsPayToCryptoCondition(CScript *ccSubScript) const;
     bool IsPayToCryptoCondition(uint32_t *ecode) const;
     bool IsPayToCryptoCondition() const;
-    CScript ReplaceCCParams(const COptCCParams &params);
+    CScript &ReplaceCCParams(const COptCCParams &params);
 
     int64_t ReserveOutValue() const;
     int64_t ReserveOutValue(const CCurrencyState &currencyState) const; // with conversion from native for calculating vs. 0 when only native is known

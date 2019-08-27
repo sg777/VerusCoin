@@ -1762,6 +1762,10 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             return state.DoS(1, error("AcceptToMemoryPool: too many sigops %s, %d > %d", hash.ToString(), nSigOps, MAX_STANDARD_TX_SIGOPS),REJECT_NONSTANDARD, "bad-txns-too-many-sigops");
         }
 
+        CAmount nValueOut;
+        CAmount nFees;
+        double dPriority;
+
         CReserveTransactionDescriptor txDesc;
         CCurrencyState currencyState;
         if (!IsVerusActive())
@@ -1781,20 +1785,17 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             }
         }
 
-        CAmount nValueOut;
-        CAmount nFees;
-        double dPriority;
-
         nValueOut = tx.GetValueOut();
-        nFees = nValueIn-nValueOut;
 
         // need to fix GetPriority to incorporate reserve
         if (txDesc.IsValid() && currencyState.IsValid())
         {
+            nFees = txDesc.AllFeesAsNative(currencyState, currencyState.PriceInReserve());
             dPriority = view.GetPriority(tx, chainActive.Height(), &txDesc, &currencyState);
         }
         else
         {
+            nFees = nValueIn - nValueOut;
             dPriority = view.GetPriority(tx, chainActive.Height());
         }
 
@@ -1865,8 +1866,8 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             dFreeCount += nSize;
         }
 
-        // TODO:PBAAS - make sure this will not fail with exchanges, exports or imports
-        if (fRejectAbsurdFee && nFees > ::minRelayTxFee.GetFee(nSize) * 10000 && nFees > nValueOut/19) 
+        // TODO:PBAAS - make sure this will check any normal error case and not fail with exchanges, exports or imports
+        if (!txDesc.IsValid() && fRejectAbsurdFee && nFees > ::minRelayTxFee.GetFee(nSize) * 10000 && nFees > nValueOut/19) 
         {
             string errmsg = strprintf("absurdly high fees %s, %d > %d",
                                       hash.ToString(),
@@ -3475,8 +3476,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 CReserveTransactionDescriptor rtxd(tx, view, chainActive.LastTip()->GetHeight());
                 if (rtxd.IsValid())
                 {
-                    nFees += currencyState.ReserveToNative(rtxd.ReserveFees(), currencyState.ConversionPrice);
-                    nFees += rtxd.NativeFees();
+                    nFees += rtxd.AllFeesAsNative(currencyState, currencyState.ConversionPrice);
                 }
             }
         }

@@ -452,20 +452,18 @@ bool CScript::IsPayToCryptoCondition(uint32_t *ecode) const
     return false;
 }
 
-CScript CScript::ReplaceCCParams(const COptCCParams &params)
+CScript &CScript::ReplaceCCParams(const COptCCParams &params)
 {
     CScript subScript;
     std::vector<std::vector<unsigned char>> vParams;
     COptCCParams p;
-    if (!this->IsPayToCryptoCondition(&subScript, vParams, p) || p.evalCode != params.evalCode)
+    if (this->IsPayToCryptoCondition(&subScript, vParams, p) || p.evalCode != params.evalCode)
     {
-        return CScript();
+        // add the object to the end of the script
+        *this = subScript;
+        *this << params.AsVector() << OP_DROP;
     }
-
-    // add the object to the end of the script
-    subScript << params.AsVector() << OP_DROP;
-
-    return subScript;
+    return *this;
 }
 
 int64_t CScript::ReserveOutValue() const
