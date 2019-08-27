@@ -212,9 +212,9 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
 
     // determine the change in both supply and reserve and return the execution price in reserve by calculating it from
     // the actual conversion numbers
-    CAmount returnVal = (CReserveExchange::SATOSHIDEN * (newState.Supply - Supply)) / (newState.Reserve - Reserve);
+    CAmount returnVal = (CReserveExchange::SATOSHIDEN * (newState.Reserve - Reserve)) / (newState.Supply - Supply);
     printf("newState.Supply:%lu - Supply:%lu) / (newState.Reserve:%lu - Reserve:%lu == %lu\n", newState.Supply, Supply, newState.Reserve, Reserve, returnVal);
-    return (CReserveExchange::SATOSHIDEN * (newState.Supply - Supply)) / (newState.Reserve - Reserve);
+    return returnVal;
 }
 
 void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &rex, int32_t outputIndex, int32_t nHeight)
