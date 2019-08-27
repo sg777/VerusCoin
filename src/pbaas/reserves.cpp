@@ -212,8 +212,27 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
 
     // determine the change in both supply and reserve and return the execution price in reserve by calculating it from
     // the actual conversion numbers
-    CAmount returnVal = (CReserveExchange::SATOSHIDEN * (newState.Reserve - Reserve)) / (newState.Supply - Supply);
-    printf("newState.Supply:%lu - Supply:%lu) / (newState.Reserve:%lu - Reserve:%lu == %lu\n", newState.Supply, Supply, newState.Reserve, Reserve, returnVal);
+    CAmount returnVal;
+    CAmount supplyDelta = newState.Supply - Supply;
+    CAmount reserveDelta = newState.Reserve - Reserve;
+    
+    // must both be nonzero and have same sign
+    if (supplyDelta && reserveDelta && ((supplyDelta < 0 && reserveDelta < 0) || (supplyDelta > 0 && reserveDelta > 0)))
+    {
+        if (supplyDelta < 0)
+        {
+            supplyDelta = -supplyDelta;
+            reserveDelta = -reserveDelta;
+        }
+        returnVal = ((arith_uint256(CReserveExchange::SATOSHIDEN) * arith_uint256(newState.Reserve - Reserve)) / arith_uint256(newState.Supply - Supply)).GetLow64();
+    }
+    else
+    {
+        printf("Error: newState.Supply:%lu - Supply:%lu) / (newState.Reserve:%lu - Reserve:%lu == %lu\n", newState.Supply, Supply, newState.Reserve, Reserve, returnVal);
+        LogPrintf("Error: newState.Supply:%lu - Supply:%lu) / (newState.Reserve:%lu - Reserve:%lu == %lu\n", newState.Supply, Supply, newState.Reserve, Reserve, returnVal);
+        returnVal = 0;
+    }
+    
     return returnVal;
 }
 
@@ -787,13 +806,13 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             // native is only converted as needed, so the amount to convert is already correct irrespective of fees
             if (feesAsReserve)
             {
-                newState.ReserveIn += txDesc.reserveOutConverted;
-                newState.NativeIn += txDesc.nativeOutConverted + txDesc.NativeFees();
+                newState.ReserveIn += txDesc.reserveIn - txDesc.ReserveFees();
+                newState.NativeIn += txDesc.nativeIn;
             }
             else
             {
-                newState.ReserveIn += txDesc.reserveOutConverted + txDesc.ReserveFees();
-                newState.NativeIn += txDesc.nativeOutConverted;
+                newState.ReserveIn += txDesc.reserveIn;
+                newState.NativeIn += txDesc.nativeIn - txDesc.NativeFees();
             }
             
             if (pConversionTx)
