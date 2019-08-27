@@ -3361,6 +3361,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     auto consensusBranchId = CurrentEpochBranchId(pindex->GetHeight(), Params().GetConsensus());
     bool isVerusActive = IsVerusActive();
 
+    // on non-Verus reserve chains, we'll want a block-wide currency state for calculations
+    // TODO:PBAAS - add the ability to pay native fees in reserve
+    CReserveTransactionDescriptor rtxd;
+    CCoinbaseCurrencyState currencyState;
+
     std::vector<PrecomputedTransactionData> txdata;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
     for (unsigned int i = 0; i < block.vtx.size(); i++)
@@ -3374,7 +3379,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                              REJECT_INVALID, "bad-blk-sigops");
         //fprintf(stderr,"ht.%d vout0 t%u\n",pindex->GetHeight(),tx.nLockTime);
         CPBaaSNotarization tpbn;
-        bool isBlockBoundSmartTx = (IsBlockBoundTransaction(tx, block.vtx[0].GetHash()));
+        bool isBlockBoundTx = (IsBlockBoundTransaction(tx, block.vtx[0].GetHash()));
 
         if (!tx.IsMint())
         {
@@ -3451,28 +3456,37 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         
         txdata.emplace_back(tx);
 
-        // on non-Verus chains, if this is a reserve transaction, calculate reserve fees as native
-        // TODO:PBAAS - we need to add the ability to pay native fees in reserve
-        CReserveTransactionDescriptor rtxd;
-        CCoinbaseCurrencyState currencyState;
-
         if (!isVerusActive)
         {
-            currencyState = CCoinbaseCurrencyState(block.vtx[0]);
-            if (!currencyState.IsValid())
+            // we get the currency state, and if reserve, add any appropriate converted fees that are the difference between
+            // reserve in and native in converted to reserve and native out on the currency state output.
+            // TODO:PBAAS we currently convert to native, support converting to reserve
+            if (tx.IsCoinBase())
             {
-                return state.DoS(100, error("ConnectBlock(): invalid currency state"), REJECT_INVALID, "bad-blk-currency");
+                int outIdx;
+                currencyState = CCoinbaseCurrencyState(block.vtx[0], &outIdx);
+                if (!currencyState.IsValid())
+                {
+                    return state.DoS(100, error("ConnectBlock(): invalid currency state"), REJECT_INVALID, "bad-blk-currency");
+                }
             }
-            CReserveTransactionDescriptor rtxd(tx, view, chainActive.LastTip()->GetHeight());
-            if (rtxd.IsValid())
+            else
             {
-                nFees += currencyState.ReserveToNative(rtxd.ReserveFees(), currencyState.ConversionPrice);
+                CReserveTransactionDescriptor rtxd(tx, view, chainActive.LastTip()->GetHeight());
+                if (rtxd.IsValid())
+                {
+                    nFees += currencyState.ReserveToNative(rtxd.ReserveFees(), currencyState.ConversionPrice);
+                    nFees += rtxd.NativeFees();
+                }
             }
         }
 
-        if (!tx.IsCoinBase() && (!isBlockBoundSmartTx || !CPBaaSNotarization(tx).IsValid()))
+        if (!tx.IsCoinBase())
         {
-            nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime) - tx.GetValueOut();
+            if (!rtxd.IsValid())
+            {
+                nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime) - tx.GetValueOut();
+            }
             sum += interest;
             
             std::vector<CScriptCheck> vChecks;

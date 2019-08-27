@@ -517,7 +517,22 @@ public:
         ::FromVector(asVector, *this);
     }
 
-    CCrossChainImport(const CTransaction &tx);
+    CCrossChainImport(const CTransaction &tx)
+    {
+        for (auto out : tx.vout)
+        {
+            COptCCParams p;
+            if (IsPayToCryptoCondition(out.scriptPubKey, p))
+            {
+                // always take the first for now
+                if (p.evalCode == EVAL_CROSSCHAIN_IMPORT && p.vData.size())
+                {
+                    FromVector(p.vData[0], *this);
+                }
+            }
+        }
+    }
+
 
     ADD_SERIALIZE_METHODS;
 

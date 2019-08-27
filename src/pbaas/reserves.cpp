@@ -120,25 +120,19 @@ UniValue CCurrencyState::ToUniValue() const
     return ret;
 }
 
-CCoinbaseCurrencyState::CCoinbaseCurrencyState(const CTransaction &tx)
+CCoinbaseCurrencyState::CCoinbaseCurrencyState(const CTransaction &tx, int *pOutIdx)
 {
-    bool currencyStateFound = false;
-    for (auto out : tx.vout)
+    int localIdx;
+    int &i = pOutIdx ? *pOutIdx : localIdx;
+    for (i = 0; i < tx.vout.size(); i++)
     {
         COptCCParams p;
-        if (IsPayToCryptoCondition(out.scriptPubKey, p))
+        if (IsPayToCryptoCondition(tx.vout[i].scriptPubKey, p))
         {
-            if (p.evalCode == EVAL_CURRENCYSTATE)
+            if (p.evalCode == EVAL_CURRENCYSTATE && p.vData.size())
             {
-                if (currencyStateFound)
-                {
-                    flags &= !VALID;        // invalidate
-                }
-                else
-                {
-                    FromVector(p.vData[0], *this);
-                    currencyStateFound = true;
-                }
+                FromVector(p.vData[0], *this);
+                break;
             }
         }
     }

@@ -1387,7 +1387,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             newConversionOutputTx.vout.clear();
             conversionInputs.clear();
 
-            // add one placeholder for txCoinbase output and all correct inputs and outputs for conversion to the transaction - update currency deltas
+            // add one placeholder for txCoinbase output as input and all correct inputs and outputs for conversion to the transaction - update currency deltas
             newConversionOutputTx.vin.resize(1);
             for (auto fill : reserveFills)
             {
@@ -1455,19 +1455,15 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         {
             if (newConversionOutputTx.vout.size())
             {
-                CAmount nativeOut = 0;
-                CAmount reserveOut = 0;
                 CTransaction convertTx(newConversionOutputTx);
-                nativeOut = convertTx.GetValueOut();
-                reserveOut = convertTx.GetReserveValueOut(currencyState);
 
-                currencyStateOut.nValue = nativeOut;
+                assert(convertTx.GetValueOut() < currencyState.ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice));
+
+                currencyStateOut.nValue = convertTx.GetValueOut();
 
                 COptCCParams p;
                 currencyStateOut.scriptPubKey.IsPayToCryptoCondition(p);
-                CCoinbaseCurrencyState convOutState(p.vData[0]);
-                convOutState.ReserveOut.nValue = reserveOut;
-                p.vData[0] = convOutState.AsVector();
+                p.vData[0] = currencyState.AsVector();
                 currencyStateOut.scriptPubKey.ReplaceCCParams(p);
 
                 // the coinbase is not finished, store index placeholder here now and fixup hash later

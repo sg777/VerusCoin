@@ -409,6 +409,11 @@ public:
     {
         return flags & CCurrencyState::VALID;
     }
+
+    bool IsReserve() const
+    {
+        return flags & CCurrencyState::ISRESERVE;
+    }
 };
 
 class CCoinbaseCurrencyState : public CCurrencyState
@@ -436,7 +441,7 @@ public:
         ::FromVector(asVector, *this);
     }
 
-    CCoinbaseCurrencyState(const CTransaction &tx);
+    CCoinbaseCurrencyState(const CTransaction &tx, int *pOutIdx=NULL);
 
     ADD_SERIALIZE_METHODS;
 

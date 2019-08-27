@@ -470,22 +470,6 @@ CServiceReward::CServiceReward(const CTransaction &tx, bool validate)
     }
 }
 
-CCrossChainImport::CCrossChainImport(const CTransaction &tx)
-{
-    for (auto out : tx.vout)
-    {
-        COptCCParams p;
-        if (IsPayToCryptoCondition(out.scriptPubKey, p))
-        {
-            // always take the first for now
-            if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
-            {
-                FromVector(p.vData[0], *this);
-            }
-        }
-    }
-}
-
 CCrossChainExport::CCrossChainExport(const CTransaction &tx)
 {
     for (auto out : tx.vout)

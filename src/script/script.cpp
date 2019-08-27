@@ -493,7 +493,7 @@ int64_t CScript::ReserveOutValue() const
             case EVAL_RESERVE_TRANSFER:
             {
                 CReserveTransfer rt(p.vData[0]);
-                return rt.nValue;
+                return rt.nValue + rt.nFees;
                 break;
             }
             case EVAL_RESERVE_EXCHANGE:
@@ -523,6 +523,12 @@ int64_t CScript::ReserveOutValue(const CCurrencyState &currencyState) const
             {
                 CReserveOutput ro(p.vData[0]);
                 return ro.nValue;
+                break;
+            }
+            case EVAL_CURRENCYSTATE:
+            {
+                CCoinbaseCurrencyState cbcs(p.vData[0]);
+                return cbcs.ReserveOut.nValue;
                 break;
             }
             case EVAL_RESERVE_TRANSFER:

@@ -595,7 +595,22 @@ CAmount CCoinsViewCache::GetValueIn(int32_t nHeight,int64_t *interestp,const CTr
         const CCoins* coins = AccessCoins(tx.vin[i].prevout.hash);
         if (coins && coins->IsAvailable(tx.vin[i].prevout.n))
         {
-            value = coins->vout[tx.vin[i].prevout.n].nValue;
+            // if we are a PBaaS chain with a coinbase currency state input, all non-shielded inputs are effectively considered burned, since this must be the
+            // block's conversion transaction and they are assumed to all be converted
+            COptCCParams p;
+            if (!_IsVerusActive() && coins->fCoinBase && coins->vout[tx.vin[i].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.evalCode == EVAL_CURRENCYSTATE)
+            {
+                CCoinbaseCurrencyState cbcs;
+                if (p.vData.size() && (cbcs = CCoinbaseCurrencyState(p.vData[0])).IsValid() && cbcs.IsReserve())
+                {
+                    nResult = coins->vout[tx.vin[i].prevout.n].nValue;
+                    break;
+                }
+            }
+            else
+            {
+                value = coins->vout[tx.vin[i].prevout.n].nValue;
+            }
         }
         else
         {
@@ -626,7 +641,7 @@ CAmount CCoinsViewCache::GetValueIn(int32_t nHeight,int64_t *interestp,const CTr
 
 CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& tx) const
 {
-    CAmount value, nResult = 0;
+    CAmount nResult = 0;
 
     /* we don't support this coin import, so we should add reserve import support and uncomment
     if ( tx.IsCoinImport() )
@@ -639,17 +654,34 @@ CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& 
 
     for (unsigned int i = 0; i < tx.vin.size(); i++)
     {
-        value = 0;
         const CCoins* coins = AccessCoins(tx.vin[i].prevout.hash);
         if (coins && coins->IsAvailable(tx.vin[i].prevout.n))
         {
             COptCCParams p;
-            if (::IsPayToCryptoCondition(coins->vout[tx.vin[i].prevout.n].scriptPubKey, p) && p.evalCode == EVAL_RESERVE_OUTPUT && p.vData.size())
+            if (::IsPayToCryptoCondition(coins->vout[tx.vin[i].prevout.n].scriptPubKey, p))
             {
-                CReserveOutput ro(p.vData[0]);
-                if (ro.IsValid())
+                if (p.evalCode == EVAL_RESERVE_OUTPUT)
                 {
-                    value = ro.nValue;
+                    nResult += coins->vout[tx.vin[i].prevout.n].scriptPubKey.ReserveOutValue();
+                }
+                else if (!_IsVerusActive() && coins->fCoinBase && p.evalCode == EVAL_CURRENCYSTATE)
+                {
+                    CCoinbaseCurrencyState cbcs;
+                    if (p.vData.size() && (cbcs = CCoinbaseCurrencyState(p.vData[0])).IsValid() && cbcs.IsReserve())
+                    {
+                        nResult = cbcs.ReserveOut.nValue;
+                        break;
+                    }
+                }
+                else if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+                {
+                    // if we spend an import, provable amount in comes from the import transaction itself
+                    CCrossChainImport cci;
+                    if (p.vData.size() && CCrossChainImport(p.vData[0]).IsValid() && (cci = CCrossChainImport(tx)).IsValid())
+                    {
+                        nResult = cci.nValue;
+                        break;
+                    }
                 }
             }
         }
@@ -657,8 +689,6 @@ CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& 
         {
             return 0;
         }
-
-        nResult += value;
     }
     return nResult;
 }
