@@ -776,6 +776,11 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 CBlock block;
                 assert(nHeight > 1);
                 currencyState = ConnectedChains.GetCurrencyState(nHeight - 1);
+                currencyState.Fees = 0;
+                currencyState.NativeIn = 0;
+                currencyState.ReserveIn = 0;
+                currencyState.ReserveOut.nValue = 0;
+
                 if (!currencyState.IsValid())
                 {
                     // we should be able to get a valid currency state, if not, fail
