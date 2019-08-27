@@ -578,7 +578,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
         conversionInputs.push_back(CInputDescriptor(ptx->vout[indexRex.first].scriptPubKey, ptx->vout[indexRex.first].nValue, CTxIn()));
 
         // if we should emit a reserve transfer or normal reserve output
-        if (indexRex.second.flags && indexRex.second.SEND_OUTPUT)
+        if (indexRex.second.flags & indexRex.second.SEND_OUTPUT)
         {
             assert(indexRex.second.flags & indexRex.second.TO_RESERVE);
             cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
