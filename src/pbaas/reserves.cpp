@@ -637,6 +637,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     }
                     // fees should be zero, but include them in the check anyways
                     exportFee = curTransfer.nValue;
+                    // if not pre-convert, it will be added to reserve in -- presubtract
+                    if (!(curTransfer.flags & curTransfer.PRECONVERT))
+                    {
+                        reserveIn -= exportFee;
+                    }
                 }
 
                 CAmount expectedFee = curTransfer.CalculateFee(curTransfer.flags, curTransfer.nValue + curTransfer.nFees, chainDef);
@@ -739,7 +744,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
     }
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
     CCrossChainExport ccx(chainDef.GetChainID(), numTransfers, reserveIn - transferFees, transferFees);
-    if (ccx.CalculateExportFee() < exportFee)
+    if (ccx.CalculateExportFee() < exportFee || reserveIn < 0)
     {
         printf("%s: Too much fee taken by export\n", __func__);
         LogPrintf("%s: Too much fee taken by export\n", __func__);
