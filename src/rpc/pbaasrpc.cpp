@@ -457,7 +457,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             pk = CPubKey(ParseHex(CC.CChexstr));
 
-            if (rtxd.ReserveFees() != (ccx.totalFees - exportFees))
+            if (rtxd.ReserveFees() - rtxd.reserveConversionFees != (ccx.totalFees - exportFees))
             {
                 LogPrintf("%s: ERROR - import does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
                 printf("%s: ERROR - import does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
