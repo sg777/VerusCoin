@@ -459,8 +459,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             if (rtxd.ReserveFees() != (ccx.totalFees - exportFees))
             {
-                LogPrintf("%s: ERROR - import does not match amount, totalImport=%lu, importFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, ccx.totalAmount + ccx.totalFees, importFees, ccx.totalAmount, ccx.totalFees);
-                printf("%s: ERROR - import does not match amount, totalImport=%lu, importFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, ccx.totalAmount + ccx.totalFees, importFees, ccx.totalAmount, ccx.totalFees);
+                LogPrintf("%s: ERROR - import does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
+                printf("%s: ERROR - import does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
             }
 
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
