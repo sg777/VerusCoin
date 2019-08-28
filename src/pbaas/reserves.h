@@ -104,6 +104,8 @@ public:
 
     UniValue ToUniValue() const;
 
+    static CAmount CalculateFee(uint32_t flags, CAmount transferTotal, const CPBaaSChainDefinition &chainDef);
+
     bool IsValid() const
     {
         return CReserveOutput::IsValid() && (nFees > 0 || flags & FEE_OUTPUT) && !destination.IsNull();

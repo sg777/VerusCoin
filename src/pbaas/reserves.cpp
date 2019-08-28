@@ -38,6 +38,23 @@ UniValue CReserveTransfer::ToUniValue() const
     return ret;
 }
 
+CAmount CReserveTransfer::CalculateFee(uint32_t flags, CAmount transferTotal, const CPBaaSChainDefinition &chainDef)
+{
+    // determine fee for this send
+    if (flags & FEE_OUTPUT)
+    {
+        return 0;
+    }
+    CAmount transferFee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
+
+    // take conversion fees for preconvert
+    if (flags & CReserveTransfer::PRECONVERT)
+    {
+        transferFee = CReserveTransactionDescriptor::CalculateConversionFee(transferTotal);
+    }
+    return transferFee;
+}
+
 UniValue CReserveExchange::ToUniValue() const
 {
     UniValue ret(((CReserveOutput *)this)->ToUniValue());
@@ -586,6 +603,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
     reserveOutConverted = 0;
     reserveConversionFees = 0;
     numTransfers = 0;
+    CAmount transferFees = 0;
+    CAmount exportFee = 0;
     bool isVerusActive = IsVerusActive();
 
     CCcontract_info CC;
@@ -602,27 +621,30 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
             if (curTransfer.IsValid())
             {
                 CTxOut newOut;
-                numTransfers += 1;
+                numTransfers++;
 
                 if (curTransfer.flags & curTransfer.FEE_OUTPUT)
                 {
+                    numTransfers--;
                     // fee comes after everything else, so we should have all numbers ready to calculate
-                    // check to be sure that the fee output matches the import fee expected
-                    if (i != exportObjects.size() - 1)
+                    // check to be sure that the total fee output matches the import fee expected
+                    if (i != exportObjects.size() - 1 || curTransfer.nFees)
                     {
                         // invalid
                         printf("%s: Error with fee output transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         LogPrintf("%s: Error with fee output transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         return false;
                     }
-                    CCrossChainExport ccx(chainID, numTransfers - 1, reserveOut, ReserveFees());
-                    if (ccx.CalculateExportFee() < curTransfer.nValue || curTransfer.nFees < 0)
-                    {
-                        // invalid
-                        printf("%s: Too much fee taken for export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                        LogPrintf("%s: Too much fee taken for export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                        return false;
-                    }
+                    // fees should be zero, but include them in the check anyways
+                    exportFee = curTransfer.nValue;
+                }
+
+                CAmount expectedFee = curTransfer.CalculateFee(curTransfer.flags, curTransfer.nValue + curTransfer.nFees, chainDef);
+                if (curTransfer.nFees < expectedFee)
+                {
+                    printf("%s: Too little fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                    LogPrintf("%s: Too little fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                    return false;
                 }
 
                 if ((curTransfer.flags & curTransfer.CONVERT) && !(curTransfer.flags & curTransfer.PRECONVERT))
@@ -634,8 +656,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
                     CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
 
+                    transferFees += curTransfer.nFees;
                     reserveConversionFees += CalculateConversionFee(curTransfer.nValue);
-                    reserveIn += curTransfer.nValue;
+                    reserveIn += curTransfer.nValue + curTransfer.nFees;
                     reserveOutConverted += curTransfer.nValue - reserveConversionFees;
                     reserveOut += curTransfer.nValue - reserveConversionFees;
                     newOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
@@ -652,6 +675,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                         LogPrintf("%s: Error insufficient conversion fee in transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         return false;
                     }
+                    transferFees += curTransfer.nFees;
                     reserveIn += curTransfer.nFees;
                     nativeIn += nativeConverted;
                     nativeOut += nativeConverted;
@@ -668,6 +692,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     CAmount fees = curTransfer.DEFAULT_PER_STEP_FEE << 1;
                     CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, curTransfer.destination);
 
+                    transferFees += curTransfer.nFees;
                     reserveIn += curTransfer.nFees + curTransfer.nValue;
                     reserveOut += curTransfer.nValue;
                     newOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt);                    
@@ -687,6 +712,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
                         newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
 
+                        transferFees += curTransfer.nFees;
                         reserveIn += curTransfer.nFees + curTransfer.nValue;
                         reserveOut += curTransfer.nValue;
                     }
@@ -695,6 +721,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                         // we are creating an import for the Verus chain to spend from a PBaaS account of a reserve currency, move the value specified, which will spend from
                         // the RESERVE_DEPOSIT outputs
                         newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(curTransfer.destination));
+
+                        transferFees += curTransfer.nFees;
                         reserveIn += curTransfer.nFees + curTransfer.nValue;
                         reserveOut += curTransfer.nValue;
                     }
@@ -708,6 +736,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                 return false;
             }
         }
+    }
+    // double check that the export fee taken as the fee output matches the export fee that should have been taken
+    CCrossChainExport ccx(chainDef.GetChainID(), numTransfers, reserveIn - transferFees, transferFees);
+    if (ccx.CalculateExportFee() < exportFee)
+    {
+        printf("%s: Too much fee taken by export\n", __func__);
+        LogPrintf("%s: Too much fee taken by export\n", __func__);
+        return false;
     }
     return true;
 }

@@ -2467,8 +2467,6 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             static const arith_uint256 bigsatoshi(CReserveExchange::SATOSHIDEN);
             arith_uint256 feeRate(chainDef.launchFee);
 
-            // if preconvert and there is a launch fee, first subtract the launch fee. for now, this does create a bias, in that
-            // not subtrac
             if (chainDef.launchFee)
             {
                 CAmount launchFee;
@@ -2486,15 +2484,10 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 outputs.push_back(CRecipient({GetScriptForDestination(feeOutAddr), launchFee, false}));
             }
 
-            if (subtractFee)
+            if (!subtractFee)
             {
-                transferFee = CReserveTransactionDescriptor::CalculateConversionFee(amount);
-                amount -= transferFee;
-            }
-            else
-            {
-                // convert exactly the specified amount and calculate the fee that would make the conversion correct
-                transferFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
+                // add the fee amount that will make the conversion correct
+                amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
             }
         }
 
@@ -2502,6 +2495,9 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Must send more than twice the cost of the fee. Fee for this transaction is " + ValueFromAmount(transferFee).get_str());
         }
+
+        transferFee = CReserveTransfer::CalculateFee(flags, amount, chainDef);
+        amount -= transferFee;
 
         // create the transfer object
         CReserveTransfer rt(flags, amount, transferFee, kID);
