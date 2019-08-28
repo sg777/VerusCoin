@@ -1049,7 +1049,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 dPriority += (double)nValueIn * 1000;  // flat multiplier
             } else {
                 // separate limit orders to be added later, we add them at the end, failed fill or kills are normal transactions, consider them reserve txs
-                if (isReserve && rtxd.IsReserveExchange() && rtxd.IsLimit() && !rtxd.IsFillOrKillFail())
+                if (isReserve && rtxd.IsReserveExchange() && rtxd.IsLimit())
                 {
                     // if we might expire, refresh and check again
                     if (rtxd.IsFillOrKill())

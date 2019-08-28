@@ -21,6 +21,7 @@
 using boost::multiprecision::cpp_dec_float_50;
 class CCoinsViewCache;
 class CInputDescriptor;
+class CBaseChainObject;
 
 // reserve output is a special kind of token output that does not carry it's identifier, as it
 // is always assumed to be the reserve currency of the current chain.
@@ -263,7 +264,10 @@ public:
     void AddReserveOutput(CReserveOutput &ro)
     {
         flags |= IS_RESERVE;
-        reserveOut += ro.nValue;
+        if (!(flags & IS_IMPORT))
+        {
+            reserveOut += ro.nValue;
+        }
     }
 
     // is boolean, since it can fail, which would render the tx invalid
@@ -272,11 +276,15 @@ public:
     void AddReserveTransfer(CReserveTransfer &rt)
     {
         flags |= IS_RESERVE;
-        reserveOut += rt.nValue;
-        numTransfers++;
+        if (!(flags & IS_IMPORT))
+        {
+            reserveOut += rt.nValue;
+            numTransfers++;
+        }
     }
 
     CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, CAmount exchangeRate=0, const CCurrencyState *pCurrencyState=NULL) const;
+    bool AddReserveTransferImportOutputs(const CPBaaSChainDefinition &chainDef, const std::vector<CBaseChainObject *> &exportObjects, std::vector<CTxOut> &vOutputs);
 };
 
 class CCurrencyState

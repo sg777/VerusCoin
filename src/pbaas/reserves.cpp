@@ -305,9 +305,12 @@ void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &r
         else
         {
             numBuys += 1;
-            reserveConversionFees += fee;
-            reserveOutConverted += rex.nValue - fee;
-            reserveOut += rex.nValue - fee;
+            if (!(flags & IS_IMPORT))
+            {
+                reserveConversionFees += fee;
+                reserveOutConverted += rex.nValue - fee;
+                reserveOut += rex.nValue - fee;
+            }
         }
     }                        
     vRex.push_back(std::make_pair(outputIndex, rex));
@@ -421,7 +424,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
-
                     AddReserveExchange(rex, i, nHeight);
 
                     if (IsReject())
@@ -451,7 +453,35 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         chainObjs[0]->objectType == CHAINOBJ_TRANSACTION &&
                         chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF))
                     {
-                        ccx = CCrossChainExport(((CChainObject<CTransaction> *)chainObjs[0])->object);
+                        CTransaction &exportTx = ((CChainObject<CTransaction> *)chainObjs[0])->object;
+                        std::vector<CBaseChainObject *> exportTransfers;
+                        if ((ccx = CCrossChainExport(exportTx)).IsValid() && 
+                            exportTx.vout.back().scriptPubKey.IsOpReturn() &&
+                            (exportTransfers = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey)).size() &&
+                            exportTransfers[0]->objectType == CHAINOBJ_RESERVETRANSFER)
+                        {
+                            // an import transaction is built from the export list
+                            // we can rebuild it and confirm that it matches exactly
+                            // we can also subtract all pre-converted reserve from input
+                            // and verify that the output matches the proper conversion
+
+                            // get the chain definition of the chain we are importing from
+                            std::vector<CTxOut> checkOutputs;
+
+                            if (!AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), exportTransfers, checkOutputs))
+                            {
+                                flags |= IS_REJECT;
+                            }
+                            // TODO:PBAAS - hardening - validate all the outputs we got back as the same as what is in the transaction
+                        }
+                        else
+                        {
+                            flags |= IS_REJECT;
+                        }
+                    }
+                    else
+                    {
+                        flags |= IS_REJECT;
                     }
                     DeleteOpRetObjects(chainObjs);
                 }
@@ -462,13 +492,12 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 case EVAL_CROSSCHAIN_EXPORT:
                 {
                     // cross chain export is incompatible with reserve exchange outputs
-                    if (IsReserveExchange())
+                    if (IsReserveExchange() || (flags & IS_IMPORT))
                     {
                         flags |= IS_REJECT;
                         return;
                     }
                     flags |= IS_EXPORT;
-                    return;
                 }
                 break;
             }
@@ -543,6 +572,142 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         flags |= IS_VALID;
         ptx = &tx;
     }
+}
+
+bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaSChainDefinition &chainDef, const std::vector<CBaseChainObject *> &exportObjects, std::vector<CTxOut> &vOutputs)
+{
+    // we do not change native in or conversion fees, but we define all of these members
+    nativeIn = 0;
+    nativeOut = 0;
+    reserveIn = 0;
+    reserveOut = 0;
+    reserveOutConverted = 0;
+    reserveConversionFees = 0;
+    numTransfers = 0;
+    bool isVerusActive = IsVerusActive();
+
+    CCcontract_info CC;
+    CCcontract_info *cp;
+    CPubKey pk;
+    uint160 chainID = chainDef.GetChainID();
+
+    for (int i = 0; i < exportObjects.size(); i++)
+    {
+        if (exportObjects[i]->objectType == CHAINOBJ_RESERVETRANSFER)
+        {
+            CReserveTransfer &curTransfer = ((CChainObject<CReserveTransfer> *)exportObjects[i])->object;
+
+            if (curTransfer.IsValid())
+            {
+                CTxOut newOut;
+                numTransfers += 1;
+
+                if (curTransfer.flags & curTransfer.FEE_OUTPUT)
+                {
+                    // fee comes after everything else, so we should have all numbers ready to calculate
+                    // check to be sure that the fee output matches the import fee expected
+                    if (i != exportObjects.size() - 1)
+                    {
+                        // invalid
+                        printf("%s: Error with fee output transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                        LogPrintf("%s: Error with fee output transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                        return false;
+                    }
+                    CCrossChainExport ccx(chainID, numTransfers - 1, reserveOut, ReserveFees());
+                    if (ccx.CalculateExportFee() < curTransfer.nValue || curTransfer.nFees < 0)
+                    {
+                        // invalid
+                        printf("%s: Too much fee taken for export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                        LogPrintf("%s: Too much fee taken for export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                        return false;
+                    }
+                }
+
+                if ((curTransfer.flags & curTransfer.CONVERT) && !(curTransfer.flags & curTransfer.PRECONVERT))
+                {
+                    // emit a reserve exchange output
+                    cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
+                    pk = CPubKey(ParseHex(CC.CChexstr));
+
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
+                    CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
+
+                    reserveConversionFees += CalculateConversionFee(curTransfer.nValue);
+                    reserveIn += curTransfer.nValue;
+                    reserveOutConverted += curTransfer.nValue - reserveConversionFees;
+                    reserveOut += curTransfer.nValue - reserveConversionFees;
+                    newOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
+                }
+                else if (curTransfer.flags & curTransfer.PRECONVERT)
+                {
+                    // output the amount, minus conversion fees, and generate a normal output that spends the net input of the import as native
+                    // difference between all potential value out and what we took unconverted as a fee in our fee output
+                    CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue, chainDef.conversion);
+                    if (curTransfer.nFees < CalculateConversionFee(curTransfer.nValue + curTransfer.nFees))
+                    {
+                        // invalid
+                        printf("%s: Error insufficient conversion fee in transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                        LogPrintf("%s: Error insufficient conversion fee in transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                        return false;
+                    }
+                    reserveIn += curTransfer.nFees;
+                    nativeIn += nativeConverted;
+                    nativeOut += nativeConverted;
+                    newOut = CTxOut(nativeConverted, GetScriptForDestination(curTransfer.destination));
+                }
+                else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
+                {
+                    // generate a reserve transfer back to the source chain if we have at least double the fee, otherwise leave it on
+                    // this chain to be claimed
+                    cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+                    pk = CPubKey(ParseHex(CC.CChexstr));
+
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
+                    CAmount fees = curTransfer.DEFAULT_PER_STEP_FEE << 1;
+                    CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, curTransfer.destination);
+
+                    reserveIn += curTransfer.nFees + curTransfer.nValue;
+                    reserveOut += curTransfer.nValue;
+                    newOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt);                    
+                }
+                else
+                {
+                    // if Verus is active, we are creating a reserve import for a PBaaS reserve chain
+                    if (isVerusActive)
+                    {
+                        // generate a reserve output of the amount indicated, less fees
+                        // emit a reserve exchange output
+                        // we will send using a reserve output, fee will be paid by converting from reserve
+                        cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
+                        CReserveOutput ro = CReserveOutput(CReserveExchange::VALID, curTransfer.nValue);
+
+                        newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
+
+                        reserveIn += curTransfer.nFees + curTransfer.nValue;
+                        reserveOut += curTransfer.nValue;
+                    }
+                    else
+                    {
+                        // we are creating an import for the Verus chain to spend from a PBaaS account of a reserve currency, move the value specified, which will spend from
+                        // the RESERVE_DEPOSIT outputs
+                        newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(curTransfer.destination));
+                        reserveIn += curTransfer.nFees + curTransfer.nValue;
+                        reserveOut += curTransfer.nValue;
+                    }
+                }
+                vOutputs.push_back(newOut);
+            }
+            else
+            {
+                printf("%s: Invalid reserve transfer on export\n", __func__);
+                LogPrintf("%s: Invalid reserve transfer on export\n", __func__);
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, CAmount exchangeRate, const CCurrencyState *pCurrencyState) const
