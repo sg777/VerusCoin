@@ -675,13 +675,6 @@ CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& 
                         break;
                     }
                 }
-                else if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
-                {
-                    // if we spend an import, the amount in comes from the import transaction itself
-                    CReserveTransactionDescriptor rtxd = CReserveTransactionDescriptor(tx, *this, nHeight);
-                    nResult = rtxd.reserveIn;
-                    break;
-                }
             }
         }
         else
@@ -773,27 +766,14 @@ double CCoinsViewCache::GetPriority(const CTransaction &tx, int nHeight, const C
         assert(coins);
         if (!coins->IsAvailable(txin.prevout.n)) continue;
         if (coins->nHeight < nHeight) {
-            if (currencyState && desc)
-            {
-                if (coins->nHeight < nHeight) {
-                    double confs = nHeight - coins->nHeight;
-                    CAmount nativeVal = coins->vout[txin.prevout.n].nValue;
-                    CAmount reserveVal = desc->ReserveFees();
-                    if (nativeVal)
-                    {
-                        dResult += nativeVal * confs;
-                    }
-                    if (reserveVal)
-                    {
-                        dResult += currencyState->ReserveToNative(reserveVal) * confs;
-                    }
-                }
-            }
-            else
-            {
-                dResult += coins->vout[txin.prevout.n].nValue * (nHeight-coins->nHeight);
-            }
+            dResult += coins->vout[txin.prevout.n].nValue * (nHeight-coins->nHeight);
         }
+    }
+
+    // should at least get an average confs and do better than this
+    if (currencyState && desc)
+    {
+        dResult += desc->reserveOut;
     }
 
     return tx.ComputePriority(dResult);
