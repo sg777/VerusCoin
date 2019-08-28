@@ -1476,8 +1476,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             coinbaseTx.vout[cbOutIdx] = currencyStateOut;
 
             currencyStateOut.scriptPubKey.IsPayToCryptoCondition(p);
-            printf("Source currency state %s\n", currencyState.ToUniValue().write().c_str());
-            printf("Cross check currency state %s\n", CCoinbaseCurrencyState(p.vData[0]).ToUniValue().write().c_str());
+            printf("Currency state %s\n", currencyState.ToUniValue().write(true, 2).c_str());
             cbOutIdx++;
         }
 
