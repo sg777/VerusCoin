@@ -232,7 +232,7 @@ public:
         nativeConversionFees(0),                // non-zero only if there is a conversion, stored vs. calculated to get exact number with each calculated seperately
         reserveConversionFees(0)  {}
 
-    CReserveTransactionDescriptor(const CTransaction &tx, CCoinsViewCache &view, int32_t nHeight);
+    CReserveTransactionDescriptor(const CTransaction &tx, const CCoinsViewCache &view, int32_t nHeight);
 
     bool IsReject() const { return flags & IS_REJECT; }
     bool IsValid() const { return flags & IS_VALID && !IsReject(); }

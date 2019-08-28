@@ -339,7 +339,7 @@ CAmount CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyState &cu
 /*
  * Checks all structural aspects of the reserve part of a transaction that may have reserve inputs and/or outputs
  */
-CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction &tx, CCoinsViewCache &view, int32_t nHeight) :
+CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction &tx, const CCoinsViewCache &view, int32_t nHeight) :
         flags(0),
         ptx(NULL),
         numBuys(0),
@@ -524,6 +524,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     {
         int64_t interest;
         CAmount nValueIn = 0;
+
+        if (!(flags & IS_IMPORT))
         {
             LOCK2(cs_main, mempool.cs);
 

@@ -666,6 +666,8 @@ CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& 
                 }
                 else if (!_IsVerusActive() && coins->fCoinBase && p.evalCode == EVAL_CURRENCYSTATE)
                 {
+                    // if spends currency state, all input comes from that
+                    // rest is burned
                     CCoinbaseCurrencyState cbcs;
                     if (p.vData.size() && (cbcs = CCoinbaseCurrencyState(p.vData[0])).IsValid() && cbcs.IsReserve())
                     {
@@ -675,13 +677,10 @@ CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& 
                 }
                 else if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
                 {
-                    // if we spend an import, provable amount in comes from the import transaction itself
-                    CCrossChainImport cci;
-                    if (p.vData.size() && CCrossChainImport(p.vData[0]).IsValid() && (cci = CCrossChainImport(tx)).IsValid())
-                    {
-                        nResult = cci.nValue;
-                        break;
-                    }
+                    // if we spend an import, the amount in comes from the import transaction itself
+                    CReserveTransactionDescriptor rtxd = CReserveTransactionDescriptor(tx, *this, nHeight);
+                    nResult = rtxd.reserveIn;
+                    break;
                 }
             }
         }
@@ -779,14 +778,14 @@ double CCoinsViewCache::GetPriority(const CTransaction &tx, int nHeight, const C
                 if (coins->nHeight < nHeight) {
                     double confs = nHeight - coins->nHeight;
                     CAmount nativeVal = coins->vout[txin.prevout.n].nValue;
-                    CAmount reserveVal = coins->vout[txin.prevout.n].ReserveOutValue();
+                    CAmount reserveVal = desc->ReserveFees();
                     if (nativeVal)
                     {
                         dResult += nativeVal * confs;
                     }
                     if (reserveVal)
                     {
-                        dResult += reserveVal * confs;
+                        dResult += currencyState->ReserveToNative(reserveVal) * confs;
                     }
                 }
             }
