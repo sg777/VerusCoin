@@ -53,7 +53,8 @@ CC *MakeCCcond0(uint8_t evalcode)
 {
     std::vector<CC*> pks;
     CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
-    return CCNewThreshold(1, {condCC});
+    CC *Sig = CCNewThreshold(0, pks);
+    return CCNewThreshold(2, {condCC, Sig});
 }
 
 CTxOut MakeCC1vout(uint8_t evalcode,CAmount nValue,CPubKey pk)

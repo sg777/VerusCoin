@@ -97,10 +97,9 @@ CC *CCcond1(uint8_t evalcode,CPubKey pk)
     return CCNewThreshold(2, {condCC, Sig});
 }
 
-CC *CCcond0(uint8_t evalcode, CPubKey pk)
+CC *CCcond0(uint8_t evalcode)
 {
     std::vector<CC*> pks;
-    pks.push_back(CCNewSecp256k1(pk));
     CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
     CC *Sig = CCNewThreshold(0, pks);
     return CCNewThreshold(2, {condCC, Sig});
