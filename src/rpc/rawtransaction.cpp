@@ -47,6 +47,12 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
     vector<CTxDestination> addresses;
     int nRequired;
 
+    // needs to be an object
+    if (!out.isObject())
+    {
+        out = UniValue(UniValue::VOBJ);
+    }
+
     bool noDests = false;
     if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired))
     {

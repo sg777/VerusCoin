@@ -657,13 +657,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     // output the amount, minus conversion fees, and generate a normal output that spends the net input of the import as native
                     // difference between all potential value out and what we took unconverted as a fee in our fee output
                     CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue, chainDef.conversion);
-                    if (curTransfer.nFees < CReserveTransfer::CalculateFee(curTransfer.flags, curTransfer.nValue, chainDef))
-                    {
-                        // invalid
-                        printf("%s: Error insufficient conversion fee in transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                        LogPrintf("%s: Error insufficient conversion fee in transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                        return false;
-                    }
+
                     reserveIn += curTransfer.nFees;
                     nativeIn += nativeConverted;
                     nativeOut += nativeConverted;
