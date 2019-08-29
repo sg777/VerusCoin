@@ -2495,6 +2495,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             // add the fee amount that will make the conversion correct after subtracting it again
             amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
         }
+
         if (!subtractFee)
         {
             amount += transferFee;
@@ -2506,10 +2507,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         }
 
         transferFee = CReserveTransfer::CalculateFee(flags, amount, chainDef);
-        if (subtractFee)
-        {
-            amount -= transferFee;
-        }
+        amount -= transferFee;
 
         // create the transfer object
         CReserveTransfer rt(flags, amount, transferFee, kID);
