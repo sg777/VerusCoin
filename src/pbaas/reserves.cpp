@@ -675,7 +675,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
                     reserveOutConverted += curTransfer.nValue - reserveConversionFees;
                     reserveOut += curTransfer.nValue - reserveConversionFees;
-                    newOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
+                    newOut = MakeCC0ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
                 {
@@ -704,7 +704,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
                         CReserveOutput ro = CReserveOutput(CReserveExchange::VALID, curTransfer.nValue);
 
-                        newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
+                        newOut = MakeCC0ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
 
                         reserveOut += curTransfer.nValue;
                     }
@@ -820,7 +820,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
             // create the output with the unconverted amount less fees
             CReserveOutput ro(CReserveOutput::VALID, amount);
 
-            conversionTx.vout.push_back(MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro));
+            conversionTx.vout.push_back(MakeCC0ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro));
         }
         else
         {

@@ -123,26 +123,9 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
     // get information to sign with
     CCcontract_info C;
 
-    scriptPubKey.IsPayToCryptoCondition(&subScript, vParams);
-    if (vParams.empty())
+    if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.vKeys.size() >= p.n)
     {
-        uint32_t ecode;
-        scriptPubKey.IsPayToCryptoCondition(&ecode);
-
-        // use the cryptocondition's pubkey, we have nothing else
-        if (CCinit(&C, p.evalCode))
-        {
-            vPK.push_back(CTxDestination(CPubKey(ParseHex(C.CChexstr))));
-            p = COptCCParams(p.VERSION_V1, C.evalcode, 1, 1, vPK, vParams);
-        }
-    }
-    else
-    {
-        p = COptCCParams(vParams[0]);
-    }
-
-    if (p.IsValid() && p.vKeys.size() >= p.n)
-    {
+        bool is0of1 = (p.m == 0 && p.n == 1);
         bool is1ofn = (p.m == 1 && p.n >= 2);
         CKey privKey;
 
@@ -150,7 +133,50 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
         if (CCinit(&C, p.evalCode))
         {
             // pay to cc address is a valid tx
-            if (!is1ofn)
+            if (is0of1)
+            {
+                uint160 keyID = GetDestinationID(p.vKeys[0]);
+                bool havePriv = creator.IsKeystoreValid() && creator.KeyStore().GetKey(keyID, privKey);
+                CPubKey pubk;
+
+                // if we don't have the private key, it must be the unspendable address
+                if (havePriv)
+                {
+                    std::vector<unsigned char> vkch = GetDestinationBytes(p.vKeys[0]);
+                    if (vkch.size() == 33)
+                    {
+                        pubk = CPubKey(vkch);
+                    }
+                    else
+                    {
+                        creator.KeyStore().GetPubKey(keyID, pubk);
+                    }
+                }
+                else
+                {
+                    fprintf(stderr,"Wallet does not own keys for %s\n", EncodeDestination(p.vKeys[0]).c_str());
+                    return false;
+                }
+
+                CC *cc = CCcond0(p.evalCode);
+
+                if (cc)
+                {
+                    vector<unsigned char> vch;
+                    if (creator.CreateSig(vch, GetDestinationID(p.vKeys[0]), _CCPubKey(cc), consensusBranchId, &privKey, (void *)cc))
+                    {
+                        ret.push_back(vch);
+                    }
+                    else
+                    {
+                        fprintf(stderr,"vin has 0of1 CC signing error with address.(%s)\n", keyID.ToString().c_str());
+                    }
+
+                    cc_free(cc);
+                    return ret.size() != 0;
+                }
+            }
+            else if (!is1ofn)
             {
                 uint160 keyID = GetDestinationID(p.vKeys[0]);
                 bool havePriv = creator.IsKeystoreValid() && creator.KeyStore().GetKey(keyID, privKey);

@@ -844,7 +844,7 @@ CTxOut MakeCC1of1Vout(uint8_t evalcode, CAmount nValue, CPubKey pk, std::vector<
 }
 
 template <typename TOBJ>
-CTxOut MakeCC0of0Vout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestination> vDest, const TOBJ &obj)
+CTxOut MakeCC0ofAnyVout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestination> vDest, const TOBJ &obj)
 {
     CTxOut vout;
     CC *payoutCond = MakeCCcond0(evalcode);
@@ -852,7 +852,7 @@ CTxOut MakeCC0of0Vout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestinati
     cc_free(payoutCond);
 
     std::vector<std::vector<unsigned char>> vvch({::AsVector((const TOBJ)obj)});
-    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 1, (uint8_t)(vDest.size()), vDest, vvch);
+    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 0, (uint8_t)(vDest.size()), vDest, vvch);
 
     // add the object to the end of the script
     vout.scriptPubKey << vParams.AsVector() << OP_DROP;

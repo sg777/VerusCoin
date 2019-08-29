@@ -802,7 +802,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             vKeys.push_back(CTxDestination(CKeyID(thisChain.address)));
 
             // make an output that either carries zero coins pre-converting, or the initial supply for block 1, conversion amounts will be adjusted later
-            currencyStateOut = MakeCC0of0Vout(EVAL_CURRENCYSTATE, 0, vKeys, currencyState);
+            currencyStateOut = MakeCC0ofAnyVout(EVAL_CURRENCYSTATE, 0, vKeys, currencyState);
 
             coinbaseTx.vout.push_back(currencyStateOut);
 
