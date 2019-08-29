@@ -2473,7 +2473,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
                 if (!subtractFee)
                 {
-                    bigAmount = ((bigAmount * bigsatoshi) / (bigsatoshi - feeRate)).GetLow64();
+                    amount = (bigAmount = ((bigAmount * bigsatoshi) / (bigsatoshi - feeRate))).GetLow64();
                 }
                 launchFee = ((bigAmount * feeRate) / bigsatoshi).GetLow64();
 
@@ -2486,9 +2486,18 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
             if (!subtractFee)
             {
-                // add the fee amount that will make the conversion correct
+                // add the fee amount that will make the conversion correct after subtracting it again
                 amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
             }
+        }
+        else if (flags & CReserveTransfer::CONVERT && !subtractFee)
+        {
+            // add the fee amount that will make the conversion correct after subtracting it again
+            amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
+        }
+        if (!subtractFee)
+        {
+            amount += transferFee;
         }
 
         if (amount <= (transferFee << 1))
@@ -2497,7 +2506,10 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         }
 
         transferFee = CReserveTransfer::CalculateFee(flags, amount, chainDef);
-        amount -= transferFee;
+        if (subtractFee)
+        {
+            amount -= transferFee;
+        }
 
         // create the transfer object
         CReserveTransfer rt(flags, amount, transferFee, kID);

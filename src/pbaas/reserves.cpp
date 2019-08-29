@@ -50,7 +50,7 @@ CAmount CReserveTransfer::CalculateFee(uint32_t flags, CAmount transferTotal, co
     // take conversion fees for preconvert
     if (flags & CReserveTransfer::PRECONVERT)
     {
-        transferFee = CReserveTransactionDescriptor::CalculateConversionFee(transferTotal);
+        transferFee += CReserveTransactionDescriptor::CalculateConversionFee(transferTotal - transferFee);
     }
     return transferFee;
 }
