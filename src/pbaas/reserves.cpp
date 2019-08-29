@@ -627,19 +627,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     numTransfers--;
                     // fee comes after everything else, so we should have all numbers ready to calculate
                     // check to be sure that the total fee output matches the import fee expected
-                    if (i != exportObjects.size() - 1 || curTransfer.nFees)
+                    if (i != exportObjects.size() - 1 || curTransfer.nFees || curTransfer.nValue > transferFees)
                     {
                         // invalid
                         printf("%s: Error with fee output transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         LogPrintf("%s: Error with fee output transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         return false;
-                    }
-
-                    // if not pre-convert, pre-subtract from reserve in, so it doesn't get credit for being an input
-                    // if preconvert, reserve in is not increased
-                    if (!(curTransfer.flags & curTransfer.PRECONVERT))
-                    {
-                        reserveIn -= curTransfer.nValue;
                     }
                 }
 
@@ -649,6 +642,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     printf("%s: Too little fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                     LogPrintf("%s: Too little fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                     return false;
+                }
+
+                transferFees += curTransfer.nFees;
+                // if this is a fee output, there are no additional fees and value has already been added to reserveIn through other import transactions' fees
+                // this value output should, in total, be equal to the export fee
+                if (!(curTransfer.flags & (curTransfer.FEE_OUTPUT | curTransfer.PRECONVERT)))
+                {
+                    reserveIn += curTransfer.nValue + curTransfer.nFees;
                 }
 
                 if (curTransfer.flags & curTransfer.PRECONVERT)
@@ -663,7 +664,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                         LogPrintf("%s: Error insufficient conversion fee in transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         return false;
                     }
-                    transferFees += curTransfer.nFees;
                     reserveIn += curTransfer.nFees;
                     nativeIn += nativeConverted;
                     nativeOut += nativeConverted;
@@ -676,11 +676,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     pk = CPubKey(ParseHex(CC.CChexstr));
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
+
+                    reserveConversionFees += CalculateConversionFee(curTransfer.nValue);
                     CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
 
-                    transferFees += curTransfer.nFees;
-                    reserveConversionFees += CalculateConversionFee(curTransfer.nValue);
-                    reserveIn += curTransfer.nValue + curTransfer.nFees;
                     reserveOutConverted += curTransfer.nValue - reserveConversionFees;
                     reserveOut += curTransfer.nValue - reserveConversionFees;
                     newOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
@@ -696,8 +695,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     CAmount fees = curTransfer.DEFAULT_PER_STEP_FEE << 1;
                     CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, curTransfer.destination);
 
-                    transferFees += curTransfer.nFees;
-                    reserveIn += curTransfer.nFees + curTransfer.nValue;
                     reserveOut += curTransfer.nValue;
                     newOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt);                    
                 }
@@ -716,8 +713,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
                         newOut = MakeCC0of0Vout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
 
-                        transferFees += curTransfer.nFees;
-                        reserveIn += curTransfer.nFees + curTransfer.nValue;
                         reserveOut += curTransfer.nValue;
                     }
                     else
@@ -726,8 +721,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                         // the RESERVE_DEPOSIT outputs
                         newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(curTransfer.destination));
 
-                        transferFees += curTransfer.nFees;
-                        reserveIn += curTransfer.nFees + curTransfer.nValue;
                         reserveOut += curTransfer.nValue;
                     }
                 }

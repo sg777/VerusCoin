@@ -2556,7 +2556,6 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 }
 
                 CCoinsViewCache view(pcoinsTip);
-                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE, amount);
 
                 // we will send using a reserve output, fee will be paid by converting from reserve
                 CCcontract_info CC;
@@ -2577,6 +2576,8 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 {
                     conversionFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
                 }
+
+                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE, amount + conversionFee);
 
                 CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, pk, dests, rex);
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + conversionFee, false}));
