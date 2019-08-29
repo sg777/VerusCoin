@@ -1322,7 +1322,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 // do a preliminary check
                                 CReserveTransactionDescriptor rtxd;
                                 std::vector<CTxOut> dummy;
-                                if (!rtxd.AddReserveTransferImportOutputs(lastChain, chainObjects, std::vector<CTxOut> &dummy))
+                                if (!rtxd.AddReserveTransferImportOutputs(lastChain, chainObjects, dummy))
                                 {
                                     // we can't do any more useful work for this chain if we failed here
                                     printf("%s: failed to create valid exports\n", __func__);
@@ -1337,7 +1337,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
                                     UniValue uniOut;
                                     ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
-                                    printf("%s\n", uniOut.write(true, 2).c_str()));
+                                    printf("%s\n", uniOut.write(true, 2).c_str());
                                 }
 
                                 CScript opRet = StoreOpRetArray(chainObjects);
