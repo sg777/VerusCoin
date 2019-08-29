@@ -3402,6 +3402,7 @@ UniValue definechain(const UniValue& params, bool fHelp)
 
         CAmount fee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(initialToConvert);
         CAmount contribution = (initialToConvert + fee) - CReserveTransactionDescriptor::CalculateConversionFee(initialToConvert + fee);
+        fee += CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
 
         CReserveTransfer rt = CReserveTransfer(CReserveTransfer::PRECONVERT + CReserveTransfer::VALID, contribution, fee, newChain.address);
         CTxOut reserveTransferOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, initialToConvert + fee, pk, dests, (CReserveTransfer)rt);
