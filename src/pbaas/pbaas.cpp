@@ -1200,6 +1200,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
         multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferOutputs;
 
+        LOCK(cs_main);
+
         // get all available transfer outputs to aggregate into export transactions
         if (GetUnspentChainTransfers(transferOutputs))
         {
@@ -1217,6 +1219,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             // add a bookend entry at the end of transfer outputs to ensure that we try to export all before it
             transferOutputs.insert(make_pair(bookEnd, make_pair(CInputDescriptor(), CReserveTransfer())));
 
+            CPBaaSChainDefinition lastChainDef;
+
             // merge all of the common chainID outputs into common export transactions if either MIN_BLOCKS blocks have passed since the last
             // export of that type, or there are MIN_INPUTS or more outputs to aggregate
             for (auto it = transferOutputs.begin(); it != transferOutputs.end(); it++)
@@ -1225,7 +1229,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 if (lastChain == bookEnd || it->first == lastChain)
                 {
                     txInputs.push_back(it->second);
-                    lastChain = it->first;
                 }
                 else
                 {
@@ -1322,11 +1325,24 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 // do a preliminary check
                                 CReserveTransactionDescriptor rtxd;
                                 std::vector<CTxOut> dummy;
-                                if (!rtxd.AddReserveTransferImportOutputs(lastChain, chainObjects, dummy))
+
+
+                                if (!GetChainDefinition(lastChain, lastChainDef) || !rtxd.AddReserveTransferImportOutputs(lastChainDef, chainObjects, dummy))
                                 {
                                     // we can't do any more useful work for this chain if we failed here
                                     printf("%s: failed to create valid exports\n", __func__);
                                     LogPrintf("%s: failed to create valid exports\n", __func__);
+
+                                    // debugging output
+                                    printf("%s: exported outputs:\n", __func__);
+                                    for (auto oneout : dummy)
+                                    {
+                                        void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
+                                        UniValue uniOut;
+                                        ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
+                                        printf("%s\n", uniOut.write(true, 2).c_str());
+                                    }
+
                                     break;
                                 }
 
@@ -1417,6 +1433,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         }
                     }
                 }
+                lastChain = it->first;
             }
         }
     }
