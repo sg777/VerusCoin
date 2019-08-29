@@ -667,7 +667,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                 {
                     // emit a reserve exchange output
                     cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
-                    pk = CPubKey(ParseHex(CC.CChexstr));
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
 
@@ -676,7 +675,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
                     reserveOutConverted += curTransfer.nValue - reserveConversionFees;
                     reserveOut += curTransfer.nValue - reserveConversionFees;
-                    newOut = MakeCC1of1Vout(EVAL_RESERVE_EXCHANGE, 0, pk, dests, rex);
+                    newOut = MakeCC0of0Vout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
                 {
@@ -796,7 +795,6 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
             assert(indexRex.second.flags & indexRex.second.TO_RESERVE);
             cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
 
-            // convert amount to reserve from native
             amount = currencyState.NativeToReserve(amount, exchangeRate);
 
             CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
@@ -808,7 +806,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
             // create the transfer output with the converted amount less fees
             CReserveTransfer rt(CReserveTransfer::VALID, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, GetDestinationID(p.vKeys[0]));
 
-            // cast object to the most derived class to avoid compiler errors to a least derived class
+            // cast object to the most derived class to avoid template errors to a least derived class
             conversionTx.vout.push_back(MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, (CReserveTransfer)rt));
         }
         else if (indexRex.second.flags & indexRex.second.TO_RESERVE)
@@ -935,7 +933,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             // if this is a market order, put it in, if limit, put it in an order book, sorted by limit
             if (txDesc.IsMarket())
             {
-                CAmount fee = ReserveToNative(txDesc.reserveConversionFees) + txDesc.nativeConversionFees;
+                CAmount fee = txDesc.AllFeesAsNative(*this);
                 CFeeRate feeRate = CFeeRate(fee, GetSerializeSize(CDataStream(SER_NETWORK, PROTOCOL_VERSION), *txDesc.ptx));
                 marketOrders.insert(std::make_pair(feeRate.GetFeePerK(), txDesc));
             }
@@ -1001,11 +999,11 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
             if (feesAsReserve)
             {
                 newState.ReserveIn += txDesc.reserveOutConverted;
-                newState.NativeIn += txDesc.nativeOutConverted + txDesc.NativeFees();
+                newState.NativeIn += txDesc.nativeOutConverted + totalNativeFees;
             }
             else
             {
-                newState.ReserveIn += txDesc.reserveOutConverted + txDesc.ReserveFees();
+                newState.ReserveIn += txDesc.reserveOutConverted + totalReserveFees;
                 newState.NativeIn += txDesc.nativeOutConverted;
             }
             
@@ -1018,11 +1016,11 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
         {
             if (feesAsReserve)
             {
-                newState.NativeIn += txDesc.NativeFees();
+                newState.NativeIn += totalNativeFees;
             }
             else
             {
-                newState.ReserveIn += txDesc.ReserveFees();
+                newState.ReserveIn += totalReserveFees;
             }
         }
     }

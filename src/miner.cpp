@@ -1323,7 +1323,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             // now, we need to have room for the transaction which will spend the coinbase
             // and output all conversions mined/staked
             newConversionOutputTx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
-            newConversionOutputTx.vin.resize(2); // placeholder for size calculation
+            newConversionOutputTx.vin.resize(1); // placeholder for size calculation
 
             int64_t newBlockSize = nBlockSize;
 
@@ -1388,12 +1388,11 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             }
 
             // remake the newConversionOutputTx, right now, it has dummy inputs and placeholder outputs, just remake it correctly
-            newConversionOutputTx.vin.clear();
+            newConversionOutputTx.vin.resize(1);
             newConversionOutputTx.vout.clear();
             conversionInputs.clear();
 
-            // add one placeholder for txCoinbase output as input and all correct inputs and outputs for conversion to the transaction - update currency deltas
-            newConversionOutputTx.vin.resize(1);
+            // keep one placeholder for txCoinbase output as input and remake with the correct exchange rate
             for (auto fill : reserveFills)
             {
                 fill.AddConversionInOuts(newConversionOutputTx, conversionInputs, exchangeRate, &currencyState);
