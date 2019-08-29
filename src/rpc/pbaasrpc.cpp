@@ -2430,7 +2430,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 {
                     if (chainDef.conversion <= 0)
                     {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " is not convertible to " + chainDef.name + (isReserve ? " before the chain starts." : "."));
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " is not convertible to " + chainDef.name + ".");
                     }
 
                     flags |= CReserveTransfer::PRECONVERT;

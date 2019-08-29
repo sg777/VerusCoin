@@ -1319,6 +1319,27 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 CReserveTransfer feeOut = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::SEND_BACK + CReserveTransfer::FEE_OUTPUT, exportFees, 0, GetDestinationID(feeOutput));
                                 chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
 
+                                // do a preliminary check
+                                CReserveTransactionDescriptor rtxd;
+                                std::vector<CTxOut> dummy;
+                                if (!rtxd.AddReserveTransferImportOutputs(lastChain, chainObjects, std::vector<CTxOut> &dummy))
+                                {
+                                    // we can't do any more useful work for this chain if we failed here
+                                    printf("%s: failed to create valid exports\n", __func__);
+                                    LogPrintf("%s: failed to create valid exports\n", __func__);
+                                    break;
+                                }
+
+                                // debugging output
+                                printf("%s: exported outputs:\n", __func__);
+                                for (auto oneout : dummy)
+                                {
+                                    void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
+                                    UniValue uniOut;
+                                    ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
+                                    printf("%s\n", uniOut.write(true, 2).c_str()));
+                                }
+
                                 CScript opRet = StoreOpRetArray(chainObjects);
                                 DeleteOpRetObjects(chainObjects);
 
