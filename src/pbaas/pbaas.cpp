@@ -773,7 +773,7 @@ CAmount CCrossChainExport::CalculateExportFee() const
     }
     static const arith_uint256 satoshis(100000000);
 
-    int64_t ratio = 50000000 + ((25000000 / MAX_EXPORT_INPUTS) * numInputs);
+    int64_t ratio = 50000000 + ((25000000 / MAX_EXPORT_INPUTS) * (numInputs - 1));
 
     return (((arith_uint256(totalFees) * arith_uint256(ratio))) / satoshis).GetLow64();
 }

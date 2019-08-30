@@ -647,10 +647,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                 }
 
                 CAmount expectedFee = curTransfer.CalculateFee(curTransfer.flags, curTransfer.nValue + curTransfer.nFees, chainDef);
-                if (curTransfer.nFees < expectedFee)
+                if (curTransfer.nFees != expectedFee)
                 {
-                    printf("%s: Too little fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                    LogPrintf("%s: Too little fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                    printf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                    LogPrintf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                     return false;
                 }
 
@@ -680,12 +680,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
 
-                    CAmount netValue = curTransfer.nValue - curTransfer.CalculateTransferFee(curTransfer.flags, curTransfer.nValue, chainDef);
-                    reserveConversionFees += CalculateConversionFee(netValue);
-                    CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, netValue);
+                    reserveConversionFees += CalculateConversionFee(curTransfer.nValue);
+                    CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
 
-                    reserveOutConverted += netValue - reserveConversionFees;
-                    reserveOut += netValue - reserveConversionFees;
+                    reserveOutConverted += curTransfer.nValue - reserveConversionFees;
+                    reserveOut += curTransfer.nValue - reserveConversionFees;
                     newOut = MakeCC0ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
