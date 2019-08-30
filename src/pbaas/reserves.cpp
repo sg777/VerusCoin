@@ -265,7 +265,7 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
 
 void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &rex, int32_t outputIndex, int32_t nHeight)
 {
-    CAmount fee;
+    CAmount fee = 0;
 
     bool wasMarket = IsMarket();
 
@@ -680,11 +680,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
 
-                    reserveConversionFees += CalculateConversionFee(curTransfer.nValue);
+                    CAmount conversionFees = CalculateConversionFee(curTransfer.nValue);
+                    reserveConversionFees += conversionFees;
                     CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
 
-                    reserveOutConverted += curTransfer.nValue - reserveConversionFees;
-                    reserveOut += curTransfer.nValue - reserveConversionFees;
+                    reserveOutConverted += curTransfer.nValue - conversionFees;
+                    reserveOut += curTransfer.nValue - conversionFees;
                     newOut = MakeCC0ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))

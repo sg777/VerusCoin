@@ -169,7 +169,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     }
                     else
                     {
-                        fprintf(stderr,"vin has 0of1 CC signing error with address.(%s)\n", keyID.ToString().c_str());
+                        fprintf(stderr,"vin has 0ofAny CC signing error with address.(%s)\n", keyID.ToString().c_str());
                     }
 
                     cc_free(cc);
