@@ -2424,7 +2424,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         {
             if (convert || preconvert)
             {
-                // if chain hasn't started yet, we must use the conversion as a ratio over satoshis to participate in the pre-mine
+                // if chain hasn't started yet, we use the conversion as a ratio over satoshis to participate in the pre-mine
                 // up to a maximum
                 if (beforeStart)
                 {
