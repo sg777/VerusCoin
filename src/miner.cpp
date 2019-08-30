@@ -798,11 +798,11 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             vKeys.clear();
             cp = CCinit(&CC, EVAL_CURRENCYSTATE);
 
+            CPubKey currencyOutPK(ParseHex(cp->CChexstr));
             vKeys.push_back(CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(thisChainID, EVAL_CURRENCYSTATE))));
-            vKeys.push_back(CTxDestination(CKeyID(thisChain.address)));
 
             // make an output that either carries zero coins pre-converting, or the initial supply for block 1, conversion amounts will be adjusted later
-            currencyStateOut = MakeCC0ofAnyVout(EVAL_CURRENCYSTATE, 0, vKeys, currencyState);
+            currencyStateOut = MakeCC1of1Vout(EVAL_CURRENCYSTATE, 0, currencyOutPK, vKeys, currencyState);
 
             coinbaseTx.vout.push_back(currencyStateOut);
 
