@@ -2493,7 +2493,11 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         else if (flags & CReserveTransfer::CONVERT && !subtractFee)
         {
             // add the fee amount that will make the conversion correct after subtracting it again
-            amount += CReserveTransfer::CalculateFee(flags, amount, chainDef);
+            if (!subtractFee)
+            {
+                // add the fee amount that will make the conversion correct after subtracting it again
+                amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
+            }
         }
 
         if (!subtractFee)

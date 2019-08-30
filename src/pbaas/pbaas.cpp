@@ -1326,7 +1326,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 CReserveTransactionDescriptor rtxd;
                                 std::vector<CTxOut> dummy;
 
-
                                 if (!GetChainDefinition(lastChain, lastChainDef) || !rtxd.AddReserveTransferImportOutputs(lastChainDef, chainObjects, dummy))
                                 {
                                     // we can't do any more useful work for this chain if we failed here
