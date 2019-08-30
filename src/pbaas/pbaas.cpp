@@ -1319,7 +1319,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                 CCrossChainExport ccx(lastChain, numInputs, totalAmount, totalTxFees);
                                 CAmount exportFees = ccx.CalculateExportFee();
-                                CReserveTransfer feeOut = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::SEND_BACK + CReserveTransfer::FEE_OUTPUT, exportFees, 0, GetDestinationID(feeOutput));
+                                CReserveTransfer feeOut(CReserveTransfer::VALID + CReserveTransfer::SEND_BACK + CReserveTransfer::FEE_OUTPUT, exportFees, 0, GetDestinationID(feeOutput));
                                 chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
 
                                 // do a preliminary check

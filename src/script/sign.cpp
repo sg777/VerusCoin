@@ -125,7 +125,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
 
     if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.vKeys.size() >= p.n)
     {
-        bool is0of1 = (p.m == 0 && p.n == 1);
+        bool is0ofAny = (p.m == 0);
         bool is1ofn = (p.m == 1 && p.n >= 2);
         CKey privKey;
 
@@ -133,7 +133,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
         if (CCinit(&C, p.evalCode))
         {
             // pay to cc address is a valid tx
-            if (is0of1)
+            if (is0ofAny)
             {
                 uint160 keyID = GetDestinationID(p.vKeys[0]);
                 bool havePriv = creator.IsKeystoreValid() && creator.KeyStore().GetKey(keyID, privKey);
