@@ -2459,8 +2459,9 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         // send the entire amount to a reserve transfer output bound to this chain
         std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
 
-        // determine fee for this send
+        // start with default fee for this send
         CAmount transferFee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
+
         if (flags & CReserveTransfer::PRECONVERT)
         {
             arith_uint256 bigAmount(amount);
