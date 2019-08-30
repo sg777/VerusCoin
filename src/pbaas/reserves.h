@@ -105,6 +105,7 @@ public:
     UniValue ToUniValue() const;
 
     static CAmount CalculateFee(uint32_t flags, CAmount transferTotal, const CPBaaSChainDefinition &chainDef);
+    static CAmount CalculateTransferFee(uint32_t flags, CAmount transferTotal, const CPBaaSChainDefinition &chainDef);
 
     bool IsValid() const
     {

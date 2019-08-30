@@ -55,6 +55,16 @@ CAmount CReserveTransfer::CalculateFee(uint32_t flags, CAmount transferTotal, co
     return transferFee;
 }
 
+CAmount CReserveTransfer::CalculateTransferFee(uint32_t flags, CAmount transferTotal, const CPBaaSChainDefinition &chainDef)
+{
+    // determine fee for this send
+    if (flags & FEE_OUTPUT)
+    {
+        return 0;
+    }
+    return CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
+}
+
 UniValue CReserveExchange::ToUniValue() const
 {
     UniValue ret(((CReserveOutput *)this)->ToUniValue());
@@ -670,11 +680,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
 
-                    reserveConversionFees += CalculateConversionFee(curTransfer.nValue);
-                    CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
+                    CAmount netValue = curTransfer.nValue - curTransfer.CalculateTransferFee(curTransfer.flags, curTransfer.nValue, chainDef);
+                    reserveConversionFees += CalculateConversionFee(netValue);
+                    CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, netValue);
 
-                    reserveOutConverted += curTransfer.nValue - reserveConversionFees;
-                    reserveOut += curTransfer.nValue - reserveConversionFees;
+                    reserveOutConverted += netValue - reserveConversionFees;
+                    reserveOut += netValue - reserveConversionFees;
                     newOut = MakeCC0ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
