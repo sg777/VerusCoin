@@ -684,7 +684,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.nValue);
 
                     reserveOutConverted += curTransfer.nValue - reserveConversionFees;
-                    reserveOut += curTransfer.nValue - reserveConversionFees;
+                    reserveOut += (curTransfer.nValue + curTransfer.nFees) - reserveConversionFees;
                     newOut = MakeCC0ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
@@ -695,10 +695,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     pk = CPubKey(ParseHex(CC.CChexstr));
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
+
+                    reserveOut += curTransfer.nValue;
+
                     CAmount fees = curTransfer.DEFAULT_PER_STEP_FEE << 1;
                     CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, curTransfer.destination);
 
-                    reserveOut += curTransfer.nValue;
                     newOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt);                    
                 }
                 else
