@@ -390,7 +390,7 @@ vector<CInputDescriptor> AddSpendsAndFinalizations(CChainNotarizationData &cnd,
             }
             assert(k < coins.vout.size());
 
-            printf("spending finalization output of hash: %s\nprevout.n: %d\n", cnd.vtx[nidx].first.GetHex().c_str(), k);
+            // printf("spending finalization output of hash: %s\nprevout.n: %d\n", cnd.vtx[nidx].first.GetHex().c_str(), k);
 
             // spend all of them
             txInputs.push_back(CInputDescriptor(coins.vout[k].scriptPubKey, coins.vout[k].nValue, CTxIn(cnd.vtx[nidx].first, k, CScript())));

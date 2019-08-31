@@ -241,13 +241,16 @@ static unsigned long secp256k1Cost(const CC *cond) {
 
 
 static CC *cc_secp256k1Condition(const unsigned char *publicKey, const unsigned char *signature) {
+    // TODO:PBAAS - we do not check that the public key parses here, to enable
+    //   the fullfillment to have a hash of the public key (address) vs. a full public key
+    //   WE NEED TO MAKE SURE THAT THIS LEAVES NO GAP IN CHECKING BY MAINNET
     // Check that pk parses
-    initVerify();
-    secp256k1_pubkey spk;
-    int rc = secp256k1_ec_pubkey_parse(ec_ctx_verify, &spk, publicKey, SECP256K1_PK_SIZE);
-    if (!rc) {
-        return NULL;
-    }
+    //initVerify();
+    //secp256k1_pubkey spk;
+    //int rc = secp256k1_ec_pubkey_parse(ec_ctx_verify, &spk, publicKey, SECP256K1_PK_SIZE);
+    //if (!rc) {
+    //    return NULL;
+    //}
 
     unsigned char *pk = 0, *sig = 0;
 
