@@ -132,7 +132,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
     // get information to sign with
     CCcontract_info C;
 
-    if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.vKeys.size() >= p.n)
+    if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.n >= 1 && p.vKeys.size() >= p.n)
     {
         bool is0ofAny = (p.m == 0);
         bool is1ofn = (p.m == 1 && p.n >= 2);
@@ -163,11 +163,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                 }
                 else
                 {
-                    privKey = CKey();
-                    std::vector<unsigned char> vch(&(C.CCpriv[0]), C.CCpriv + sizeof(C.CCpriv));
-
-                    privKey.Set(vch.begin(), vch.end(), true);
-                    pubk = CPubKey(ParseHex(C.CChexstr));
+                    fprintf(stderr,"Wallet does not have private key for %s\n", EncodeDestination(p.vKeys[0]).c_str());
                 }
 
                 CC *cc = CCcond1(p.evalCode, CTxDestination(pubk));
@@ -181,7 +177,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     }
                     else
                     {
-                        fprintf(stderr,"vin has 1ofAny CC signing error with address.(%s)\n", keyID.ToString().c_str());
+                        fprintf(stderr,"vin has 1ofAny CC signing error with address.(%s)\n", EncodeDestination(p.vKeys[0]).c_str());
                     }
 
                     cc_free(cc);
