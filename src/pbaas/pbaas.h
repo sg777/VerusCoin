@@ -844,10 +844,10 @@ CTxOut MakeCC1of1Vout(uint8_t evalcode, CAmount nValue, CPubKey pk, std::vector<
 }
 
 template <typename TOBJ>
-CTxOut MakeCC0ofAnyVout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestination> vDest, const TOBJ &obj)
+CTxOut MakeCC1ofAnyVout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestination> vDest, const TOBJ &obj)
 {
     CTxOut vout;
-    CC *payoutCond = MakeCCcond0(evalcode);
+    CC *payoutCond = MakeCCcondAny(evalcode);
     vout = CTxOut(nValue, CCPubKey(payoutCond));
     cc_free(payoutCond);
 

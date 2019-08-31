@@ -38,6 +38,12 @@ static unsigned char* CopyPubKey(CPubKey pkIn)
     return pk;
 }
 
+static unsigned char* CopyPubkeyChars(uint8_t *chars)
+{
+    unsigned char* pk = (unsigned char*) malloc(33);
+    memcpy(pk, chars, 33);  // TODO: compressed?
+    return pk;
+}
 
 CC* CCNewThreshold(int t, std::vector<CC*> v)
 {
@@ -49,7 +55,6 @@ CC* CCNewThreshold(int t, std::vector<CC*> v)
     return cond;
 }
 
-
 CC* CCNewSecp256k1(CPubKey k)
 {
     CC *cond = cc_new(CC_Secp256k1);
@@ -57,6 +62,13 @@ CC* CCNewSecp256k1(CPubKey k)
     return cond;
 }
 
+CC* CCNewAnonSecp256k1()
+{
+    CC *cond = cc_new(CC_Secp256k1);
+    static uint8_t anonymousSig[33] = {0xff};
+    cond->publicKey = CopyPubkeyChars(anonymousSig);
+    return cond;
+}
 
 CC* CCNewEval(std::vector<unsigned char> code)
 {

@@ -154,8 +154,11 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                 }
                 else
                 {
-                    fprintf(stderr,"Wallet does not own keys for %s\n", EncodeDestination(p.vKeys[0]).c_str());
-                    return false;
+                    privKey = CKey();
+                    std::vector<unsigned char> vch(&(C.CCpriv[0]), C.CCpriv + sizeof(C.CCpriv));
+
+                    privKey.Set(vch.begin(), vch.end(), true);
+                    pubk = CPubKey(ParseHex(C.CChexstr));
                 }
 
                 CC *cc = CCcond0(p.evalCode);

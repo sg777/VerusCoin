@@ -2626,7 +2626,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 CReserveOutput ro(flags, amount);
 
                 // native amount in the output is 0
-                CTxOut ccOut = MakeCC0ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
+                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
 
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
 
@@ -2684,7 +2684,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
                 // native amount in output is 0
-                CTxOut ccOut = MakeCC0ofAnyVout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex);
+                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex);
 
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + conversionFee, false}));
 

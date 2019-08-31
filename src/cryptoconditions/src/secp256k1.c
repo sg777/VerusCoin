@@ -135,7 +135,13 @@ typedef struct CCSecp256k1SigningData {
 static int secp256k1Sign(CC *cond, CCVisitor visitor) {
     if (cond->type->typeId != CC_Secp256k1) return 1;
     CCSecp256k1SigningData *signing = (CCSecp256k1SigningData*) visitor.context;
-    if (0 != memcmp(cond->publicKey, signing->pk, SECP256K1_PK_SIZE)) return 1;
+
+    static uint8_t anonymousSig[SECP256K1_PK_SIZE] = {0xff};
+
+    if (0 != memcmp(cond->publicKey, anonymousSig, SECP256K1_PK_SIZE))
+    {
+        if (0 != memcmp(cond->publicKey, signing->pk, SECP256K1_PK_SIZE)) return 1;
+    }
 
     secp256k1_ecdsa_signature sig;
     lockSign();

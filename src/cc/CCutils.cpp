@@ -40,7 +40,7 @@ CC *MakeCCcond1of2(uint8_t evalcode,CPubKey pk1,CPubKey pk2)
     return CCNewThreshold(2, {condCC, Sig});
 }
 
-CC *MakeCCcond1(uint8_t evalcode,CPubKey pk)
+CC *MakeCCcond1(uint8_t evalcode, CPubKey pk)
 {
     std::vector<CC*> pks;
     pks.push_back(CCNewSecp256k1(pk));
@@ -49,11 +49,12 @@ CC *MakeCCcond1(uint8_t evalcode,CPubKey pk)
     return CCNewThreshold(2, {condCC, Sig});
 }
 
-CC *MakeCCcond0(uint8_t evalcode)
+CC *MakeCCcondAny(uint8_t evalcode)
 {
     std::vector<CC*> pks;
+    pks.push_back(CCNewAnonSecp256k1());
     CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
-    CC *Sig = CCNewThreshold(0, pks);
+    CC *Sig = CCNewThreshold(1, pks);
     return CCNewThreshold(2, {condCC, Sig});
 }
 

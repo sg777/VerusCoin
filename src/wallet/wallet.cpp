@@ -2402,6 +2402,21 @@ CAmount CWallet::GetCredit(const CTransaction& tx, int32_t voutNum, const ismine
     return ((IsMine(tx.vout[voutNum]) & filter) ? tx.vout[voutNum].nValue : 0);
 }
 
+CAmount CWallet::GetReserveCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const
+{
+    return ((IsMine(tx.vout[voutNum]) & filter) ? tx.vout[voutNum].ReserveOutValue() : 0);
+}
+
+CAmount CWallet::GetReserveCredit(const CTransaction& tx, const isminefilter& filter) const
+{
+    CAmount nCredit = 0;
+    for (int i = 0; i < tx.vout.size(); i++)
+    {
+        nCredit += GetReserveCredit(tx, i, filter);
+    }
+    return nCredit;
+}
+
 CAmount CWallet::GetCredit(const CTransaction& tx, const isminefilter& filter) const
 {
     CAmount nCredit = 0;
@@ -2991,6 +3006,37 @@ CAmount CWalletTx::GetDebit(const isminefilter& filter) const
     return debit;
 }
 
+CAmount CWalletTx::GetReserveDebit(const isminefilter& filter) const
+{
+    if (vin.empty())
+        return 0;
+
+    CAmount debit = 0;
+    if(filter & ISMINE_SPENDABLE)
+    {
+        if (fReserveDebitCached)
+            debit += nReserveDebitCached;
+        else
+        {
+            nReserveDebitCached = pwallet->GetDebit(*this, ISMINE_SPENDABLE);
+            fReserveDebitCached = true;
+            debit += nReserveDebitCached;
+        }
+    }
+    if(filter & ISMINE_WATCH_ONLY)
+    {
+        if(fWatchReserveDebitCached)
+            debit += nWatchReserveDebitCached;
+        else
+        {
+            nWatchReserveDebitCached = pwallet->GetDebit(*this, ISMINE_WATCH_ONLY);
+            fWatchReserveDebitCached = true;
+            debit += nWatchReserveDebitCached;
+        }
+    }
+    return debit;
+}
+
 CAmount CWalletTx::GetCredit(const isminefilter& filter) const
 {
     // Must wait until coinbase is safely deep enough in the chain before valuing it
@@ -3024,6 +3070,39 @@ CAmount CWalletTx::GetCredit(const isminefilter& filter) const
     return credit;
 }
 
+CAmount CWalletTx::GetReserveCredit(const isminefilter& filter) const
+{
+    // Must wait until coinbase is safely deep enough in the chain before valuing it
+    if (IsCoinBase() && GetBlocksToMaturity() > 0)
+        return 0;
+
+    int64_t credit = 0;
+    if (filter & ISMINE_SPENDABLE)
+    {
+        // GetBalance can assume transactions in mapWallet won't change
+        if (fReserveCreditCached)
+            credit += nReserveCreditCached;
+        else
+        {
+            nReserveCreditCached = pwallet->GetCredit(*this, ISMINE_SPENDABLE);
+            fReserveCreditCached = true;
+            credit += nReserveCreditCached;
+        }
+    }
+    if (filter & ISMINE_WATCH_ONLY)
+    {
+        if (fWatchReserveCreditCached)
+            credit += nWatchReserveCreditCached;
+        else
+        {
+            nWatchReserveCreditCached = pwallet->GetCredit(*this, ISMINE_WATCH_ONLY);
+            fWatchReserveCreditCached = true;
+            credit += nWatchReserveCreditCached;
+        }
+    }
+    return credit;
+}
+
 CAmount CWalletTx::GetImmatureCredit(bool fUseCache) const
 {
     if (IsCoinBase() && GetBlocksToMaturity() > 0 && IsInMainChain())
@@ -3033,6 +3112,20 @@ CAmount CWalletTx::GetImmatureCredit(bool fUseCache) const
         nImmatureCreditCached = pwallet->GetCredit(*this, ISMINE_SPENDABLE);
         fImmatureCreditCached = true;
         return nImmatureCreditCached;
+    }
+
+    return 0;
+}
+
+CAmount CWalletTx::GetImmatureReserveCredit(bool fUseCache) const
+{
+    if (IsCoinBase() && GetBlocksToMaturity() > 0 && IsInMainChain())
+    {
+        if (fUseCache && fImmatureReserveCreditCached)
+            return nImmatureReserveCreditCached;
+        nImmatureReserveCreditCached = pwallet->GetReserveCredit(*this, ISMINE_SPENDABLE);
+        fImmatureReserveCreditCached = true;
+        return nImmatureReserveCreditCached;
     }
 
     return 0;
@@ -3067,6 +3160,33 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
     return nCredit;
 }
 
+CAmount CWalletTx::GetAvailableReserveCredit(bool fUseCache) const
+{
+    if (pwallet == 0)
+        return 0;
+
+    // Must wait until coinbase is safely deep enough in the chain before valuing it
+    if (IsCoinBase() && GetBlocksToMaturity() > 0)
+        return 0;
+
+    if (fUseCache && fAvailableReserveCreditCached)
+        return nAvailableReserveCreditCached;
+
+    CAmount nCredit = 0;
+    uint256 hashTx = GetHash();
+    for (unsigned int i = 0; i < vout.size(); i++)
+    {
+        if (!pwallet->IsSpent(hashTx, i))
+        {
+            nCredit += pwallet->GetReserveCredit(*this, i, ISMINE_SPENDABLE);
+        }
+    }
+
+    nAvailableReserveCreditCached = nCredit;
+    fAvailableReserveCreditCached = true;
+    return nCredit;
+}
+
 CAmount CWalletTx::GetImmatureWatchOnlyCredit(const bool& fUseCache) const
 {
     if (IsCoinBase() && GetBlocksToMaturity() > 0 && IsInMainChain())
@@ -3076,6 +3196,20 @@ CAmount CWalletTx::GetImmatureWatchOnlyCredit(const bool& fUseCache) const
         nImmatureWatchCreditCached = pwallet->GetCredit(*this, ISMINE_WATCH_ONLY);
         fImmatureWatchCreditCached = true;
         return nImmatureWatchCreditCached;
+    }
+
+    return 0;
+}
+
+CAmount CWalletTx::GetImmatureWatchOnlyReserveCredit(const bool& fUseCache) const
+{
+    if (IsCoinBase() && GetBlocksToMaturity() > 0 && IsInMainChain())
+    {
+        if (fUseCache && fImmatureWatchReserveCreditCached)
+            return nImmatureWatchReserveCreditCached;
+        nImmatureWatchReserveCreditCached = pwallet->GetReserveCredit(*this, ISMINE_WATCH_ONLY);
+        fImmatureWatchReserveCreditCached = true;
+        return nImmatureWatchReserveCreditCached;
     }
 
     return 0;
@@ -3106,6 +3240,34 @@ CAmount CWalletTx::GetAvailableWatchOnlyCredit(const bool& fUseCache) const
 
     nAvailableWatchCreditCached = nCredit;
     fAvailableWatchCreditCached = true;
+    return nCredit;
+}
+
+CAmount CWalletTx::GetAvailableWatchOnlyReserveCredit(const bool& fUseCache) const
+{
+    if (pwallet == 0)
+        return 0;
+
+    // Must wait until coinbase is safely deep enough in the chain before valuing it
+    if (IsCoinBase() && GetBlocksToMaturity() > 0)
+        return 0;
+
+    if (fUseCache && fAvailableWatchReserveCreditCached)
+        return nAvailableWatchReserveCreditCached;
+
+    CAmount nCredit = 0;
+    for (unsigned int i = 0; i < vout.size(); i++)
+    {
+        if (!pwallet->IsSpent(GetHash(), i))
+        {
+            nCredit += pwallet->GetCredit(*this, i, ISMINE_WATCH_ONLY);
+            if (!MoneyRange(nCredit))
+                throw std::runtime_error("CWalletTx::GetAvailableCredit() : value out of range");
+        }
+    }
+
+    nAvailableWatchReserveCreditCached = nCredit;
+    fAvailableWatchReserveCreditCached = true;
     return nCredit;
 }
 
@@ -3234,6 +3396,22 @@ CAmount CWallet::GetBalance() const
     return nTotal;
 }
 
+CAmount CWallet::GetReserveBalance() const
+{
+    CAmount nTotal = 0;
+    {
+        LOCK2(cs_main, cs_wallet);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+        {
+            const CWalletTx* pcoin = &(*it).second;
+            if (pcoin->IsTrusted())
+                nTotal += pcoin->GetAvailableReserveCredit();
+        }
+    }
+
+    return nTotal;
+}
+
 CAmount CWallet::GetUnconfirmedBalance() const
 {
     CAmount nTotal = 0;
@@ -3249,6 +3427,21 @@ CAmount CWallet::GetUnconfirmedBalance() const
     return nTotal;
 }
 
+CAmount CWallet::GetUnconfirmedReserveBalance() const
+{
+    CAmount nTotal = 0;
+    {
+        LOCK2(cs_main, cs_wallet);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+        {
+            const CWalletTx* pcoin = &(*it).second;
+            if (!CheckFinalTx(*pcoin) || (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0))
+                nTotal += pcoin->GetAvailableReserveCredit();
+        }
+    }
+    return nTotal;
+}
+
 CAmount CWallet::GetImmatureBalance() const
 {
     CAmount nTotal = 0;
@@ -3258,6 +3451,20 @@ CAmount CWallet::GetImmatureBalance() const
         {
             const CWalletTx* pcoin = &(*it).second;
             nTotal += pcoin->GetImmatureCredit();
+        }
+    }
+    return nTotal;
+}
+
+CAmount CWallet::GetImmatureReserveBalance() const
+{
+    CAmount nTotal = 0;
+    {
+        LOCK2(cs_main, cs_wallet);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+        {
+            const CWalletTx* pcoin = &(*it).second;
+            nTotal += pcoin->GetImmatureReserveCredit();
         }
     }
     return nTotal;
@@ -3279,6 +3486,22 @@ CAmount CWallet::GetWatchOnlyBalance() const
     return nTotal;
 }
 
+CAmount CWallet::GetWatchOnlyReserveBalance() const
+{
+    CAmount nTotal = 0;
+    {
+        LOCK2(cs_main, cs_wallet);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+        {
+            const CWalletTx* pcoin = &(*it).second;
+            if (pcoin->IsTrusted())
+                nTotal += pcoin->GetAvailableWatchOnlyReserveCredit();
+        }
+    }
+
+    return nTotal;
+}
+
 CAmount CWallet::GetUnconfirmedWatchOnlyBalance() const
 {
     CAmount nTotal = 0;
@@ -3294,6 +3517,21 @@ CAmount CWallet::GetUnconfirmedWatchOnlyBalance() const
     return nTotal;
 }
 
+CAmount CWallet::GetUnconfirmedWatchOnlyReserveBalance() const
+{
+    CAmount nTotal = 0;
+    {
+        LOCK2(cs_main, cs_wallet);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+        {
+            const CWalletTx* pcoin = &(*it).second;
+            if (!CheckFinalTx(*pcoin) || (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0))
+                nTotal += pcoin->GetAvailableWatchOnlyReserveCredit();
+        }
+    }
+    return nTotal;
+}
+
 CAmount CWallet::GetImmatureWatchOnlyBalance() const
 {
     CAmount nTotal = 0;
@@ -3303,6 +3541,20 @@ CAmount CWallet::GetImmatureWatchOnlyBalance() const
         {
             const CWalletTx* pcoin = &(*it).second;
             nTotal += pcoin->GetImmatureWatchOnlyCredit();
+        }
+    }
+    return nTotal;
+}
+
+CAmount CWallet::GetImmatureWatchOnlyReserveBalance() const
+{
+    CAmount nTotal = 0;
+    {
+        LOCK2(cs_main, cs_wallet);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+        {
+            const CWalletTx* pcoin = &(*it).second;
+            nTotal += pcoin->GetImmatureWatchOnlyReserveCredit();
         }
     }
     return nTotal;

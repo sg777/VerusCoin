@@ -678,7 +678,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     // emit a reserve exchange output
                     cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
 
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(curTransfer.destination))});
 
                     CAmount conversionFees = CalculateConversionFee(curTransfer.nValue);
                     reserveConversionFees += conversionFees;
@@ -686,7 +686,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
                     reserveOutConverted += curTransfer.nValue - conversionFees;
                     reserveOut += curTransfer.nValue - conversionFees;
-                    newOut = MakeCC0ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
+                    newOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
                 {
@@ -717,7 +717,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
                         CReserveOutput ro = CReserveOutput(CReserveExchange::VALID, curTransfer.nValue);
 
-                        newOut = MakeCC0ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
+                        newOut = MakeCC1ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
 
                         reserveOut += curTransfer.nValue;
                     }
@@ -833,7 +833,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
             // create the output with the unconverted amount less fees
             CReserveOutput ro(CReserveOutput::VALID, amount);
 
-            conversionTx.vout.push_back(MakeCC0ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro));
+            conversionTx.vout.push_back(MakeCC1ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro));
         }
         else
         {

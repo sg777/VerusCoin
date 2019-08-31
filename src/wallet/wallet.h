@@ -418,6 +418,16 @@ public:
     mutable bool fImmatureWatchCreditCached;
     mutable bool fAvailableWatchCreditCached;
     mutable bool fChangeCached;
+
+    mutable bool fReserveDebitCached;
+    mutable bool fReserveCreditCached;
+    mutable bool fImmatureReserveCreditCached;
+    mutable bool fAvailableReserveCreditCached;
+    mutable bool fWatchReserveDebitCached;
+    mutable bool fWatchReserveCreditCached;
+    mutable bool fImmatureWatchReserveCreditCached;
+    mutable bool fAvailableWatchReserveCreditCached;
+
     mutable CAmount nDebitCached;
     mutable CAmount nCreditCached;
     mutable CAmount nImmatureCreditCached;
@@ -426,6 +436,16 @@ public:
     mutable CAmount nWatchCreditCached;
     mutable CAmount nImmatureWatchCreditCached;
     mutable CAmount nAvailableWatchCreditCached;
+
+    mutable CAmount nReserveDebitCached;
+    mutable CAmount nReserveCreditCached;
+    mutable CAmount nImmatureReserveCreditCached;
+    mutable CAmount nAvailableReserveCreditCached;
+    mutable CAmount nWatchReserveDebitCached;
+    mutable CAmount nWatchReserveCreditCached;
+    mutable CAmount nImmatureWatchReserveCreditCached;
+    mutable CAmount nAvailableWatchReserveCreditCached;
+
     mutable CAmount nChangeCached;
 
     CWalletTx()
@@ -460,6 +480,7 @@ public:
         nTimeSmart = 0;
         fFromMe = false;
         strFromAccount.clear();
+
         fDebitCached = false;
         fCreditCached = false;
         fImmatureCreditCached = false;
@@ -469,6 +490,16 @@ public:
         fImmatureWatchCreditCached = false;
         fAvailableWatchCreditCached = false;
         fChangeCached = false;
+
+        fReserveDebitCached = false;
+        fReserveCreditCached = false;
+        fImmatureReserveCreditCached = false;
+        fAvailableReserveCreditCached = false;
+        fWatchReserveDebitCached = false;
+        fWatchReserveCreditCached = false;
+        fImmatureWatchReserveCreditCached = false;
+        fAvailableWatchReserveCreditCached = false;
+
         nDebitCached = 0;
         nCreditCached = 0;
         nImmatureCreditCached = 0;
@@ -479,6 +510,15 @@ public:
         nImmatureWatchCreditCached = 0;
         nChangeCached = 0;
         nOrderPos = -1;
+
+        nReserveDebitCached = 0;
+        nReserveCreditCached = 0;
+        nImmatureReserveCreditCached = 0;
+        nAvailableReserveCreditCached = 0;
+        nWatchReserveDebitCached = 0;
+        nWatchReserveCreditCached = 0;
+        nImmatureWatchReserveCreditCached = 0;
+        nAvailableWatchReserveCreditCached = 0;
     }
 
     ADD_SERIALIZE_METHODS;
@@ -533,14 +573,24 @@ public:
     //! make sure balances are recalculated
     void MarkDirty()
     {
+        fDebitCached = false;
         fCreditCached = false;
+        fImmatureCreditCached = false;
         fAvailableCreditCached = false;
         fWatchDebitCached = false;
         fWatchCreditCached = false;
-        fAvailableWatchCreditCached = false;
         fImmatureWatchCreditCached = false;
-        fDebitCached = false;
+        fAvailableWatchCreditCached = false;
         fChangeCached = false;
+
+        fReserveDebitCached = false;
+        fReserveCreditCached = false;
+        fImmatureReserveCreditCached = false;
+        fAvailableReserveCreditCached = false;
+        fWatchReserveDebitCached = false;
+        fWatchReserveCreditCached = false;
+        fImmatureWatchReserveCreditCached = false;
+        fAvailableWatchReserveCreditCached = false;
     }
 
     void BindWallet(CWallet *pwalletIn)
@@ -554,11 +604,17 @@ public:
 
     //! filter decides which addresses will count towards the debit
     CAmount GetDebit(const isminefilter& filter) const;
+    CAmount GetReserveDebit(const isminefilter& filter) const;
     CAmount GetCredit(const isminefilter& filter) const;
+    CAmount GetReserveCredit(const isminefilter& filter) const;
     CAmount GetImmatureCredit(bool fUseCache=true) const;
+    CAmount GetImmatureReserveCredit(bool fUseCache=true) const;
     CAmount GetAvailableCredit(bool fUseCache=true) const;
+    CAmount GetAvailableReserveCredit(bool fUseCache=true) const;
     CAmount GetImmatureWatchOnlyCredit(const bool& fUseCache=true) const;
+    CAmount GetImmatureWatchOnlyReserveCredit(const bool& fUseCache=true) const;
     CAmount GetAvailableWatchOnlyCredit(const bool& fUseCache=true) const;
+    CAmount GetAvailableWatchOnlyReserveCredit(const bool& fUseCache=true) const;
     CAmount GetChange() const;
 
     void GetAmounts(std::list<COutputEntry>& listReceived,
@@ -1120,11 +1176,17 @@ public:
     void ResendWalletTransactions(int64_t nBestBlockTime);
     std::vector<uint256> ResendWalletTransactionsBefore(int64_t nTime);
     CAmount GetBalance() const;
+    CAmount GetReserveBalance() const;
     CAmount GetUnconfirmedBalance() const;
+    CAmount GetUnconfirmedReserveBalance() const;
     CAmount GetImmatureBalance() const;
+    CAmount GetImmatureReserveBalance() const;
     CAmount GetWatchOnlyBalance() const;
+    CAmount GetWatchOnlyReserveBalance() const;
     CAmount GetUnconfirmedWatchOnlyBalance() const;
+    CAmount GetUnconfirmedWatchOnlyReserveBalance() const;
     CAmount GetImmatureWatchOnlyBalance() const;
+    CAmount GetImmatureWatchOnlyReserveBalance() const;
     bool FundTransaction(CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosRet, std::string& strFailReason);
     bool CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CAmount& nFeeRet, int& nChangePosRet,
                            std::string& strFailReason, const CCoinControl *coinControl = NULL, bool sign = true);
@@ -1181,6 +1243,8 @@ public:
     bool IsFromMe(const CTransaction& tx) const;
     CAmount GetDebit(const CTransaction& tx, const isminefilter& filter) const;
     CAmount GetCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const;
+    CAmount GetReserveCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const;
+    CAmount GetReserveCredit(const CTransaction& tx, const isminefilter& filter) const;
     CAmount GetCredit(const CTransaction& tx, const isminefilter& filter) const;
     CAmount GetChange(const CTransaction& tx) const;
     void ChainTip(const CBlockIndex *pindex, const CBlock *pblock, SproutMerkleTree sproutTree, SaplingMerkleTree saplingTree, bool added);
