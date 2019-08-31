@@ -73,7 +73,7 @@ typedef struct CCVisitor {
 int             cc_isFulfilled(const CC *cond);
 int             cc_verify(const struct CC *cond, const uint8_t *msg, size_t msgLength,
                         int doHashMessage, const uint8_t *condBin, size_t condBinLength,
-                        VerifyEval verifyEval, void *evalContext);
+                        VerifyEval verifyEval, void *evalContext, int checkSig);
 int             cc_visit(CC *cond, struct CCVisitor visitor);
 int             cc_signTreeEd25519(CC *cond, const uint8_t *privateKey, const uint8_t *msg,
                         const size_t msgLength);

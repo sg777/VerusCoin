@@ -255,7 +255,7 @@ int cc_visit(CC *cond, CCVisitor visitor) {
 
 int cc_verify(const struct CC *cond, const unsigned char *msg, size_t msgLength, int doHashMsg,
               const unsigned char *condBin, size_t condBinLength,
-              VerifyEval verifyEval, void *evalContext) {
+              VerifyEval verifyEval, void *evalContext, int checkSig) {
     unsigned char targetBinary[1000];
     //fprintf(stderr,"in cc_verify cond.%p msg.%p[%d] dohash.%d condbin.%p[%d]\n",cond,msg,(int32_t)msgLength,doHashMsg,condBin,(int32_t)condBinLength);
     const size_t binLength = cc_conditionBinary(cond, targetBinary);
@@ -273,7 +273,7 @@ int cc_verify(const struct CC *cond, const unsigned char *msg, size_t msgLength,
     if (doHashMsg) sha256(msg, msgLength, msgHash);
     else memcpy(msgHash, msg, 32);
 
-    if (!cc_secp256k1VerifyTreeMsg32(cond, msgHash)) {
+    if (checkSig && !cc_secp256k1VerifyTreeMsg32(cond, msgHash)) {
         fprintf(stderr,"cc_verify error C\n");
         return 0;
     }

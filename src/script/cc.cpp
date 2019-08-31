@@ -38,10 +38,11 @@ static unsigned char* CopyPubKey(CPubKey pkIn)
     return pk;
 }
 
-static unsigned char* CopyPubkeyChars(uint8_t *chars)
+static unsigned char* CopyKeyIDChars(uint8_t *chars)
 {
     unsigned char* pk = (unsigned char*) malloc(33);
-    memcpy(pk, chars, 33);  // TODO: compressed?
+    memcpy(pk, chars, 20);  // only the keyID
+    memset(pk + 20, 0, 13);
     return pk;
 }
 
@@ -62,11 +63,11 @@ CC* CCNewSecp256k1(CPubKey k)
     return cond;
 }
 
-CC* CCNewAnonSecp256k1()
+CC* CCNewHashedSecp256k1(CKeyID keyID)
 {
     CC *cond = cc_new(CC_Secp256k1);
-    static uint8_t anonymousSig[33] = {0xff};
-    cond->publicKey = CopyPubkeyChars(anonymousSig);
+
+    cond->publicKey = CopyKeyIDChars(keyID.begin());
     return cond;
 }
 
