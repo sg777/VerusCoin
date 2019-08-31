@@ -677,8 +677,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                 {
                     // emit a reserve exchange output
                     cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
+                    pk = CPubKey(ParseHex(CC.CChexstr));
 
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(curTransfer.destination))});
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(curTransfer.destination)), CTxDestination(pk)});
 
                     CAmount conversionFees = CalculateConversionFee(curTransfer.nValue);
                     reserveConversionFees += conversionFees;
