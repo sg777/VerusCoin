@@ -114,6 +114,27 @@ CC *CCcond1(uint8_t evalcode, CTxDestination dest)
     return CCNewThreshold(2, {condCC, Sig});
 }
 
+CC *CCcondAny(uint8_t evalcode, std::vector<CTxDestination> dests)
+{
+    std::vector<CC*> pks;
+    for (auto dest : dests)
+    {
+        CPubKey pk = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest);
+        if (pk.IsValid())
+        {
+            pks.push_back(CCNewSecp256k1(pk));
+        }
+        else
+        {
+            pks.push_back(CCNewHashedSecp256k1(CKeyID(GetDestinationID(dest))));
+        }
+    }
+
+    CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
+    CC *Sig = CCNewThreshold(1, pks);
+    return CCNewThreshold(2, {condCC, Sig});
+}
+
 CScript _CCPubKey(const CC *cond)
 {
     unsigned char buf[1000];
@@ -134,7 +155,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
 
     if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.n >= 1 && p.vKeys.size() >= p.n)
     {
-        bool is0ofAny = (p.m == 0);
+        bool is0ofAny = (p.m == 0 && p.n >= 1);
         bool is1ofn = (p.m == 1 && p.n >= 2);
         CKey privKey;
 
@@ -166,7 +187,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     fprintf(stderr,"Wallet does not have private key for %s\n", EncodeDestination(p.vKeys[0]).c_str());
                 }
 
-                CC *cc = CCcond1(p.evalCode, CTxDestination(pubk));
+                CC *cc = CCcondAny(p.evalCode, p.vKeys);
 
                 if (cc)
                 {
