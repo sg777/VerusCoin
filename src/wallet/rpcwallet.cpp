@@ -9,6 +9,7 @@
 #include "init.h"
 #include "key_io.h"
 #include "main.h"
+#include "pbaas/pbaas.h"
 #include "net.h"
 #include "netbase.h"
 #include "rpc/server.h"
@@ -2609,11 +2610,17 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
     obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance())));
-    obj.push_back(Pair("reserve_balance", ValueFromAmount(pwalletMain->GetReserveBalance())));
     obj.push_back(Pair("unconfirmed_balance", ValueFromAmount(pwalletMain->GetUnconfirmedBalance())));
-    obj.push_back(Pair("unconfirmed_reserve_balance", ValueFromAmount(pwalletMain->GetUnconfirmedBalance())));
     obj.push_back(Pair("immature_balance", ValueFromAmount(pwalletMain->GetImmatureBalance())));
-    obj.push_back(Pair("immature_reserve_balance", ValueFromAmount(pwalletMain->GetImmatureBalance())));
+    CPBaaSChainDefinition &chainDef = ConnectedChains.ThisChain();
+    if (chainDef.ChainOptions() & chainDef.OPTION_RESERVE)
+    {
+        obj.push_back(Pair("reserve_balance", ValueFromAmount(pwalletMain->GetReserveBalance())));
+        obj.push_back(Pair("unconfirmed_reserve_balance", ValueFromAmount(pwalletMain->GetUnconfirmedReserveBalance())));
+        obj.push_back(Pair("immature_reserve_balance", ValueFromAmount(pwalletMain->GetImmatureReserveBalance())));
+        uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
+        obj.push_back(Pair("price_in_reserve", ValueFromAmount(ConnectedChains.GetCurrencyState(height).PriceInReserve())));
+    }
     obj.push_back(Pair("txcount",       (int)pwalletMain->mapWallet.size()));
     obj.push_back(Pair("keypoololdest", pwalletMain->GetOldestKeyPoolTime()));
     obj.push_back(Pair("keypoolsize",   (int)pwalletMain->GetKeyPoolSize()));

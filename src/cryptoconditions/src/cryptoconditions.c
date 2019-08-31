@@ -273,6 +273,8 @@ int cc_verify(const struct CC *cond, const unsigned char *msg, size_t msgLength,
     if (doHashMsg) sha256(msg, msgLength, msgHash);
     else memcpy(msgHash, msg, 32);
 
+    // TODO:PBAAS this needs to be improved, to validate the signature,
+    // and before release to finish validation of signature hash before checking the eval
     if (checkSig && !cc_secp256k1VerifyTreeMsg32(cond, msgHash)) {
         fprintf(stderr,"cc_verify error C\n");
         return 0;
