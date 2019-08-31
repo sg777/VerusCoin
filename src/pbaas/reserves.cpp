@@ -1287,7 +1287,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<con
         {
             *pInOutTotalSerializeSize = totalSerializedSize;
         }
-        printf("%s: %s\n", __func__, newState.ToUniValue().write().c_str());
+        printf("%s: %s\n", __func__, newState.ToUniValue().write(1, 2).c_str());
         return newState;
     }
 }

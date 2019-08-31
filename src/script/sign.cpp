@@ -97,11 +97,20 @@ CC *CCcond1(uint8_t evalcode,CPubKey pk)
     return CCNewThreshold(2, {condCC, Sig});
 }
 
-CC *CCcond0(uint8_t evalcode)
+CC *CCcond1(uint8_t evalcode, CTxDestination dest)
 {
+    CPubKey pk = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest);
     std::vector<CC*> pks;
+    if (pk.IsValid())
+    {
+        pks.push_back(CCNewSecp256k1(pk));
+    }
+    else
+    {
+        pks.push_back(CCNewHashedSecp256k1(CKeyID(GetDestinationID(dest))));
+    }
     CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
-    CC *Sig = CCNewThreshold(0, pks);
+    CC *Sig = CCNewThreshold(1, pks);
     return CCNewThreshold(2, {condCC, Sig});
 }
 
@@ -161,7 +170,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     pubk = CPubKey(ParseHex(C.CChexstr));
                 }
 
-                CC *cc = CCcond0(p.evalCode);
+                CC *cc = CCcond1(p.evalCode, CTxDestination(pubk));
 
                 if (cc)
                 {

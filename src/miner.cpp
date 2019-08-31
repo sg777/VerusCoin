@@ -1473,8 +1473,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             }
 
             coinbaseTx.vout[cbOutIdx] = currencyStateOut;
-
-            printf("Currency state %s\n", currencyState.ToUniValue().write(true, 2).c_str());
             cbOutIdx++;
         }
 
