@@ -2574,7 +2574,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
                 CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID, CTxDestination(pk)});
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
                 CAmount conversionFee;
 
@@ -2590,7 +2590,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
                 CReserveExchange rex(flags + CReserveExchange::TO_RESERVE, amount + conversionFee);
 
-                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex);
+                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex, pk);
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + conversionFee, false}));
 
                 // create a transaction with native coin as input
@@ -2682,10 +2682,10 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
                 CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID, CTxDestination(pk)});
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
 
                 // native amount in output is 0
-                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex);
+                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex, pk);
 
                 outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + conversionFee, false}));
 

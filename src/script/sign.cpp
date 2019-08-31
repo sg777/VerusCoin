@@ -165,26 +165,34 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
             // pay to cc address is a valid tx
             if (is0ofAny)
             {
-                uint160 keyID = GetDestinationID(p.vKeys[0]);
-                bool havePriv = creator.IsKeystoreValid() && creator.KeyStore().GetKey(keyID, privKey);
-                CPubKey pubk;
+                CPubKey pubk = CPubKey(ParseHex(C.CChexstr));
+                CKeyID keyID = pubk.GetID();
+                bool havePriv = false;
 
-                // if we don't have the private key, it must be the unspendable address
-                if (havePriv)
+                // loop through and sign with the first of either the private key or a match on the CCs private key, otherwise, fail
+                for (auto dest : p.vKeys)
                 {
-                    std::vector<unsigned char> vkch = GetDestinationBytes(p.vKeys[0]);
-                    if (vkch.size() == 33)
+                    uint160 keyID = GetDestinationID(dest);
+                    if (creator.IsKeystoreValid() && creator.KeyStore().GetKey(keyID, privKey))
                     {
-                        pubk = CPubKey(vkch);
+                        havePriv = true;
+                        break;
                     }
-                    else
+                    CPubKey tempPub = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest);
+                    if ((tempPub.IsValid() && tempPub == pubk) || (keyID == tempPub.GetID()))
                     {
-                        creator.KeyStore().GetPubKey(keyID, pubk);
+                        // found the pub key for this crypto condition, so use the private key
+                        std::vector<unsigned char> vch(&(C.CCpriv[0]), C.CCpriv + sizeof(C.CCpriv));
+                        privKey.Set(vch.begin(), vch.end(), true);
+                        havePriv = true;
+                        break;
                     }
                 }
-                else
+
+                if (!havePriv)
                 {
-                    fprintf(stderr,"Wallet does not have private key for %s\n", EncodeDestination(p.vKeys[0]).c_str());
+                    fprintf(stderr,"Do not have or cannot locate private key for %s\n", EncodeDestination(p.vKeys[0]).c_str());
+                    return false;
                 }
 
                 CC *cc = CCcondAny(p.evalCode, p.vKeys);

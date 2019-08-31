@@ -687,7 +687,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
                     reserveOutConverted += curTransfer.nValue - conversionFees;
                     reserveOut += curTransfer.nValue - conversionFees;
-                    newOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex);
+                    newOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex, pk);
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
                 {
@@ -711,13 +711,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     if (isVerusActive)
                     {
                         // generate a reserve output of the amount indicated, less fees
-                        // emit a reserve exchange output
-                        // we will send using a reserve output, fee will be paid by converting from reserve
+                        // we will send using a reserve output, fee will be paid through coinbase by converting from reserve or not, depending on currency settings
                         cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(curTransfer.destination)});
                         CReserveOutput ro = CReserveOutput(CReserveExchange::VALID, curTransfer.nValue);
 
+                        // no alternative signer for this, send invalid pubkey
                         newOut = MakeCC1ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
 
                         reserveOut += curTransfer.nValue;
@@ -828,7 +828,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
             // convert amount to reserve from native
             amount = currencyState.NativeToReserve(amount, exchangeRate);
 
-            // send the net amount to the indicated destination
+            // send the net amount to the indicated destination, which is the first entry in the destinations of the original reserve/exchange by protocol
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({p.vKeys[0]});
 
             // create the output with the unconverted amount less fees

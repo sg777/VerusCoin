@@ -844,8 +844,32 @@ CTxOut MakeCC1of1Vout(uint8_t evalcode, CAmount nValue, CPubKey pk, std::vector<
 }
 
 template <typename TOBJ>
-CTxOut MakeCC1ofAnyVout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestination> vDest, const TOBJ &obj)
+CTxOut MakeCC1ofAnyVout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestination> vDest, const TOBJ &obj, const CPubKey &pk=CPubKey())
 {
+    // if pk is valid, we will make sure that it is one of the signature options on this CC
+    if (pk.IsValid())
+    {
+        CCcontract_info C;
+        CCcontract_info *cp;
+        cp = CCinit(&C, evalcode);
+        int i;
+        bool addPubKey = false;
+        for (i = 0; i < vDest.size(); i++)
+        {
+            CPubKey oneKey(boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), vDest[i]));
+            if ((oneKey.IsValid() && oneKey == pk) || CKeyID(GetDestinationID(vDest[i])) == pk.GetID())
+            {
+                // found, so don't add
+                break;
+            }
+        }
+        // if not found, add the pubkey
+        if (i >= vDest.size())
+        {
+            vDest.push_back(CTxDestination(pk));
+        }
+    }
+
     CTxOut vout;
     CC *payoutCond = MakeCCcondAny(evalcode, vDest);
     vout = CTxOut(nValue, CCPubKey(payoutCond));
