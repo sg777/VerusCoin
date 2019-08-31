@@ -224,7 +224,6 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     {
                         for (auto k : cp.vKeys)
                         {
-
                             vSolutionsRet.push_back(GetDestinationBytes(k));
                         }
                     }

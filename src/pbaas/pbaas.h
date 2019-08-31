@@ -847,7 +847,7 @@ template <typename TOBJ>
 CTxOut MakeCC1ofAnyVout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestination> vDest, const TOBJ &obj)
 {
     CTxOut vout;
-    CC *payoutCond = MakeCCcondAny(evalcode, vDest.size() ? vDest : std::vector<CTxDestination>({CKeyID()}));
+    CC *payoutCond = MakeCCcondAny(evalcode, vDest);
     vout = CTxOut(nValue, CCPubKey(payoutCond));
     cc_free(payoutCond);
 
