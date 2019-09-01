@@ -1466,7 +1466,9 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             {
                 CTransaction convertTx(newConversionOutputTx);
 
-                assert(convertTx.GetValueOut() < currencyState.ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice));
+                assert(convertTx.GetValueOut() <= currencyState.ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice));
+
+                currencyStateOut.nValue = currencyState.ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice);
 
                 // the coinbase is not finished, store index placeholder here now and fixup hash later
                 newConversionOutputTx.vin[0] = CTxIn(uint256(), cbOutIdx);
