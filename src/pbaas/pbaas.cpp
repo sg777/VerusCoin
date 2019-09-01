@@ -161,6 +161,10 @@ bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTran
 {
     return true;
 }
+bool IsReserveExchangeInput(const CScript &scriptSig)
+{
+}
+
 
 /*
  * Verifies that the input objects match the hashes and returns the transaction.
