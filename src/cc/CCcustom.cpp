@@ -89,16 +89,6 @@ std::string FinalizeNotarizationAddr = "RRbKYitLH9EhQCvCo4bPZqJx3TWxASadxE";
 std::string FinalizeNotarizationPubKey = "02e3154f8122ff442fbca3ff8ff4d4fb2d9285fd9f4d841d58fb8d6b7acefed60f";
 std::string FinalizeNotarizationWIF = "UrN1b1hCQc6cUpcUdQD7DFTn2PJneDpKv5pmURPQzJ2zVp9UVM6E";
 
-// Currency state - coinbase output -- currently required on PBaaS chains only
-std::string CurrencyStateAddr = "REU1HKkmdwdxKMpfD3QoxeERYd9tfMN6n9";
-std::string CurrencyStatePubKey = "0219af977f9a6c3779f1185decee2b77da446040055b912b00e115a52d4786059c";
-std::string CurrencyStateWIF = "Ur8YQJQ6guqmD6rXtrUtJ7fWxaEB5FaejCr3MxHAgMEwnjJnuGo5";
-
-// Reserve transfer -- send reserves from a Verus chain to a PBaaS chain or back with optional conversion, works on Verus or PBaaS chains
-std::string ReserveTransferAddr = "RTqQe58LSj2yr5CrwYFwcsAQ1edQwmrkUU";
-std::string ReserveTransferPubKey = "0367add5577ca8f5f680ee0adf4cf802584c56ed14956efedd3e18656874614548";
-std::string ReserveTransferWIF = "UtbtjjXtNtYroASwDrW63pEK7Fv3ehBRGDc2GRkPPr292DkRTmtB";
-
 // Reserve output -- provides flexible Verus reserve currency transaction/utxo support on PBaaS chains only
 std::string ReserveOutputAddr = "RMXeZGxxRuABFkT4uLSCeuJHLegBNGZq8D";
 std::string ReserveOutputPubKey = "02d3e0f4c308c6e9786a5280ec96ea6d0e07505bae88d28b4b3156c309e2ae5515";
@@ -108,6 +98,11 @@ std::string ReserveOutputWIF = "UrCfRxuFKPg3b3HtPFhvL9X8iePfETRZpgymrxzdDZ3vpjSw
 std::string ReserveExchangeAddr = "REuGNkgunnw1J4Zx6Y9UCp8YHVZqYATe9D";
 std::string ReserveExchangePubKey = "02b68492c495d7d63d908fa641fb6215bc56a7de15fb438c78066ec4c173563527";
 std::string ReserveExchangeWIF = "Uveq2qCQLjaJxdjXBAtBQQjhRDocomeSCtogifMHxwVsLNRCQgqX";
+
+// Reserve transfer -- send reserves from a Verus chain to a PBaaS chain or back with optional conversion, works on Verus or PBaaS chains
+std::string ReserveTransferAddr = "RTqQe58LSj2yr5CrwYFwcsAQ1edQwmrkUU";
+std::string ReserveTransferPubKey = "0367add5577ca8f5f680ee0adf4cf802584c56ed14956efedd3e18656874614548";
+std::string ReserveTransferWIF = "UtbtjjXtNtYroASwDrW63pEK7Fv3ehBRGDc2GRkPPr292DkRTmtB";
 
 // Reserve deposit -- these outputs are spent into the cross chain import thread on the Verus chain when import transactions are created
 std::string ReserveDepositAddr = "RFw9AVfgNKcHe2Vp2eyzHrX65aFD9Ky8df";
@@ -123,6 +118,11 @@ std::string CrossChainExportWIF = "Uu9P8fa68e2ECar76z4MsSoKtbRV1Dny3WD6DTmMKmeim
 std::string CrossChainImportAddr = "RKLN7wFhbrJFkPG8XkKteErAe5CjqoddTm";
 std::string CrossChainImportPubKey = "038d259ec6175e192f8417914293dd09203885bc33039080f2a33f08a3fdddc818";
 std::string CrossChainImportWIF = "UtAEFiEERMkuZ3cCzbi8DqXRM6fHNAuYcbXU2hy2dc14LgPpkxax";
+
+// Currency state - coinbase output -- currently required on PBaaS chains only
+std::string CurrencyStateAddr = "REU1HKkmdwdxKMpfD3QoxeERYd9tfMN6n9";
+std::string CurrencyStatePubKey = "0219af977f9a6c3779f1185decee2b77da446040055b912b00e115a52d4786059c";
+std::string CurrencyStateWIF = "Ur8YQJQ6guqmD6rXtrUtJ7fWxaEB5FaejCr3MxHAgMEwnjJnuGo5";
 
 // Assets, aka Tokens
 #define FUNCNAME IsAssetsInput
@@ -350,13 +350,22 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             cp->ismyvin = IsServiceRewardInput;
             break;
 
-        case EVAL_CURRENCYSTATE:
-            strcpy(cp->unspendableCCaddr,CurrencyStateAddr.c_str());
-            strcpy(cp->normaladdr,CurrencyStateAddr.c_str());
-            strcpy(cp->CChexstr, CurrencyStatePubKey.c_str());
-            memcpy(cp->CCpriv,DecodeSecret(CurrencyStateWIF).begin(),32);
-            cp->validate = ValidateCurrencyState;
-            cp->ismyvin = IsCurrencyStateInput;
+        case EVAL_RESERVE_OUTPUT:
+            strcpy(cp->unspendableCCaddr, ReserveOutputAddr.c_str());
+            strcpy(cp->normaladdr, ReserveOutputAddr.c_str());
+            strcpy(cp->CChexstr, ReserveOutputPubKey.c_str());
+            memcpy(cp->CCpriv,DecodeSecret(ReserveOutputWIF).begin(),32);
+            cp->validate = ValidateReserveOutput;
+            cp->ismyvin = IsReserveOutputInput;
+            break;
+
+        case EVAL_RESERVE_EXCHANGE:
+            strcpy(cp->unspendableCCaddr, ReserveExchangeAddr.c_str());
+            strcpy(cp->normaladdr, ReserveExchangeAddr.c_str());
+            strcpy(cp->CChexstr, ReserveExchangePubKey.c_str());
+            memcpy(cp->CCpriv,DecodeSecret(ReserveExchangeWIF).begin(),32);
+            cp->validate = ValidateReserveExchange;
+            cp->ismyvin = IsReserveExchangeInput;
             break;
 
         case EVAL_RESERVE_TRANSFER:
@@ -366,15 +375,6 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(ReserveTransferWIF).begin(),32);
             cp->validate = ValidateReserveTransfer;
             cp->ismyvin = IsReserveTransferInput;
-            break;
-
-        case EVAL_RESERVE_OUTPUT:
-            strcpy(cp->unspendableCCaddr, ReserveOutputAddr.c_str());
-            strcpy(cp->normaladdr, ReserveOutputAddr.c_str());
-            strcpy(cp->CChexstr, ReserveOutputPubKey.c_str());
-            memcpy(cp->CCpriv,DecodeSecret(ReserveOutputWIF).begin(),32);
-            cp->validate = ValidateReserveOutput;
-            cp->ismyvin = IsReserveOutputInput;
             break;
 
         case EVAL_RESERVE_DEPOSIT:
@@ -402,6 +402,15 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(CrossChainExportWIF).begin(),32);
             cp->validate = ValidateCrossChainExport;
             cp->ismyvin = IsCrossChainExportInput;
+            break;
+
+        case EVAL_CURRENCYSTATE:
+            strcpy(cp->unspendableCCaddr,CurrencyStateAddr.c_str());
+            strcpy(cp->normaladdr,CurrencyStateAddr.c_str());
+            strcpy(cp->CChexstr, CurrencyStatePubKey.c_str());
+            memcpy(cp->CCpriv,DecodeSecret(CurrencyStateWIF).begin(),32);
+            cp->validate = ValidateCurrencyState;
+            cp->ismyvin = IsCurrencyStateInput;
             break;
 
         case EVAL_ASSETS:
