@@ -1583,6 +1583,9 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         pblock->vtx[0] = coinbaseTx;
         uint256 cbHash = coinbaseTx.GetHash();
 
+        // put the coinbase into the mempool, since we will spend from it
+        myAddtomempool(pblock->vtx[0]);
+
         // if there is a conversion, update the correct coinbase hash and add it to the block
         // we also need to sign the conversion transaction
         if (newConversionOutputTx.vin.size() > 1)

@@ -3135,6 +3135,11 @@ UniValue getcurrencystate(const UniValue& params, bool fHelp)
         }
     }
 
+    if (startEnd[0] > startEnd[1])
+    {
+        startEnd[0] = startEnd[1];
+    }
+
     if (startEnd[1] > lStart)
     {
         startEnd[1] = lStart;
