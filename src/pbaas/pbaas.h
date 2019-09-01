@@ -878,6 +878,16 @@ CTxOut MakeCC1ofAnyVout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestina
     std::vector<std::vector<unsigned char>> vvch({::AsVector((const TOBJ)obj)});
     COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V2, evalcode, 0, (uint8_t)(vDest.size()), vDest, vvch);
 
+    for (auto dest : vDest)
+    {
+        CPubKey oneKey(boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest));
+        std::vector<unsigned char> bytes = GetDestinationBytes(dest);
+        if ((!oneKey.IsValid() && bytes.size() != 20) || (bytes.size() != 33 && bytes.size() != 20))
+        {
+            printf("Invalid destination %s\n", EncodeDestination(dest).c_str());
+        }
+    }
+
     // add the object to the end of the script
     vout.scriptPubKey << vParams.AsVector() << OP_DROP;
     return(vout);
