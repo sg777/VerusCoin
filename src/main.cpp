@@ -1942,7 +1942,10 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         }
     }
     
-    SyncWithWallets(tx, NULL);
+    if (!tx.IsCoinBase())
+    {
+        SyncWithWallets(tx, NULL);
+    }
     
     return true;
 }
