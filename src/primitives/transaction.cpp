@@ -317,6 +317,17 @@ CAmount CTransaction::GetReserveValueOut(const CCurrencyState &currencyState) co
     return nReserveValueOut;
 }
 
+CAmount CTransaction::GetReserveValueOut() const
+{
+    CAmount nReserveValueOut = 0;
+    for (std::vector<CTxOut>::const_iterator it(vout.begin()); it != vout.end(); ++it)
+    {
+        CAmount oneOut = 0;
+        nReserveValueOut += (oneOut = it->scriptPubKey.ReserveOutValue());
+    }
+    return nReserveValueOut;
+}
+
 CAmount CTransaction::GetShieldedValueOut() const
 {
     CAmount nValueOut = 0;

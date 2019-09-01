@@ -1941,12 +1941,9 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             }
         }
     }
-    
-    if (!tx.IsCoinBase())
-    {
-        SyncWithWallets(tx, NULL);
-    }
-    
+
+    SyncWithWallets(tx, NULL);
+
     return true;
 }
 
@@ -2570,6 +2567,7 @@ namespace Consensus {
             return state.Invalid(error("CheckInputs(): %s JoinSplit requirements not met", tx.GetHash().ToString()));
         
         CAmount nValueIn = 0;
+        CAmount nReserveValueIn = 0;
         CAmount nFees = 0;
         for (unsigned int i = 0; i < tx.vin.size(); i++)
         {
@@ -2612,6 +2610,8 @@ namespace Consensus {
             
             // Check for negative or overflow input values
             nValueIn += coins->vout[prevout.n].nValue;
+            nReserveValueIn += coins->vout[prevout.n].scriptPubKey.ReserveOutValue();
+
 #ifdef KOMODO_ENABLE_INTEREST
             if ( ASSETCHAINS_SYMBOL[0] == 0 && nSpendHeight > 60000 )//chainActive.LastTip() != 0 && chainActive.LastTip()->GetHeight() >= 60000 )
             {
@@ -2642,6 +2642,13 @@ namespace Consensus {
             fprintf(stderr,"spentheight.%d valuein %s vs %s error\n",nSpendHeight,FormatMoney(nValueIn).c_str(), FormatMoney(tx.GetValueOut()).c_str());
             return state.DoS(100, error("CheckInputs(): %s value in (%s) < value out (%s) diff %.8f",
                                         tx.GetHash().ToString(), FormatMoney(nValueIn), FormatMoney(tx.GetValueOut()),((double)nValueIn - tx.GetValueOut())/COIN),REJECT_INVALID, "bad-txns-in-belowout");
+        }
+
+        if (nReserveValueIn < tx.GetReserveValueOut())
+        {
+            fprintf(stderr,"spentheight.%d reservevaluein %s vs %s error\n",nSpendHeight, FormatMoney(nReserveValueIn).c_str(), FormatMoney(tx.GetReserveValueOut()).c_str());
+            return state.DoS(100, error("CheckInputs(): %s reserve value in (%s) < reserve value out (%s) diff %.8f",
+                                        tx.GetHash().ToString(), FormatMoney(nReserveValueIn), FormatMoney(tx.GetReserveValueOut()),((double)nReserveValueIn - tx.GetReserveValueOut())/COIN),REJECT_INVALID, "bad-txns-reservein-belowout");
         }
 
         // Tally transaction fees
