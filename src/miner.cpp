@@ -717,6 +717,14 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                         printf("Failure to get initial currency state. Cannot create block.\n");
                         return NULL;
                     }
+
+                    if (currencyState.ReserveIn < ConnectedChains.ThisChain().minpreconvert)
+                    {
+                        // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
+                        LogPrintf("This chain did not receive the minimum currency contributions and cannot launch. Pre-launch contributions to this chain can be refunded.\n");
+                        printf("This chain did not receive the minimum currency contributions and cannot launch. Pre-launch contributions to this chain can be refunded.\n");
+                        return NULL;
+                    }
                 }
 
                 // add needed block one coinbase outputs
