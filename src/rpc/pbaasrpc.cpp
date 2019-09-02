@@ -654,6 +654,82 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
     }
 }
 
+UniValue getpendingchaintransfers(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error(
+            "getpendingchaintransfers \"chainname\"\n"
+            "\nReturns all pending transfers for a particular chain that have not yet been aggregated into an export\n"
+
+            "\nArguments\n"
+            "1. \"chainname\"                     (string, optional) name of the chain to look for. no parameter returns current chain in daemon.\n"
+
+            "\nResult:\n"
+            "  {\n"
+            "  }\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getpendingchaintransfers", "\"chainname\"")
+            + HelpExampleRpc("getpendingchaintransfers", "\"chainname\"")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+
+    uint160 chainID = GetChainIDFromParam(params[0]);
+
+    if (chainID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
+    }
+
+    CPBaaSChainDefinition chainDef;
+    int32_t defHeight;
+
+    LOCK(cs_main);
+
+    if ((IsVerusActive() && GetChainDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetChainID() == chainID)
+    {
+        // which transaction are we in this block?
+        std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+
+        // look for new exports
+        multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
+
+        if (GetUnspentChainTransfers(inputDescriptors, chainID))
+        {
+            UniValue ret(UniValue::VARR);
+
+            for (auto &desc : inputDescriptors)
+            {
+                COptCCParams p;
+                if (desc.second.first.scriptPubKey.IsPayToCryptoCondition(p))
+                {
+                    UniValue oneExport(UniValue::VOBJ);
+
+                    oneExport.push_back(Pair("chainid", desc.first.GetHex()));
+                    oneExport.push_back(Pair("txid", desc.second.first.txIn.prevout.hash.GetHex()));
+                    oneExport.push_back(Pair("n", (int32_t)desc.second.first.txIn.prevout.n));
+                    oneExport.push_back(Pair("valueout", desc.second.first.nValue));
+                    oneExport.push_back(Pair("reservetransfer", desc.second.second.ToUniValue()));
+                    ret.push_back(oneExport);
+                }
+            }
+            if (ret.size())
+            {
+                return ret;
+            }
+        }
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unrecognized chain name or chain ID");
+    }
+    
+    return NullUniValue;
+}
+
 UniValue getchainexports(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
@@ -696,8 +772,6 @@ UniValue getchainexports(const UniValue& params, bool fHelp)
 
         // look for new exports
         CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
-
-        CBlockIndex *pIndex;
 
         CChainNotarizationData cnd;
         if (GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd))
@@ -1009,17 +1083,8 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
     bool nofilter = chainFilter.IsNull();
     CKeyID keyID;
 
-    // if we have no chain filter, search for all
-    if (nofilter)
-    {
-        // look for unspent chain transfer outputs for all chains
-        keyID = CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_RESERVE_TRANSFER);
-    }
-    else
-    {
-        // look for all targeted outputs for the specific chain
-        keyID = chainFilter;
-    }
+    // look for unspent chain transfer outputs for all chains
+    keyID = CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_RESERVE_TRANSFER);
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
@@ -1049,7 +1114,8 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
                         CReserveTransfer rt;
                         if (::IsPayToCryptoCondition(coins.vout[i].scriptPubKey, p) && p.evalCode == EVAL_RESERVE_TRANSFER &&
                             p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
-                            p.vKeys.size() > 1)
+                            p.vKeys.size() > 1 &&
+                            (nofilter || GetDestinationID(p.vKeys[1]) == chainFilter))
                         {
                             inputDescriptors.insert(make_pair(GetDestinationID(p.vKeys[1]),
                                                      make_pair(CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))), rt)));
@@ -1060,7 +1126,6 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
             else
             {
                 printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
-                return false;
             }
         }
         return true;
@@ -3942,6 +4007,7 @@ static const CRPCCommand commands[] =
     { "pbaas",        "getcrossnotarization",         &getcrossnotarization,   true  },
     { "pbaas",        "definechain",                  &definechain,            true  },
     { "pbaas",        "sendreserve",                  &sendreserve,            true  },
+    { "pbaas",        "getpendingchaintransfers",     &getpendingchaintransfers, true  },
     { "pbaas",        "getchainexports",              &getchainexports,        true  },
     { "pbaas",        "getchainimports",              &getchainimports,        true  },
     { "pbaas",        "reserveexchange",              &reserveexchange,        true  },
