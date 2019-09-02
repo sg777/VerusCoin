@@ -499,6 +499,11 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                 printf("%s: notarization mmrRoot, %s, does not match the mmrRoot of the chain, %s\n", __func__, lastConfirmed.mmrRoot.GetHex().c_str(), mmrView.GetRoot().GetHex().c_str());
                 return false;
             }
+            else
+            {
+                printf("%s: created import %s for export %s\n", __func__, lastConfirmed.mmrRoot.GetHex().c_str(), cci.ToUniValue().write().c_str(), aixIt->second.second.GetHash().GetHex().c_str());
+            }
+
 
             chainActive[aixIt->second.first.blockHeight]->AddMerkleProofBridge(exportProof);
             mmrView.GetProof(exportProof, aixIt->second.first.blockHeight);
