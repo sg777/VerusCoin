@@ -471,6 +471,8 @@ int64_t CScript::ReserveOutValue() const
     COptCCParams p;
     CAmount newVal = 0;
 
+    // reserve out value must be the same as native on a Verus chain
+
     // already validated above
     if (::IsPayToCryptoCondition(*this, p) && p.IsValid())
     {

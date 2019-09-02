@@ -641,6 +641,13 @@ CAmount CCoinsViewCache::GetValueIn(int32_t nHeight,int64_t *interestp,const CTr
 
 CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& tx) const
 {
+
+    if (IsVerusActive())
+    {
+        CAmount dummyInterest;
+        return GetValueIn(nHeight, &dummyInterest, tx);
+    }
+
     CAmount nResult = 0;
 
     /* we don't support this coin import, so we should add reserve import support and uncomment

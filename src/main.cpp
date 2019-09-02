@@ -2644,7 +2644,7 @@ namespace Consensus {
                                         tx.GetHash().ToString(), FormatMoney(nValueIn), FormatMoney(tx.GetValueOut()),((double)nValueIn - tx.GetValueOut())/COIN),REJECT_INVALID, "bad-txns-in-belowout");
         }
 
-        if (nReserveValueIn < tx.GetReserveValueOut())
+        if (!IsVerusActive() && nReserveValueIn < tx.GetReserveValueOut())
         {
             fprintf(stderr,"spentheight.%d reservevaluein %s vs %s error\n",nSpendHeight, FormatMoney(nReserveValueIn).c_str(), FormatMoney(tx.GetReserveValueOut()).c_str());
             return state.DoS(100, error("CheckInputs(): %s reserve value in (%s) < reserve value out (%s) diff %.8f",

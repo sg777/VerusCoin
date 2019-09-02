@@ -303,28 +303,32 @@ CAmount CTransaction::GetValueOut() const
     return nValueOut;
 }
 
-CAmount CTransaction::GetReserveValueOut(const CCurrencyState &currencyState) const
+CAmount CTransaction::GetReserveValueOut() const
 {
     CAmount nReserveValueOut = 0;
+    CAmount isNativeReserve = _IsVerusActive();
     for (std::vector<CTxOut>::const_iterator it(vout.begin()); it != vout.end(); ++it)
     {
-        CAmount oneOut = 0;
-        nReserveValueOut += (oneOut = it->scriptPubKey.ReserveOutValue());
-        // cannot have an output larger than the whole reserve
-        if (oneOut > currencyState.Reserve)
-            throw std::runtime_error("CTransaction::GetReserveValueOut(): value exceeds actual reserves");
+        CAmount oneOut = it->scriptPubKey.ReserveOutValue();
+        if (isNativeReserve && oneOut == 0)
+        {
+            oneOut = it->nValue;
+        }
+        if (nReserveValueOut < 0 || oneOut < 0 || (nReserveValueOut = nReserveValueOut + oneOut) < 0)
+            throw std::runtime_error("CTransaction::GetReserveValueOut(): value overflow");
+        // except for zero, which is remedied above, native and reserve outputs should be equal on
+        // the Verus chain
+        if (isNativeReserve && oneOut != it->nValue)
+            throw std::runtime_error("CTransaction::GetReserveValueOut(): native output is different from reserve output on native reserve chain");
     }
     return nReserveValueOut;
 }
 
-CAmount CTransaction::GetReserveValueOut() const
+CAmount CTransaction::GetReserveValueOut(const CCurrencyState &currencyState) const
 {
-    CAmount nReserveValueOut = 0;
-    for (std::vector<CTxOut>::const_iterator it(vout.begin()); it != vout.end(); ++it)
-    {
-        CAmount oneOut = 0;
-        nReserveValueOut += (oneOut = it->scriptPubKey.ReserveOutValue());
-    }
+    CAmount nReserveValueOut = GetReserveValueOut();
+    if (nReserveValueOut > currencyState.Reserve)
+        throw std::runtime_error("CTransaction::GetReserveValueOut(): value exceeds actual reserves");
     return nReserveValueOut;
 }
 
