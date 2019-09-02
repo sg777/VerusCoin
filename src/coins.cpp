@@ -642,7 +642,7 @@ CAmount CCoinsViewCache::GetValueIn(int32_t nHeight,int64_t *interestp,const CTr
 CAmount CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTransaction& tx) const
 {
 
-    if (IsVerusActive())
+    if (_IsVerusActive())
     {
         CAmount dummyInterest;
         return GetValueIn(nHeight, &dummyInterest, tx);
