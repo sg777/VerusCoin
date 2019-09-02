@@ -1339,8 +1339,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             assert(reserveFills.size() >= reservePositions.size());
 
             // create the conversion transaction and all outputs indicated by every single mined transaction
-            CAmount nativeConversionFees = 0;
-            CAmount reserveConversionFees = 0;
             if (reserveFills.size())
             {
                 currencyState = newState;
@@ -1402,9 +1400,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             currencyState.ConversionPrice = exchangeRate;
         }
 
-        currencyState.Fees = nFees;
-
-        // first calculate and distribute block rewards, including fees as specified in the minerOutputs vector
+        // first calculate and distribute block rewards, including fees in the minerOutputs vector
         CAmount rewardTotalShareAmount = 0;
         CAmount rewardTotal = blockSubsidy + nFees;
         CAmount rewardLeft = notarizationTxIndex ? rewardTotal - notarizationOut.nValue : rewardTotal;
@@ -1462,16 +1458,18 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             p.vData[0] = currencyState.AsVector();
             currencyStateOut.scriptPubKey.ReplaceCCParams(p);
 
-            if (newConversionOutputTx.vout.size())
+            if (conversionInputs.size())
             {
                 CTransaction convertTx(newConversionOutputTx);
-
-                assert(convertTx.GetValueOut() <= currencyState.ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice));
-
-                currencyStateOut.nValue = currencyState.ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice);
+                currencyStateOut.nValue = convertTx.GetValueOut();
 
                 // the coinbase is not finished, store index placeholder here now and fixup hash later
                 newConversionOutputTx.vin[0] = CTxIn(uint256(), cbOutIdx);
+            }
+            else
+            {
+                newConversionOutputTx.vin.clear();
+                newConversionOutputTx.vout.clear();
             }
 
             coinbaseTx.vout[cbOutIdx] = currencyStateOut;
