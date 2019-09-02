@@ -290,6 +290,99 @@ public:
     bool AddReserveTransferImportOutputs(const CPBaaSChainDefinition &chainDef, const std::vector<CBaseChainObject *> &exportObjects, std::vector<CTxOut> &vOutputs);
 };
 
+// import transactions from another chain
+// an import transaction on a fractional reserve chain will have an instant spend input of EVAL_CHAIN_IMPORT from the coinbase, 
+// which provides for import of a reserve currency or cross-chain token, or auto-conversion to the native currency.
+class CCrossChainImport
+{
+public:
+    uint160 chainID;                                            // usually the reserve currency, but here for generality
+    CAmount nValue;                                             // total amount of coins imported from chain with or without conversion, including fees
+
+    CCrossChainImport() : nValue(0) { }
+    CCrossChainImport(const uint160 &cID, const CAmount value) : chainID(cID), nValue(value) { }
+
+    CCrossChainImport(const std::vector<unsigned char> &asVector)
+    {
+        ::FromVector(asVector, *this);
+    }
+
+    CCrossChainImport(const CTransaction &tx);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(chainID);
+        READWRITE(VARINT(nValue));
+    }
+
+    std::vector<unsigned char> AsVector()
+    {
+        return ::AsVector(*this);
+    }
+
+    bool IsValid() const
+    {
+        return !chainID.IsNull();
+    }
+
+    UniValue ToUniValue() const;
+};
+
+// describes an entire output that will be realized on a target chain. target is specified as part of an aggregated transaction.
+class CCrossChainExport
+{
+public:
+    static const int MIN_BLOCKS = 10;
+    static const int MIN_INPUTS = 10;
+    static const int MAX_EXPORT_INPUTS = 50;
+    uint160 chainID;                                // target chain ID
+    int32_t numInputs;                              // number of inputs aggregated to calculate the fee percentage
+    CAmount totalAmount;                            // total amount of inputs, including fees
+    CAmount totalFees;                              // total amount of fees to split between miner on exporting chain and importing chain
+
+    CCrossChainExport() : numInputs(0), totalAmount(0), totalFees(0) {}
+
+    CCrossChainExport(const std::vector<unsigned char> &asVector)
+    {
+        FromVector(asVector, *this);
+    }
+
+    CCrossChainExport(uint160 cID, int32_t numin, CAmount value, CAmount fees) : chainID(cID), numInputs(numin), totalAmount(value), totalFees(fees) {}
+
+    CCrossChainExport(const CTransaction &tx);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(chainID);
+        READWRITE(numInputs);
+        READWRITE(VARINT(totalAmount));
+        READWRITE(VARINT(totalFees));
+    }
+
+    std::vector<unsigned char> AsVector()
+    {
+        return ::AsVector(*this);
+    }
+
+    bool IsValid() const
+    {
+        return !chainID.IsNull();
+    }
+
+    CAmount CalculateExportFee() const;
+
+    CAmount CalculateImportFee() const
+    {
+        return totalFees - CalculateExportFee();
+    }
+    
+    UniValue ToUniValue() const;
+};
+
 class CCurrencyState
 {
 public:

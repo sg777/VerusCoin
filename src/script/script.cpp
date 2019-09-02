@@ -466,9 +466,8 @@ CScript &CScript::ReplaceCCParams(const COptCCParams &params)
     return *this;
 }
 
-int64_t CScript::ReserveOutValue() const
+int64_t CScript::ReserveOutValue(COptCCParams &p) const
 {
-    COptCCParams p;
     CAmount newVal = 0;
 
     // reserve out value must be the same as native on a Verus chain
@@ -509,45 +508,10 @@ int64_t CScript::ReserveOutValue() const
     return 0;
 }
 
-int64_t CScript::ReserveOutValue(const CCurrencyState &currencyState) const
+int64_t CScript::ReserveOutValue() const
 {
     COptCCParams p;
-    CAmount newVal = 0;
-
-    // already validated above
-    if (::IsPayToCryptoCondition(*this, p) && p.IsValid())
-    {
-        switch (p.evalCode)
-        {
-            case EVAL_RESERVE_OUTPUT:
-            {
-                CReserveOutput ro(p.vData[0]);
-                return ro.nValue;
-                break;
-            }
-            case EVAL_CURRENCYSTATE:
-            {
-                CCoinbaseCurrencyState cbcs(p.vData[0]);
-                return cbcs.ReserveOut.nValue;
-                break;
-            }
-            case EVAL_RESERVE_TRANSFER:
-            {
-                CReserveTransfer rt(p.vData[0]);
-                return rt.nValue;
-                break;
-            }
-            case EVAL_RESERVE_EXCHANGE:
-            {
-                CReserveExchange re(p.vData[0]);
-                // reserve out amount when converting to reserve is 0, since the amount cannot be calculated in isolation as an input
-                // if reserve in, we can consider the output the same reserve value as the input
-                return (re.flags & re.TO_RESERVE) ? currencyState.NativeToReserve(re.nValue) : re.nValue;
-                break;
-            }
-        }
-    }
-    return 0;
+    return ReserveOutValue(p);
 }
 
 bool CScript::SetReserveOutValue(int64_t newValue)
@@ -580,6 +544,22 @@ bool CScript::SetReserveOutValue(int64_t newValue)
                 p.vData[0] = re.AsVector();
                 break;
             }
+            case EVAL_CROSSCHAIN_IMPORT:
+            {
+                CCrossChainImport cci(p.vData[0]);
+                cci.nValue = newValue;
+                p.vData[0] = cci.AsVector();
+                break;
+            }
+            // cross chain import thread holds the original conversion amounts
+            case EVAL_CURRENCYSTATE:
+            {
+                CCoinbaseCurrencyState cbcs(p.vData[0]);
+                cbcs.ReserveOut.nValue = newValue;
+                p.vData[0] = cbcs.AsVector();
+                break;
+            }
+
             default:
                 return false;
         }

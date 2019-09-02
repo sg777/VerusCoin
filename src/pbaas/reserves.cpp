@@ -113,6 +113,40 @@ CReserveExchange::CReserveExchange(const CTransaction &tx, bool validate)
     }
 }
 
+UniValue CCrossChainExport::ToUniValue() const
+{
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("chainid", chainID.GetHex()));
+    obj.push_back(Pair("numinputs", numInputs));
+    obj.push_back(Pair("totalamount", ValueFromAmount(totalAmount)));
+    obj.push_back(Pair("totalfees", ValueFromAmount(totalFees)));
+    return obj;
+}
+
+UniValue CCrossChainImport::ToUniValue() const
+{
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("chainid", chainID.GetHex()));
+    obj.push_back(Pair("valuein", ValueFromAmount(nValue)));
+    return obj;
+}
+
+CCrossChainImport::CCrossChainImport(const CTransaction &tx)
+{
+    for (auto out : tx.vout)
+    {
+        COptCCParams p;
+        if (IsPayToCryptoCondition(out.scriptPubKey, p))
+        {
+            // always take the first for now
+            if (p.evalCode == EVAL_CROSSCHAIN_IMPORT && p.vData.size())
+            {
+                FromVector(p.vData[0], *this);
+            }
+        }
+    }
+}
+
 CCurrencyState::CCurrencyState(const UniValue &obj)
 {
     flags = uni_get_int(find_value(obj, "flags"));

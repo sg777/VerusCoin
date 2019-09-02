@@ -596,7 +596,7 @@ public:
     CScript &ReplaceCCParams(const COptCCParams &params);
 
     int64_t ReserveOutValue() const;
-    int64_t ReserveOutValue(const CCurrencyState &currencyState) const; // with conversion from native for calculating vs. 0 when only native is known
+    int64_t ReserveOutValue(COptCCParams &p) const;
     bool SetReserveOutValue(int64_t newValue);
 
     bool IsCoinImport() const;

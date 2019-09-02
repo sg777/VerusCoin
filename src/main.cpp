@@ -2568,6 +2568,7 @@ namespace Consensus {
         
         CAmount nValueIn = 0;
         CAmount nReserveValueIn = 0;
+        bool isImport = false;
         CAmount nFees = 0;
         for (unsigned int i = 0; i < tx.vin.size(); i++)
         {
@@ -2610,7 +2611,27 @@ namespace Consensus {
             
             // Check for negative or overflow input values
             nValueIn += coins->vout[prevout.n].nValue;
-            nReserveValueIn += coins->vout[prevout.n].scriptPubKey.ReserveOutValue();
+
+            COptCCParams p;
+            if (!isImport)
+            {
+                nReserveValueIn += coins->vout[prevout.n].scriptPubKey.ReserveOutValue(p);
+            }
+
+            // if this spends the import thread, it is an import, and states explicitly how much it is importing of
+            // reserve
+            if (p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+            {
+                CCrossChainImport cci(tx);
+                if (!cci.IsValid())
+                {
+                    return state.DoS(100,
+                                     error("CheckInputs(): non-cross-chain import tried to spend import thread"),
+                                     REJECT_INVALID, "bad-txns-invalid-import-spend");
+                }
+                isImport = true;
+                nReserveValueIn = cci.nValue;
+            }
 
 #ifdef KOMODO_ENABLE_INTEREST
             if ( ASSETCHAINS_SYMBOL[0] == 0 && nSpendHeight > 60000 )//chainActive.LastTip() != 0 && chainActive.LastTip()->GetHeight() >= 60000 )
