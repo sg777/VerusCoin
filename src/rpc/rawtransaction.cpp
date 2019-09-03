@@ -45,24 +45,17 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 {
     txnouttype type;
     vector<CTxDestination> addresses;
-    int nRequired;
 
     // needs to be an object
     if (!out.isObject())
     {
         out = UniValue(UniValue::VOBJ);
     }
-
-    bool noDests = false;
-    if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired))
-    {
-        noDests = true;
-    }
-
+    
     out.push_back(Pair("type", GetTxnOutputType(type)));
 
     COptCCParams p;
-    if (IsPayToCryptoCondition(scriptPubKey, p) && p.version >= COptCCParams::VERSION_V2)
+    if (scriptPubKey.IsPayToCryptoCondition(p) && p.version >= COptCCParams::VERSION_V2)
     {
         switch(p.evalCode)
         {
@@ -238,12 +231,12 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
         }
     }
 
-    if (!noDests)
+    if (p.vKeys.size())
     {
-        out.push_back(Pair("reqSigs", nRequired));
+        out.push_back(Pair("reqSigs", p.m == 0 ? 1 : p.m));
 
         UniValue a(UniValue::VARR);
-        for (const CTxDestination& addr : addresses) {
+        for (const CTxDestination& addr : p.vKeys) {
             a.push_back(EncodeDestination(addr));
         }
         out.push_back(Pair("addresses", a));
