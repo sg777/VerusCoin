@@ -51,7 +51,9 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
     {
         out = UniValue(UniValue::VOBJ);
     }
-    
+
+    int nRequired;
+    ExtractDestinations(scriptPubKey, type, addresses, nRequired);
     out.push_back(Pair("type", GetTxnOutputType(type)));
 
     COptCCParams p;
