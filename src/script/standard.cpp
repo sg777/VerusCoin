@@ -210,14 +210,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
             if (scriptPubKey.MayAcceptCryptoCondition(cp.evalCode))
             {
                 typeRet = TX_CRYPTOCONDITION;
-                vector<unsigned char> hashBytes; uint160 x; int32_t i; uint8_t hash20[20],*ptr;;
-                x = Hash160(ccSubScript);
-                memcpy(hash20,&x,20);
-                hashBytes.resize(20);
-                ptr = hashBytes.data();
-                for (i=0; i<20; i++)
-                    ptr[i] = hash20[i];
-                vSolutionsRet.push_back(hashBytes);
+
                 if (vParams.size())
                 {
                     if (cp.IsValid())
@@ -232,6 +225,15 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                         return false;
                     }
                 }
+
+                vector<unsigned char> hashBytes; uint160 x; int32_t i; uint8_t hash20[20],*ptr;;
+                x = Hash160(ccSubScript);
+                memcpy(hash20,&x,20);
+                hashBytes.resize(20);
+                ptr = hashBytes.data();
+                for (i=0; i<20; i++)
+                    ptr[i] = hash20[i];
+                vSolutionsRet.push_back(hashBytes);
                 return true;
             }
             return false;
