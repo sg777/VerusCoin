@@ -2387,7 +2387,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             "           \"name\"           : \"xxxx\",  (string, optional) Verus ecosystem-wide name/symbol of chain to send to, if absent, current chain is assumed\n"
             "           \"paymentaddress\" : \"Rxxx\",  (string, required) premine and launch fee recipient\n"
             "           \"refundaddress\"  : \"Rxxx\",  (string, required) if a pre-convert is not mined in time, funds can be spent by the owner of this address\n"
-            "           \"amount\"         : \"n\",     (int64,  required) amount of coins that will be moved and sent to address on PBaaS chain, network and conversion fees additional\n"
+            "           \"amount\"         : \"n.n\",   (value,  required) coins that will be moved and sent to address on PBaaS chain, network and conversion fees additional\n"
             "           \"convert\"        : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price\n"
             "           \"preconvert\"     : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price, fail if order cannot be placed before launch\n"
             "           \"subtractfee\"    : \"bool\",  (bool,   optional) if true, reduce amount to destination by the transfer and conversion fee amount. normal network fees are never subtracted"
@@ -2397,8 +2397,8 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             "       \"txid\" : \"transactionid\" (string) The transaction id.\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("sendreserve", "'[{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'")
-            + HelpExampleRpc("sendreserve", "'[{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'")
+            + HelpExampleCli("sendreserve", "'{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}'")
+            + HelpExampleRpc("sendreserve", "'{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}'")
         );
     }
 
@@ -2429,7 +2429,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     string name = uni_get_str(find_value(params[0], "name"), "");
     string paymentAddr = uni_get_str(find_value(params[0], "paymentaddress"), "");
     string refundAddr = uni_get_str(find_value(params[0], "refundaddress"), paymentAddr);
-    CAmount amount = uni_get_int64(find_value(params[0], "amount"), -1);
+    CAmount amount = AmountFromValue(find_value(params[0], "amount"));
     bool convert = uni_get_int(find_value(params[0], "convert"), false);
     bool preconvert = uni_get_int(find_value(params[0], "preconvert"), false);
     bool subtractFee = uni_get_int(find_value(params[0], "subtractfee"), false);
