@@ -650,8 +650,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
     nativeOut = 0;
     reserveIn = 0;
     reserveOut = 0;
-    reserveOutConverted = 0;
-    reserveConversionFees = 0;
+
+
     numTransfers = 0;
     CAmount transferFees = 0;
     bool isVerusActive = IsVerusActive();
@@ -785,10 +785,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
     CCrossChainExport ccx(chainDef.GetChainID(), numTransfers, reserveIn - transferFees, transferFees);
-    if (reserveIn - reserveOut >= ccx.CalculateImportFee())
+    if (reserveIn - reserveOut > ccx.CalculateImportFee())
     {
-        printf("%s: Too much fee taken by export\n", __func__);
-        LogPrintf("%s: Too much fee taken by export\n", __func__);
+        printf("%s: Too much fee taken by export -- taken: %lu, import fee: %lu, export fee: %lu\n", __func__, reserveIn - reserveOut, ccx.CalculateImportFee(), ccx.CalculateExportFee());
+        LogPrintf("%s: Too much fee taken by export -- taken: %lu, import fee: %lu, export fee: %lu\n", __func__, reserveIn - reserveOut, ccx.CalculateImportFee(), ccx.CalculateExportFee());
         return false;
     }
     return true;

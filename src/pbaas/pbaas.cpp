@@ -1312,12 +1312,32 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 CReserveTransactionDescriptor rtxd;
                                 std::vector<CTxOut> dummy;
 
-                                if (!GetChainDefinition(lastChain, lastChainDef) || !rtxd.AddReserveTransferImportOutputs(lastChainDef, chainObjects, dummy))
+                                bool badChain = false;
+                                if ((badChain = !GetChainDefinition(lastChain, lastChainDef)) || !rtxd.AddReserveTransferImportOutputs(lastChainDef, chainObjects, dummy))
                                 {
+                                    DeleteOpRetObjects(chainObjects);
+
                                     // we can't do any more useful work for this chain if we failed here
                                     printf("%s: failed to create valid exports\n", __func__);
                                     LogPrintf("%s: failed to create valid exports\n", __func__);
 
+                                    // debugging output
+                                    printf("%s: failed to export outputs:\n", __func__);
+                                    for (auto oneout : dummy)
+                                    {
+                                        void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
+                                        UniValue uniOut;
+                                        ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
+                                        printf("%s\n", uniOut.write(true, 2).c_str());
+                                    }
+
+                                    if (badChain)
+                                    {
+                                        break;
+                                    }
+                                }
+                                else
+                                {
                                     // debugging output
                                     printf("%s: exported outputs:\n", __func__);
                                     for (auto oneout : dummy)
@@ -1328,90 +1348,79 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         printf("%s\n", uniOut.write(true, 2).c_str());
                                     }
 
-                                    break;
-                                }
+                                    CScript opRet = StoreOpRetArray(chainObjects);
+                                    DeleteOpRetObjects(chainObjects);
 
-                                // debugging output
-                                printf("%s: exported outputs:\n", __func__);
-                                for (auto oneout : dummy)
-                                {
-                                    void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
-                                    UniValue uniOut;
-                                    ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
-                                    printf("%s\n", uniOut.write(true, 2).c_str());
-                                }
+                                    CCcontract_info CC;
+                                    CCcontract_info *cp;
+                                    cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
 
-                                CScript opRet = StoreOpRetArray(chainObjects);
-                                DeleteOpRetObjects(chainObjects);
+                                    CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                                CCcontract_info CC;
-                                CCcontract_info *cp;
-                                cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
+                                    // send native amount of zero to a cross chain export output of the specific chain
+                                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_CROSSCHAIN_EXPORT))});
 
-                                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+                                    CTxOut exportOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, exportOutVal, pk, dests, ccx);
 
-                                // send native amount of zero to a cross chain export output of the specific chain
-                                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_CROSSCHAIN_EXPORT))});
+                                    tb.AddTransparentOutput(exportOut.scriptPubKey, exportOutVal);
 
-                                CTxOut exportOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, exportOutVal, pk, dests, ccx);
-
-                                tb.AddTransparentOutput(exportOut.scriptPubKey, exportOutVal);
-
-                                // if we are on Verus chain, send all native funds, less fees to reserve deposit CC, which is equivalent to the reserve account
-                                // on a PBaaS reserve chain, input is burned
-                                if (IsVerusActive())
-                                {
-                                    cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
-                                    pk = CPubKey(ParseHex(CC.CChexstr));
-
-                                    // send the entire amount to a reserve transfer output of the specific chain
-                                    // we receive our fee on the other chain or when it comes back
-                                    dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_RESERVE_DEPOSIT))});
-
-                                    CReserveOutput ro(CReserveOutput::VALID, totalAmount + totalTxFees);
-
-                                    CTxOut outToReserve = MakeCC1of1Vout(EVAL_RESERVE_DEPOSIT, 
-                                                                         ro.nValue,
-                                                                         pk,
-                                                                         dests,
-                                                                         ro);
-
-                                    tb.AddTransparentOutput(outToReserve.scriptPubKey, ro.nValue);
-                                }
-
-                                tb.AddOpRet(opRet);
-                                tb.SetFee(0);
-
-                                oneExport = tb.Build();
-
-                                if (oneExport.has_value())
-                                {
-                                    // replace the last one only if we have a valid new one
-                                    CTransaction &tx = oneExport.get();
-
-                                    LOCK2(cs_main, mempool.cs);
-                                    static int lastHeight = 0;
-                                    // remove conflicts, so that we get in
-                                    std::list<CTransaction> removed;
-                                    mempool.removeConflicts(tx, removed);
-
-                                    // add to mem pool, prioritize according to the fee we will get, and relay
-                                    printf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
-                                    LogPrintf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
-                                    if (myAddtomempool(tx))
+                                    // if we are on Verus chain, send all native funds, less fees to reserve deposit CC, which is equivalent to the reserve account
+                                    // on a PBaaS reserve chain, input is burned
+                                    if (IsVerusActive())
                                     {
-                                        uint256 hash = tx.GetHash();
-                                        mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(exportFees << 1), exportFees);
-                                        RelayTransaction(tx);
+                                        cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
+                                        pk = CPubKey(ParseHex(CC.CChexstr));
+
+                                        // send the entire amount to a reserve transfer output of the specific chain
+                                        // we receive our fee on the other chain or when it comes back
+                                        dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_RESERVE_DEPOSIT))});
+
+                                        CReserveOutput ro(CReserveOutput::VALID, totalAmount + totalTxFees);
+
+                                        CTxOut outToReserve = MakeCC1of1Vout(EVAL_RESERVE_DEPOSIT, 
+                                                                            ro.nValue,
+                                                                            pk,
+                                                                            dests,
+                                                                            ro);
+
+                                        tb.AddTransparentOutput(outToReserve.scriptPubKey, ro.nValue);
+                                    }
+
+                                    tb.AddOpRet(opRet);
+                                    tb.SetFee(0);
+
+                                    oneExport = tb.Build();
+
+                                    if (oneExport.has_value())
+                                    {
+                                        // replace the last one only if we have a valid new one
+                                        CTransaction &tx = oneExport.get();
+
+                                        LOCK2(cs_main, mempool.cs);
+                                        static int lastHeight = 0;
+                                        // remove conflicts, so that we get in
+                                        std::list<CTransaction> removed;
+                                        mempool.removeConflicts(tx, removed);
+
+                                        // add to mem pool, prioritize according to the fee we will get, and relay
+                                        printf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
+                                        LogPrintf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
+                                        if (myAddtomempool(tx))
+                                        {
+                                            uint256 hash = tx.GetHash();
+                                            mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(exportFees << 1), exportFees);
+                                            RelayTransaction(tx);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // we can't do any more useful work for this chain if we failed here
+                                        printf("Failed to create export transaction\n");
+                                        LogPrintf("Failed to create export transaction\n");
+                                        break;
                                     }
                                 }
-                                else
-                                {
-                                    // we can't do any more useful work for this chain if we failed here
-                                    printf("Failed to create export transaction\n");
-                                    LogPrintf("Failed to create export transaction\n");
-                                    break;
-                                }
+
                                 // erase the inputs we've attempted to spend
                                 txInputs.erase(txInputs.begin(), txInputs.begin() + numInputs);
                             }
