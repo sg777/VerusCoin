@@ -631,7 +631,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         CAmount reserveFeesAvailable;
         CAmount nativeFeesAvailable;
 
-        if (ReserveFees() < minReserveFee || NativeFees() < minNativeFee)
+        if (ReserveFees() < minReserveFee || (NativeFees() + nativeConversionFees) < minNativeFee)
         {
             // not enough fees
             flags |= IS_REJECT;
