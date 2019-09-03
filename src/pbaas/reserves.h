@@ -281,7 +281,7 @@ public:
         flags |= IS_RESERVE;
         if (!(flags & IS_IMPORT))
         {
-            reserveOut += rt.nValue;
+            reserveOut += rt.nValue + rt.nFees;
             numTransfers++;
         }
     }
@@ -527,16 +527,17 @@ public:
     CAmount NativeIn;       // native currency converted to reserve
     CReserveOutput ReserveOut; // output can have both normal and reserve output value, if non-0, this is spent by the required conversion output transactions
     CAmount ConversionPrice;// calculated price in reserve for all conversions * 100000000
-    CAmount Fees;           // fee values in native coins for all transaction network fees + conversion fees for the block, output must be reward + this value
+    CAmount Fees;           // fee values in native (or reserve if specified) coins for reserve transaction fees for the block
+    CAmount ConversionFees; // total of only conversion fees, which will accrue to the conversion transaction
 
     CCoinbaseCurrencyState() : ReserveIn(0), NativeIn(0), ConversionPrice(0), Fees(0) {}
 
     CCoinbaseCurrencyState(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve,
-                             CAmount reserveIn, CAmount nativeIn, CReserveOutput reserveOut, CAmount conversionPrice, CAmount fees) : 
-        CCurrencyState(initialRatio, supply, initialSupply, emitted, reserve), ReserveIn(reserveIn), NativeIn(nativeIn), ReserveOut(reserveOut), ConversionPrice(conversionPrice), Fees(fees) { }
+                             CAmount reserveIn, CAmount nativeIn, CReserveOutput reserveOut, CAmount conversionPrice, CAmount fees, CAmount conversionFees) : 
+        CCurrencyState(initialRatio, supply, initialSupply, emitted, reserve), ReserveIn(reserveIn), NativeIn(nativeIn), ReserveOut(reserveOut), ConversionPrice(conversionPrice), Fees(fees), ConversionFees(conversionFees) { }
 
-    CCoinbaseCurrencyState(const CCurrencyState &currencyState, CAmount reserveIn, CAmount nativeIn, const CReserveOutput &reserveOut, CAmount conversionPrice, CAmount fees) : 
-        CCurrencyState(currencyState), ReserveIn(reserveIn), NativeIn(nativeIn), ReserveOut(reserveOut), ConversionPrice(conversionPrice), Fees(fees) { }
+    CCoinbaseCurrencyState(const CCurrencyState &currencyState, CAmount reserveIn, CAmount nativeIn, const CReserveOutput &reserveOut, CAmount conversionPrice, CAmount fees, CAmount conversionFees) : 
+        CCurrencyState(currencyState), ReserveIn(reserveIn), NativeIn(nativeIn), ReserveOut(reserveOut), ConversionPrice(conversionPrice), Fees(fees), ConversionFees(conversionFees) { }
 
     CCoinbaseCurrencyState(const UniValue &uni);
 
@@ -557,6 +558,7 @@ public:
         READWRITE(ReserveOut);
         READWRITE(VARINT(ConversionPrice));
         READWRITE(VARINT(Fees));
+        READWRITE(VARINT(ConversionFees));
     }
 
     std::vector<unsigned char> AsVector() const

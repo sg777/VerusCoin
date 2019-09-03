@@ -1136,7 +1136,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
         cState.InitialSupply = preconvertedNative;
         cState.Supply += preconvertedNative;
 
-        return CCoinbaseCurrencyState(cState, thisChain.initialcontribution, 0, CReserveOutput(CReserveOutput::VALID, 0), thisChain.conversion, 0);
+        return CCoinbaseCurrencyState(cState, thisChain.initialcontribution, 0, CReserveOutput(CReserveOutput::VALID, 0), thisChain.conversion, 0, 0);
     }
 }
 

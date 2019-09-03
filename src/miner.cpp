@@ -328,7 +328,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
     // if this is a reserve currency, update the currency state from the coinbase of the last block
     bool isVerusActive = IsVerusActive();
     CPBaaSChainDefinition &thisChain = ConnectedChains.ThisChain();
-    CCoinbaseCurrencyState currencyState = CCoinbaseCurrencyState(CCurrencyState(thisChain.conversion, thisChain.premine, 0, 0, 0), 0, 0, CReserveOutput(), 0, 0);
+    CCoinbaseCurrencyState currencyState = CCoinbaseCurrencyState(CCurrencyState(thisChain.conversion, thisChain.premine, 0, 0, 0), 0, 0, CReserveOutput(), 0, 0, 0);
     CAmount exchangeRate;
 
     // we will attempt to spend any cheats we see
@@ -1160,7 +1160,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 nativeEquivalentOut = currencyState.ReserveToNative(rtxd.reserveOut);
             }
 
-            CFeeRate feeRate(isReserve ? rtxd.AllFeesAsNative(currencyState) : nFeeValueIn - (tx.GetValueOut() + nativeEquivalentOut), nTxSize);
+            CFeeRate feeRate(isReserve ? rtxd.AllFeesAsNative(currencyState) + currencyState.ReserveToNative(rtxd.reserveConversionFees) + rtxd.nativeConversionFees : nFeeValueIn - (tx.GetValueOut() + nativeEquivalentOut), nTxSize);
 
             if (porphan)
             {
@@ -1311,6 +1311,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         // 1. collect all the reserve transactions from the block and add them to the reserveFills vector
         // 2. add all limit transactions to the orders vector
         // 3. match orders to include all limit transactions that qualify and will fit
+        CAmount conversionFees = 0;
+
         if (haveReserveTransactions)
         {
             std::vector<CReserveTransactionDescriptor> reserveFills;
@@ -1344,6 +1346,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                                                         exchangeRate, nHeight, conversionInputs,
                                                                         nBlockMaxSize - autoTxSize, &newBlockSize, &newConversionOutputTx);
 
+            // TODO:PBAAS - account for the edge case where we have too large expected fills and have no room
+            // for transactions that we would otherwise take
             assert(reserveFills.size() >= reservePositions.size());
 
             // create the conversion transaction and all outputs indicated by every single mined transaction
@@ -1403,14 +1407,12 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             {
                 fill.AddConversionInOuts(newConversionOutputTx, conversionInputs, exchangeRate, &currencyState);
             }
-
-            // update the currency state
-            currencyState.ConversionPrice = exchangeRate;
         }
 
         // first calculate and distribute block rewards, including fees in the minerOutputs vector
         CAmount rewardTotalShareAmount = 0;
-        CAmount rewardTotal = blockSubsidy + nFees;
+        CAmount rewardTotal = blockSubsidy + currencyState.ConversionFees + nFees;
+
         CAmount rewardLeft = notarizationTxIndex ? rewardTotal - notarizationOut.nValue : rewardTotal;
 
         for (auto &outputShare : minerOutputs)
@@ -1430,8 +1432,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             coinbaseTx.vout[cbOutIdx].nValue = amount;
             // the only valid CC output we currently support on coinbases is stake guard, which does not need to be modified for this
         }
-
-        // update all remaining coinbase outputs
 
         // premineOut - done
         if (premineOut.scriptPubKey.size())
@@ -1469,7 +1469,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             if (conversionInputs.size())
             {
                 CTransaction convertTx(newConversionOutputTx);
-                currencyStateOut.nValue = convertTx.GetValueOut();
+                currencyStateOut.nValue = convertTx.GetValueOut() + currencyState.ConversionFees;
 
                 // the coinbase is not finished, store index placeholder here now and fixup hash later
                 newConversionOutputTx.vin[0] = CTxIn(uint256(), cbOutIdx);
@@ -1644,7 +1644,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
             UpdateCoins(newConversionOutputTx, view, nHeight);
             pblock->vtx.push_back(newConversionOutputTx);
-            pblocktemplate->vTxFees.push_back(0);
+            pblocktemplate->vTxFees.push_back(currencyState.ConversionFees);
+            nFees += currencyState.ConversionFees;
             int txSigOps = GetLegacySigOpCount(newConversionOutputTx);
             pblocktemplate->vTxSigOps.push_back(txSigOps);
             nBlockSize += GetSerializeSize(newConversionOutputTx, SER_NETWORK, PROTOCOL_VERSION);

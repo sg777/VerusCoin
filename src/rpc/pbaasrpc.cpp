@@ -457,7 +457,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             pk = CPubKey(ParseHex(CC.CChexstr));
 
-            if (rtxd.ReserveFees() - rtxd.reserveConversionFees != (ccx.totalFees - exportFees))
+            if (rtxd.ReserveFees() != (ccx.totalFees - exportFees))
             {
                 LogPrintf("%s: ERROR - import does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
                 printf("%s: ERROR - import does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
@@ -501,7 +501,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             }
             else
             {
-                printf("%s: created import %s for export %s\n", __func__, lastConfirmed.mmrRoot.GetHex().c_str(), cci.ToUniValue().write().c_str(), aixIt->second.second.GetHash().GetHex().c_str());
+                printf("%s: created import %s for export %s\n", __func__, cci.ToUniValue().write().c_str(), aixIt->second.second.GetHash().GetHex().c_str());
             }
 
 
@@ -3105,7 +3105,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
     currencyState.InitialSupply = preconvertedNative;
     currencyState.Supply += preconvertedNative;
 
-    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(CReserveOutput::VALID, fees), chainDef.conversion, 0);
+    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(CReserveOutput::VALID, fees), chainDef.conversion, fees, fees);
 }
 
 UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
