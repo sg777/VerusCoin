@@ -51,7 +51,7 @@ CTxMemPoolEntry::GetPriority(unsigned int currentHeight) const
 {
     CAmount nValueIn = tx.GetValueOut()+nFee;
     CCurrencyState currencyState;
-    if (hasReserve && (currencyState = ConnectedChains.GetCurrencyState(currentHeight)).IsValid())
+    if (hasReserve)
     {
         nValueIn += currencyState.ReserveToNative(tx.GetReserveValueOut(currencyState));
     }

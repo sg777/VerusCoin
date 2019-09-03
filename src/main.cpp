@@ -4891,6 +4891,11 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                         //}
                         rejects++;
                     }
+                    else if (state.GetRejectReason() == "bad-txns-invalid-reserve")
+                    {
+                        // there is no way this will be ok
+                        success = false;
+                    }
                 }
             }
             if ( rejects == 0 || rejects == lastrejects )

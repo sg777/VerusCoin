@@ -324,14 +324,6 @@ CAmount CTransaction::GetReserveValueOut() const
     return nReserveValueOut;
 }
 
-CAmount CTransaction::GetReserveValueOut(const CCurrencyState &currencyState) const
-{
-    CAmount nReserveValueOut = GetReserveValueOut();
-    if (nReserveValueOut > currencyState.Reserve)
-        throw std::runtime_error("CTransaction::GetReserveValueOut(): value exceeds actual reserves");
-    return nReserveValueOut;
-}
-
 CAmount CTransaction::GetShieldedValueOut() const
 {
     CAmount nValueOut = 0;

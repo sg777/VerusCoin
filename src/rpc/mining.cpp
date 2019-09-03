@@ -912,10 +912,15 @@ UniValue submitblock(const UniValue& params, bool fHelp)
 
     CValidationState state;
     submitblock_StateCatcher sc(block.GetHash());
-    RegisterValidationInterface(&sc);
-    //printf("submitblock, height=%d, coinbase sequence: %d, scriptSig: %s\n", chainActive.LastTip()->GetHeight()+1, block.vtx[0].vin[0].nSequence, block.vtx[0].vin[0].scriptSig.ToString().c_str());
-    bool fAccepted = ProcessNewBlock(1,chainActive.LastTip()->GetHeight()+1,state, NULL, &block, true, NULL);
-    UnregisterValidationInterface(&sc);
+    bool fAccepted;
+    CCriticalSection cs_blocksubmission;
+    {
+        LOCK(cs_blocksubmission);
+        RegisterValidationInterface(&sc);
+        //printf("submitblock, height=%d, coinbase sequence: %d, scriptSig: %s\n", chainActive.LastTip()->GetHeight()+1, block.vtx[0].vin[0].nSequence, block.vtx[0].vin[0].scriptSig.ToString().c_str());
+        fAccepted = ProcessNewBlock(1,chainActive.LastTip()->GetHeight()+1,state, NULL, &block, true, NULL);
+        UnregisterValidationInterface(&sc);
+    }
     if (fBlockPresent || !fAccepted || !sc.found)
     {
         //printf("Block was not accepted %s\n", state.GetRejectReason().c_str());
