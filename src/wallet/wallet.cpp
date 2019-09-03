@@ -3070,6 +3070,26 @@ CAmount CWalletTx::GetCredit(const isminefilter& filter) const
     return credit;
 }
 
+bool CWalletTx::HasMatureCoins() const
+{
+    // Must wait until coinbase is safely deep enough in the chain before valuing it
+    if (!(IsCoinBase() && GetBlocksToMaturity() > 0))
+    {
+        return true;
+    }
+    else
+    {
+        for (auto oneout : vout)
+        {
+            if (oneout.scriptPubKey.IsInstantSpend())
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
 CAmount CWalletTx::GetReserveCredit(const isminefilter& filter) const
 {
     // Must wait until coinbase is safely deep enough in the chain before valuing it
@@ -3084,7 +3104,7 @@ CAmount CWalletTx::GetReserveCredit(const isminefilter& filter) const
             credit += nReserveCreditCached;
         else
         {
-            nReserveCreditCached = pwallet->GetCredit(*this, ISMINE_SPENDABLE);
+            nReserveCreditCached = pwallet->GetReserveCredit(*this, ISMINE_SPENDABLE);
             fReserveCreditCached = true;
             credit += nReserveCreditCached;
         }
@@ -3095,7 +3115,7 @@ CAmount CWalletTx::GetReserveCredit(const isminefilter& filter) const
             credit += nWatchReserveCreditCached;
         else
         {
-            nWatchReserveCreditCached = pwallet->GetCredit(*this, ISMINE_WATCH_ONLY);
+            nWatchReserveCreditCached = pwallet->GetReserveCredit(*this, ISMINE_WATCH_ONLY);
             fWatchReserveCreditCached = true;
             credit += nWatchReserveCreditCached;
         }
@@ -3260,7 +3280,7 @@ CAmount CWalletTx::GetAvailableWatchOnlyReserveCredit(const bool& fUseCache) con
     {
         if (!pwallet->IsSpent(GetHash(), i))
         {
-            nCredit += pwallet->GetCredit(*this, i, ISMINE_WATCH_ONLY);
+            nCredit += pwallet->GetReserveCredit(*this, i, ISMINE_WATCH_ONLY);
             if (!MoneyRange(nCredit))
                 throw std::runtime_error("CWalletTx::GetAvailableCredit() : value out of range");
         }

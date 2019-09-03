@@ -603,6 +603,7 @@ public:
     void SetSaplingNoteData(mapSaplingNoteData_t &noteData);
 
     //! filter decides which addresses will count towards the debit
+    bool HasMatureCoins() const;    // coinbase transactions can support instant-spend outputs for conversion, import, and non-emission outputs
     CAmount GetDebit(const isminefilter& filter) const;
     CAmount GetReserveDebit(const isminefilter& filter) const;
     CAmount GetCredit(const isminefilter& filter) const;
