@@ -509,35 +509,40 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     std::vector<CBaseChainObject *> chainObjs;
                     // either a fully valid import with an export or the first import either in block 1 or the chain definition
                     // on the Verus chain
-                    if ((tx.vout.back().scriptPubKey.IsOpReturn() &&
+                    if ((nHeight == 1 && tx.IsCoinBase() && !IsVerusActive()) ||
+                        (CPBaaSChainDefinition(tx).IsValid() && IsVerusActive()) ||
+                        (tx.vout.back().scriptPubKey.IsOpReturn() &&
                         (chainObjs = RetrieveOpRetArray(tx.vout.back().scriptPubKey)).size() >= 2 &&
                         chainObjs[0]->objectType == CHAINOBJ_TRANSACTION &&
                         chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF))
                     {
-                        CTransaction &exportTx = ((CChainObject<CTransaction> *)chainObjs[0])->object;
-                        std::vector<CBaseChainObject *> exportTransfers;
-                        if ((ccx = CCrossChainExport(exportTx)).IsValid() && 
-                            exportTx.vout.back().scriptPubKey.IsOpReturn() &&
-                            (exportTransfers = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey)).size() &&
-                            exportTransfers[0]->objectType == CHAINOBJ_RESERVETRANSFER)
+                        if (chainObjs.size())
                         {
-                            // an import transaction is built from the export list
-                            // we can rebuild it and confirm that it matches exactly
-                            // we can also subtract all pre-converted reserve from input
-                            // and verify that the output matches the proper conversion
+                            CTransaction &exportTx = ((CChainObject<CTransaction> *)chainObjs[0])->object;
+                            std::vector<CBaseChainObject *> exportTransfers;
+                            if ((ccx = CCrossChainExport(exportTx)).IsValid() && 
+                                exportTx.vout.back().scriptPubKey.IsOpReturn() &&
+                                (exportTransfers = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey)).size() &&
+                                exportTransfers[0]->objectType == CHAINOBJ_RESERVETRANSFER)
+                            {
+                                // an import transaction is built from the export list
+                                // we can rebuild it and confirm that it matches exactly
+                                // we can also subtract all pre-converted reserve from input
+                                // and verify that the output matches the proper conversion
 
-                            // get the chain definition of the chain we are importing from
-                            std::vector<CTxOut> checkOutputs;
+                                // get the chain definition of the chain we are importing from
+                                std::vector<CTxOut> checkOutputs;
 
-                            if (!AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), exportTransfers, checkOutputs))
+                                if (!AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), exportTransfers, checkOutputs))
+                                {
+                                    flags |= IS_REJECT;
+                                }
+                                // TODO:PBAAS - hardening - validate all the outputs we got back as the same as what is in the transaction
+                            }
+                            else
                             {
                                 flags |= IS_REJECT;
                             }
-                            // TODO:PBAAS - hardening - validate all the outputs we got back as the same as what is in the transaction
-                        }
-                        else
-                        {
-                            flags |= IS_REJECT;
                         }
                     }
                     else
