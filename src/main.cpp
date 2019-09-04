@@ -3674,17 +3674,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     else
     {
-        if (totalReserveTxFees != currencyState.Fees)
+        if (!isVerusActive)
         {
-            return state.DoS(100, error("ConnectBlock(): invalid currency state fee amount, does not match block transactions"), REJECT_INVALID, "bad-blk-currency-fee");
+            if (totalReserveTxFees != currencyState.Fees)
+            {
+                return state.DoS(100, error("ConnectBlock(): invalid currency state fee amount, does not match block transactions"), REJECT_INVALID, "bad-blk-currency-fee");
+            }
+            blockReward += CCurrencyState::ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice) + currencyState.Fees;
         }
-        blockReward += CCurrencyState::ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice) + currencyState.Fees;
-    }
-
-    // on reserve chains, output on currency state output, which are checked as conversions, are in addition to the normal emission
-    if (ConnectedChains.ThisChain().ChainOptions() & ConnectedChains.ThisChain().OPTION_RESERVE && !isBlock1)
-    {
-        blockReward += currencyState.ReserveToNative(CReserveTransactionDescriptor::CalculateAdditionalConversionFee(reserveIn), currencyState.ConversionPrice) + CReserveTransactionDescriptor::CalculateAdditionalConversionFee(nativeIn);
     }
 
     if ( ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 && ASSETCHAINS_COMMISSION != 0 )
