@@ -1646,7 +1646,7 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                                                         (!Solver(vout.scriptPubKey, tp, vvch) || 
                                                         tp != TX_CRYPTOCONDITION || 
                                                         vvch.size() < 2 || 
-                                                        p.pk != CPubKey(vvch[1])))
+                                                        p.pk != CPubKey(vvch[0])))
                                                     {
                                                         isPOS = false;
                                                         break;
