@@ -530,7 +530,7 @@ public:
     CAmount Fees;           // fee values in native (or reserve if specified) coins for reserve transaction fees for the block
     CAmount ConversionFees; // total of only conversion fees, which will accrue to the conversion transaction
 
-    CCoinbaseCurrencyState() : ReserveIn(0), NativeIn(0), ConversionPrice(0), Fees(0) {}
+    CCoinbaseCurrencyState() : ReserveIn(0), NativeIn(0), ConversionPrice(0), Fees(0), ConversionFees(0) {}
 
     CCoinbaseCurrencyState(int32_t initialRatio, CAmount supply, CAmount initialSupply, CAmount emitted, CAmount reserve,
                              CAmount reserveIn, CAmount nativeIn, CReserveOutput reserveOut, CAmount conversionPrice, CAmount fees, CAmount conversionFees) : 

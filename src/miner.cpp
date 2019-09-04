@@ -665,11 +665,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         // make earned notarization only if this is not the notary chain and we have enough subsidy
         if (!isVerusActive)
         {
-            if (nHeight == 1)
-            {
-                blockSubsidy -= GetBlockOnePremine();       // separate subsidy, which can go to miner, from premine
-            }
-
             // if we don't have a connected root PBaaS chain, we can't properly check
             // and notarize the start block, so we have to pass the notarization and cross chain steps
             bool notaryConnected = ConnectedChains.IsVerusPBaaSAvailable() && ConnectedChains.notaryChainHeight >= PBAAS_STARTBLOCK;
@@ -677,6 +672,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             // get current currency state differently, depending on height
             if (nHeight == 1)
             {
+                blockSubsidy -= GetBlockOnePremine();       // separate subsidy, which can go to miner, from premine
+
                 if (!notaryConnected)
                 {
                     // cannt make block 1 unless we can properly notarize that the launch chain is past the start block
@@ -785,6 +782,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 assert(nHeight > 1);
                 currencyState = ConnectedChains.GetCurrencyState(nHeight - 1);
                 currencyState.Fees = 0;
+                currencyState.ConversionFees = 0;
                 currencyState.NativeIn = 0;
                 currencyState.ReserveIn = 0;
                 currencyState.ReserveOut.nValue = 0;
