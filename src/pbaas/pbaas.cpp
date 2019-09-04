@@ -1117,7 +1117,8 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
     CCoinbaseCurrencyState currencyState;
     CBlock block;
     LOCK(cs_main);
-    if (!IsVerusActive() && 
+    bool isVerusActive = IsVerusActive();
+    if (!isVerusActive && 
         CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::SOLUTION_VERUSV3 &&
         height != 0 && 
         height <= chainActive.Height() && 
@@ -1133,7 +1134,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
         CAmount preconvertedNative = currencyState.ReserveToNative(thisChain.preconverted, thisChain.conversion);
         CCurrencyState cState(thisChain.conversion, preconvertedNative, preconvertedNative, 0, isReserve ? thisChain.preconverted : 0, isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID);
         CAmount fees = 0;
-        if (!height)
+        if (!height && !isVerusActive)
         {
             fees = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(thisChain.preconverted);
         }
