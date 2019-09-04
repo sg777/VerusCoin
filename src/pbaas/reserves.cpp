@@ -751,7 +751,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                 else
                 {
                     // if Verus is active, we are creating a reserve import for a PBaaS reserve chain
-                    if (isVerusActive)
+                    if ((isVerusActive && chainDef.name != ConnectedChains.ThisChain().name) || (!isVerusActive && chainDef.name != ConnectedChains.NotaryChain().chainDefinition.name))
                     {
                         // generate a reserve output of the amount indicated, less fees
                         // we will send using a reserve output, fee will be paid through coinbase by converting from reserve or not, depending on currency settings
