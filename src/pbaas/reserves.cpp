@@ -488,7 +488,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     }
 
                     // if we send the output to the reserve chain, it must be a TO_RESERVE transaction
-                    if (!(rex.flags & rex.TO_RESERVE))
+                    if ((rex.flags & rex.SEND_OUTPUT) && !(rex.flags & rex.TO_RESERVE))
                     {
                         flags |= IS_REJECT;
                         return;
