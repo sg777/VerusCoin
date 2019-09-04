@@ -3671,7 +3671,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     else
     {
-        blockReward += CCurrencyState::ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice);
+        blockReward += CCurrencyState::ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice) + currencyState.Fees;
     }
 
     // on reserve chains, output on currency state output, which are checked as conversions, are in addition to the normal emission

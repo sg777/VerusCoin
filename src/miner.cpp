@@ -1469,7 +1469,8 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
             if (conversionInputs.size())
             {
                 CTransaction convertTx(newConversionOutputTx);
-                currencyStateOut.nValue = convertTx.GetValueOut() + currencyState.ConversionFees;
+                currencyStateOut.nValue = convertTx.GetValueOut();
+                currencyState.ReserveOut.nValue = convertTx.GetReserveValueOut();
 
                 // the coinbase is not finished, store index placeholder here now and fixup hash later
                 newConversionOutputTx.vin[0] = CTxIn(uint256(), cbOutIdx);
@@ -1644,8 +1645,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
             UpdateCoins(newConversionOutputTx, view, nHeight);
             pblock->vtx.push_back(newConversionOutputTx);
-            pblocktemplate->vTxFees.push_back(currencyState.ConversionFees);
-            nFees += currencyState.ConversionFees;
+            pblocktemplate->vTxFees.push_back(0);
             int txSigOps = GetLegacySigOpCount(newConversionOutputTx);
             pblocktemplate->vTxSigOps.push_back(txSigOps);
             nBlockSize += GetSerializeSize(newConversionOutputTx, SER_NETWORK, PROTOCOL_VERSION);
