@@ -421,8 +421,14 @@ bool CScript::IsPayToCryptoCondition(COptCCParams &ccParams) const
         {
             ccParams = COptCCParams(vParams[0]);
         }
+        else
+        {
+            // make sure that we return it in a consistent and known state
+            ccParams = COptCCParams();
+        }
         return true;
     }
+    ccParams = COptCCParams();
     return false;
 }
 

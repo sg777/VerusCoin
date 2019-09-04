@@ -2116,12 +2116,6 @@ void static VerusStaker(CWallet *pwallet)
                 Mining_start = (uint32_t)time(NULL);
             }
 
-            if ( Mining_height != lastStakingHeight )
-            {
-                printf("Staking height %d for %s\n", Mining_height, ASSETCHAINS_SYMBOL);
-                lastStakingHeight = Mining_height;
-            }
-
             // Check for stop or if block needs to be rebuilt
             boost::this_thread::interruption_point();
 
@@ -2129,6 +2123,16 @@ void static VerusStaker(CWallet *pwallet)
             CBlockTemplate *ptr = NULL;
             if (Mining_height > VERUS_MIN_STAKEAGE)
                 ptr = CreateNewBlockWithKey(reservekey, Mining_height, 0, true);
+
+            // TODO - putting this output here tends to help mitigate announcing a staking height earlier than
+            // announcing the last block win when we start staking before a block's acceptance has been
+            // acknowledged by the mining thread - a better solution may be to put the output on the submission
+            // thread.
+            if ( ptr == 0 && Mining_height != lastStakingHeight )
+            {
+                printf("Staking height %d for %s\n", Mining_height, ASSETCHAINS_SYMBOL);
+            }
+            lastStakingHeight = Mining_height;
 
             if ( ptr == 0 )
             {

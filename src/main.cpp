@@ -3403,6 +3403,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     // TODO:PBAAS - add the ability to pay native fees in reserve
     CReserveTransactionDescriptor rtxd;
     CCoinbaseCurrencyState prevCurrencyState = ConnectedChains.GetCurrencyState(nHeight ? nHeight - 1 : 0);
+    CAmount totalReserveTxFees = 0;
 
     // move it forward to this block
     prevCurrencyState.UpdateWithEmission(GetBlockSubsidy(nHeight, consensus));
@@ -3425,6 +3426,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         //fprintf(stderr,"ht.%d vout0 t%u\n",pindex->GetHeight(),tx.nLockTime);
         CPBaaSNotarization tpbn;
         bool isBlockBoundTx = (IsBlockBoundTransaction(tx, block.vtx[0].GetHash()));
+        CReserveTransactionDescriptor ctxd;
 
         if (!tx.IsMint())
         {
@@ -3439,6 +3441,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                  REJECT_INVALID, "bad-txns-joinsplit-requirements-not-met");
             if (fAddressIndex || fSpentIndex)
             {
+                bool maybeReserve = false;
                 for (size_t j = 0; j < tx.vin.size(); j++) {
 
                     const CTxIn input = tx.vin[j];
@@ -3459,9 +3462,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                         hashBytes = Hash160(vector <unsigned char>(prevout.scriptPubKey.begin()+1, prevout.scriptPubKey.begin()+34));
                         addressType = 1;
                     }
-                    else if (IsPayToCryptoCondition(prevout.scriptPubKey, params)) {
+                    else if (prevout.scriptPubKey.IsPayToCryptoCondition(params)) {
                         if (params.IsValid() && !params.vKeys.empty())
                         {
+                            maybeReserve = true;
                             hashBytes = GetDestinationID(params.vKeys[0]);
                         }
                         else
@@ -3489,6 +3493,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                         spentIndex.push_back(make_pair(CSpentIndexKey(input.prevout.hash, input.prevout.n), CSpentIndexValue(txhash, j, pindex->GetHeight(), prevout.nValue, addressType, hashBytes)));
                     }
                 }
+                if (maybeReserve)
+                {
+                    rtxd = CReserveTransactionDescriptor(tx, view, nHeight);
+                }
             }
             // Add in sigops done by pay-to-script-hash inputs;
             // this is to prevent a "rogue miner" from creating
@@ -3510,31 +3518,26 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             {
                 int outIdx;
                 currencyState = CCoinbaseCurrencyState(block.vtx[0], &outIdx);
-                if (!currencyState.IsValid())
+                if (!rtxd.IsValid() || !currencyState.IsValid())
                 {
                     return state.DoS(100, error("ConnectBlock(): invalid currency state"), REJECT_INVALID, "bad-blk-currency");
-                }
-            }
-            else
-            {
-                CReserveTransactionDescriptor rtxd(tx, view, nHeight);
-                if (rtxd.IsValid())
-                {
-                    nFees += rtxd.AllFeesAsNative(currencyState, currencyState.ConversionPrice) + rtxd.nativeConversionFees + currencyState.ReserveToNative(rtxd.reserveConversionFees, currencyState.ConversionPrice);
-                    if (currencyState.IsReserve())
-                    {
-                        reserveIn += rtxd.reserveOutConverted + rtxd.reserveConversionFees + rtxd.ReserveFees();
-                        nativeIn += rtxd.nativeOutConverted;
-                    }
                 }
             }
         }
 
         if (!tx.IsCoinBase())
         {
-            if (!rtxd.IsValid())
+            if (rtxd.IsValid())
             {
-                nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime) - tx.GetValueOut();
+                if (currencyState.IsReserve())
+                {
+                    reserveIn += rtxd.reserveOutConverted + rtxd.reserveConversionFees + rtxd.ReserveFees();
+                    nativeIn += rtxd.nativeOutConverted;
+                }
+                totalReserveTxFees += rtxd.AllFeesAsNative(currencyState, currencyState.ConversionPrice) + rtxd.nativeConversionFees + currencyState.ReserveToNative(rtxd.reserveConversionFees, currencyState.ConversionPrice);
+            } else
+            {
+                nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut();
             }
             sum += interest;
             
@@ -3664,13 +3667,17 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CAmount blockReward = nFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus()) + sum;
 
     bool isBlock1 = pindex->GetHeight() == 1;
-    if (isBlock1 && !isVerusActive && ConnectedChains.ThisChain().maxpreconvert && ConnectedChains.ThisChain().conversion)
+    if (isBlock1 && ConnectedChains.ThisChain().preconverted && ConnectedChains.ThisChain().conversion)
     {
         // if we can have a pre-conversion output on block 1, add pre-conversion
         blockReward += CCurrencyState::ReserveToNative(ConnectedChains.ThisChain().preconverted, ConnectedChains.ThisChain().conversion) + currencyState.Fees;
     }
     else
     {
+        if (totalReserveTxFees != currencyState.Fees)
+        {
+            return state.DoS(100, error("ConnectBlock(): invalid currency state fee amount, does not match block transactions"), REJECT_INVALID, "bad-blk-currency-fee");
+        }
         blockReward += CCurrencyState::ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice) + currencyState.Fees;
     }
 
