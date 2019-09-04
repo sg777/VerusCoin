@@ -424,9 +424,16 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     // including mixing with market orders, parity of buy or sell, limit value and validbefore values, 
     // or the transaction is considered invalid
 
+    // no inputs are valid at height 0
+    if (!nHeight)
+    {
+        flags |= IS_REJECT;
+        return;
+    }
+
     // reserve exchange transactions cannot run on the Verus chain and must have a supported chain on which to execute
     if (!chainActive.LastTip() ||
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) != CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3 ||
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) != CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3 ||
         IsVerusActive() ||
         !(ConnectedChains.ThisChain().ChainOptions() & ConnectedChains.ThisChain().OPTION_RESERVE))
     {
@@ -559,7 +566,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 case EVAL_CROSSCHAIN_EXPORT:
                 {
                     // cross chain export is incompatible with reserve exchange outputs
-                    if (IsReserveExchange() || (flags & IS_IMPORT))
+                    if (!(nHeight == 1 && tx.IsCoinBase() && !IsVerusActive()) &&
+                        !(CPBaaSChainDefinition(tx).IsValid() && IsVerusActive()) &&
+                        (IsReserveExchange() || (flags & IS_IMPORT)))
                     {
                         flags |= IS_REJECT;
                         return;
@@ -573,13 +582,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
     // we have all inputs, outputs, and fees, if check inputs, we can check all for consistency
     // inputs may be in the memory pool or on the blockchain
-
-    // no inputs are valid at height 0
-    if (!nHeight)
-    {
-        flags |= IS_REJECT;
-        return;
-    }
 
     int64_t interest;
     nativeOut = tx.GetValueOut();

@@ -1130,13 +1130,9 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
     else
     {
         bool isReserve = (thisChain.ChainOptions() & thisChain.OPTION_RESERVE);
-        CCurrencyState cState(thisChain.conversion, 0, 0, 0, isReserve ? thisChain.initialcontribution : 0, isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID);
-
-        CAmount preconvertedNative = cState.ReserveToNative(thisChain.preconverted, thisChain.conversion);
-        cState.InitialSupply = preconvertedNative;
-        cState.Supply += preconvertedNative;
-
-        return CCoinbaseCurrencyState(cState, thisChain.initialcontribution, 0, CReserveOutput(CReserveOutput::VALID, 0), thisChain.conversion, 0, 0);
+        CAmount preconvertedNative = currencyState.ReserveToNative(thisChain.preconverted, thisChain.conversion);
+        CCurrencyState cState(thisChain.conversion, preconvertedNative, preconvertedNative, 0, isReserve ? thisChain.preconverted : 0, isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID);
+        return CCoinbaseCurrencyState(cState, thisChain.preconverted, 0, CReserveOutput(CReserveOutput::VALID, 0), thisChain.conversion, 0, 0);
     }
 }
 
