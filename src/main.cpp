@@ -3669,6 +3669,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         // if we can have a pre-conversion output on block 1, add pre-conversion
         blockReward += CCurrencyState::ReserveToNative(ConnectedChains.ThisChain().preconverted, ConnectedChains.ThisChain().conversion) + currencyState.Fees;
     }
+    else
+    {
+        blockReward += CCurrencyState::ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice);
+    }
 
     // on reserve chains, output on currency state output, which are checked as conversions, are in addition to the normal emission
     if (ConnectedChains.ThisChain().ChainOptions() & ConnectedChains.ThisChain().OPTION_RESERVE && !isBlock1)

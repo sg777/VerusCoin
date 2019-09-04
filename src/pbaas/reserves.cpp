@@ -615,31 +615,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
             }
         }
 
-        CAmount minReserveFee;
-        CAmount minNativeFee;
+        // TODO:PBAAS hardening total minimum required fees as we build the descriptor and
+        // reject if not correct
 
-        if (IsReserveExchange())
-        {
-            minReserveFee = reserveConversionFees;
-            minNativeFee = nativeConversionFees;
-        }
-        else
-        {
-            minReserveFee = CReserveExchange::FILL_OR_KILL_FEE * numBuys;
-            minNativeFee = CReserveExchange::FILL_OR_KILL_FEE * numSells;
-        }
-
-        // we have total inputs, outputs and fee calculations, ensure that
-        // everything balances and fees are covered in all cases
-        CAmount reserveFeesAvailable;
-        CAmount nativeFeesAvailable;
-
-        if (ReserveFees() < minReserveFee || (NativeFees() + nativeConversionFees) < minNativeFee)
-        {
-            // not enough fees
-            flags |= IS_REJECT;
-            return;
-        }
         flags |= IS_VALID;
         ptx = &tx;
     }
