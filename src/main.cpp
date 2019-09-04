@@ -1772,7 +1772,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         {
             LOCK(mempool.cs);
             // if we don't recognize it, process and check
-            CCurrencyState currencyState = ConnectedChains.GetCurrencyState(chainActive.Height());
+            CCurrencyState currencyState = ConnectedChains.GetCurrencyState(nextBlockHeight > chainActive.Height() ? chainActive.Height() : nextBlockHeight);
             if (!mempool.IsKnownReserveTransaction(hash, txDesc))
             {
                 // we need the current currency state
@@ -3394,13 +3394,22 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     assert(view.GetSaplingAnchorAt(view.GetBestAnchor(SAPLING), sapling_tree));
 
     // Grab the consensus branch ID for the block's height
-    auto consensusBranchId = CurrentEpochBranchId(pindex->GetHeight(), Params().GetConsensus());
+    uint32_t nHeight = pindex->GetHeight();
+    auto consensus = Params().GetConsensus();
+    auto consensusBranchId = CurrentEpochBranchId(nHeight, consensus);
     bool isVerusActive = IsVerusActive();
 
     // on non-Verus reserve chains, we'll want a block-wide currency state for calculations
     // TODO:PBAAS - add the ability to pay native fees in reserve
     CReserveTransactionDescriptor rtxd;
-    CCoinbaseCurrencyState currencyState;
+    CCoinbaseCurrencyState prevCurrencyState = ConnectedChains.GetCurrencyState(nHeight ? nHeight - 1 : 0);
+
+    // move it forward to this block
+    prevCurrencyState.UpdateWithEmission(GetBlockSubsidy(nHeight, consensus));
+
+    CCoinbaseCurrencyState currencyState = prevCurrencyState;
+    CAmount reserveIn = 0;
+    CAmount nativeIn = 0;
 
     std::vector<PrecomputedTransactionData> txdata;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
@@ -3508,10 +3517,15 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             }
             else
             {
-                CReserveTransactionDescriptor rtxd(tx, view, chainActive.LastTip()->GetHeight());
+                CReserveTransactionDescriptor rtxd(tx, view, nHeight);
                 if (rtxd.IsValid())
                 {
-                    nFees += rtxd.AllFeesAsNative(currencyState, currencyState.ConversionPrice);
+                    nFees += rtxd.AllFeesAsNative(currencyState, currencyState.ConversionPrice) + rtxd.nativeConversionFees + currencyState.ReserveToNative(rtxd.reserveConversionFees, currencyState.ConversionPrice);
+                    if (currencyState.IsReserve())
+                    {
+                        reserveIn += rtxd.reserveOutConverted + rtxd.reserveConversionFees + rtxd.ReserveFees();
+                        nativeIn += rtxd.nativeOutConverted;
+                    }
                 }
             }
         }
@@ -3631,31 +3645,35 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     int64_t nTime1 = GetTimeMicros(); nTimeConnect += nTime1 - nTimeStart;
     LogPrint("bench", "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs]\n", (unsigned)block.vtx.size(), 0.001 * (nTime1 - nTimeStart), 0.001 * (nTime1 - nTimeStart) / block.vtx.size(), nInputs <= 1 ? 0 : 0.001 * (nTime1 - nTimeStart) / (nInputs-1), nTimeConnect * 0.000001);
+
+    CCoinbaseCurrencyState checkState = prevCurrencyState;
+
+    CAmount conversionPrice = prevCurrencyState.ConversionPrice;
+    if (reserveIn | nativeIn)
+    {
+        conversionPrice = prevCurrencyState.ConvertAmounts(reserveIn, nativeIn, checkState);
+    }
     
+    if (currencyState.ConversionPrice != conversionPrice || currencyState.Supply != checkState.Supply || (nHeight != 1 && currencyState.ReserveIn != reserveIn) || currencyState.NativeIn != nativeIn)
+    {
+        // do it again for debugging only
+        CAmount conversionPrice = prevCurrencyState.ConvertAmounts(reserveIn, nativeIn, checkState);
+        return state.DoS(100, error("ConnectBlock(): currency state does not match block transactions"), REJECT_INVALID, "bad-blk-currency");
+    }
+
     CAmount blockReward = nFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus()) + sum;
 
     bool isBlock1 = pindex->GetHeight() == 1;
     if (isBlock1 && !isVerusActive && ConnectedChains.ThisChain().maxpreconvert && ConnectedChains.ThisChain().conversion)
     {
         // if we can have a pre-conversion output on block 1, add pre-conversion
-        blockReward += CCurrencyState::ReserveToNative(ConnectedChains.ThisChain().preconverted, ConnectedChains.ThisChain().conversion);
+        blockReward += CCurrencyState::ReserveToNative(ConnectedChains.ThisChain().preconverted, ConnectedChains.ThisChain().conversion) + currencyState.Fees;
     }
 
     // on reserve chains, output on currency state output, which are checked as conversions, are in addition to the normal emission
-    if (ConnectedChains.ThisChain().ChainOptions() & ConnectedChains.ThisChain().OPTION_RESERVE)
+    if (ConnectedChains.ThisChain().ChainOptions() & ConnectedChains.ThisChain().OPTION_RESERVE && !isBlock1)
     {
-        COptCCParams p;
-        for (auto txOut : block.vtx[0].vout)
-        {
-            if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
-            {
-                if (p.evalCode == EVAL_CURRENCYSTATE)
-                {
-                    blockReward += txOut.nValue;
-                    break;
-                }
-            }
-        }
+        blockReward += currencyState.ReserveToNative(CReserveTransactionDescriptor::CalculateAdditionalConversionFee(reserveIn), currencyState.ConversionPrice) + CReserveTransactionDescriptor::CalculateAdditionalConversionFee(nativeIn);
     }
 
     if ( ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 && ASSETCHAINS_COMMISSION != 0 )
