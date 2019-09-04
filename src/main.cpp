@@ -3518,7 +3518,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             {
                 int outIdx;
                 currencyState = CCoinbaseCurrencyState(block.vtx[0], &outIdx);
-                if (!rtxd.IsValid() || !currencyState.IsValid())
+                if (!currencyState.IsValid())
                 {
                     return state.DoS(100, error("ConnectBlock(): invalid currency state"), REJECT_INVALID, "bad-blk-currency");
                 }
