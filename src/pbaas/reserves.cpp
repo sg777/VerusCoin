@@ -262,7 +262,7 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
     {
         cpp_dec_float_50 reserveout;
         int64_t reserveOut;
-        reserveout = reserve * (pow((fractionalin / supply + one), (one / ratio)) - one);
+        reserveout = reserve * (one - pow(one - (fractionalin / supply), (one / ratio)));
         if (!to_int64(reserveout, reserveOut))
         {
             assert(false);
@@ -717,7 +717,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                     pk = CPubKey(ParseHex(CC.CChexstr));
 
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
 
                     reserveOut += curTransfer.nValue;
 
