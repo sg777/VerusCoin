@@ -1417,19 +1417,21 @@ CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFee(CAmount 
 
 CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount) const
 {
+    static arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
     arith_uint256 bigAmount(reserveAmount);
 
     int64_t price = PriceInReserve();
-    bigAmount = price ? (bigAmount * arith_uint256(CReserveExchange::SATOSHIDEN)) / arith_uint256(price) : 0;
+    bigAmount = price ? (bigAmount * bigSatoshi) / arith_uint256(price) : 0;
 
     return bigAmount.GetLow64();
 }
 
 CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount, CAmount exchangeRate)
 {
+    static arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
     arith_uint256 bigAmount(reserveAmount);
 
-    bigAmount = exchangeRate ? (bigAmount * arith_uint256(CReserveExchange::SATOSHIDEN)) / arith_uint256(exchangeRate) : 0;
+    bigAmount = exchangeRate ? (bigAmount * bigSatoshi) / arith_uint256(exchangeRate) : 0;
     return bigAmount.GetLow64();
 }
 

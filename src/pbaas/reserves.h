@@ -496,15 +496,17 @@ public:
 
     CAmount NativeToReserve(CAmount nativeAmount) const
     {
+        static arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
         arith_uint256 bigAmount(nativeAmount);
         arith_uint256 price = arith_uint256(PriceInReserve());
-        return (bigAmount * arith_uint256(price)).GetLow64();
+        return ((bigAmount * arith_uint256(price)) / bigSatoshi).GetLow64();
     }
 
-    CAmount NativeToReserve(CAmount nativeAmount, CAmount exchangeRate) const
+    static CAmount NativeToReserve(CAmount nativeAmount, CAmount exchangeRate)
     {
+        static arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
         arith_uint256 bigAmount(nativeAmount);
-        return (bigAmount * arith_uint256(exchangeRate)).GetLow64();
+        return ((bigAmount * arith_uint256(exchangeRate)) / bigSatoshi).GetLow64();
     }
 
     UniValue ToUniValue() const;
