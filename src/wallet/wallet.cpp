@@ -4645,7 +4645,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     // conversion on a PBaaS reserve chain implies native input
                     if (rt.flags & CReserveTransfer::CONVERT)
                     {
-                        strFailReason = _("All reserve transaction outputs must accommodate reserve currency input");
+                        strFailReason = _(("Reserve transaction outputs created using " + std::string( __func__) + " must have no native output value").c_str());
                         return false;
                     }
                     ro = static_cast<CReserveOutput>(rt);
@@ -4662,7 +4662,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     // conversion to reserve implies native input
                     if (re.flags & CReserveExchange::TO_RESERVE)
                     {
-                        strFailReason = _("All reserve transaction outputs must accommodate reserve currency input");
+                        strFailReason = _(("Reserve transaction outputs created using " + std::string( __func__) + " must have no native output value").c_str());
                         return false;
                     }
                     ro = static_cast<CReserveOutput>(re);
@@ -4677,7 +4677,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
         }
         else if (!recipient.scriptPubKey.IsOpReturn() || recipient.nAmount != 0)
         {
-            strFailReason = _("All reserve transaction outputs except opret must accommodate reserve currency input");
+            strFailReason = _(("Reserve transaction outputs created using " + std::string( __func__) + " must have no native output value").c_str());
             return false;
         }
         
