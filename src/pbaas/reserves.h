@@ -264,7 +264,7 @@ public:
     CAmount AllFeesAsReserve(const CCurrencyState &currencyState) const;
     CAmount AllFeesAsReserve(const CCurrencyState &currencyState, CAmount exchangeRate) const;
 
-    void AddReserveOutput(CReserveOutput &ro)
+    void AddReserveOutput(const CReserveOutput &ro)
     {
         flags |= IS_RESERVE;
         if (!(flags & IS_IMPORT))

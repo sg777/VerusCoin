@@ -361,7 +361,7 @@ void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &r
         {
             numSells += 1;
             nativeConversionFees += fee;
-            nativeOutConverted += rex.nValue - fee;     // fee will not be converted from native, so is not included in converted out
+            nativeOutConverted += rex.nValue - fee;     // fee may not be converted from native, so is not included in converted out
             nativeOut += rex.nValue;                    // conversion fee is considered part of the total native out, since it will be attributed to conversion tx
         }
         else
@@ -445,21 +445,21 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
     for (int i = 0; i < tx.vout.size(); i++)
     {
-        const CTxOut &txOut = tx.vout[i];
         COptCCParams p;
 
-        if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
         {
             switch (p.evalCode)
             {
                 case EVAL_RESERVE_OUTPUT:
                 {
                     CReserveOutput ro;
-                    if (!p.vData.size() && !(ro = CReserveOutput(p.vData[0])).IsValid())
+                    if (!p.vData.size() || !(ro = CReserveOutput(p.vData[0])).IsValid())
                     {
                         flags |= IS_REJECT;
                         return;
                     }
+                    printf("%s: CReserveOutput: %s\n", __func__, ro.ToUniValue().write().c_str());
                     AddReserveOutput(ro);
                 }
                 break;
