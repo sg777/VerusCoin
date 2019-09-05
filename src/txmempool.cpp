@@ -15,13 +15,14 @@
 #include "util.h"
 #include "utilmoneystr.h"
 #include "version.h"
+#include "pbaas/pbaas.h"
 #define _COINBASE_MATURITY 100
 
 using namespace std;
 
 CTxMemPoolEntry::CTxMemPoolEntry():
     nFee(0), nTxSize(0), nModSize(0), nUsageSize(0), nTime(0), dPriority(0.0),
-    hadNoDependencies(false), spendsCoinbase(false)
+    hadNoDependencies(false), spendsCoinbase(false), hasReserve(false)
 {
     nHeight = MEMPOOL_HEIGHT;
 }
@@ -29,9 +30,9 @@ CTxMemPoolEntry::CTxMemPoolEntry():
 CTxMemPoolEntry::CTxMemPoolEntry(const CTransaction& _tx, const CAmount& _nFee,
                                  int64_t _nTime, double _dPriority,
                                  unsigned int _nHeight, bool poolHasNoInputsOf,
-                                 bool _spendsCoinbase, uint32_t _nBranchId):
+                                 bool _spendsCoinbase, uint32_t _nBranchId, bool hasreserve):
     tx(_tx), nFee(_nFee), nTime(_nTime), dPriority(_dPriority), nHeight(_nHeight),
-    hadNoDependencies(poolHasNoInputsOf),
+    hadNoDependencies(poolHasNoInputsOf), hasReserve(hasreserve),
     spendsCoinbase(_spendsCoinbase), nBranchId(_nBranchId)
 {
     nTxSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
@@ -49,6 +50,12 @@ double
 CTxMemPoolEntry::GetPriority(unsigned int currentHeight) const
 {
     CAmount nValueIn = tx.GetValueOut()+nFee;
+    CCurrencyState currencyState;
+    unsigned int lastHeight = currentHeight < 1 ? 0 : currentHeight - 1;
+    if (hasReserve && (currencyState = ConnectedChains.GetCurrencyState(currentHeight - 1)).IsValid())
+    {
+        nValueIn += currencyState.ReserveToNative(tx.GetReserveValueOut());
+    }
     double deltaPriority = ((double)(currentHeight-nHeight)*nValueIn)/nModSize;
     double dResult = dPriority + deltaPriority;
     return dResult;
@@ -358,6 +365,7 @@ void CTxMemPool::remove(const CTransaction &origTx, std::list<CTransaction>& rem
             minerPolicyEstimator->removeTx(hash);
             removeAddressIndex(hash);
             removeSpentIndex(hash);
+            ClearPrioritisation(tx.GetHash());
         }
     }
 }
@@ -769,7 +777,7 @@ CTxMemPool::ReadFeeEstimates(CAutoFile& filein)
     return true;
 }
 
-void CTxMemPool::PrioritiseTransaction(const uint256 hash, const string strHash, double dPriorityDelta, const CAmount& nFeeDelta)
+void CTxMemPool::PrioritiseTransaction(const uint256 &hash, const string strHash, double dPriorityDelta, const CAmount& nFeeDelta)
 {
     {
         LOCK(cs);
@@ -795,6 +803,45 @@ void CTxMemPool::ClearPrioritisation(const uint256 hash)
 {
     LOCK(cs);
     mapDeltas.erase(hash);
+    mapReserveTransactions.erase(hash);
+}
+
+bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyState &currencyState)
+{
+    LOCK(cs);
+    uint256 hash = txDesc.ptx->GetHash();
+    auto it = mapReserveTransactions.find(hash);
+    if (txDesc.IsValid())
+    {
+        mapReserveTransactions[hash] = txDesc;
+        CAmount feeDelta = currencyState.ReserveToNative(txDesc.ReserveFees() + txDesc.reserveConversionFees) + txDesc.nativeConversionFees;
+        PrioritiseTransaction(hash, hash.GetHex().c_str(), (double)feeDelta * 100.0, feeDelta);
+        return true;
+    }
+    return false;
+}
+
+bool CTxMemPool::IsKnownReserveTransaction(const uint256 &hash, CReserveTransactionDescriptor &txDesc)
+{
+    LOCK(cs);
+    auto it = mapReserveTransactions.find(hash);
+    if (it != mapReserveTransactions.end() && it->second.IsValid())
+    {
+        // refresh transaction from mempool or delete it if not found (we may not need this at all)
+        indexed_transaction_set::const_iterator i = mapTx.find(hash);
+        if (i == mapTx.end())
+        {
+            ClearPrioritisation(hash);
+        }
+        else
+        {
+            it->second.ptx = &(i->GetTx());
+
+            txDesc = it->second;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool CTxMemPool::HasNoInputsOf(const CTransaction &tx) const
@@ -843,5 +890,5 @@ bool CCoinsViewMemPool::HaveCoins(const uint256 &txid) const {
 size_t CTxMemPool::DynamicMemoryUsage() const {
     LOCK(cs);
     // Estimate the overhead of mapTx to be 6 pointers + an allocation, as no exact formula for boost::multi_index_contained is implemented.
-    return memusage::MallocUsage(sizeof(CTxMemPoolEntry) + 6 * sizeof(void*)) * mapTx.size() + memusage::DynamicUsage(mapNextTx) + memusage::DynamicUsage(mapDeltas) + cachedInnerUsage;
+    return memusage::MallocUsage(sizeof(CTxMemPoolEntry) + 6 * sizeof(void*)) * mapTx.size() + memusage::DynamicUsage(mapNextTx) + memusage::DynamicUsage(mapDeltas) + memusage::DynamicUsage(mapDeltas) + memusage::DynamicUsage(mapDeltas) + cachedInnerUsage;
 }

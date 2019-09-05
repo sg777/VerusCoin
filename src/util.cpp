@@ -386,7 +386,7 @@ void ParseParameters(int argc, const char* const argv[])
     }
 }
 
-void Split(const std::string& strVal, uint64_t *outVals, const uint64_t nDefault)
+void Split(const std::string& strVal, uint64_t *outVals, const uint64_t nDefault,int maxElements)
 {
     stringstream ss(strVal);
     vector<uint64_t> vec;
@@ -396,7 +396,7 @@ void Split(const std::string& strVal, uint64_t *outVals, const uint64_t nDefault
     while ( ss.peek() == ' ' )
         ss.ignore();
 
-    while ( ss >> i )
+    while ( numVals < maxElements && ss >> i )
     {
         outVals[numVals] = i;
         numVals += 1;
@@ -414,7 +414,7 @@ void Split(const std::string& strVal, uint64_t *outVals, const uint64_t nDefault
     else
         nLast = nDefault;
 
-    for ( i = numVals; i < ASSETCHAINS_MAX_ERAS; i++ )
+    for ( i = numVals; i < maxElements; i++ )
     {
         outVals[i] = nLast;
     }

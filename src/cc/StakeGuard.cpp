@@ -347,7 +347,6 @@ int CCFulfillmentVisitor(CC *cc, struct CCVisitor visitor)
             cJSON_free(json);
         }
     }
-
     return 1;
 }
 

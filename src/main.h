@@ -1105,4 +1105,11 @@ int GetSpendHeight(const CCoinsViewCache& inputs);
 /** Return a CMutableTransaction with contextual default values based on set of consensus rules at height */
 CMutableTransaction CreateNewContextualCMutableTransaction(const Consensus::Params& consensusParams, int nHeight);
 
+/*
+ * Ensures that this transaction has no outputs besides those related to earned notarization, which means it cannot be spent
+ * to supply. This allows it to be safely included in a block, spending a normally unspendable output from the coinbase, without
+ * actually increasing the available supply.
+ */
+bool IsBlockBoundTransaction(const CTransaction &tx, const uint256 &cbHash);
+
 #endif // BITCOIN_MAIN_H

@@ -32,6 +32,8 @@
 #include "zcash/Proof.hpp"
 
 extern uint32_t ASSETCHAINS_MAGIC;
+class CCurrencyState;
+
 
 // Overwinter transaction version
 static const int32_t OVERWINTER_TX_VERSION = 3;
@@ -481,6 +483,16 @@ public:
         return (nValue < GetDustThreshold(minRelayTxFee));
     }
 
+    CAmount ReserveOutValue() const
+    {
+        return scriptPubKey.ReserveOutValue();
+    }
+
+    bool SetReserveOutValue(CAmount newValue)
+    {
+        return scriptPubKey.SetReserveOutValue(newValue);
+    }
+
     friend bool operator==(const CTxOut& a, const CTxOut& b)
     {
         return (a.nValue == b.nValue && a.scriptPubKey == b.scriptPubKey);
@@ -668,6 +680,10 @@ public:
 
     // Return sum of txouts, (negative valueBalance or zero) and JoinSplit vpub_old.
     CAmount GetValueOut() const;
+
+    // Value out of a transaction in reserve currency
+    CAmount GetReserveValueOut() const;
+
     // Return sum of (negative valueBalance or zero) and JoinSplit vpub_old.
     CAmount GetShieldedValueOut() const;
     // GetValueIn() is a method on CCoinsViewCache, because

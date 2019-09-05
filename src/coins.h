@@ -25,6 +25,7 @@
 #include <boost/unordered_map.hpp>
 #include "zcash/IncrementalMerkleTree.hpp"
 #include "veruslaunch.h"
+#include "pbaas/reserves.h"
 
 /** 
  * Pruned version of CTransaction: only retains metadata and unspent transaction outputs
@@ -571,8 +572,13 @@ public:
      *
      * @param[in] tx	transaction for which we are checking input total
      * @return	Sum of value of all inputs (scriptSigs), (positive valueBalance or zero) and JoinSplit vpub_new
+     * 
+     * prevblocktime is not currently use and defaults to 0
      */
-    CAmount GetValueIn(int32_t nHeight,int64_t *interestp,const CTransaction& tx,uint32_t prevblocktime) const;
+    CAmount GetValueIn(int32_t nHeight,int64_t *interestp,const CTransaction& tx, uint32_t prevblocktime=0) const;
+
+    // for fractional reserve chains only
+    CAmount GetReserveValueIn(int32_t nHeight, const CTransaction& tx) const;
 
     //! Check whether all prevouts of the transaction are present in the UTXO set represented by this view
     bool HaveInputs(const CTransaction& tx) const;
@@ -581,7 +587,7 @@ public:
     bool HaveJoinSplitRequirements(const CTransaction& tx) const;
 
     //! Return priority of tx at height nHeight
-    double GetPriority(const CTransaction &tx, int nHeight) const;
+    double GetPriority(const CTransaction &tx, int nHeight, const CReserveTransactionDescriptor *desc=NULL, const CCurrencyState *currencyState=NULL) const;
 
     const CTxOut &GetOutputFor(const CTxIn& input) const;
     const CScript &GetSpendFor(const CTxIn& input) const;

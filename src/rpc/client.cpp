@@ -5,6 +5,7 @@
 
 #include "rpc/client.h"
 #include "rpc/protocol.h"
+#include "pbaas/crosschainrpc.h"
 #include "util.h"
 
 #include <set>
@@ -21,13 +22,62 @@ public:
     int paramIdx;                      //! 0-based idx of param to convert
 };
 
-// dummy for linking - used only in server
-UniValue RPCCall(const string& strMethod, const UniValue& params, const string credentials, int port, const string host, int timeout)
-{assert(false);}
+// DUMMY for compile - only used in server
 UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeout)
-{return NullUniValue;}
+{
+    assert(false);
+}
+
 bool SetThisChain(UniValue &chainDefinition)
 {}
+
+int32_t uni_get_int(UniValue uv, int32_t def)
+{
+    try
+    {
+        return uv.get_int();
+    }
+    catch(const std::exception& e)
+    {
+        return def;
+    }
+}
+
+int64_t uni_get_int64(UniValue uv, int64_t def)
+{
+    try
+    {
+        return uv.get_int64();
+    }
+    catch(const std::exception& e)
+    {
+        return def;
+    }
+}
+
+std::string uni_get_str(UniValue uv, std::string def)
+{
+    try
+    {
+        return uv.get_str();
+    }
+    catch(const std::exception& e)
+    {
+        return def;
+    }
+}
+
+std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def)
+{
+    try
+    {
+        return uv.getValues();
+    }
+    catch(const std::exception& e)
+    {
+        return def;
+    }
+}
 
 static const CRPCConvertParam vRPCConvertParams[] =
 {
@@ -165,6 +215,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     // pbaas
     { "definechain", 0},
     { "getdefinedchains", 0},
+    { "sendreserve", 0},
 };
 
 class CRPCConvertTable

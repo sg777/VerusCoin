@@ -57,8 +57,8 @@
  * 
  */
 
-#ifndef NOTARIZATION_H
-#define NOTARIZATION_H
+#ifndef PBAAS_NOTARIZATION_H
+#define PBAAS_NOTARIZATION_H
 
 #include "pbaas/pbaas.h"
 #include "key_io.h"
@@ -78,8 +78,10 @@
 class CPBaaSNotarization
 {
 public:
-    static const int FINAL_CONFIRMATIONS = 10;
-    static const int MIN_BLOCKS_BETWEEN_ACCEPTED = 8;
+    //static const int FINAL_CONFIRMATIONS = 10;
+    //static const int MIN_BLOCKS_BETWEEN_ACCEPTED = 8;
+    static const int FINAL_CONFIRMATIONS = 3;
+    static const int MIN_BLOCKS_BETWEEN_ACCEPTED = 5;
     static const int CURRENT_VERSION = PBAAS_VERSION;
     uint32_t nVersion;                      // PBAAS version
     uint160 chainID;                        // chain being notarized
@@ -89,6 +91,8 @@ public:
     uint256 mmrRoot;                        // latest MMR root of the notarization height
     uint256 notarizationPreHash;            // combination of block hash, merkle root, and compact power for the notarization height
     uint256 compactPower;                   // compact power of the block height notarization to compare
+
+    CCurrencyState currencyState;           // currency state of this chain
 
     uint256 prevNotarization;               // txid of the prior notarization on this chain that we agree with, even those not accepted yet
     int32_t prevHeight;
@@ -108,6 +112,7 @@ public:
                        uint256 MMRRoot,
                        uint256 preHash,
                        uint256 compactpower,
+                       CCurrencyState currencystate,
                        uint256 prevnotarization,
                        int32_t prevheight,
                        uint256 crossnotarization,
@@ -122,6 +127,7 @@ public:
                        mmrRoot(MMRRoot),
                        notarizationPreHash(preHash),
                        compactPower(compactpower),
+                       currencyState(currencystate),
 
                        prevNotarization(prevnotarization),
                        prevHeight(prevheight),
@@ -153,6 +159,7 @@ public:
         READWRITE(mmrRoot);
         READWRITE(notarizationPreHash);
         READWRITE(compactPower);
+        READWRITE(currencyState);
         READWRITE(prevNotarization);
         READWRITE(prevHeight);
         READWRITE(crossNotarization);
@@ -166,7 +173,7 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return !mmrRoot.IsNull();
     }
@@ -194,7 +201,7 @@ public:
         READWRITE(confirmedInput);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         return confirmedInput != -1;
     }
@@ -255,13 +262,13 @@ public:
         return ::AsVector(*this);
     }
 
-    bool IsValid()
+    bool IsValid() const
     {
         // this needs an actual check
         return version != 0;
     }
 
-    bool IsConfirmed()
+    bool IsConfirmed() const
     {
         return lastConfirmed != -1;
     }
@@ -269,21 +276,10 @@ public:
     UniValue ToUniValue() const;
 };
 
-class CInputDescriptor
-{
-public:
-    CScript scriptPubKey;
-    CAmount nValue;
-    CTxIn txIn;
-    CInputDescriptor() : nValue(0) {}
-    CInputDescriptor(CScript script, CAmount value, CTxIn input) : scriptPubKey(script), nValue(value), txIn(input) {}
-};
-
-bool CreateEarnedNotarization(CMutableTransaction &mnewTx, std::vector<CInputDescriptor> &inputs, CTransaction &lastTx, CTransaction &crossTx, int32_t height, int32_t *confirmedInput, CTxDestination *confirmedDest);
+bool CreateEarnedNotarization(CMutableTransaction &mnewTx, std::vector<CInputDescriptor> &inputs, CTransaction &lastTx, CTransaction &crossTx, CTransaction &lastConfirmed, int32_t height, int32_t *confirmedInput, CTxDestination *confirmedDest);
 uint256 CreateAcceptedNotarization(const CBlock &blk, int32_t txIndex, int32_t height);
-std::vector<CInputDescriptor> AddSpendsAndFinalizations(const CChainNotarizationData &cnd, 
+std::vector<CInputDescriptor> AddSpendsAndFinalizations(CChainNotarizationData &cnd, 
                                                         const uint256 &lastNotarizationID, 
-                                                        const CTransaction &lastTx, 
                                                         CMutableTransaction &mnewTx, 
                                                         int32_t *pConfirmedInput, 
                                                         int32_t *pConfirmedIdx, 
@@ -297,6 +293,5 @@ bool IsAcceptedNotarizationInput(const CScript &scriptSig);
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
 bool IsFinalizeNotarizationInput(const CScript &scriptSig);
 bool IsServiceRewardInput(const CScript &scriptSig);
-bool IsBlockBoundTransaction(const CTransaction &tx);
 
 #endif

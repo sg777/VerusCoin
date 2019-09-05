@@ -45,26 +45,209 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 {
     txnouttype type;
     vector<CTxDestination> addresses;
-    int nRequired;
 
-    out.push_back(Pair("asm", ScriptToAsmStr(scriptPubKey)));
-    if (fIncludeHex)
-        out.push_back(Pair("hex", HexStr(scriptPubKey.begin(), scriptPubKey.end())));
-
-    if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired))
+    // needs to be an object
+    if (!out.isObject())
     {
-        out.push_back(Pair("type", GetTxnOutputType(type)));
-        return;
+        out = UniValue(UniValue::VOBJ);
     }
 
-    out.push_back(Pair("reqSigs", nRequired));
+    int nRequired;
+    ExtractDestinations(scriptPubKey, type, addresses, nRequired);
     out.push_back(Pair("type", GetTxnOutputType(type)));
 
-    UniValue a(UniValue::VARR);
-    for (const CTxDestination& addr : addresses) {
-        a.push_back(EncodeDestination(addr));
+    COptCCParams p;
+    if (scriptPubKey.IsPayToCryptoCondition(p) && p.version >= COptCCParams::VERSION_V2)
+    {
+        switch(p.evalCode)
+        {
+            case EVAL_PBAASDEFINITION:
+            {
+                CPBaaSChainDefinition definition;
+
+                if (p.vData.size() && (definition = CPBaaSChainDefinition(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("pbaasChainDefinition", definition.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("pbaasChainDefinition", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_SERVICEREWARD:
+            {
+                CServiceReward reward;
+
+                if (p.vData.size() && (reward = CServiceReward(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("pbaasServiceReward", reward.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("pbaasServiceReward", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_EARNEDNOTARIZATION:
+            case EVAL_ACCEPTEDNOTARIZATION:
+            {
+                CPBaaSNotarization notarization;
+
+                if (p.vData.size() && (notarization = CPBaaSNotarization(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("pbaasNotarization", notarization.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("pbaasNotarization", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_FINALIZENOTARIZATION:
+            {
+                CNotarizationFinalization finalization;
+
+                if (p.vData.size())
+                {
+                    finalization = CNotarizationFinalization(p.vData[0]);
+                    out.push_back(Pair("pbaasFinalization", finalization.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_CURRENCYSTATE:
+            {
+                CCoinbaseCurrencyState cbcs;
+
+                if (p.vData.size() && (cbcs = CCoinbaseCurrencyState(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("currencystate", cbcs.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("currencystate", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_RESERVE_TRANSFER:
+            {
+                CReserveTransfer rt;
+
+                if (p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("reservetransfer", rt.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("reservetransfer", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_RESERVE_OUTPUT:
+            {
+                CReserveOutput ro;
+
+                if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("reserveoutput", ro.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("reserveoutput", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_RESERVE_EXCHANGE:
+            {
+                CReserveExchange rex;
+
+                if (p.vData.size() && (rex = CReserveExchange(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("reserveexchange", rex.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("reserveexchange", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_RESERVE_DEPOSIT:
+            {
+                CReserveOutput ro;
+
+                if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("reservedeposit", ro.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("reservedeposit", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_CROSSCHAIN_EXPORT:
+            {
+                CCrossChainExport ccx;
+
+                if (p.vData.size() && (ccx = CCrossChainExport(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("crosschainexport", ccx.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("crosschainexport", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_CROSSCHAIN_IMPORT:
+            {
+                CCrossChainImport cci;
+
+                if (p.vData.size() && (cci = CCrossChainImport(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("crosschainimport", cci.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("crosschainimport", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_STAKEGUARD:
+                out.push_back(Pair("stakeguard", ""));
+                break;
+
+            default:
+                out.push_back(Pair("unknown", ""));
+        }
     }
-    out.push_back(Pair("addresses", a));
+
+    if (p.vKeys.size())
+    {
+        out.push_back(Pair("reqSigs", p.m == 0 ? 1 : p.m));
+
+        UniValue a(UniValue::VARR);
+        for (const CTxDestination& addr : p.vKeys) {
+            a.push_back(EncodeDestination(addr));
+        }
+        out.push_back(Pair("addresses", a));
+    }
+
+    out.push_back(Pair("asm", ScriptToAsmStr(scriptPubKey)));
+
+    if (fIncludeHex)
+        out.push_back(Pair("hex", HexStr(scriptPubKey.begin(), scriptPubKey.end())));
 }
 
 UniValue TxJoinSplitToJSON(const CTransaction& tx) {
@@ -255,7 +438,6 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
             out.push_back(Pair("spentIndex", (int)spentInfo.inputIndex));
             out.push_back(Pair("spentHeight", spentInfo.blockHeight));
         }
-
         vout.push_back(out);
     }
     entry.push_back(Pair("vout", vout));
@@ -287,7 +469,6 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
             entry.push_back(Pair("confirmations", 0));
         }
     }
-
 }
 
 void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry)
@@ -339,65 +520,6 @@ void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry)
         ScriptPubKeyToJSON(txout.scriptPubKey, o, true);
         out.push_back(Pair("scriptPubKey", o));
         vout.push_back(out);
-        COptCCParams p;
-        if (IsPayToCryptoCondition(txout.scriptPubKey, p) && p.version >= COptCCParams::VERSION_V2)
-        {
-            switch(p.evalCode)
-            {
-                case EVAL_PBAASDEFINITION:
-                {
-                    CPBaaSChainDefinition definition;
-
-                    if (p.vData.size() && (definition = CPBaaSChainDefinition(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasChainDefinition", definition.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_SERVICEREWARD:
-                {
-                    CServiceReward reward;
-
-                    if (p.vData.size() && (reward = CServiceReward(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasServiceReward", reward.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_EARNEDNOTARIZATION:
-                case EVAL_ACCEPTEDNOTARIZATION:
-                {
-                    CPBaaSNotarization notarization;
-
-                    if (p.vData.size() && (notarization = CPBaaSNotarization(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasNotarization", notarization.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_FINALIZENOTARIZATION:
-                {
-                    CNotarizationFinalization finalization;
-
-                    if (p.vData.size() && (finalization = CNotarizationFinalization(p.vData[0])).IsValid())
-                    {
-                        out.push_back(Pair("pbaasFinalization", finalization.ToUniValue()));
-                    }
-                    break;
-                }
-
-                case EVAL_INSTANTSPEND:
-                case EVAL_CROSSCHAIN_INPUT:
-                case EVAL_CROSSCHAIN_OUTPUT:
-                case EVAL_CROSSCHAIN_EXPORT:
-                case EVAL_CROSSCHAIN_IMPORT:
-                case EVAL_STAKEGUARD:
-                    break;
-            }
-        }
     }
     entry.push_back(Pair("vout", vout));
 

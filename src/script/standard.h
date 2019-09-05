@@ -45,6 +45,7 @@ class COptCCParams
     public:
         static const uint8_t VERSION_V1 = 1;
         static const uint8_t VERSION_V2 = 2;
+        static const uint8_t VERSION_V3 = 3;
 
         uint8_t version;
         uint8_t evalCode;
@@ -52,16 +53,16 @@ class COptCCParams
         std::vector<CTxDestination> vKeys;
         std::vector<std::vector<unsigned char>> vData; // extra parameters
 
-        COptCCParams() : version(0), evalCode(0), n(0), m(0) {}
+        COptCCParams() : version(0), evalCode(0), m(0), n(0) {}
 
-        COptCCParams(uint8_t ver, uint8_t code, uint8_t _n, uint8_t _m, std::vector<CTxDestination> &vkeys, std::vector<std::vector<unsigned char>> &vdata) : 
-            version(ver), evalCode(code), n(_n), m(_m), vKeys(vkeys), vData(vdata) {}
+        COptCCParams(uint8_t ver, uint8_t code, uint8_t _m, uint8_t _n, std::vector<CTxDestination> &vkeys, std::vector<std::vector<unsigned char>> &vdata) : 
+            version(ver), evalCode(code), m(_m), n(_n), vKeys(vkeys), vData(vdata) {}
 
         COptCCParams(std::vector<unsigned char> &vch);
 
-        bool IsValid() { return version != 0; }
+        bool IsValid() const { return version != 0; }
 
-        std::vector<unsigned char> AsVector();
+        std::vector<unsigned char> AsVector() const;
 };
 
 static const unsigned int MAX_OP_RETURN_RELAY = 8192;      //! bytes
@@ -143,11 +144,12 @@ class CStakeParams
             return ret;
         }
 
-        bool IsValid() { return srcHeight != 0; }
+        bool IsValid() const { return srcHeight != 0; }
 };
 
 /** Check whether a CTxDestination is a CNoDestination. */
 bool IsValidDestination(const CTxDestination& dest);
+bool IsTransparentAddress(const CTxDestination& dest);
 
 const char* GetTxnOutputType(txnouttype t);
 

@@ -1431,15 +1431,19 @@ void komodo_configfile(char *symbol,uint16_t rpcport)
                 {
                     const char *charPtr;
                     // all basic coin parameters
+                    fprintf(fp,"ac_algo=verushash\nac_veruspos=50\nac_cc=1\n");
                     fprintf(fp,"startblock=%d\n", ConnectedChains.thisChain.startBlock);
                     fprintf(fp,"endblock=%d\n", ConnectedChains.thisChain.endBlock);
-                    fprintf(fp,"ac_algo=verushash\nac_veruspos=50\nac_cc=1\n");
                     fprintf(fp,"ac_supply=%s\n", (charPtr = mapArgs["-ac_supply"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_halving=%s\n", (charPtr = mapArgs["-ac_halving"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_decay=%s\n", (charPtr = mapArgs["-ac_decay"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_reward=%s\n", (charPtr = mapArgs["-ac_reward"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_eras=%s\n", (charPtr = mapArgs["-ac_eras"].c_str())[0] == 0 ? "1" : charPtr);
                     fprintf(fp,"ac_end=%s\n", (charPtr = mapArgs["-ac_end"].c_str())[0] == 0 ? "0" : charPtr);
+                    fprintf(fp,"ac_options=%s\n", (charPtr = mapArgs["-ac_options"].c_str())[0] == 0 ? "0" : charPtr);
+                    fprintf(fp,"ac_minpreconvert=%s\n", (charPtr = mapArgs["-ac_minpreconvert"].c_str())[0] == 0 ? "0" : charPtr);
+                    fprintf(fp,"ac_maxpreconvert=%s\n", (charPtr = mapArgs["-ac_maxpreconvert"].c_str())[0] == 0 ? "0" : charPtr);
+                    fprintf(fp,"ac_conversion=%s\n", (charPtr = mapArgs["-ac_conversion"].c_str())[0] == 0 ? "0" : charPtr);
 
                     if (GetArg("-port", 0))
                     {
@@ -1690,7 +1694,7 @@ void komodo_args(char *argv0)
 
     std::string name, addn; 
     char *dirname,fname[512],arg0str[64],magicstr[9]; 
-    uint8_t magic[4],extrabuf[256],*extraptr=0; FILE *fp; 
+    uint8_t magic[4],extrabuf[384],*extraptr=0; FILE *fp; 
     uint64_t val; 
     uint16_t port; 
     int32_t baseid,len,n,extralen = 0;
@@ -1787,12 +1791,12 @@ void komodo_args(char *argv0)
         // setup Verus test parameters
         mapArgs["-ac_algo"] = "verushash";
         mapArgs["-ac_cc"] = "1";
-        mapArgs["-ac_supply"] = "0";
-        mapArgs["-ac_eras"] = "3";
-        mapArgs["-ac_reward"] = "50000000000,38400000000,38400000000";
-        mapArgs["-ac_halving"] = GetArg("-ac_halving", "1,43200,43209");    // allow testing easily with different default ports
-        mapArgs["-ac_decay"] = "100000000,0,0";
-        mapArgs["-ac_end"] = "10080,226080,0";
+        mapArgs["-ac_supply"] = "500000000000000";
+        mapArgs["-ac_eras"] = "1";
+        mapArgs["-ac_reward"] = "2400000000";
+        mapArgs["-ac_halving"] = GetArg("-ac_halving", "226080");    // allow testing easily with different values here
+        mapArgs["-ac_decay"] = "0";
+        mapArgs["-ac_end"] = "0";
         mapArgs["-ac_veruspos"] = "50";
 
         if (!ReadConfigFile("VRSCTEST", mapArgs, mapMultiArgs))
@@ -1930,6 +1934,7 @@ void komodo_args(char *argv0)
             Split(GetArg("-ac_reward",""),  ASSETCHAINS_REWARD, 0);
             Split(GetArg("-ac_halving",""),  ASSETCHAINS_HALVING, 0);
             Split(GetArg("-ac_decay",""),  ASSETCHAINS_DECAY, 0);
+            Split(GetArg("-ac_options",""),  ASSETCHAINS_ERAOPTIONS, 0);
 
             for (int j = 0; j < ASSETCHAINS_LASTERA; j++)
             {
@@ -1941,7 +1946,11 @@ void komodo_args(char *argv0)
                 else if ( ASSETCHAINS_DECAY[j] > 100000000 )
                 {
                     ASSETCHAINS_DECAY[j] = 0;
-                    printf("ERA%u: ASSETCHAINS_DECAY cant be more than 100000000\n", j);
+                    printf("ERA%u: ASSETCHAINS_DECAY can't be more than 100000000\n", j);
+                }
+                if (ASSETCHAINS_ERAOPTIONS[j] > UINT_MAX)
+                {
+                    printf("ERA%u: ASSETCHAINS_ERAOPTIONS can't be more than max uint32_t\n", j);
                 }
             }
 
@@ -1957,6 +1966,10 @@ void komodo_args(char *argv0)
 
             PBAAS_STARTBLOCK = GetArg("-startblock", 0);
             PBAAS_ENDBLOCK = GetArg("-endblock", 0);
+
+            PBAAS_PRECONVERSION = GetArg("-ac_conversion", 0);
+            PBAAS_MINPRECONVERT = GetArg("-ac_minpreconvert", 0);
+            PBAAS_MAXPRECONVERT = GetArg("-ac_maxpreconvert", 0);
 
             ASSETCHAINS_RPCHOST = GetArg("-rpchost", "127.0.0.1");
         }
@@ -2022,14 +2035,24 @@ void komodo_args(char *argv0)
                 extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(ASSETCHAINS_LWMAPOS),(void *)&ASSETCHAINS_LWMAPOS);
             }
 
-            if ( PBAAS_STARTBLOCK || PBAAS_ENDBLOCK )
+            // if we have extended PBaaS parameters
+            if ( PBAAS_STARTBLOCK || PBAAS_ENDBLOCK || PBAAS_PRECONVERSION )
             {
                 extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_STARTBLOCK),(void *)&PBAAS_STARTBLOCK);
                 extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_ENDBLOCK),(void *)&PBAAS_ENDBLOCK);
+                extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_PRECONVERSION),(void *)&PBAAS_PRECONVERSION);
+                extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_MINPRECONVERT),(void *)&PBAAS_MINPRECONVERT);
+                extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(PBAAS_MAXPRECONVERT),(void *)&PBAAS_MAXPRECONVERT);
             }
 
             val = ASSETCHAINS_COMMISSION | (((uint64_t)ASSETCHAINS_STAKED & 0xff) << 32) | (((uint64_t)ASSETCHAINS_CC & 0xffff) << 40) | ((ASSETCHAINS_PUBLIC != 0) << 7) | ((ASSETCHAINS_PRIVATE != 0) << 6);
             extralen += iguana_rwnum(1,&extraptr[extralen],sizeof(val),(void *)&val);
+
+            if (ASSETCHAINS_LASTERA > 0 && ASSETCHAINS_ERAOPTIONS[0] & CPBaaSChainDefinition::OPTION_RESERVE)
+            {
+                uint32_t options = ASSETCHAINS_ERAOPTIONS[0];
+                extralen += iguana_rwnum(1, &extraptr[extralen], sizeof(options), (void *)&options);
+            }
         }
 
         addn = GetArg("-seednode","");
@@ -2119,6 +2142,7 @@ void komodo_args(char *argv0)
                 era.push_back(Pair("decay", ASSETCHAINS_DECAY[i]));
                 era.push_back(Pair("halving", ASSETCHAINS_HALVING[i]));
                 era.push_back(Pair("eraend", ASSETCHAINS_ENDSUBSIDY[i]));
+                era.push_back(Pair("eraoptions", ASSETCHAINS_ERAOPTIONS[i]));
                 eras.push_back(era);
             }
             obj.push_back(Pair("eras", eras));
@@ -2132,6 +2156,10 @@ void komodo_args(char *argv0)
             }
             obj.push_back(Pair("nodes", nodes));
             */
+
+            obj.push_back(Pair("conversion", PBAAS_PRECONVERSION));
+            obj.push_back(Pair("minpreconvert", PBAAS_MINPRECONVERT));
+            obj.push_back(Pair("maxpreconvert", PBAAS_MAXPRECONVERT));
 
             SetThisChain(obj);
             paramsLoaded = true;
