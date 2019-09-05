@@ -286,7 +286,7 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
             supplyDelta = -supplyDelta;
             reserveDelta = -reserveDelta;
         }
-        returnVal = ((arith_uint256(CReserveExchange::SATOSHIDEN) * arith_uint256(newState.Reserve - Reserve)) / arith_uint256(newState.Supply - Supply)).GetLow64();
+        returnVal = ((arith_uint256(CReserveExchange::SATOSHIDEN) * arith_uint256(reserveDelta)) / arith_uint256(supplyDelta)).GetLow64();
     }
     else
     {
