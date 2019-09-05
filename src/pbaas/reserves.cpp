@@ -254,6 +254,8 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
         }
         newState.Supply = newSupply;
         newState.Reserve += inputReserve;
+        supply = cpp_dec_float_50(std::to_string((Supply)));
+        reserve = cpp_dec_float_50(std::to_string(Reserve));
     }
 
     // now sell if anything to sell
