@@ -4609,9 +4609,9 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
     unsigned int nSubtractFeeFromAmount = 0;
 
     // reserve transactions can only be created on fractional reserve currency blockchains
-    if (IsVerusActive() || !(ConnectedChains.ThisChain().ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE))
+    if (IsVerusActive())
     {
-        strFailReason = _("Transactions that accept reserve currency input can only be created on fractional reserve currency blockchains");
+        strFailReason = _("Transactions that accept reserve currency input can only be created on PBaaS blockchains");
         return false;
     }
 
@@ -4620,7 +4620,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
     {
         COptCCParams p;
         CReserveOutput ro;
-        if (::IsPayToCryptoCondition(recipient.scriptPubKey.IsPayToCryptoCondition(), p) && p.IsValid() && p.vData.size() > 0)
+        if (recipient.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.vData.size() > 0)
         {
             switch (p.evalCode)
             {
