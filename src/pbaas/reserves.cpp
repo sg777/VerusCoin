@@ -150,7 +150,7 @@ CCrossChainImport::CCrossChainImport(const CTransaction &tx)
 CCurrencyState::CCurrencyState(const UniValue &obj)
 {
     flags = uni_get_int(find_value(obj, "flags"));
-    int32_t initialRatio = uni_get_int(find_value(obj, "initialratio"));
+    int32_t initialRatio = AmountFromValue(find_value(obj, "initialratio"));
     if (initialRatio > CReserveExchange::SATOSHIDEN)
     {
         initialRatio = CReserveExchange::SATOSHIDEN;
@@ -171,12 +171,11 @@ UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("flags", (int32_t)flags));
-    ret.push_back(Pair("initialratio", (int32_t)InitialRatio));
+    ret.push_back(Pair("initialratio", ValueFromAmount(InitialRatio)));
     ret.push_back(Pair("initialsupply", ValueFromAmount(InitialSupply)));
     ret.push_back(Pair("emitted", ValueFromAmount(Emitted)));
     ret.push_back(Pair("supply", ValueFromAmount(Supply)));
     ret.push_back(Pair("reserve", ValueFromAmount(Reserve)));
-    ret.push_back(Pair("decimalratio", ValueFromAmount(InitialRatio)));
     ret.push_back(Pair("priceinreserve", ValueFromAmount(PriceInReserve())));
     return ret;
 }
