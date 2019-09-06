@@ -296,7 +296,8 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
         {
             assert(false);
         }
-    } else
+    }
+    else
     { 
         cpp_dec_float_50 reserveout;
         int64_t reserveOut;
