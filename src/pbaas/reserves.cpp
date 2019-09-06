@@ -327,7 +327,7 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
     }
 
     newState.Supply += totalFractionalOut - inputFractional;
-    newState.Reserve += totalReserveOut - inputReserve;
+    newState.Reserve += inputReserve - totalReserveOut;
 
     return conversionPrice;
 }
