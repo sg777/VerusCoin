@@ -228,36 +228,75 @@ UniValue CCoinbaseCurrencyState::ToUniValue() const
 CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState) const
 {
     newState = *this;
+    CAmount conversionPrice = PriceInReserve();
+
+    int64_t totalFractionalOut = 0;     // how much fractional goes to buyers
+    int64_t totalReserveOut = 0;        // how much reserve goes to sellers
 
     // if both conversions are zero, nothing to do but return current price
     if ((!inputReserve && !inputFractional) || !(flags & ISRESERVE))
     {
-        return PriceInReserve();
+        return conversionPrice;
     }
 
-    cpp_dec_float_50 reservein(std::to_string(inputReserve));
-    cpp_dec_float_50 fractionalin(std::to_string(inputFractional));
+    // first, cancel out all parity at the current price, leaving one or the other amount to be converted, but not both
+    // that results in consistently minimum slippage in either direction
+    CAmount reserveOffset = NativeToReserve(inputFractional, conversionPrice);
+    CAmount convertFractional = 0, convertReserve = 0;
+    if (inputReserve >= reserveOffset)
+    {
+        convertReserve = inputReserve - reserveOffset;
+        totalFractionalOut += inputFractional;
+    }
+    else
+    {
+        CAmount fractionalOffset = ReserveToNative(inputReserve, conversionPrice);
+        convertFractional = inputFractional - fractionalOffset;
+        if (convertFractional < 0)
+        {
+            convertFractional = 0;
+        }
+        totalReserveOut += inputReserve;
+    }
+
+    if (!convertReserve && !convertFractional)
+    {
+        return conversionPrice;
+    }
+
+    cpp_dec_float_50 reservein(std::to_string(convertReserve));
+    cpp_dec_float_50 fractionalin(std::to_string(convertFractional));
     cpp_dec_float_50 supply(std::to_string((Supply)));
     cpp_dec_float_50 reserve(std::to_string(Reserve));
     cpp_dec_float_50 ratio = GetReserveRatio();
     cpp_dec_float_50 one("1");
+    cpp_dec_float_50 dec_satoshi(std::to_string(CReserveExchange::SATOSHIDEN));
 
-    // first buy if anything to buy
-    if (inputReserve)
+    // first check if anything to buy
+    if (convertReserve)
     {
-        supply = supply + (supply * (pow((reservein / reserve) + one, ratio) - one));
+        cpp_dec_float_50 supplyout;
+        supplyout = (supply * (pow((reservein / reserve) + one, ratio) - one));
 
-        int64_t newSupply;
-        if (!to_int64(supply, newSupply))
+        int64_t supplyOut;
+        if (!to_int64(supplyout, supplyOut))
         {
             assert(false);
         }
-        newState.Supply = newSupply;
-        newState.Reserve += inputReserve;
-    }
+        totalFractionalOut += supplyOut;
 
-    // now sell if anything to sell
-    if (inputFractional)
+        cpp_dec_float_50 dec_price = cpp_dec_float_50(std::to_string(inputReserve)) / cpp_dec_float_50(std::to_string(totalFractionalOut));
+
+        if (!to_int64(cpp_dec_float_50(std::to_string(inputFractional)) * dec_price, totalReserveOut))
+        {
+            assert(false);
+        }
+
+        if (!to_int64(dec_price * dec_satoshi, conversionPrice))
+        {
+            assert(false);
+        }
+    } else
     {
         cpp_dec_float_50 reserveout;
         int64_t reserveOut;
@@ -267,34 +306,25 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
             assert(false);
         }
 
-        newState.Supply -= inputFractional;
-        newState.Reserve -= reserveOut;
+        totalReserveOut += reserveOut;
+
+        cpp_dec_float_50 dec_price = cpp_dec_float_50(std::to_string(totalReserveOut)) / cpp_dec_float_50(std::to_string(inputFractional));
+
+        if (!to_int64(cpp_dec_float_50(std::to_string(inputReserve)) / dec_price, totalFractionalOut))
+        {
+            assert(false);
+        }
+
+        if (!to_int64(dec_price * dec_satoshi, conversionPrice))
+        {
+            assert(false);
+        }
     }
 
-    // determine the change in both supply and reserve and return the execution price in reserve by calculating it from
-    // the actual conversion numbers
-    CAmount returnVal;
-    CAmount supplyDelta = newState.Supply - Supply;
-    CAmount reserveDelta = newState.Reserve - Reserve;
-    
-    // must both be nonzero and have same sign
-    if (supplyDelta && reserveDelta && ((supplyDelta < 0 && reserveDelta < 0) || (supplyDelta > 0 && reserveDelta > 0)))
-    {
-        if (supplyDelta < 0)
-        {
-            supplyDelta = -supplyDelta;
-            reserveDelta = -reserveDelta;
-        }
-        returnVal = ((arith_uint256(CReserveExchange::SATOSHIDEN) * arith_uint256(reserveDelta)) / arith_uint256(supplyDelta)).GetLow64();
-    }
-    else
-    {
-        printf("Error: newState.Supply:%lu - Supply:%lu) / (newState.Reserve:%lu - Reserve:%lu == %lu\n", newState.Supply, Supply, newState.Reserve, Reserve, returnVal);
-        LogPrintf("Error: newState.Supply:%lu - Supply:%lu) / (newState.Reserve:%lu - Reserve:%lu == %lu\n", newState.Supply, Supply, newState.Reserve, Reserve, returnVal);
-        returnVal = 0;
-    }
-    
-    return returnVal;
+    newState.Supply += totalFractionalOut - inputFractional;
+    newState.Reserve += totalReserveOut - inputReserve;
+
+    return conversionPrice;
 }
 
 void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &rex, int32_t outputIndex, int32_t nHeight)
@@ -458,7 +488,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
-                    printf("%s: CReserveOutput: %s\n", __func__, ro.ToUniValue().write().c_str());
                     AddReserveOutput(ro);
                 }
                 break;

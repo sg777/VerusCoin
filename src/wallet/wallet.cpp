@@ -4680,18 +4680,17 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
             strFailReason = _(("Reserve transaction outputs created using " + std::string( __func__) + " must have no native output value").c_str());
             return false;
         }
-        
-        if (nValue < 0 || recipient.nAmount < 0)
+
+        if (ro.IsValid())
         {
-            strFailReason = _("Transaction amounts must be positive");
+            nValue += ro.nValue;
+        }
+
+        if (ro.nValue < 0 || nValue < 0 || recipient.nAmount < 0)
+        {
+            strFailReason = _("Transaction amounts must not be negative");
             return false;
         }
-        if (!recipient.scriptPubKey.IsOpReturn() && ro.nValue != recipient.nAmount)
-        {
-            strFailReason = _("Transaction amounts must be consistent between script output and recipient amount");
-            return false;
-        }
-        nValue += recipient.nAmount;
 
         if (recipient.fSubtractFeeFromAmount)
             nSubtractFeeFromAmount++;
@@ -4699,7 +4698,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
 
     if (vecSend.empty() || nValue < 0)
     {
-        strFailReason = _("Transaction amounts must be positive");
+        strFailReason = _("Transaction amounts must not be negative");
         return false;
     }
 
@@ -4772,7 +4771,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 // vouts to the payees
                 BOOST_FOREACH (const CRecipient& recipient, vecSend)
                 {
-                    // native output value for a reserve output is always 0. fees are paid by converting from
+                    // native output value for a reserve output is generally 0. fees are paid by converting from
                     // reserve token and the difference between input and output in reserve is the fee
                     // the actual reserve token output value is in the scriptPubKey as extended CC information
                     CTxOut txout(0, recipient.scriptPubKey);
@@ -4783,7 +4782,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                         COptCCParams p;
 
                         // already validated above
-                        ::IsPayToCryptoCondition(txout.scriptPubKey, p);
+                        txout.scriptPubKey.IsPayToCryptoCondition(p);
 
                         CAmount newVal = 0;
                         CReserveOutput ro;
