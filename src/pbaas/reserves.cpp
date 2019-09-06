@@ -286,13 +286,15 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
         totalFractionalOut += supplyOut;
 
         cpp_dec_float_50 dec_price = cpp_dec_float_50(std::to_string(inputReserve)) / cpp_dec_float_50(std::to_string(totalFractionalOut));
+        cpp_dec_float_50 reserveFromFractional = cpp_dec_float_50(std::to_string(inputFractional)) * dec_price;
+        dec_price = dec_price * dec_satoshi;
 
-        if (!to_int64(cpp_dec_float_50(std::to_string(inputFractional)) * dec_price, totalReserveOut))
+        if (!to_int64(reserveFromFractional, totalReserveOut))
         {
             assert(false);
         }
 
-        if (!to_int64(dec_price * dec_satoshi, conversionPrice))
+        if (!to_int64(dec_price, conversionPrice))
         {
             assert(false);
         }
@@ -310,13 +312,15 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
         totalReserveOut += reserveOut;
 
         cpp_dec_float_50 dec_price = cpp_dec_float_50(std::to_string(totalReserveOut)) / cpp_dec_float_50(std::to_string(inputFractional));
+        cpp_dec_float_50 fractionalFromReserve = cpp_dec_float_50(std::to_string(inputReserve)) / dec_price;
+        dec_price = dec_price * dec_satoshi;
 
-        if (!to_int64(cpp_dec_float_50(std::to_string(inputReserve)) / dec_price, totalFractionalOut))
+        if (!to_int64(fractionalFromReserve, totalFractionalOut))
         {
             assert(false);
         }
 
-        if (!to_int64(dec_price * dec_satoshi, conversionPrice))
+        if (!to_int64(dec_price, conversionPrice))
         {
             assert(false);
         }
