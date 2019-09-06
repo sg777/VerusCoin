@@ -4750,16 +4750,8 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 nChangePosRet = -1;
                 bool fFirst = true;
 
-                // TODO: keep this up to date with connect block and coinbase transaction rule
-                CCurrencyState curReserveState;
-
-                cpp_dec_float_50 priceInReserve = curReserveState.GetPriceInReserve();
-                CAmount reservePrice;
-                if (!CCurrencyState::to_int64(priceInReserve, reservePrice))
-                {
-                    strFailReason = _("Invalid fractional reserve price");
-                    return false;
-                }
+                CCoinbaseCurrencyState currencyState = ConnectedChains.GetCurrencyState(chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0);
+                CAmount reservePrice = currencyState.PriceInReserve();
 
                 // dust threshold of reserve is different than native coin, convert
                 CAmount dustThreshold;
@@ -5097,6 +5089,8 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 CAmount nFeeNeeded = GetMinimumFee(nBytes, nTxConfirmTarget, mempool);
                 if ( nFeeNeeded < 5000 )
                     nFeeNeeded = 5000;
+
+                nFeeNeeded = currencyState.ReserveToNative(nFeeNeeded, reservePrice);
 
                 // If we made it here and we aren't even able to meet the relay fee on the next pass, give up
                 // because we must be at the maximum allowed fee.
