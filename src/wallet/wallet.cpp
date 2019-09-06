@@ -3705,7 +3705,7 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                     (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*it).first, i)))
                 {
                     COptCCParams p;
-                    if (::IsPayToCryptoCondition(pcoin->vout[i].scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_RESERVE_OUTPUT)
+                    if (pcoin->vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_RESERVE_OUTPUT)
                     {
                         vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
                     }
@@ -4603,7 +4603,7 @@ CAmount ConvertReserveAmount(CAmount inAmount, CAmount reservePrice)
 // outputs must be reserve consuming outputs. Fee converted from reserve, which is the difference between reserve
 // input and reserve output, is calculated based on the current reserve conversion price.
 bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CAmount& nFeeRet,
-                                       int& nChangePosRet, std::string& strFailReason, const CCoinControl* coinControl, bool sign)
+                                       int& nChangePosRet, std::string& strFailReason, const CCoinControl* coinControl, bool sign, bool includeRefunds)
 {
     CAmount nValue = 0; 
     unsigned int nSubtractFeeFromAmount = 0;
@@ -4648,6 +4648,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                         strFailReason = _(("Reserve transaction outputs created using " + std::string( __func__) + " must have no native output value").c_str());
                         return false;
                     }
+                    nValue += rt.nFees;                     // pre-add fees, since reserve transfer is the only object type that requires that
                     ro = static_cast<CReserveOutput>(rt);
                     break;
                 }
@@ -4828,7 +4829,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                                 case EVAL_RESERVE_TRANSFER:
                                 {
                                     rt.nValue -= subFee;
-                                    newVal = rt.nValue;
+                                    newVal = rt.nValue + rt.nFees;
                                     p.vData[0] = rt.AsVector();
                                     break;
                                 }
@@ -5090,7 +5091,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 if ( nFeeNeeded < 5000 )
                     nFeeNeeded = 5000;
 
-                nFeeNeeded = currencyState.ReserveToNative(nFeeNeeded, reservePrice);
+                nFeeNeeded = currencyState.NativeToReserve(nFeeNeeded, reservePrice);
 
                 // If we made it here and we aren't even able to meet the relay fee on the next pass, give up
                 // because we must be at the maximum allowed fee.
