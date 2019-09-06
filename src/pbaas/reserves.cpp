@@ -663,8 +663,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
     nativeOut = 0;
     reserveIn = 0;
     reserveOut = 0;
-
-
     numTransfers = 0;
     CAmount transferFees = 0;
     bool isVerusActive = IsVerusActive();
@@ -743,14 +741,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     reserveOut += curTransfer.nValue;
                     newOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex, pk);
                 }
-                else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue > (curTransfer.DEFAULT_PER_STEP_FEE << 2))
+                else if ((curTransfer.flags & curTransfer.SEND_BACK) && curTransfer.nValue >= (curTransfer.DEFAULT_PER_STEP_FEE << 2))
                 {
                     // generate a reserve transfer back to the source chain if we have at least double the fee, otherwise leave it on
                     // this chain to be claimed
                     cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                     pk = CPubKey(ParseHex(CC.CChexstr));
 
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(chainDef.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
 
                     reserveOut += curTransfer.nValue;
 

@@ -2691,7 +2691,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
                 CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID, CTxDestination(pk)});
 
                 if (!subtractFee)
                 {
@@ -2799,11 +2799,11 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         }
         else if (chainID == ConnectedChains.NotaryChain().GetChainID())
         {
-            // send Verus from this PBaaS chain to the Verus chain, if convert, the inputs will be the PBaaS native coin, and we will convert to
+            // send Verus from this PBaaS chain to the Verus chain, if converted, the inputs will be the PBaaS native coin, and we will convert to
             // Verus for the send
             if (tonative)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert to native and send. Can only send reserve output to the " + chainDef.name + " chain.");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert to native and send. Can only send " + chainDef.name + " reserve to the chain.");
             }
 
             if (toreserve)
@@ -2862,7 +2862,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             }
             else
             {
-                // we will send using a reserve output, fee will be paid by converting from reserve
+                // we will send using from reserve input without conversion
                 // output will be a reserve transfer
                 CCcontract_info CC;
                 CCcontract_info *cp;
@@ -2882,8 +2882,8 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 // create the transfer object
                 CReserveTransfer rt(flags, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, kID);
 
-                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + transferFee, pk, dests, (CReserveTransfer)rt);
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + transferFee, subtractFee}));
+                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, (CReserveTransfer)rt);
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, 0, subtractFee}));
 
                 // create a transaction with reserve coin as input
                 {
