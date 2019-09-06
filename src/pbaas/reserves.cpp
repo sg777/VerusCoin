@@ -500,7 +500,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 case EVAL_RESERVE_TRANSFER:
                 {
                     CReserveTransfer rt;
-                    if (!p.vData.size() && !(rt = CReserveTransfer(p.vData[0])).IsValid())
+                    if (!p.vData.size() || !(rt = CReserveTransfer(p.vData[0])).IsValid())
                     {
                         flags |= IS_REJECT;
                         return;

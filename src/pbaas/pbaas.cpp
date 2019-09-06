@@ -1327,7 +1327,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     printf("%s: failed to export outputs:\n", __func__);
                                     for (auto oneout : dummy)
                                     {
-                                        void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
                                         UniValue uniOut;
                                         ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
                                         printf("%s\n", uniOut.write(true, 2).c_str());
@@ -1344,7 +1343,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     printf("%s: exported outputs:\n", __func__);
                                     for (auto oneout : dummy)
                                     {
-                                        void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
                                         UniValue uniOut;
                                         ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
                                         printf("%s\n", uniOut.write(true, 2).c_str());
