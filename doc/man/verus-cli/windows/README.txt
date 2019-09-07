@@ -1,4 +1,4 @@
-VerusCoin Command Line Tools v0.6.0-15-PBaaS Cross-chain-Technology-Preview
+VerusCoin Command Line Tools v0.6.0-16-PBaaS Cross-chain-Technology-Preview
 Contents:
 verusd.exe - VerusCoin daemon
 verus.exe - VerusCoin command line utility
