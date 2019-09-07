@@ -264,7 +264,7 @@ public:
     CAmount AllFeesAsReserve(const CCurrencyState &currencyState) const;
     CAmount AllFeesAsReserve(const CCurrencyState &currencyState, CAmount exchangeRate) const;
 
-    void AddReserveOutput(CReserveOutput &ro)
+    void AddReserveOutput(const CReserveOutput &ro)
     {
         flags |= IS_RESERVE;
         if (!(flags & IS_IMPORT))
@@ -449,7 +449,7 @@ public:
     }
 
     template<typename cpp_dec_float_type>
-    inline static bool to_int64(const cpp_dec_float_type &input, int64_t &outval)
+    static bool to_int64(const cpp_dec_float_type &input, int64_t &outval)
     {
         std::stringstream ss(input.str(0));
         try
@@ -496,15 +496,17 @@ public:
 
     CAmount NativeToReserve(CAmount nativeAmount) const
     {
+        static arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
         arith_uint256 bigAmount(nativeAmount);
         arith_uint256 price = arith_uint256(PriceInReserve());
-        return (bigAmount * arith_uint256(price)).GetLow64();
+        return ((bigAmount * arith_uint256(price)) / bigSatoshi).GetLow64();
     }
 
-    CAmount NativeToReserve(CAmount nativeAmount, CAmount exchangeRate) const
+    static CAmount NativeToReserve(CAmount nativeAmount, CAmount exchangeRate)
     {
+        static arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
         arith_uint256 bigAmount(nativeAmount);
-        return (bigAmount * arith_uint256(exchangeRate)).GetLow64();
+        return ((bigAmount * arith_uint256(exchangeRate)) / bigSatoshi).GetLow64();
     }
 
     UniValue ToUniValue() const;

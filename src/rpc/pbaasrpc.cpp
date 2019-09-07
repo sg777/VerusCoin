@@ -2341,6 +2341,33 @@ UniValue listreservetransactions(const UniValue& params, bool fHelp)
     // lists all transactions in a wallet that are 
 }
 
+CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t definitionHeight)
+{
+    std::multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferInputs;
+    CAmount preconvertedAmount = 0, fees = 0;
+    bool isReserve = chainDef.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE;
+
+    if (GetChainTransfers(transferInputs, chainDef.GetChainID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
+    {
+        for (auto transfer : transferInputs)
+        {
+            // total amount will be transferred to the chain, with fee split between aggregator and miner in
+            // Verus reserve
+            preconvertedAmount += transfer.second.second.nValue;
+            fees += transfer.second.second.nFees;
+        }
+    }
+
+    uint32_t Flags = isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID;
+    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, isReserve ? preconvertedAmount : 0, Flags);
+
+    CAmount preconvertedNative = currencyState.ReserveToNative(preconvertedAmount, chainDef.conversion);
+    currencyState.InitialSupply = preconvertedNative;
+    currencyState.Supply += preconvertedNative;
+
+    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(CReserveOutput::VALID, fees), chainDef.conversion, fees, fees);
+}
+
 UniValue reserveexchange(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
@@ -2370,7 +2397,7 @@ UniValue reserveexchange(const UniValue& params, bool fHelp)
     }
 
     CheckPBaaSAPIsValid();
-
+    throw JSONRPCError(RPC_METHOD_NOT_FOUND, "Not yet implemented. Use sendreserve in this release.");
 }
 
 UniValue sendreserve(const UniValue& params, bool fHelp)
@@ -2385,11 +2412,12 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             "\nArguments\n"
             "       {\n"
             "           \"name\"           : \"xxxx\",  (string, optional) Verus ecosystem-wide name/symbol of chain to send to, if absent, current chain is assumed\n"
-            "           \"paymentaddress\" : \"Rxxx\",  (string, required) premine and launch fee recipient\n"
-            "           \"refundaddress\"  : \"Rxxx\",  (string, required) if a pre-convert is not mined in time, funds can be spent by the owner of this address\n"
+            "           \"paymentaddress\" : \"Rxxx\",  (string, required) transaction recipient address\n"
+            "           \"refundaddress\"  : \"Rxxx\",  (string, optional) if a pre-convert is not mined in time, funds can be spent by the owner of this address\n"
             "           \"amount\"         : \"n.n\",   (value,  required) coins that will be moved and sent to address on PBaaS chain, network and conversion fees additional\n"
-            "           \"convert\"        : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price\n"
-            "           \"preconvert\"     : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price, fail if order cannot be placed before launch\n"
+            "           \"tonative\"       : \"false\", (bool,   optional) auto-convert from Verus to PBaaS currency at market price\n"
+            "           \"toreserve\"      : \"false\", (bool,   optional) auto-convert from PBaaS to Verus reserve currency at market price\n"
+            "           \"preconvert\"     : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price, this only works if the order is mined before block start of the chain\n"
             "           \"subtractfee\"    : \"bool\",  (bool,   optional) if true, reduce amount to destination by the transfer and conversion fee amount. normal network fees are never subtracted"
             "       }\n"
 
@@ -2430,8 +2458,11 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     string paymentAddr = uni_get_str(find_value(params[0], "paymentaddress"), "");
     string refundAddr = uni_get_str(find_value(params[0], "refundaddress"), paymentAddr);
     CAmount amount = AmountFromValue(find_value(params[0], "amount"));
-    bool convert = uni_get_int(find_value(params[0], "convert"), false);
+
+    bool tonative = uni_get_int(find_value(params[0], "tonative"), false);
+    bool toreserve = uni_get_int(find_value(params[0], "toreserve"), false);
     bool preconvert = uni_get_int(find_value(params[0], "preconvert"), false);
+
     bool subtractFee = uni_get_int(find_value(params[0], "subtractfee"), false);
     uint32_t flags = CReserveOutput::VALID;
 
@@ -2467,8 +2498,10 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     uint160 chainID = CCrossChainRPCData::GetChainID(name);
 
     CPBaaSChainDefinition chainDef;
+    int32_t definitionHeight;
+
     // validate that the target chain is still running
-    if (!GetChainDefinition(chainID, chainDef) || !chainDef.IsValid())
+    if (!GetChainDefinition(chainID, chainDef, &definitionHeight) || !chainDef.IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified is not a valid chain");
     }
@@ -2481,18 +2514,19 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     // the start block
     int32_t height = chainActive.Height();
     bool beforeStart = chainDef.startBlock > height;
+    CCoinbaseCurrencyState currencyState;
 
     UniValue ret = NullUniValue;
 
     if (isVerusActive)
     {
-        if (chainID == thisChainID)
+        if (chainID == thisChainID || toreserve)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send reserve on a chain that is not a fractional reserve of another currency. See sendtoaddress or z_sendmany.");
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send reserve or convert, except on a PBaaS fractional reserve chain. Use sendtoaddress or z_sendmany.");
         }
         else // ensure the PBaaS chain is a fractional reserve or that it's convertible and this is a conversion
         {
-            if (convert || preconvert)
+            if (tonative || preconvert)
             {
                 // if chain hasn't started yet, we use the conversion as a ratio over satoshis to participate in the pre-mine
                 // up to a maximum
@@ -2501,6 +2535,13 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     if (chainDef.conversion <= 0)
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " is not convertible to " + chainDef.name + ".");
+                    }
+
+                    currencyState = GetInitialCurrencyState(chainDef, definitionHeight);
+
+                    if (tonative)
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Until " + chainDef.name + " launches, you must use \"preconvert\" rather than \"tonative\" for conversion.");
                     }
 
                     flags |= CReserveTransfer::PRECONVERT;
@@ -2560,6 +2601,11 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 // add the fee amount that will make the conversion correct after subtracting it again
                 amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
             }
+
+            if (currencyState.ReserveIn + amount > chainDef.maxpreconvert)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " contribution maximum does not allow this conversion. Maximum participation remaining is " + ValueFromAmount(chainDef.maxpreconvert - currencyState.ReserveIn).get_str());
+            }
         }
         else if (flags & CReserveTransfer::CONVERT && !subtractFee)
         {
@@ -2599,7 +2645,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         }
         else
         {
-            // cast object to most derived class
+            // cast object to most derived class to ensure template works on all compilers
             ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + transferFee, pk, dests, (CReserveTransfer)rt);
         }
 
@@ -2627,9 +2673,12 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
     {
         if (chainID == thisChainID)
         {
+            CCcontract_info CC;
+            CCcontract_info *cp;
+
             // if we are on a fractional reserve chain, a conversion will convert FROM the fractional reserve currency TO
             // the reserve. this will basically turn into a reserveexchange transaction
-            if (convert)
+            if (toreserve)
             {
                 if (!isReserve)
                 {
@@ -2639,29 +2688,20 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 CCoinsViewCache view(pcoinsTip);
 
                 // we will send using a reserve output, fee will be paid by converting from reserve
-                CCcontract_info CC;
-                CCcontract_info *cp;
                 cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
                 CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID, CTxDestination(pk)});
 
-                CAmount conversionFee;
-
-                if (subtractFee)
+                if (!subtractFee)
                 {
-                    conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(amount);
-                    amount -= conversionFee;
-                }
-                else
-                {
-                    conversionFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
+                    amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
                 }
 
-                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE, amount + conversionFee);
+                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE, amount);
 
-                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex, pk);
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + conversionFee, false}));
+                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, amount, dests, rex, pk);
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
 
                 // create a transaction with native coin as input
                 {
@@ -2683,11 +2723,47 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     ret = UniValue(wtx.GetHash().GetHex());
                 }
             }
+            else if (tonative)
+            {
+                // convert from reserve to native (buy)
+                cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
+                CPubKey pk(ParseHex(CC.CChexstr));
+
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(kID), CTxDestination(pk)});
+
+                if (!subtractFee)
+                {
+                    amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
+                }
+
+                CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, amount);
+
+                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex, pk);
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, 0, false}));
+
+                // create a transaction with reserve coin as input
+                {
+                    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+                    CReserveKey reserveKey(pwalletMain);
+                    CAmount fee;
+                    int nChangePos;
+                    string failReason;
+
+                    if (!pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
+                    }
+                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+                    {
+                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit reserve transaction " + wtx.GetHash().GetHex());
+                    }
+                    ret = UniValue(wtx.GetHash().GetHex());
+                }
+            }
             else
             {
                 // we will send using a reserve output, fee will be paid by converting from reserve
-                CCcontract_info CC;
-                CCcontract_info *cp;
                 cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
 
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
@@ -2723,9 +2799,14 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
         }
         else if (chainID == ConnectedChains.NotaryChain().GetChainID())
         {
-            // send Verus from this PBaaS chain to the Verus chain, if convert, the inputs will be the PBaaS native coin, and we will convert to
+            // send Verus from this PBaaS chain to the Verus chain, if converted, the inputs will be the PBaaS native coin, and we will convert to
             // Verus for the send
-            if (convert)
+            if (tonative)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert to native and send. Can only send " + chainDef.name + " reserve to the chain.");
+            }
+
+            if (toreserve)
             {
                 if (!isReserve)
                 {
@@ -2781,7 +2862,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             }
             else
             {
-                // we will send using a reserve output, fee will be paid by converting from reserve
+                // we will send using from reserve input without conversion
                 // output will be a reserve transfer
                 CCcontract_info CC;
                 CCcontract_info *cp;
@@ -2801,8 +2882,8 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                 // create the transfer object
                 CReserveTransfer rt(flags, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, kID);
 
-                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + transferFee, pk, dests, (CReserveTransfer)rt);
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + transferFee, subtractFee}));
+                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, (CReserveTransfer)rt);
+                outputs.push_back(CRecipient({ccOut.scriptPubKey, 0, subtractFee}));
 
                 // create a transaction with reserve coin as input
                 {
@@ -2816,6 +2897,13 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     if (!pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
                     {
                         throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
+                    }
+                    printf("newTx outputs:\n");
+                    for (auto outp : wtx.vout)
+                    {
+                        UniValue scrOut(UniValue::VOBJ);
+                        ScriptPubKeyToJSON(outp.scriptPubKey, scrOut, false);
+                        printf("%s\n", scrOut.write(1, 2).c_str());
                     }
                     if (!pwalletMain->CommitTransaction(wtx, reserveKey))
                     {
@@ -2974,7 +3062,7 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
 
                 LOCK2(cs_main, mempool.cs);
 
-                if (!GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_DEPOSIT)), 1, reserveDeposits))
+                if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_DEPOSIT)), 1, reserveDeposits))
                 {
                     for (auto deposit : reserveDeposits)
                     {
@@ -3079,33 +3167,6 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
         ret.push_back(EncodeHexTx(import));
     }
     return ret;
-}
-
-CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t definitionHeight)
-{
-    std::multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferInputs;
-    CAmount preconvertedAmount = 0, fees = 0;
-    bool isReserve = chainDef.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE;
-
-    if (GetChainTransfers(transferInputs, chainDef.GetChainID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
-    {
-        for (auto transfer : transferInputs)
-        {
-            // total amount will be transferred to the chain, with fee split between aggregator and miner in
-            // Verus reserve
-            preconvertedAmount += transfer.second.second.nValue;
-            fees += transfer.second.second.nFees;
-        }
-    }
-
-    uint32_t Flags = isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID;
-    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, isReserve ? preconvertedAmount : 0, Flags);
-
-    CAmount preconvertedNative = currencyState.ReserveToNative(preconvertedAmount, chainDef.conversion);
-    currencyState.InitialSupply = preconvertedNative;
-    currencyState.Supply += preconvertedNative;
-
-    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(CReserveOutput::VALID, fees), chainDef.conversion, fees, fees);
 }
 
 UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)

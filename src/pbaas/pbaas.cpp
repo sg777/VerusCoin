@@ -508,7 +508,9 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int64_t)nVersion));
     obj.push_back(Pair("name", name));
-    obj.push_back(Pair("paymentaddress", CBitcoinAddress(CTxDestination(address)).ToString()));
+    obj.push_back(Pair("chainid", GetChainID().GetHex()));
+    obj.push_back(Pair("chainadress", EncodeDestination(CTxDestination(CKeyID(GetChainID())))));
+    obj.push_back(Pair("paymentaddress", EncodeDestination(CTxDestination(address))));
     obj.push_back(Pair("premine", (int64_t)premine));
     obj.push_back(Pair("initialcontribution", (int64_t)initialcontribution));
     obj.push_back(Pair("conversion", (int64_t)conversion));
@@ -579,16 +581,17 @@ bool SetThisChain(UniValue &chainDefinition)
     {
         CPBaaSChainDefinition &notaryChainDef = ConnectedChains.notaryChain.chainDefinition;
         // we set the notary chain to either Verus or VerusTest
+        notaryChainDef.nVersion = PBAAS_VERSION;
         if (PBAAS_TESTMODE)
         {
             // setup Verus test parameters
             notaryChainDef.name = "VRSCTEST";
-            notaryChainDef.premine = 0;
-            notaryChainDef.eras = 3;
-            notaryChainDef.rewards = std::vector<int64_t>({50000000000,38400000000,38400000000});
-            notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
-            notaryChainDef.halving = std::vector<int32_t>({1,43200,43220});
-            notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
+            notaryChainDef.premine = 500000000000000;
+            notaryChainDef.eras = 1;
+            notaryChainDef.rewards = std::vector<int64_t>({2400000000});
+            notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
+            notaryChainDef.halving = std::vector<int32_t>({226080});
+            notaryChainDef.eraEnd = std::vector<int32_t>({0});
             notaryChainDef.eraOptions = std::vector<int32_t>({0,0,0});
         }
         else
@@ -1327,7 +1330,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     printf("%s: failed to export outputs:\n", __func__);
                                     for (auto oneout : dummy)
                                     {
-                                        void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
                                         UniValue uniOut;
                                         ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
                                         printf("%s\n", uniOut.write(true, 2).c_str());
@@ -1344,7 +1346,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     printf("%s: exported outputs:\n", __func__);
                                     for (auto oneout : dummy)
                                     {
-                                        void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
                                         UniValue uniOut;
                                         ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
                                         printf("%s\n", uniOut.write(true, 2).c_str());
@@ -1488,107 +1489,109 @@ void CConnectedChains::SubmissionThread()
             else
             {
                 // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
-                CheckVerusPBaaSAvailable();
-
-                // check to see if we have recently earned a block with an earned notarization that qualifies for
-                // submitting an accepted notarization
-                if (earnedNotarizationHeight)
+                if (CheckVerusPBaaSAvailable())
                 {
-                    CBlock blk;
-                    int32_t txIndex = -1, height;
+                    // check to see if we have recently earned a block with an earned notarization that qualifies for
+                    // submitting an accepted notarization
+                    if (earnedNotarizationHeight)
                     {
-                        LOCK(cs_mergemining);
-                        if (earnedNotarizationHeight && earnedNotarizationHeight <= chainActive.Height() && earnedNotarizationBlock.GetHash() == chainActive[earnedNotarizationHeight]->GetBlockHash())
+                        CBlock blk;
+                        int32_t txIndex = -1, height;
                         {
-                            blk = earnedNotarizationBlock;
-                            earnedNotarizationBlock = CBlock();
-                            txIndex = earnedNotarizationIndex;
-                            height = earnedNotarizationHeight;
-                            earnedNotarizationHeight = 0;
-                        }
-                    }
-
-                    if (txIndex != -1)
-                    {
-                        //printf("SubmissionThread: testing notarization\n");
-                        CTransaction lastConfirmed;
-                        uint256 txId = CreateAcceptedNotarization(blk, txIndex, height);
-
-                        if (!txId.IsNull())
-                        {
-                            printf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
-                            LogPrintf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
-                        }
-                    }
-                }
-
-                if ((GetAdjustedTime() - lastImportTime) >= 30 || lastHeight < (chainActive.LastTip() ? 0 : chainActive.LastTip()->GetHeight()))
-                {
-                    lastImportTime = GetAdjustedTime();
-                    lastHeight = (chainActive.LastTip() ? 0 : chainActive.LastTip()->GetHeight());
-
-                    // see if our notary has a confirmed notarization for us
-                    UniValue params(UniValue::VARR);
-                    UniValue result;
-
-                    params.push_back(thisChain.name);
-
-                    try
-                    {
-                        result = find_value(RPCCallRoot("getlastimportin", params), "result");
-                    } catch (exception e)
-                    {
-                        result = NullUniValue;
-                    }
-
-                    if (!result.isNull())
-                    {
-                        auto txUniStr = find_value(result, "lastimporttransaction");
-                        auto txLastConfirmedStr = find_value(result, "lastconfirmednotarization");
-                        auto txTemplateStr = find_value(result, "importtxtemplate");
-
-                        CTransaction lastImportTx, lastConfirmedTx, templateTx;
-
-                        if (txUniStr.isStr() && txTemplateStr.isStr() && 
-                            DecodeHexTx(lastImportTx, txUniStr.get_str()) && 
-                            DecodeHexTx(lastConfirmedTx, txLastConfirmedStr.get_str()) && 
-                            DecodeHexTx(templateTx, txTemplateStr.get_str()))
-                        {
-                            std::vector<CTransaction> importTxes;
-                            if (CreateLatestImports(notaryChain.chainDefinition, lastImportTx, templateTx, lastConfirmedTx, importTxes))
+                            LOCK(cs_mergemining);
+                            if (earnedNotarizationHeight && earnedNotarizationHeight <= chainActive.Height() && earnedNotarizationBlock.GetHash() == chainActive[earnedNotarizationHeight]->GetBlockHash())
                             {
-                                for (auto importTx : importTxes)
-                                {
-                                    UniValue txResult;
-                                    params.clear();
-                                    params.push_back(EncodeHexTx(importTx));
+                                blk = earnedNotarizationBlock;
+                                earnedNotarizationBlock = CBlock();
+                                txIndex = earnedNotarizationIndex;
+                                height = earnedNotarizationHeight;
+                                earnedNotarizationHeight = 0;
+                            }
+                        }
 
-                                    try
+                        if (txIndex != -1)
+                        {
+                            //printf("SubmissionThread: testing notarization\n");
+                            CTransaction lastConfirmed;
+                            uint256 txId = CreateAcceptedNotarization(blk, txIndex, height);
+
+                            if (!txId.IsNull())
+                            {
+                                printf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
+                                LogPrintf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
+                            }
+                        }
+                    }
+
+                    // every "n" seconds, look for imports to include in our blocks from the Verus chain
+                    if ((GetAdjustedTime() - lastImportTime) >= 30 || lastHeight < (chainActive.LastTip() ? 0 : chainActive.LastTip()->GetHeight()))
+                    {
+                        lastImportTime = GetAdjustedTime();
+                        lastHeight = (chainActive.LastTip() ? 0 : chainActive.LastTip()->GetHeight());
+
+                        // see if our notary has a confirmed notarization for us
+                        UniValue params(UniValue::VARR);
+                        UniValue result;
+
+                        params.push_back(thisChain.name);
+
+                        try
+                        {
+                            result = find_value(RPCCallRoot("getlastimportin", params), "result");
+                        } catch (exception e)
+                        {
+                            result = NullUniValue;
+                        }
+
+                        if (!result.isNull())
+                        {
+                            auto txUniStr = find_value(result, "lastimporttransaction");
+                            auto txLastConfirmedStr = find_value(result, "lastconfirmednotarization");
+                            auto txTemplateStr = find_value(result, "importtxtemplate");
+
+                            CTransaction lastImportTx, lastConfirmedTx, templateTx;
+
+                            if (txUniStr.isStr() && txTemplateStr.isStr() && 
+                                DecodeHexTx(lastImportTx, txUniStr.get_str()) && 
+                                DecodeHexTx(lastConfirmedTx, txLastConfirmedStr.get_str()) && 
+                                DecodeHexTx(templateTx, txTemplateStr.get_str()))
+                            {
+                                std::vector<CTransaction> importTxes;
+                                if (CreateLatestImports(notaryChain.chainDefinition, lastImportTx, templateTx, lastConfirmedTx, importTxes))
+                                {
+                                    for (auto importTx : importTxes)
                                     {
-                                        txResult = find_value(RPCCallRoot("signrawtransaction", params), "result");
-                                        if (txResult.isStr() && txResult.get_str().size())
+                                        UniValue txResult;
+                                        params.setArray();
+                                        params.push_back(EncodeHexTx(importTx));
+
+                                        try
                                         {
-                                            params.clear();
-                                            params.push_back(txResult);
-                                            txResult = find_value(RPCCallRoot("sendrawtransaction", params), "result");
-                                        }
-                                        else
+                                            txResult = find_value(RPCCallRoot("signrawtransaction", params), "result");
+                                            if (txResult.isObject() && !(txResult = find_value(RPCCallRoot("signrawtransaction", params), "hex")).isNull() && txResult.isStr() && txResult.get_str().size())
+                                            {
+                                                params.clear();
+                                                params.push_back(txResult);
+                                                txResult = find_value(RPCCallRoot("sendrawtransaction", params), "result");
+                                            }
+                                            else
+                                            {
+                                                txResult = NullUniValue;
+                                            }
+                                            
+                                        } catch (exception e)
                                         {
                                             txResult = NullUniValue;
                                         }
-                                        
-                                    } catch (exception e)
-                                    {
-                                        txResult = NullUniValue;
-                                    }
-                                    uint256 testId;
-                                    if (txResult.isStr())
-                                    {
-                                        testId.SetHex(txResult.get_str());
-                                    }
-                                    if (testId.IsNull())
-                                    {
-                                        break;
+                                        uint256 testId;
+                                        if (txResult.isStr())
+                                        {
+                                            testId.SetHex(txResult.get_str());
+                                        }
+                                        if (testId.IsNull())
+                                        {
+                                            break;
+                                        }
                                     }
                                 }
                             }

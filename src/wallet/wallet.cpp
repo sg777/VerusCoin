@@ -3705,7 +3705,7 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                     (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*it).first, i)))
                 {
                     COptCCParams p;
-                    if (::IsPayToCryptoCondition(pcoin->vout[i].scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_RESERVE_OUTPUT)
+                    if (pcoin->vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_RESERVE_OUTPUT)
                     {
                         vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
                     }
@@ -4603,15 +4603,15 @@ CAmount ConvertReserveAmount(CAmount inAmount, CAmount reservePrice)
 // outputs must be reserve consuming outputs. Fee converted from reserve, which is the difference between reserve
 // input and reserve output, is calculated based on the current reserve conversion price.
 bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CAmount& nFeeRet,
-                                       int& nChangePosRet, std::string& strFailReason, const CCoinControl* coinControl, bool sign)
+                                       int& nChangePosRet, std::string& strFailReason, const CCoinControl* coinControl, bool sign, bool includeRefunds)
 {
     CAmount nValue = 0; 
     unsigned int nSubtractFeeFromAmount = 0;
 
     // reserve transactions can only be created on fractional reserve currency blockchains
-    if (IsVerusActive() || !(ConnectedChains.ThisChain().ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE))
+    if (IsVerusActive())
     {
-        strFailReason = _("Transactions that accept reserve currency input can only be created on fractional reserve currency blockchains");
+        strFailReason = _("Transactions that accept reserve currency input can only be created on PBaaS blockchains");
         return false;
     }
 
@@ -4620,7 +4620,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
     {
         COptCCParams p;
         CReserveOutput ro;
-        if (::IsPayToCryptoCondition(recipient.scriptPubKey.IsPayToCryptoCondition(), p) && p.IsValid() && p.vData.size() > 0)
+        if (recipient.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.vData.size() > 0)
         {
             switch (p.evalCode)
             {
@@ -4645,9 +4645,10 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     // conversion on a PBaaS reserve chain implies native input
                     if (rt.flags & CReserveTransfer::CONVERT)
                     {
-                        strFailReason = _("All reserve transaction outputs must accommodate reserve currency input");
+                        strFailReason = _(("Reserve transaction outputs created using " + std::string( __func__) + " must have no native output value").c_str());
                         return false;
                     }
+                    nValue += rt.nFees;                     // pre-add fees, since reserve transfer is the only object type that requires that
                     ro = static_cast<CReserveOutput>(rt);
                     break;
                 }
@@ -4662,7 +4663,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     // conversion to reserve implies native input
                     if (re.flags & CReserveExchange::TO_RESERVE)
                     {
-                        strFailReason = _("All reserve transaction outputs must accommodate reserve currency input");
+                        strFailReason = _(("Reserve transaction outputs created using " + std::string( __func__) + " must have no native output value").c_str());
                         return false;
                     }
                     ro = static_cast<CReserveOutput>(re);
@@ -4677,21 +4678,20 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
         }
         else if (!recipient.scriptPubKey.IsOpReturn() || recipient.nAmount != 0)
         {
-            strFailReason = _("All reserve transaction outputs except opret must accommodate reserve currency input");
+            strFailReason = _(("Reserve transaction outputs created using " + std::string( __func__) + " must have no native output value").c_str());
             return false;
         }
-        
-        if (nValue < 0 || recipient.nAmount < 0)
+
+        if (ro.IsValid())
         {
-            strFailReason = _("Transaction amounts must be positive");
-            return false;
+            nValue += ro.nValue;
         }
-        if (!recipient.scriptPubKey.IsOpReturn() && ro.nValue != recipient.nAmount)
+
+        if (ro.nValue < 0 || nValue < 0 || recipient.nAmount < 0)
         {
-            strFailReason = _("Transaction amounts must be consistent between script output and recipient amount");
+            strFailReason = _("Transaction amounts must not be negative");
             return false;
         }
-        nValue += recipient.nAmount;
 
         if (recipient.fSubtractFeeFromAmount)
             nSubtractFeeFromAmount++;
@@ -4699,7 +4699,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
 
     if (vecSend.empty() || nValue < 0)
     {
-        strFailReason = _("Transaction amounts must be positive");
+        strFailReason = _("Transaction amounts must not be negative");
         return false;
     }
 
@@ -4751,16 +4751,8 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 nChangePosRet = -1;
                 bool fFirst = true;
 
-                // TODO: keep this up to date with connect block and coinbase transaction rule
-                CCurrencyState curReserveState;
-
-                cpp_dec_float_50 priceInReserve = curReserveState.GetPriceInReserve();
-                CAmount reservePrice;
-                if (!CCurrencyState::to_int64(priceInReserve, reservePrice))
-                {
-                    strFailReason = _("Invalid fractional reserve price");
-                    return false;
-                }
+                CCoinbaseCurrencyState currencyState = ConnectedChains.GetCurrencyState(chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0);
+                CAmount reservePrice = currencyState.PriceInReserve();
 
                 // dust threshold of reserve is different than native coin, convert
                 CAmount dustThreshold;
@@ -4772,7 +4764,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 // vouts to the payees
                 BOOST_FOREACH (const CRecipient& recipient, vecSend)
                 {
-                    // native output value for a reserve output is always 0. fees are paid by converting from
+                    // native output value for a reserve output is generally 0. fees are paid by converting from
                     // reserve token and the difference between input and output in reserve is the fee
                     // the actual reserve token output value is in the scriptPubKey as extended CC information
                     CTxOut txout(0, recipient.scriptPubKey);
@@ -4783,7 +4775,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                         COptCCParams p;
 
                         // already validated above
-                        ::IsPayToCryptoCondition(txout.scriptPubKey, p);
+                        txout.scriptPubKey.IsPayToCryptoCondition(p);
 
                         CAmount newVal = 0;
                         CReserveOutput ro;
@@ -4837,7 +4829,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                                 case EVAL_RESERVE_TRANSFER:
                                 {
                                     rt.nValue -= subFee;
-                                    newVal = rt.nValue;
+                                    newVal = rt.nValue + rt.nFees;
                                     p.vData[0] = rt.AsVector();
                                     break;
                                 }
@@ -5098,6 +5090,8 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 CAmount nFeeNeeded = GetMinimumFee(nBytes, nTxConfirmTarget, mempool);
                 if ( nFeeNeeded < 5000 )
                     nFeeNeeded = 5000;
+
+                nFeeNeeded = currencyState.NativeToReserve(nFeeNeeded, reservePrice);
 
                 // If we made it here and we aren't even able to meet the relay fee on the next pass, give up
                 // because we must be at the maximum allowed fee.

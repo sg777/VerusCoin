@@ -3441,7 +3441,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                  REJECT_INVALID, "bad-txns-joinsplit-requirements-not-met");
             if (fAddressIndex || fSpentIndex)
             {
-                bool maybeReserve = false;
                 for (size_t j = 0; j < tx.vin.size(); j++) {
 
                     const CTxIn input = tx.vin[j];
@@ -3465,7 +3464,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     else if (prevout.scriptPubKey.IsPayToCryptoCondition(params)) {
                         if (params.IsValid() && !params.vKeys.empty())
                         {
-                            maybeReserve = true;
                             hashBytes = GetDestinationID(params.vKeys[0]);
                         }
                         else
@@ -3492,10 +3490,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                         // and to find the amount and address from an input
                         spentIndex.push_back(make_pair(CSpentIndexKey(input.prevout.hash, input.prevout.n), CSpentIndexValue(txhash, j, pindex->GetHeight(), prevout.nValue, addressType, hashBytes)));
                     }
-                }
-                if (maybeReserve)
-                {
-                    rtxd = CReserveTransactionDescriptor(tx, view, nHeight);
                 }
             }
             // Add in sigops done by pay-to-script-hash inputs;
@@ -3527,6 +3521,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
         if (!tx.IsCoinBase())
         {
+            rtxd = CReserveTransactionDescriptor(tx, view, nHeight);
             if (rtxd.IsValid())
             {
                 if (currencyState.IsReserve())
@@ -3537,6 +3532,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 totalReserveTxFees += rtxd.AllFeesAsNative(currencyState, currencyState.ConversionPrice) + rtxd.nativeConversionFees + currencyState.ReserveToNative(rtxd.reserveConversionFees, currencyState.ConversionPrice);
             } else
             {
+                if (rtxd.IsReject())
+                {
+                    return state.DoS(100, error("ConnectBlock(): Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reserve");
+                }
                 nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut();
             }
             sum += interest;
@@ -3652,7 +3651,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CCoinbaseCurrencyState checkState = prevCurrencyState;
 
     CAmount conversionPrice = prevCurrencyState.ConversionPrice;
-    if (reserveIn | nativeIn)
+    if (reserveIn || nativeIn)
     {
         conversionPrice = prevCurrencyState.ConvertAmounts(reserveIn, nativeIn, checkState);
     }
@@ -3660,7 +3659,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (currencyState.ConversionPrice != conversionPrice || currencyState.Supply != checkState.Supply || (nHeight != 1 && currencyState.ReserveIn != reserveIn) || currencyState.NativeIn != nativeIn)
     {
         // do it again for debugging only
+        printf("%lu != %lu || %lu != %lu || (%d != 1 && %lu != %lu) || %lu != %lu\n", currencyState.ConversionPrice, conversionPrice, currencyState.Supply, checkState.Supply, nHeight, currencyState.ReserveIn, reserveIn, currencyState.NativeIn, nativeIn);
         CAmount conversionPrice = prevCurrencyState.ConvertAmounts(reserveIn, nativeIn, checkState);
+
         return state.DoS(100, error("ConnectBlock(): currency state does not match block transactions"), REJECT_INVALID, "bad-blk-currency");
     }
 
@@ -3678,7 +3679,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         {
             if (totalReserveTxFees != currencyState.Fees)
             {
-                return state.DoS(100, error("ConnectBlock(): invalid currency state fee amount, does not match block transactions"), REJECT_INVALID, "bad-blk-currency-fee");
+                return state.DoS(100, error(("ConnectBlock(): invalid currency state fee, " + std::to_string(currencyState.Fees) + ", does not match block total of " + std::to_string(totalReserveTxFees)).c_str()), REJECT_INVALID, "bad-blk-currency-fee");
             }
             blockReward += CCurrencyState::ReserveToNative(currencyState.ReserveIn, currencyState.ConversionPrice) + currencyState.Fees;
         }
