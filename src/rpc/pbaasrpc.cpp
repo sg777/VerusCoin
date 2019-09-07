@@ -344,6 +344,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
         return false;
     }
 
+    bool importToReserveChain = !isVerusActive && chainID != thisChain.GetChainID() && chainID == notaryChain.GetChainID();
+
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
@@ -429,8 +431,6 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             CCcontract_info *cp;
             CPubKey pk;
 
-            bool isVerusActive = IsVerusActive();
-
             CAmount availableReserveFees = ccx.totalFees;
             CAmount exportFees = ccx.CalculateExportFee();
             CAmount importFees = ccx.CalculateImportFee();
@@ -466,7 +466,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
             CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), ccx.totalAmount + ccx.totalFees);
 
-            totalAvailableInput -= rtxd.nativeIn;
+            totalAvailableInput -= (importToReserveChain ? rtxd.reserveIn : rtxd.nativeIn);
             newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, totalAvailableInput, pk, dests, cci);
 
             if (totalAvailableInput < 0)
