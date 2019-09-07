@@ -508,6 +508,7 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int64_t)nVersion));
     obj.push_back(Pair("name", name));
+    obj.push_back(Pair("chainid", GetChainID().GetHex()));
     obj.push_back(Pair("paymentaddress", CBitcoinAddress(CTxDestination(address)).ToString()));
     obj.push_back(Pair("premine", (int64_t)premine));
     obj.push_back(Pair("initialcontribution", (int64_t)initialcontribution));
@@ -579,16 +580,17 @@ bool SetThisChain(UniValue &chainDefinition)
     {
         CPBaaSChainDefinition &notaryChainDef = ConnectedChains.notaryChain.chainDefinition;
         // we set the notary chain to either Verus or VerusTest
+        notaryChainDef.nVersion = PBAAS_VERSION;
         if (PBAAS_TESTMODE)
         {
             // setup Verus test parameters
             notaryChainDef.name = "VRSCTEST";
-            notaryChainDef.premine = 0;
-            notaryChainDef.eras = 3;
-            notaryChainDef.rewards = std::vector<int64_t>({50000000000,38400000000,38400000000});
-            notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
-            notaryChainDef.halving = std::vector<int32_t>({1,43200,43220});
-            notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
+            notaryChainDef.premine = 500000000000000;
+            notaryChainDef.eras = 1;
+            notaryChainDef.rewards = std::vector<int64_t>({2400000000});
+            notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
+            notaryChainDef.halving = std::vector<int32_t>({226080});
+            notaryChainDef.eraEnd = std::vector<int32_t>({0});
             notaryChainDef.eraOptions = std::vector<int32_t>({0,0,0});
         }
         else
