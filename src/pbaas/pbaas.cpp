@@ -1548,7 +1548,7 @@ void CConnectedChains::SubmissionThread()
                             auto txUniStr = find_value(result, "lastimporttransaction");
                             auto txLastConfirmedStr = find_value(result, "lastconfirmednotarization");
                             auto txTemplateStr = find_value(result, "importtxtemplate");
-                            CAmount totalImportAvailable = find_value(result, "totalimportavailable");
+                            CAmount totalImportAvailable = uni_get_int64(find_value(result, "totalimportavailable"));
 
                             CTransaction lastImportTx, lastConfirmedTx, templateTx;
 
