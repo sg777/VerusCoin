@@ -975,7 +975,7 @@ uint256 CreateAcceptedNotarization(const CBlock &blk, int32_t txIndex, int32_t h
         // if it is from a mined block, prepare the notarization assuming merge mined block
         // it will be rejected if it was not successfully merge mined
         auto mmv = chainActive.GetMMV();
-        mmv.resize(height + 1);
+        mmv.resize(height);
         uint256 preHash = mmv.mmr.GetNode(height).hash;
 
         CMerkleBranch blockProof;
