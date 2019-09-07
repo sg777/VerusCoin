@@ -1568,9 +1568,9 @@ void CConnectedChains::SubmissionThread()
                                         try
                                         {
                                             txResult = find_value(RPCCallRoot("signrawtransaction", params), "result");
-                                            if (txResult.isObject() && !(txResult = find_value(RPCCallRoot("signrawtransaction", params), "hex")).isNull() && txResult.isStr() && txResult.get_str().size())
+                                            if (txResult.isObject() && !(txResult = find_value(txResult, "hex")).isNull() && txResult.isStr() && txResult.get_str().size())
                                             {
-                                                params.clear();
+                                                params.setArray();
                                                 params.push_back(txResult);
                                                 txResult = find_value(RPCCallRoot("sendrawtransaction", params), "result");
                                             }
