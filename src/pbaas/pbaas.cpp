@@ -509,7 +509,8 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("version", (int64_t)nVersion));
     obj.push_back(Pair("name", name));
     obj.push_back(Pair("chainid", GetChainID().GetHex()));
-    obj.push_back(Pair("paymentaddress", CBitcoinAddress(CTxDestination(address)).ToString()));
+    obj.push_back(Pair("chainadress", EncodeDestination(CTxDestination(CKeyID(GetChainID())))));
+    obj.push_back(Pair("paymentaddress", EncodeDestination(CTxDestination(address))));
     obj.push_back(Pair("premine", (int64_t)premine));
     obj.push_back(Pair("initialcontribution", (int64_t)initialcontribution));
     obj.push_back(Pair("conversion", (int64_t)conversion));
