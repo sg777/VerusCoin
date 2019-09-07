@@ -2412,8 +2412,8 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
             "\nArguments\n"
             "       {\n"
             "           \"name\"           : \"xxxx\",  (string, optional) Verus ecosystem-wide name/symbol of chain to send to, if absent, current chain is assumed\n"
-            "           \"paymentaddress\" : \"Rxxx\",  (string, required) premine and launch fee recipient\n"
-            "           \"refundaddress\"  : \"Rxxx\",  (string, required) if a pre-convert is not mined in time, funds can be spent by the owner of this address\n"
+            "           \"paymentaddress\" : \"Rxxx\",  (string, required) transaction recipient address\n"
+            "           \"refundaddress\"  : \"Rxxx\",  (string, optional) if a pre-convert is not mined in time, funds can be spent by the owner of this address\n"
             "           \"amount\"         : \"n.n\",   (value,  required) coins that will be moved and sent to address on PBaaS chain, network and conversion fees additional\n"
             "           \"tonative\"       : \"false\", (bool,   optional) auto-convert from Verus to PBaaS currency at market price\n"
             "           \"toreserve\"      : \"false\", (bool,   optional) auto-convert from PBaaS to Verus reserve currency at market price\n"
@@ -3062,7 +3062,7 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
 
                 LOCK2(cs_main, mempool.cs);
 
-                if (!GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_DEPOSIT)), 1, reserveDeposits))
+                if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_DEPOSIT)), 1, reserveDeposits))
                 {
                     for (auto deposit : reserveDeposits)
                     {
