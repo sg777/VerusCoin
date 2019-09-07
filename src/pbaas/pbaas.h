@@ -646,6 +646,7 @@ public:
                              const CTransaction &lastCrossChainImport, 
                              const CTransaction &importTxTemplate,
                              const CTransaction &lastConfirmedNotarization,
+                             CAmount totalAvailableInput,
                              std::vector<CTransaction> &newImports);
 
     CRPCChainData &NotaryChain()

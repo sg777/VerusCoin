@@ -1548,6 +1548,7 @@ void CConnectedChains::SubmissionThread()
                             auto txUniStr = find_value(result, "lastimporttransaction");
                             auto txLastConfirmedStr = find_value(result, "lastconfirmednotarization");
                             auto txTemplateStr = find_value(result, "importtxtemplate");
+                            CAmount totalImportAvailable = uni_get_int64(find_value(result, "totalimportavailable"));
 
                             CTransaction lastImportTx, lastConfirmedTx, templateTx;
 
@@ -1557,7 +1558,7 @@ void CConnectedChains::SubmissionThread()
                                 DecodeHexTx(templateTx, txTemplateStr.get_str()))
                             {
                                 std::vector<CTransaction> importTxes;
-                                if (CreateLatestImports(notaryChain.chainDefinition, lastImportTx, templateTx, lastConfirmedTx, importTxes))
+                                if (CreateLatestImports(notaryChain.chainDefinition, lastImportTx, templateTx, lastConfirmedTx, totalImportAvailable, importTxes))
                                 {
                                     for (auto importTx : importTxes)
                                     {
@@ -1568,9 +1569,9 @@ void CConnectedChains::SubmissionThread()
                                         try
                                         {
                                             txResult = find_value(RPCCallRoot("signrawtransaction", params), "result");
-                                            if (txResult.isObject() && !(txResult = find_value(RPCCallRoot("signrawtransaction", params), "hex")).isNull() && txResult.isStr() && txResult.get_str().size())
+                                            if (txResult.isObject() && !(txResult = find_value(txResult, "hex")).isNull() && txResult.isStr() && txResult.get_str().size())
                                             {
-                                                params.clear();
+                                                params.setArray();
                                                 params.push_back(txResult);
                                                 txResult = find_value(RPCCallRoot("sendrawtransaction", params), "result");
                                             }

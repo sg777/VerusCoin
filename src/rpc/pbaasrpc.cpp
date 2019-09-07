@@ -240,6 +240,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                                            const CTransaction &lastCrossChainImport, 
                                            const CTransaction &importTxTemplate,
                                            const CTransaction &lastConfirmedNotarization,
+                                           CAmount totalAvailableInput,
                                            std::vector<CTransaction> &newImports)
 {
     uint160 chainID = chainDef.GetChainID();
@@ -343,6 +344,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
         return false;
     }
 
+    bool importToReserveChain = !isVerusActive && chainID != thisChain.GetChainID() && chainID == notaryChain.GetChainID();
+
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
@@ -428,9 +431,6 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             CCcontract_info *cp;
             CPubKey pk;
 
-            bool isVerusActive = IsVerusActive();
-
-            CAmount availableNative = lastImport.vout[newImportTx.vin[0].prevout.n].nValue;
             CAmount availableReserveFees = ccx.totalFees;
             CAmount exportFees = ccx.CalculateExportFee();
             CAmount importFees = ccx.CalculateImportFee();
@@ -466,9 +466,10 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
             CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), ccx.totalAmount + ccx.totalFees);
 
-            newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, availableNative - rtxd.nativeIn, pk, dests, cci);
+            totalAvailableInput -= (importToReserveChain ? rtxd.reserveIn : rtxd.nativeIn);
+            newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, totalAvailableInput, pk, dests, cci);
 
-            if (newImportTx.vout[0].nValue < 0)
+            if (totalAvailableInput < 0)
             {
                 LogPrintf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
                 printf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
@@ -3000,6 +3001,7 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
             "       \"lastimporttransaction\": \"hex\"      Hex encoded serialized import transaction\n"
             "       \"lastconfirmednotarization\" : \"hex\" Hex encoded last confirmed notarization transaction\n"
             "       \"importtxtemplate\": \"hex\"           Hex encoded import template for new import transactions\n"
+            "       \"totalimportavailable\": \"amount\"    Total amount if native import currency available to import as native\n"
             "   }\n"
 
             "\nExamples:\n"
@@ -3053,7 +3055,9 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid lastImport transaction");
             }
+
             txTemplate.vin.push_back(CTxIn(lastImportTx.GetHash(), importIdx, CScript()));
+
             // if Verus is active, our template import will gather all RESERVE_DEPOSITS that it can to spend into the
             // import thread
             if (IsVerusActive())
@@ -3074,9 +3078,15 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
                     }
                 }
             }
+
+            CCoinsViewCache view(pcoinsTip);
+            int64_t dummyInterest;
+            CAmount totalImportAvailable = view.GetValueIn(cnd.vtx[cnd.lastConfirmed].second.notarizationHeight, &dummyInterest, txTemplate);
+
             ret.push_back(Pair("lastimporttransaction", EncodeHexTx(lastImportTx)));
             ret.push_back(Pair("lastconfirmednotarization", EncodeHexTx(lastConfirmedTx)));
             ret.push_back(Pair("importtxtemplate", EncodeHexTx(txTemplate)));
+            ret.push_back(Pair("totalimportavailable", totalImportAvailable));
         }
     }
     return ret;
@@ -3096,6 +3106,7 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
             "   \"lastimporttransaction\" : \"hex\"     (hex,    required) the last import transaction to follow, return list starts with import that spends this\n"
             "   \"lastconfirmednotarization\" : \"hex\" (hex,    required) the last confirmed notarization transaction\n"
             "   \"importtxtemplate\" : \"hex\"          (hex,    required) template transaction to use, so we create a transaction compatible with the other chain\n"
+            "   \"totalimportavailable\": \"amount\"    (number,  required) Total amount if native import currency available to import as native\n"
             "}\n"
 
             "\nResult:\n"
@@ -3138,6 +3149,8 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     std::string lastConfirmedTxHex = uni_get_str(find_value(params[0], "lastconfirmednotarization"));
     CTransaction lastConfirmedNotarization;
 
+    CAmount totalImportAvailable = uni_get_int64(find_value(params[0], "totalimportavailable"));
+
     std::vector<CBaseChainObject *> chainObjs;
     if (!(DecodeHexTx(lastImportTx, lastImportHex) && 
           DecodeHexTx(templateTx, templateTxHex) &&
@@ -3156,7 +3169,7 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     DeleteOpRetObjects(chainObjs);
 
     std::vector<CTransaction> newImports;
-    if (!ConnectedChains.CreateLatestImports(chainDef, lastImportTx, templateTx, lastConfirmedNotarization, newImports))
+    if (!ConnectedChains.CreateLatestImports(chainDef, lastImportTx, templateTx, lastConfirmedNotarization, totalImportAvailable, newImports))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Failure creating new imports");
     }
