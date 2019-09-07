@@ -1562,13 +1562,13 @@ void CConnectedChains::SubmissionThread()
                                     for (auto importTx : importTxes)
                                     {
                                         UniValue txResult;
-                                        params.clear();
+                                        params.setArray();
                                         params.push_back(EncodeHexTx(importTx));
 
                                         try
                                         {
                                             txResult = find_value(RPCCallRoot("signrawtransaction", params), "result");
-                                            if (txResult.isStr() && txResult.get_str().size())
+                                            if (txResult.isObj() && (txResult = find_value(RPCCallRoot("signrawtransaction", params), "hex")) && txResult.isStr() && txResult.get_str().size())
                                             {
                                                 params.clear();
                                                 params.push_back(txResult);
