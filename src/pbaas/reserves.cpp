@@ -749,7 +749,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     pk = CPubKey(ParseHex(CC.CChexstr));
 
                     // transfer is to the chain definition, and if we're making it, that will be on the exporting chain, send it back to ourselves from where it's going
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(chainDef.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(ConnectedChains.ThisChain().GetChainID())});
 
                     reserveOut += curTransfer.nValue;
 
