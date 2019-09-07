@@ -1548,6 +1548,7 @@ void CConnectedChains::SubmissionThread()
                             auto txUniStr = find_value(result, "lastimporttransaction");
                             auto txLastConfirmedStr = find_value(result, "lastconfirmednotarization");
                             auto txTemplateStr = find_value(result, "importtxtemplate");
+                            CAmount totalImportAvailable = find_value(result, "totalimportavailable");
 
                             CTransaction lastImportTx, lastConfirmedTx, templateTx;
 
@@ -1557,7 +1558,7 @@ void CConnectedChains::SubmissionThread()
                                 DecodeHexTx(templateTx, txTemplateStr.get_str()))
                             {
                                 std::vector<CTransaction> importTxes;
-                                if (CreateLatestImports(notaryChain.chainDefinition, lastImportTx, templateTx, lastConfirmedTx, importTxes))
+                                if (CreateLatestImports(notaryChain.chainDefinition, lastImportTx, templateTx, lastConfirmedTx, totalImportAvailable, importTxes))
                                 {
                                     for (auto importTx : importTxes)
                                     {
