@@ -770,7 +770,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
 
                 pkCC = CPubKey(ParseHex(CC.CChexstr));
-                vKeys.push_back(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_EXPORT)));
+                vKeys.push_back(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.NotaryChain().GetChainID(), EVAL_CROSSCHAIN_EXPORT)));
 
                 exportThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, 0, pkCC, vKeys, 
                                                  CCrossChainExport(ConnectedChains.NotaryChain().GetChainID(), 0, 0, 0));
