@@ -1444,7 +1444,7 @@ CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFee(CAmount 
     CAmount newAmount = ((bigAmount * bigSatoshi) / (bigSatoshi - conversionFee)).GetLow64();
     CAmount fee = CalculateConversionFee(newAmount);
     newAmount = inputAmount + fee;
-    CAmount fee = CalculateConversionFee(newAmount);    // again to account for minimum fee
+    fee = CalculateConversionFee(newAmount);            // again to account for minimum fee
     fee += inputAmount - (newAmount - fee);             // add any additional difference
     return fee;
 }
