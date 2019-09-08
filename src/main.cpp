@@ -3407,12 +3407,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     // move it forward to this block
     prevCurrencyState.UpdateWithEmission(GetBlockSubsidy(nHeight, consensus));
-    if (nHeight == 1 && prevCurrencyState.IsReserve() && prevCurrencyState.Reserve == 0)
-    {
-        prevCurrencyState.Reserve = ConnectedChains.ThisChain().preconverted;
-        prevCurrencyState.InitialSupply = prevCurrencyState.ReserveToNative(prevCurrencyState.Reserve, ConnectedChains.ThisChain().conversion);
-        prevCurrencyState.Supply += prevCurrencyState.InitialSupply;
-    }
 
     CCoinbaseCurrencyState currencyState = prevCurrencyState;
     CAmount reserveIn = 0;
@@ -3662,7 +3656,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         conversionPrice = prevCurrencyState.ConvertAmounts(reserveIn, nativeIn, checkState);
     }
     
-    if (currencyState.ConversionPrice != conversionPrice || currencyState.Supply != checkState.Supply || (nHeight != 1 && currencyState.ReserveIn != reserveIn) || currencyState.NativeIn != nativeIn)
+    if (currencyState.ConversionPrice != conversionPrice || 
+        (nHeight != 1 && currencyState.Supply != checkState.Supply) || 
+        (nHeight != 1 && currencyState.ReserveIn != reserveIn) || 
+        (nHeight == 1 && currencyState.Supply - currencyState.InitialSupply == checkState.Supply) || 
+        currencyState.NativeIn != nativeIn)
     {
         // do it again for debugging only
         printf("%lu != %lu || %lu != %lu || (%d != 1 && %lu != %lu) || %lu != %lu\n", currencyState.ConversionPrice, conversionPrice, currencyState.Supply, checkState.Supply, nHeight, currencyState.ReserveIn, reserveIn, currencyState.NativeIn, nativeIn);
