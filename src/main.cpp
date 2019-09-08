@@ -3681,7 +3681,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     {
         if (!isVerusActive)
         {
-            if (totalReserveTxFees != currencyState.Fees)
+            if (!isBlock1 && totalReserveTxFees != currencyState.Fees)
             {
                 return state.DoS(100, error(("ConnectBlock(): invalid currency state fee, " + std::to_string(currencyState.Fees) + ", does not match block total of " + std::to_string(totalReserveTxFees)).c_str()), REJECT_INVALID, "bad-blk-currency-fee");
             }
