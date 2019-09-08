@@ -3407,6 +3407,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     // move it forward to this block
     prevCurrencyState.UpdateWithEmission(GetBlockSubsidy(nHeight, consensus));
+    if (nHeight == 1 && prevCurrencyState.IsReserve() && prevCurrencyState.Reserve == 0)
+    {
+        prevCurrencyState.Reserve = ConnectedChains.ThisChain().preconverted;
+        prevCurrencyState.InitialSupply = prevCurrencyState.ReserveToNative(prevCurrencyState.Reserve, ConnectedChains.ThisChain().conversion);
+        prevCurrencyState.Supply += prevCurrencyState.InitialSupply;
+    }
 
     CCoinbaseCurrencyState currencyState = prevCurrencyState;
     CAmount reserveIn = 0;
