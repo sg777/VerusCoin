@@ -3659,7 +3659,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (currencyState.ConversionPrice != conversionPrice || 
         (nHeight != 1 && currencyState.Supply != checkState.Supply) || 
         (nHeight != 1 && currencyState.ReserveIn != reserveIn) || 
-        (nHeight == 1 && currencyState.Supply - currencyState.InitialSupply != checkState.Supply) || 
+        (nHeight == 1 && !ConnectedChains.ThisChain().preconverted && currencyState.Supply - currencyState.InitialSupply != checkState.Supply) || 
         currencyState.NativeIn != nativeIn)
     {
         // do it again for debugging only
