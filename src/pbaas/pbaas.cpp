@@ -586,7 +586,7 @@ bool SetThisChain(UniValue &chainDefinition)
         {
             // setup Verus test parameters
             notaryChainDef.name = "VRSCTEST";
-            notaryChainDef.premine = 500000000000000;
+            notaryChainDef.premine = 5000000000000000;
             notaryChainDef.eras = 1;
             notaryChainDef.rewards = std::vector<int64_t>({2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
