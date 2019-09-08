@@ -1,4 +1,4 @@
-VerusCoin Command Line Tools v0.6.0-22-PBaaS-Cross-chain-Technology-Preview
+VerusCoin Command Line Tools v0.6.0-23-PBaaS-Cross-chain-Technology-Preview
 
 Contents:
 verusd - VerusCoin daemon
