@@ -2507,7 +2507,7 @@ void UpdateCoins(const CTransaction& tx, CCoinsViewCache& inputs, CTxUndo &txund
                 printf("Failed to find coins for transaction %s, output %d, at height %d\n", txin.prevout.hash.GetHex().c_str(), txin.prevout.n, nHeight);
                 LogPrintf("Failed to find coins for transaction %s, output %d, at height %d\n", txin.prevout.hash.GetHex().c_str(), txin.prevout.n, nHeight);
                 // we can't generate undo information for this, allow if it's a block bound transaction
-                assert(false);
+                return;
             }
 
             // mark an outpoint spent, and construct undo information

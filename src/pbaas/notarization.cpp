@@ -445,10 +445,6 @@ bool GetNotarizationAndFinalization(int32_t ecode, CMutableTransaction mtx, CPBa
 // being a significant point of failure and earn more in return
 bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescriptor> &inputs, CTransaction &lastTx, CTransaction &crossTx, CTransaction &lastConfirmed, int32_t height, int32_t *pConfirmedInput, CTxDestination *pConfirmedDest)
 {
-    char funcname[] = "CreateEarnedNotarization: ";
-
-    //printf("%senter\n", funcname);
-
     // we can only create a notarization if there is an available Verus chain
     if (!ConnectedChains.IsVerusPBaaSAvailable())
     {
@@ -483,7 +479,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     params.push_back(txidArr);
 
-    //printf("%sabout to get cross notarization with %lu notarizations found\n", funcname, cnd.vtx.size());
+    //printf("%s: about to get cross notarization with %lu notarizations found\n", __func__, cnd.vtx.size());
 
     UniValue result;
     try
@@ -510,7 +506,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     if ((lastNotarizationID.IsNull() && (cnd.vtx.size() != 0)) || !uv2.isStr() || !uv3.isStr() || !uv4.isStr())
     {
-        //printf("%sno corresponding cross-notarization found\n", funcname);
+        //printf("%s: no corresponding cross-notarization found\n", __func__);
         return false;
     }
 
@@ -519,14 +515,14 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     if (crossNotarizationID.IsNull() || !DecodeHexTx(crossTx, uv3.get_str()))
     {
-        printf("%sinvalid parameters 2\n", funcname);
+        printf("%s: invalid parameters 2\n", __func__);
         return false;
     }
 
     CTransaction newTx;
     if (!DecodeHexTx(newTx, uv4.get_str()))
     {
-        LogPrintf("%sinvalid transaction decode.\n", funcname);
+        LogPrintf("%s: invalid transaction decode.\n", __func__);
         return false;
     }
 
@@ -556,7 +552,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     if (notarizeOutIndex == -1 || finalizeOutIndex == -1 || !pbn.IsValid() || pbn.nVersion != PBAAS_VERSION)
     {
-        LogPrintf("%sinvalid notarization transaction returned from %s\n", funcname, VERUS_CHAINNAME.c_str());
+        LogPrintf("%s: invalid notarization transaction returned from %s\n", __func__, VERUS_CHAINNAME.c_str());
         return false;
     }
 
@@ -613,7 +609,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 
     if (!mnewTx.vout.back().scriptPubKey.size())
     {
-        printf("%sfailed to create OP_RETURN output", funcname);
+        printf("%s: failed to create OP_RETURN output", __func__);
         return false;
     }
 
@@ -626,7 +622,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
     if (crossNotarizaton.prevNotarization.IsNull() && !chainDef.IsValid())
     {
         // must either have a prior notarization or be the definition
-        printf("%sNo prior notarization and no chain definition in cross notarization\n", funcname);
+        printf("%s: no prior notarization and no chain definition in cross notarization\n", __func__);
         return false;
     }
 
@@ -658,7 +654,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
         if (blocksToWait > 0)
         {
             // can't make another notarization yet
-            printf("%sWaiting for %d blocks to notarize - current height.%d\n", funcname, blocksToWait, pbn.notarizationHeight);
+            printf("%s: waiting for %d blocks to notarize - current height.%d\n", __func__, blocksToWait, pbn.notarizationHeight);
             return false;
         }
     }
@@ -705,8 +701,6 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
 // it requires that the cs_main is held, as it uses the mapBlockIndex
 bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarization)
 {
-    char funcname[] = "ValidateEarnedNotarization: ";
-
     // validate:
     //  - the notarization refers to the first prior notarization on this chain that refers to the cross notarization commitment
     //  - the notarization is either in a PoS block, or a block that meets the hash qualification to be merge mined into
@@ -726,7 +720,7 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
     {
         if (!(pbn = CPBaaSNotarization(ntx)).IsValid())
         {
-            LogPrintf("%sinvalid notarization transaction %s\n", funcname, ntx.GetHash().GetHex().c_str());
+            LogPrintf("%s: invalid notarization transaction %s\n", __func__, ntx.GetHash().GetHex().c_str());
             return false;
         }
         notarization = &pbn;
@@ -739,12 +733,12 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
     if (IsVerusActive())
     {
         // for now, we fail in this case
-        LogPrintf("%scalled from %s chain\n", funcname, ASSETCHAINS_SYMBOL);
+        LogPrintf("%s: called from %s chain\n", __func__, ASSETCHAINS_SYMBOL);
         return false;
     }
     else if (n.chainID != VERUS_CHAINID || !ntx.vout.size() || !ntx.vout.back().scriptPubKey.IsOpReturn())
     {
-        LogPrintf("%searned notarization for chain %s for unrecognized chain ID %s\n", funcname, VERUS_CHAINNAME, n.chainID.GetHex().c_str());
+        LogPrintf("%s: earned notarization for chain %s for unrecognized chain ID %s\n", __func__, VERUS_CHAINNAME, n.chainID.GetHex().c_str());
         return false;
     }
 
@@ -763,7 +757,7 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
         chainObjects[3]->objectType != CHAINOBJ_PROOF || 
         chainObjects[4]->objectType != CHAINOBJ_PRIORBLOCKS)
     {
-        LogPrintf("%snotarization must contain at least one block and one transaction proof\n", funcname);
+        LogPrintf("%s: notarization must contain at least one block and one transaction proof\n", __func__);
     }
     else
     {
@@ -807,7 +801,7 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
 
                 if (!cpbn.IsValid() || cpbn.opRetProof.orIndex)
                 {
-                    LogPrintf("%snotarization must be valid and opret must start at index 0\n", funcname);
+                    LogPrintf("%s: notarization must be valid and opret must start at index 0\n", __func__);
                 }
                 else
                 {
@@ -828,12 +822,12 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
                                     !it->second->IsVerusPOSBlock() ||
                                     it->second->GetHeight() != cpbn.notarizationHeight)
                                 {
-                                    LogPrintf("%sfull block header in cross-notarization from %s should be PoS\n", funcname, VERUS_CHAINNAME.c_str());
+                                    LogPrintf("%s: full block header in cross-notarization from %s should be PoS\n", __func__, VERUS_CHAINNAME.c_str());
                                     retVal = false;
                                 }
                                 else if (!GetCompactPower(it->second->nNonce, it->second->nBits, it->second->nVersion) != UintToArith256(cpbn.compactPower))
                                 {
-                                    LogPrintf("%sinvalid chain power in cross-notarization from %s\n", funcname, VERUS_CHAINNAME.c_str());
+                                    LogPrintf("%s: invalid chain power in cross-notarization from %s\n", __func__, VERUS_CHAINNAME.c_str());
                                     retVal = false;
                                 }
                                 else
@@ -855,7 +849,7 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
                                 auto it = mapBlockIndex.find(cpbn.opRetProof.hashes[i]);
                                 if (it == mapBlockIndex.end())
                                 {
-                                    LogPrintf("%sblock in notarization from %s chain not found\n", funcname, VERUS_CHAINNAME.c_str());
+                                    LogPrintf("%s: block in notarization from %s chain not found\n", __func__, VERUS_CHAINNAME.c_str());
                                     retVal = false;
                                 }
                                 else
@@ -905,7 +899,7 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
                             }
 
                             default:
-                                LogPrintf("%snotarization must be valid and opret must start at index 0\n", funcname);
+                                LogPrintf("%s: notarization must be valid and opret must start at index 0\n", __func__);
                                 retVal = false;
                         }
                     }
@@ -936,21 +930,20 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
 // block is block of earned notarization, entx is earned notarization transaction, height is height of block
 uint256 CreateAcceptedNotarization(const CBlock &blk, int32_t txIndex, int32_t height)
 {
-    char funcname[] = "CreateAcceptedNotarization: ";
     uint256 nullRet = uint256();
     const CTransaction &entx = blk.vtx[txIndex];
    
     // we can only create a notarization if there is an available Verus chain
     if (!ConnectedChains.IsVerusPBaaSAvailable())
     {
-        LogPrintf("%scannot connect to %s\n", funcname, VERUS_CHAINNAME.c_str());
+        LogPrintf("%s: cannot connect to %s\n", __func__, VERUS_CHAINNAME.c_str());
         return nullRet;
     }
 
     CPBaaSNotarization crosspbn(entx);
     if (!crosspbn.IsValid())
     {
-        LogPrintf("%sinvalid earned notarization\n", funcname);
+        LogPrintf("%s: invalid earned notarization\n", __func__);
         return nullRet;
     }
 
@@ -968,7 +961,7 @@ uint256 CreateAcceptedNotarization(const CBlock &blk, int32_t txIndex, int32_t h
         LOCK(cs_main);
         if (height > chainActive.Height())
         {
-            LogPrintf("%sheight requested is greater than chain height\n", funcname);
+            LogPrintf("%s: height requested is greater than chain height\n", __func__);
             return nullRet;
         }
         // prepare a partial notarization with all that is needed from this PBaaS chain at the height requested
@@ -995,7 +988,7 @@ uint256 CreateAcceptedNotarization(const CBlock &blk, int32_t txIndex, int32_t h
 
         if (i == blk.vtx.size())
         {
-            LogPrintf("%scannot locate earned notarization in block\n", funcname);
+            LogPrintf("%s: cannot locate earned notarization in block\n", __func__);
             return nullRet;
         }
 

@@ -339,7 +339,7 @@ public:
     static const int MAX_EXPORT_INPUTS = 50;
     uint160 chainID;                                // target chain ID
     int32_t numInputs;                              // number of inputs aggregated to calculate the fee percentage
-    CAmount totalAmount;                            // total amount of inputs, including fees
+    CAmount totalAmount;                            // total amount of inputs, not including fees
     CAmount totalFees;                              // total amount of fees to split between miner on exporting chain and importing chain
 
     CCrossChainExport() : numInputs(0), totalAmount(0), totalFees(0) {}
