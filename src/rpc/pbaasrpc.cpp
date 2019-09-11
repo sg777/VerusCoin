@@ -4533,6 +4533,7 @@ static const CRPCCommand commands[] =
     { "pbaas",        "getcurrencystate",             &getcurrencystate,       true  },
     { "pbaas",        "getlatestimportsout",          &getlatestimportsout,    true  },
     { "pbaas",        "getlastimportin",              &getlastimportin,        true  },
+    { "pbaas",        "refundfailedlaunch",           &refundfailedlaunch,     true  },
     { "pbaas",        "submitacceptednotarization",   &submitacceptednotarization, true },
     { "pbaas",        "paynotarizationrewards",       &paynotarizationrewards, true  },
     { "pbaas",        "addmergedblock",               &addmergedblock,         true  }
