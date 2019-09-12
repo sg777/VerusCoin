@@ -64,8 +64,8 @@ isminetype IsMine(const CKeyStore &keystore, const CScript& _scriptPubKey)
         break;
     case TX_CRYPTOCONDITION:
         {
-            // for now, default is that the first value returned will be the script, subsequent values will be
-            // pubkeys. if we have one of the keys in our wallet, we consider it spendable for now
+            // for now, default is that the first value returned will be the target address, subsequent values will be
+            // pubkeys. if we have the first in our wallet, we consider it spendable for now
             if (vSolutions[0].size() == 33)
             {
                 keyID = CPubKey(vSolutions[0]).GetID();

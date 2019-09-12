@@ -970,9 +970,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                                     CAmount value;
                                     const CScript *pScriptPubKey;
 
-                                    const CScript virtualCC;
-                                    CTxOut virtualCCOut;
-
                                     signSuccess = ProduceSignature(
                                         TransactionSignatureCreator(pwalletMain, &itx, 0, lastImportTx.vout[itx.vin[0].prevout.n].nValue, SIGHASH_ALL), lastImportTx.vout[itx.vin[0].prevout.n].scriptPubKey, sigdata, consensusBranchId);
 
@@ -1610,9 +1607,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 CAmount value;
                 const CScript *pScriptPubKey;
 
-                const CScript virtualCC;
-                CTxOut virtualCCOut;
-
                 // if this is our coinbase input, different signing
                 if (i)
                 {
@@ -1682,9 +1676,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 SignatureData sigdata;
                 CAmount value;
                 const CScript *pScriptPubKey;
-
-                const CScript virtualCC;
-                CTxOut virtualCCOut;
 
                 // if this is our coinbase input, we won't find it elsewhere
                 if (i < notarizationInputs.size())
