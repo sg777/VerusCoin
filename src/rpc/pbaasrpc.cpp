@@ -3481,8 +3481,8 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
                     printf("%s: ERROR - refund does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
                 }
 
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
-                CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), ccx.totalAmount + ccx.totalFees);
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT)))});
+                CCrossChainImport cci = CCrossChainImport(chainID, ccx.totalAmount + ccx.totalFees);
 
                 totalAvailableInput -= rtxd.reserveIn;
                 newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, totalAvailableInput, pk, dests, cci);
