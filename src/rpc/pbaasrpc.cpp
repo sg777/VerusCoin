@@ -641,15 +641,22 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
         CChainNotarizationData cnd;
         GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
         ret = chainDef.ToUniValue();
-        if (cnd.vtx.size())
+
+        int32_t confirmedHeight = -1, bestHeight = -1;
+        confirmedHeight = cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : 0;
+        bestHeight = cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : 0;
+
+        ret.push_back(Pair("lastconfirmedheight", confirmedHeight));
+        if (confirmedHeight)
         {
-            ret.push_back(Pair("bestnotarization", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.ToUniValue()));
+            ret.push_back(Pair("lastconfirmedtxid", cnd.vtx[cnd.lastConfirmed].first.GetHex().c_str()));
+            ret.push_back(Pair("lastconfirmedcurrencystate", cnd.vtx[cnd.lastConfirmed].second.currencyState.ToUniValue()));
+        }
+        ret.push_back(Pair("bestheight", bestHeight));
+        if (bestHeight)
+        {
             ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.GetHex().c_str()));
-            if (cnd.IsConfirmed())
-            {
-                ret.push_back(Pair("confirmednotarization", cnd.vtx[cnd.lastConfirmed].second.ToUniValue()));
-                ret.push_back(Pair("confirmedtxid", cnd.vtx[cnd.lastConfirmed].first.GetHex().c_str()));
-            }
+            ret.push_back(Pair("bestcurrencystate", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.ToUniValue()));
         }
         return ret;
     }
@@ -1005,8 +1012,18 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
             confirmedHeight = nData.lastConfirmed != -1 ? nData.vtx[nData.lastConfirmed].second.notarizationHeight : 0;
             bestHeight = nData.bestChain != -1 ? nData.vtx[nData.forks[nData.bestChain].back()].second.notarizationHeight : 0;
         }
-        oneChain.push_back(Pair("confirmedheight", confirmedHeight));
-        oneChain.push_back(Pair("latestheight", bestHeight));
+        oneChain.push_back(Pair("lastconfirmedheight", confirmedHeight));
+        if (confirmedHeight)
+        {
+            oneChain.push_back(Pair("lastconfirmedtxid", nData.vtx[nData.lastConfirmed].first.GetHex().c_str()));
+            oneChain.push_back(Pair("lastconfirmedcurrencystate", nData.vtx[nData.lastConfirmed].second.currencyState.ToUniValue()));
+        }
+        oneChain.push_back(Pair("bestheight", bestHeight));
+        if (bestHeight)
+        {
+            oneChain.push_back(Pair("besttxid", nData.vtx[nData.forks[nData.bestChain].back()].first.GetHex().c_str()));
+            oneChain.push_back(Pair("bestcurrencystate", nData.vtx[nData.forks[nData.bestChain].back()].second.currencyState.ToUniValue()));
+        }
         ret.push_back(oneChain);
     }
 
