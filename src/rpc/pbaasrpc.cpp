@@ -3374,9 +3374,9 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
                 lastCCI = CCrossChainImport();
                 COptCCParams p;
 
-                for (int i = 0; i < lastImportTx.vout.size(); i++)
+                for (int i = 0; i < lastImport.vout.size(); i++)
                 {
-                    if (lastImportTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT && p.vData.size() && (lastCCI = CCrossChainImport(p.vData[0])).IsValid())
+                    if (lastImport.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT && p.vData.size() && (lastCCI = CCrossChainImport(p.vData[0])).IsValid())
                     {
                         lastImportPrevoutN = i;
                         break;
@@ -3392,7 +3392,7 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
                 }
 
                 CMutableTransaction newImportTx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
-                newImportTx.vin.push_back(CTxIn(lastImportTx.GetHash(), lastImportPrevoutN));
+                newImportTx.vin.push_back(CTxIn(lastImport.GetHash(), lastImportPrevoutN));
 
                 // if no prepared input, make one
                 newImportTx.vout.clear();
