@@ -3549,8 +3549,8 @@ UniValue refundfailedlaunch(const UniValue& params, bool fHelp)
             "\nResult:\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("paynotarizationrewards", "\"hextx\"")
-            + HelpExampleRpc("paynotarizationrewards", "\"hextx\"")
+            + HelpExampleCli("refundfailedlaunch", "\"chainid\"")
+            + HelpExampleRpc("refundfailedlaunch", "\"chainid\"")
         );
     }
     CheckPBaaSAPIsValid();
