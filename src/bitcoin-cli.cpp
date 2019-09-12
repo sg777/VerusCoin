@@ -100,7 +100,7 @@ static int AppInitRPC(int argc, char* argv[])
     ParseParameters(argc, argv);
     komodo_args(argv[0]);
     if (argc<2 || mapArgs.count("-?") || mapArgs.count("-h") || mapArgs.count("-help") || mapArgs.count("-version")) {
-        std::string strUsage = _("Verus RPC client version 0.6.0-241-PBaaS-Cross-chain-Technology-Preview") + " " + "\n" + PrivacyInfo();
+        std::string strUsage = _("Verus RPC client version 0.6.0-251-PBaaS-Cross-chain-Technology-Preview") + " " + "\n" + PrivacyInfo();
         if (!mapArgs.count("-version")) {      strUsage += "\n" + _("Usage:") + "\n" +
                   "  verus [options] <command> [params]  " + _("Send command to Komodo") + "\n" +
                   "  verus [options] help                " + _("List commands") + "\n" +
