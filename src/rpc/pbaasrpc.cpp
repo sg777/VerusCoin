@@ -3452,7 +3452,7 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
                     for (auto deposit : reserveDeposits)
                     {
                         COptCCParams p;
-                        if (deposit.first.txhash == aixIt->second.first.txhash && deposit.second.script.IsPayToCryptoCondition(p) && p.evalCode == EVAL_RESERVE_DEPOSIT)
+                        if (deposit.second.script.IsPayToCryptoCondition(p) && p.evalCode == EVAL_RESERVE_DEPOSIT)
                         {
                             newImportTx.vin.push_back(CTxIn(deposit.first.txhash, deposit.first.index, CScript()));
                             totalInput += deposit.second.satoshis;
