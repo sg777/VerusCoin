@@ -1829,9 +1829,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 CAmount value;
                 const CScript *pScriptPubKey;
 
-                const CScript virtualCC;
-                CTxOut virtualCCOut;
-
                 // if this is our coinbase input, we won't find it elsewhere
                 if (i < notarizationInputs.size())
                 {
@@ -3213,7 +3210,7 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
                 errorReason = "chain-transaction-not-found";
                 return false;
             }
-            if (chainDefTx.vout[txidx.first.txindex].scriptPubKey.IsPayToCryptoCondition(p) && 
+            if (chainDefTx.vout[txidx.first.index].scriptPubKey.IsPayToCryptoCondition(p) && 
                 p.IsValid() && 
                 p.evalCode == EVAL_PBAASDEFINITION && 
                 p.vData[0].size() && 
@@ -3317,8 +3314,10 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
 
         CBlockIndex *pIndex;
 
-        // get all export transactions that were posted before chain launch
-        if (GetAddressIndex(keyID, 1, addressIndex, defHeight, chainDef.startBlock))
+        // get all export transactions that were posted to the chain, since none can be sent
+        // TODO:PBAAS - all sends to a failed chain after start block should fail. this may not want to
+        // refund all exports, in case we decide to reuse chain names
+        if (GetAddressIndex(keyID, 1, addressIndex, defHeight, nHeight))
         {
             // get all exports from first to last, and make sure they spend from the export thread consecutively
             bool found = false;
@@ -3428,6 +3427,7 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
                         else
                         {
                             rt.nValue = (rt.nValue + rt.nFees) - (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
+                            rt.nFees = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
                         }
                     }
                 }
@@ -3444,7 +3444,23 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
                 // free the memory
                 DeleteOpRetObjects(exportOutputs);
 
-                CAmount totalAvailableInput = lastImport.vout[lastImportPrevoutN].nValue;
+                // now add any unspent reserve deposit that came from this export to return it back
+                std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > reserveDeposits;
+                CAmount totalInput = lastImport.vout[lastImportPrevoutN].nValue;
+                if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_DEPOSIT)), 1, reserveDeposits))
+                {
+                    for (auto deposit : reserveDeposits)
+                    {
+                        COptCCParams p;
+                        if (deposit.first.txhash == aixIt->second.first.txhash && deposit.second.script.IsPayToCryptoCondition(p) && p.evalCode == EVAL_RESERVE_DEPOSIT)
+                        {
+                            newImportTx.vin.push_back(CTxIn(deposit.first.txhash, deposit.first.index, CScript()));
+                            totalInput += deposit.second.satoshis;
+                        }
+                    }
+                }
+
+                CAmount totalAvailableInput = totalInput;
                 CAmount availableReserveFees = ccx.totalFees;
                 CAmount exportFees = ccx.CalculateExportFee();
                 CAmount importFees = ccx.CalculateImportFee();
@@ -3565,36 +3581,61 @@ UniValue refundfailedlaunch(const UniValue& params, bool fHelp)
 
     UniValue ret(UniValue::VARR);
 
+    CCoinsViewCache view(pcoinsTip);
+
     // sign and commit the transactions
     for (auto tx : refundTxes)
     {
+        LOCK2(cs_main, mempool.cs);
+
         CMutableTransaction newTx(tx);
 
         // sign the transaction and submit
-        assert(tx.vin.size() == 1);
-
         bool signSuccess;
-        SignatureData sigdata;
-        CAmount value;
-
-        const CScript virtualCC;
-        CTxOut virtualCCOut;
-
-
-        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &tx, 0, lastImportTx.vout[tx.vin[0].prevout.n].nValue, SIGHASH_ALL), lastImportTx.vout[tx.vin[0].prevout.n].scriptPubKey, sigdata, consensusBranchId);
-
-        if (!signSuccess)
+        for (int i = 0; i < tx.vin.size(); i++)
         {
-            fprintf(stderr,"refundfailedlaunch: failure to sign refund transaction\n");
-            LogPrintf("refundfailedlaunch: failure to sign refund transaction\n");
-            break;
-        } else {
-            UpdateTransaction(newTx, 0, sigdata);
+            SignatureData sigdata;
+            CAmount value;
+            CScript outputScript;
 
+            if (tx.vin[i].prevout.hash == lastImportTx.GetHash())
+            {
+                value = lastImportTx.vout[tx.vin[i].prevout.n].nValue;
+                outputScript = lastImportTx.vout[tx.vin[i].prevout.n].scriptPubKey;
+            }
+            else
+            {
+                CCoinsViewCache view(pcoinsTip);
+                CCoins coins;
+                if (!view.GetCoins(tx.vin[i].prevout.hash, coins))
+                {
+                    fprintf(stderr,"refundfailedlaunch: cannot get input coins from tx: %s, output: %d\n", tx.vin[i].prevout.hash.GetHex().c_str(), tx.vin[i].prevout.n);
+                    LogPrintf("refundfailedlaunch: cannot get input coins from tx: %s, output: %d\n", tx.vin[i].prevout.hash.GetHex().c_str(), tx.vin[i].prevout.n);
+                    break;
+                }
+                value = coins.vout[tx.vin[i].prevout.n].nValue;
+                outputScript = coins.vout[tx.vin[i].prevout.n].scriptPubKey;
+            }
+
+            signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &tx, i, value, SIGHASH_ALL), outputScript, sigdata, consensusBranchId);
+
+            if (!signSuccess)
+            {
+                fprintf(stderr,"refundfailedlaunch: failure to sign refund transaction\n");
+                LogPrintf("refundfailedlaunch: failure to sign refund transaction\n");
+                break;
+            } else {
+                UpdateTransaction(newTx, i, sigdata);
+            }
+        }
+
+        if (signSuccess)
+        {
             // push to local node and sync with wallets
             CValidationState state;
             bool fMissingInputs;
-            if (!AcceptToMemoryPool(mempool, state, tx, false, &fMissingInputs)) {
+            CTransaction signedTx(newTx);
+            if (!AcceptToMemoryPool(mempool, state, signedTx, false, &fMissingInputs)) {
                 if (state.IsInvalid()) {
                     fprintf(stderr,"refundfailedlaunch: rejected by memory pool for %s\n", state.GetRejectReason().c_str());
                     LogPrintf("refundfailedlaunch: rejected by memory pool for %s\n", state.GetRejectReason().c_str());
@@ -3613,8 +3654,8 @@ UniValue refundfailedlaunch(const UniValue& params, bool fHelp)
             }
             else
             {
-                RelayTransaction(tx);
-                ret.push_back(tx.GetHash().GetHex());
+                RelayTransaction(signedTx);
+                ret.push_back(signedTx.GetHash().GetHex());
             }
         }
     }
