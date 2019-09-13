@@ -643,17 +643,17 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
         ret = chainDef.ToUniValue();
 
         int32_t confirmedHeight = -1, bestHeight = -1;
-        confirmedHeight = cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : 0;
-        bestHeight = cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : 0;
+        confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
+        bestHeight = cnd.vtx.size() && cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : -1;
 
-        ret.push_back(Pair("lastconfirmedheight", confirmedHeight));
-        if (confirmedHeight)
+        ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
+        if (confirmedHeight != -1)
         {
             ret.push_back(Pair("lastconfirmedtxid", cnd.vtx[cnd.lastConfirmed].first.GetHex().c_str()));
             ret.push_back(Pair("lastconfirmedcurrencystate", cnd.vtx[cnd.lastConfirmed].second.currencyState.ToUniValue()));
         }
-        ret.push_back(Pair("bestheight", bestHeight));
-        if (bestHeight)
+        ret.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
+        if (bestHeight != -1)
         {
             ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.GetHex().c_str()));
             ret.push_back(Pair("bestcurrencystate", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.ToUniValue()));
