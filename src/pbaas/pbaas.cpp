@@ -1309,8 +1309,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     CChainObject<CReserveTransfer> *oneTransfer = new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second);
                                     if (IsVerusActive() && oneTransfer->object.nValue + oneTransfer->object.nFees > txInputs[j].first.nValue)
                                     {
-                                        printf("%s: invalid reserve transfer -- does not contain proper amount of reserve deposit. txid: %s, n: %d \n", __func__, txInputs[j].first.txIn.prevout.hash.GetHex().c_str(), txInputs[j].first.txIn.prevout.n);
-                                        LogPrintf("%s: invalid reserve transfer -- does not contain proper amount of reserve deposit. txid: %s, n: %d \n", __func__, txInputs[j].first.txIn.prevout.hash.GetHex().c_str(), txInputs[j].first.txIn.prevout.n);
                                         fails++;
                                     }
                                     else
