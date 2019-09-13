@@ -756,11 +756,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                     CAmount fees = curTransfer.DEFAULT_PER_STEP_FEE << 1;
                     CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, curTransfer.destination);
 
-                    newOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt);                    
+                    if ((isVerusActive && chainDef.name != ConnectedChains.ThisChain().name) || (!isVerusActive && chainDef.name != ConnectedChains.NotaryChain().chainDefinition.name))
+                    {
+                        newOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt);                    
+                    }
+                    else
+                    {
+                        newOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, curTransfer.nValue, pk, dests, rt);                    
+                    }
                 }
                 else
                 {
-                    // if Verus is active, we are creating a reserve import for a PBaaS reserve chain
+                    // see if we are creating a reserve import for a PBaaS reserve chain
                     if ((isVerusActive && chainDef.name != ConnectedChains.ThisChain().name) || (!isVerusActive && chainDef.name != ConnectedChains.NotaryChain().chainDefinition.name))
                     {
                         // generate a reserve output of the amount indicated, less fees

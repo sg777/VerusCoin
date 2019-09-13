@@ -240,7 +240,6 @@ UniValue CChainNotarizationData::ToUniValue() const
         Forks.push_back(Fork);
     }
     obj.push_back(Pair("forks", Forks));
-    obj.push_back(Pair("lastconfirmed", lastConfirmed));
     if (IsConfirmed())
     {
         obj.push_back(Pair("lastconfirmedheight", (int32_t)vtx[lastConfirmed].second.notarizationHeight));

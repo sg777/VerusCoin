@@ -1300,12 +1300,27 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 }
 
                                 COptCCParams p;
+                                int fails = 0;
                                 for (int j = 0; j < numInputs; j++)
                                 {
                                     tb.AddTransparentInput(txInputs[j].first.txIn.prevout, txInputs[j].first.scriptPubKey, txInputs[j].first.nValue, txInputs[j].first.txIn.nSequence);
                                     totalTxFees += txInputs[j].second.nFees;
                                     totalAmount += txInputs[j].second.nValue;
-                                    chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
+                                    CChainObject<CReserveTransfer> *oneTransfer = new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second);
+                                    if (IsVerusActive() && oneTransfer->object.nValue + oneTransfer->object.nFees > txInputs[j].first.nValue)
+                                    {
+                                        fails++;
+                                    }
+                                    else
+                                    {
+                                        chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
+                                    }
+                                }
+                                if (fails == numInputs)
+                                {
+                                    // erase the inputs we've attempted to spend
+                                    txInputs.erase(txInputs.begin(), txInputs.begin() + numInputs);
+                                    continue;
                                 }
 
                                 CCrossChainExport ccx(lastChain, numInputs, totalAmount, totalTxFees);
