@@ -34,4 +34,7 @@ static const int MEMPOOL_GD_VERSION = 60002;
 //! "filter*" commands are disabled without NODE_BLOOM after and including this version
 static const int NO_BLOOM_VERSION = 170004;
 
+#define KOMODO_VERSION "0.2.1"
+#define VERUS_VERSION "0.6.0-30-PBaaS-Cross-chain-Technology-Preview"
+
 #endif // BITCOIN_VERSION_H
