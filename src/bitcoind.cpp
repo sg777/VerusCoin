@@ -100,7 +100,7 @@ bool AppInit(int argc, char* argv[])
     // Process help and version before taking care about datadir
     if (mapArgs.count("-?") || mapArgs.count("-h") ||  mapArgs.count("-help") || mapArgs.count("-version"))
     {
-        std::string strUsage = _("Verus Daemon") + " " + _("version") + " v" + _(VERUS_VERSION) + "\n" + PrivacyInfo();
+        std::string strUsage = _("Verus Daemon") + " " + _("version") + " " + _(VERUS_VERSION) + "\n" + PrivacyInfo();
         if (mapArgs.count("-version"))
         {
             strUsage += LicenseInfo();
