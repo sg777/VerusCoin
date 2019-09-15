@@ -1304,15 +1304,17 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 for (int j = 0; j < numInputs; j++)
                                 {
                                     tb.AddTransparentInput(txInputs[j].first.txIn.prevout, txInputs[j].first.scriptPubKey, txInputs[j].first.nValue, txInputs[j].first.txIn.nSequence);
-                                    totalTxFees += txInputs[j].second.nFees;
-                                    totalAmount += txInputs[j].second.nValue;
-                                    CChainObject<CReserveTransfer> *oneTransfer = new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second);
-                                    if (IsVerusActive() && oneTransfer->object.nValue + oneTransfer->object.nFees > txInputs[j].first.nValue)
+                                    if (IsVerusActive() && txInputs[j].second.nValue + txInputs[j].second.nFees > txInputs[j].first.nValue)
                                     {
+                                        // if this transfer is invalid and claims to carry more funds than it does, we consume it since it won't properly verify as a transfer, and
+                                        // it is too expensive to let it force evaluation repeatedly
+                                        // we should formalize this into a chain contribution. right now, and reserve coins are basically added to chain surplus
                                         fails++;
                                     }
                                     else
                                     {
+                                        totalTxFees += txInputs[j].second.nFees;
+                                        totalAmount += txInputs[j].second.nValue;
                                         chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
                                     }
                                 }
