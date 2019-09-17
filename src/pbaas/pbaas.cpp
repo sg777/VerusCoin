@@ -518,8 +518,8 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("maxpreconvert", (int64_t)maxpreconvert));
     obj.push_back(Pair("preconverted", (int64_t)preconverted));
     obj.push_back(Pair("launchfee", (int64_t)launchFee));
-    obj.push_back(Pair("conversionpercent", ValueFromAmount(conversion * 100));
-    obj.push_back(Pair("launchfeepercent", ValueFromAmount(launchFee * 100));
+    obj.push_back(Pair("conversionpercent", ValueFromAmount(conversion * 100)));
+    obj.push_back(Pair("launchfeepercent", ValueFromAmount(launchFee * 100)));
     obj.push_back(Pair("startblock", (int32_t)startBlock));
     obj.push_back(Pair("endblock", (int32_t)endBlock));
 
