@@ -1642,7 +1642,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
         bIsMint = bIsCoinbase && wtx.vout.size() > 0 && wtx.vout[0].scriptPubKey.IsPayToCryptoCondition();
     }
 
-    if (bIsReserve && (rtxd.IsValid()) && (rtxd = CReserveTransactionDescriptor(wtx, view, nHeight)).IsReserve())
+    if (bIsReserve && (rtxd = CReserveTransactionDescriptor(wtx, view, nHeight)).IsReserve())
     {
         ret.push_back(Pair("isreserve", true));
         bool isReserveExchange = rtxd.IsReserveExchange();
