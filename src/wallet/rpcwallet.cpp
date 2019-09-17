@@ -1644,31 +1644,31 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
 
     if (bIsReserve && (rtxd.IsValid()) && (rtxd = CReserveTransactionDescriptor(wtx, view, nHeight)).IsReserve())
     {
-        ret.push_back(Pair("isReserve", true));
+        ret.push_back(Pair("isreserve", true));
         bool isReserveExchange = rtxd.IsReserveExchange();
-        ret.push_back(Pair("isReserveExchange", isReserveExchange));
+        ret.push_back(Pair("isreserveexchange", isReserveExchange));
         if (isReserveExchange)
         {
             if (rtxd.IsMarket())
             {
-                ret.push_back(Pair("exchangeType", "market"));
+                ret.push_back(Pair("exchangetype", "market"));
             }
             else if (rtxd.IsLimit())
             {
-                ret.push_back(Pair("exchangeType", "limit"));
+                ret.push_back(Pair("exchangetype", "limit"));
             }
         }
-        ret.push_back(Pair("nativeFees", rtxd.NativeFees()));
-        ret.push_back(Pair("reserveFees", rtxd.ReserveFees()));
+        ret.push_back(Pair("nativefees", rtxd.NativeFees()));
+        ret.push_back(Pair("reservefees", rtxd.ReserveFees()));
         if (rtxd.nativeConversionFees || rtxd.reserveConversionFees)
         {
-            ret.push_back(Pair("nativeConversionFees", rtxd.nativeConversionFees));
-            ret.push_back(Pair("reserveConversionFees", rtxd.reserveConversionFees));
+            ret.push_back(Pair("nativeconversionfees", rtxd.nativeConversionFees));
+            ret.push_back(Pair("reserveconversionfees", rtxd.reserveConversionFees));
         }
     }
     else
     {
-        ret.push_back(Pair("isReserve", false));
+        ret.push_back(Pair("isreserve", false));
     }
 
     wtx.GetAmounts(listReceived, listSent, nFee, strSentAccount, bIsStake ? ISMINE_ALLANDCHANGE : filter);
