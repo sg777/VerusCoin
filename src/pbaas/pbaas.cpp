@@ -509,7 +509,7 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("version", (int64_t)nVersion));
     obj.push_back(Pair("name", name));
     obj.push_back(Pair("chainid", GetChainID().GetHex()));
-    obj.push_back(Pair("chainadress", EncodeDestination(CTxDestination(CKeyID(GetChainID())))));
+    obj.push_back(Pair("chainaddress", EncodeDestination(CTxDestination(CKeyID(GetChainID())))));
     obj.push_back(Pair("paymentaddress", EncodeDestination(CTxDestination(address))));
     obj.push_back(Pair("premine", (int64_t)premine));
     obj.push_back(Pair("initialcontribution", (int64_t)initialcontribution));
@@ -518,8 +518,8 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("maxpreconvert", (int64_t)maxpreconvert));
     obj.push_back(Pair("preconverted", (int64_t)preconverted));
     obj.push_back(Pair("launchfee", (int64_t)launchFee));
-    obj.push_back(Pair("conversionpercent", (double)conversion / 100000000));
-    obj.push_back(Pair("launchfeepercent", ((double)launchFee / 100000000) * 100));
+    obj.push_back(Pair("conversionpercent", ValueFromAmount(conversion * 100));
+    obj.push_back(Pair("launchfeepercent", ValueFromAmount(launchFee * 100));
     obj.push_back(Pair("startblock", (int32_t)startBlock));
     obj.push_back(Pair("endblock", (int32_t)endBlock));
 

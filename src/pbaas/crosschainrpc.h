@@ -268,6 +268,11 @@ public:
     UniValue ToUniValue() const;
 
     int GetDefinedPort() const;
+
+    bool IsReserve()
+    {
+        return ChainOptions() & OPTION_RESERVE;
+    }
 };
 
 #endif

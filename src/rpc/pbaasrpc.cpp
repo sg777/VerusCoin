@@ -1024,6 +1024,11 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
             oneChain.push_back(Pair("besttxid", nData.vtx[nData.forks[nData.bestChain].back()].first.GetHex().c_str()));
             oneChain.push_back(Pair("bestcurrencystate", nData.vtx[nData.forks[nData.bestChain].back()].second.currencyState.ToUniValue()));
         }
+        else if (nData.vtx.size() && nData.bestChain != -1)
+        {
+            oneChain.push_back(Pair("besttxid", nData.vtx[nData.forks[nData.bestChain].back()].first.GetHex().c_str()));
+            oneChain.push_back(Pair("bestcurrencystate", nData.vtx[nData.forks[nData.bestChain].back()].second.currencyState.ToUniValue()));
+        }
         ret.push_back(oneChain);
     }
 

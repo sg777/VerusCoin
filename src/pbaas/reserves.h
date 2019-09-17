@@ -239,8 +239,8 @@ public:
 
     bool IsReject() const { return flags & IS_REJECT; }
     bool IsValid() const { return flags & IS_VALID && !IsReject(); }
+    bool IsReserve() const { return IsValid() && flags & IS_RESERVE; }
     bool IsReserveExchange() const { return flags & IS_RESERVEEXCHANGE; }
-    bool IsReserve() const { return flags & IS_RESERVE; }
     bool IsLimit() const { return flags & IS_LIMIT; }
     bool IsFillOrKill() const { return flags & IS_FILLORKILL; }
     bool IsMarket() const { return IsReserveExchange() && !IsLimit(); }
@@ -467,7 +467,7 @@ public:
     {
         if (Supply == 0 || InitialRatio == 0)
         {
-            return 0;
+            return InitialRatio;
         }
         arith_uint256 supply(Supply);
         arith_uint256 reserve(Reserve);
