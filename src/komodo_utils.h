@@ -1426,8 +1426,17 @@ void komodo_configfile(char *symbol,uint16_t rpcport)
             if ( (fp= fopen(fname,"wb")) != 0 )
             {
                 fprintf(fp,"rpcuser=user%u\nrpcpassword=pass%s\nrpcport=%u\nserver=1\ntxindex=1\nrpcworkqueue=256\nrpcallowip=127.0.0.1\nrpchost=127.0.0.1\n",crc,password,rpcport);
+
                 // add basic chain parameters for non-VRSC chains
-                if (!_IsVerusActive())
+                if (_IsVerusActive())
+                {
+                    if (PBAAS_TESTMODE)
+                    {
+                        fprintf(fp,"addnode=%s\n", "185.25.48.72:17136");
+                        fprintf(fp,"addnode=%s\n", "185.64.105.111:17136");
+                    }
+                }
+                else
                 {
                     const char *charPtr;
                     // all basic coin parameters
