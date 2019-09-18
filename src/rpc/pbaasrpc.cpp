@@ -2909,6 +2909,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                     {
                         throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
                     }
+                    /*
                     printf("newTx outputs:\n");
                     for (auto outp : wtx.vout)
                     {
@@ -2916,6 +2917,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
                         ScriptPubKeyToJSON(outp.scriptPubKey, scrOut, false);
                         printf("%s\n", scrOut.write(1, 2).c_str());
                     }
+                    */
                     if (!pwalletMain->CommitTransaction(wtx, reserveKey))
                     {
                         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());

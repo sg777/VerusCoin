@@ -41,7 +41,7 @@ using namespace std;
 
 extern char ASSETCHAINS_SYMBOL[];
 
-void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex)
+void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex, bool fIncludeAsm)
 {
     txnouttype type;
     vector<CTxDestination> addresses;
@@ -244,10 +244,15 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
         out.push_back(Pair("addresses", a));
     }
 
-    out.push_back(Pair("asm", ScriptToAsmStr(scriptPubKey)));
+    if (fIncludeAsm)
+    {
+        out.push_back(Pair("asm", ScriptToAsmStr(scriptPubKey)));
+    }
 
     if (fIncludeHex)
+    {
         out.push_back(Pair("hex", HexStr(scriptPubKey.begin(), scriptPubKey.end())));
+    }
 }
 
 UniValue TxJoinSplitToJSON(const CTransaction& tx) {

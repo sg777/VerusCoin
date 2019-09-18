@@ -1740,7 +1740,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 if (rtxd.IsValid() && wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
                 {
                     UniValue ccUni;
-                    ScriptPubKeyToJSON(wtx.vout[r.vout].scriptPubKey, ccUni, false);
+                    ScriptPubKeyToJSON(wtx.vout[r.vout].scriptPubKey, ccUni, false, false);
                     entry.push_back(Pair("cryptocondition", ccUni));
                 }
 
