@@ -477,6 +477,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     CCrossChainImport cci;
     CCrossChainExport ccx;
 
+    flags |= IS_VALID;
+
     for (int i = 0; i < tx.vout.size(); i++)
     {
         COptCCParams p;
@@ -490,6 +492,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     CReserveOutput ro;
                     if (!p.vData.size() || !(ro = CReserveOutput(p.vData[0])).IsValid())
                     {
+                        flags &= ~IS_VALID;
                         flags |= IS_REJECT;
                         return;
                     }
@@ -502,6 +505,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     CReserveTransfer rt;
                     if (!p.vData.size() || !(rt = CReserveTransfer(p.vData[0])).IsValid())
                     {
+                        flags &= ~IS_VALID;
                         flags |= IS_REJECT;
                         return;
                     }
@@ -516,6 +520,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     CReserveExchange rex;
                     if (!p.vData.size() || !(rex = CReserveExchange(p.vData[0])).IsValid())
                     {
+                        flags &= ~IS_VALID;
                         flags |= IS_REJECT;
                         return;
                     }
@@ -523,6 +528,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     // if we send the output to the reserve chain, it must be a TO_RESERVE transaction
                     if ((rex.flags & rex.SEND_OUTPUT) && !(rex.flags & rex.TO_RESERVE))
                     {
+                        flags &= ~IS_VALID;
                         flags |= IS_REJECT;
                         return;
                     }
@@ -530,6 +536,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                     if (IsReject())
                     {
+                        flags &= ~IS_VALID;
                         return;
                     }
                 }
@@ -541,6 +548,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     // the amount available to take from this transaction in reserve as an import fee
                     if (flags & IS_IMPORT || !p.vData.size() || !(cci = CCrossChainImport(p.vData[0])).IsValid())
                     {
+                        flags &= ~IS_VALID;
                         flags |= IS_REJECT;
                         return;
                     }
@@ -591,6 +599,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                     }
                     DeleteOpRetObjects(chainObjs);
+                    if (IsReject())
+                    {
+                        flags &= ~IS_VALID;
+                        return;
+                    }
                 }
                 break;
 
@@ -603,6 +616,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         !(CPBaaSChainDefinition(tx).IsValid() && IsVerusActive()) &&
                         (IsReserveExchange() || (flags & IS_IMPORT)))
                     {
+                        flags &= ~IS_VALID;
                         flags |= IS_REJECT;
                         return;
                     }
@@ -643,6 +657,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
             if (!(cci.nValue == ccx.totalAmount + ccx.totalFees))
             {
                 printf("%s: export value does not match import value\n", __func__);
+                flags &= ~IS_VALID;
                 flags |= IS_REJECT;
                 return;
             }
@@ -650,8 +665,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
         // TODO:PBAAS hardening total minimum required fees as we build the descriptor and
         // reject if not correct
-
-        flags |= IS_VALID;
         ptx = &tx;
     }
 }

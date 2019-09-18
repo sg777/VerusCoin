@@ -1794,7 +1794,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_supply"] = "5000000000000000";
         mapArgs["-ac_eras"] = "1";
         mapArgs["-ac_reward"] = "2400000000";
-        mapArgs["-ac_halving"] = GetArg("-ac_halving", "226080");    // allow testing easily with different values here
+        mapArgs["-ac_halving"] = GetArg("-ac_halving", "226100");    // allow testing easily with different values here
         mapArgs["-ac_decay"] = "0";
         mapArgs["-ac_end"] = "0";
         mapArgs["-ac_veruspos"] = "50";

@@ -1627,6 +1627,11 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     bool bIsStake = false;
     bool bIsCoinbase = false;
     bool bIsMint = false;
+    bool bIsReserve = ConnectedChains.ThisChain().IsReserve();
+    CReserveTransactionDescriptor rtxd;
+    CCoinsViewCache view(pcoinsTip);
+    uint32_t nHeight = chainActive.Height();
+
     if (ValidateStakeTransaction(wtx, p, false))
     {
         bIsStake = true;
@@ -1635,6 +1640,35 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     {
         bIsCoinbase = wtx.IsCoinBase();
         bIsMint = bIsCoinbase && wtx.vout.size() > 0 && wtx.vout[0].scriptPubKey.IsPayToCryptoCondition();
+    }
+
+    if (bIsReserve && (rtxd = CReserveTransactionDescriptor(wtx, view, nHeight)).IsReserve())
+    {
+        ret.push_back(Pair("isreserve", true));
+        bool isReserveExchange = rtxd.IsReserveExchange();
+        ret.push_back(Pair("isreserveexchange", isReserveExchange));
+        if (isReserveExchange)
+        {
+            if (rtxd.IsMarket())
+            {
+                ret.push_back(Pair("exchangetype", "market"));
+            }
+            else if (rtxd.IsLimit())
+            {
+                ret.push_back(Pair("exchangetype", "limit"));
+            }
+        }
+        ret.push_back(Pair("nativefees", rtxd.NativeFees()));
+        ret.push_back(Pair("reservefees", rtxd.ReserveFees()));
+        if (rtxd.nativeConversionFees || rtxd.reserveConversionFees)
+        {
+            ret.push_back(Pair("nativeconversionfees", rtxd.nativeConversionFees));
+            ret.push_back(Pair("reserveconversionfees", rtxd.reserveConversionFees));
+        }
+    }
+    else
+    {
+        ret.push_back(Pair("isreserve", false));
     }
 
     wtx.GetAmounts(listReceived, listSent, nFee, strSentAccount, bIsStake ? ISMINE_ALLANDCHANGE : filter);
@@ -1701,8 +1735,20 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 {
                     entry.push_back(Pair("category", bIsStake ? "stake" : "receive"));
                 }
+                
+                COptCCParams p;
+                if (rtxd.IsValid() && wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+                {
+                    UniValue ccUni;
+                    ScriptPubKeyToJSON(wtx.vout[r.vout].scriptPubKey, ccUni, false);
+                    entry.push_back(Pair("cryptocondition", ccUni));
+                }
 
                 entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
+                if (rtxd.IsReserve())
+                {
+                    entry.push_back(Pair("reserveamount", ValueFromAmount(wtx.vout[r.vout].scriptPubKey.ReserveOutValue())));
+                }
                 entry.push_back(Pair("vout", r.vout));
                 if (fLong)
                     WalletTxToJSON(wtx, entry);
@@ -2763,6 +2809,12 @@ UniValue listunspent(const UniValue& params, bool fHelp)
         }
         CAmount nValue = out.tx->vout[out.i].nValue;
         entry.push_back(Pair("amount", ValueFromAmount(out.tx->vout[out.i].nValue)));
+
+        CAmount reserveOut;
+        if (ConnectedChains.ThisChain().IsReserve() && (reserveOut = out.tx->vout[out.i].scriptPubKey.ReserveOutValue()))
+        {
+            entry.push_back(Pair("reserveAmount", ValueFromAmount(reserveOut)));
+        }
         if ( out.tx->nLockTime != 0 )
         {
             BlockMap::iterator it = mapBlockIndex.find(pcoinsTip->GetBestBlock());
