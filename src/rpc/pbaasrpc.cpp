@@ -1013,18 +1013,13 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
             bestHeight = nData.bestChain != -1 ? nData.vtx[nData.forks[nData.bestChain].back()].second.notarizationHeight : 0;
         }
         oneChain.push_back(Pair("lastconfirmedheight", confirmedHeight));
-        if (confirmedHeight)
+        if (confirmedHeight && confirmedHeight != -1)
         {
             oneChain.push_back(Pair("lastconfirmedtxid", nData.vtx[nData.lastConfirmed].first.GetHex().c_str()));
             oneChain.push_back(Pair("lastconfirmedcurrencystate", nData.vtx[nData.lastConfirmed].second.currencyState.ToUniValue()));
         }
         oneChain.push_back(Pair("bestheight", bestHeight));
-        if (bestHeight)
-        {
-            oneChain.push_back(Pair("besttxid", nData.vtx[nData.forks[nData.bestChain].back()].first.GetHex().c_str()));
-            oneChain.push_back(Pair("bestcurrencystate", nData.vtx[nData.forks[nData.bestChain].back()].second.currencyState.ToUniValue()));
-        }
-        else if (nData.vtx.size() && nData.bestChain != -1)
+        if ((bestHeight && nData.vtx.size()) && bestHeight != -1)
         {
             oneChain.push_back(Pair("besttxid", nData.vtx[nData.forks[nData.bestChain].back()].first.GetHex().c_str()));
             oneChain.push_back(Pair("bestcurrencystate", nData.vtx[nData.forks[nData.bestChain].back()].second.currencyState.ToUniValue()));

@@ -1747,7 +1747,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
                 if (rtxd.IsReserve())
                 {
-                    entry.push_back(Pair("reserveamount", ValueFromAmount(r.amount)));
+                    entry.push_back(Pair("reserveamount", ValueFromAmount(wtx.vout[r.vout].scriptPubKey.ReserveOutValue())));
                 }
                 entry.push_back(Pair("vout", r.vout));
                 if (fLong)
