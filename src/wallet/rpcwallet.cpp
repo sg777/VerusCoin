@@ -9,6 +9,7 @@
 #include "init.h"
 #include "key_io.h"
 #include "main.h"
+#include "pbaas/pbaas.h"
 #include "net.h"
 #include "netbase.h"
 #include "rpc/server.h"
@@ -804,11 +805,11 @@ UniValue signmessage(const UniValue& params, bool fHelp)
 
     if (fHelp || params.size() != 2)
         throw runtime_error(
-            "signmessage \"t-addr\" \"message\"\n"
-            "\nSign a message with the private key of a t-addr"
+            "signmessage \"R-addr\" \"message\"\n"
+            "\nSign a message with the private key of an R-addr"
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"
-            "1. \"t-addr\"  (string, required) The transparent address to use for the private key.\n"
+            "1. \"R-addr\"  (string, required) The transparent address to use for the private key.\n"
             "2. \"message\"         (string, required) The message to create a signature of.\n"
             "\nResult:\n"
             "\"signature\"          (string) The signature of the message encoded in base 64\n"
@@ -1626,6 +1627,11 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     bool bIsStake = false;
     bool bIsCoinbase = false;
     bool bIsMint = false;
+    bool bIsReserve = ConnectedChains.ThisChain().IsReserve();
+    CReserveTransactionDescriptor rtxd;
+    CCoinsViewCache view(pcoinsTip);
+    uint32_t nHeight = chainActive.Height();
+
     if (ValidateStakeTransaction(wtx, p, false))
     {
         bIsStake = true;
@@ -1634,6 +1640,35 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     {
         bIsCoinbase = wtx.IsCoinBase();
         bIsMint = bIsCoinbase && wtx.vout.size() > 0 && wtx.vout[0].scriptPubKey.IsPayToCryptoCondition();
+    }
+
+    if (bIsReserve && (rtxd = CReserveTransactionDescriptor(wtx, view, nHeight)).IsReserve())
+    {
+        ret.push_back(Pair("isreserve", true));
+        bool isReserveExchange = rtxd.IsReserveExchange();
+        ret.push_back(Pair("isreserveexchange", isReserveExchange));
+        if (isReserveExchange)
+        {
+            if (rtxd.IsMarket())
+            {
+                ret.push_back(Pair("exchangetype", "market"));
+            }
+            else if (rtxd.IsLimit())
+            {
+                ret.push_back(Pair("exchangetype", "limit"));
+            }
+        }
+        ret.push_back(Pair("nativefees", rtxd.NativeFees()));
+        ret.push_back(Pair("reservefees", rtxd.ReserveFees()));
+        if (rtxd.nativeConversionFees || rtxd.reserveConversionFees)
+        {
+            ret.push_back(Pair("nativeconversionfees", rtxd.nativeConversionFees));
+            ret.push_back(Pair("reserveconversionfees", rtxd.reserveConversionFees));
+        }
+    }
+    else
+    {
+        ret.push_back(Pair("isreserve", false));
     }
 
     wtx.GetAmounts(listReceived, listSent, nFee, strSentAccount, bIsStake ? ISMINE_ALLANDCHANGE : filter);
@@ -1700,8 +1735,20 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 {
                     entry.push_back(Pair("category", bIsStake ? "stake" : "receive"));
                 }
+                
+                COptCCParams p;
+                if (rtxd.IsValid() && wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+                {
+                    UniValue ccUni;
+                    ScriptPubKeyToJSON(wtx.vout[r.vout].scriptPubKey, ccUni, false, false);
+                    entry.push_back(Pair("cryptocondition", ccUni));
+                }
 
                 entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
+                if (rtxd.IsReserve())
+                {
+                    entry.push_back(Pair("reserveamount", ValueFromAmount(wtx.vout[r.vout].scriptPubKey.ReserveOutValue())));
+                }
                 entry.push_back(Pair("vout", r.vout));
                 if (fLong)
                     WalletTxToJSON(wtx, entry);
@@ -2587,8 +2634,11 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
             "{\n"
             "  \"walletversion\": xxxxx,     (numeric) the wallet version\n"
             "  \"balance\": xxxxxxx,         (numeric) the total confirmed balance of the wallet in " + strprintf("%s",komodo_chainname()) + "\n"
+            "  \"reserve_balance\": xxxxxxx, (numeric) for PBaaS reserve chains, the total confirmed reserve balance of the wallet in " + strprintf("%s",komodo_chainname()) + "\n"
             "  \"unconfirmed_balance\": xxx, (numeric) the total unconfirmed balance of the wallet in " + strprintf("%s",komodo_chainname()) + "\n"
+            "  \"unconfirmed_reserve_balance\": xxx, (numeric) total unconfirmed reserve balance of the wallet in " + strprintf("%s",komodo_chainname()) + "\n"
             "  \"immature_balance\": xxxxxx, (numeric) the total immature balance of the wallet in " + strprintf("%s",komodo_chainname()) + "\n"
+            "  \"immature_reserve_balance\": xxxxxx, (numeric) total immature reserve balance of the wallet in " + strprintf("%s",komodo_chainname()) + "\n"
             "  \"txcount\": xxxxxxx,         (numeric) the total number of transactions in the wallet\n"
             "  \"keypoololdest\": xxxxxx,    (numeric) the timestamp (seconds since GMT epoch) of the oldest pre-generated key in the key pool\n"
             "  \"keypoolsize\": xxxx,        (numeric) how many new keys are pre-generated\n"
@@ -2607,7 +2657,16 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
     obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance())));
     obj.push_back(Pair("unconfirmed_balance", ValueFromAmount(pwalletMain->GetUnconfirmedBalance())));
-    obj.push_back(Pair("immature_balance",    ValueFromAmount(pwalletMain->GetImmatureBalance())));
+    obj.push_back(Pair("immature_balance", ValueFromAmount(pwalletMain->GetImmatureBalance())));
+    CPBaaSChainDefinition &chainDef = ConnectedChains.ThisChain();
+    if (chainDef.ChainOptions() & chainDef.OPTION_RESERVE)
+    {
+        obj.push_back(Pair("reserve_balance", ValueFromAmount(pwalletMain->GetReserveBalance())));
+        obj.push_back(Pair("unconfirmed_reserve_balance", ValueFromAmount(pwalletMain->GetUnconfirmedReserveBalance())));
+        obj.push_back(Pair("immature_reserve_balance", ValueFromAmount(pwalletMain->GetImmatureReserveBalance())));
+        uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
+        obj.push_back(Pair("price_in_reserve", ValueFromAmount(ConnectedChains.GetCurrencyState(height).PriceInReserve())));
+    }
     obj.push_back(Pair("txcount",       (int)pwalletMain->mapWallet.size()));
     obj.push_back(Pair("keypoololdest", pwalletMain->GetOldestKeyPoolTime()));
     obj.push_back(Pair("keypoolsize",   (int)pwalletMain->GetKeyPoolSize()));
@@ -2750,6 +2809,12 @@ UniValue listunspent(const UniValue& params, bool fHelp)
         }
         CAmount nValue = out.tx->vout[out.i].nValue;
         entry.push_back(Pair("amount", ValueFromAmount(out.tx->vout[out.i].nValue)));
+
+        CAmount reserveOut;
+        if (ConnectedChains.ThisChain().IsReserve() && (reserveOut = out.tx->vout[out.i].scriptPubKey.ReserveOutValue()))
+        {
+            entry.push_back(Pair("reserveAmount", ValueFromAmount(reserveOut)));
+        }
         if ( out.tx->nLockTime != 0 )
         {
             BlockMap::iterator it = mapBlockIndex.find(pcoinsTip->GetBestBlock());
@@ -4542,14 +4607,14 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
             "1. fromaddresses         (string, required) A JSON array with addresses.\n"
             "                         The following special strings are accepted inside the array:\n"
             "                             - \"*\": Merge both UTXOs and notes from all addresses belonging to the wallet.\n"
-            "                             - \"ANY_TADDR\": Merge UTXOs from all t-addrs belonging to the wallet.\n"
+            "                             - \"ANY_TADDR\": Merge UTXOs from all R-addrs belonging to the wallet.\n"
             "                             - \"ANY_ZADDR\": Merge notes from all z-addrs belonging to the wallet.\n"
             "                         If a special string is given, any given addresses of that type will be ignored.\n"
             "    [\n"
-            "      \"address\"          (string) Can be a t-addr or a z-addr\n"
+            "      \"address\"          (string) Can be a R-addr or a z-addr\n"
             "      ,...\n"
             "    ]\n"
-            "2. \"toaddress\"           (string, required) The t-addr or z-addr to send the funds to.\n"
+            "2. \"toaddress\"           (string, required) The R-addr or z-addr to send the funds to.\n"
             "3. fee                   (numeric, optional, default="
             + strprintf("%s", FormatMoney(MERGE_TO_ADDRESS_OPERATION_DEFAULT_MINERS_FEE)) + ") The fee amount to attach to this transaction.\n"
             "4. transparent_limit     (numeric, optional, default="
@@ -4611,7 +4676,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
         } else {
             CTxDestination taddr = DecodeDestination(address);
             if (IsValidDestination(taddr)) {
-                // Ignore any listed t-addrs if we are using all of them
+                // Ignore any listed R-addrs if we are using all of them
                 if (!(useAny || useAnyUTXO)) {
                     taddrs.insert(taddr);
                 }

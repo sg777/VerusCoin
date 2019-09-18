@@ -8,6 +8,7 @@
 #include "hash.h"
 #include "tinyformat.h"
 #include "utilstrencodings.h"
+#include "pbaas/reserves.h"
 
 #include "librustzcash.h"
 
@@ -300,6 +301,27 @@ CAmount CTransaction::GetValueOut() const
             throw std::runtime_error("CTransaction::GetValueOut(): value out of range");
     }
     return nValueOut;
+}
+
+CAmount CTransaction::GetReserveValueOut() const
+{
+    CAmount nReserveValueOut = 0;
+    CAmount isNativeReserve = _IsVerusActive();
+    for (std::vector<CTxOut>::const_iterator it(vout.begin()); it != vout.end(); ++it)
+    {
+        CAmount oneOut = it->scriptPubKey.ReserveOutValue();
+        if (isNativeReserve && oneOut == 0)
+        {
+            oneOut = it->nValue;
+        }
+        if (nReserveValueOut < 0 || oneOut < 0 || (nReserveValueOut = nReserveValueOut + oneOut) < 0)
+            throw std::runtime_error("CTransaction::GetReserveValueOut(): value overflow");
+        // except for zero, which is remedied above, native and reserve outputs should be equal on
+        // the Verus chain
+        if (isNativeReserve && oneOut != it->nValue)
+            throw std::runtime_error("CTransaction::GetReserveValueOut(): native output is different from reserve output on native reserve chain");
+    }
+    return nReserveValueOut;
 }
 
 CAmount CTransaction::GetShieldedValueOut() const

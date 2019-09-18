@@ -584,7 +584,7 @@ bool AsyncRPCOperation_mergetoaddress::main_impl()
             info.vpub_new += vpubNewTarget; // funds flowing back to public pool
             vpubNewProcessed = true;
             jsChange -= vpubNewTarget;
-            // If we are merging to a t-addr, there should be no change
+            // If we are merging to an R-addr, there should be no change
             if (isToTaddr_) assert(jsChange == 0);
         }
 

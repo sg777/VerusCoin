@@ -42,11 +42,6 @@ uint64_t komodo_accrued_interest(int32_t *txheightp,uint32_t *locktimep,uint256 
     return(0);
 }
 
-bool IsBlockBoundTransaction(const CTransaction &tx)
-{
-    return false;
-}
-
 static bool fCreateBlank;
 static std::map<std::string,UniValue> registers;
 static const int CONTINUE_EXECUTION=-1;

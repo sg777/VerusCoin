@@ -31,7 +31,7 @@
 using namespace std;
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
-void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex);
+void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex, bool fIncludeAsm=true);
 int32_t komodo_longestchain();
 
 double GetDifficultyINTERNAL(const CBlockIndex* blockindex, bool networkDifficulty)
@@ -924,7 +924,7 @@ UniValue minerids(const UniValue& params, bool fHelp)
                 kmdaddress.resize(m);
                 ptr = (char *)kmdaddress.data();
                 memcpy(ptr,kmdaddr,m);
-                item.push_back(Pair("KMDaddress", kmdaddress));
+                item.push_back(Pair("VRSCaddress", kmdaddress));
 
                 item.push_back(Pair("pubkey", hex));
                 item.push_back(Pair("blocks", tally[i]));
@@ -986,7 +986,7 @@ UniValue notaries(const UniValue& params, bool fHelp)
             kmdaddress.resize(m);
             ptr = (char *)kmdaddress.data();
             memcpy(ptr,kmdaddr,m);
-            item.push_back(Pair("KMDaddress", kmdaddress));
+            item.push_back(Pair("VRSCaddress", kmdaddress));
             a.push_back(item);
         }
     }

@@ -70,7 +70,7 @@ COptCCParams::COptCCParams(std::vector<unsigned char> &vch)
                 evalCode = param[1];
                 m = param[2];
                 n = param[3];
-                if (version == 0 || version > VERSION_V2 || m != 1 || (n != 1 && n != 2) || data.size() <= n)
+                if (version == 0 || version > VERSION_V2 || m > n || (n < 1 || n > 4) || data.size() <= n)
                 {
                     // set invalid
                     version = 0;
@@ -122,11 +122,11 @@ COptCCParams::COptCCParams(std::vector<unsigned char> &vch)
     }
 }
 
-std::vector<unsigned char> COptCCParams::AsVector()
+std::vector<unsigned char> COptCCParams::AsVector() const
 {
     CScript cData = CScript();
 
-    cData << std::vector<unsigned char>({version, evalCode, n, m});
+    cData << std::vector<unsigned char>({version, evalCode, m, n});
     for (auto k : vKeys)
     {
         cData << GetDestinationBytes(k);
@@ -140,19 +140,7 @@ std::vector<unsigned char> COptCCParams::AsVector()
 
 bool IsPayToCryptoCondition(const CScript &scr, COptCCParams &ccParams)
 {
-    CScript subScript;
-    std::vector<std::vector<unsigned char>> vParams;
-    COptCCParams p;
-
-    if (scr.IsPayToCryptoCondition(&subScript, vParams))
-    {
-        if (!vParams.empty())
-        {
-            ccParams = COptCCParams(vParams[0]);
-        }
-        return true;
-    }
-    return false;
+    return scr.IsPayToCryptoCondition(ccParams);
 }
 
 CScriptID::CScriptID(const CScript& in) : uint160(Hash160(in.begin(), in.end())) {}
@@ -213,9 +201,31 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
         std::vector<std::vector<unsigned char>> vParams;
         if (scriptPubKey.IsPayToCryptoCondition(&ccSubScript, vParams))
         {
-            if (scriptPubKey.MayAcceptCryptoCondition())
+            COptCCParams cp;
+            if (vParams.size())
+            {
+                cp = COptCCParams(vParams[0]);
+            }
+
+            if (scriptPubKey.MayAcceptCryptoCondition(cp.evalCode))
             {
                 typeRet = TX_CRYPTOCONDITION;
+
+                if (vParams.size())
+                {
+                    if (cp.IsValid())
+                    {
+                        for (auto k : cp.vKeys)
+                        {
+                            vSolutionsRet.push_back(GetDestinationBytes(k));
+                        }
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+
                 vector<unsigned char> hashBytes; uint160 x; int32_t i; uint8_t hash20[20],*ptr;;
                 x = Hash160(ccSubScript);
                 memcpy(hash20,&x,20);
@@ -224,23 +234,6 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                 for (i=0; i<20; i++)
                     ptr[i] = hash20[i];
                 vSolutionsRet.push_back(hashBytes);
-                if (vParams.size())
-                {
-                    COptCCParams cp = COptCCParams(vParams[0]);
-                    if (cp.IsValid())
-                    {
-                        for (auto k : cp.vKeys)
-                        {
-
-                            vSolutionsRet.push_back(GetDestinationBytes(k));
-                        }
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                    
-                }
                 return true;
             }
             return false;
@@ -437,17 +430,16 @@ bool ExtractDestination(const CScript& _scriptPubKey, CTxDestination& addressRet
     
     else if (IsCryptoConditionsEnabled() != 0 && whichType == TX_CRYPTOCONDITION)
     {
-        if (vSolutions.size() > 1)
+        if (vSolutions[0].size() == 33)
         {
-            CPubKey pk = CPubKey((vSolutions[1]));
-            addressRet = pk;
-            return pk.IsValid();
+            addressRet = CPubKey(vSolutions[0]);
+            return true;
         }
-        else
+        else if (vSolutions[0].size() == 20)
         {
             addressRet = CKeyID(uint160(vSolutions[0]));
+            return true;
         }
-        return true;
     }
     // Multisig txns have more than one address...
     return false;
@@ -584,4 +576,8 @@ CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys)
 
 bool IsValidDestination(const CTxDestination& dest) {
     return dest.which() != 0;
+}
+
+bool IsTransparentAddress(const CTxDestination& dest) {
+    return dest.which() == 1 || dest.which() == 2;
 }

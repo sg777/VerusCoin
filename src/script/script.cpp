@@ -11,6 +11,8 @@
 #include "cc/eval.h"
 #include "cryptoconditions/include/cryptoconditions.h"
 #include "standard.h"
+#include "pbaas/reserves.h"
+#include "key_io.h"
 
 using namespace std;
 
@@ -168,6 +170,15 @@ const char* GetOpName(opcodetype opcode)
     default:
         return "OP_UNKNOWN";
     }
+}
+
+uint160 GetConditionID(uint160 cid, int32_t condition)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
 }
 
 unsigned int CScript::GetSigOpCount(bool fAccurate) const
@@ -379,15 +390,46 @@ bool CScript::IsPayToCryptoCondition() const
     return IsPayToCryptoCondition((CScript *)NULL);
 }
 
+extern uint160 ASSETCHAINS_CHAINID, VERUS_CHAINID;
+
 bool CScript::IsInstantSpend() const
 {
-    uint32_t ecode;
-    if (!IsPayToCryptoCondition(&ecode))
+    COptCCParams p;
+    bool isInstantSpend = false;
+    if (IsPayToCryptoCondition(p))
     {
-        ecode = 0;
+        // instant spends must be to expected instant spend crypto conditions and to the right address as well
+        if ((p.evalCode == EVAL_EARNEDNOTARIZATION && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)) || 
+            (p.evalCode == EVAL_CURRENCYSTATE && GetDestinationID(p.vKeys[0]) == GetConditionID(ASSETCHAINS_CHAINID, p.evalCode)) || 
+            (p.evalCode == EVAL_CROSSCHAIN_IMPORT && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)) ||
+            (p.evalCode == EVAL_CROSSCHAIN_EXPORT && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)))
+        {
+            isInstantSpend = true;
+        }
     }
-    // only instant spend for now
-    return ecode == EVAL_EARNEDNOTARIZATION;
+    return isInstantSpend;
+}
+
+bool CScript::IsPayToCryptoCondition(COptCCParams &ccParams) const
+{
+    CScript subScript;
+    std::vector<std::vector<unsigned char>> vParams;
+
+    if (IsPayToCryptoCondition(&subScript, vParams))
+    {
+        if (!vParams.empty())
+        {
+            ccParams = COptCCParams(vParams[0]);
+        }
+        else
+        {
+            // make sure that we return it in a consistent and known state
+            ccParams = COptCCParams();
+        }
+        return true;
+    }
+    ccParams = COptCCParams();
+    return false;
 }
 
 bool CScript::IsPayToCryptoCondition(CScript *ccSubScript, std::vector<std::vector<unsigned char>> &vParams, COptCCParams &optParams) const
@@ -416,6 +458,123 @@ bool CScript::IsPayToCryptoCondition(uint32_t *ecode) const
     return false;
 }
 
+CScript &CScript::ReplaceCCParams(const COptCCParams &params)
+{
+    CScript subScript;
+    std::vector<std::vector<unsigned char>> vParams;
+    COptCCParams p;
+    if (this->IsPayToCryptoCondition(&subScript, vParams, p) || p.evalCode != params.evalCode)
+    {
+        // add the object to the end of the script
+        *this = subScript;
+        *this << params.AsVector() << OP_DROP;
+    }
+    return *this;
+}
+
+int64_t CScript::ReserveOutValue(COptCCParams &p) const
+{
+    CAmount newVal = 0;
+
+    // reserve out value must be the same as native on a Verus chain
+
+    // already validated above
+    if (::IsPayToCryptoCondition(*this, p) && p.IsValid())
+    {
+        switch (p.evalCode)
+        {
+            case EVAL_RESERVE_OUTPUT:
+            {
+                CReserveOutput ro(p.vData[0]);
+                return ro.nValue;
+                break;
+            }
+            case EVAL_CURRENCYSTATE:
+            {
+                CCoinbaseCurrencyState cbcs(p.vData[0]);
+                return cbcs.ReserveOut.nValue;
+                break;
+            }
+            case EVAL_RESERVE_TRANSFER:
+            {
+                CReserveTransfer rt(p.vData[0]);
+                return rt.nValue + rt.nFees;
+                break;
+            }
+            case EVAL_RESERVE_EXCHANGE:
+            {
+                CReserveExchange re(p.vData[0]);
+                // reserve out amount when converting to reserve is 0, since the amount cannot be calculated in isolation as an input
+                // if reserve in, we can consider the output the same reserve value as the input
+                return (re.flags & re.TO_RESERVE) ? 0 : re.nValue;
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
+int64_t CScript::ReserveOutValue() const
+{
+    COptCCParams p;
+    return ReserveOutValue(p);
+}
+
+bool CScript::SetReserveOutValue(int64_t newValue)
+{
+    COptCCParams p;
+    CAmount newVal = 0;
+
+    // already validated above
+    if (::IsPayToCryptoCondition(*this, p) && p.IsValid())
+    {
+        switch (p.evalCode)
+        {
+            case EVAL_RESERVE_OUTPUT:
+            {
+                CReserveOutput ro(p.vData[0]);
+                p.vData[0] = ro.AsVector();
+                break;
+            }
+            case EVAL_RESERVE_TRANSFER:
+            {
+                CReserveTransfer rt(p.vData[0]);
+                rt.nValue = newValue;
+                p.vData[0] = rt.AsVector();
+                break;
+            }
+            case EVAL_RESERVE_EXCHANGE:
+            {
+                CReserveExchange re(p.vData[0]);
+                re.nValue = newValue;
+                p.vData[0] = re.AsVector();
+                break;
+            }
+            case EVAL_CROSSCHAIN_IMPORT:
+            {
+                CCrossChainImport cci(p.vData[0]);
+                cci.nValue = newValue;
+                p.vData[0] = cci.AsVector();
+                break;
+            }
+            // cross chain import thread holds the original conversion amounts
+            case EVAL_CURRENCYSTATE:
+            {
+                CCoinbaseCurrencyState cbcs(p.vData[0]);
+                cbcs.ReserveOut.nValue = newValue;
+                p.vData[0] = cbcs.AsVector();
+                break;
+            }
+
+            default:
+                return false;
+        }
+        *this = ReplaceCCParams(p);
+        return true;
+    }
+    return false;
+}
+
 bool CScript::MayAcceptCryptoCondition() const
 {
     // Get the type mask of the condition
@@ -427,7 +586,31 @@ bool CScript::MayAcceptCryptoCondition() const
     CC *cond = cc_readConditionBinary(data.data(), data.size());
     if (!cond) return false;
 
-    bool out = IsSupportedCryptoCondition(cond);
+    uint32_t eCode;
+    if (!IsPayToCryptoCondition(&eCode))
+    {
+        return false;
+    }
+
+    bool out = IsSupportedCryptoCondition(cond, eCode);
+
+    cc_free(cond);
+    return out;
+}
+
+// also checks if the eval code is consistent
+bool CScript::MayAcceptCryptoCondition(int evalCode) const
+{
+    // Get the type mask of the condition
+    const_iterator pc = this->begin();
+    vector<unsigned char> data;
+    opcodetype opcode;
+    if (!this->GetOp(pc, opcode, data)) return false;
+    if (!(opcode > OP_0 && opcode < OP_PUSHDATA1)) return false;
+    CC *cond = cc_readConditionBinary(data.data(), data.size());
+    if (!cond) return false;
+
+    bool out = IsSupportedCryptoCondition(cond, evalCode);
 
     cc_free(cond);
     return out;

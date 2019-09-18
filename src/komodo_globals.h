@@ -78,6 +78,7 @@ uint64_t ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF, ASSETCHAINS_TIMEUNL
 
 uint32_t ASSETCHAINS_LASTERA = 1;
 uint64_t ASSETCHAINS_ENDSUBSIDY[ASSETCHAINS_MAX_ERAS],ASSETCHAINS_REWARD[ASSETCHAINS_MAX_ERAS],ASSETCHAINS_HALVING[ASSETCHAINS_MAX_ERAS],ASSETCHAINS_DECAY[ASSETCHAINS_MAX_ERAS];
+uint64_t ASSETCHAINS_ERAOPTIONS[ASSETCHAINS_MAX_ERAS];
 
 #define _ASSETCHAINS_EQUIHASH 0
 uint32_t ASSETCHAINS_NUMALGOS = 2;
@@ -93,10 +94,15 @@ uint32_t ASSETCHAINS_ALGO = _ASSETCHAINS_EQUIHASH;
 int32_t ASSETCHAINS_LWMAPOS = 0;        // percentage of blocks should be PoS
 int32_t VERUS_BLOCK_POSUNITS = 1024;    // one block is 1000 units
 int32_t VERUS_MIN_STAKEAGE = 150;       // 1/2 this should also be a cap on the POS averaging window, or startup could be too easy
-int32_t VERUS_CONSECUTIVE_POS_THRESHOLD = 7;
+int32_t VERUS_CONSECUTIVE_POS_THRESHOLD = 7;    // this gives us 8 in a row
+int32_t VERUS_V2_CONSECUTIVE_POS_THRESHOLD = 3; // this gives is max 4 in a row
 int32_t VERUS_NOPOS_THRESHHOLD = 150;   // if we have no POS blocks in this many blocks, set to default difficulty
 int32_t PBAAS_STARTBLOCK = 0;           // the parent blockchain must be notarized at this value in block 1 for it to be accepted
 int32_t PBAAS_ENDBLOCK = 0;             // end of life block for the PBaaS blockchain
+int64_t PBAAS_PRECONVERSION = 0;
+int64_t PBAAS_MINPRECONVERT = 0;
+int64_t PBAAS_MAXPRECONVERT = 0;
+
 
 int32_t ASSETCHAINS_SAPLING;
 int32_t ASSETCHAINS_OVERWINTER;

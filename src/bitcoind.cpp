@@ -12,6 +12,7 @@
 #include "util.h"
 #include "httpserver.h"
 #include "httprpc.h"
+#include "version.h"
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem.hpp>
@@ -99,7 +100,7 @@ bool AppInit(int argc, char* argv[])
     // Process help and version before taking care about datadir
     if (mapArgs.count("-?") || mapArgs.count("-h") ||  mapArgs.count("-help") || mapArgs.count("-version"))
     {
-        std::string strUsage = _("Verus Daemon") + " " + _("version") + " " + _("0.5.7-2") + "\n" + PrivacyInfo();
+        std::string strUsage = _("Verus Daemon") + " " + _("version") + " " + _(VERUS_VERSION) + "\n" + PrivacyInfo();
         if (mapArgs.count("-version"))
         {
             strUsage += LicenseInfo();

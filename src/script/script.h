@@ -24,6 +24,8 @@
 #define OPRETTYPE_OBJECT 4
 #define OPRETTYPE_OBJECTARR 5
 
+class CCurrencyState;
+
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 1024; // bytes
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_PRE_PBAAS = 520;
 
@@ -585,13 +587,21 @@ public:
     bool IsOpReturn() const { return size() > 0 && (*this)[0] == OP_RETURN; }
     bool GetOpretData(std::vector<std::vector<unsigned char>>& vData) const;
 
+    bool IsPayToCryptoCondition(COptCCParams &ccParams) const;
     bool IsPayToCryptoCondition(CScript *ccSubScript, std::vector<std::vector<unsigned char>> &vParams, COptCCParams &optParams) const;
     bool IsPayToCryptoCondition(CScript *ccSubScript, std::vector<std::vector<unsigned char>> &vParams) const;
     bool IsPayToCryptoCondition(CScript *ccSubScript) const;
     bool IsPayToCryptoCondition(uint32_t *ecode) const;
     bool IsPayToCryptoCondition() const;
+    CScript &ReplaceCCParams(const COptCCParams &params);
+
+    int64_t ReserveOutValue() const;
+    int64_t ReserveOutValue(COptCCParams &p) const;
+    bool SetReserveOutValue(int64_t newValue);
+
     bool IsCoinImport() const;
     bool MayAcceptCryptoCondition() const;
+    bool MayAcceptCryptoCondition(int evalCode) const;
     bool IsInstantSpend() const;
 
 

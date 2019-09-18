@@ -15,6 +15,8 @@
 #include "asn/Secp256k1FingerprintContents.h"
 #include "asn/OCTET_STRING.h"
 #include "include/cJSON.h"
+#include "include/sha256.h"
+#include "include/ripemd-160.h"
 #include "include/secp256k1/include/secp256k1.h"
 #include "cryptoconditions.h"
 #include "internal.h"
@@ -105,6 +107,25 @@ int secp256k1Verify(CC *cond, CCVisitor visitor) {
 }
 
 
+int secp256k1VerifyValidOnly(CC *cond, CCVisitor visitor) {
+    if (cond->type->typeId != CC_Secp256k1Type.typeId) return 1;
+    initVerify();
+
+    int rc;
+
+    // parse siganature
+    secp256k1_ecdsa_signature sig;
+    rc = secp256k1_ecdsa_signature_parse_compact(ec_ctx_verify, &sig, cond->signature);
+    if (rc != 1) return 0;
+
+    // Only accepts lower S signatures
+    rc = secp256k1_ecdsa_verify_validonly(ec_ctx_verify, &sig, visitor.msg);
+    if (rc != 1) return 0;
+
+    return 1;
+}
+
+
 int cc_secp256k1VerifyTreeMsg32(const CC *cond, const unsigned char *msg32) {
     int subtypes = cc_typeMask(cond);
     if (subtypes & (1 << CC_PrefixType.typeId) &&
@@ -114,6 +135,20 @@ int cc_secp256k1VerifyTreeMsg32(const CC *cond, const unsigned char *msg32) {
         return 0;
     }
     CCVisitor visitor = {&secp256k1Verify, msg32, 0, NULL};
+    int out = cc_visit(cond, visitor);
+    return out;
+}
+
+
+int cc_secp256k1VerifyTreeMsg32_PartialCheck(const CC *cond, const unsigned char *msg32) {
+    int subtypes = cc_typeMask(cond);
+    if (subtypes & (1 << CC_PrefixType.typeId) &&
+        subtypes & (1 << CC_Secp256k1Type.typeId)) {
+        // No support for prefix currently, due to pending protocol decision on
+        // how to combine message and prefix into 32 byte hash
+        return 0;
+    }
+    CCVisitor visitor = {&secp256k1VerifyValidOnly, msg32, 0, NULL};
     int out = cc_visit(cond, visitor);
     return out;
 }
@@ -135,7 +170,20 @@ typedef struct CCSecp256k1SigningData {
 static int secp256k1Sign(CC *cond, CCVisitor visitor) {
     if (cond->type->typeId != CC_Secp256k1) return 1;
     CCSecp256k1SigningData *signing = (CCSecp256k1SigningData*) visitor.context;
-    if (0 != memcmp(cond->publicKey, signing->pk, SECP256K1_PK_SIZE)) return 1;
+
+    // we will sign a node if either the keys match, or the node holds a KeyID of the public key, which is a hash of the contents
+    unsigned char *shaHash = calloc(1,32);
+    unsigned char *ripemdHash = calloc(1,20);
+    sha256(signing->pk, SECP256K1_PK_SIZE, shaHash);
+    hash160(shaHash, 32, ripemdHash);
+    bool pkHashMatch = !memcmp(cond->publicKey, ripemdHash, 20);
+    free(shaHash);
+    free(ripemdHash);
+
+    if (!pkHashMatch)
+    {
+        if (0 != memcmp(cond->publicKey, signing->pk, SECP256K1_PK_SIZE)) return 1;
+    }
 
     secp256k1_ecdsa_signature sig;
     lockSign();
@@ -193,13 +241,16 @@ static unsigned long secp256k1Cost(const CC *cond) {
 
 
 static CC *cc_secp256k1Condition(const unsigned char *publicKey, const unsigned char *signature) {
+    // TODO:PBAAS - we do not check that the public key parses here, to enable
+    //   the fullfillment to have a hash of the public key (address) vs. a full public key
+    //   WE NEED TO MAKE SURE THAT THIS LEAVES NO GAP IN CHECKING BY MAINNET
     // Check that pk parses
-    initVerify();
-    secp256k1_pubkey spk;
-    int rc = secp256k1_ec_pubkey_parse(ec_ctx_verify, &spk, publicKey, SECP256K1_PK_SIZE);
-    if (!rc) {
-        return NULL;
-    }
+    //initVerify();
+    //secp256k1_pubkey spk;
+    //int rc = secp256k1_ec_pubkey_parse(ec_ctx_verify, &spk, publicKey, SECP256K1_PK_SIZE);
+    //if (!rc) {
+    //    return NULL;
+    //}
 
     unsigned char *pk = 0, *sig = 0;
 

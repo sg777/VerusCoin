@@ -83,6 +83,13 @@ bool TransactionBuilder::AddTransparentOutput(CTxDestination& to, CAmount value)
     return true;
 }
 
+bool TransactionBuilder::AddTransparentOutput(const CScript &scriptPubKey, CAmount value)
+{
+    CTxOut out(value, scriptPubKey);
+    mtx.vout.push_back(out);
+    return true;
+}
+
 bool TransactionBuilder::AddOpRetLast()
 {
     CScript s;

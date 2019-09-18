@@ -131,7 +131,7 @@ protected:
     uint32_t bip44CoinType;
     CBlock genesis;
     std::vector<SeedSpec6> vFixedSeeds;
-    bool fMiningRequiresPeers = false;
+    bool fMiningRequiresPeers = true;
     bool fDefaultConsistencyChecks = false;
     bool fRequireStandard = false;
     bool fMineBlocksOnDemand = false;
