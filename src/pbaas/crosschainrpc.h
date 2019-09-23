@@ -269,7 +269,7 @@ public:
 
     int GetDefinedPort() const;
 
-    bool IsReserve()
+    bool IsReserve() const
     {
         return ChainOptions() & OPTION_RESERVE;
     }

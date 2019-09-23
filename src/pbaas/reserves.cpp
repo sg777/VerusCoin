@@ -730,13 +730,35 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CPBaaS
                 if (curTransfer.flags & curTransfer.PRECONVERT)
                 {
                     // output the amount, minus conversion fees, and generate a normal output that spends the net input of the import as native
-                    // difference between all potential value out and what we took unconverted as a fee in our fee output
+                    // difference between all potential value out and what was taken unconverted as a fee in our fee output
                     CAmount nativeConverted = CCurrencyState::ReserveToNative(curTransfer.nValue, chainDef.conversion);
 
                     reserveIn += curTransfer.nFees;
                     nativeIn += nativeConverted;
                     nativeOut += nativeConverted;
                     newOut = CTxOut(nativeConverted, GetScriptForDestination(curTransfer.destination));
+
+                    // if we are preconverting, and this is not a reserve chain, also send the full value of the preconvert in the payment coin back to
+                    // the chain payment address on the originating chain
+                    if (!chainDef.IsReserve())
+                    {
+                        // if this is not a reserve chain, we will emit a reserve output to the chain address
+                        // which is sent back to the notarizing chain. this "pays" the chain launch recipient on the launch chain
+                        // but only after a successful launch and notarization
+                        uint160 destChainID = isVerusActive ? ConnectedChains.ThisChain().GetChainID() : ConnectedChains.NotaryChain().GetChainID();
+
+                        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+                        pk = CPubKey(ParseHex(CC.CChexstr));
+
+                        // transfer is to the chain definition, and if we're making it, that will be on the exporting chain, send it back to ourselves from where it's going
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(chainDef.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(destChainID)});
+
+                        CAmount fees = curTransfer.DEFAULT_PER_STEP_FEE << 1;
+                        CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, curTransfer.nValue - fees, fees, chainDef.address);
+
+                        // add an extra output
+                        vOutputs.push_back(MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, rt));
+                    }
                 }
                 else if (curTransfer.flags & curTransfer.CONVERT)
                 {

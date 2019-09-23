@@ -470,8 +470,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             if (totalAvailableInput < 0)
             {
-                LogPrintf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
-                printf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
+                LogPrintf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, chainDef.name.c_str());
+                printf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, chainDef.name.c_str());
                 return false;
             }
 
@@ -1775,21 +1775,26 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             uint64_t blocksLeft = chainDef.billingPeriod - (confirmedPBN.notarizationHeight % chainDef.billingPeriod);
             CAmount valueOut = 0;
 
-            if (confirmedInput != -1)
+            if (valueIn > (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2) && confirmedInput != -1)
             {
-                if (blocksLeft <= CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED)
+                if (valueIn < (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1)))
                 {
-                    valueOut = valueIn - CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2;
+                    valueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1);
                 }
                 else
                 {
                     valueOut = (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (valueIn - CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2)) / blocksLeft;
                 }
             }
+            else
+            {
+                valueOut = 0;
+            }
+            
 
             CAmount notaryValueOut;
 
-            if (valueOut >= PBAAS_MINNOTARIZATIONOUTPUT)
+            if (valueOut >= (PBAAS_MINNOTARIZATIONOUTPUT << 1))
             {
                 // pay the confirmed notary with
                 // notarization reward for this billing period / remaining blocks in the billing period * min blocks in notarization
@@ -1805,20 +1810,26 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 notaryValueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE + valueOut);
 
                 auto insertIt = mnewTx.vout.begin() + (finalizationIdx + 1);
-                CAmount minerOutput = valueOut / 3;
-                CAmount notaryOutput = valueOut / 3 * 2;
-                mnewTx.vout.insert(insertIt, CTxOut(minerOutput, GetScriptForDestination(minerRecipient)));
-                mnewTx.vout.insert(insertIt, CTxOut(notaryOutput, GetScriptForDestination(notaryRecipient)));
+                if (valueOut)
+                {
+                    CAmount minerOutput = valueOut / 3;
+                    CAmount notaryOutput = valueOut / 3 * 2;
+                    mnewTx.vout.insert(insertIt, CTxOut(minerOutput, GetScriptForDestination(minerRecipient)));
+                    mnewTx.vout.insert(insertIt, CTxOut(notaryOutput, GetScriptForDestination(notaryRecipient)));
+                }
             }
             else
             {
                 valueOut = 0;
-                notaryValueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2);
+                notaryValueOut = 0;
+                mnewTx.vout[finalizationIdx].nValue = valueIn;
             }
             
             if ((notaryValueOut + valueOut + CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE) > valueIn)
             {
-                throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Not enough funds to notarize");
+                notaryValueOut = valueIn;
+                printf("Not enough funds to notarize %s\n", chainDef.name.c_str());
+                LogPrintf("Not enough funds to notarize %s\n", chainDef.name.c_str());
             }
 
             CCcontract_info CC;
@@ -1877,7 +1888,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             if (!accepted) {
                 if (state.GetRejectReason() != "")
                 {
-                    printf("Cannot enter notarization into mempool %s\n", state.GetRejectReason().c_str());
+                    printf("Cannot enter notarization into mempool for chain %s, %s\n", chainDef.name.c_str(), state.GetRejectReason().c_str());
                 }
                 if (state.IsInvalid()) {
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, strprintf("%i: %s", state.GetRejectCode(), state.GetRejectReason()));
@@ -2370,7 +2381,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
     }
 
     uint32_t Flags = isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID;
-    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, isReserve ? preconvertedAmount : 0, Flags);
+    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, preconvertedAmount, Flags);
 
     CAmount preconvertedNative = currencyState.ReserveToNative(preconvertedAmount, chainDef.conversion);
     currencyState.InitialSupply = preconvertedNative;
@@ -2531,7 +2542,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
     if (isVerusActive)
     {
-        if (chainID == thisChainID || toreserve)
+        if (chainID == thisChainID)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send reserve or convert, except on a PBaaS fractional reserve chain. Use sendtoaddress or z_sendmany.");
         }
@@ -2615,7 +2626,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
             if (currencyState.ReserveIn + amount > chainDef.maxpreconvert)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " contribution maximum does not allow this conversion. Maximum participation remaining is " + ValueFromAmount(chainDef.maxpreconvert - currencyState.ReserveIn).get_str());
+                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " contribution maximum does not allow this conversion. Maximum participation remaining is " + ValueFromAmount(chainDef.maxpreconvert - currencyState.ReserveIn).write());
             }
         }
         else if (flags & CReserveTransfer::CONVERT && !subtractFee)
@@ -2631,7 +2642,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
         if (amount <= (transferFee << 1))
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must send more than twice the cost of the fee. Fee for this transaction is " + ValueFromAmount(transferFee).get_str());
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must send more than twice the cost of the fee. Fee for this transaction is " + ValueFromAmount(transferFee).write());
         }
 
         transferFee = CReserveTransfer::CalculateFee(flags, amount, chainDef);
