@@ -1775,21 +1775,26 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             uint64_t blocksLeft = chainDef.billingPeriod - (confirmedPBN.notarizationHeight % chainDef.billingPeriod);
             CAmount valueOut = 0;
 
-            if (confirmedInput != -1)
+            if (valueIn > (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2) && confirmedInput != -1)
             {
-                if (blocksLeft <= CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED)
+                if (valueIn < (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1)))
                 {
-                    valueOut = valueIn - CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2;
+                    valueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1);
                 }
                 else
                 {
                     valueOut = (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (valueIn - CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2)) / blocksLeft;
                 }
             }
+            else
+            {
+                valueOut = 0;
+            }
+            
 
             CAmount notaryValueOut;
 
-            if (valueOut >= PBAAS_MINNOTARIZATIONOUTPUT)
+            if (valueOut >= (PBAAS_MINNOTARIZATIONOUTPUT << 1))
             {
                 // pay the confirmed notary with
                 // notarization reward for this billing period / remaining blocks in the billing period * min blocks in notarization
@@ -1805,20 +1810,26 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 notaryValueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE + valueOut);
 
                 auto insertIt = mnewTx.vout.begin() + (finalizationIdx + 1);
-                CAmount minerOutput = valueOut / 3;
-                CAmount notaryOutput = valueOut / 3 * 2;
-                mnewTx.vout.insert(insertIt, CTxOut(minerOutput, GetScriptForDestination(minerRecipient)));
-                mnewTx.vout.insert(insertIt, CTxOut(notaryOutput, GetScriptForDestination(notaryRecipient)));
+                if (valueOut)
+                {
+                    CAmount minerOutput = valueOut / 3;
+                    CAmount notaryOutput = valueOut / 3 * 2;
+                    mnewTx.vout.insert(insertIt, CTxOut(minerOutput, GetScriptForDestination(minerRecipient)));
+                    mnewTx.vout.insert(insertIt, CTxOut(notaryOutput, GetScriptForDestination(notaryRecipient)));
+                }
             }
             else
             {
                 valueOut = 0;
-                notaryValueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2);
+                notaryValueOut = 0;
+                mnewTx.vout[finalizationIdx].nValue = valueIn;
             }
             
             if ((notaryValueOut + valueOut + CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE) > valueIn)
             {
-                throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Not enough funds to notarize");
+                notaryValueOut = valueIn;
+                printf("Not enough funds to notarize %s\n", chainDef.name.c_str());
+                LogPrintf("Not enough funds to notarize %s\n", chainDef.name.c_str());
             }
 
             CCcontract_info CC;
