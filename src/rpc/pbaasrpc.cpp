@@ -470,8 +470,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             if (totalAvailableInput < 0)
             {
-                LogPrintf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
-                printf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
+                LogPrintf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, chainDef.name.c_str());
+                printf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, chainDef.name.c_str());
                 return false;
             }
 
@@ -2370,7 +2370,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
     }
 
     uint32_t Flags = isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID;
-    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, isReserve ? preconvertedAmount : 0, Flags);
+    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, preconvertedAmount, Flags);
 
     CAmount preconvertedNative = currencyState.ReserveToNative(preconvertedAmount, chainDef.conversion);
     currencyState.InitialSupply = preconvertedNative;
@@ -2531,7 +2531,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
     if (isVerusActive)
     {
-        if (chainID == thisChainID || toreserve)
+        if (chainID == thisChainID)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send reserve or convert, except on a PBaaS fractional reserve chain. Use sendtoaddress or z_sendmany.");
         }
@@ -2615,7 +2615,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
             if (currencyState.ReserveIn + amount > chainDef.maxpreconvert)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " contribution maximum does not allow this conversion. Maximum participation remaining is " + ValueFromAmount(chainDef.maxpreconvert - currencyState.ReserveIn).get_str());
+                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " contribution maximum does not allow this conversion. Maximum participation remaining is " + ValueFromAmount(chainDef.maxpreconvert - currencyState.ReserveIn).write());
             }
         }
         else if (flags & CReserveTransfer::CONVERT && !subtractFee)
@@ -2631,7 +2631,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
         if (amount <= (transferFee << 1))
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must send more than twice the cost of the fee. Fee for this transaction is " + ValueFromAmount(transferFee).get_str());
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must send more than twice the cost of the fee. Fee for this transaction is " + ValueFromAmount(transferFee).write());
         }
 
         transferFee = CReserveTransfer::CalculateFee(flags, amount, chainDef);

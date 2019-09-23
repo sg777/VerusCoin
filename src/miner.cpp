@@ -748,8 +748,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
                 // import - only spendable for reserve currency or currency with preconversion to allow import of conversions, this output will include
                 // all pre-converted coins and all pre-conversion fees, denominated in Verus reserve currency
-                // chain definition - always
-                // make the chain definition output
                 vKeys.clear();
                 cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
 
@@ -774,6 +772,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
                 exportThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, 0, pkCC, vKeys, 
                                                  CCrossChainExport(ConnectedChains.NotaryChain().GetChainID(), 0, 0, 0));
+
                 coinbaseTx.vout.push_back(exportThreadOut);
             }
             else

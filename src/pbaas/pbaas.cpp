@@ -1233,6 +1233,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         {
                             boost::optional<CTransaction> oneExport;
 
+                            if (!GetChainDefinition(lastChain, lastChainDef))
+                            {
+                                printf("%s: chain definition for export chainID %s not found\n\n", __func__, lastChain.GetHex().c_str());
+                                LogPrintf("%s: chain definition for export chainID %s not found\n\n", __func__, lastChain.GetHex().c_str());
+                                continue;
+                            }
+
                             // make one or more transactions that spends the last export and all possible cross chain transfers
                             while (txInputs.size())
                             {
@@ -1264,7 +1271,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 // 
                                 // If we are on the PBaaS chain, conversions must happen before coins are sent this way back to the reserve chain. 
                                 // Verus reserve outputs can be directly aggregated and transferred, with fees paid through conversion and the 
-                                // remaining Verus reserve coin considered burned.
+                                // remaining Verus reserve coin will be burned on the PBaaS chain as spending it is allowed, once notarized, on the
+                                // Verus chain.
                                 //
                                 CAmount totalTxFees = 0;
                                 CAmount totalAmount = 0;
@@ -1307,8 +1315,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     if (IsVerusActive() && txInputs[j].second.nValue + txInputs[j].second.nFees > txInputs[j].first.nValue)
                                     {
                                         // if this transfer is invalid and claims to carry more funds than it does, we consume it since it won't properly verify as a transfer, and
-                                        // it is too expensive to let it force evaluation repeatedly
-                                        // we should formalize this into a chain contribution. right now, and reserve coins are basically added to chain surplus
+                                        // it is too expensive to let it force evaluation repeatedly. this condition should not get by normal checks, but just in case, don't let it slow transfers
+                                        // we should formalize this into a chain contribution or amount adjustment.
+                                        printf("%s: transaction %s claims more value than it contains\n", __func__, txInputs[j].first.txIn.prevout.hash.GetHex().c_str());
+                                        LogPrintf("%s: transaction %s claims more value than it contains\n", __func__, txInputs[j].first.txIn.prevout.hash.GetHex().c_str());
                                         fails++;
                                     }
                                     else
@@ -1334,12 +1344,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 CReserveTransactionDescriptor rtxd;
                                 std::vector<CTxOut> dummy;
 
-                                bool badChain = false;
-                                if ((badChain = !GetChainDefinition(lastChain, lastChainDef)) || !rtxd.AddReserveTransferImportOutputs(lastChainDef, chainObjects, dummy))
+                                if (!rtxd.AddReserveTransferImportOutputs(lastChainDef, chainObjects, dummy))
                                 {
                                     DeleteOpRetObjects(chainObjects);
 
-                                    // we can't do any more useful work for this chain if we failed here
                                     printf("%s: failed to create valid exports\n", __func__);
                                     LogPrintf("%s: failed to create valid exports\n", __func__);
 
@@ -1350,11 +1358,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         UniValue uniOut;
                                         ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
                                         printf("%s\n", uniOut.write(true, 2).c_str());
-                                    }
-
-                                    if (badChain)
-                                    {
-                                        break;
                                     }
                                 }
                                 else
@@ -1384,8 +1387,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                     tb.AddTransparentOutput(exportOut.scriptPubKey, exportOutVal);
 
-                                    // if we are on Verus chain, send all native funds, less fees to reserve deposit CC, which is equivalent to the reserve account
-                                    // on a PBaaS reserve chain, input is burned
+                                    // if we are on Verus chain, send all native funds to reserve deposit CC, which is equivalent to the reserve account
+                                    // if we are on a PBaaS chain, input is burned when sent back for release
                                     if (IsVerusActive())
                                     {
                                         cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
