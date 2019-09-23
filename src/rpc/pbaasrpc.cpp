@@ -1877,7 +1877,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             if (!accepted) {
                 if (state.GetRejectReason() != "")
                 {
-                    printf("Cannot enter notarization into mempool %s\n", state.GetRejectReason().c_str());
+                    printf("Cannot enter notarization into mempool for chain %s, %s\n", chainDef.name.c_str(), state.GetRejectReason().c_str());
                 }
                 if (state.IsInvalid()) {
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, strprintf("%i: %s", state.GetRejectCode(), state.GetRejectReason()));
