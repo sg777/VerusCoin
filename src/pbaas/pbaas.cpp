@@ -590,7 +590,7 @@ bool SetThisChain(UniValue &chainDefinition)
             notaryChainDef.eras = 1;
             notaryChainDef.rewards = std::vector<int64_t>({2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
-            notaryChainDef.halving = std::vector<int32_t>({226080});
+            notaryChainDef.halving = std::vector<int32_t>({225680});
             notaryChainDef.eraEnd = std::vector<int32_t>({0});
             notaryChainDef.eraOptions = std::vector<int32_t>({0,0,0});
         }
