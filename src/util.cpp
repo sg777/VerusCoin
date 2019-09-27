@@ -744,11 +744,19 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
 const boost::filesystem::path GetDataDir(std::string chainName)
 {
     namespace fs = boost::filesystem;
+    fs::path path;
 
-    fs::path path = GetDefaultDataDir(chainName);
+    if ((chainName == "VRSC" || chainName == "VRSCTEST") && mapArgs.count("-datadir")) {
+        path = fs::system_complete(mapArgs["-datadir"]);
+        if (!fs::is_directory(path)) {
+            path = GetDefaultDataDir(chainName);
+        }
+    } else
+    {
+        path = GetDefaultDataDir(chainName);
+    }
     return path;
 }
-
 void ClearDatadirCache()
 {
     pathCached = boost::filesystem::path();
