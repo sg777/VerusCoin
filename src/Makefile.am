@@ -1,3 +1,11 @@
+# Copyright (c) 2018-2019 The Verus developers
+# Copyright (c) 2017-2019 The Komodo developers
+# Copyright (c) 2016-2019 The Zcash developers
+# Copyright (c) 2013-2019 The Bitcoin Core developers
+# Copyright (c) 2013-2019 Bitcoin Developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or https://www.opensource.org/licenses/mit-license.php .
+
 DIST_SUBDIRS = secp256k1 univalue cryptoconditions
 
 AM_LDFLAGS = $(PTHREAD_CFLAGS) $(LIBTOOL_LDFLAGS) $(SAN_LDFLAGS) $(HARDENED_LDFLAGS)
@@ -207,8 +215,6 @@ BITCOIN_CORE_H = \
   net.h \
   netbase.h \
   noui.h \
-  paymentdisclosure.h \
-  paymentdisclosuredb.h \
   pbaas/crosschainrpc.h \
   pbaas/notarization.h \
   pbaas/pbaas.h \
@@ -236,6 +242,7 @@ BITCOIN_CORE_H = \
   script/sign.h \
   script/standard.h \
   serialize.h \
+  spentindex.h \
   streams.h \
   support/allocators/secure.h \
   support/allocators/zeroafterfree.h \
@@ -245,6 +252,7 @@ BITCOIN_CORE_H = \
   sync.h \
   threadsafety.h \
   timedata.h \
+  timestampindex.h \
   tinyformat.h \
   torcontrol.h \
   transaction_builder.h \
@@ -257,14 +265,19 @@ BITCOIN_CORE_H = \
   util.h \
   utilmoneystr.h \
   utilstrencodings.h \
+  utiltest.h \
   utiltime.h \
   validationinterface.h \
   version.h \
+  wallet/asyncrpcoperation_common.h \
   wallet/asyncrpcoperation_mergetoaddress.h \
+  wallet/asyncrpcoperation_saplingmigration.h \
   wallet/asyncrpcoperation_sendmany.h \
   wallet/asyncrpcoperation_shieldcoinbase.h \
   wallet/crypter.h \
   wallet/db.h \
+  wallet/paymentdisclosure.h \
+  wallet/paymentdisclosuredb.h \
   wallet/rpcwallet.h \
   wallet/wallet.h \
   wallet/wallet_ismine.h \
@@ -339,8 +352,6 @@ libbitcoin_server_a_SOURCES = \
   net.cpp \
   noui.cpp \
   notarisationdb.cpp \
-  paymentdisclosure.cpp \
-  paymentdisclosuredb.cpp \
   pbaas/crosschainrpc.cpp \
   pbaas/notarization.cpp \
   pbaas/pbaas.cpp \
@@ -389,18 +400,20 @@ endif
 libbitcoin_wallet_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
 libbitcoin_wallet_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_wallet_a_SOURCES = \
+  transaction_builder.cpp \
   utiltest.cpp \
   utiltest.h \
   zcbenchmarks.cpp \
   zcbenchmarks.h \
+  wallet/asyncrpcoperation_common.cpp \
   wallet/asyncrpcoperation_mergetoaddress.cpp \
+  wallet/asyncrpcoperation_saplingmigration.cpp \
   wallet/asyncrpcoperation_sendmany.cpp \
   wallet/asyncrpcoperation_shieldcoinbase.cpp \
   wallet/crypter.cpp \
   wallet/db.cpp \
-  paymentdisclosure.cpp \
-  paymentdisclosuredb.cpp \
-  transaction_builder.cpp \
+  wallet/paymentdisclosure.cpp \
+  wallet/paymentdisclosuredb.cpp \
   wallet/rpcdisclosure.cpp \
   wallet/rpcdump.cpp \
   cc/CCassetstx.cpp \
@@ -479,6 +492,7 @@ libbitcoin_common_a_SOURCES = \
   chainparams.cpp \
   coins.cpp \
   compressor.cpp \
+  consensus/params.cpp \
   consensus/upgrades.cpp \
   core_read.cpp \
   core_write.cpp \
@@ -510,6 +524,7 @@ libbitcoin_common_a_SOURCES = \
   script/standard.cpp \
   veruslaunch.cpp \
   transaction_builder.cpp \
+  utiltest.cpp \
   $(BITCOIN_CORE_H) \
   $(LIBZCASH_H)
 

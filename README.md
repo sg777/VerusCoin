@@ -109,7 +109,7 @@ cd VerusCoin
 #This can take some time.
 ```
 
-**VerusCoin is experimental and a work-in-progress.** Use at your own risk.
+**The VerusCoin project and protocol is experimental and a work-in-progress.** Use this source code and software at your own risk.
 
 #To view all commands
 ./src/verus help

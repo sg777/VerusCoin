@@ -1,7 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #ifndef BITCOIN_SCRIPT_SCRIPT_H
 #define BITCOIN_SCRIPT_SCRIPT_H
@@ -17,6 +17,7 @@
 #include <string.h>
 #include <string>
 #include <vector>
+#include "uint256.h"
 
 #define OPRETTYPE_TIMELOCK 1
 #define OPRETTYPE_STAKEPARAMS 2
@@ -604,6 +605,17 @@ public:
     bool MayAcceptCryptoCondition(int evalCode) const;
     bool IsInstantSpend() const;
 
+    // insightexplorer, there may be more script types in the future
+    enum ScriptType : int {
+        UNKNOWN = 0,
+        P2PKH = 1,  // the same index value is used for all types that can have destinations represented by public key hash
+        P2PK = 1,
+        P2CC = 1,
+        P2SH = 2,
+    };
+
+    ScriptType GetType() const;
+    uint160 AddressHash() const;
 
     /** Called by IsStandardTx and P2SH/BIP62 VerifyScript (which makes it consensus-critical). */
     bool IsPushOnly() const;
@@ -632,6 +644,15 @@ public:
         // The default std::vector::clear() does not release memory.
         CScriptBase().swap(*this);
     }
+};
+
+class CReserveScript
+{
+public:
+    CScript reserveScript;
+    virtual void KeepScript() {}
+    CReserveScript() {}
+    virtual ~CReserveScript() {}
 };
 
 #endif // BITCOIN_SCRIPT_SCRIPT_H

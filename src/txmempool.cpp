@@ -1,7 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #include "txmempool.h"
 
@@ -14,6 +14,7 @@
 #include "timedata.h"
 #include "util.h"
 #include "utilmoneystr.h"
+#include "validationinterface.h"
 #include "version.h"
 #include "pbaas/pbaas.h"
 #define _COINBASE_MATURITY 100
@@ -111,11 +112,13 @@ bool CTxMemPool::addUnchecked(const uint256& hash, const CTxMemPoolEntry &entry,
     LOCK(cs);
     mapTx.insert(entry);
     const CTransaction& tx = mapTx.find(hash)->GetTx();
+    mapRecentlyAddedTx[tx.GetHash()] = &tx;
+    nRecentlyAddedSequence += 1;
     if (!tx.IsCoinImport()) {
         for (unsigned int i = 0; i < tx.vin.size(); i++)
             mapNextTx[tx.vin[i].prevout] = CInPoint(&tx, i);
     }
-    BOOST_FOREACH(const JSDescription &joinsplit, tx.vjoinsplit) {
+    BOOST_FOREACH(const JSDescription &joinsplit, tx.vJoinSplit) {
         BOOST_FOREACH(const uint256 &nf, joinsplit.nullifiers) {
             mapSproutNullifiers[nf] = &tx;
         }
@@ -138,82 +141,39 @@ void CTxMemPool::addAddressIndex(const CTxMemPoolEntry &entry, const CCoinsViewC
     std::vector<CMempoolAddressDeltaKey> inserted;
 
     uint256 txhash = tx.GetHash();
-
     if (!tx.IsCoinBase())
     {
         for (unsigned int j = 0; j < tx.vin.size(); j++) {
             const CTxIn input = tx.vin[j];
             const CTxOut &prevout = view.GetOutputFor(input);
-            if (prevout.scriptPubKey.IsPayToScriptHash()) {
-                vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+2, prevout.scriptPubKey.begin()+22);
-                CMempoolAddressDeltaKey key(2, uint160(hashBytes), txhash, j, 1);
-                CMempoolAddressDelta delta(entry.GetTime(), prevout.nValue * -1, input.prevout.hash, input.prevout.n);
-                mapAddress.insert(make_pair(key, delta));
-                inserted.push_back(key);
-            }
-            else if (prevout.scriptPubKey.IsPayToPublicKeyHash()) {
-                vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+3, prevout.scriptPubKey.begin()+23);
-                CMempoolAddressDeltaKey key(1, uint160(hashBytes), txhash, j, 1);
-                CMempoolAddressDelta delta(entry.GetTime(), prevout.nValue * -1, input.prevout.hash, input.prevout.n);
-                mapAddress.insert(make_pair(key, delta));
-                inserted.push_back(key);
-            }
-            else if (prevout.scriptPubKey.IsPayToPublicKey()) {
-                vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+1, prevout.scriptPubKey.begin()+34);
-                CMempoolAddressDeltaKey key(1, Hash160(hashBytes), txhash, j, 1);
-                CMempoolAddressDelta delta(entry.GetTime(), prevout.nValue * -1, input.prevout.hash, input.prevout.n);
-                mapAddress.insert(make_pair(key, delta));
-                inserted.push_back(key);
-            }
-            else if (prevout.scriptPubKey.IsPayToCryptoCondition()) {
-                vector<unsigned char> hashBytes(prevout.scriptPubKey.begin(), prevout.scriptPubKey.end());
-                CMempoolAddressDeltaKey key(1, Hash160(hashBytes), txhash, j, 1);
-                CMempoolAddressDelta delta(entry.GetTime(), prevout.nValue * -1, input.prevout.hash, input.prevout.n);
-                mapAddress.insert(make_pair(key, delta));
-                inserted.push_back(key);
-            }   }
+            CScript::ScriptType type = prevout.scriptPubKey.GetType();
+            if (type == CScript::UNKNOWN)
+                continue;
+            CMempoolAddressDeltaKey key(type, prevout.scriptPubKey.AddressHash(), txhash, j, 1);
+            CMempoolAddressDelta delta(entry.GetTime(), prevout.nValue * -1, input.prevout.hash, input.prevout.n);
+            mapAddress.insert(make_pair(key, delta));
+            inserted.push_back(key);
+        }
     }
 
-    for (unsigned int k = 0; k < tx.vout.size(); k++) {
-        const CTxOut &out = tx.vout[k];
-        if (out.scriptPubKey.IsPayToScriptHash()) {
-            vector<unsigned char> hashBytes(out.scriptPubKey.begin()+2, out.scriptPubKey.begin()+22);
-            CMempoolAddressDeltaKey key(2, uint160(hashBytes), txhash, k, 0);
-            mapAddress.insert(make_pair(key, CMempoolAddressDelta(entry.GetTime(), out.nValue)));
-            inserted.push_back(key);
-        }
-        else if (out.scriptPubKey.IsPayToPublicKeyHash()) {
-            vector<unsigned char> hashBytes(out.scriptPubKey.begin()+3, out.scriptPubKey.begin()+23);
-            std::pair<addressDeltaMap::iterator,bool> ret;
-            CMempoolAddressDeltaKey key(1, uint160(hashBytes), txhash, k, 0);
-            mapAddress.insert(make_pair(key, CMempoolAddressDelta(entry.GetTime(), out.nValue)));
-            inserted.push_back(key);
-        }
-        else if (out.scriptPubKey.IsPayToPublicKey()) {
-            vector<unsigned char> hashBytes(out.scriptPubKey.begin()+1, out.scriptPubKey.begin()+34);
-            std::pair<addressDeltaMap::iterator,bool> ret;
-            CMempoolAddressDeltaKey key(1, Hash160(hashBytes), txhash, k, 0);
-            mapAddress.insert(make_pair(key, CMempoolAddressDelta(entry.GetTime(), out.nValue)));
-            inserted.push_back(key);
-        }
-        else if (out.scriptPubKey.IsPayToCryptoCondition()) {
-            vector<unsigned char> hashBytes(out.scriptPubKey.begin(), out.scriptPubKey.end());
-            std::pair<addressDeltaMap::iterator,bool> ret;
-            CMempoolAddressDeltaKey key(1, Hash160(hashBytes), txhash, k, 0);
-            mapAddress.insert(make_pair(key, CMempoolAddressDelta(entry.GetTime(), out.nValue)));
-            inserted.push_back(key);
-        }
+    for (unsigned int j = 0; j < tx.vout.size(); j++) {
+        const CTxOut &out = tx.vout[j];
+        CScript::ScriptType type = out.scriptPubKey.GetType();
+        if (type == CScript::UNKNOWN)
+            continue;
+        CMempoolAddressDeltaKey key(type, out.scriptPubKey.AddressHash(), txhash, j, 0);
+        mapAddress.insert(make_pair(key, CMempoolAddressDelta(entry.GetTime(), out.nValue)));
+        inserted.push_back(key);
     }
 
     mapAddressInserted.insert(make_pair(txhash, inserted));
 }
 
-bool CTxMemPool::getAddressIndex(std::vector<std::pair<uint160, int> > &addresses,
-                                 std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> > &results)
+bool CTxMemPool::getAddressIndex(const std::vector<std::pair<uint160, int> > &addresses, std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> > &results)
 {
     LOCK(cs);
-    for (std::vector<std::pair<uint160, int> >::iterator it = addresses.begin(); it != addresses.end(); it++) {
-        addressDeltaMap::iterator ait = mapAddress.lower_bound(CMempoolAddressDeltaKey((*it).second, (*it).first));
+    for (std::vector<std::pair<uint160, int> >::const_iterator it = addresses.begin(); it != addresses.end(); it++) {
+        auto ait = mapAddress.lower_bound(CMempoolAddressDeltaKey((*it).second, (*it).first));
         while (ait != mapAddress.end() && (*ait).first.addressBytes == (*it).first && (*ait).first.type == (*it).second) {
             results.push_back(*ait);
             ait++;
@@ -225,7 +185,7 @@ bool CTxMemPool::getAddressIndex(std::vector<std::pair<uint160, int> > &addresse
 bool CTxMemPool::removeAddressIndex(const uint256 txhash)
 {
     LOCK(cs);
-    addressDeltaMapInserted::iterator it = mapAddressInserted.find(txhash);
+    auto it = mapAddressInserted.find(txhash);
 
     if (it != mapAddressInserted.end()) {
         std::vector<CMempoolAddressDeltaKey> keys = (*it).second;
@@ -241,55 +201,27 @@ bool CTxMemPool::removeAddressIndex(const uint256 txhash)
 void CTxMemPool::addSpentIndex(const CTxMemPoolEntry &entry, const CCoinsViewCache &view)
 {
     LOCK(cs);
-
     const CTransaction& tx = entry.GetTx();
+    uint256 txhash = tx.GetHash();
     std::vector<CSpentIndexKey> inserted;
 
-    uint256 txhash = tx.GetHash();
     for (unsigned int j = 0; j < tx.vin.size(); j++) {
         const CTxIn input = tx.vin[j];
         const CTxOut &prevout = view.GetOutputFor(input);
-        uint160 addressHash;
-        int addressType;
-
-        if (prevout.scriptPubKey.IsPayToScriptHash()) {
-            addressHash = uint160(vector<unsigned char> (prevout.scriptPubKey.begin()+2, prevout.scriptPubKey.begin()+22));
-            addressType = 2;
-        }
-        else if (prevout.scriptPubKey.IsPayToPublicKeyHash()) {
-            addressHash = uint160(vector<unsigned char> (prevout.scriptPubKey.begin()+3, prevout.scriptPubKey.begin()+23));
-            addressType = 1;
-        }
-        else if (prevout.scriptPubKey.IsPayToPublicKey()) {
-            addressHash = Hash160(vector<unsigned char> (prevout.scriptPubKey.begin()+1, prevout.scriptPubKey.begin()+34));
-            addressType = 1;
-        }
-        else if (prevout.scriptPubKey.IsPayToCryptoCondition()) {
-            addressHash = Hash160(vector<unsigned char> (prevout.scriptPubKey.begin(), prevout.scriptPubKey.end()));
-            addressType = 1;
-        }
-        else {
-            addressHash.SetNull();
-            addressType = 0;
-        }
-
         CSpentIndexKey key = CSpentIndexKey(input.prevout.hash, input.prevout.n);
-        CSpentIndexValue value = CSpentIndexValue(txhash, j, -1, prevout.nValue, addressType, addressHash);
-
+        CSpentIndexValue value = CSpentIndexValue(txhash, j, -1, prevout.nValue,
+            prevout.scriptPubKey.GetType(),
+            prevout.scriptPubKey.AddressHash());
         mapSpent.insert(make_pair(key, value));
         inserted.push_back(key);
-
     }
-
     mapSpentInserted.insert(make_pair(txhash, inserted));
 }
 
-bool CTxMemPool::getSpentIndex(CSpentIndexKey &key, CSpentIndexValue &value)
+bool CTxMemPool::getSpentIndex(const CSpentIndexKey &key, CSpentIndexValue &value)
 {
     LOCK(cs);
-    mapSpentIndex::iterator it;
-
-    it = mapSpent.find(key);
+    std::map<CSpentIndexKey, CSpentIndexValue, CSpentIndexKeyCompare>::iterator it = mapSpent.find(key);
     if (it != mapSpent.end()) {
         value = it->second;
         return true;
@@ -300,7 +232,7 @@ bool CTxMemPool::getSpentIndex(CSpentIndexKey &key, CSpentIndexValue &value)
 bool CTxMemPool::removeSpentIndex(const uint256 txhash)
 {
     LOCK(cs);
-    mapSpentIndexInserted::iterator it = mapSpentInserted.find(txhash);
+    auto it = mapSpentInserted.find(txhash);
 
     if (it != mapSpentInserted.end()) {
         std::vector<CSpentIndexKey> keys = (*it).second;
@@ -347,9 +279,10 @@ void CTxMemPool::remove(const CTransaction &origTx, std::list<CTransaction>& rem
                     txToRemove.push_back(it->second.ptx->GetHash());
                 }
             }
+            mapRecentlyAddedTx.erase(hash);
             BOOST_FOREACH(const CTxIn& txin, tx.vin)
                 mapNextTx.erase(txin.prevout);
-            BOOST_FOREACH(const JSDescription& joinsplit, tx.vjoinsplit) {
+            BOOST_FOREACH(const JSDescription& joinsplit, tx.vJoinSplit) {
                 BOOST_FOREACH(const uint256& nf, joinsplit.nullifiers) {
                     mapSproutNullifiers.erase(nf);
                 }
@@ -363,8 +296,10 @@ void CTxMemPool::remove(const CTransaction &origTx, std::list<CTransaction>& rem
             mapTx.erase(hash);
             nTransactionsUpdated++;
             minerPolicyEstimator->removeTx(hash);
-            removeAddressIndex(hash);
-            removeSpentIndex(hash);
+            if (fAddressIndex)
+                removeAddressIndex(hash);
+            if (fSpentIndex)
+                removeSpentIndex(hash);
             ClearPrioritisation(tx.GetHash());
         }
     }
@@ -426,7 +361,7 @@ void CTxMemPool::removeWithAnchor(const uint256 &invalidRoot, ShieldedType type)
         const CTransaction& tx = it->GetTx();
         switch (type) {
             case SPROUT:
-                BOOST_FOREACH(const JSDescription& joinsplit, tx.vjoinsplit) {
+                BOOST_FOREACH(const JSDescription& joinsplit, tx.vJoinSplit) {
                     if (joinsplit.anchor == invalidRoot) {
                         transactionsToRemove.push_back(tx);
                         break;
@@ -469,7 +404,7 @@ void CTxMemPool::removeConflicts(const CTransaction &tx, std::list<CTransaction>
         }
     }
 
-    BOOST_FOREACH(const JSDescription &joinsplit, tx.vjoinsplit) {
+    BOOST_FOREACH(const JSDescription &joinsplit, tx.vJoinSplit) {
         BOOST_FOREACH(const uint256 &nf, joinsplit.nullifiers) {
             std::map<uint256, const CTransaction*>::iterator it = mapSproutNullifiers.find(nf);
             if (it != mapSproutNullifiers.end()) {
@@ -620,7 +555,7 @@ void CTxMemPool::check(const CCoinsViewCache *pcoins) const
 
         boost::unordered_map<uint256, SproutMerkleTree, CCoinsKeyHasher> intermediates;
 
-        BOOST_FOREACH(const JSDescription &joinsplit, tx.vjoinsplit) {
+        BOOST_FOREACH(const JSDescription &joinsplit, tx.vJoinSplit) {
             BOOST_FOREACH(const uint256 &nf, joinsplit.nullifiers) {
                 assert(!pcoins->GetNullifier(nf, SPROUT));
             }
@@ -862,6 +797,49 @@ bool CTxMemPool::nullifierExists(const uint256& nullifier, ShieldedType type) co
         default:
             throw runtime_error("Unknown nullifier type");
     }
+}
+
+void CTxMemPool::NotifyRecentlyAdded()
+{
+    uint64_t recentlyAddedSequence;
+    std::vector<CTransaction> txs;
+    {
+        LOCK(cs);
+        recentlyAddedSequence = nRecentlyAddedSequence;
+        for (const auto& kv : mapRecentlyAddedTx) {
+            txs.push_back(*(kv.second));
+        }
+        mapRecentlyAddedTx.clear();
+    }
+
+    // A race condition can occur here between these SyncWithWallets calls, and
+    // the ones triggered by block logic (in ConnectTip and DisconnectTip). It
+    // is harmless because calling SyncWithWallets(_, NULL) does not alter the
+    // wallet transaction's block information.
+    for (auto tx : txs) {
+        try {
+            SyncWithWallets(tx, NULL);
+        } catch (const boost::thread_interrupted&) {
+            throw;
+        } catch (const std::exception& e) {
+            PrintExceptionContinue(&e, "CTxMemPool::NotifyRecentlyAdded()");
+        } catch (...) {
+            PrintExceptionContinue(NULL, "CTxMemPool::NotifyRecentlyAdded()");
+        }
+    }
+
+    // Update the notified sequence number. We only need this in regtest mode,
+    // and should not lock on cs after calling SyncWithWallets otherwise.
+    if (Params().NetworkIDString() == "regtest") {
+        LOCK(cs);
+        nNotifiedSequence = recentlyAddedSequence;
+    }
+}
+
+bool CTxMemPool::IsFullyNotified() {
+    assert(Params().NetworkIDString() == "regtest");
+    LOCK(cs);
+    return nRecentlyAddedSequence == nNotifiedSequence;
 }
 
 CCoinsViewMemPool::CCoinsViewMemPool(CCoinsView *baseIn, CTxMemPool &mempoolIn) : CCoinsViewBacked(baseIn), mempool(mempoolIn) { }
