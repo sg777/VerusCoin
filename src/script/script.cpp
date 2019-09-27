@@ -1,7 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #include "script.h"
 
@@ -698,3 +698,57 @@ std::string CScript::ToString() const
     }
     return str;
 }
+
+CScript::ScriptType CScript::GetType() const
+{
+    if (this->IsPayToPublicKeyHash())
+    {
+        return CScript::P2PKH;
+    }
+    else if (this->IsPayToScriptHash())
+    {
+        return CScript::P2SH;
+    }
+    else if (this->IsPayToPublicKey())
+    {
+        return CScript::P2PK;
+    }
+    else if (this->IsPayToCryptoCondition())
+    {
+        return CScript::P2CC;
+    }
+
+    // We don't know this script type
+    return CScript::UNKNOWN;
+}
+
+uint160 CScript::AddressHash() const
+{
+    uint160 addressHash;
+    COptCCParams p;
+    if (this->IsPayToScriptHash()) {
+        addressHash = uint160(std::vector<unsigned char>(this->begin()+2, this->begin()+22));
+    }
+    else if (this->IsPayToPublicKeyHash())
+    {
+        addressHash = uint160(std::vector<unsigned char>(this->begin()+3, this->begin()+23));
+    }
+    else if (this->IsPayToPublicKey())
+    {
+        std::vector<unsigned char> hashBytes(this->begin()+1, this->begin()+34);
+        addressHash = Hash160(hashBytes);
+    }
+    else if (this->IsPayToCryptoCondition(p)) {
+        if (p.IsValid() && (p.vKeys.size()))
+        {
+            addressHash = GetDestinationID(p.vKeys[0]);
+        }
+        else
+        {
+            vector<unsigned char> hashBytes(this->begin(), this->end());
+            addressHash = Hash160(hashBytes);
+        }
+    }
+    return addressHash;
+}
+

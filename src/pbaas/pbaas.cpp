@@ -1126,7 +1126,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
         height != 0 && 
         height <= chainActive.Height() && 
         chainActive[height] && 
-        ReadBlockFromDisk(block, chainActive[height], false) &&
+        ReadBlockFromDisk(block, chainActive[height], Params().GetConsensus()) &&
         (currencyState = CCoinbaseCurrencyState(block.vtx[0])).IsValid())
     {
         return currencyState;
@@ -1412,12 +1412,12 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     tb.AddOpRet(opRet);
                                     tb.SetFee(0);
 
-                                    oneExport = tb.Build();
+                                    TransactionBuilderResult buildResult(tb.Build());
 
-                                    if (oneExport.has_value())
+                                    if (!buildResult.IsError() && buildResult.IsTx())
                                     {
                                         // replace the last one only if we have a valid new one
-                                        CTransaction &tx = oneExport.get();
+                                        CTransaction tx = buildResult.GetTxOrThrow();
 
                                         LOCK2(cs_main, mempool.cs);
                                         static int lastHeight = 0;
@@ -1438,8 +1438,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     else
                                     {
                                         // we can't do any more useful work for this chain if we failed here
-                                        printf("Failed to create export transaction\n");
-                                        LogPrintf("Failed to create export transaction\n");
+                                        printf("Failed to create export transaction: %s\n", buildResult.GetError().c_str());
+                                        LogPrintf("Failed to create export transaction: %s\n", buildResult.GetError().c_str());
                                         break;
                                     }
                                 }

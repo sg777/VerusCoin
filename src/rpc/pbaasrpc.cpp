@@ -482,7 +482,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             // add a proof of the export transaction at the notarization height
             CBlock block;
-            if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], false))
+            if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus(), false))
             {
                 LogPrintf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[lastConfirmed.notarizationHeight]->GetBlockHash().GetHex().c_str());
                 printf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[lastConfirmed.notarizationHeight]->GetBlockHash().GetHex().c_str());
@@ -1759,7 +1759,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             if (confirmedInput != -1)
             {
                 LOCK(cs_main);
-                if (pindex && ReadBlockFromDisk(confirmedBlock, pindex, false) && 
+                if (pindex && ReadBlockFromDisk(confirmedBlock, pindex, Params().GetConsensus()) && 
                     (confirmedPBN = CPBaaSNotarization(confirmedTx)).IsValid() &&
                     ExtractDestination(confirmedBlock.vtx[0].vout[0].scriptPubKey, minerRecipient, false))
                 {
@@ -2061,7 +2061,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             CBlock block;
             CBlockIndex *pnindex = mapBlockIndex.find(blkHash)->second;
 
-            if(!pnindex || !ReadBlockFromDisk(block, pnindex, 0))
+            if(!pnindex || !ReadBlockFromDisk(block, pnindex, Params().GetConsensus(), 0))
             {
                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Can't read block from disk");
             }
@@ -2209,7 +2209,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             if (ConnectedChains.ThisChain().ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE)
             {
                 CBlock block;
-                if (!ReadBlockFromDisk(block, nzIndex, false))
+                if (!ReadBlockFromDisk(block, nzIndex, Params().GetConsensus(), false))
                 {
                     printf("Cannot read block from disk at height %d\n", nzIndex->GetHeight());
                     LogPrintf("Cannot read block from disk at height %d\n", nzIndex->GetHeight());
@@ -3531,7 +3531,7 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
 
                 // add a proof of the export transaction at the notarization height
                 CBlock block;
-                if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], false))
+                if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus(), false))
                 {
                     LogPrintf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
                     printf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
@@ -4242,7 +4242,7 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
     submitblock_StateCatcher sc(block.GetHash());
     RegisterValidationInterface(&sc);
     //printf("submitblock, height=%d, coinbase sequence: %d, scriptSig: %s\n", chainActive.LastTip()->GetHeight()+1, block.vtx[0].vin[0].nSequence, block.vtx[0].vin[0].scriptSig.ToString().c_str());
-    bool fAccepted = ProcessNewBlock(1,chainActive.LastTip()->GetHeight()+1,state, NULL, &block, true, NULL);
+    bool fAccepted = ProcessNewBlock(1, chainActive.LastTip()->GetHeight()+1, state, Params(), NULL, &block, true, NULL);
     UnregisterValidationInterface(&sc);
     if (fBlockPresent)
     {
@@ -4384,7 +4384,7 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
             if (block.hashPrevBlock != pindexPrev->GetBlockHash())
                 return "inconclusive-not-best-prevblk";
             CValidationState state;
-            TestBlockValidity(state, block, pindexPrev, false, true);
+            TestBlockValidity(state, Params(), block, pindexPrev, false, true);
             return BIP22ValidationResult(state);
         }
     }
