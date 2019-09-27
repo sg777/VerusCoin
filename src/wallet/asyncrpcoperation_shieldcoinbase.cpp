@@ -253,7 +253,7 @@ bool ShieldToAddress::operator()(const libzcash::SproutPaymentAddress &zaddr) co
 bool ShieldToAddress::operator()(const libzcash::SaplingPaymentAddress &zaddr) const {
     m_op->builder_.SetFee(m_op->fee_);
 
-    // Sending from an R-address, which we don't have an ovk for. Instead,
+    // Sending from an t-address, which we don't have an ovk for. Instead,
     // generate a common one from the HD seed. This ensures the data is
     // recoverable, while keeping it logically separate from the ZIP 32
     // Sapling key hierarchy, which the user might not be using.

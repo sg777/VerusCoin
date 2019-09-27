@@ -404,7 +404,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             expsk = sk.expsk;
             ovk = expsk.full_viewing_key().ovk;
         } else {
-            // Sending from an R-address, which we don't have an ovk for. Instead,
+            // Sending from an t-address, which we don't have an ovk for. Instead,
             // generate a common one from the HD seed. This ensures the data is
             // recoverable, while keeping it logically separate from the ZIP 32
             // Sapling key hierarchy, which the user might not be using.
