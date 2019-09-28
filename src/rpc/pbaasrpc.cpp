@@ -1573,6 +1573,13 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid notarization transaction");
     }
 
+    CPBaaSChainDefinition chainDef;
+    int32_t chainDefHeight;
+    if (!GetChainDefinition(pbn.chainID, chainDef, &chainDefHeight))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain notarization");
+    }
+
     // ensure we are still eligible to submit
     // finalize all transactions we can and send the notarization reward, plus all orphaned finalization outputs
     // to the confirmed recipient
@@ -1710,7 +1717,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             CBlockIndex *pindex = NULL;
             uint256 hashBlock;
             CBlock confirmedBlock;
-            CPBaaSChainDefinition chainDef;
 
             CAmount valueIn;
 
@@ -1721,6 +1727,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 CCoinsViewCache view(pcoinsTip);
                 int64_t dummyInterest;
                 valueIn = view.GetValueIn(chainActive.LastTip()->GetHeight(), &dummyInterest, newTx, chainActive.LastTip()->nTime);
+
                 if (!valueIn)
                 {
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, "unable to spend necessary transaction outputs");
@@ -1738,7 +1745,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
 
                     // add all inputs that might provide notary reward and calculate notary reward based on that plus current
                     // notarization input value divided by number of blocks left in billing period, times blocks per notarization
-                    if (pindex && GetChainDefinition(pbn.chainID, chainDef))
+                    if (pindex)
                     {
                         valueIn += AddNewNotarizationRewards(chainDef, notarizationInputs, mnewTx, pindex->GetHeight());
                     }
@@ -1772,29 +1779,31 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             }
 
             // minimum amount must go to main thread and finalization, then divide what is left among blocks in the billing period
-            uint64_t blocksLeft = chainDef.billingPeriod - (confirmedPBN.notarizationHeight % chainDef.billingPeriod);
+            uint64_t blocksLeft = chainDef.billingPeriod - ((confirmedPBN.notarizationHeight - chainDef.startBlock) % chainDef.billingPeriod);
             CAmount valueOut = 0;
+            CAmount notaryValueOut;
 
-            if (valueIn > (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2) && confirmedInput != -1)
+            if (valueIn > (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1))
             {
-                if (valueIn < (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1)))
+                if (confirmedInput != -1)
                 {
-                    valueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1);
+                    if (valueIn < (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1)))
+                    {
+                        valueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1);
+                    }
+                    else
+                    {
+                        valueOut = (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1))) / blocksLeft;
+                    }
                 }
-                else
-                {
-                    valueOut = (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (valueIn - CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2)) / blocksLeft;
-                }
+                notaryValueOut = valueIn - ((CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1) + valueOut);
             }
             else
             {
-                valueOut = 0;
+                notaryValueOut = 0;
             }
-            
 
-            CAmount notaryValueOut;
-
-            if (valueOut >= (PBAAS_MINNOTARIZATIONOUTPUT << 1))
+            if (notaryValueOut >= (PBAAS_MINNOTARIZATIONOUTPUT << 1))
             {
                 // pay the confirmed notary with
                 // notarization reward for this billing period / remaining blocks in the billing period * min blocks in notarization
@@ -1807,8 +1816,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 // send:
                 // 66% of output to notary address
                 // 33% of output to primary address of block reward
-                notaryValueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE + valueOut);
-
                 auto insertIt = mnewTx.vout.begin() + (finalizationIdx + 1);
                 if (valueOut)
                 {
@@ -1820,9 +1827,8 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             }
             else
             {
+                notaryValueOut += valueOut;
                 valueOut = 0;
-                notaryValueOut = 0;
-                mnewTx.vout[finalizationIdx].nValue = valueIn;
             }
             
             if ((notaryValueOut + valueOut + CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE) > valueIn)
