@@ -985,7 +985,7 @@ UniValue minerids(const UniValue& params, bool fHelp)
                 kmdaddress.resize(m);
                 ptr = (char *)kmdaddress.data();
                 memcpy(ptr,kmdaddr,m);
-                item.push_back(Pair("VRSCaddress", kmdaddress));
+                item.push_back(Pair("KMDaddress", kmdaddress));
 
                 item.push_back(Pair("pubkey", hex));
                 item.push_back(Pair("blocks", tally[i]));
@@ -1047,7 +1047,7 @@ UniValue notaries(const UniValue& params, bool fHelp)
             kmdaddress.resize(m);
             ptr = (char *)kmdaddress.data();
             memcpy(ptr,kmdaddr,m);
-            item.push_back(Pair("VRSCaddress", kmdaddress));
+            item.push_back(Pair("KMDaddress", kmdaddress));
             a.push_back(item);
         }
     }
