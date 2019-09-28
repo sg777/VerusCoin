@@ -5,8 +5,6 @@ $(package)_file_name_linux=rust-$($(package)_version)-x86_64-unknown-linux-gnu.t
 $(package)_sha256_hash_linux=e024698320d76b74daf0e6e71be3681a1e7923122e3ebd03673fcac3ecc23810
 $(package)_file_name_darwin=rust-$($(package)_version)-x86_64-apple-darwin.tar.gz
 $(package)_sha256_hash_darwin=f0dfba507192f9b5c330b5984ba71d57d434475f3d62bd44a39201e36fa76304
-$(package)_file_name_mingw32=rust-$($(package)_version)-x86_64-pc-windows-gnu.tar.gz
-$(package)_sha256_hash_mingw32=358e1435347c67dbf33aa9cad6fe501a833d6633ed5d5aa1863d5dffa0349be9
 
 # Mapping from GCC canonical hosts to Rust targets
 # If a mapping is not present, we assume they are identical

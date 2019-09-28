@@ -17,8 +17,8 @@
 //! These need to be macros, as clientversion.cpp's and bitcoin*-res.rc's voodoo requires it
 #define CLIENT_VERSION_MAJOR 2
 #define CLIENT_VERSION_MINOR 0
-#define CLIENT_VERSION_REVISION 15
-#define CLIENT_VERSION_BUILD 26
+#define CLIENT_VERSION_REVISION 7
+#define CLIENT_VERSION_BUILD 53
 
 //! Set to true for release, false for prerelease or test build
 #define CLIENT_VERSION_IS_RELEASE true
@@ -53,10 +53,10 @@
 #include <vector>
 
 static const int CLIENT_VERSION =
-                           1000000 * CLIENT_VERSION_MAJOR
-                         +   10000 * CLIENT_VERSION_MINOR
-                         +     100 * CLIENT_VERSION_REVISION
-                         +       1 * CLIENT_VERSION_BUILD;
+        1000000 * CLIENT_VERSION_MAJOR
+        +   10000 * CLIENT_VERSION_MINOR
+        +     100 * CLIENT_VERSION_REVISION
+        +       1 * CLIENT_VERSION_BUILD;
 
 extern const std::string CLIENT_NAME;
 extern const std::string CLIENT_BUILD;

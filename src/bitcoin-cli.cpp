@@ -9,6 +9,7 @@
 #include "rpc/protocol.h"
 #include "util.h"
 #include "utilstrencodings.h"
+#include "version.h"
 
 #include <boost/filesystem/operations.hpp>
 #include <stdio.h>
@@ -100,12 +101,11 @@ static int AppInitRPC(int argc, char* argv[])
     ParseParameters(argc, argv);
     komodo_args(argv[0]);
     if (argc<2 || mapArgs.count("-?") || mapArgs.count("-h") || mapArgs.count("-help") || mapArgs.count("-version")) {
-        std::string strUsage = _("Komodo RPC client version") + " " + FormatFullVersion() + "\n" + PrivacyInfo();
-        if (!mapArgs.count("-version")) {
-            strUsage += "\n" + _("Usage:") + "\n" +
-                  "  komodo-cli [options] <command> [params]  " + _("Send command to Komodo") + "\n" +
-                  "  komodo-cli [options] help                " + _("List commands") + "\n" +
-                  "  komodo-cli [options] help <command>      " + _("Get help for a command") + "\n";
+        std::string strUsage = _("Verus RPC client version") + " " + _(VERUS_VERSION) + "\n" + PrivacyInfo();
+        if (!mapArgs.count("-version")) {      strUsage += "\n" + _("Usage:") + "\n" +
+                  "  verus [options] <command> [params]  " + _("Send command to Komodo") + "\n" +
+                  "  verus [options] help                " + _("List commands") + "\n" +
+                  "  verus [options] help <command>      " + _("Get help for a command") + "\n";
 
             strUsage += "\n" + HelpMessageCli();
         } else {

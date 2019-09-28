@@ -3585,8 +3585,8 @@ UniValue refundfailedlaunch(const UniValue& params, bool fHelp)
             "\nResult:\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("paynotarizationrewards", "\"hextx\"")
-            + HelpExampleRpc("paynotarizationrewards", "\"hextx\"")
+            + HelpExampleCli("refundfailedlaunch", "\"chainid\"")
+            + HelpExampleRpc("refundfailedlaunch", "\"chainid\"")
         );
     }
     CheckPBaaSAPIsValid();
@@ -4339,7 +4339,7 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_METHOD_NOT_FOUND, "Wallet disabled and -mineraddress not set");
         }
 #else
-        throw JSONRPCError(RPC_METHOD_NOT_FOUND, "komodod compiled without wallet and -mineraddress not set");
+        throw JSONRPCError(RPC_METHOD_NOT_FOUND, "verusd compiled without wallet and -mineraddress not set");
 #endif
     }
 
