@@ -4735,7 +4735,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
             "\nArguments:\n"
             "1. fromaddresses         (array, required) A JSON array with addresses.\n"
             "                         The following special strings are accepted inside the array:\n"
-            "                             - \"ANY_RADDR\":   Merge UTXOs from any t-addrs belonging to the wallet.\n"
+            "                             - \"ANY_TADDR\":   Merge UTXOs from any t-addrs belonging to the wallet.\n"
             "                             - \"ANY_SPROUT\":  Merge notes from any Sprout zaddrs belonging to the wallet.\n"
             "                             - \"ANY_SAPLING\": Merge notes from any Sapling zaddrs belonging to the wallet.\n"
             "                         While it is possible to use a variety of different combinations of addresses and the above values,\n"
