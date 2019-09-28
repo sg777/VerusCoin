@@ -470,8 +470,8 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             if (totalAvailableInput < 0)
             {
-                LogPrintf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
-                printf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
+                LogPrintf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, chainDef.name.c_str());
+                printf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, chainDef.name.c_str());
                 return false;
             }
 
@@ -482,7 +482,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             // add a proof of the export transaction at the notarization height
             CBlock block;
-            if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], false))
+            if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus(), false))
             {
                 LogPrintf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[lastConfirmed.notarizationHeight]->GetBlockHash().GetHex().c_str());
                 printf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[lastConfirmed.notarizationHeight]->GetBlockHash().GetHex().c_str());
@@ -1573,6 +1573,13 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid notarization transaction");
     }
 
+    CPBaaSChainDefinition chainDef;
+    int32_t chainDefHeight;
+    if (!GetChainDefinition(pbn.chainID, chainDef, &chainDefHeight))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain notarization");
+    }
+
     // ensure we are still eligible to submit
     // finalize all transactions we can and send the notarization reward, plus all orphaned finalization outputs
     // to the confirmed recipient
@@ -1710,7 +1717,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             CBlockIndex *pindex = NULL;
             uint256 hashBlock;
             CBlock confirmedBlock;
-            CPBaaSChainDefinition chainDef;
 
             CAmount valueIn;
 
@@ -1721,6 +1727,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 CCoinsViewCache view(pcoinsTip);
                 int64_t dummyInterest;
                 valueIn = view.GetValueIn(chainActive.LastTip()->GetHeight(), &dummyInterest, newTx, chainActive.LastTip()->nTime);
+
                 if (!valueIn)
                 {
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, "unable to spend necessary transaction outputs");
@@ -1738,7 +1745,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
 
                     // add all inputs that might provide notary reward and calculate notary reward based on that plus current
                     // notarization input value divided by number of blocks left in billing period, times blocks per notarization
-                    if (pindex && GetChainDefinition(pbn.chainID, chainDef))
+                    if (pindex)
                     {
                         valueIn += AddNewNotarizationRewards(chainDef, notarizationInputs, mnewTx, pindex->GetHeight());
                     }
@@ -1759,7 +1766,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             if (confirmedInput != -1)
             {
                 LOCK(cs_main);
-                if (pindex && ReadBlockFromDisk(confirmedBlock, pindex, false) && 
+                if (pindex && ReadBlockFromDisk(confirmedBlock, pindex, Params().GetConsensus()) && 
                     (confirmedPBN = CPBaaSNotarization(confirmedTx)).IsValid() &&
                     ExtractDestination(confirmedBlock.vtx[0].vout[0].scriptPubKey, minerRecipient, false))
                 {
@@ -1772,24 +1779,31 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             }
 
             // minimum amount must go to main thread and finalization, then divide what is left among blocks in the billing period
-            uint64_t blocksLeft = chainDef.billingPeriod - (confirmedPBN.notarizationHeight % chainDef.billingPeriod);
+            uint64_t blocksLeft = chainDef.billingPeriod - ((confirmedPBN.notarizationHeight - chainDef.startBlock) % chainDef.billingPeriod);
             CAmount valueOut = 0;
-
-            if (confirmedInput != -1)
-            {
-                if (blocksLeft <= CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED)
-                {
-                    valueOut = valueIn - CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2;
-                }
-                else
-                {
-                    valueOut = (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (valueIn - CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2)) / blocksLeft;
-                }
-            }
-
             CAmount notaryValueOut;
 
-            if (valueOut >= PBAAS_MINNOTARIZATIONOUTPUT)
+            if (valueIn > (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1))
+            {
+                if (confirmedInput != -1)
+                {
+                    if (valueIn < (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1)))
+                    {
+                        valueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1);
+                    }
+                    else
+                    {
+                        valueOut = (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1))) / blocksLeft;
+                    }
+                }
+                notaryValueOut = valueIn - ((CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1) + valueOut);
+            }
+            else
+            {
+                notaryValueOut = 0;
+            }
+
+            if (notaryValueOut >= (PBAAS_MINNOTARIZATIONOUTPUT << 1))
             {
                 // pay the confirmed notary with
                 // notarization reward for this billing period / remaining blocks in the billing period * min blocks in notarization
@@ -1802,23 +1816,26 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 // send:
                 // 66% of output to notary address
                 // 33% of output to primary address of block reward
-                notaryValueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE + valueOut);
-
                 auto insertIt = mnewTx.vout.begin() + (finalizationIdx + 1);
-                CAmount minerOutput = valueOut / 3;
-                CAmount notaryOutput = valueOut / 3 * 2;
-                mnewTx.vout.insert(insertIt, CTxOut(minerOutput, GetScriptForDestination(minerRecipient)));
-                mnewTx.vout.insert(insertIt, CTxOut(notaryOutput, GetScriptForDestination(notaryRecipient)));
+                if (valueOut)
+                {
+                    CAmount minerOutput = valueOut / 3;
+                    CAmount notaryOutput = valueOut / 3 * 2;
+                    mnewTx.vout.insert(insertIt, CTxOut(minerOutput, GetScriptForDestination(minerRecipient)));
+                    mnewTx.vout.insert(insertIt, CTxOut(notaryOutput, GetScriptForDestination(notaryRecipient)));
+                }
             }
             else
             {
+                notaryValueOut += valueOut;
                 valueOut = 0;
-                notaryValueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE * 2);
             }
             
             if ((notaryValueOut + valueOut + CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE) > valueIn)
             {
-                throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Not enough funds to notarize");
+                notaryValueOut = valueIn;
+                printf("Not enough funds to notarize %s\n", chainDef.name.c_str());
+                LogPrintf("Not enough funds to notarize %s\n", chainDef.name.c_str());
             }
 
             CCcontract_info CC;
@@ -1877,7 +1894,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             if (!accepted) {
                 if (state.GetRejectReason() != "")
                 {
-                    printf("Cannot enter notarization into mempool %s\n", state.GetRejectReason().c_str());
+                    printf("Cannot enter notarization into mempool for chain %s, %s\n", chainDef.name.c_str(), state.GetRejectReason().c_str());
                 }
                 if (state.IsInvalid()) {
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, strprintf("%i: %s", state.GetRejectCode(), state.GetRejectReason()));
@@ -2050,7 +2067,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             CBlock block;
             CBlockIndex *pnindex = mapBlockIndex.find(blkHash)->second;
 
-            if(!pnindex || !ReadBlockFromDisk(block, pnindex, 0))
+            if(!pnindex || !ReadBlockFromDisk(block, pnindex, Params().GetConsensus(), 0))
             {
                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Can't read block from disk");
             }
@@ -2198,7 +2215,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             if (ConnectedChains.ThisChain().ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE)
             {
                 CBlock block;
-                if (!ReadBlockFromDisk(block, nzIndex, false))
+                if (!ReadBlockFromDisk(block, nzIndex, Params().GetConsensus(), false))
                 {
                     printf("Cannot read block from disk at height %d\n", nzIndex->GetHeight());
                     LogPrintf("Cannot read block from disk at height %d\n", nzIndex->GetHeight());
@@ -2370,7 +2387,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, 
     }
 
     uint32_t Flags = isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID;
-    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, isReserve ? preconvertedAmount : 0, Flags);
+    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, preconvertedAmount, Flags);
 
     CAmount preconvertedNative = currencyState.ReserveToNative(preconvertedAmount, chainDef.conversion);
     currencyState.InitialSupply = preconvertedNative;
@@ -2531,7 +2548,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
     if (isVerusActive)
     {
-        if (chainID == thisChainID || toreserve)
+        if (chainID == thisChainID)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send reserve or convert, except on a PBaaS fractional reserve chain. Use sendtoaddress or z_sendmany.");
         }
@@ -2615,7 +2632,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
             if (currencyState.ReserveIn + amount > chainDef.maxpreconvert)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " contribution maximum does not allow this conversion. Maximum participation remaining is " + ValueFromAmount(chainDef.maxpreconvert - currencyState.ReserveIn).get_str());
+                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " contribution maximum does not allow this conversion. Maximum participation remaining is " + ValueFromAmount(chainDef.maxpreconvert - currencyState.ReserveIn).write());
             }
         }
         else if (flags & CReserveTransfer::CONVERT && !subtractFee)
@@ -2631,7 +2648,7 @@ UniValue sendreserve(const UniValue& params, bool fHelp)
 
         if (amount <= (transferFee << 1))
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must send more than twice the cost of the fee. Fee for this transaction is " + ValueFromAmount(transferFee).get_str());
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must send more than twice the cost of the fee. Fee for this transaction is " + ValueFromAmount(transferFee).write());
         }
 
         transferFee = CReserveTransfer::CalculateFee(flags, amount, chainDef);
@@ -3520,7 +3537,7 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
 
                 // add a proof of the export transaction at the notarization height
                 CBlock block;
-                if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], false))
+                if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus(), false))
                 {
                     LogPrintf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
                     printf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
@@ -4231,7 +4248,7 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
     submitblock_StateCatcher sc(block.GetHash());
     RegisterValidationInterface(&sc);
     //printf("submitblock, height=%d, coinbase sequence: %d, scriptSig: %s\n", chainActive.LastTip()->GetHeight()+1, block.vtx[0].vin[0].nSequence, block.vtx[0].vin[0].scriptSig.ToString().c_str());
-    bool fAccepted = ProcessNewBlock(1,chainActive.LastTip()->GetHeight()+1,state, NULL, &block, true, NULL);
+    bool fAccepted = ProcessNewBlock(1, chainActive.LastTip()->GetHeight()+1, state, Params(), NULL, &block, true, NULL);
     UnregisterValidationInterface(&sc);
     if (fBlockPresent)
     {
@@ -4373,7 +4390,7 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
             if (block.hashPrevBlock != pindexPrev->GetBlockHash())
                 return "inconclusive-not-best-prevblk";
             CValidationState state;
-            TestBlockValidity(state, block, pindexPrev, false, true);
+            TestBlockValidity(state, Params(), block, pindexPrev, false, true);
             return BIP22ValidationResult(state);
         }
     }

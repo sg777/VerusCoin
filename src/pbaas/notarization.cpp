@@ -580,10 +580,10 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
         {
             compressedChainObjs.push_back(chainObjs[j]);
         }
-        // at block one, we use the compact target of the main chain divided by 8 as the default difficulty. if a chain can interest
-        // at least 1/8th of the mining public, it launches at speed, otherwise slower or faster and adjusts
         if (height == 1)
         {
+            // at block one, we use the compact target of the main chain divided by 8 as the default difficulty. if a chain can interest
+            // at least 1/8th of the mining public, it launches at speed, otherwise slower or faster and adjusts
             CChainParams &params = Params(CBaseChainParams::MAIN);
 
             // TODO:PBAAS uncomment this and add a block 1 check that establishes the powAlternate and validity of block 1
@@ -868,6 +868,53 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
                             // we don't need proofs, since all objects are on this chain
                             case CHAINOBJ_PROOF:
                             {
+                            /*
+                                // if bock headers are merge mined, keep header refs, not headers
+
+                                // create and store the notarization proof of chain
+                                vector<CBaseChainObject *> chainObjects;
+                                COpRetProof orp;
+
+                                // first, provide the latest block header in the opret...
+                                CBlockHeader bh = chainActive[proofheight]->GetBlockHeader();
+                                CChainObject<CBlockHeader> latestHeaderObj(CHAINOBJ_HEADER, bh);
+                                chainObjects.push_back(&latestHeaderObj);
+                                orp.AddObject(CHAINOBJ_HEADER, chainActive[proofheight]->GetBlockHash());
+
+                                // prove it with the latest MMR root
+                                CChainObject<CMerkleBranch> latestHeaderProof(CHAINOBJ_PROOF, blockProof);
+                                chainObjects.push_back(&latestHeaderProof);
+                                orp.AddObject(bh, chainActive[proofheight]->GetBlockHash());
+
+                                // include the last notarization tx, minus its opret in the new notarization's opret
+                                CMutableTransaction mtx(tx);
+                                if (mtx.vout[mtx.vout.size() - 1].scriptPubKey.IsOpReturn())
+                                {
+                                    mtx.vout.pop_back();
+                                }
+                                CTransaction strippedTx(mtx);
+
+                                // get a proof of the prior notarizaton from the MMR root of this notarization
+                                CMerkleBranch txProof(txIndex, block.GetMerkleBranch(txIndex));
+                                chainActive.GetMerkleProof(mmv, txProof, prevHeight);
+
+                                // add the cross transaction from this chain to return
+                                CChainObject<CTransaction> strippedTxObj(CHAINOBJ_TRANSACTION, strippedTx);
+                                chainObjects.push_back(&strippedTxObj);
+                                orp.AddObject(CHAINOBJ_TRANSACTION, tx.GetHash());
+
+                                // add proof of the transaction
+                                CChainObject<CMerkleBranch> txProofObj(CHAINOBJ_PROOF, txProof);
+                                chainObjects.push_back(&txProofObj);
+                                orp.AddObject(CHAINOBJ_PROOF, txHash);
+
+                                // add the MMR block nodes between the last notarization and this one, containing root that combines merkle, block, and compact power hashes
+                                CPriorBlocksCommitment priorBlocks;
+                                int numPriorBlocks = proofheight - ourLast.crossHeight;
+
+                                if (numPriorBlocks > PBAAS_MAXPRIORBLOCKS || numPriorBlocks > (proofheight - 1))
+                                    numPriorBlocks = PBAAS_MAXPRIORBLOCKS > (proofheight - 1) ? ((proofheight - 1) < 1 ? 0 : (proofheight - 1)) : PBAAS_MAXPRIORBLOCKS;
+                            */
                                 // prove either a transaction or header, whichever is before us in the objects
                                 uint32_t objType = chainObjs.back()->objectType;
                                 if (objType == CHAINOBJ_HEADER_REF || objType == CHAINOBJ_HEADER)

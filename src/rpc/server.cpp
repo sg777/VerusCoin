@@ -1,7 +1,7 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #include "rpc/server.h"
 
@@ -243,7 +243,7 @@ extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 #ifdef ENABLE_WALLET
 void GenerateBitcoins(bool b, CWallet *pw, int t);
 #else
-void GenerateBitcoins(bool b, CWallet *pw);
+void GenerateBitcoins(bool b, int t);
 #endif
 
 
@@ -257,7 +257,7 @@ UniValue stop(const UniValue& params, bool fHelp)
             "\nStop Komodo server.");
 
 #ifdef ENABLE_WALLET
-    GenerateBitcoins(false, pwalletMain, 0);
+    GenerateBitcoins(false, NULL, 0);
 #else
     GenerateBitcoins(false, 0);
 #endif

@@ -1,7 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #if defined(HAVE_CONFIG_H)
 #include "config/bitcoin-config.h"
@@ -744,11 +744,19 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
 const boost::filesystem::path GetDataDir(std::string chainName)
 {
     namespace fs = boost::filesystem;
+    fs::path path;
 
-    fs::path path = GetDefaultDataDir(chainName);
+    if ((chainName == "VRSC" || chainName == "VRSCTEST") && mapArgs.count("-datadir")) {
+        path = fs::system_complete(mapArgs["-datadir"]);
+        if (!fs::is_directory(path)) {
+            path = GetDefaultDataDir(chainName);
+        }
+    } else
+    {
+        path = GetDefaultDataDir(chainName);
+    }
     return path;
 }
-
 void ClearDatadirCache()
 {
     pathCached = boost::filesystem::path();
@@ -1133,7 +1141,7 @@ std::string LicenseInfo()
            "\n" +
            FormatParagraph(_("This is experimental software.")) + "\n" +
            "\n" +
-           FormatParagraph(_("Distributed under the MIT software license, see the accompanying file COPYING or <http://www.opensource.org/licenses/mit-license.php>.")) + "\n" +
+           FormatParagraph(_("Distributed under the MIT software license, see the accompanying file COPYING or <https://www.opensource.org/licenses/mit-license.php>.")) + "\n" +
            "\n" +
            FormatParagraph(_("This product includes software developed by the OpenSSL Project for use in the OpenSSL Toolkit <https://www.openssl.org/> and cryptographic software written by Eric Young.")) +
            "\n";

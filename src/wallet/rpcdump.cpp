@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #include "chain.h"
 #include "key_io.h"
@@ -313,7 +313,7 @@ UniValue importwallet_impl(const UniValue& params, bool fHelp, bool fImportZKeys
                 continue;
             } else {
                 LogPrint("zrpc", "Importing detected an error: invalid spending key. Trying as a transparent key...\n");
-                // Not a valid spending key, so carry on and see if it's a Verus style R-address.
+                // Not a valid spending key, so carry on and see if it's a Verus style t-address.
             }
         }
 
@@ -379,11 +379,11 @@ UniValue dumpprivkey(const UniValue& params, bool fHelp)
 
     if (fHelp || params.size() != 1)
         throw runtime_error(
-            "dumpprivkey \"R-addr\"\n"
-            "\nReveals the private key corresponding to 'R-addr'.\n"
+            "dumpprivkey \"t-addr\"\n"
+            "\nReveals the private key corresponding to 't-addr'.\n"
             "Then the importprivkey can be used with this output\n"
             "\nArguments:\n"
-            "1. \"R-addr\"   (string, required) The transparent address for the private key\n"
+            "1. \"t-addr\"   (string, required) The transparent address for the private key\n"
             "\nResult:\n"
             "\"key\"         (string) The private key\n"
             "\nExamples:\n"

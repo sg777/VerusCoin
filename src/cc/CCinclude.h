@@ -95,7 +95,7 @@ struct oracleprice_info
 #ifdef ENABLE_WALLET
 extern CWallet* pwalletMain;
 #endif
-bool GetAddressUnspent(uint160 addressHash, int type,std::vector<std::pair<CAddressUnspentKey,CAddressUnspentValue> > &unspentOutputs);
+bool GetAddressUnspent(const uint160& addressHash, int type, std::vector<CAddressUnspentDbEntry>& unspentOutputs);
 
 static const uint256 zeroid;
 bool myGetTransaction(const uint256 &hash, CTransaction &txOut, uint256 &hashBlock);

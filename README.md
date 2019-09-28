@@ -1,4 +1,4 @@
-## VerusCoin version 0.5.8
+## VerusCoin version 0.5.9
 
 Arguably the world's most advanced technology, zero knowledge privacy-centric blockchain, Verus Coin brings Sapling performance and zero knowledge features to an intelligent system with interchain smart contracts and a completely original, combined proof of stake/proof of work consensus algorithm that solves the nothing at stake problem. With this and its approach towards CPU mining and ASICs, Verus Coin strives to be one of the most naturally decentralizing and attack resistant blockchains in existence.
 
@@ -109,7 +109,7 @@ cd VerusCoin
 #This can take some time.
 ```
 
-**VerusCoin is experimental and a work-in-progress.** Use at your own risk.
+**The VerusCoin project and protocol is experimental and a work-in-progress.** Use this source code and software at your own risk.
 
 #To view all commands
 ./src/verus help

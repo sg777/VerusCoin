@@ -1,7 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #include "miner.h"
 #ifdef ENABLE_MINING
@@ -31,9 +31,7 @@
 #include "ui_interface.h"
 #include "util.h"
 #include "utilmoneystr.h"
-#ifdef ENABLE_WALLET
-#include "wallet/wallet.h"
-#endif
+#include "validationinterface.h"
 
 #include "zcash/Address.hpp"
 #include "transaction_builder.h"
@@ -239,7 +237,7 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
     }
 }
 
-CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount, bool isStake)
+CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _scriptPubKeyIn, int32_t gpucount, bool isStake)
 {
     CScript scriptPubKeyIn(_scriptPubKeyIn);
 
@@ -271,7 +269,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
     CPubKey pk = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), firstDestination);
 
-    uint64_t deposits; int32_t isrealtime,kmdheight; uint32_t blocktime; const CChainParams& chainparams = Params();
+    uint64_t deposits; int32_t isrealtime,kmdheight; uint32_t blocktime;
     //fprintf(stderr,"create new block\n");
     // Create new block
     if ( gpucount < 0 )
@@ -298,7 +296,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
     // -regtest only: allow overriding block.nVersion with
     // -blockversion=N to test forking scenarios
-    if (Params().MineBlocksOnDemand())
+    if (chainparams.MineBlocksOnDemand())
         pblock->nVersion = GetArg("-blockversion", pblock->nVersion);
     
     // Add dummy coinbase tx placeholder as first transaction
@@ -345,7 +343,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         const int nHeight = pindexPrev->GetHeight() + 1;
         const Consensus::Params &consensusParams = chainparams.GetConsensus();
         uint32_t consensusBranchId = CurrentEpochBranchId(nHeight, consensusParams);
-        bool sapling = NetworkUpgradeActive(nHeight, consensusParams, Consensus::UPGRADE_SAPLING);
+        bool sapling = consensusParams.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_SAPLING);
 
         const int64_t nMedianTimePast = pindexPrev->GetMedianTimePast();
         uint32_t proposedTime = GetAdjustedTime();
@@ -389,7 +387,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         {
             // get the block and see if there is a cheat candidate for the stake tx
             CBlock b;
-            if (!(fHavePruned && !(ppast->nStatus & BLOCK_HAVE_DATA) && ppast->nTx > 0) && ReadBlockFromDisk(b, ppast, 1))
+            if (!(fHavePruned && !(ppast->nStatus & BLOCK_HAVE_DATA) && ppast->nTx > 0) && ReadBlockFromDisk(b, ppast, chainparams.GetConsensus(), 1))
             {
                 CTransaction &stakeTx = b.vtx[b.vtx.size() - 1];
 
@@ -427,7 +425,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
                         if (hasInput)
                         {
-                            // this is a send from an R-address to a sapling address, which we don't have an ovk for.
+                            // this is a send from a t-address to a sapling address, which we don't have an ovk for.
                             // Instead, generate a common one from the HD seed. This ensures the data is
                             // recoverable, at least for us, while keeping it logically separate from the ZIP 32
                             // Sapling key hierarchy, which the user might not be using.
@@ -441,7 +439,15 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
                                 tb.AddOpRet(mtx.vout[mtx.vout.size() - 1].scriptPubKey);
 
-                                cheatSpend = tb.Build();
+                                TransactionBuilderResult buildResult(tb.Build());
+                                if (!buildResult.IsError() && buildResult.IsTx())
+                                {
+                                    cheatSpend = buildResult.GetTxOrThrow();
+                                }
+                                else
+                                {
+                                    LogPrintf("Error building cheat catcher transaction: %s\n", buildResult.GetError().c_str());
+                                }
                             }
                         }
                     }
@@ -748,8 +754,6 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
                 // import - only spendable for reserve currency or currency with preconversion to allow import of conversions, this output will include
                 // all pre-converted coins and all pre-conversion fees, denominated in Verus reserve currency
-                // chain definition - always
-                // make the chain definition output
                 vKeys.clear();
                 cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
 
@@ -774,6 +778,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
                 exportThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, 0, pkCC, vKeys, 
                                                  CCrossChainExport(ConnectedChains.NotaryChain().GetChainID(), 0, 0, 0));
+
                 coinbaseTx.vout.push_back(exportThreadOut);
             }
             else
@@ -890,7 +895,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
                 if (lastConfirmed.vout.size())
                 {
                     // we need to find the last unspent import transaction
-                    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+                    std::vector<CAddressUnspentDbEntry> unspentOutputs;
 
                     bool found = false;
 
@@ -1788,7 +1793,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
         {
             CValidationState state;
             //fprintf(stderr,"check validity\n");
-            if ( !TestBlockValidity(state, *pblock, pindexPrev, false, false)) // invokes CC checks
+            if ( !TestBlockValidity(state, chainparams, *pblock, pindexPrev, false, false)) // invokes CC checks
             {
                 throw std::runtime_error("CreateNewBlock(): TestBlockValidity failed");
             }
@@ -1799,7 +1804,7 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
     // setup the header and buid the Merkle tree
     unsigned int extraNonce;
-    IncrementExtraNonce(pblock, pindexPrev, extraNonce);
+    IncrementExtraNonce(pblock, pindexPrev, extraNonce, true);
 
     return pblocktemplate.release();
 }
@@ -1854,6 +1859,30 @@ CBlockTemplate* CreateNewBlock(const CScript& _scriptPubKeyIn, int32_t gpucount,
 
 #ifdef ENABLE_MINING
 
+class MinerAddressScript : public CReserveScript
+{
+    // CReserveScript requires implementing this function, so that if an
+    // internal (not-visible) wallet address is used, the wallet can mark it as
+    // important when a block is mined (so it then appears to the user).
+    // If -mineraddress is set, the user already knows about and is managing the
+    // address, so we don't need to do anything here.
+    void KeepScript() {}
+};
+
+void GetScriptForMinerAddress(boost::shared_ptr<CReserveScript> &script)
+{
+    CTxDestination addr = DecodeDestination(GetArg("-mineraddress", ""));
+    if (!IsValidDestination(addr)) {
+        return;
+    }
+
+    boost::shared_ptr<MinerAddressScript> mAddr(new MinerAddressScript());
+    CKeyID keyID = boost::get<CKeyID>(addr);
+
+    script = mAddr;
+    script->reserveScript = CScript() << OP_DUP << OP_HASH160 << ToByteVector(keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
+}
+
 #ifdef ENABLE_WALLET
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -1889,10 +1918,10 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
             //scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
         }
     }
-    return CreateNewBlock(scriptPubKey, gpucount, isStake);
+    return CreateNewBlock(Params(), scriptPubKey, gpucount, isStake);
 }
 
-void komodo_broadcast(CBlock *pblock,int32_t limit)
+void komodo_broadcast(const CBlock *pblock,int32_t limit)
 {
     int32_t n = 1;
     //fprintf(stderr,"broadcast new block t.%u\n",(uint32_t)time(NULL));
@@ -1961,7 +1990,7 @@ static bool ProcessBlockFound(CBlock* pblock)
 
     // Process this block the same as if we had received it from another node
     CValidationState state;
-    if (!ProcessNewBlock(1,chainActive.LastTip()->GetHeight()+1,state, NULL, pblock, true, NULL))
+    if (!ProcessNewBlock(1, chainActive.LastTip()->GetHeight()+1, state, Params(), NULL, pblock, true, NULL))
         return error("VerusMiner: ProcessNewBlock, block not accepted");
     
     TrackMinedBlock(pblock->GetHash());
@@ -2725,17 +2754,14 @@ void static BitcoinMiner_noeq()
     miningTimer.stop();
 }
 
-#ifdef ENABLE_WALLET
 void static BitcoinMiner(CWallet *pwallet)
-#else
-void static BitcoinMiner()
-#endif
 {
     LogPrintf("KomodoMiner started\n");
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
     RenameThread("komodo-miner");
+
     const CChainParams& chainparams = Params();
-    
+
 #ifdef ENABLE_WALLET
     // Each thread has its own key
     CReserveKey reservekey(pwallet);
@@ -2744,8 +2770,8 @@ void static BitcoinMiner()
     // Each thread has its own counter
     unsigned int nExtraNonce = 0;
     
-    unsigned int n = chainparams.EquihashN();
-    unsigned int k = chainparams.EquihashK();
+    unsigned int n = chainparams.GetConsensus().EquihashN();
+    unsigned int k = chainparams.GetConsensus().EquihashK();
     uint8_t *script; uint64_t total,checktoshis; int32_t i,j,gpucount=KOMODO_MAXGPUCOUNT,notaryid = -1;
     while ( (ASSETCHAIN_INIT == 0 || KOMODO_INITDONE == 0) )
     {
@@ -2793,7 +2819,7 @@ void static BitcoinMiner()
                         //LOCK(cs_vNodes);
                         fvNodesEmpty = vNodes.empty();
                     }
-                    if (!fvNodesEmpty )//&& !IsInitialBlockDownload())
+                    if (!fvNodesEmpty && !IsInitialBlockDownload(chainparams))
                         break;
                     MilliSleep(15000);
                     //fprintf(stderr,"fvNodesEmpty %d IsInitialBlockDownload(%s) %d\n",(int32_t)fvNodesEmpty,ASSETCHAINS_SYMBOL,(int32_t)IsInitialBlockDownload());
@@ -3028,7 +3054,7 @@ void static BitcoinMiner()
                         fprintf(stderr," mined %s block %d!\n",ASSETCHAINS_SYMBOL,Mining_height);
                     }
                     CValidationState state;
-                    if ( !TestBlockValidity(state,B, chainActive.LastTip(), true, false))
+                    if ( !TestBlockValidity(state, Params(), B, chainActive.LastTip(), true, false))
                     {
                         h = UintToArith256(B.GetHash());
                         for (z=31; z>=0; z--)
@@ -3188,7 +3214,8 @@ void static BitcoinMiner()
         miningTimer.stop();
         c.disconnect();
     }
-    
+
+
 #ifdef ENABLE_WALLET
     void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads)
 #else
@@ -3245,6 +3272,7 @@ void static BitcoinMiner()
         if (minerThreads != NULL)
         {
             minerThreads->interrupt_all();
+            minerThreads->join_all();
             delete minerThreads;
             minerThreads = NULL;
         }
