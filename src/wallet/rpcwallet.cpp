@@ -807,7 +807,7 @@ UniValue signmessage(const UniValue& params, bool fHelp)
     if (fHelp || params.size() != 2)
         throw runtime_error(
             "signmessage \"t-addr\" \"message\"\n"
-            "\nSign a message with the private key of an t-addr"
+            "\nSign a message with the private key of a t-addr"
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"
             "1. \"t-addr\"  (string, required) The transparent address to use for the private key.\n"
@@ -4742,7 +4742,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
             "                         it is not possible to send funds from both sprout and sapling addresses simultaneously. If a special\n"
             "                         string is given, any given addresses of that type will be counted as duplicates and cause an error.\n"
             "    [\n"
-            "      \"address\"          (string) Can be an t-addr or a zaddr\n"
+            "      \"address\"          (string) Can be a t-addr or a zaddr\n"
             "      ,...\n"
             "    ]\n"
             "2. \"toaddress\"           (string, required) The t-addr or zaddr to send the funds to.\n"
