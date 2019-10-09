@@ -24,17 +24,15 @@
 #include "cc/CCinclude.h"
 #include "cc/eval.h"
 #include "pbaas/notarization.h"
+#include "pbaas/identity.h"
 
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
 #endif
 
 #include "komodo_defs.h"
-
 #include <stdint.h>
-
 #include <boost/assign/list_of.hpp>
-
 #include <univalue.h>
 
 using namespace std;
@@ -223,6 +221,29 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 }
                 break;
             }
+
+            case EVAL_IDENTITY_PRIMARY:
+            {
+                CIdentity identity;
+
+                if (p.vData.size() && (identity = CIdentity(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("identityprimary", identity.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("identityprimary", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_IDENTITY_REVOKE:
+                out.push_back(Pair("identityrevoke", ""));
+                break;
+
+            case EVAL_IDENTITY_RECOVER:
+                out.push_back(Pair("identityrecover", ""));
+                break;
 
             case EVAL_STAKEGUARD:
                 out.push_back(Pair("stakeguard", ""));

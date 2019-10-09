@@ -60,7 +60,7 @@ class COptCCParams
 
         COptCCParams(std::vector<unsigned char> &vch);
 
-        bool IsValid() const { return version != 0; }
+        bool IsValid() const { return version == VERSION_V1 || version == VERSION_V2 || version == VERSION_V3; }
 
         std::vector<unsigned char> AsVector() const;
 };

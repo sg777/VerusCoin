@@ -216,6 +216,7 @@ BITCOIN_CORE_H = \
   netbase.h \
   noui.h \
   pbaas/crosschainrpc.h \
+  pbaas/identity.h \
   pbaas/notarization.h \
   pbaas/pbaas.h \
   pbaas/reserves.h \
@@ -353,6 +354,7 @@ libbitcoin_server_a_SOURCES = \
   noui.cpp \
   notarisationdb.cpp \
   pbaas/crosschainrpc.cpp \
+  pbaas/identity.cpp \
   pbaas/notarization.cpp \
   pbaas/pbaas.cpp \
   pbaas/reserves.cpp \

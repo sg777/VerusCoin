@@ -72,7 +72,7 @@ UniValue RPCCall(const std::string& strMethod,
 UniValue RPCCallRoot(const std::string& strMethod, const UniValue& params, int timeout=DEFAULT_RPC_TIMEOUT);
 
 template <typename SERIALIZABLE>
-std::vector<unsigned char> AsVector(SERIALIZABLE &obj)
+std::vector<unsigned char> AsVector(const SERIALIZABLE &obj)
 {
     CDataStream s = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
     s << obj;
