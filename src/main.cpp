@@ -2221,7 +2221,7 @@ bool ReadBlockFromDisk(int32_t height, CBlock& block, const CDiskBlockPos& pos, 
         return error("%s: Deserialize or I/O error - %s at %s", __func__, e.what(), pos.ToString());
     }
     // Check the header
-    if ( checkPOW != 0 )
+    if ( height != 0 && checkPOW != 0 )
     {
         komodo_block2pubkey33(pubkey33,(CBlock *)&block);
         if (!(CheckEquihashSolution(&block, consensusParams) && CheckProofOfWork(block, pubkey33, height, consensusParams)))
@@ -2232,6 +2232,10 @@ bool ReadBlockFromDisk(int32_t height, CBlock& block, const CDiskBlockPos& pos, 
             
             return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
         }
+    }
+    else if (height == 0 && block.GetHash() !=  consensusParams.hashGenesisBlock)
+    {
+        return error("ReadBlockFromDisk: Invalid block 0 genesis hash %s", block.GetHash().GetHex());
     }
     return true;
 }

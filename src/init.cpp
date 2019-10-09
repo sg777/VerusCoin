@@ -1568,17 +1568,19 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             fReindex = true;
         }
 
-        fTimeStampIndex = GetBoolArg("-timestampindex", DEFAULT_TIMESTAMPINDEX);
         pblocktree->ReadFlag("timestampindex", checkval);
+        bool defaultState = DEFAULT_TIMESTAMPINDEX ? DEFAULT_TIMESTAMPINDEX : checkval;
+        fTimeStampIndex = GetBoolArg("-timestampindex", defaultState);
         if (checkval != fTimeStampIndex)
         {
-            pblocktree->WriteFlag("timestampindex", fInsightExplorer);
+            pblocktree->WriteFlag("timestampindex", fTimeStampIndex);
             fprintf(stderr,"set timestamp index, will reindex. sorry will take a while.\n");
             fReindex = true;
         }
 
-        fInsightExplorer = GetBoolArg("-insightexplorer", DEFAULT_INSIGHTEXPLORER);
         pblocktree->ReadFlag("insightexplorer", checkval);
+        defaultState = DEFAULT_INSIGHTEXPLORER ? DEFAULT_INSIGHTEXPLORER : checkval;
+        fInsightExplorer = GetBoolArg("-insightexplorer", defaultState);
         if (checkval != fInsightExplorer)
         {
             pblocktree->WriteFlag("insightexplorer", fInsightExplorer);
