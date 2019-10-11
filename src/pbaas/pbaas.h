@@ -745,6 +745,35 @@ CTxOut MakeCC1ofAnyVout(uint8_t evalcode, CAmount nValue, std::vector<CTxDestina
 }
 
 template <typename TOBJ>
+CTxOut MakeCCMofNVout(uint8_t evalcode, CAmount nValue, const std::vector<CTxDestination> &vDest, const CKeyID &indexID, int M, const TOBJ &obj)
+{
+    CTxOut vout;
+    std::vector<CTxDestination> dests = vDest;
+
+    CC *payoutCond = MakeCCcondMofN(evalcode, dests, M);
+    vout = CTxOut(nValue, CCPubKey(payoutCond));
+    cc_free(payoutCond);
+
+    dests.insert(dests.begin(), CTxDestination(indexID));
+    std::vector<std::vector<unsigned char>> vvch({::AsVector((const TOBJ)obj)});
+    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V3, evalcode, M, (uint8_t)(vDest.size()), vDest, vvch);
+
+    for (auto &dest : dests)
+    {
+        CPubKey oneKey(boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest));
+        std::vector<unsigned char> bytes = GetDestinationBytes(dest);
+        if ((!oneKey.IsValid() && bytes.size() != 20) || (bytes.size() != 33 && bytes.size() != 20))
+        {
+            printf("Invalid destination %s\n", EncodeDestination(dest).c_str());
+        }
+    }
+
+    // add the object to the end of the script
+    vout.scriptPubKey << vParams.AsVector() << OP_DROP;
+    return(vout);
+}
+
+template <typename TOBJ>
 CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2, const TOBJ &obj)
 {
     CTxOut vout;
@@ -815,6 +844,11 @@ bool IsChainDefinitionInput(const CScript &scriptSig);
 
 bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
 bool IsCurrencyStateInput(const CScript &scriptSig);
+
+bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool IsIdentityInput(const CScript &scriptSig);
 
 bool GetCCParams(const CScript &scr, COptCCParams &ccParams);
 

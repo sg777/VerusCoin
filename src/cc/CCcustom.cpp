@@ -124,6 +124,21 @@ std::string CurrencyStateAddr = "REU1HKkmdwdxKMpfD3QoxeERYd9tfMN6n9";
 std::string CurrencyStatePubKey = "0219af977f9a6c3779f1185decee2b77da446040055b912b00e115a52d4786059c";
 std::string CurrencyStateWIF = "Ur8YQJQ6guqmD6rXtrUtJ7fWxaEB5FaejCr3MxHAgMEwnjJnuGo5";
 
+// indentity primary output
+std::string IdentityPrimaryAddr = "";
+std::string IdentityPrimaryPubKey = "";
+std::string IdentityPrimaryWIF = "";
+
+// indentity revoke output
+std::string IdentityRevokeAddr = "";
+std::string IdentityRevokePubKey = "";
+std::string IdentityRevokeWIF = "";
+
+// indentity recover output
+std::string IdentityRecoverAddr = "";
+std::string IdentityRecoverPubKey = "";
+std::string IdentityRecoverWIF = "";
+
 // Assets, aka Tokens
 #define FUNCNAME IsAssetsInput
 #define EVALCODE EVAL_ASSETS
@@ -411,6 +426,33 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(CurrencyStateWIF).begin(),32);
             cp->validate = ValidateCurrencyState;
             cp->ismyvin = IsCurrencyStateInput;
+            break;
+
+        case EVAL_IDENTITY_PRIMARY:
+            strcpy(cp->unspendableCCaddr, IdentityPrimaryAddr.c_str());
+            strcpy(cp->normaladdr, IdentityPrimaryAddr.c_str());
+            strcpy(cp->CChexstr, IdentityPrimaryPubKey.c_str());
+            memcpy(cp->CCpriv, DecodeSecret(IdentityPrimaryWIF).begin(),32);
+            cp->validate = ValidateIdentityPrimary;
+            cp->ismyvin = IsIdentityInput;
+            break;
+
+        case EVAL_IDENTITY_REVOKE:
+            strcpy(cp->unspendableCCaddr, IdentityRevokeAddr.c_str());
+            strcpy(cp->normaladdr, IdentityRevokeAddr.c_str());
+            strcpy(cp->CChexstr, IdentityRevokePubKey.c_str());
+            memcpy(cp->CCpriv, DecodeSecret(IdentityRevokeWIF).begin(),32);
+            cp->validate = ValidateIdentityRevoke;
+            cp->ismyvin = IsIdentityInput;
+            break;
+
+        case EVAL_IDENTITY_RECOVER:
+            strcpy(cp->unspendableCCaddr, IdentityRecoverAddr.c_str());
+            strcpy(cp->normaladdr, IdentityRecoverAddr.c_str());
+            strcpy(cp->CChexstr, IdentityRecoverPubKey.c_str());
+            memcpy(cp->CCpriv, DecodeSecret(IdentityRecoverWIF).begin(),32);
+            cp->validate = ValidateIdentityRecover;
+            cp->ismyvin = IsIdentityInput;
             break;
 
         case EVAL_ASSETS:

@@ -53,6 +53,8 @@ extern std::string NOTARY_PUBKEY;
 
 arith_uint256 komodo_PoWtarget(int32_t *percPoSp,arith_uint256 target,int32_t height,int32_t goalperc);
 
+std::set<uint160> ClosedPBaaSChains({CCrossChainRPCData::GetChainID("RESERVEWITHPREMINE"), CCrossChainRPCData::GetChainID("FAILCHAIN"), CCrossChainRPCData::GetChainID("SLC"), CCrossChainRPCData::GetChainID("RNPM"), CCrossChainRPCData::GetChainID("RNPNMR"), CCrossChainRPCData::GetChainID("MONKINS")});
+
 // NOTE: Assumes a conclusive result; if result is inconclusive, it must be handled by caller
 static UniValue BIP22ValidationResult(const CValidationState& state)
 {
@@ -119,7 +121,7 @@ bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
     bool found = false;
 
-    if (GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, addressIndex))
+    if (!ClosedPBaaSChains.count(chainID)  && GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, addressIndex))
     {
         for (auto txidx : addressIndex)
         {
@@ -166,8 +168,9 @@ void GetDefinedChains(vector<CPBaaSChainDefinition> &chains, bool includeExpired
             if (GetTransaction(txidx.first.txhash, tx, blkHash))
             {
                 chains.push_back(CPBaaSChainDefinition(tx));
+
                 // remove after to use less storage
-                if (!includeExpired && chains.back().endBlock != 0 && chains.back().endBlock < chainActive.Height())
+                if (ClosedPBaaSChains.count(chains.back().GetChainID()) || (!includeExpired && chains.back().endBlock != 0 && chains.back().endBlock < chainActive.Height()))
                 {
                     chains.pop_back();
                 }
