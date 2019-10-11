@@ -53,7 +53,7 @@ extern std::string NOTARY_PUBKEY;
 
 arith_uint256 komodo_PoWtarget(int32_t *percPoSp,arith_uint256 target,int32_t height,int32_t goalperc);
 
-std::set<uint160> ClosedPBaaSChains({CCrossChainRPCData::GetChainID("RESERVEWITHPREMINE"), CCrossChainRPCData::GetChainID("FAILCHAIN"), CCrossChainRPCData::GetChainID("SLC"), CCrossChainRPCData::GetChainID("RNPM"), CCrossChainRPCData::GetChainID("RNPNMR")});
+std::set<uint160> ClosedPBaaSChains({CCrossChainRPCData::GetChainID("RESERVEWITHPREMINE"), CCrossChainRPCData::GetChainID("FAILCHAIN"), CCrossChainRPCData::GetChainID("SLC"), CCrossChainRPCData::GetChainID("RNPM"), CCrossChainRPCData::GetChainID("RNPNMR"), CCrossChainRPCData::GetChainID("MONKINS")});
 
 // NOTE: Assumes a conclusive result; if result is inconclusive, it must be handled by caller
 static UniValue BIP22ValidationResult(const CValidationState& state)
