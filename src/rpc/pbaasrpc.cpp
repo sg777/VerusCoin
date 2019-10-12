@@ -169,8 +169,16 @@ void GetDefinedChains(vector<CPBaaSChainDefinition> &chains, bool includeExpired
             {
                 chains.push_back(CPBaaSChainDefinition(tx));
 
+                UniValue valStr(UniValue::VSTR);
+
+                // TODO: remove/comment this if statement, as it is redundant with the one below
+                if (!valStr.read(chains.back().ToUniValue().write()))
+                {
+                    printf("Invalid characters in blockchain definition: %s\n", chains.back().ToUniValue().write());
+                }
+
                 // remove after to use less storage
-                if (ClosedPBaaSChains.count(chains.back().GetChainID()) || (!includeExpired && chains.back().endBlock != 0 && chains.back().endBlock < chainActive.Height()))
+                if (!valStr.read(chains.back().ToUniValue().write()) || ClosedPBaaSChains.count(chains.back().GetChainID()) || (!includeExpired && chains.back().endBlock != 0 && chains.back().endBlock < chainActive.Height()))
                 {
                     chains.pop_back();
                 }
@@ -1993,7 +2001,6 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
     {
         crosscode = EVAL_ACCEPTEDNOTARIZATION;
     }
-    
 
     if (params[1].type() != UniValue::VARR)
     {
@@ -3898,6 +3905,12 @@ UniValue definechain(const UniValue& params, bool fHelp)
     if (!pwalletMain)
     {
         throw JSONRPCError(RPC_WALLET_ERROR, "must have active wallet to define PBaaS chain");
+    }
+
+    UniValue valStr(UniValue::VSTR);
+    if (!valStr.read(params[0].write()))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid characters in blockchain definition");
     }
 
     CPBaaSChainDefinition newChain(params[0]);
