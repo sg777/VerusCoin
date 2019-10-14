@@ -430,16 +430,10 @@ bool ExtractDestination(const CScript& _scriptPubKey, CTxDestination& addressRet
     
     else if (IsCryptoConditionsEnabled() != 0 && whichType == TX_CRYPTOCONDITION)
     {
-        if (vSolutions[0].size() == 33)
-        {
-            addressRet = CPubKey(vSolutions[0]);
-            return true;
-        }
-        else if (vSolutions[0].size() == 20)
-        {
-            addressRet = CKeyID(uint160(vSolutions[0]));
-            return true;
-        }
+        COptCCParams p;
+        scriptPubKey.IsPayToCryptoCondition(p);
+        addressRet = p.vKeys[0];
+        return true;
     }
     // Multisig txns have more than one address...
     return false;
@@ -489,18 +483,11 @@ bool ExtractDestinations(const CScript& scriptPubKey, txnouttype& typeRet, vecto
     }
     else if (IsCryptoConditionsEnabled() != 0 && typeRet == TX_CRYPTOCONDITION)
     {
-        nRequiredRet = vSolutions.front()[0];
-        for (unsigned int i = 1; i < vSolutions.size()-1; i++)
+        COptCCParams p;
+        scriptPubKey.IsPayToCryptoCondition(p);
+        nRequiredRet = p.m == 0 ? 1 : p.m;
+        for (auto address : p.vKeys)
         {
-            CTxDestination address;
-            if (vSolutions[i].size() == 20)
-            {
-                address = CKeyID(uint160(vSolutions[i]));
-            }
-            else
-            {
-                address = CPubKey(vSolutions[i]);
-            }
             addressRet.push_back(address);
         }
 
