@@ -254,12 +254,12 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
         }
     }
 
-    if (p.vKeys.size())
+    if (addresses.size())
     {
-        out.push_back(Pair("reqSigs", p.m == 0 ? 1 : p.m));
+        out.push_back(Pair("reqSigs", nRequired));
 
         UniValue a(UniValue::VARR);
-        for (const CTxDestination& addr : p.vKeys) {
+        for (const CTxDestination& addr : addresses) {
             a.push_back(EncodeDestination(addr));
         }
         out.push_back(Pair("addresses", a));
