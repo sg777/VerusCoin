@@ -13,9 +13,12 @@
  * 
  * 
  */
+#include "boost/algorithm/string.hpp"
+#include "script/standard.h"
 #include "pbaas/identity.h"
 #include "script/cc.h"
 #include "cc/CCinclude.h"
+#include "pbaas/pbaas.h"
 
 extern CTxMemPool mempool;
 
@@ -62,20 +65,24 @@ UniValue CPrincipal::ToUniValue() const
 
 CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 {
-    name = uni_get_int(find_value(uni, "name"));
-    UniValue namesUni = find_value(uni, "names");
-    if (namesUni.isArray())
+    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(uni, "parent"))));
+    name = CleanName(uni_get_str(find_value(uni, "name")), parent);
+
+    nTime = uni_get_int64(find_value(uni, "time"));
+
+    UniValue hashesUni = find_value(uni, "contenthashes");
+    if (hashesUni.isArray())
     {
-        for (int i = 0; i < namesUni.size(); i++)
+        for (int i = 0; i < hashesUni.size(); i++)
         {
             try
             {
-                names.push_back(uni_get_str(namesUni[i]));
+                contentHashes.push_back(uint256S(uni_get_str(hashesUni[i])));
             }
             catch (const std::exception &e)
             {
-                printf("%s: name is not string %s\n", __func__, namesUni[i].write().c_str());
-                LogPrintf("%s: name is not string %s\n", __func__, namesUni[i].write().c_str());
+                printf("%s: hash is not valid %s\n", __func__, hashesUni[i].write().c_str());
+                LogPrintf("%s: hash is not valid %s\n", __func__, hashesUni[i].write().c_str());
                 nVersion = VERSION_INVALID;
             }
         }
@@ -100,39 +107,21 @@ UniValue CIdentity::ToUniValue() const
 {
     UniValue obj = ((CPrincipal *)this)->ToUniValue();
 
+    obj.push_back(Pair("parent", EncodeDestination(CTxDestination(CScriptID(parent)))));
     obj.push_back(Pair("name", name));
+    obj.push_back(Pair("time", (int64_t)nTime));
 
-    UniValue aliases(UniValue::VARR);
-    for (int i = 0; i < names.size(); i++)
+    UniValue hashes(UniValue::VARR);
+    for (int i = 0; i < contentHashes.size(); i++)
     {
-        aliases.push_back(names[i]);
+        hashes.push_back(contentHashes[i].GetHex());
     }
-    obj.push_back(Pair("names", aliases));
+    obj.push_back(Pair("contenthashes", hashes));
 
     obj.push_back(Pair("revocationauthorityid", EncodeDestination(CTxDestination(CKeyID(revocationAuthority)))));
     obj.push_back(Pair("recoveryauthorityid", EncodeDestination(CTxDestination(CKeyID(recoveryAuthority)))));
     obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddress)));
     return obj;
-}
-
-CIdentity::CIdentity(const CScript &scriptPubKey)
-{
-    COptCCParams p;
-    if (IsPayToCryptoCondition(scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size())
-    {
-        FromVector(p.vData[0], *this);
-
-        // TODO - remove this after validation is finished, check now in case some larger strings got into the chain
-        name = std::string(name, 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
-        string invalidChars = "\\/:?\"<>|";
-        for (int i = 0; i < name.size(); i++)
-        {
-            if (invalidChars.find(name[i]) != string::npos)
-            {
-                name[i] = '_';
-            }
-        }
-    }
 }
 
 CIdentity::CIdentity(const CTransaction &tx)
@@ -151,29 +140,7 @@ CIdentity::CIdentity(const CTransaction &tx)
     }
 }
 
-uint160 CIdentity::GetNameID(const std::string &name) const
-{
-    const char *idName = name.c_str();
-    uint256 idHash;
-    if (parent.IsNull())
-    {
-        idHash = Hash(idName, idName + strlen(idName));
-    }
-    else
-    {
-        idHash = Hash(idName, idName + strlen(idName));
-        idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
-
-    }
-    return Hash160(idHash.begin(), idHash.end());
-}
-
-uint160 CIdentity::GetNameID() const
-{
-    return GetNameID(name);
-}
-
-CIdentity CIdentity::LookupIdentity(const uint160 &nameID)
+CIdentity CIdentity::LookupIdentity(const uint160 &nameID, CTxIn *idTxIn)
 {
     CIdentity ret;
 
@@ -220,6 +187,10 @@ CIdentity CIdentity::LookupIdentity(const uint160 &nameID)
                     else
                     {
                         ret = CIdentity(coins.vout[it->first.index].scriptPubKey);
+                        if (idTxIn)
+                        {
+                            *idTxIn = CTxIn(it->first.txhash, it->first.index);
+                        }
                     }
                 }
             }
@@ -232,12 +203,11 @@ CIdentity CIdentity::LookupIdentity(const uint160 &nameID)
     return ret;
 }
 
-CIdentity CIdentity::LookupIdentity(const std::string &name)
+CIdentity CIdentity::LookupIdentity(const std::string &name, CTxIn *idTxIn)
 {
-    return LookupIdentity(GetNameID(name));
+    return LookupIdentity(GetNameID(name), idTxIn);
 }
 
-// TODO:PBAAS this type of output must be recognized and supported in the CC signature code
 CScript CIdentity::IdentityUpdateOutputScript() const
 {
     CScript ret;
@@ -247,47 +217,15 @@ CScript CIdentity::IdentityUpdateOutputScript() const
         return ret;
     }
 
-    // output crypto condition can be updated according to different eval restrictions by
-    // primary principal, revocation authority, and recovery authority
+    std::vector<CTxDestination> dests1({CTxDestination(CScriptID(GetNameID()))});
+    CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
+    std::vector<CTxDestination> dests2({CTxDestination(CScriptID(revocationAuthority))});
+    CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
+    std::vector<CTxDestination> dests3({CTxDestination(CScriptID(recoveryAuthority))});
+    CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
 
-    // if revocation authority or recovery authority are revoked, they are not included as possible spenders
-    std::vector<CC*> multisigs;
-
-    multisigs.push_back(MakeCCcondMofN(EVAL_IDENTITY_PRIMARY, primaryAddresses, minSigs));
-
-    uint160 primaryID = GetNameID();
-    CIdentity revocation = (primaryID == revocationAuthority) ? *this : LookupIdentity(revocationAuthority);
-    if (!revocation.IsValidUnrevoked())
-    {
-        revocation = *this;
-    }
-    CIdentity recovery = (primaryID == recoveryAuthority) ? *this : LookupIdentity(recoveryAuthority);
-    if (!recovery.IsValidUnrevoked())
-    {
-        recovery = *this;
-    }
-
-    multisigs.push_back(MakeCCcondMofN(EVAL_IDENTITY_REVOKE, revocation.primaryAddresses, revocation.minSigs));
-    multisigs.push_back(MakeCCcondMofN(EVAL_IDENTITY_RECOVER, recovery.primaryAddresses, recovery.minSigs));
-
-    CC *compoundMultisig = CCNewThreshold(1, multisigs);
-
-    ret = CCPubKey(compoundMultisig);
-    cc_free(compoundMultisig);
-
-    // we will encode the compound multisig's primary identity and revocation + recovery principals in the output
-    // that will allow us to reconstruct the compount CC when signing
-    // TODO:PBAAS this CC should actually store only the primary ID as destination and bind during signing and validation to the
-    // latest state of the identity
-    std::vector<std::vector<unsigned char>> vvch({::AsVector(*this), ::AsVector((CPrincipal)revocation), ::AsVector((CPrincipal)recovery)});
-
-    std::vector<CTxDestination> dests;
-    dests.push_back(CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetNameID(), EVAL_IDENTITY_PRIMARY))));
-
-    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V3, EVAL_IDENTITY_PRIMARY, 1, (uint8_t)(dests.size()), dests, vvch);
-
-    // add the object to the end of the script
-    ret << vParams.AsVector() << OP_DROP;
+    CTxDestination indexDest(CKeyID(CCrossChainRPCData::GetConditionID(GetNameID(), EVAL_IDENTITY_PRIMARY)));
+    ret = MakeMofNCCScript(1, primary, revocation, recovery, &indexDest);
     return ret;
 }
 

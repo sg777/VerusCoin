@@ -29,6 +29,7 @@
 #include "net.h"
 #include "pbaas/pbaas.h"
 #include "pbaas/notarization.h"
+#include "pbaas/identity.h"
 #include "pow.h"
 #include "script/interpreter.h"
 #include "txdb.h"
@@ -827,7 +828,11 @@ bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
     {
         if ( txin.nSequence == 0xfffffffe && (((int64_t)tx.nLockTime >= LOCKTIME_THRESHOLD && (int64_t)tx.nLockTime > nBlockTime) || ((int64_t)tx.nLockTime < LOCKTIME_THRESHOLD && (int64_t)tx.nLockTime > nBlockHeight)) )
         {
-            
+            // TODO:PBAAS set height properly
+            if (!IsVerusActive() || nBlockHeight > 1000000)
+            {
+                return false;
+            }
         }
         else if (!txin.IsFinal())
         {
@@ -2581,6 +2586,7 @@ void UpdateCoins(const CTransaction& tx, CCoinsViewCache& inputs, int nHeight)
 bool CScriptCheck::operator()() {
     const CScript &scriptSig = ptxTo->vin[nIn].scriptSig;
     ServerTransactionSignatureChecker checker(ptxTo, nIn, amount, cacheStore, *txdata);
+    checker.SetIDMap(idMap);
     if (!VerifyScript(scriptSig, scriptPubKey, nFlags, checker, consensusBranchId, &error)) {
         return ::error("CScriptCheck(): %s:%d VerifySignature failed: %s", ptxTo->GetHash().ToString(), nIn, ScriptErrorString(error));
     }
@@ -2759,9 +2765,53 @@ bool ContextualCheckInputs(
                 const COutPoint &prevout = tx.vin[i].prevout;
                 const CCoins* coins = inputs.AccessCoins(prevout.hash);
                 assert(coins);
-                
+
+                // create an ID map to check ID signatures
+                COptCCParams p;
+                std::map<uint160, pair<int, std::vector<std::vector<unsigned char>>>> idAddresses;
+                if (coins->vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.n >= 1 && p.vKeys.size() >= p.n && p.version >= p.VERSION_V3 && p.vData.size())
+                {
+                    // get mapping to any identities used
+                    COptCCParams master = COptCCParams(p.vData.back());
+                    bool ccValid = master.IsValid();
+
+                    for (int i = 0; ccValid && i < p.vData.size() - 1; i++)
+                    {
+                        COptCCParams oneP(p.vData[i]);
+                        ccValid = oneP.IsValid();
+
+                        if (ccValid)
+                        {
+                            for (auto dest : oneP.vKeys)
+                            {
+                                uint160 destId = GetDestinationID(dest);
+                                if (dest.which() == COptCCParams::ADDRTYPE_SH)
+                                {
+                                    // lookup identity, we must have all target identity scripts in our keystore,
+                                    CScript idScript;
+                                    CIdentity id;
+                                    if (!(id = CIdentity::LookupIdentity(destId)).IsValid())
+                                    {
+                                        ccValid = false;
+                                    }
+                                    else
+                                    {
+                                        std::vector<std::vector<unsigned char>> idAddrBytes;
+                                        for (auto &oneAddr : id.primaryAddresses)
+                                        {
+                                            idAddrBytes.push_back(GetDestinationBytes(oneAddr));
+                                        }
+                                        idAddresses[destId] = make_pair(id.minSigs, idAddrBytes);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Verify signature
                 CScriptCheck check(*coins, tx, i, flags, cacheStore, consensusBranchId, &txdata);
+                check.SetIDMap(idAddresses);
                 if (pvChecks) {
                     pvChecks->push_back(CScriptCheck());
                     check.swap(pvChecks->back());
@@ -2775,6 +2825,7 @@ bool ContextualCheckInputs(
                         // non-upgraded nodes.
                         CScriptCheck check2(*coins, tx, i,
                                             flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheStore, consensusBranchId, &txdata);
+                        check2.SetIDMap(idAddresses);
                         if (check2())
                             return state.Invalid(false, REJECT_NONSTANDARD, strprintf("non-mandatory-script-verify-flag (%s)", ScriptErrorString(check.GetScriptError())));
                     }

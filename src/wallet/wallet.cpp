@@ -29,6 +29,7 @@
 #include "wallet/asyncrpcoperation_saplingmigration.h"
 #include "zcash/zip32.h"
 #include "cc/StakeGuard.h"
+#include "pbaas/identity.h"
 #include "pbaas/pbaas.h"
 
 #include <assert.h>
@@ -451,11 +452,14 @@ bool CWallet::LoadSproutViewingKey(const libzcash::SproutViewingKey &vk)
 
 bool CWallet::AddCScript(const CScript& redeemScript)
 {
+    // if this is an identity, which we currently need to check, we
+    // store the ID as a script in the wallet script storage, but instead of using the
+    // hash of the script, we store it under the name ID
     if (!CCryptoKeyStore::AddCScript(redeemScript))
         return false;
     if (!fFileBacked)
         return true;
-    return CWalletDB(strWalletFile).WriteCScript(Hash160(redeemScript), redeemScript);
+    return CWalletDB(strWalletFile).WriteCScript(ScriptOrIdentityID(redeemScript), redeemScript);
 }
 
 bool CWallet::LoadCScript(const CScript& redeemScript)
@@ -465,7 +469,7 @@ bool CWallet::LoadCScript(const CScript& redeemScript)
      * these. Do not add them to the wallet and warn. */
     if (redeemScript.size() > MAX_SCRIPT_ELEMENT_SIZE)
     {
-        std::string strAddr = EncodeDestination(CScriptID(redeemScript));
+        std::string strAddr = EncodeDestination(ScriptOrIdentityID(redeemScript));
         LogPrintf("%s: Warning: This wallet contains a redeemScript of size %i which exceeds maximum size %i thus can never be redeemed. Do not use address %s.\n",
             __func__, redeemScript.size(), MAX_SCRIPT_ELEMENT_SIZE, strAddr);
         return true;
@@ -1958,7 +1962,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                 return false;
             }
         }
-        if (fExisted || IsMine(tx) || IsFromMe(tx) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
+        bool isMine = IsMine(tx);
+        if (fExisted || isMine || IsFromMe(tx) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
         {
             CWalletTx wtx(this,tx);
 
@@ -1977,6 +1982,22 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             // Do not flush the wallet here for performance reasons
             // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
             CWalletDB walletdb(strWalletFile, "r+", false);
+
+            // if this is an ID, add the ID as a script
+            if (isMine)
+            {
+                CIdentity identity;
+                int i;
+                for (i = 0; !identity.IsValid() && i < tx.vout.size(); i++)
+                {
+                    identity = CIdentity(tx.vout[i].scriptPubKey);
+                }
+
+                if (identity.IsValid())
+                {
+                    AddCScript(tx.vout[i].scriptPubKey);
+                }
+            }
 
             return AddToWallet(wtx, false, &walletdb);
         }
@@ -2340,7 +2361,109 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
     txnouttype whichType;
     const CScriptExt scriptPubKey = CScriptExt(tx.vout[voutNum].scriptPubKey);
 
-    if (!Solver(scriptPubKey, whichType, vSolutions)) {
+    COptCCParams p;
+    if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+    {
+        // if version 3 Verus CC, we have everything we need to determine if this is ours
+        whichType = TX_CRYPTOCONDITION;
+        CIdentity identity;
+        if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (identity = CIdentity(p.vData[0])).IsValid())
+        {
+            // if this is an identity definition, we may need to add a new
+            // script to the wallet or update an existing script
+            CScript oldIDScript;
+            bool wasMine = false;
+            bool wasWatched = false;
+            std::set<CKeyID> keySet;
+
+            if (GetCScript(identity.GetNameID(), oldIDScript)) {
+                wasMine = true;
+            }
+            else
+            {
+                wasWatched = HaveWatchOnly(scriptPubKey);
+            }
+
+            for (auto key : identity.primaryAddresses)
+            {
+                CKeyID keyID = CKeyID(GetDestinationID(key));
+                if (HaveKey(keyID))
+                {
+                    keySet.insert(keyID);
+                }
+            }
+
+            // if we have enough keys to fully authorize, it is ours
+            if (keySet.size() >= p.m)
+            {
+                return ISMINE_SPENDABLE;
+            }
+            else if (keySet.size())
+            {
+                return ISMINE_WATCH_ONLY;
+            }
+            else
+            {
+                return wasMine || wasWatched ? ISMINE_WATCH_ONLY : ISMINE_NO;
+            }
+        }
+        else
+        {
+            CCcontract_info C;
+            CKeyID pkID;
+
+            if (CCinit(&C, p.evalCode))
+            {
+                pkID = CPubKey(ParseHex(C.CChexstr)).GetID();
+            }
+
+            // check all destinations, including IDs
+            std::set<CTxDestination> keySet;
+            bool watchOnly = false;
+            for (auto key : p.vKeys)
+            {
+                if (key.which() == COptCCParams::ADDRTYPE_SH)
+                {
+                    CScript idScript;
+                    CIdentity idp;
+                    std::set<CKeyID> ownKeySet;
+                    if (GetCScript(CScriptID(GetDestinationID(key)), idScript) && (idp = CIdentity(idScript)).IsValid() && (idp.GetNameID() == GetDestinationID(key)))
+                    {
+                        for (auto oneKey : idp.primaryAddresses)
+                        {
+                            ownKeySet.insert(GetDestinationID(oneKey));
+                        }
+                        if (ownKeySet.size())
+                        {
+                            watchOnly = true;
+                        }
+                        if (ownKeySet.size() >= idp.minSigs)
+                        {
+                            keySet.insert(key);
+                        }
+                    }
+                }
+                else
+                {
+                    CKeyID keyID = CKeyID(GetDestinationID(key));
+                    if (HaveKey(keyID))
+                    {
+                        keySet.insert(key);
+                    }
+                }
+            }
+            if (keySet.size() >= p.m)
+            {
+                return ISMINE_SPENDABLE;
+            }
+            else
+            {
+                return watchOnly ? ISMINE_WATCH_ONLY : ISMINE_NO;
+            }
+        }
+    }
+    else if (!Solver(scriptPubKey, whichType, vSolutions))
+    {
         if (this->HaveWatchOnly(scriptPubKey))
             return ISMINE_WATCH_ONLY;
         return ISMINE_NO;
@@ -4496,7 +4619,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                     interest2 = 0;
                 }
                 CAmount nChange = (nValueIn - nValue + interest2);
-//fprintf(stderr,"wallet change %.8f (%.8f - %.8f) interest2 %.8f total %.8f\n",(double)nChange/COIN,(double)nValueIn/COIN,(double)nValue/COIN,(double)interest2/COIN,(double)nTotalValue/COIN);
+                //fprintf(stderr,"wallet change %.8f (%.8f - %.8f) interest2 %.8f total %.8f\n",(double)nChange/COIN,(double)nValueIn/COIN,(double)nValue/COIN,(double)interest2/COIN,(double)nTotalValue/COIN);
                 if (nSubtractFeeFromAmount == 0)
                     nChange -= nFeeRet;
 

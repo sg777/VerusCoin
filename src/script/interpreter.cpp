@@ -17,10 +17,15 @@
 #include "pubkey.h"
 #include "script/script.h"
 #include "uint256.h"
-
+#include "pbaas/pbaas.h"
+#include "pbaas/identity.h"
 
 
 using namespace std;
+
+CC *MakeCCcondMofN(const std::vector<CTxDestination> &dests, int M);
+CC *MakeCCcondMofN(const std::vector<CC*> &conditions, int M);
+CC *MakeCCcondOneSig(const CTxDestination &dest);
 
 typedef vector<unsigned char> valtype;
 
@@ -1351,21 +1356,172 @@ int TransactionSignatureChecker::CheckCryptoCondition(
         const CScript& scriptCode,
         uint32_t consensusBranchId) const
 {
-    // Hash type is one byte tacked on to the end of the fulfillment
-    if (ffillBin.empty())
-        return false;
-
-    CC *cond;
-    int error = cc_readFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
-    if (error || !cond) return -1;
-
     COptCCParams p;
+
     if (!scriptCode.IsPayToCryptoCondition(p))
     {
         return false;
     }
 
+    std::vector<unsigned char> condBinary;
+
+    // Hash type is one byte tacked on to the end of the fulfillment
+    if (ffillBin.empty())
+        return false;
+
+    if (p.IsValid() && p.version >= p.VERSION_V3 && p.vData.size())
+    {
+        // create the starting condition from the data we have
+        COptCCParams master = COptCCParams(p.vData.back());
+        bool ccValid = master.IsValid();
+        std::vector<CC*> ccs;
+
+        // if we do not have access to the blockchain and cannot convert IDs, we cannot fully validate transactions
+        // they are fully validated by miners, stakers, and native wallets.
+        bool failToTrue = false;
+
+        for (int i = 0; ccValid && i < p.vData.size() - 1; i++)
+        {
+            COptCCParams oneP(p.vData[i]);
+            ccValid = oneP.IsValid();
+            std::vector<CC*> vCC;
+            if (ccValid)
+            {
+                for (auto dest : oneP.vKeys)
+                {
+                    uint160 destId = GetDestinationID(dest);
+                    if (dest.which() == COptCCParams::ADDRTYPE_SH)
+                    {
+                        if (!IsIDMapSet())
+                        {
+                            // we cannot check the fullfillment form
+                            failToTrue = !CanValidateIDs();
+                            ccValid = false;
+                        }
+                        else
+                        {
+                            // lookup identity, we must have all valid identity scripts in our keystore.
+                            // those that are not found may not be realized yet and so are left as their unspendable ID
+                            // in the spend condition, as are revoked identities
+                            std::vector<CTxDestination> addrs;
+                            auto dit = idMap.find(destId);
+                            if (dit != idMap.end() && dit->second.first)
+                            {
+                                for (auto destVch : dit->second.second)
+                                {
+                                    if (destVch.size() == 20)
+                                    {
+                                        addrs.push_back(CKeyID(uint160(destVch)));
+                                    }
+                                    else if (destVch.size() == 33)
+                                    {
+                                        addrs.push_back(CPubKey(destVch));
+                                    }
+                                    else
+                                    {
+                                        addrs.push_back(CKeyID(destId));
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                addrs.push_back(CKeyID(destId));
+                            }
+                            if (vCC.size() == 1)
+                            {
+                                vCC.push_back(MakeCCcondOneSig(addrs[0]));
+                            }
+                            else
+                            {
+                                vCC.push_back(MakeCCcondMofN(addrs, dit->second.first));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        vCC.push_back(MakeCCcondOneSig(dest));
+                    }
+                }
+
+                if (ccValid)
+                {
+                    ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m));
+                }
+                else
+                {
+                    for (auto pCond : vCC)
+                    {
+                        cc_free(pCond);
+                    }
+                }
+            }
+        }
+
+        CC *outputCC = nullptr;
+
+        if (ccValid)
+        {
+            if (ccs.size() == 1)
+            {
+                if (master.evalCode)
+                {
+                    outputCC = MakeCCcondMofN(master.evalCode, ccs, master.m);
+                }
+                else
+                {
+                    outputCC = ccs[0];
+                }
+            }
+            else
+            {
+                if (master.evalCode)
+                {
+                    outputCC = MakeCCcondMofN(master.evalCode, ccs, master.m);
+                }
+                else
+                {
+                    outputCC = MakeCCcondMofN(ccs, master.m);
+                }
+            }
+        }
+        
+        if (!ccValid || !outputCC)
+        {
+            for (auto pCond : ccs)
+            {
+                cc_free(pCond);
+            }            
+            if (failToTrue)
+            {
+                // this should never get here when running on a server with access to the blockchain
+                assert(!CanValidateIDs());
+                return true;
+            }
+        }
+        else
+        {
+            condBinary = CCPubKeyVec(outputCC);
+            cc_free(outputCC);
+        }
+    }
+    else
+    {
+        condBinary = condBin;
+    }
+
+    if (!condBinary.size())
+    {
+        return false;
+    }
+
+    int out = false;
+
+    CC *cond;
+    int error = cc_readFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
+    if (error || !cond) return -1;
+
     if (!IsSupportedCryptoCondition(cond, p.IsValid() ? p.evalCode : 0)) return 0;
+
     if (!IsSignedCryptoCondition(cond)) return 0;
 
     uint256 sighash;
@@ -1373,25 +1529,18 @@ int TransactionSignatureChecker::CheckCryptoCondition(
     try {
         sighash = SignatureHash(CCPubKey(cond), *txTo, nIn, nHashType, amount, consensusBranchId, this->txdata);
     } catch (logic_error ex) {
+        cc_free(cond);
         return 0;
     }
-    /*int32_t z; uint8_t *ptr;
-    ptr = (uint8_t *)scriptCode.data();
-    for (z=0; z<scriptCode.size(); z++)
-        fprintf(stderr,"%02x",ptr[z]);
-    fprintf(stderr," <- CScript\n");
-    for (z=0; z<32; z++)
-        fprintf(stderr,"%02x",((uint8_t *)&sighash)[z]);
-    fprintf(stderr," sighash nIn.%d nHashType.%d %.8f id.%d\n",(int32_t)nIn,(int32_t)nHashType,(double)amount/COIN,(int32_t)consensusBranchId);
-     */
+
     VerifyEval eval = [] (CC *cond, void *checker) {
         //fprintf(stderr,"checker.%p\n",(TransactionSignatureChecker*)checker);
         return ((TransactionSignatureChecker*)checker)->CheckEvalCondition(cond);
     };
 
     //fprintf(stderr,"non-checker path\n");
-    int out = cc_verify(cond, (const unsigned char*)&sighash, 32, 0,
-                        condBin.data(), condBin.size(), eval, (void*)this, true);
+    out = cc_verify(cond, (const unsigned char*)&sighash, 32, 0,
+                    condBinary.data(), condBinary.size(), eval, (void*)this, true);
 
     //fprintf(stderr,"out.%d from cc_verify\n",(int32_t)out);
     cc_free(cond);

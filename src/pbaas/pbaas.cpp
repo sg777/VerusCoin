@@ -10,10 +10,11 @@
  * 
  */
 
+#include "pbaas/crosschainrpc.h"
 #include "pbaas/pbaas.h"
 #include "pbaas/notarization.h"
+#include "pbaas/identity.h"
 #include "rpc/pbaasrpc.h"
-#include "pbaas/crosschainrpc.h"
 #include "base58.h"
 #include "timedata.h"
 #include "main.h"
@@ -362,7 +363,7 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const UniValue &obj)
     nVersion = PBAAS_VERSION;
     name = std::string(uni_get_str(find_value(obj, "name")), 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
 
-    string invalidChars = "\\/:?\"<>|";
+    string invalidChars = "\\/:*?\"<>|";
     for (int i = 0; i < name.size(); i++)
     {
         if (invalidChars.find(name[i]) != string::npos)
@@ -388,7 +389,6 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const UniValue &obj)
     {
         vEras.resize(ASSETCHAINS_MAX_ERAS);
     }
-    eras = !vEras.size() ? 1 : vEras.size();
 
     for (auto era : vEras)
     {
@@ -524,7 +524,7 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("endblock", (int32_t)endBlock));
 
     UniValue eraArr(UniValue::VARR);
-    for (int i = 0; i < eras; i++)
+    for (int i = 0; i < rewards.size(); i++)
     {
         UniValue era(UniValue::VOBJ);
         era.push_back(Pair("reward", rewards.size() > i ? rewards[i] : (int64_t)0));
@@ -587,7 +587,6 @@ bool SetThisChain(UniValue &chainDefinition)
             // setup Verus test parameters
             notaryChainDef.name = "VRSCTEST";
             notaryChainDef.premine = 5000000000000000;
-            notaryChainDef.eras = 1;
             notaryChainDef.rewards = std::vector<int64_t>({2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
             notaryChainDef.halving = std::vector<int32_t>({225680});
@@ -599,7 +598,6 @@ bool SetThisChain(UniValue &chainDefinition)
             // first setup Verus parameters
             notaryChainDef.name = "VRSC";
             notaryChainDef.premine = 0;
-            notaryChainDef.eras = 3;
             notaryChainDef.rewards = std::vector<int64_t>({0,38400000000,2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
             notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
@@ -637,7 +635,7 @@ bool SetThisChain(UniValue &chainDefinition)
         ASSETCHAINS_TIMEUNLOCKFROM = 0;
         ASSETCHAINS_TIMEUNLOCKTO = 0;
 
-        auto numEras = ConnectedChains.ThisChain().eras;
+        auto numEras = ConnectedChains.ThisChain().rewards.size();
         ASSETCHAINS_LASTERA = numEras - 1;
         mapArgs["-ac_eras"] = to_string(numEras);
 
@@ -1169,6 +1167,50 @@ bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScrip
         else if (outType == TX_PUBKEYHASH)
         {
             firstDestinationOut = CTxDestination(CKeyID(uint160(vSolutions[0])));
+        }
+        else if (outType == TX_CRYPTOCONDITION)
+        {
+            if (vSolutions[0].size() == 33)
+            {
+                firstDestinationOut = CPubKey(vSolutions[0]);
+            }
+            else if (vSolutions[0].size() == 34 && vSolutions[0][0] == COptCCParams::ADDRTYPE_PK)
+            {
+                firstDestinationOut = CPubKey(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()));
+            }
+            else if (vSolutions[0].size() == 20)
+            {
+                CPubKey pkTmp;
+                pwalletMain->GetPubKey(CKeyID(uint160(vSolutions[0])), pkTmp);
+                if (pkTmp.IsValid())
+                {
+                    firstDestinationOut = pkTmp;
+                }
+            }
+            else if (vSolutions[0].size() == 21 && vSolutions[0][0] == COptCCParams::ADDRTYPE_SH)
+            {
+                // destination is an identity, see if we can get its public key
+                CScript idScript;
+                CIdentity identity;
+
+                if (pwalletMain->GetCScript(CScriptID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), idScript) && (identity = CIdentity(idScript)).IsValid() && identity.primaryAddresses.size())
+                {
+                    CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.primaryAddresses[0]);
+                    if (pkTmp.IsValid())
+                    {
+                        firstDestinationOut = pkTmp;
+                    }
+                    else
+                    {
+                        CPubKey pkTmp;
+                        pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.primaryAddresses[0])), pkTmp);
+                        if (pkTmp.IsValid())
+                        {
+                            firstDestinationOut = pkTmp;
+                        }
+                    }
+                }
+            }
         }
         else
         {

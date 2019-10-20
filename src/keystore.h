@@ -314,4 +314,6 @@ typedef std::map<libzcash::SproutPaymentAddress, std::vector<unsigned char> > Cr
 //! Sapling 
 typedef std::map<libzcash::SaplingExtendedFullViewingKey, std::vector<unsigned char> > CryptedSaplingSpendingKeyMap;
 
+CScriptID ScriptOrIdentityID(const CScript& scr);
+
 #endif // BITCOIN_KEYSTORE_H

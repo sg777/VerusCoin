@@ -7,8 +7,111 @@
 
 #include "key.h"
 #include "util.h"
+#include "pbaas/identity.h"
+#include "boost/algorithm/string.hpp"
 
 #include <boost/foreach.hpp>
+
+std::vector<std::string> ParseSubNames(const std::string &Name)
+{
+    std::string nameCopy = Name;
+    std::string invalidChars = "\\/:*?\"<>|";
+    for (int i = 0; i < nameCopy.size(); i++)
+    {
+        if (invalidChars.find(nameCopy[i]) != string::npos)
+        {
+            nameCopy[i] = '_';
+        }
+    }
+    std::vector<std::string> retNames;
+    boost::split(retNames, nameCopy, boost::is_any_of(".@"));
+
+    for (int i = 0; i < retNames.size(); i++)
+    {
+        if (retNames[i].size() > KOMODO_ASSETCHAIN_MAXLEN - 1)
+        {
+            retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
+        }
+    }
+
+    return retNames;
+}
+
+// takes a multipart name, either complete or partially processed with a Parent hash,
+// hash its parent names into a parent ID and return the parent hash and cleaned, single name
+std::string CIdentity::CleanName(const std::string &Name, uint160 &Parent)
+{
+    std::vector<std::string> subNames = ParseSubNames(Name);
+
+    if (!subNames.size())
+    {
+        return "";
+    }
+
+    for (int i = subNames.size() - 1; i > 0; i--)
+    {
+        const char *idName = boost::algorithm::to_lower_copy(subNames[i]).c_str();
+        uint256 idHash;
+
+        if (Parent.IsNull())
+        {
+            idHash = Hash(idName, idName + strlen(idName));
+        }
+        else
+        {
+            idHash = Hash(idName, idName + strlen(idName));
+            idHash = Hash(Parent.begin(), Parent.end(), idHash.begin(), idHash.end());
+
+        }
+        Parent = Hash160(idHash.begin(), idHash.end());
+    }
+    return subNames[0];
+}
+
+uint160 CIdentity::GetNameID(const std::string &Name, const uint160 &parent)
+{
+    uint160 newParent = parent;
+    std::string cleanName = CleanName(Name, newParent);
+
+    const char *idName = boost::algorithm::to_lower_copy(Name).c_str();
+    uint256 idHash;
+    if (parent.IsNull())
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+    }
+    else
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+        idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
+
+    }
+    return Hash160(idHash.begin(), idHash.end());
+}
+
+uint160 CIdentity::GetNameID(const std::string &Name) const
+{
+    uint160 newLevel = parent;
+    std::string cleanName = CleanName(Name, newLevel);
+
+    const char *idName = boost::algorithm::to_lower_copy(Name).c_str();
+    uint256 idHash;
+    if (parent.IsNull())
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+    }
+    else
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+        idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
+
+    }
+    return Hash160(idHash.begin(), idHash.end());
+}
+
+uint160 CIdentity::GetNameID() const
+{
+    return GetNameID(name);
+}
 
 bool CKeyStore::GetPubKey(const CKeyID &address, CPubKey &vchPubKeyOut) const
 {
@@ -52,6 +155,20 @@ bool CBasicKeyStore::GetHDSeed(HDSeed& seedOut) const
     }
 }
 
+CScriptID ScriptOrIdentityID(const CScript& scr)
+{
+    COptCCParams p;
+    CIdentity identity;
+    if (scr.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (identity = CIdentity(p.vData[0])).IsValid())
+    {
+        return CScriptID(identity.GetNameID());
+    }
+    else
+    {
+        return CScriptID(scr);
+    }
+}
+
 bool CBasicKeyStore::AddKeyPubKey(const CKey& key, const CPubKey &pubkey)
 {
     LOCK(cs_KeyStore);
@@ -65,7 +182,7 @@ bool CBasicKeyStore::AddCScript(const CScript& redeemScript)
         return error("CBasicKeyStore::AddCScript(): redeemScripts > %i bytes are invalid", MAX_SCRIPT_ELEMENT_SIZE);
 
     LOCK(cs_KeyStore);
-    mapScripts[CScriptID(redeemScript)] = redeemScript;
+    mapScripts[ScriptOrIdentityID(redeemScript)] = redeemScript;
     return true;
 }
 

@@ -87,33 +87,7 @@ CC *MakeCCcondAny(uint8_t evalcode, std::vector<CTxDestination> dests)
     return CCNewThreshold(2, {condCC, Sig});
 }
 
-CC *MakeCCcondMofN(uint8_t evalcode, const std::vector<CTxDestination> &dests, int M)
-{
-    std::vector<CC*> pks;
-    for (auto dest : dests)
-    {
-        CPubKey pk = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest);
-        if (pk.IsValid())
-        {
-            pks.push_back(CCNewSecp256k1(pk));
-        }
-        else
-        {
-            pks.push_back(CCNewHashedSecp256k1(CKeyID(GetDestinationID(dest))));
-        }
-    }
-
-    if (M > pks.size())
-    {
-        M = pks.size();
-    }
-
-    CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
-    CC *Sig = CCNewThreshold(M, pks);
-    return CCNewThreshold(2, {condCC, Sig});
-}
-
-CTxOut MakeCC1vout(uint8_t evalcode,CAmount nValue,CPubKey pk)
+CTxOut MakeCC1vout(uint8_t evalcode, CAmount nValue, CPubKey pk)
 {
     CTxOut vout;
     CC *payoutCond = MakeCCcond1(evalcode,pk);

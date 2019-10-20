@@ -47,6 +47,7 @@
 
 #include "pbaas/pbaas.h"
 #include "pbaas/notarization.h"
+#include "pbaas/identity.h"
 #include "rpc/pbaasrpc.h"
 #include "transaction_builder.h"
 
@@ -529,6 +530,40 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                     if (typeRet == TX_PUBKEY)
                     {
                         pk = CPubKey(vSolutions[0]);
+                    }
+                    else if (typeRet == TX_CRYPTOCONDITION)
+                    {
+                        if (vSolutions[0].size() == 33)
+                        {
+                            pk = CPubKey(vSolutions[0]);
+                        }
+                        else if (vSolutions[0].size() == 34 && vSolutions[0][0] == COptCCParams::ADDRTYPE_PK)
+                        {
+                            pk = CPubKey(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()));
+                        }
+                        else if (vSolutions[0].size() == 20)
+                        {
+                            pwalletMain->GetPubKey(CKeyID(uint160(vSolutions[0])), pk);
+                        }
+                        else if (vSolutions[0].size() == 21 && vSolutions[0][0] == COptCCParams::ADDRTYPE_SH)
+                        {
+                            // destination is an identity, see if we can get its public key
+                            CScript idScript;
+                            CIdentity identity;
+
+                            if (pwalletMain->GetCScript(CScriptID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), idScript) && (identity = CIdentity(idScript)).IsValid() && identity.primaryAddresses.size())
+                            {
+                                CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.primaryAddresses[0]);
+                                if (pkTmp.IsValid())
+                                {
+                                    pk = pkTmp;
+                                }
+                                else
+                                {
+                                    pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.primaryAddresses[0])), pk);
+                                }
+                            }
+                        }
                     }
                     else
                     {

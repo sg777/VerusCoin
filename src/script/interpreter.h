@@ -11,6 +11,7 @@
 #include "script/cc.h"
 
 #include <vector>
+#include <map>
 #include <stdint.h>
 #include <string>
 #include <climits>
@@ -140,6 +141,8 @@ public:
         return false;
     }
 
+    virtual bool CanValidateIDs() const { return false; }
+
     virtual ~BaseSignatureChecker() {}
 };
 
@@ -150,14 +153,32 @@ protected:
     unsigned int nIn;
     const CAmount amount;
     const PrecomputedTransactionData* txdata;
+    std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> idMap;
+    bool idMapSet;
 
     virtual bool VerifySignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
 
 public:
-    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(NULL) {}
-    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
+    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(NULL), idMapSet(false) {}
+    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(&txdataIn), idMapSet(false) {}
     bool CheckSig(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, uint32_t consensusBranchId) const;
     bool CheckLockTime(const CScriptNum& nLockTime) const;
+    void SetIDMap(const std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> &map)
+    {
+        idMapSet = true;
+        idMap = map;
+    }
+    bool IsIDMapSet() const { return idMapSet; }
+    void AddIDAddresses(const uint160 &addr, const std::pair<int, std::vector<std::vector<unsigned char>>> &dests)
+    {
+        idMapSet = true;
+        idMap[addr] = dests;
+    }
+    void ClearIDAddresses()
+    {
+        idMapSet = false;
+        idMap.clear();
+    }
     int CheckCryptoCondition(
         const std::vector<unsigned char>& condBin,
         const std::vector<unsigned char>& ffillBin,

@@ -233,6 +233,18 @@ UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeou
     return UniValue(UniValue::VNULL);
 }
 
+bool uni_get_bool(UniValue uv, bool def)
+{
+    try
+    {
+        return uv.get_bool();
+    }
+    catch(const std::exception& e)
+    {
+        return def;
+    }
+}
+
 int32_t uni_get_int(UniValue uv, int32_t def)
 {
     try

@@ -6,8 +6,8 @@
 #ifndef BITCOIN_SCRIPT_STANDARD_H
 #define BITCOIN_SCRIPT_STANDARD_H
 
-#include "script/interpreter.h"
 #include "uint256.h"
+#include "interpreter.h"
 
 #include <boost/variant.hpp>
 
@@ -47,6 +47,12 @@ class COptCCParams
         static const uint8_t VERSION_V2 = 2;
         static const uint8_t VERSION_V3 = 3;
 
+        static const uint8_t ADDRTYPE_INVALID = 0;
+        static const uint8_t ADDRTYPE_PK = 1;
+        static const uint8_t ADDRTYPE_PKH = 2;
+        static const uint8_t ADDRTYPE_SH = 3;
+        static const uint8_t ADDRTYPE_LAST = 3;
+
         uint8_t version;
         uint8_t evalCode;
         uint8_t m, n; // for m of n sigs required, n pub keys for sigs will follow
@@ -55,7 +61,7 @@ class COptCCParams
 
         COptCCParams() : version(0), evalCode(0), m(0), n(0) {}
 
-        COptCCParams(uint8_t ver, uint8_t code, uint8_t _m, uint8_t _n, std::vector<CTxDestination> &vkeys, std::vector<std::vector<unsigned char>> &vdata) : 
+        COptCCParams(uint8_t ver, uint8_t code, uint8_t _m, uint8_t _n, const std::vector<CTxDestination> &vkeys, const std::vector<std::vector<unsigned char>> &vdata) : 
             version(ver), evalCode(code), m(_m), n(_n), vKeys(vkeys), vData(vdata) {}
 
         COptCCParams(std::vector<unsigned char> &vch);
@@ -63,6 +69,41 @@ class COptCCParams
         bool IsValid() const { return version == VERSION_V1 || version == VERSION_V2 || version == VERSION_V3; }
 
         std::vector<unsigned char> AsVector() const;
+};
+
+// used when creating crypto condition outputs
+template <typename T>
+class CConditionObj
+{
+public:
+    uint8_t evalCode;
+    int m;
+    const std::vector<CTxDestination> dests;
+    T obj;
+    bool objectValid;
+    CConditionObj(uint8_t eCode, const std::vector<CTxDestination> &Dests, int M, const T *pO=nullptr) : evalCode(eCode), m(M), dests(Dests), objectValid(false)
+    {
+        if (pO)
+        {
+            obj = *pO;
+            objectValid = true;
+        }
+    }
+    bool HaveObject() const
+    {
+        return objectValid;
+    }
+    T *ObjectPtr() const
+    {
+        if (HaveObject())
+        {
+            return &obj;
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
 };
 
 static const unsigned int MAX_OP_RETURN_RELAY = 8192;      //! bytes

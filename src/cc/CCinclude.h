@@ -140,6 +140,7 @@ CC *MakeCCcond1(uint8_t evalcode,CTxDestination dest);
 CC *MakeCCcondAny(uint8_t evalcode,std::vector<CTxDestination> dests);
 CC *MakeCCcond1of2(uint8_t evalcode,CPubKey pk1,CPubKey pk2);
 CC *MakeCCcondMofN(uint8_t evalcode, const std::vector<CTxDestination> &dests, int M);
+CC *MakeCCcondMofN(uint8_t evalcode, const std::vector<CC*> &conditions, int M);
 CC *GetCryptoCondition(CScript const& scriptSig);
 void CCaddr2set(struct CCcontract_info *cp,uint8_t evalcode,CPubKey pk,uint8_t *priv,char *coinaddr);
 void CCaddr3set(struct CCcontract_info *cp,uint8_t evalcode,CPubKey pk,uint8_t *priv,char *coinaddr);

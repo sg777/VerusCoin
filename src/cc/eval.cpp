@@ -88,6 +88,8 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn)
         //case EVAL_IDENTITY_PRIMARY:
         //case EVAL_IDENTITY_REVOKE:
         //case EVAL_IDENTITY_RECOVER:
+        //case EVAL_IDENTITY_COMMITMENT:
+        //case EVAL_IDENTITY_RESERVATION:
             if (!chainActive.LastTip() || CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight() + 1) < CActivationHeight::SOLUTION_VERUSV3)
             {
                 // if chain is not able to process this yet, don't drop through to do so
