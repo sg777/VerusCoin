@@ -421,7 +421,7 @@ static Fulfillment_t *secp256k1ToFulfillment(const CC *cond) {
 
 
 int secp256k1IsFulfilled(const CC *cond) {
-    return cond->signature > 0;
+    return cond->signature != 0;
 }
 
 

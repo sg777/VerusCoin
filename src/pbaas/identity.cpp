@@ -13,14 +13,28 @@
  * 
  * 
  */
+#include "pbaas/identity.h"
+
 #include "boost/algorithm/string.hpp"
 #include "script/standard.h"
-#include "pbaas/identity.h"
 #include "script/cc.h"
 #include "cc/CCinclude.h"
 #include "pbaas/pbaas.h"
 
 extern CTxMemPool mempool;
+
+CCommitmentHash::CCommitmentHash(const CTransaction &tx)
+{
+    for (auto txOut : tx.vout)
+    {
+        COptCCParams p;
+        if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
+        {
+            ::FromVector(p.vData[0], *this);
+            break;
+        }
+    }
+}
 
 CPrincipal::CPrincipal(const UniValue &uni)
 {
@@ -68,8 +82,6 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(uni, "parent"))));
     name = CleanName(uni_get_str(find_value(uni, "name")), parent);
 
-    nTime = uni_get_int64(find_value(uni, "time"));
-
     UniValue hashesUni = find_value(uni, "contenthashes");
     if (hashesUni.isArray())
     {
@@ -103,13 +115,24 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     }
 }
 
+CIdentity::CIdentity(const CScript &scriptPubKey)
+{
+    COptCCParams p;
+    if (IsPayToCryptoCondition(scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size())
+    {
+        FromVector(p.vData[0], *this);
+
+        uint160 newLevel;
+        std::string name = CleanName(name, newLevel);
+    }
+}
+
 UniValue CIdentity::ToUniValue() const
 {
     UniValue obj = ((CPrincipal *)this)->ToUniValue();
 
     obj.push_back(Pair("parent", EncodeDestination(CTxDestination(CScriptID(parent)))));
     obj.push_back(Pair("name", name));
-    obj.push_back(Pair("time", (int64_t)nTime));
 
     UniValue hashes(UniValue::VARR);
     for (int i = 0; i < contentHashes.size(); i++)
@@ -140,13 +163,21 @@ CIdentity::CIdentity(const CTransaction &tx)
     }
 }
 
-CIdentity CIdentity::LookupIdentity(const uint160 &nameID, CTxIn *idTxIn)
+CIdentity CIdentity::LookupIdentity(const uint160 &nameID, uint32_t height, CTxIn *pIdTxIn)
 {
     CIdentity ret;
 
+    CTxIn _idTxIn;
+    if (!pIdTxIn)
+    {
+        pIdTxIn = &_idTxIn;
+    }
+    CTxIn &idTxIn = *pIdTxIn;
+    uint32_t latestHeight = 0;
+
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
-    LOCK2(cs_main, mempool.cs);
+    LOCK(cs_main);
 
     CKeyID keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
 
@@ -165,31 +196,28 @@ CIdentity CIdentity::LookupIdentity(const uint160 &nameID, CTxIn *idTxIn)
                     // check the mempool for spent/modified
                     CSpentIndexKey key(it->first.txhash, it->first.index);
                     CSpentIndexValue value;
-                    if (mempool.getSpentIndex(key, value))
+
+                    COptCCParams p;
+                    if (coins.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() && 
+                        p.evalCode == EVAL_IDENTITY_PRIMARY && 
+                        (ret = CIdentity(coins.vout[it->first.index].scriptPubKey)).IsValid())
                     {
-                        do
+                        if (ret.GetNameID() == nameID)
                         {
-                            CTransaction tx;
-                            if (mempool.lookup(it->first.txhash, tx))
-                            {
-                                for (int i = 0; !ret.IsValid() && i < tx.vout.size(); i++)
-                                {
-                                    ret = CIdentity(tx.vout[i].scriptPubKey);
-                                    key = CSpentIndexKey(tx.GetHash(), i);
-                                }
-                            }
-                            else
-                            {
-                                key = CSpentIndexKey(uint256(), -1);
-                            }
-                        } while (mempool.getSpentIndex(key, value));
-                    }
-                    else
-                    {
-                        ret = CIdentity(coins.vout[it->first.index].scriptPubKey);
-                        if (idTxIn)
+                            // to be a confirmed identity, this identity either needs to:
+                            // 1. have only one identity output
+                            // 2. one of:
+                            //   a. spend an identity of the same ID
+                            //   b. spend an identity commitment and have an output matching both the identity commitment and identity output
+                            // ensuring this to be true is the responsibility of contextual transaction check
+                            idTxIn = CTxIn(it->first.txhash, it->first.index);
+                            latestHeight = it->second.blockHeight;
+                        }
+                        else
                         {
-                            *idTxIn = CTxIn(it->first.txhash, it->first.index);
+                            // got an identity masquerading as another, clear it
+                            ret = CIdentity();
                         }
                     }
                 }
@@ -199,13 +227,53 @@ CIdentity CIdentity::LookupIdentity(const uint160 &nameID, CTxIn *idTxIn)
                 printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
             }
         }
+        if (height != 0 && latestHeight > height)
+        {
+            // if we must check up to a specific height that is less than the latest height, do so
+            std::vector<CAddressIndexDbEntry> addressIndex;
+
+            if (GetAddressIndex(keyID, 1, addressIndex, 0, height) && addressIndex.size())
+            {
+                // look from last backward to find the first valid ID
+                uint32_t bestHeight = 0, bestIndex = 0;
+                for (int i = addressIndex.size() - 1; i >= 0; i--)
+                {
+                    if (addressIndex[i].first.blockHeight < bestHeight)
+                    {
+                        break;
+                    }
+                    CTransaction idTx;
+                    uint256 blkHash;
+                    COptCCParams p;
+                    LOCK(mempool.cs);
+                    if (!addressIndex[i].first.spending &&
+                        addressIndex[i].first.txindex > bestIndex &&    // always select the latest in a block, if there can be more than one
+                        myGetTransaction(addressIndex[i].first.txhash, idTx, blkHash) &&
+                        idTx.vout[addressIndex[i].first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() && 
+                        p.evalCode == EVAL_IDENTITY_PRIMARY && 
+                        (ret = CIdentity(idTx.vout[addressIndex[i].first.index].scriptPubKey)).IsValid())
+                    {
+                        idTxIn = CTxIn(addressIndex[i].first.txhash, addressIndex[i].first.index);
+                        bestHeight = addressIndex[i].first.blockHeight;
+                        bestIndex = addressIndex[i].first.txindex;
+                    }
+                }
+            }
+            else
+            {
+                // not found at that height
+                ret = CIdentity();
+                idTxIn = CTxIn();
+            }
+        }
     }
     return ret;
 }
 
-CIdentity CIdentity::LookupIdentity(const std::string &name, CTxIn *idTxIn)
+CIdentity CIdentity::LookupIdentity(const std::string &name, uint32_t height, CTxIn *idTxIn)
 {
-    return LookupIdentity(GetNameID(name), idTxIn);
+    return LookupIdentity(GetNameID(name), height, idTxIn);
 }
 
 CScript CIdentity::IdentityUpdateOutputScript() const

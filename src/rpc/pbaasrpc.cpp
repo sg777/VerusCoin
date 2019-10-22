@@ -175,7 +175,7 @@ void GetDefinedChains(vector<CPBaaSChainDefinition> &chains, bool includeExpired
                 // TODO: remove/comment this if statement, as it is redundant with the one below
                 if (!valStr.read(chains.back().ToUniValue().write()))
                 {
-                    printf("Invalid characters in blockchain definition: %s\n", chains.back().ToUniValue().write());
+                    printf("Invalid characters in blockchain definition: %s\n", chains.back().ToUniValue().write().c_str());
                 }
 
                 // remove after to use less storage
@@ -715,9 +715,6 @@ UniValue getpendingchaintransfers(const UniValue& params, bool fHelp)
 
     if ((IsVerusActive() && GetChainDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetChainID() == chainID)
     {
-        // which transaction are we in this block?
-        std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-
         // look for new exports
         multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
 
@@ -4415,14 +4412,9 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    if (!(oldID = CIdentity::LookupIdentity(newID.GetNameID(), &idTxIn)).IsValid())
+    if (!(oldID = CIdentity::LookupIdentity(newID.GetNameID(), 0, &idTxIn)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
-    }
-
-    if (oldID.nTime > newID.nTime || !chainActive.LastTip() || newID.nTime > GetAdjustedTime())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "ID time (" + std::to_string(newID.nTime) + ") must be later than the ID it replaces and less than or equal to the current adjusted time (" + std::to_string(GetAdjustedTime()) + ").");
     }
 
     // create the identity definition transaction & reservation key output
@@ -4551,7 +4543,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     uint160 nameID = CIdentity::GetNameID(uni_get_str(params[0]), uint160());
     CTxIn idTxIn;
 
-    CIdentity identity = CIdentity::LookupIdentity(nameID, &idTxIn);
+    CIdentity identity = CIdentity::LookupIdentity(nameID, 0, &idTxIn);
 
     UniValue ret(UniValue::VOBJ);
 

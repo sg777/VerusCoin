@@ -14,8 +14,8 @@
  * 
  */
 
-#ifndef INDENTITY_H
-#define INDENTITY_H
+#ifndef IDENTITY_H
+#define IDENTITY_H
 
 #include <univalue.h>
 #include <sstream>
@@ -30,7 +30,6 @@
 #include "script/script.h"
 #include "script/standard.h"
 #include "primitives/transaction.h"
-#include "cc/CCinclude.h"
 
 class CCommitmentHash
 {
@@ -51,18 +50,7 @@ public:
         ::FromVector(asVector, *this);
     }
 
-    CCommitmentHash(const CTransaction &tx)
-    {
-        for (auto txOut : tx.vout)
-        {
-            COptCCParams p;
-            if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
-            {
-                ::FromVector(p.vData[0], *this);
-                break;
-            }
-        }
-    }
+    CCommitmentHash(const CTransaction &tx);
 
     ADD_SERIALIZE_METHODS;
 
@@ -235,8 +223,6 @@ public:
     // 
     std::string name;
 
-    uint32_t nTime;
-
     // content hashes
     std::vector<uint256> contentHashes;
 
@@ -249,7 +235,7 @@ public:
     // z-address for contact and privately made attestations that can be proven to others
     libzcash::SaplingPaymentAddress privateAddress;
 
-    CIdentity() : CPrincipal(), nTime(0) {}
+    CIdentity() : CPrincipal() {}
 
     CIdentity(uint32_t Version,
               uint32_t Flags,
@@ -257,7 +243,6 @@ public:
               int32_t minPrimarySigs,
               const uint160 &Parent,
               const std::string &Name,
-              uint32_t time,
               const std::vector<uint256> &hashes,
               const uint160 &Revocation,
               const uint160 &Recovery,
@@ -265,7 +250,6 @@ public:
               CPrincipal(Version, Flags, primary, minPrimarySigs),
               parent(Parent),
               name(Name),
-              nTime(time),
               contentHashes(hashes),
               revocationAuthority(Revocation),
               recoveryAuthority(Recovery),
@@ -274,17 +258,7 @@ public:
 
     CIdentity(const UniValue &uni);
     CIdentity(const CTransaction &tx);
-    CIdentity(const CScript &scriptPubKey)
-    {
-        COptCCParams p;
-        if (IsPayToCryptoCondition(scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size())
-        {
-            FromVector(p.vData[0], *this);
-
-            uint160 newLevel;
-            std::string name = CleanName(name, newLevel);
-        }
-    }
+    CIdentity(const CScript &scriptPubKey);
     CIdentity(const std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);
@@ -297,7 +271,6 @@ public:
         READWRITE(*(CPrincipal *)this);
         READWRITE(parent);
         READWRITE(name);
-        READWRITE(nTime);
         READWRITE(contentHashes);
         READWRITE(revocationAuthority);
         READWRITE(recoveryAuthority);
@@ -331,8 +304,8 @@ public:
     uint160 GetNameID(const std::string &Name) const;
     static uint160 GetNameID(const std::string &Name, const uint160 &parent);
 
-    CIdentity LookupIdentity(const std::string &name, CTxIn *pTxIn=nullptr);
-    static CIdentity LookupIdentity(const uint160 &nameID, CTxIn *pTxIn=nullptr);
+    CIdentity LookupIdentity(const std::string &name, uint32_t height=0, CTxIn *pTxIn=nullptr);
+    static CIdentity LookupIdentity(const uint160 &nameID, uint32_t height=0, CTxIn *pTxIn=nullptr);
 
     CIdentity RevocationAuthority() const
     {
@@ -344,6 +317,7 @@ public:
         return GetNameID() == recoveryAuthority ? *this : LookupIdentity(recoveryAuthority);
     }
 
+    /* we need to separate the code to ensure this header has no dependency on CCinclude.h
     template <typename TOBJ>
     CTxOut TransparentOutput(uint8_t evalcode, CAmount nValue, const TOBJ &obj) const
     {
@@ -361,6 +335,7 @@ public:
         }
         return ret;
     }
+    */
 
     // creates an output script to control updates to this identity
     CScript IdentityUpdateOutputScript() const;
@@ -376,4 +351,132 @@ public:
     }
 };
 
-#endif // INDENTITY_H
+typedef std::pair<uint32_t, uint256> BlockHeightTxId;
+
+class CIdentitySigningState
+{
+public:
+    uint16_t minSigs;
+    std::vector<CTxDestination> keys;
+
+    CIdentitySigningState() : minSigs(0) {}
+
+    CIdentitySigningState(uint16_t MinSigs, const std::vector<CTxDestination> &Keys) : minSigs(MinSigs), keys(Keys) {}
+
+    CIdentitySigningState(const UniValue &uni);
+    CIdentitySigningState(std::vector<unsigned char> asVector)
+    {
+        ::FromVector(asVector, *this);
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(minSigs);
+
+        std::vector<std::vector<unsigned char>> addressVs;
+        if (ser_action.ForRead())
+        {
+            READWRITE(addressVs);
+
+            for (auto vec : addressVs)
+            {
+                if (vec.size() == 20)
+                {
+                    keys.push_back(CTxDestination(CKeyID(uint160(vec))));
+                }
+                else if (vec.size() == 33)
+                {
+                    keys.push_back(CTxDestination(CPubKey(vec)));
+                }
+                else
+                {
+                    keys.push_back(CTxDestination(CNoDestination()));
+                }
+            }
+        }
+        else
+        {
+            for (auto dest : keys)
+            {
+                addressVs.push_back(GetDestinationBytes(dest));
+            }
+
+            READWRITE(addressVs);
+        }
+    }
+
+    UniValue ToUniValue() const;
+};
+
+// this is stored serialized in the wallet as an ID, which allows a wallet to keep track of
+// all identity history that is relevant to signing operations as well as ID states from the past
+// while only needing to keep history for IDs that our addresses were either once a part of or
+// that are manually held in the wallet.
+class CIdentityWithHistory
+{
+public:
+    static const uint16_t VERSION_INVALID = 0;
+    static const uint16_t VERSION_V1 = 1;
+    static const uint16_t VERSION_CURRENT = 1;
+
+    static const uint16_t CAN_SIGN = 1;
+    static const uint16_t CAN_SPEND = 2;
+    static const uint16_t HISTORY_HOLD = 4;     // we were CAN_SIGN in the past, so keep a last state updated after we are removed, keep it updated in case we need it for signing other txes
+    static const uint16_t MANUAL_HOLD = 8;      // we were manually requested to watch this address
+    static const uint16_t UNRELATED = 0x10;     // set when an identity on manual hold is found to have no obvious relevance to us or transactions we can sign
+
+    uint16_t version;
+    uint16_t flags;
+    CIdentity id;
+    std::map<BlockHeightTxId, CIdentitySigningState> history;
+
+    CIdentityWithHistory() : version(0) {}
+
+    CIdentityWithHistory(uint16_t Ver, uint16_t Flags, const CIdentity &ID, const std::map<BlockHeightTxId, CIdentitySigningState> &History) : version(Ver), flags(Flags), id(ID), history(History) {}
+
+    CIdentityWithHistory(const UniValue &uni);
+    CIdentityWithHistory(std::vector<unsigned char> asVector)
+    {
+        ::FromVector(asVector, *this);
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(version);
+        READWRITE(flags);
+        READWRITE(id);
+
+        std::vector<std::pair<BlockHeightTxId, CIdentitySigningState>> addressVs;
+        if (ser_action.ForRead())
+        {
+            READWRITE(addressVs);
+
+            for (auto idStatePair : addressVs)
+            {
+                history.insert(idStatePair);
+            }
+        }
+        else
+        {
+            for (auto idStatePair : history)
+            {
+                addressVs.push_back(idStatePair);
+            }
+
+            READWRITE(addressVs);
+        }
+    }
+
+    UniValue ToUniValue() const;
+
+    bool IsValid() const
+    {
+        return id.IsValid() && version > VERSION_INVALID && version <= VERSION_CURRENT;
+    }
+};
+
+#endif // IDENTITY_H

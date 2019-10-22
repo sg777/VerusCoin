@@ -1935,6 +1935,13 @@ bool CWallet::UpdatedNoteData(const CWalletTx& wtxIn, CWalletTx& wtx)
     return !unchangedSproutFlag || !unchangedSaplingFlag;
 }
 
+bool CWallet::AddDependentScriptsIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate)
+{
+    // first check for existence of an identity definition
+    // if there is one, the transaction involves us if we own any of the keys of any of the IDs that can spend any of the outputs
+    // if we are 
+}
+
 /**
  * Add a transaction to the wallet, or update it.
  * pblock is optional, but should be provided if the transaction is known to be in a block.
@@ -1962,6 +1969,126 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                 return false;
             }
         }
+
+
+
+        // loop through the outputs and consider the following:
+        // 1. If there is an ID:
+        //    a. if we already store it, update
+        //       i. if we are removed from the id, remove any transactions that are sent to that ID and no longer involve us
+        //    b. if we do not store the id, but we have keys in the output, store all IDs needed to spend it
+        //       i. if we are part of the id, search for and add any transactions that are sent to the ID and aren't already there to our wallet
+
+        bool canSign = false;
+
+        for (auto output : tx.vout)
+        {
+            bool canSpend = false;
+            COptCCParams p;
+
+            if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version == p.VERSION_V3)
+            {
+                CIdentity identity;
+                if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (identity = CIdentity(p.vData[0])).IsValid())
+                {
+                    // if this is an identity definition, we may need to add a new
+                    // script to the wallet or update an existing script
+                    CScript oldIDScript;
+                    bool wasMine = false;
+                    bool wasWatched = false;
+                    std::set<CKeyID> keySet;
+
+                    if (GetCScript(identity.GetNameID(), oldIDScript)) {
+                        wasMine = true;
+                    }
+                    else
+                    {
+                        // see if it's in watch only
+                        wasWatched = HaveWatchOnly(output.scriptPubKey);
+                    }
+
+                    for (auto key : identity.primaryAddresses)
+                    {
+                        CKeyID keyID = CKeyID(GetDestinationID(key));
+                        if (HaveKey(keyID))
+                        {
+                            keySet.insert(keyID);
+                        }
+                    }
+
+                    // if we have enough keys to fully authorize, it is ours
+                    if (keySet.size() >= p.m)
+                    {
+                        return ISMINE_SPENDABLE;
+                    }
+                    else if (keySet.size())
+                    {
+                        return ISMINE_WATCH_ONLY;
+                    }
+                    else
+                    {
+                        return wasMine || wasWatched ? ISMINE_WATCH_ONLY : ISMINE_NO;
+                    }
+                }
+                else
+                {
+                    CCcontract_info C;
+                    CKeyID pkID;
+
+                    if (CCinit(&C, p.evalCode))
+                    {
+                        pkID = CPubKey(ParseHex(C.CChexstr)).GetID();
+                    }
+
+                    // check all destinations, including IDs
+                    std::set<CTxDestination> keySet;
+                    bool watchOnly = false;
+                    for (auto key : p.vKeys)
+                    {
+                        if (key.which() == COptCCParams::ADDRTYPE_SH)
+                        {
+                            CScript idScript;
+                            CIdentity idp;
+                            std::set<CKeyID> ownKeySet;
+                            if (GetCScript(CScriptID(GetDestinationID(key)), idScript) && (idp = CIdentity(idScript)).IsValid() && (idp.GetNameID() == GetDestinationID(key)))
+                            {
+                                for (auto oneKey : idp.primaryAddresses)
+                                {
+                                    ownKeySet.insert(GetDestinationID(oneKey));
+                                }
+                                if (ownKeySet.size())
+                                {
+                                    watchOnly = true;
+                                }
+                                if (ownKeySet.size() >= idp.minSigs)
+                                {
+                                    keySet.insert(key);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            CKeyID keyID = CKeyID(GetDestinationID(key));
+                            if (HaveKey(keyID))
+                            {
+                                keySet.insert(key);
+                            }
+                        }
+                    }
+                    if (keySet.size() >= p.m)
+                    {
+                        return ISMINE_SPENDABLE;
+                    }
+                    else
+                    {
+                        return watchOnly ? ISMINE_WATCH_ONLY : ISMINE_NO;
+                    }
+                }
+            }
+        }
+
+
+
         bool isMine = IsMine(tx);
         if (fExisted || isMine || IsFromMe(tx) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
         {

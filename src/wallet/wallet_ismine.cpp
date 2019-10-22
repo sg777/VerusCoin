@@ -11,6 +11,7 @@
 #include "script/standard.h"
 #include "cc/eval.h"
 #include "pbaas/identity.h"
+#include "cc/CCinclude.h"
 
 #include <boost/foreach.hpp>
 

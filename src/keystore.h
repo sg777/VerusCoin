@@ -15,6 +15,7 @@
 #include "zcash/Address.hpp"
 #include "zcash/NoteEncryption.hpp"
 #include "zcash/zip32.h"
+#include "pbaas/identity.h"
 
 #include <boost/signals2/signal.hpp>
 #include <boost/variant.hpp>
@@ -55,6 +56,13 @@ public:
     virtual bool RemoveWatchOnly(const CScript &dest) =0;
     virtual bool HaveWatchOnly(const CScript &dest) const =0;
     virtual bool HaveWatchOnly() const =0;
+
+    //! Support for identities
+    virtual bool AddIdentity(const CIdentity &ID) =0;
+    virtual bool UpdateIdentity(const CIdentity &ID) =0;
+    virtual bool RemoveIdentity(const CIdentity &ID) =0;
+    virtual bool GetIdentityAndHistory(const uint160 NameID, CIdentityWithHistory &idWithHistory) const =0;
+    virtual bool UpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory) =0;
 
     //! Add a spending key to the store.
     virtual bool AddSproutSpendingKey(const libzcash::SproutSpendingKey &sk) =0;
@@ -122,6 +130,7 @@ protected:
     HDSeed hdSeed;
     KeyMap mapKeys;
     ScriptMap mapScripts;
+
     WatchOnlySet setWatchOnly;
     SproutSpendingKeyMap mapSproutSpendingKeys;
     SproutViewingKeyMap mapSproutViewingKeys;
@@ -175,6 +184,12 @@ public:
     virtual bool AddCScript(const CScript& redeemScript);
     virtual bool HaveCScript(const CScriptID &hash) const;
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const;
+
+    virtual bool AddIdentity(const CIdentity &identity);
+    virtual bool UpdateIdentity(const CIdentity &identity);
+    virtual bool RemoveIdentity(const CIdentity &identity);
+    virtual bool GetIdentityAndHistory(const uint160 NameID, CIdentityWithHistory &idWithHistory) const;
+    virtual bool UpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory);
 
     virtual bool AddWatchOnly(const CScript &dest);
     virtual bool RemoveWatchOnly(const CScript &dest);

@@ -22,7 +22,6 @@
 #include "amount.h"
 #include "pbaas/crosschainrpc.h"
 #include "pbaas/reserves.h"
-#include "univalue.h"
 #include "mmr.h"
 
 #include <boost/algorithm/string.hpp>

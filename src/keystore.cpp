@@ -8,6 +8,7 @@
 #include "key.h"
 #include "util.h"
 #include "pbaas/identity.h"
+#include "cc/CCinclude.h"
 #include "boost/algorithm/string.hpp"
 
 #include <boost/foreach.hpp>
@@ -18,7 +19,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name)
     std::string invalidChars = "\\/:*?\"<>|";
     for (int i = 0; i < nameCopy.size(); i++)
     {
-        if (invalidChars.find(nameCopy[i]) != string::npos)
+        if (invalidChars.find(nameCopy[i]) != std::string::npos)
         {
             nameCopy[i] = '_';
         }
@@ -202,6 +203,36 @@ bool CBasicKeyStore::GetCScript(const CScriptID &hash, CScript& redeemScriptOut)
         return true;
     }
     return false;
+}
+
+bool CBasicKeyStore::AddIdentity(const CIdentity &ID)
+{
+    // TODO:PBAAS finish - also must include txid and height
+    return true;
+}
+
+bool CBasicKeyStore::UpdateIdentity(const CIdentity &ID)
+{
+    // TODO:PBAAS finish
+    return true;
+}
+
+bool CBasicKeyStore::RemoveIdentity(const CIdentity &ID)
+{
+    // TODO:PBAAS finish
+    return true;
+}
+
+bool CBasicKeyStore::GetIdentityAndHistory(const uint160 NameID, CIdentityWithHistory &idWithHistory) const
+{
+    // TODO:PBAAS finish
+    return true;
+}
+
+bool CBasicKeyStore::UpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory)
+{
+    // TODO:PBAAS finish
+    return true;
 }
 
 bool CBasicKeyStore::AddWatchOnly(const CScript &dest)

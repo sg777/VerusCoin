@@ -2101,7 +2101,7 @@ bool GetTransaction(const uint256 &hash, CTransaction &txOut, const Consensus::P
 {
     CBlockIndex *pindexSlow = NULL;
     
-    LOCK(cs_main);
+    LOCK2(cs_main, mempool.cs);
     
     if (mempool.lookup(hash, txOut))
     {
@@ -2732,8 +2732,7 @@ namespace Consensus {
     }
 }// namespace Consensus
 
-bool ContextualCheckInputs(
-                           const CTransaction& tx,
+bool ContextualCheckInputs(const CTransaction& tx,
                            CValidationState &state,
                            const CCoinsViewCache &inputs,
                            bool fScriptChecks,
@@ -2746,7 +2745,8 @@ bool ContextualCheckInputs(
 {
     if (!tx.IsMint())
     {
-        if (!Consensus::CheckTxInputs(tx, state, inputs, GetSpendHeight(inputs), consensusParams)) {
+        uint32_t spendHeight = GetSpendHeight(inputs);
+        if (!Consensus::CheckTxInputs(tx, state, inputs, spendHeight, consensusParams)) {
             return false;
         }
         
@@ -2771,7 +2771,7 @@ bool ContextualCheckInputs(
                 std::map<uint160, pair<int, std::vector<std::vector<unsigned char>>>> idAddresses;
                 if (coins->vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.n >= 1 && p.vKeys.size() >= p.n && p.version >= p.VERSION_V3 && p.vData.size())
                 {
-                    // get mapping to any identities used
+                    // get mapping to any identities used that are available
                     COptCCParams master = COptCCParams(p.vData.back());
                     bool ccValid = master.IsValid();
 
@@ -2787,14 +2787,10 @@ bool ContextualCheckInputs(
                                 uint160 destId = GetDestinationID(dest);
                                 if (dest.which() == COptCCParams::ADDRTYPE_SH)
                                 {
-                                    // lookup identity, we must have all target identity scripts in our keystore,
+                                    // lookup identity
                                     CScript idScript;
                                     CIdentity id;
-                                    if (!(id = CIdentity::LookupIdentity(destId)).IsValid())
-                                    {
-                                        ccValid = false;
-                                    }
-                                    else
+                                    if ((id = CIdentity::LookupIdentity(destId, spendHeight)).IsValid())
                                     {
                                         std::vector<std::vector<unsigned char>> idAddrBytes;
                                         for (auto &oneAddr : id.primaryAddresses)
