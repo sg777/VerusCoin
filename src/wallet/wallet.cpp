@@ -1935,13 +1935,6 @@ bool CWallet::UpdatedNoteData(const CWalletTx& wtxIn, CWalletTx& wtx)
     return !unchangedSproutFlag || !unchangedSaplingFlag;
 }
 
-bool CWallet::AddDependentScriptsIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate)
-{
-    // first check for existence of an identity definition
-    // if there is one, the transaction involves us if we own any of the keys of any of the IDs that can spend any of the outputs
-    // if we are 
-}
-
 /**
  * Add a transaction to the wallet, or update it.
  * pblock is optional, but should be provided if the transaction is known to be in a block.

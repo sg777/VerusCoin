@@ -1184,7 +1184,6 @@ public:
     void SyncTransaction(const CTransaction& tx, const CBlock* pblock);
     void RescanWallet();
     bool AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate);
-    bool AddDependentScriptsIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate);
     void WitnessNoteCommitment(
          std::vector<uint256> commitments,
          std::vector<boost::optional<SproutWitness>>& witnesses,
