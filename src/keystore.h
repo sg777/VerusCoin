@@ -58,10 +58,11 @@ public:
     virtual bool HaveWatchOnly() const =0;
 
     //! Support for identities
-    virtual bool AddIdentity(const CIdentity &ID) =0;
-    virtual bool UpdateIdentity(const CIdentity &ID) =0;
-    virtual bool RemoveIdentity(const CIdentity &ID) =0;
-    virtual bool GetIdentityAndHistory(const uint160 NameID, CIdentityWithHistory &idWithHistory) const =0;
+    virtual bool HaveIdentity(const CIdentityID &idID) const =0;
+    virtual bool AddIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight) =0;
+    virtual bool UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight) =0;
+    virtual bool RemoveIdentity(const CIdentityID &idID) =0;
+    virtual bool GetIdentityAndHistory(const CIdentityID &idID, CIdentityWithHistory &idWithHistory) const =0;
     virtual bool UpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory) =0;
 
     //! Add a spending key to the store.
@@ -110,7 +111,8 @@ public:
 };
 
 typedef std::map<CKeyID, CKey> KeyMap;
-typedef std::map<CScriptID, CScript > ScriptMap;
+typedef std::map<CScriptID, CScript> ScriptMap;
+typedef std::map<CIdentityID, CIdentityWithHistory> IdentityMap;
 typedef std::set<CScript> WatchOnlySet;
 typedef std::map<libzcash::SproutPaymentAddress, libzcash::SproutSpendingKey> SproutSpendingKeyMap;
 typedef std::map<libzcash::SproutPaymentAddress, libzcash::SproutViewingKey> SproutViewingKeyMap;
@@ -130,6 +132,7 @@ protected:
     HDSeed hdSeed;
     KeyMap mapKeys;
     ScriptMap mapScripts;
+    IdentityMap mapIdentities;
 
     WatchOnlySet setWatchOnly;
     SproutSpendingKeyMap mapSproutSpendingKeys;
@@ -185,10 +188,11 @@ public:
     virtual bool HaveCScript(const CScriptID &hash) const;
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const;
 
-    virtual bool AddIdentity(const CIdentity &identity);
-    virtual bool UpdateIdentity(const CIdentity &identity);
-    virtual bool RemoveIdentity(const CIdentity &identity);
-    virtual bool GetIdentityAndHistory(const uint160 NameID, CIdentityWithHistory &idWithHistory) const;
+    virtual bool HaveIdentity(const CIdentityID &idID) const;
+    virtual bool AddIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight);
+    virtual bool UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight);
+    virtual bool RemoveIdentity(const CIdentityID &idID);
+    virtual bool GetIdentityAndHistory(const CIdentityID &idID, CIdentityWithHistory &idWithHistory) const;
     virtual bool UpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory);
 
     virtual bool AddWatchOnly(const CScript &dest);

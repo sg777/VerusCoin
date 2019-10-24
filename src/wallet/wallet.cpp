@@ -1965,6 +1965,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
 
 
+
+
         // loop through the outputs and consider the following:
         // 1. If there is an ID:
         //    a. if we already store it, update
@@ -2479,107 +2481,39 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
 {
     vector<valtype> vSolutions;
     txnouttype whichType;
-    const CScriptExt scriptPubKey = CScriptExt(tx.vout[voutNum].scriptPubKey);
+    CScript scriptPubKey = tx.vout[voutNum].scriptPubKey;
+
+    if (scriptPubKey.IsCheckLockTimeVerify())
+    {
+        uint8_t pushOp = scriptPubKey[0];
+        uint32_t scriptStart = pushOp + 3;
+
+        // continue with post CLTV script
+        scriptPubKey = CScript(scriptPubKey.size() > scriptStart ? scriptPubKey.begin() + scriptStart : scriptPubKey.end(), scriptPubKey.end());
+    }
 
     COptCCParams p;
-    if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+    if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
     {
-        // if version 3 Verus CC, we have everything we need to determine if this is ours
-        whichType = TX_CRYPTOCONDITION;
-        CIdentity identity;
-        if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (identity = CIdentity(p.vData[0])).IsValid())
+        std::vector<CTxDestination> dests;
+        int minSigs;
+        bool canSign = false;
+        bool canSpend = false;
+
+        if (ExtractDestinations(scriptPubKey, whichType, dests, minSigs, this, &canSign, &canSpend))
         {
-            // if this is an identity definition, we may need to add a new
-            // script to the wallet or update an existing script
-            CScript oldIDScript;
-            bool wasMine = false;
-            bool wasWatched = false;
-            std::set<CKeyID> keySet;
-
-            if (GetCScript(identity.GetNameID(), oldIDScript)) {
-                wasMine = true;
-            }
-            else
-            {
-                wasWatched = HaveWatchOnly(scriptPubKey);
-            }
-
-            for (auto key : identity.primaryAddresses)
-            {
-                CKeyID keyID = CKeyID(GetDestinationID(key));
-                if (HaveKey(keyID))
-                {
-                    keySet.insert(keyID);
-                }
-            }
-
-            // if we have enough keys to fully authorize, it is ours
-            if (keySet.size() >= p.m)
+            if (canSpend)
             {
                 return ISMINE_SPENDABLE;
             }
-            else if (keySet.size())
+            else if (canSign)
             {
                 return ISMINE_WATCH_ONLY;
-            }
-            else
-            {
-                return wasMine || wasWatched ? ISMINE_WATCH_ONLY : ISMINE_NO;
             }
         }
         else
         {
-            CCcontract_info C;
-            CKeyID pkID;
-
-            if (CCinit(&C, p.evalCode))
-            {
-                pkID = CPubKey(ParseHex(C.CChexstr)).GetID();
-            }
-
-            // check all destinations, including IDs
-            std::set<CTxDestination> keySet;
-            bool watchOnly = false;
-            for (auto key : p.vKeys)
-            {
-                if (key.which() == COptCCParams::ADDRTYPE_SH)
-                {
-                    CScript idScript;
-                    CIdentity idp;
-                    std::set<CKeyID> ownKeySet;
-                    if (GetCScript(CScriptID(GetDestinationID(key)), idScript) && (idp = CIdentity(idScript)).IsValid() && (idp.GetNameID() == GetDestinationID(key)))
-                    {
-                        for (auto oneKey : idp.primaryAddresses)
-                        {
-                            ownKeySet.insert(GetDestinationID(oneKey));
-                        }
-                        if (ownKeySet.size())
-                        {
-                            watchOnly = true;
-                        }
-                        if (ownKeySet.size() >= idp.minSigs)
-                        {
-                            keySet.insert(key);
-                        }
-                    }
-                }
-                else
-                {
-                    CKeyID keyID = CKeyID(GetDestinationID(key));
-                    if (HaveKey(keyID))
-                    {
-                        keySet.insert(key);
-                    }
-                }
-            }
-            if (keySet.size() >= p.m)
-            {
-                return ISMINE_SPENDABLE;
-            }
-            else
-            {
-                return watchOnly ? ISMINE_WATCH_ONLY : ISMINE_NO;
-            }
+            return ISMINE_NO;
         }
     }
     else if (!Solver(scriptPubKey, whichType, vSolutions))
@@ -6161,6 +6095,17 @@ public:
         CScript script;
         if (keystore.GetCScript(scriptId, script))
             Process(script);
+    }
+
+    void operator()(const CIdentityID &idId) {
+        CIdentityWithHistory idHistory;
+        if (keystore.GetIdentityAndHistory(idId, idHistory))
+        {
+            for (auto dest : idHistory.history.rbegin()->second.keys)
+            {
+                boost::apply_visitor(*this, dest);
+            }
+        }
     }
 
     void operator()(const CNoDestination &none) {}

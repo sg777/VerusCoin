@@ -38,6 +38,7 @@
  * after the code is interpreted as a bitcoin script.
  */
 #define FOREACH_EVAL(EVAL)             \
+        EVAL(EVAL_NONE, 0x0)  \
         EVAL(EVAL_STAKEGUARD, 0x1)  \
         EVAL(EVAL_PBAASDEFINITION, 0x2)  \
         EVAL(EVAL_SERVICEREWARD, 0x3)  \

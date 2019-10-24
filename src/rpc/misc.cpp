@@ -283,6 +283,31 @@ public:
         }
         return obj;
     }
+
+    UniValue operator()(const CIdentityID &idID) const {
+        UniValue obj(UniValue::VOBJ);
+        CScript subscript;
+        obj.push_back(Pair("isscript", false));
+        obj.push_back(Pair("isidentity", true));
+        CIdentity id = CIdentity::LookupIdentity(idID);
+        if (id.IsValid()) {
+            if (id.IsRevoked())
+            {
+                obj.push_back(Pair("isrevoked", true));
+            }
+            else
+            {
+                obj.push_back(Pair("isrevoked", false));
+                UniValue a(UniValue::VARR);
+                for (const CTxDestination& addr : id.primaryAddresses) {
+                    a.push_back(EncodeDestination(addr));
+                }
+                obj.push_back(Pair("addresses", a));
+                obj.push_back(Pair("sigsrequired", id.minSigs));
+            }
+        }
+        return obj;
+    }
 };
 #endif
 

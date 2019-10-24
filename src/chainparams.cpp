@@ -183,6 +183,7 @@ public:
         // TODO: set up bootstrapping for mainnet
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,60);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,85);
+        base58Prefixes[IDENTITY_ADDRESS] = std::vector<unsigned char>(1,102);
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,188);
         base58Prefixes[EXT_PUBLIC_KEY] = boost::assign::list_of(0x04)(0x88)(0xB2)(0x1E).convert_to_container<std::vector<unsigned char> >();
         base58Prefixes[EXT_SECRET_KEY] = boost::assign::list_of(0x04)(0x88)(0xAD)(0xE4).convert_to_container<std::vector<unsigned char> >();
@@ -541,6 +542,7 @@ public:
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,0);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,5);
+        base58Prefixes[IDENTITY_ADDRESS] = std::vector<unsigned char>(1,102);
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,128);
         base58Prefixes[EXT_PUBLIC_KEY] = boost::assign::list_of(0x04)(0x35)(0x87)(0xCF).convert_to_container<std::vector<unsigned char> >();
         base58Prefixes[EXT_SECRET_KEY] = boost::assign::list_of(0x04)(0x35)(0x83)(0x94).convert_to_container<std::vector<unsigned char> >();
@@ -694,6 +696,7 @@ public:
         // These prefixes are the same as the testnet prefixes
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,60);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,85);
+        base58Prefixes[IDENTITY_ADDRESS] = std::vector<unsigned char>(1,102);
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,188);
         //base58Prefixes[PUBKEY_ADDRESS]     = {0x1D,0x25};
         //base58Prefixes[SCRIPT_ADDRESS]     = {0x1C,0xBA};

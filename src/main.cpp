@@ -2766,12 +2766,13 @@ bool ContextualCheckInputs(const CTransaction& tx,
                 const CCoins* coins = inputs.AccessCoins(prevout.hash);
                 assert(coins);
 
-                // create an ID map to check ID signatures
+                // create an ID map here, which late binds to the IDs on the blockchain as of the spend height, 
+                // and substitute the correct addresses when checking signatures
                 COptCCParams p;
                 std::map<uint160, pair<int, std::vector<std::vector<unsigned char>>>> idAddresses;
                 if (coins->vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.n >= 1 && p.vKeys.size() >= p.n && p.version >= p.VERSION_V3 && p.vData.size())
                 {
-                    // get mapping to any identities used that are available
+                    // get mapping to any identities used that are available. if a signing identity is unavailable, a transaction may still be able to be spent
                     COptCCParams master = COptCCParams(p.vData.back());
                     bool ccValid = master.IsValid();
 
@@ -2785,10 +2786,9 @@ bool ContextualCheckInputs(const CTransaction& tx,
                             for (auto dest : oneP.vKeys)
                             {
                                 uint160 destId = GetDestinationID(dest);
-                                if (dest.which() == COptCCParams::ADDRTYPE_SH)
+                                if (dest.which() == COptCCParams::ADDRTYPE_ID)
                                 {
                                     // lookup identity
-                                    CScript idScript;
                                     CIdentity id;
                                     if ((id = CIdentity::LookupIdentity(destId, spendHeight)).IsValid())
                                     {

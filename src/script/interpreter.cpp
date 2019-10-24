@@ -1390,7 +1390,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                 for (auto dest : oneP.vKeys)
                 {
                     uint160 destId = GetDestinationID(dest);
-                    if (dest.which() == COptCCParams::ADDRTYPE_SH)
+                    if (dest.which() == COptCCParams::ADDRTYPE_ID)
                     {
                         if (!IsIDMapSet())
                         {
@@ -1400,7 +1400,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                         }
                         else
                         {
-                            // lookup identity, we must have all valid identity scripts in our keystore.
+                            // lookup identity, we must have all valid identity scripts in our keystore with a positive blockheight.
                             // those that are not found may not be realized yet and so are left as their unspendable ID
                             // in the spend condition, as are revoked identities
                             std::vector<CTxDestination> addrs;

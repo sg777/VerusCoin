@@ -300,12 +300,12 @@ public:
     }
 
     static std::string CleanName(const std::string &Name, uint160 &Parent);
-    uint160 GetNameID() const;
-    uint160 GetNameID(const std::string &Name) const;
-    static uint160 GetNameID(const std::string &Name, const uint160 &parent);
+    CIdentityID GetNameID() const;
+    CIdentityID GetNameID(const std::string &Name) const;
+    static CIdentityID GetNameID(const std::string &Name, const uint160 &parent);
 
     CIdentity LookupIdentity(const std::string &name, uint32_t height=0, CTxIn *pTxIn=nullptr);
-    static CIdentity LookupIdentity(const uint160 &nameID, uint32_t height=0, CTxIn *pTxIn=nullptr);
+    static CIdentity LookupIdentity(const CIdentityID &nameID, uint32_t height=0, CTxIn *pTxIn=nullptr);
 
     CIdentity RevocationAuthority() const
     {
@@ -317,25 +317,18 @@ public:
         return GetNameID() == recoveryAuthority ? *this : LookupIdentity(recoveryAuthority);
     }
 
-    /* we need to separate the code to ensure this header has no dependency on CCinclude.h
     template <typename TOBJ>
     CTxOut TransparentOutput(uint8_t evalcode, CAmount nValue, const TOBJ &obj) const
     {
         CTxOut ret;
 
-        if (IsValid())
+        if (IsValidUnrevoked())
         {
-            // this will be output to a hash of the name and serve as its index as well
-            CCcontract_info CC;
-            CCcontract_info *cp;
-            cp = CCinit(&CC, evalcode);
-            CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
-            ret = MakeCCMofNVout(evalcode, nValue, std::vector<CTxDestination>({CTxDestination(CScriptID(GetNameID()))}), 1, obj);
+            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(evalcode, std::vector<CTxDestination>({CTxDestination(CScriptID(GetNameID()))}), &obj);
+            ret = CTxOut(nValue, MakeMofNCCScript(ccObj));
         }
         return ret;
     }
-    */
 
     // creates an output script to control updates to this identity
     CScript IdentityUpdateOutputScript() const;
@@ -356,12 +349,13 @@ typedef std::pair<uint32_t, uint256> BlockHeightTxId;
 class CIdentitySigningState
 {
 public:
+    uint32_t flags;
     uint16_t minSigs;
     std::vector<CTxDestination> keys;
 
     CIdentitySigningState() : minSigs(0) {}
 
-    CIdentitySigningState(uint16_t MinSigs, const std::vector<CTxDestination> &Keys) : minSigs(MinSigs), keys(Keys) {}
+    CIdentitySigningState(uint32_t Flags, uint16_t MinSigs, const std::vector<CTxDestination> &Keys) : flags(Flags), minSigs(MinSigs), keys(Keys) {}
 
     CIdentitySigningState(const UniValue &uni);
     CIdentitySigningState(std::vector<unsigned char> asVector)
@@ -373,6 +367,7 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(flags);
         READWRITE(minSigs);
 
         std::vector<std::vector<unsigned char>> addressVs;
@@ -407,6 +402,11 @@ public:
         }
     }
 
+    bool IsRevoked()
+    {
+        return flags & CIdentity::FLAG_REVOKED;
+    }
+
     UniValue ToUniValue() const;
 };
 
@@ -421,11 +421,12 @@ public:
     static const uint16_t VERSION_V1 = 1;
     static const uint16_t VERSION_CURRENT = 1;
 
-    static const uint16_t CAN_SIGN = 1;
-    static const uint16_t CAN_SPEND = 2;
-    static const uint16_t HISTORY_HOLD = 4;     // we were CAN_SIGN in the past, so keep a last state updated after we are removed, keep it updated in case we need it for signing other txes
-    static const uint16_t MANUAL_HOLD = 8;      // we were manually requested to watch this address
-    static const uint16_t UNRELATED = 0x10;     // set when an identity on manual hold is found to have no obvious relevance to us or transactions we can sign
+    static const uint16_t VALID = 1;
+    static const uint16_t CAN_SIGN = 2;
+    static const uint16_t CAN_SPEND = 4;
+    static const uint16_t HISTORY_HOLD = 8;     // we were CAN_SIGN in the past, so keep a last state updated after we are removed, keep it updated in case we need it for signing other txes
+    static const uint16_t MANUAL_HOLD = 0x10;   // we were manually requested to watch this address
+    static const uint16_t UNRELATED = 0x20;     // set when an identity on manual hold is found to have no obvious relevance to us or transactions we can sign
 
     uint16_t version;
     uint16_t flags;
@@ -475,7 +476,7 @@ public:
 
     bool IsValid() const
     {
-        return id.IsValid() && version > VERSION_INVALID && version <= VERSION_CURRENT;
+        return id.IsValid() && version > VERSION_INVALID && version <= VERSION_CURRENT && flags & VALID;
     }
 };
 

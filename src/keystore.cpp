@@ -69,7 +69,7 @@ std::string CIdentity::CleanName(const std::string &Name, uint160 &Parent)
     return subNames[0];
 }
 
-uint160 CIdentity::GetNameID(const std::string &Name, const uint160 &parent)
+CIdentityID CIdentity::GetNameID(const std::string &Name, const uint160 &parent)
 {
     uint160 newParent = parent;
     std::string cleanName = CleanName(Name, newParent);
@@ -89,7 +89,7 @@ uint160 CIdentity::GetNameID(const std::string &Name, const uint160 &parent)
     return Hash160(idHash.begin(), idHash.end());
 }
 
-uint160 CIdentity::GetNameID(const std::string &Name) const
+CIdentityID CIdentity::GetNameID(const std::string &Name) const
 {
     uint160 newLevel = parent;
     std::string cleanName = CleanName(Name, newLevel);
@@ -109,7 +109,7 @@ uint160 CIdentity::GetNameID(const std::string &Name) const
     return Hash160(idHash.begin(), idHash.end());
 }
 
-uint160 CIdentity::GetNameID() const
+CIdentityID CIdentity::GetNameID() const
 {
     return GetNameID(name);
 }
@@ -205,33 +205,64 @@ bool CBasicKeyStore::GetCScript(const CScriptID &hash, CScript& redeemScriptOut)
     return false;
 }
 
-bool CBasicKeyStore::AddIdentity(const CIdentity &ID)
+bool CBasicKeyStore::HaveIdentity(const CIdentityID &idID) const
 {
-    // TODO:PBAAS finish - also must include txid and height
+    return mapIdentities.count(idID) != 0;
+}
+
+bool CBasicKeyStore::UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight)
+{
+    auto it = mapIdentities.find(identity.GetNameID());
+    if (it == mapIdentities.end())
+    {
+        return false;
+    }
+    it->second.history.insert(make_pair(make_pair(blockHeight, txId), 
+                                        CIdentitySigningState(identity.flags, identity.minSigs, std::vector<CTxDestination>(identity.primaryAddresses))));
     return true;
 }
 
-bool CBasicKeyStore::UpdateIdentity(const CIdentity &ID)
+bool CBasicKeyStore::AddIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight)
 {
-    // TODO:PBAAS finish
+    if (mapIdentities.count(identity.GetNameID()))
+    {
+        return false;
+    }
+    CIdentityWithHistory idWithHistory = CIdentityWithHistory(CIdentityWithHistory::VERSION_CURRENT,
+                                                              CIdentityWithHistory::VALID,
+                                                              identity,
+                                                              std::map<BlockHeightTxId, CIdentitySigningState>(
+                                                                  {make_pair(make_pair(blockHeight, txId), 
+                                                                  CIdentitySigningState(identity.flags, 
+                                                                                        identity.minSigs, 
+                                                                                        std::vector<CTxDestination>(identity.primaryAddresses)))}));
+    mapIdentities[identity.GetNameID()] = idWithHistory;
     return true;
 }
 
-bool CBasicKeyStore::RemoveIdentity(const CIdentity &ID)
+bool CBasicKeyStore::RemoveIdentity(const CIdentityID &idID)
 {
-    // TODO:PBAAS finish
+    mapIdentities.erase(idID);
     return true;
 }
 
-bool CBasicKeyStore::GetIdentityAndHistory(const uint160 NameID, CIdentityWithHistory &idWithHistory) const
+bool CBasicKeyStore::GetIdentityAndHistory(const CIdentityID &idID, CIdentityWithHistory &idWithHistory) const
 {
-    // TODO:PBAAS finish
+    auto it = mapIdentities.find(idID);
+    if (it == mapIdentities.end())
+    {
+        return false;
+    }
+    idWithHistory = it->second;
     return true;
 }
 
 bool CBasicKeyStore::UpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory)
 {
-    // TODO:PBAAS finish
+    if (idWithHistory.IsValid())
+    {
+        mapIdentities[idWithHistory.id.GetNameID()] = idWithHistory;
+    }
     return true;
 }
 

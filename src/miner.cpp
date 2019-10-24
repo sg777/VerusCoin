@@ -545,22 +545,24 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                         {
                             pwalletMain->GetPubKey(CKeyID(uint160(vSolutions[0])), pk);
                         }
-                        else if (vSolutions[0].size() == 21 && vSolutions[0][0] == COptCCParams::ADDRTYPE_SH)
+                        else if (vSolutions[0].size() == 21 && vSolutions[0][0] == COptCCParams::ADDRTYPE_ID)
                         {
                             // destination is an identity, see if we can get its public key
-                            CScript idScript;
-                            CIdentity identity;
+                            CIdentityWithHistory identity;
 
-                            if (pwalletMain->GetCScript(CScriptID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), idScript) && (identity = CIdentity(idScript)).IsValid() && identity.primaryAddresses.size())
+                            if (pwalletMain->GetIdentityAndHistory(CIdentityID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), identity) && 
+                                identity.IsValid() && 
+                                !identity.history.rbegin()->second.IsRevoked() && 
+                                identity.history.rbegin()->second.keys.size())
                             {
-                                CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.primaryAddresses[0]);
+                                CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.history.rbegin()->second.keys[0]);
                                 if (pkTmp.IsValid())
                                 {
                                     pk = pkTmp;
                                 }
                                 else
                                 {
-                                    pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.primaryAddresses[0])), pk);
+                                    pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.history.rbegin()->second.keys[0])), pk);
                                 }
                             }
                         }

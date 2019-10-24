@@ -257,17 +257,18 @@ CScript _CCPubKey(const CC *cond)
     return CScript() << std::vector<unsigned char>(buf, buf+len) << OP_CHECKCRYPTOCONDITION;
 }
 
-CIdentity LookupIdentity(const BaseSignatureCreator& creator, const CScriptID &scrID)
+CIdentity LookupIdentity(const BaseSignatureCreator& creator, const CIdentityID &idID)
 {
-    CScript idScript;
+    CIdentityWithHistory identity;
     COptCCParams p;
     if (creator.IsKeystoreValid() && 
-        creator.KeyStore().GetCScript(scrID, idScript) && 
-        idScript.IsPayToCryptoCondition(p) && 
-        p.evalCode == EVAL_IDENTITY_PRIMARY && 
-        p.vData.size())
+        creator.KeyStore().GetIdentityAndHistory(idID, identity) && 
+        identity.IsValid())
     {
-        return CIdentity(p.vData[0]);
+        identity.id.flags = identity.history.rbegin()->second.flags;
+        identity.id.primaryAddresses = identity.history.rbegin()->second.keys;
+        identity.id.minSigs = identity.history.rbegin()->second.minSigs;
+        return identity.id;
     }
     return CIdentity();
 }
@@ -291,7 +292,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
             COptCCParams master = COptCCParams(p.vData.back());
             bool ccValid = master.IsValid();
             std::vector<CConditionObj<COptCCParams>> conditions;
-            std::map<uint160, CTxDestination> destMap;
+            std::map<uint160, CTxDestination> destMap;  // all destinations
             std::map<uint160, CIdentity> idMap;         // identities located by id
             std::map<uint160, CKey> privKeyMap;         // private keys located for each id
             std::vector<CC*> ccs;
@@ -306,7 +307,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     conditions.push_back(CConditionObj<COptCCParams>(oneP.evalCode, oneP.vKeys, oneP.m));
 
                     CCcontract_info C;
-                    if (!CCinit(&C, p.evalCode))
+                    if (CCinit(&C, p.evalCode))
                     {
                         CPubKey evalPK(ParseHex(C.CChexstr));
                         CKey priv;
@@ -314,11 +315,15 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         priv.Set(vch.begin(), vch.end(), true);
                         privKeyMap[evalPK.GetID()] = priv;
                     }
+                    else
+                    {
+                        return false;
+                    }
 
                     for (auto dest : oneP.vKeys)
                     {
                         uint160 destId = GetDestinationID(dest);
-                        if (dest.which() == COptCCParams::ADDRTYPE_SH)
+                        if (dest.which() == COptCCParams::ADDRTYPE_ID)
                         {
                             // lookup identity, we must have all registered target identity scripts in our keystore, or we try as if they are a keyID, which will be the same
                             // if revoked or undefined
@@ -354,7 +359,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
             if (ccValid)
             {
                 assert(ccs.size() == conditions.size());
-                if (conditions.size() == 1)
+                if (ccs.size() == 1)
                 {
                     if (master.evalCode)
                     {

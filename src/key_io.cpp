@@ -49,6 +49,13 @@ public:
         return EncodeBase58Check(data);
     }
 
+    std::string operator()(const CIdentityID& id) const
+    {
+        std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::IDENTITY_ADDRESS);
+        data.insert(data.end(), id.begin(), id.end());
+        return EncodeBase58Check(data);
+    }
+
     std::string operator()(const CNoDestination& no) const { return {}; }
 };
 
@@ -72,6 +79,11 @@ public:
         return std::vector<unsigned char>(id.begin(), id.end());
     }
 
+    std::vector<unsigned char> operator()(const CIdentityID& id) const
+    {
+        return std::vector<unsigned char>(id.begin(), id.end());
+    }
+
     std::vector<unsigned char> operator()(const CNoDestination& no) const { return {}; }
 };
 
@@ -82,7 +94,6 @@ public:
 
     uint160 operator()(const CKeyID& id) const
     {
-
         return (uint160)id;
     }
 
@@ -96,6 +107,11 @@ public:
         return (uint160)id;
     }
 
+    uint160 operator()(const CIdentityID& id) const
+    {
+        return (uint160)id;
+    }
+
     uint160 operator()(const CNoDestination& no) const { return CKeyID(); }
 };
 
@@ -105,19 +121,24 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     uint160 hash;
     if (DecodeBase58Check(str, data)) {
         // base58-encoded Bitcoin addresses.
-        // Public-key-hash-addresses have version 0 (or 111 testnet).
         // The data vector contains RIPEMD160(SHA256(pubkey)), where pubkey is the serialized public key.
         const std::vector<unsigned char>& pubkey_prefix = params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
         if (data.size() == hash.size() + pubkey_prefix.size() && std::equal(pubkey_prefix.begin(), pubkey_prefix.end(), data.begin())) {
             std::copy(data.begin() + pubkey_prefix.size(), data.end(), hash.begin());
             return CKeyID(hash);
         }
-        // Script-hash-addresses have version 5 (or 196 testnet).
+
         // The data vector contains RIPEMD160(SHA256(cscript)), where cscript is the serialized redemption script.
         const std::vector<unsigned char>& script_prefix = params.Base58Prefix(CChainParams::SCRIPT_ADDRESS);
         if (data.size() == hash.size() + script_prefix.size() && std::equal(script_prefix.begin(), script_prefix.end(), data.begin())) {
             std::copy(data.begin() + script_prefix.size(), data.end(), hash.begin());
             return CScriptID(hash);
+        }
+
+        const std::vector<unsigned char>& identity_prefix = params.Base58Prefix(CChainParams::IDENTITY_ADDRESS);
+        if (data.size() == hash.size() + identity_prefix.size() && std::equal(identity_prefix.begin(), identity_prefix.end(), data.begin())) {
+            std::copy(data.begin() + identity_prefix.size(), data.end(), hash.begin());
+            return CIdentityID(hash);
         }
     }
     return CNoDestination();

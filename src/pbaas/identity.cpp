@@ -163,7 +163,7 @@ CIdentity::CIdentity(const CTransaction &tx)
     }
 }
 
-CIdentity CIdentity::LookupIdentity(const uint160 &nameID, uint32_t height, CTxIn *pIdTxIn)
+CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, CTxIn *pIdTxIn)
 {
     CIdentity ret;
 

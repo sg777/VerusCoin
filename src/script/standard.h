@@ -8,6 +8,7 @@
 
 #include "uint256.h"
 #include "interpreter.h"
+#include "key.h"
 
 #include <boost/variant.hpp>
 
@@ -15,6 +16,7 @@
 
 class CKeyID;
 class CScript;
+class CKeyStore;
 
 class CNoDestination {
 public:
@@ -31,6 +33,15 @@ public:
     CScriptID(const uint160& in) : uint160(in) {}
 };
 
+/** A reference to a CScript: the Hash160 of its serialization (see script.h) */
+class CIdentityID : public uint160
+{
+public:
+    CIdentityID() : uint160() {}
+    CIdentityID(const std::string& in, const uint160 &parent=uint160());
+    CIdentityID(const uint160& in) : uint160(in) {}
+};
+
 /** 
  * A txout script template with a specific destination. It is either:
  *  * CNoDestination: no destination set
@@ -38,7 +49,7 @@ public:
  *  * CScriptID: TX_SCRIPTHASH destination
  *  A CTxDestination is the internal data type encoded in a bitcoin address
  */
-typedef boost::variant<CNoDestination, CPubKey, CKeyID, CScriptID> CTxDestination;
+typedef boost::variant<CNoDestination, CPubKey, CKeyID, CScriptID, CIdentityID> CTxDestination;
 
 class COptCCParams
 {
@@ -51,6 +62,7 @@ class COptCCParams
         static const uint8_t ADDRTYPE_PK = 1;
         static const uint8_t ADDRTYPE_PKH = 2;
         static const uint8_t ADDRTYPE_SH = 3;
+        static const uint8_t ADDRTYPE_ID = 4;
         static const uint8_t ADDRTYPE_LAST = 3;
 
         uint8_t version;
@@ -198,7 +210,14 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
 int ScriptSigArgsExpected(txnouttype t, const std::vector<std::vector<unsigned char> >& vSolutions);
 bool IsStandard(const CScript& scriptPubKey, txnouttype& whichType);
 bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet, bool returnPubKey=false);
-bool ExtractDestinations(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<CTxDestination>& addressRet, int& nRequiredRet);
+bool ExtractDestinations(const CScript& scriptPubKey, 
+                         txnouttype& typeRet, 
+                         std::vector<CTxDestination>& addressRet, 
+                         int &nRequiredRet, 
+                         const CKeyStore *pKeyStore=nullptr, 
+                         bool *canSign=nullptr, 
+                         bool *canSpend=nullptr, 
+                         std::map<uint160, CKey> *pPrivKeys=nullptr);
 
 CScript GetScriptForDestination(const CTxDestination& dest);
 CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys);

@@ -1516,6 +1516,10 @@ public:
         return CPubKey();
     }
 
+    CPubKey operator()(const CIdentityID &sid) const {
+        return CPubKey();
+    }
+
     CPubKey operator()(const CNoDestination &no) const {
         return CPubKey();
     }
@@ -1536,6 +1540,10 @@ public:
 
     std::string operator()(const CScriptID &scriptID) const {
         return "script hash: " + scriptID.ToString();
+    }
+
+    std::string operator()(const CIdentityID &idID) const {
+        return "identity hash: " + idID.ToString();
     }
 };
 
