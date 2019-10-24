@@ -643,7 +643,10 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     // all but ID types
                     if (dest.which() != COptCCParams::ADDRTYPE_ID)
                     {
-                        // include all explicit addresses as destinations as well
+                        // include all non-name addresses as destinations as well
+                        // name addresses can only be destinations if they are at least "cansign"
+                        // there may be a reason to add this support for the "informed" part of
+                        // a RACI kind of collaboration implementation
                         addressRet.push_back(dest);
                     }
                 }
