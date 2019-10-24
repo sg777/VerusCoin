@@ -132,7 +132,7 @@ public:
 
     CTxDestination Get() const;
     bool GetKeyID(CKeyID &keyID) const;
-    bool GetIdentityID(CIdentityID &keyID) const;
+    bool GetIdentityID(CIdentityID &idID) const;
     bool GetKeyID_NoCheck(CKeyID& keyID) const;
     bool GetIndexKey(uint160& hashBytes, int& type) const;
     bool IsScript() const;

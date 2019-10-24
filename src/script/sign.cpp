@@ -194,18 +194,6 @@ CC *MakeCCcondMofN(const std::vector<CTxDestination> &dests, int M)
     return CCNewThreshold(M, pks);
 }
 
-CC *MakeCCcondMofN(uint8_t evalcode, const std::vector<CC*> &conditions, int M)
-{
-    if (M > conditions.size())
-    {
-        M = conditions.size();
-    }
-
-    CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
-    CC *Sig = CCNewThreshold(M, conditions);
-    return CCNewThreshold(2, {condCC, Sig});
-}
-
 CC *MakeCCcondMofN(const std::vector<CC*> &conditions, int M)
 {
     if (M > conditions.size())
@@ -214,6 +202,23 @@ CC *MakeCCcondMofN(const std::vector<CC*> &conditions, int M)
     }
 
     return CCNewThreshold(M, conditions);
+}
+
+CC *MakeCCcondMofN(uint8_t evalcode, const std::vector<CC*> &conditions, int M)
+{
+    if (evalcode == EVAL_NONE)
+    {
+        return MakeCCcondMofN(conditions, M);
+    }
+
+    if (M > conditions.size())
+    {
+        M = conditions.size();
+    }
+
+    CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
+    CC *Sig = CCNewThreshold(M, conditions);
+    return CCNewThreshold(2, {condCC, Sig});
 }
 
 // TOBJ is CConditionObj of a CC output type
@@ -299,7 +304,8 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
 
             for (int i = 0; ccValid && i < p.vData.size() - 1; i++)
             {
-                COptCCParams oneP(p.vData[i]);
+                // "p", our first COptCCParams object will be considered first, then nested objects after
+                COptCCParams oneP(i ? p.vData[i] : p);
                 ccValid = oneP.IsValid();
                 std::vector<CC*> vCC;
                 if (ccValid)
@@ -307,7 +313,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     conditions.push_back(CConditionObj<COptCCParams>(oneP.evalCode, oneP.vKeys, oneP.m));
 
                     CCcontract_info C;
-                    if (CCinit(&C, p.evalCode))
+                    if (p.evalCode && CCinit(&C, p.evalCode))
                     {
                         CPubKey evalPK(ParseHex(C.CChexstr));
                         CKey priv;
@@ -317,7 +323,10 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     }
                     else
                     {
-                        return false;
+                        if (p.evalCode)
+                        {
+                            return false;
+                        }
                     }
 
                     for (auto dest : oneP.vKeys)
@@ -350,7 +359,15 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         }
                     }
 
-                    ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m));
+                    if (oneP.evalCode)
+                    {
+                        ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m));
+                    }
+                    else
+                    {
+                        ccs.push_back(MakeCCcondMofN(vCC, oneP.m));
+                    }
+                    
                 }
             }
 

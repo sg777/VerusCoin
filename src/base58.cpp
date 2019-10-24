@@ -297,6 +297,7 @@ bool CBitcoinAddress::GetIndexKey(uint160& hashBytes, int& type) const
         return false;
     } else if (vchVersion == Params().Base58Prefix(CChainParams::PUBKEY_ADDRESS) || vchVersion == Params().Base58Prefix(CChainParams::IDENTITY_ADDRESS)) {
         memcpy(&hashBytes, &vchData[0], 20);
+        // TODO:PBAAS - marking here so that if we create an identity index key that we need another index type for CAddressIndexKey and others
         type = 1;
         return true;
     } else if (vchVersion == Params().Base58Prefix(CChainParams::SCRIPT_ADDRESS)) {

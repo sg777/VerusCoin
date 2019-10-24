@@ -1382,7 +1382,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
 
         for (int i = 0; ccValid && i < p.vData.size() - 1; i++)
         {
-            COptCCParams oneP(p.vData[i]);
+            COptCCParams oneP(i ? p.vData[i] : p);
             ccValid = oneP.IsValid();
             std::vector<CC*> vCC;
             if (ccValid)
@@ -1445,7 +1445,14 @@ int TransactionSignatureChecker::CheckCryptoCondition(
 
                 if (ccValid)
                 {
-                    ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m));
+                    if (oneP.evalCode != EVAL_NONE)
+                    {
+                        ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m));
+                    }
+                    else
+                    {
+                        ccs.push_back(MakeCCcondMofN(vCC, oneP.m));
+                    }
                 }
                 else
                 {
@@ -1465,7 +1472,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
             {
                 if (master.evalCode)
                 {
-                    outputCC = MakeCCcondMofN(master.evalCode, ccs, master.m);
+                    outputCC = MakeCCcondMofN(master.evalCode, ccs, 1);
                 }
                 else
                 {
