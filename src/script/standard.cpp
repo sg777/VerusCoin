@@ -583,10 +583,10 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                         CIdentityWithHistory idHistory;
                         idSet.insert(destId);
 
-                        if (pKeyStore && pKeyStore->GetIdentityAndHistory(destId, idHistory) && idHistory.id.IsValidUnrevoked())
+                        if (pKeyStore && pKeyStore->GetIdentityAndHistory(destId, idHistory) && idHistory.IsValid() && idHistory.ids.rbegin()->second.IsValidUnrevoked())
                         {
                             int canSignCount = 0;
-                            for (auto oneKey : idHistory.id.primaryAddresses)
+                            for (auto oneKey : idHistory.ids.rbegin()->second.primaryAddresses)
                             {
                                 uint160 oneKeyID = GetDestinationID(oneKey);
                                 CKey privKey;
@@ -600,7 +600,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                                     }
                                 }
                             }
-                            if (canSignCount >= idHistory.id.minSigs)
+                            if (canSignCount >= idHistory.ids.rbegin()->second.minSigs)
                             {
                                 canSpendCount++;
                             }
@@ -670,10 +670,10 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                                 CIdentityWithHistory idHistory;
                                 idSet.insert(destId);
 
-                                if (pKeyStore && pKeyStore->GetIdentityAndHistory(destId, idHistory) && idHistory.id.IsValidUnrevoked())
+                                if (pKeyStore && pKeyStore->GetIdentityAndHistory(destId, idHistory) && idHistory.ids.rbegin()->second.IsValidUnrevoked())
                                 {
                                     int canSignCount = 0;
-                                    for (auto oneKey : idHistory.id.primaryAddresses)
+                                    for (auto oneKey : idHistory.ids.rbegin()->second.primaryAddresses)
                                     {
                                         uint160 oneKeyID = GetDestinationID(oneKey);
 
@@ -688,7 +688,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                                             }
                                         }
                                     }
-                                    if (canSignCount >= idHistory.id.minSigs)
+                                    if (canSignCount >= idHistory.ids.rbegin()->second.minSigs)
                                     {
                                         canSpendOneCount++;
                                     }

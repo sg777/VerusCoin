@@ -1194,10 +1194,10 @@ bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScrip
 
                 if (pwalletMain->GetIdentityAndHistory(CIdentityID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), identity) && 
                     identity.IsValid() && 
-                    !identity.history.rbegin()->second.IsRevoked() && 
-                    identity.history.rbegin()->second.keys.size())
+                    !identity.ids.rbegin()->second.IsRevoked() && 
+                    identity.ids.rbegin()->second.primaryAddresses.size())
                 {
-                    CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.history.rbegin()->second.keys[0]);
+                    CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.ids.rbegin()->second.primaryAddresses[0]);
                     if (pkTmp.IsValid())
                     {
                         firstDestinationOut = pkTmp;
@@ -1205,7 +1205,7 @@ bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScrip
                     else
                     {
                         CPubKey pkTmp;
-                        pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.history.rbegin()->second.keys[0])), pkTmp);
+                        pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.ids.rbegin()->second.primaryAddresses[0])), pkTmp);
                         if (pkTmp.IsValid())
                         {
                             firstDestinationOut = pkTmp;

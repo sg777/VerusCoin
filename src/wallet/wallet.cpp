@@ -478,6 +478,55 @@ bool CWallet::LoadCScript(const CScript& redeemScript)
     return CCryptoKeyStore::AddCScript(redeemScript);
 }
 
+bool CWallet::AddUpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight)
+{
+    // if this is an identity, which we currently need to check, we
+    // store the ID as a script in the wallet script storage, but instead of using the
+    // hash of the script, we store it under the name ID
+    if (!CCryptoKeyStore::AddIdentity(identity, txId, blockHeight) && !CCryptoKeyStore::UpdateIdentity(identity, txId, blockHeight))
+        return false;
+    if (!fFileBacked)
+        return true;
+    CIdentityWithHistory idHistory;
+    if (CCryptoKeyStore::GetIdentityAndHistory(identity.GetNameID(), idHistory))
+    {
+        return CWalletDB(strWalletFile).WriteIdentity(idHistory);
+    }
+    return false;
+}
+
+bool CWallet::RemoveIdentity(const CIdentityID &idID)
+{
+    if (CCryptoKeyStore::HaveIdentity(idID))
+    {
+        CCryptoKeyStore::RemoveIdentity(idID);
+        if (!fFileBacked)
+            return true;
+        return CWalletDB(strWalletFile).EraseIdentity(idID);
+    }
+    else
+    {
+        return false;
+    }
+}
+
+bool CWallet::AddUpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory)
+{
+    // if this is an identity, which we currently need to check, we
+    // store the ID as a script in the wallet script storage, but instead of using the
+    // hash of the script, we store it under the name ID
+    if (!CCryptoKeyStore::AddUpdateIdentityAndHistory(idWithHistory))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteIdentity(idWithHistory);
+}
+
+bool CWallet::LoadIdentityAndHistory(const CIdentityWithHistory &idWithHistory)
+{
+    return CCryptoKeyStore::AddUpdateIdentityAndHistory(idWithHistory);
+}
+
 bool CWallet::AddWatchOnly(const CScript &dest)
 {
     if (!CCryptoKeyStore::AddWatchOnly(dest))
@@ -1963,17 +2012,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             }
         }
 
-
-
-
-
-        // loop through the outputs and consider the following:
-        // 1. If there is an ID:
-        //    a. if we already store it, update
-        //       i. if we are removed from the id, remove any transactions that are sent to that ID and no longer involve us
-        //    b. if we do not store the id, but we have keys in the output, store all IDs needed to spend it
-        //       i. if we are part of the id, search for and add any transactions that are sent to the ID and aren't already there to our wallet
-
         bool canSign = false;
 
         for (auto output : tx.vout)
@@ -1983,47 +2021,97 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
             if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version == p.VERSION_V3)
             {
+                // assert and fix if we find any spot where this wouldn't be held, rather than
+                // creating a deadlock by attempting to take the cs out of order
+                AssertLockHeld(cs_main);
+
+                uint32_t nHeight = 0;
+                if (pblock)
+                {
+                    auto blkIndexIt = mapBlockIndex.find(pblock->GetHash());
+                    if (blkIndexIt != mapBlockIndex.end())
+                    {
+                        nHeight = blkIndexIt->second->GetHeight();
+                    }
+                    else
+                    {
+                        assert(false);
+                    }
+                }
+
                 CIdentity identity;
+
                 if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (identity = CIdentity(p.vData[0])).IsValid())
                 {
-                    // if this is an identity definition, we may need to add a new
-                    // script to the wallet or update an existing script
-                    CScript oldIDScript;
                     bool wasMine = false;
                     bool wasWatched = false;
                     std::set<CKeyID> keySet;
+                    CIdentityID idID(identity.GetNameID());
+                    CIdentityWithHistory idHistory;
 
-                    if (GetCScript(identity.GetNameID(), oldIDScript)) {
-                        wasMine = true;
-                    }
-                    else
+                    if (GetIdentityAndHistory(idID, idHistory))
                     {
-                        // see if it's in watch only
-                        wasWatched = HaveWatchOnly(output.scriptPubKey);
-                    }
-
-                    for (auto key : identity.primaryAddresses)
-                    {
-                        CKeyID keyID = CKeyID(GetDestinationID(key));
-                        if (HaveKey(keyID))
+                        if (idHistory.flags & idHistory.CAN_SPEND)
                         {
-                            keySet.insert(keyID);
+                            wasMine = true;
+                        }
+                        else if ((idHistory.flags & idHistory.CAN_SIGN))
+                        {
+                            wasWatched = true;
                         }
                     }
 
-                    // if we have enough keys to fully authorize, it is ours
-                    if (keySet.size() >= p.m)
+                    uint256 txHash;
+
+                    if (!pblock)
                     {
-                        return ISMINE_SPENDABLE;
-                    }
-                    else if (keySet.size())
-                    {
-                        return ISMINE_WATCH_ONLY;
+                        // remove this entry from our ID and roll back to the most current, if there is a prior one
+                        RemoveIdentity(idID);
+
+                        CTxIn txIn;
+
+                        identity = identity.LookupIdentity(idID, chainActive.Height(), &nHeight, &txIn);
+                        txHash = txIn.prevout.hash;
                     }
                     else
                     {
-                        return wasMine || wasWatched ? ISMINE_WATCH_ONLY : ISMINE_NO;
+                        txHash = tx.GetHash();
                     }
+
+                    if (identity.IsValid())
+                    {
+                        // determine our status of cansign or canspend for this new ID
+                        for (auto key : identity.primaryAddresses)
+                        {
+                            CKeyID keyID = CKeyID(GetDestinationID(key));
+                            if (HaveKey(keyID))
+                            {
+                                keySet.insert(keyID);
+                            }
+                        }
+
+                        // if we have enough keys to fully authorize, it is ours
+                        if (keySet.size() >= identity.minSigs)
+                        {
+                            canSign = true;
+                            canSpend = true;
+                        }
+                        else if (keySet.size())
+                        {
+                            canSign = true;
+                        }
+
+                        if (!idHistory.IsValid())
+                        {
+                            idHistory = CIdentityWithHistory(CIdentityWithHistory::VERSION_CURRENT,
+                                                             CIdentityWithHistory::VALID,
+                                                             std::map<uint32_t, CIdentity>({make_pair(nHeight, identity)}));
+                        }
+
+                        AddUpdateIdentity(identity, txHash, nHeight);
+                    }
+
+                    // determine if our status of cansign or canspend for this new ID has changed, and if so, we need to scan for unspent transactions to add to or remove from the wallet
                 }
                 else
                 {
@@ -6101,7 +6189,7 @@ public:
         CIdentityWithHistory idHistory;
         if (keystore.GetIdentityAndHistory(idId, idHistory))
         {
-            for (auto dest : idHistory.history.rbegin()->second.keys)
+            for (auto dest : idHistory.ids.rbegin()->second.primaryAddresses)
             {
                 boost::apply_visitor(*this, dest);
             }

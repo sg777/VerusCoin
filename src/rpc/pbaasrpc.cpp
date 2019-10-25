@@ -4409,10 +4409,11 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     CTxIn idTxIn;
     CIdentity oldID;
+    uint32_t idHeight;
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    if (!(oldID = CIdentity::LookupIdentity(newID.GetNameID(), 0, &idTxIn)).IsValid())
+    if (!(oldID = CIdentity::LookupIdentity(newID.GetNameID(), 0, &idHeight, &idTxIn)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
     }
@@ -4542,14 +4543,16 @@ UniValue getidentity(const UniValue& params, bool fHelp)
 
     uint160 nameID = CIdentity::GetNameID(uni_get_str(params[0]), uint160());
     CTxIn idTxIn;
+    uint32_t height;
 
-    CIdentity identity = CIdentity::LookupIdentity(nameID, 0, &idTxIn);
+    CIdentity identity = CIdentity::LookupIdentity(nameID, 0, &height, &idTxIn);
 
     UniValue ret(UniValue::VOBJ);
 
     if (identity.IsValid())
     {
         ret.push_back(Pair("identity", identity.ToUniValue()));
+        ret.push_back(Pair("blockheight", (int64_t)height));
         ret.push_back(Pair("txid", idTxIn.prevout.hash.GetHex()));
         ret.push_back(Pair("vout", (int32_t)idTxIn.prevout.n));
         return identity.ToUniValue();

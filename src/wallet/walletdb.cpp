@@ -214,6 +214,22 @@ bool CWalletDB::EraseWatchOnly(const CScript &dest)
     return Erase(std::make_pair(std::string("watchs"), *(const CScriptBase*)(&dest)));
 }
 
+bool CWalletDB::WriteIdentity(const CIdentityWithHistory &id)
+{
+    nWalletDBUpdated++;
+    if (!id.ids.size())
+    {
+        return false;
+    }
+    return Write(std::make_pair(std::string("identity"), id.ids.begin()->second.GetNameID()), id);
+}
+
+bool CWalletDB::EraseIdentity(const CIdentityID &idID)
+{
+    nWalletDBUpdated++;
+    return Erase(std::make_pair(std::string("identity"), idID));
+}
+
 bool CWalletDB::WriteBestBlock(const CBlockLocator& locator)
 {
     nWalletDBUpdated++;
@@ -518,6 +534,12 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
                 if (acentry.nOrderPos == -1)
                     wss.fAnyUnordered = true;
             }
+        }
+        else if (strType == "identity")
+        {
+            CIdentityWithHistory idHistory;
+            ssKey >> *(CIdentityWithHistory*)(&idHistory);
+            pwallet->LoadIdentityAndHistory(idHistory);
         }
         else if (strType == "watchs")
         {

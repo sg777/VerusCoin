@@ -63,7 +63,7 @@ public:
     virtual bool UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight) =0;
     virtual bool RemoveIdentity(const CIdentityID &idID) =0;
     virtual bool GetIdentityAndHistory(const CIdentityID &idID, CIdentityWithHistory &idWithHistory) const =0;
-    virtual bool UpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory) =0;
+    virtual bool AddUpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory) =0;
 
     //! Add a spending key to the store.
     virtual bool AddSproutSpendingKey(const libzcash::SproutSpendingKey &sk) =0;
@@ -193,7 +193,7 @@ public:
     virtual bool UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight);
     virtual bool RemoveIdentity(const CIdentityID &idID);
     virtual bool GetIdentityAndHistory(const CIdentityID &idID, CIdentityWithHistory &idWithHistory) const;
-    virtual bool UpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory);
+    virtual bool AddUpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory);
 
     virtual bool AddWatchOnly(const CScript &dest);
     virtual bool RemoveWatchOnly(const CScript &dest);

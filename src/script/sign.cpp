@@ -270,10 +270,7 @@ CIdentity LookupIdentity(const BaseSignatureCreator& creator, const CIdentityID 
         creator.KeyStore().GetIdentityAndHistory(idID, identity) && 
         identity.IsValid())
     {
-        identity.id.flags = identity.history.rbegin()->second.flags;
-        identity.id.primaryAddresses = identity.history.rbegin()->second.keys;
-        identity.id.minSigs = identity.history.rbegin()->second.minSigs;
-        return identity.id;
+        return identity.ids.rbegin()->second;
     }
     return CIdentity();
 }

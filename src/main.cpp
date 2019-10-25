@@ -5072,6 +5072,7 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
         RemoveCoinbaseFromMemPool(block);
     } else if (ptx && fCheckTxInputs)
     {
+        // TODO:PBAAS - this may be unnecessary (maybe even leave a straggling tx in the wallet) sync should happen in connecttip, verify whether this can be removed or not
         SyncWithWallets(*ptx, &block);
     }
     return success;

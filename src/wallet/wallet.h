@@ -1080,8 +1080,14 @@ public:
     bool AddCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
     //! Adds an encrypted key to the store, without saving it to disk (used by LoadWallet)
     bool LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
+
     bool AddCScript(const CScript& redeemScript);
     bool LoadCScript(const CScript& redeemScript);
+
+    bool AddUpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight);
+    bool RemoveIdentity(const CIdentityID &idID);
+    bool AddUpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory);
+    bool LoadIdentityAndHistory(const CIdentityWithHistory &idWithHistory);
 
     //! Adds a destination data tuple to the store, and saves it to disk
     bool AddDestData(const CTxDestination &dest, const std::string &key, const std::string &value);

@@ -304,8 +304,8 @@ public:
     CIdentityID GetNameID(const std::string &Name) const;
     static CIdentityID GetNameID(const std::string &Name, const uint160 &parent);
 
-    CIdentity LookupIdentity(const std::string &name, uint32_t height=0, CTxIn *pTxIn=nullptr);
-    static CIdentity LookupIdentity(const CIdentityID &nameID, uint32_t height=0, CTxIn *pTxIn=nullptr);
+    CIdentity LookupIdentity(const std::string &name, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr);
+    static CIdentity LookupIdentity(const CIdentityID &nameID, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr);
 
     CIdentity RevocationAuthority() const
     {
@@ -330,6 +330,19 @@ public:
         return ret;
     }
 
+    template <typename TOBJ>
+    CTxOut TransparentOutput(CAmount nValue) const
+    {
+        CTxOut ret;
+
+        if (IsValidUnrevoked())
+        {
+            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(0, std::vector<CTxDestination>({CTxDestination(CScriptID(GetNameID()))}));
+            ret = CTxOut(nValue, MakeMofNCCScript(ccObj));
+        }
+        return ret;
+    }
+
     // creates an output script to control updates to this identity
     CScript IdentityUpdateOutputScript() const;
 
@@ -342,72 +355,6 @@ public:
     {
         return MIN_UPDATE_AMOUNT;
     }
-};
-
-typedef std::pair<uint32_t, uint256> BlockHeightTxId;
-
-class CIdentitySigningState
-{
-public:
-    uint32_t flags;
-    uint16_t minSigs;
-    std::vector<CTxDestination> keys;
-
-    CIdentitySigningState() : minSigs(0) {}
-
-    CIdentitySigningState(uint32_t Flags, uint16_t MinSigs, const std::vector<CTxDestination> &Keys) : flags(Flags), minSigs(MinSigs), keys(Keys) {}
-
-    CIdentitySigningState(const UniValue &uni);
-    CIdentitySigningState(std::vector<unsigned char> asVector)
-    {
-        ::FromVector(asVector, *this);
-    }
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(flags);
-        READWRITE(minSigs);
-
-        std::vector<std::vector<unsigned char>> addressVs;
-        if (ser_action.ForRead())
-        {
-            READWRITE(addressVs);
-
-            for (auto vec : addressVs)
-            {
-                if (vec.size() == 20)
-                {
-                    keys.push_back(CTxDestination(CKeyID(uint160(vec))));
-                }
-                else if (vec.size() == 33)
-                {
-                    keys.push_back(CTxDestination(CPubKey(vec)));
-                }
-                else
-                {
-                    keys.push_back(CTxDestination(CNoDestination()));
-                }
-            }
-        }
-        else
-        {
-            for (auto dest : keys)
-            {
-                addressVs.push_back(GetDestinationBytes(dest));
-            }
-
-            READWRITE(addressVs);
-        }
-    }
-
-    bool IsRevoked()
-    {
-        return flags & CIdentity::FLAG_REVOKED;
-    }
-
-    UniValue ToUniValue() const;
 };
 
 // this is stored serialized in the wallet as an ID, which allows a wallet to keep track of
@@ -430,12 +377,11 @@ public:
 
     uint16_t version;
     uint16_t flags;
-    CIdentity id;
-    std::map<BlockHeightTxId, CIdentitySigningState> history;
+    std::map<uint32_t, CIdentity> ids;          // keep the last two IDs in the wallet by block height to enable adding one while depending on the last for all txes in current block
 
     CIdentityWithHistory() : version(0) {}
 
-    CIdentityWithHistory(uint16_t Ver, uint16_t Flags, const CIdentity &ID, const std::map<BlockHeightTxId, CIdentitySigningState> &History) : version(Ver), flags(Flags), id(ID), history(History) {}
+    CIdentityWithHistory(uint16_t Ver, uint16_t Flags, const std::map<uint32_t, CIdentity> &blockHeightIds) : version(Ver), flags(Flags), ids(blockHeightIds) {}
 
     CIdentityWithHistory(const UniValue &uni);
     CIdentityWithHistory(std::vector<unsigned char> asVector)
@@ -449,26 +395,25 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(version);
         READWRITE(flags);
-        READWRITE(id);
 
-        std::vector<std::pair<BlockHeightTxId, CIdentitySigningState>> addressVs;
+        std::vector<std::pair<uint32_t, CIdentity>> idVs;
         if (ser_action.ForRead())
         {
-            READWRITE(addressVs);
+            READWRITE(idVs);
 
-            for (auto idStatePair : addressVs)
+            for (auto idStatePair : idVs)
             {
-                history.insert(idStatePair);
+                ids.insert(idStatePair);
             }
         }
         else
         {
-            for (auto idStatePair : history)
+            for (auto idStatePair : ids)
             {
-                addressVs.push_back(idStatePair);
+                idVs.push_back(idStatePair);
             }
 
-            READWRITE(addressVs);
+            READWRITE(idVs);
         }
     }
 
@@ -476,8 +421,10 @@ public:
 
     bool IsValid() const
     {
-        return id.IsValid() && version > VERSION_INVALID && version <= VERSION_CURRENT && flags & VALID;
+        return version > VERSION_INVALID && version <= VERSION_CURRENT && flags & VALID;
     }
+
+    bool UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight);
 };
 
 #endif // IDENTITY_H

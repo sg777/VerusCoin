@@ -133,6 +133,7 @@ UniValue CIdentity::ToUniValue() const
 
     obj.push_back(Pair("parent", EncodeDestination(CTxDestination(CScriptID(parent)))));
     obj.push_back(Pair("name", name));
+    obj.push_back(Pair("identityaddress", EncodeDestination(CIdentityID(GetNameID()))));
 
     UniValue hashes(UniValue::VARR);
     for (int i = 0; i < contentHashes.size(); i++)
@@ -163,9 +164,20 @@ CIdentity::CIdentity(const CTransaction &tx)
     }
 }
 
-CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, CTxIn *pIdTxIn)
+CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn)
 {
     CIdentity ret;
+
+    uint32_t heightOut = 0;
+
+    if (!pHeightOut)
+    {
+        pHeightOut = &heightOut;
+    }
+    else
+    {
+        *pHeightOut = 0;
+    }
 
     CTxIn _idTxIn;
     if (!pIdTxIn)
@@ -173,7 +185,6 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
         pIdTxIn = &_idTxIn;
     }
     CTxIn &idTxIn = *pIdTxIn;
-    uint32_t latestHeight = 0;
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
@@ -212,7 +223,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                             //   b. spend an identity commitment and have an output matching both the identity commitment and identity output
                             // ensuring this to be true is the responsibility of contextual transaction check
                             idTxIn = CTxIn(it->first.txhash, it->first.index);
-                            latestHeight = it->second.blockHeight;
+                            *pHeightOut = it->second.blockHeight;
                         }
                         else
                         {
@@ -227,18 +238,21 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                 printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
             }
         }
-        if (height != 0 && latestHeight > height)
+
+        if (height != 0 && *pHeightOut > height)
         {
+            *pHeightOut = 0;
+
             // if we must check up to a specific height that is less than the latest height, do so
             std::vector<CAddressIndexDbEntry> addressIndex;
 
             if (GetAddressIndex(keyID, 1, addressIndex, 0, height) && addressIndex.size())
             {
+                int txIndex = 0;
                 // look from last backward to find the first valid ID
-                uint32_t bestHeight = 0, bestIndex = 0;
                 for (int i = addressIndex.size() - 1; i >= 0; i--)
                 {
-                    if (addressIndex[i].first.blockHeight < bestHeight)
+                    if (addressIndex[i].first.blockHeight < *pHeightOut)
                     {
                         break;
                     }
@@ -247,7 +261,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                     COptCCParams p;
                     LOCK(mempool.cs);
                     if (!addressIndex[i].first.spending &&
-                        addressIndex[i].first.txindex > bestIndex &&    // always select the latest in a block, if there can be more than one
+                        addressIndex[i].first.txindex > txIndex &&    // always select the latest in a block, if there can be more than one
                         myGetTransaction(addressIndex[i].first.txhash, idTx, blkHash) &&
                         idTx.vout[addressIndex[i].first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
                         p.IsValid() && 
@@ -255,8 +269,8 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                         (ret = CIdentity(idTx.vout[addressIndex[i].first.index].scriptPubKey)).IsValid())
                     {
                         idTxIn = CTxIn(addressIndex[i].first.txhash, addressIndex[i].first.index);
-                        bestHeight = addressIndex[i].first.blockHeight;
-                        bestIndex = addressIndex[i].first.txindex;
+                        *pHeightOut = addressIndex[i].first.blockHeight;
+                        txIndex = addressIndex[i].first.txindex;
                     }
                 }
             }
@@ -271,9 +285,9 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
     return ret;
 }
 
-CIdentity CIdentity::LookupIdentity(const std::string &name, uint32_t height, CTxIn *idTxIn)
+CIdentity CIdentity::LookupIdentity(const std::string &name, uint32_t height, uint32_t *pHeightOut, CTxIn *idTxIn)
 {
-    return LookupIdentity(GetNameID(name), height, idTxIn);
+    return LookupIdentity(GetNameID(name), height, pHeightOut, idTxIn);
 }
 
 CScript CIdentity::IdentityUpdateOutputScript() const

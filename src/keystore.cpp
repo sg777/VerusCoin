@@ -205,6 +205,33 @@ bool CBasicKeyStore::GetCScript(const CScriptID &hash, CScript& redeemScriptOut)
     return false;
 }
 
+bool CIdentityWithHistory::UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight)
+{
+    // either it is the same as one of two, lower block height than the lowest, or we add it and have two or delete the lowest to have two
+    if (ids.size() == 1)
+    {
+        // if not the same, add it
+        if (blockHeight != ids.begin()->first)
+        {
+            ids.insert(make_pair(blockHeight, identity));
+        }
+    }
+    else if (blockHeight > ids.begin()->first)
+    {
+        // either same as next and skip, or delete first and add
+        if (blockHeight != ids.rbegin()->first)
+        {
+            ids.erase(ids.begin());
+            ids.insert(make_pair(blockHeight, identity));
+        }
+    }
+    else
+    {
+        return false;
+    }
+    return true;
+}
+
 bool CBasicKeyStore::HaveIdentity(const CIdentityID &idID) const
 {
     return mapIdentities.count(idID) != 0;
@@ -212,13 +239,13 @@ bool CBasicKeyStore::HaveIdentity(const CIdentityID &idID) const
 
 bool CBasicKeyStore::UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight)
 {
-    auto it = mapIdentities.find(identity.GetNameID());
-    if (it == mapIdentities.end())
+    auto idHistoryIt = mapIdentities.find(identity.GetNameID());
+    if (idHistoryIt == mapIdentities.end())
     {
         return false;
     }
-    it->second.history.insert(make_pair(make_pair(blockHeight, txId), 
-                                        CIdentitySigningState(identity.flags, identity.minSigs, std::vector<CTxDestination>(identity.primaryAddresses))));
+
+    idHistoryIt->second.UpdateIdentity(identity, txId, blockHeight);
     return true;
 }
 
@@ -230,12 +257,7 @@ bool CBasicKeyStore::AddIdentity(const CIdentity &identity, const uint256 &txId,
     }
     CIdentityWithHistory idWithHistory = CIdentityWithHistory(CIdentityWithHistory::VERSION_CURRENT,
                                                               CIdentityWithHistory::VALID,
-                                                              identity,
-                                                              std::map<BlockHeightTxId, CIdentitySigningState>(
-                                                                  {make_pair(make_pair(blockHeight, txId), 
-                                                                  CIdentitySigningState(identity.flags, 
-                                                                                        identity.minSigs, 
-                                                                                        std::vector<CTxDestination>(identity.primaryAddresses)))}));
+                                                              std::map<uint32_t, CIdentity>({make_pair(blockHeight, identity)}));
     mapIdentities[identity.GetNameID()] = idWithHistory;
     return true;
 }
@@ -257,11 +279,11 @@ bool CBasicKeyStore::GetIdentityAndHistory(const CIdentityID &idID, CIdentityWit
     return true;
 }
 
-bool CBasicKeyStore::UpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory)
+bool CBasicKeyStore::AddUpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory)
 {
-    if (idWithHistory.IsValid())
+    if (idWithHistory.IsValid() && idWithHistory.ids.size())
     {
-        mapIdentities[idWithHistory.id.GetNameID()] = idWithHistory;
+        mapIdentities[idWithHistory.ids.begin()->second.GetNameID()] = idWithHistory;
     }
     return true;
 }
