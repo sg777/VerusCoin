@@ -59,11 +59,14 @@ public:
 
     //! Support for identities
     virtual bool HaveIdentity(const CIdentityID &idID) const =0;
-    virtual bool AddIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight) =0;
-    virtual bool UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight) =0;
-    virtual bool RemoveIdentity(const CIdentityID &idID) =0;
-    virtual bool GetIdentityAndHistory(const CIdentityID &idID, CIdentityWithHistory &idWithHistory) const =0;
-    virtual bool AddUpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory) =0;
+    virtual bool AddIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity) =0;
+    virtual bool UpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity) =0;
+    virtual bool AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity) =0;
+    virtual bool RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid=uint256()) =0;
+    virtual bool GetIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t lteHeight=0x7fffffff) const =0;
+    virtual bool GetIdentity(const CIdentityMapKey &keyStart, const CIdentityMapKey &keyEnd, std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &keysAndIdentityUpdates) const =0;
+    virtual bool GetIdentity(const CIdentityMapKey &mapKey, const uint256 &txid, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity) = 0;
+    virtual bool GetFirstIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t gteHeight=0) const =0;
 
     //! Add a spending key to the store.
     virtual bool AddSproutSpendingKey(const libzcash::SproutSpendingKey &sk) =0;
@@ -112,7 +115,7 @@ public:
 
 typedef std::map<CKeyID, CKey> KeyMap;
 typedef std::map<CScriptID, CScript> ScriptMap;
-typedef std::map<CIdentityID, CIdentityWithHistory> IdentityMap;
+typedef std::multimap<arith_uint256, CIdentityMapValue> IdentityMap;
 typedef std::set<CScript> WatchOnlySet;
 typedef std::map<libzcash::SproutPaymentAddress, libzcash::SproutSpendingKey> SproutSpendingKeyMap;
 typedef std::map<libzcash::SproutPaymentAddress, libzcash::SproutViewingKey> SproutViewingKeyMap;
@@ -189,11 +192,14 @@ public:
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const;
 
     virtual bool HaveIdentity(const CIdentityID &idID) const;
-    virtual bool AddIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight);
-    virtual bool UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight);
-    virtual bool RemoveIdentity(const CIdentityID &idID);
-    virtual bool GetIdentityAndHistory(const CIdentityID &idID, CIdentityWithHistory &idWithHistory) const;
-    virtual bool AddUpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory);
+    virtual bool AddIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
+    virtual bool UpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
+    virtual bool AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
+    virtual bool RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid=uint256());
+    virtual bool GetIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t lteHeight=0x7fffffff) const;
+    virtual bool GetIdentity(const CIdentityMapKey &keyStart, const CIdentityMapKey &keyEnd, std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &keysAndIdentityUpdates) const;
+    virtual bool GetIdentity(const CIdentityMapKey &mapKey, const uint256 &txid, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity);
+    virtual bool GetFirstIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t gteHeight=0) const;
 
     virtual bool AddWatchOnly(const CScript &dest);
     virtual bool RemoveWatchOnly(const CScript &dest);

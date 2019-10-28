@@ -30,6 +30,7 @@
 #include "script/script.h"
 #include "script/standard.h"
 #include "primitives/transaction.h"
+#include "arith_uint256.h"
 
 class CCommitmentHash
 {
@@ -357,74 +358,76 @@ public:
     }
 };
 
-// this is stored serialized in the wallet as an ID, which allows a wallet to keep track of
-// all identity history that is relevant to signing operations as well as ID states from the past
-// while only needing to keep history for IDs that our addresses were either once a part of or
-// that are manually held in the wallet.
-class CIdentityWithHistory
+class CIdentityMapKey
 {
 public:
-    static const uint16_t VERSION_INVALID = 0;
-    static const uint16_t VERSION_V1 = 1;
-    static const uint16_t VERSION_CURRENT = 1;
-
+    // the flags
     static const uint16_t VALID = 1;
-    static const uint16_t CAN_SIGN = 2;
-    static const uint16_t CAN_SPEND = 4;
-    static const uint16_t HISTORY_HOLD = 8;     // we were CAN_SIGN in the past, so keep a last state updated after we are removed, keep it updated in case we need it for signing other txes
-    static const uint16_t MANUAL_HOLD = 0x10;   // we were manually requested to watch this address
-    static const uint16_t UNRELATED = 0x20;     // set when an identity on manual hold is found to have no obvious relevance to us or transactions we can sign
+    static const uint16_t CAN_SPEND = 0x8000;
+    static const uint16_t CAN_SIGN = 0x4000;
+    static const uint16_t MANUAL_HOLD = 0x2000; // we were CAN_SIGN in the past, so keep a last state updated after we are removed, keep it updated so its useful when signing related txes
+    static const uint16_t BLACKLIST = 0x1000;   // do not track identities that are blacklisted
 
-    uint16_t version;
-    uint16_t flags;
-    std::map<uint32_t, CIdentity> ids;          // keep the last two IDs in the wallet by block height to enable adding one while depending on the last for all txes in current block
+    // these elements are used as a sort key for the identity map
+    // with most significant member first. flags have no effect on sort order, since elements will be unique already
+    CIdentityID idID;                           // 20 byte ID
+    uint32_t blockHeight;                       // four byte blockheight
+    uint32_t blockOrder;                        // 1-based numerical order if in the same block based on first to last spend, 1 otherwise, 0 is invalid except for queries
+    uint32_t flags;
 
-    CIdentityWithHistory() : version(0) {}
+    CIdentityMapKey() : blockHeight(0), blockOrder(0), flags(0) {}
+    CIdentityMapKey(const CIdentityID &id, uint32_t blkHeight=0, uint32_t orderInBlock=0, uint32_t Flags=0) : idID(id), blockHeight(blkHeight), blockOrder(orderInBlock), flags(Flags) {}
 
-    CIdentityWithHistory(uint16_t Ver, uint16_t Flags, const std::map<uint32_t, CIdentity> &blockHeightIds) : version(Ver), flags(Flags), ids(blockHeightIds) {}
-
-    CIdentityWithHistory(const UniValue &uni);
-    CIdentityWithHistory(std::vector<unsigned char> asVector)
+    CIdentityMapKey(const arith_uint256 &mapKey)
     {
-        ::FromVector(asVector, *this);
+        flags = mapKey.GetLow64() & 0xffffffff;
+        blockOrder = mapKey.GetLow64() >> 32;
+        blockHeight = (mapKey >> 64).GetLow64() & 0xffffffff;
+        uint256 keyBytes(ArithToUint256(mapKey));
+        idID = CIdentityID(uint160(std::vector<unsigned char>(keyBytes.begin() + 12, keyBytes.end())));
     }
 
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(version);
+        READWRITE(idID);
+        READWRITE(blockHeight);
+        READWRITE(blockOrder);
         READWRITE(flags);
-
-        std::vector<std::pair<uint32_t, CIdentity>> idVs;
-        if (ser_action.ForRead())
-        {
-            READWRITE(idVs);
-
-            for (auto idStatePair : idVs)
-            {
-                ids.insert(idStatePair);
-            }
-        }
-        else
-        {
-            for (auto idStatePair : ids)
-            {
-                idVs.push_back(idStatePair);
-            }
-
-            READWRITE(idVs);
-        }
     }
 
-    UniValue ToUniValue() const;
+    arith_uint256 MapKey() const
+    {
+        std::vector<unsigned char> vch(idID.begin(), idID.end());
+        vch.insert(vch.end(), 12, 0);
+        arith_uint256 retVal = UintToArith256(uint256(vch));
+        retVal = ((retVal << 32 + blockHeight) << 32 + blockOrder) << 32 + flags;
+        return retVal;
+    }
 
+    // if it actually represents a real identity and not just a key for queries. blockOrder is 1-based
     bool IsValid() const
     {
-        return version > VERSION_INVALID && version <= VERSION_CURRENT && flags & VALID;
+        return !idID.IsNull() && blockHeight != 0 && flags & VALID && blockOrder >= 1;
     }
+};
 
-    bool UpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight);
+class CIdentityMapValue : public CIdentity
+{
+public:
+    uint256 txid;
+
+    CIdentityMapValue() : CIdentity() {}
+    CIdentityMapValue(const CTransaction &tx) : CIdentity(tx), txid(tx.GetHash()) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(*(CIdentity *)this);
+        READWRITE(txid);
+    }
 };
 
 #endif // IDENTITY_H

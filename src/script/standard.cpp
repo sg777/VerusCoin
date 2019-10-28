@@ -537,7 +537,8 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                          int &nRequiredRet, 
                          const CKeyStore *pKeyStore, 
                          bool *pCanSign, 
-                         bool *pCanSpend, 
+                         bool *pCanSpend,
+                         uint32_t lastIdHeight,
                          std::map<uint160, CKey> *pPrivKeys)
 {
     addressRet.clear();
@@ -554,7 +555,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
         CScript postfix = CScript(scriptPubKey.size() > scriptStart ? scriptPubKey.begin() + scriptStart : scriptPubKey.end(), scriptPubKey.end());
 
         // check again with only postfix subscript
-        return(ExtractDestinations(postfix, typeRet, addressRet, nRequiredRet));
+        return(ExtractDestinations(postfix, typeRet, addressRet, nRequiredRet, pKeyStore, pCanSign, pCanSpend, lastIdHeight, pPrivKeys));
     }
 
     int canSpendCount = 0;
@@ -580,13 +581,13 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     {
                         // lookup identity, we must have all registered target identity scripts in our keystore, or we try as if they are a keyID, which will be the same
                         // if revoked or undefined
-                        CIdentityWithHistory idHistory;
+                        std::pair<CIdentityMapKey, CIdentityMapValue> identity;
                         idSet.insert(destId);
 
-                        if (pKeyStore && pKeyStore->GetIdentityAndHistory(destId, idHistory) && idHistory.IsValid() && idHistory.ids.rbegin()->second.IsValidUnrevoked())
+                        if (pKeyStore && pKeyStore->GetIdentity(destId, identity, lastIdHeight) && identity.second.IsValidUnrevoked())
                         {
                             int canSignCount = 0;
-                            for (auto oneKey : idHistory.ids.rbegin()->second.primaryAddresses)
+                            for (auto oneKey : identity.second.primaryAddresses)
                             {
                                 uint160 oneKeyID = GetDestinationID(oneKey);
                                 CKey privKey;
@@ -600,25 +601,22 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                                     }
                                 }
                             }
-                            if (canSignCount >= idHistory.ids.rbegin()->second.minSigs)
+                            if (canSignCount >= identity.second.minSigs)
                             {
                                 canSpendCount++;
                             }
                         }
                     }
-                    else
+                    else if (pKeyStore)
                     {
-                        if (pKeyStore)
+                        CKey privKey;
+                        if (pKeyStore->GetKey(destId, privKey))
                         {
-                            CKey privKey;
-                            if (pKeyStore->GetKey(destId, privKey))
+                            canSign = true;
+                            canSpendCount++;
+                            if (pPrivKeys)
                             {
-                                canSign = true;
-                                canSpendCount++;
-                                if (pPrivKeys)
-                                {
-                                    (*pPrivKeys)[destId] = privKey;
-                                }
+                                (*pPrivKeys)[destId] = privKey;
                             }
                         }
                     }
@@ -645,8 +643,8 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     {
                         // include all non-name addresses as destinations as well
                         // name addresses can only be destinations if they are at least "cansign"
-                        // there may be a reason to add this support for the "informed" part of
-                        // a RACI kind of collaboration implementation
+                        // there may be a reason to add this support to model the "informed" role of
+                        // RACI collaboration
                         addressRet.push_back(dest);
                     }
                 }
@@ -666,14 +664,14 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                             if (dest.which() == COptCCParams::ADDRTYPE_ID)
                             {
                                 // lookup identity, we must have all registered target identity scripts in our keystore, or we try as if they are a keyID, which will be the same
-                                // if revoked or undefined
-                                CIdentityWithHistory idHistory;
+                                // as if revoked or undefined
+                                std::pair<CIdentityMapKey, CIdentityMapValue> identity;
                                 idSet.insert(destId);
 
-                                if (pKeyStore && pKeyStore->GetIdentityAndHistory(destId, idHistory) && idHistory.ids.rbegin()->second.IsValidUnrevoked())
+                                if (pKeyStore && pKeyStore->GetIdentity(destId, identity, lastIdHeight) && identity.second.IsValidUnrevoked())
                                 {
                                     int canSignCount = 0;
-                                    for (auto oneKey : idHistory.ids.rbegin()->second.primaryAddresses)
+                                    for (auto oneKey : identity.second.primaryAddresses)
                                     {
                                         uint160 oneKeyID = GetDestinationID(oneKey);
 
@@ -688,7 +686,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                                             }
                                         }
                                     }
-                                    if (canSignCount >= idHistory.ids.rbegin()->second.minSigs)
+                                    if (canSignCount >= identity.second.minSigs)
                                     {
                                         canSpendOneCount++;
                                     }

@@ -216,7 +216,8 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                          int &nRequiredRet, 
                          const CKeyStore *pKeyStore=nullptr, 
                          bool *canSign=nullptr, 
-                         bool *canSpend=nullptr, 
+                         bool *canSpend=nullptr,
+                         uint32_t lastIdHeight=INT_MAX,
                          std::map<uint160, CKey> *pPrivKeys=nullptr);
 
 CScript GetScriptForDestination(const CTxDestination& dest);

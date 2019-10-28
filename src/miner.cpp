@@ -548,21 +548,20 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                         else if (vSolutions[0].size() == 21 && vSolutions[0][0] == COptCCParams::ADDRTYPE_ID)
                         {
                             // destination is an identity, see if we can get its public key
-                            CIdentityWithHistory identity;
+                            std::pair<CIdentityMapKey, CIdentityMapValue> identity;
 
-                            if (pwalletMain->GetIdentityAndHistory(CIdentityID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), identity) && 
-                                identity.IsValid() && 
-                                !identity.ids.rbegin()->second.IsRevoked() && 
-                                identity.ids.rbegin()->second.primaryAddresses.size())
+                            if (pwalletMain->GetIdentity(CIdentityID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), identity) && 
+                                identity.second.IsValidUnrevoked() && 
+                                identity.second.primaryAddresses.size())
                             {
-                                CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.ids.rbegin()->second.primaryAddresses[0]);
+                                CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.second.primaryAddresses[0]);
                                 if (pkTmp.IsValid())
                                 {
                                     pk = pkTmp;
                                 }
                                 else
                                 {
-                                    pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.ids.rbegin()->second.primaryAddresses[0])), pk);
+                                    pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.second.primaryAddresses[0])), pk);
                                 }
                             }
                         }

@@ -1084,10 +1084,11 @@ public:
     bool AddCScript(const CScript& redeemScript);
     bool LoadCScript(const CScript& redeemScript);
 
-    bool AddUpdateIdentity(const CIdentity &identity, const uint256 &txId, const uint32_t blockHeight);
-    bool RemoveIdentity(const CIdentityID &idID);
-    bool AddUpdateIdentityAndHistory(const CIdentityWithHistory &idWithHistory);
-    bool LoadIdentityAndHistory(const CIdentityWithHistory &idWithHistory);
+    bool AddIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
+    bool UpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
+    bool AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
+    bool RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid=uint256());
+    bool LoadIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
 
     //! Adds a destination data tuple to the store, and saves it to disk
     bool AddDestData(const CTxDestination &dest, const std::string &key, const std::string &value);
@@ -1189,6 +1190,8 @@ public:
     void EraseFromWallet(const uint256 &hash);
     void SyncTransaction(const CTransaction& tx, const CBlock* pblock);
     void RescanWallet();
+    std::pair<bool, bool> CheckAuthority(const std::vector<CTxDestination> addrList, int minSigs);
+    bool MarkIdentityDirty(const CIdentityID &idID);
     bool AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate);
     void WitnessNoteCommitment(
          std::vector<uint256> commitments,

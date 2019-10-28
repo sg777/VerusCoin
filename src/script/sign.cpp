@@ -264,13 +264,13 @@ CScript _CCPubKey(const CC *cond)
 
 CIdentity LookupIdentity(const BaseSignatureCreator& creator, const CIdentityID &idID)
 {
-    CIdentityWithHistory identity;
+    std::pair<CIdentityMapKey, CIdentityMapValue> identity;
     COptCCParams p;
     if (creator.IsKeystoreValid() && 
-        creator.KeyStore().GetIdentityAndHistory(idID, identity) && 
-        identity.IsValid())
+        creator.KeyStore().GetIdentity(idID, identity) && 
+        identity.second.IsValidUnrevoked())
     {
-        return identity.ids.rbegin()->second;
+        return identity.second;
     }
     return CIdentity();
 }
