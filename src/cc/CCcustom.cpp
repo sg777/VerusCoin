@@ -34,6 +34,7 @@
 #include "pbaas/crosschainrpc.h"
 #include "pbaas/pbaas.h"
 #include "pbaas/notarization.h"
+#include "pbaas/identity.h"
 
 /*
  CCcustom has most of the functions that need to be extended to create a new CC contract.
@@ -138,6 +139,16 @@ std::string IdentityRevokeWIF = "";
 std::string IdentityRecoverAddr = "";
 std::string IdentityRecoverPubKey = "";
 std::string IdentityRecoverWIF = "";
+
+// indentity commitment output
+std::string IdentityCommitmentAddr = "";
+std::string IdentityCommitmentPubKey = "";
+std::string IdentityCommitmentWIF = "";
+
+// indentity reservation output
+std::string IdentityReservationAddr = "";
+std::string IdentityReservationPubKey = "";
+std::string IdentityReservationWIF = "";
 
 // Assets, aka Tokens
 #define FUNCNAME IsAssetsInput
@@ -452,6 +463,24 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             strcpy(cp->CChexstr, IdentityRecoverPubKey.c_str());
             memcpy(cp->CCpriv, DecodeSecret(IdentityRecoverWIF).begin(),32);
             cp->validate = ValidateIdentityRecover;
+            cp->ismyvin = IsIdentityInput;
+            break;
+
+        case EVAL_IDENTITY_COMMITMENT:
+            strcpy(cp->unspendableCCaddr, IdentityCommitmentAddr.c_str());
+            strcpy(cp->normaladdr, IdentityCommitmentAddr.c_str());
+            strcpy(cp->CChexstr, IdentityCommitmentPubKey.c_str());
+            memcpy(cp->CCpriv, DecodeSecret(IdentityCommitmentWIF).begin(),32);
+            cp->validate = ValidateIdentityCommitment;
+            cp->ismyvin = IsIdentityInput;
+            break;
+
+        case EVAL_IDENTITY_RESERVATION:
+            strcpy(cp->unspendableCCaddr, IdentityReservationAddr.c_str());
+            strcpy(cp->normaladdr, IdentityReservationAddr.c_str());
+            strcpy(cp->CChexstr, IdentityReservationPubKey.c_str());
+            memcpy(cp->CCpriv, DecodeSecret(IdentityReservationWIF).begin(),32);
+            cp->validate = ValidateIdentityReservation;
             cp->ismyvin = IsIdentityInput;
             break;
 

@@ -2770,7 +2770,7 @@ bool ContextualCheckInputs(const CTransaction& tx,
                 // and substitute the correct addresses when checking signatures
                 COptCCParams p;
                 std::map<uint160, pair<int, std::vector<std::vector<unsigned char>>>> idAddresses;
-                if (coins->vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.n >= 1 && p.vKeys.size() >= p.n && p.version >= p.VERSION_V3 && p.vData.size())
+                if (coins->vout[prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.n >= 1 && p.vKeys.size() >= p.n && p.version >= p.VERSION_V3 && p.vData.size())
                 {
                     // get mapping to any identities used that are available. if a signing identity is unavailable, a transaction may still be able to be spent
                     COptCCParams master = COptCCParams(p.vData.back());
@@ -3078,18 +3078,40 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                 const CTxOut &out = tx.vout[k];
                 CScript::ScriptType scriptType = out.scriptPubKey.GetType();
                 if (scriptType != CScript::UNKNOWN) {
-                    uint160 const addrHash = out.scriptPubKey.AddressHash();
-                    if (!addrHash.IsNull())
+                    if (scriptType == CScript::P2CC)
                     {
-                        // undo receiving activity
-                        addressIndex.push_back(make_pair(
-                            CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, k, false),
-                            out.nValue));
+                        std::vector<uint160> addrHashes = out.scriptPubKey.AddressHashes();
+                        for (auto addrHash : addrHashes)
+                        {
+                            if (!addrHash.IsNull())
+                            {
+                                // undo receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, k, false),
+                                    out.nValue));
 
-                        // undo unspent index
-                        addressUnspentIndex.push_back(make_pair(
-                            CAddressUnspentKey(scriptType, addrHash, hash, k),
-                            CAddressUnspentValue()));
+                                // undo unspent index
+                                addressUnspentIndex.push_back(make_pair(
+                                    CAddressUnspentKey(scriptType, addrHash, hash, k),
+                                    CAddressUnspentValue()));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        uint160 const addrHash = out.scriptPubKey.AddressHash();
+                        if (!addrHash.IsNull())
+                        {
+                            // undo receiving activity
+                            addressIndex.push_back(make_pair(
+                                CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, k, false),
+                                out.nValue));
+
+                            // undo unspent index
+                            addressUnspentIndex.push_back(make_pair(
+                                CAddressUnspentKey(scriptType, addrHash, hash, k),
+                                CAddressUnspentValue()));
+                        }
                     }
                 }
             }
@@ -3135,19 +3157,41 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                     const CTxOut &prevout = view.GetOutputFor(input);
                     CScript::ScriptType scriptType = prevout.scriptPubKey.GetType();
                     if (scriptType != CScript::UNKNOWN) {
-                        uint160 const addrHash = prevout.scriptPubKey.AddressHash();
-
-                        if (!addrHash.IsNull())
+                        if (scriptType == CScript::P2CC)
                         {
-                            // undo spending activity
-                            addressIndex.push_back(make_pair(
-                                CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, j, true),
-                                prevout.nValue * -1));
+                            std::vector<uint160> addrHashes = prevout.scriptPubKey.AddressHashes();
+                            for (auto addrHash : addrHashes)
+                            {
+                                if (!addrHash.IsNull())
+                                {
+                                    // undo spending activity
+                                    addressIndex.push_back(make_pair(
+                                        CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, j, true),
+                                        prevout.nValue * -1));
 
-                            // restore unspent index
-                            addressUnspentIndex.push_back(make_pair(
-                                CAddressUnspentKey(scriptType, addrHash, input.prevout.hash, input.prevout.n),
-                                CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undo.nHeight)));
+                                    // restore unspent index
+                                    addressUnspentIndex.push_back(make_pair(
+                                        CAddressUnspentKey(scriptType, addrHash, input.prevout.hash, input.prevout.n),
+                                        CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undo.nHeight)));
+                                }
+                            }
+                        }
+                        else
+                        {
+                            uint160 const addrHash = prevout.scriptPubKey.AddressHash();
+
+                            if (!addrHash.IsNull())
+                            {
+                                // undo spending activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, j, true),
+                                    prevout.nValue * -1));
+
+                                // restore unspent index
+                                addressUnspentIndex.push_back(make_pair(
+                                    CAddressUnspentKey(scriptType, addrHash, input.prevout.hash, input.prevout.n),
+                                    CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undo.nHeight)));
+                            }
                         }
                     }
                 }
@@ -3508,26 +3552,60 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     const CTxIn input = tx.vin[j];
                     const CTxOut &prevout = view.GetOutputFor(tx.vin[j]);
                     CScript::ScriptType scriptType = prevout.scriptPubKey.GetType();
-                    const uint160 addrHash = prevout.scriptPubKey.AddressHash();
-                    if (fAddressIndex && scriptType != CScript::UNKNOWN && !addrHash.IsNull()) {
-                        // record spending activity
-                        addressIndex.push_back(make_pair(
-                            CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, txhash, j, true),
-                            prevout.nValue * -1));
+                    if (fAddressIndex && scriptType != CScript::UNKNOWN)
+                    {
+                        if (scriptType == CScript::P2CC)
+                        {
+                            std::vector<uint160> addrHashes = prevout.scriptPubKey.AddressHashes();
+                            for (auto addrHash : addrHashes)
+                            {
+                                if (!addrHash.IsNull()) 
+                                {
+                                    // record spending activity
+                                    addressIndex.push_back(make_pair(
+                                        CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, txhash, j, true),
+                                        prevout.nValue * -1));
 
-                        // remove address from unspent index
-                        addressUnspentIndex.push_back(make_pair(
-                            CAddressUnspentKey(scriptType, addrHash, input.prevout.hash, input.prevout.n),
-                            CAddressUnspentValue()));
-                    }
-                    if (fSpentIndex) {
-                        // Add the spent index to determine the txid and input that spent an output
-                        // and to find the amount and address from an input.
-                        // If we do not recognize the script type, we still add an entry to the
-                        // spentindex db, with a script type of 0 and addrhash of all zeroes.
-                        spentIndex.push_back(make_pair(
-                            CSpentIndexKey(input.prevout.hash, input.prevout.n),
-                            CSpentIndexValue(txhash, j, pindex->GetHeight(), prevout.nValue, scriptType, addrHash)));
+                                    // remove address from unspent index
+                                    addressUnspentIndex.push_back(make_pair(
+                                        CAddressUnspentKey(scriptType, addrHash, input.prevout.hash, input.prevout.n),
+                                        CAddressUnspentValue()));
+                                }
+                            }
+                            if (fSpentIndex) {
+                                // Add the spent index to determine the txid and input that spent an output
+                                // and to find the amount and address from an input.
+                                // If we do not recognize the script type, we still add an entry to the
+                                // spentindex db, with a script type of 0 and addrhash of all zeroes.
+                                spentIndex.push_back(make_pair(
+                                    CSpentIndexKey(input.prevout.hash, input.prevout.n),
+                                    CSpentIndexValue(txhash, j, pindex->GetHeight(), prevout.nValue, scriptType, addrHashes.size() ? addrHashes[0] : uint160())));
+                            }
+                        }
+                        else
+                        {
+                            const uint160 addrHash = prevout.scriptPubKey.AddressHash();
+                            if (!addrHash.IsNull()) {
+                                // record spending activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, txhash, j, true),
+                                    prevout.nValue * -1));
+
+                                // remove address from unspent index
+                                addressUnspentIndex.push_back(make_pair(
+                                    CAddressUnspentKey(scriptType, addrHash, input.prevout.hash, input.prevout.n),
+                                    CAddressUnspentValue()));
+                            }
+                            if (fSpentIndex) {
+                                // Add the spent index to determine the txid and input that spent an output
+                                // and to find the amount and address from an input.
+                                // If we do not recognize the script type, we still add an entry to the
+                                // spentindex db, with a script type of 0 and addrhash of all zeroes.
+                                spentIndex.push_back(make_pair(
+                                    CSpentIndexKey(input.prevout.hash, input.prevout.n),
+                                    CSpentIndexValue(txhash, j, pindex->GetHeight(), prevout.nValue, scriptType, addrHash)));
+                            }
+                        }
                     }
                 }
             }
@@ -3591,20 +3669,43 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             for (unsigned int k = 0; k < tx.vout.size(); k++) {
                 const CTxOut &out = tx.vout[k];
                 CScript::ScriptType scriptType = out.scriptPubKey.GetType();
-                if (scriptType != CScript::UNKNOWN) {
-                    uint160 const addrHash = out.scriptPubKey.AddressHash();
-
-                    if (!addrHash.IsNull())
+                if (scriptType != CScript::UNKNOWN) 
+                {
+                    if (scriptType == CScript::P2CC)
                     {
-                        // record receiving activity
-                        addressIndex.push_back(make_pair(
-                            CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, txhash, k, false),
-                            out.nValue));
+                        std::vector<uint160> addrHashes = out.scriptPubKey.AddressHashes();
+                        for (auto addrHash : addrHashes)
+                        {
+                            if (!addrHash.IsNull())
+                            {
+                                // record receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, txhash, k, false),
+                                    out.nValue));
 
-                        // record unspent output
-                        addressUnspentIndex.push_back(make_pair(
-                            CAddressUnspentKey(scriptType, addrHash, txhash, k),
-                            CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->GetHeight())));
+                                // record unspent output
+                                addressUnspentIndex.push_back(make_pair(
+                                    CAddressUnspentKey(scriptType, addrHash, txhash, k),
+                                    CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->GetHeight())));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        uint160 const addrHash = out.scriptPubKey.AddressHash();
+
+                        if (!addrHash.IsNull())
+                        {
+                            // record receiving activity
+                            addressIndex.push_back(make_pair(
+                                CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, txhash, k, false),
+                                out.nValue));
+
+                            // record unspent output
+                            addressUnspentIndex.push_back(make_pair(
+                                CAddressUnspentKey(scriptType, addrHash, txhash, k),
+                                CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->GetHeight())));
+                        }
                     }
                 }
             }

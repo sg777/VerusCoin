@@ -7,6 +7,8 @@
 #include <hash.h>
 #include <uint256.h>
 
+#include "pbaas/identity.h"
+
 #include <assert.h>
 #include <string.h>
 #include <stdint.h>
@@ -267,7 +269,15 @@ bool CBitcoinAddress::IsValid(const CChainParams& params) const
 
 bool CBitcoinAddress::SetString(const char* pszAddress)
 {
-    return CBase58Data::SetString(pszAddress, 1);//2);
+
+    if (std::count(pszAddress, pszAddress + strlen(pszAddress), '@') == 1)
+    {
+        return Set(CIdentityID(CIdentity::GetNameID(std::string(pszAddress), uint160())));
+    }
+    else
+    {
+        return CBase58Data::SetString(pszAddress, 1);//2);
+    }
 }
 
 bool CBitcoinAddress::SetString(const std::string& strAddress)

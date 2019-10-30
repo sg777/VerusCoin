@@ -184,7 +184,7 @@ template <typename TOBJ>
 CScript MakeMofNCCScript(const CConditionObj<TOBJ> &conditionObj, const CTxDestination *indexDest=nullptr)
 {
     // indexDest is always added, but we need to index on all can-sign identities as well
-    std::vector<CTxDestination> indexIDs = indexDest ? std::vector<CTxDestination>({*indexDest}) : std::vector<CTxDestination>();
+    std::vector<CTxDestination> indexIDs = indexDest ? std::vector<CTxDestination>({*indexDest}) : std::vector<CTxDestination>({conditionObj.dests[0]});
 
     COptCCParams masterParams = COptCCParams(COptCCParams::VERSION_V3, 0, 1, 1, indexIDs, std::vector<std::vector<unsigned char>>());
     CScript scriptRet = CScript() << masterParams.AsVector() << OP_CHECKCRYPTOCONDITION;
@@ -198,10 +198,10 @@ CScript MakeMofNCCScript(const CConditionObj<TOBJ> &conditionObj, const CTxDesti
 }
 
 template <typename TOBJ1, typename TOBJ2>
-CScript MakeMofNCCScript(int M, TOBJ1 &condition1, TOBJ2 &condition2, const CTxDestination *indexDest=nullptr)
+CScript MakeMofNCCScript(int M, TOBJ1 &condition1, TOBJ2 &condition2, const std::vector<CTxDestination> *indexDests=nullptr)
 {
     if (M > 2) M = 2;
-    std::vector<CTxDestination> indexIDs = indexDest ? std::vector<CTxDestination>({*indexDest}) : std::vector<CTxDestination>();
+    std::vector<CTxDestination> indexIDs = indexDests ? *indexDests : std::vector<CTxDestination>({condition1.dests[0], condition2.dests[0]});
 
     COptCCParams masterParams = COptCCParams(COptCCParams::VERSION_V3, 0, M, 2, indexIDs, std::vector<std::vector<unsigned char>>());
     CScript scriptRet = CScript() << masterParams.AsVector() << OP_CHECKCRYPTOCONDITION;
@@ -218,10 +218,10 @@ CScript MakeMofNCCScript(int M, TOBJ1 &condition1, TOBJ2 &condition2, const CTxD
 }
 
 template <typename TOBJ1, typename TOBJ2, typename TOBJ3>
-CScript MakeMofNCCScript(int M, TOBJ1 &condition1, TOBJ2 &condition2, TOBJ3 &condition3, const CTxDestination *indexDest=nullptr)
+CScript MakeMofNCCScript(int M, TOBJ1 &condition1, TOBJ2 &condition2, TOBJ3 &condition3, const std::vector<CTxDestination> *indexDests=nullptr)
 {
     if (M > 3) M = 3;
-    std::vector<CTxDestination> indexIDs = indexDest ? std::vector<CTxDestination>({*indexDest}) : std::vector<CTxDestination>();
+    std::vector<CTxDestination> indexIDs = indexDests ? *indexDests : std::vector<CTxDestination>({condition1.dests[0], condition2.dests[0], condition3.dests[0]});
 
     COptCCParams masterParams = COptCCParams(COptCCParams::VERSION_V3, 0, M, 3, indexIDs, std::vector<std::vector<unsigned char>>());
     CScript scriptRet = CScript() << masterParams.AsVector() << OP_CHECKCRYPTOCONDITION;
@@ -241,10 +241,10 @@ CScript MakeMofNCCScript(int M, TOBJ1 &condition1, TOBJ2 &condition2, TOBJ3 &con
 }
 
 template <typename TOBJ1, typename TOBJ2, typename TOBJ3, typename TOBJ4>
-CScript MakeMofNCCScript(int M, TOBJ1 &condition1, TOBJ2 &condition2, TOBJ3 &condition3, TOBJ4 &condition4, const CTxDestination *indexDest=nullptr)
+CScript MakeMofNCCScript(int M, TOBJ1 &condition1, TOBJ2 &condition2, TOBJ3 &condition3, TOBJ4 &condition4, const std::vector<CTxDestination> *indexDests=nullptr)
 {
     if (M > 4) M = 4;
-    std::vector<CTxDestination> indexIDs = indexDest ? std::vector<CTxDestination>({*indexDest}) : std::vector<CTxDestination>();
+    std::vector<CTxDestination> indexIDs = indexDests ? *indexDests : std::vector<CTxDestination>({condition1.dests[0], condition2.dests[0], condition3.dests[0], condition4.dests[0]});
 
     COptCCParams masterParams = COptCCParams(COptCCParams::VERSION_V3, 0, M, 4, indexIDs, std::vector<std::vector<unsigned char>>());
     CScript scriptRet = CScript() << masterParams.AsVector() << OP_CHECKCRYPTOCONDITION;

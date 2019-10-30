@@ -816,11 +816,6 @@ bool IsChainDefinitionInput(const CScript &scriptSig);
 bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
 bool IsCurrencyStateInput(const CScript &scriptSig);
 
-bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
-bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
-bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
-bool IsIdentityInput(const CScript &scriptSig);
-
 bool GetCCParams(const CScript &scr, COptCCParams &ccParams);
 
 bool SetThisChain(UniValue &chainDefinition);

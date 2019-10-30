@@ -112,42 +112,57 @@ COptCCParams::COptCCParams(std::vector<unsigned char> &vch)
                             switch (keyVec[0])
                             {
                                 case ADDRTYPE_PK:
+                                {
+                                    if (keyVec.size() == 34)
                                     {
-                                        if (keyVec.size() == 34)
+                                        CPubKey key(std::vector<unsigned char>(keyVec.begin() + 1, keyVec.end()));
+                                        if (key.IsValid())
                                         {
-                                            CPubKey key(std::vector<unsigned char>(keyVec.begin() + 1, keyVec.end()));
-                                            if (key.IsValid())
-                                            {
-                                                vKeys.push_back(CTxDestination(key));
-                                            }
-                                        }
-                                        else
-                                        {
-                                            version = 0;
+                                            vKeys.push_back(CTxDestination(key));
                                         }
                                     }
+                                    else
+                                    {
+                                        version = 0;
+                                    }
+                                    break;
+                                }
                                 case ADDRTYPE_PKH:
+                                {
+                                    if (keyVec.size() == 21)
                                     {
-                                        if (keyVec.size() == 21)
-                                        {
-                                            vKeys.push_back(CKeyID(uint160(std::vector<unsigned char>(keyVec.begin() + 1, keyVec.end()))));
-                                        }
-                                        else
-                                        {
-                                            version = 0;
-                                        }
+                                        vKeys.push_back(CKeyID(uint160(std::vector<unsigned char>(keyVec.begin() + 1, keyVec.end()))));
                                     }
+                                    else
+                                    {
+                                        version = 0;
+                                    }
+                                    break;
+                                }
                                 case ADDRTYPE_SH:
+                                {
+                                    if (keyVec.size() == 21)
                                     {
-                                        if (keyVec.size() == 21)
-                                        {
-                                            vKeys.push_back(CScriptID(uint160(std::vector<unsigned char>(keyVec.begin() + 1, keyVec.end()))));
-                                        }
-                                        else
-                                        {
-                                            version = 0;
-                                        }
+                                        vKeys.push_back(CScriptID(uint160(std::vector<unsigned char>(keyVec.begin() + 1, keyVec.end()))));
                                     }
+                                    else
+                                    {
+                                        version = 0;
+                                    }
+                                    break;
+                                }
+                                case ADDRTYPE_ID:
+                                {
+                                    if (keyVec.size() == 21)
+                                    {
+                                        vKeys.push_back(CIdentityID(uint160(std::vector<unsigned char>(keyVec.begin() + 1, keyVec.end()))));
+                                    }
+                                    else
+                                    {
+                                        version = 0;
+                                    }
+                                    break;
+                                }
                                 default:
                                     version = 0;
                             }
@@ -180,7 +195,7 @@ std::vector<unsigned char> COptCCParams::AsVector() const
     for (auto k : vKeys)
     {
         std::vector<unsigned char> keyBytes = GetDestinationBytes(k);
-        if (version > VERSION_V2 && k.which() == ADDRTYPE_SH)
+        if (version > VERSION_V2 && (k.which() == ADDRTYPE_SH || k.which() == ADDRTYPE_ID))
         {
             keyBytes.insert(keyBytes.begin(), (uint8_t)k.which());
         }
@@ -265,6 +280,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
             {
                 typeRet = TX_CRYPTOCONDITION;
                 static std::set<int> VALID_EVAL_CODES({
+                    EVAL_NONE,
                     EVAL_STAKEGUARD,
                     EVAL_PBAASDEFINITION,
                     EVAL_SERVICEREWARD,
@@ -288,7 +304,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                 {
                     for (auto k : cp.vKeys)
                     {
-                        if (k.which() == COptCCParams::ADDRTYPE_SH)
+                        if (k.which() == COptCCParams::ADDRTYPE_SH || k.which() == COptCCParams::ADDRTYPE_ID)
                         {
                             std::vector<unsigned char> vch(GetDestinationBytes(k));
                             vch.insert(vch.begin(), (uint8_t)k.which());
@@ -571,6 +587,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
             p.n >= 1 && 
             p.vKeys.size() >= p.n)
         {
+            typeRet = TX_CRYPTOCONDITION;
             if (p.version < p.VERSION_V3)
             {
                 for (auto dest : p.vKeys)
@@ -649,9 +666,11 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     }
                 }
 
-                for (int i = 0; ccValid && i < p.vData.size() - 1; i++)
+                for (int i = -1; ccValid && i < (int)(p.vData.size() - 1); i++)
                 {
-                    COptCCParams oneP(p.vData[i]);
+                    // first, process P, then any sub-conditions
+                    COptCCParams _oneP;
+                    COptCCParams &oneP = (i == -1) ? p : (_oneP = COptCCParams(p.vData[i]));
 
                     if (ccValid = oneP.IsValid())
                     {

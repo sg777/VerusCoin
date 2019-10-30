@@ -70,6 +70,10 @@ isminetype IsMine(const CKeyStore &keystore, const CScript& _scriptPubKey)
             {
                 return ISMINE_WATCH_ONLY;
             }
+            else
+            {
+                return ISMINE_NO;
+            }
         }
         else
         {

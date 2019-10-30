@@ -2109,13 +2109,14 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
         }
 
         bool canSign = false;
+        bool isMine = false;
 
         for (auto output : tx.vout)
         {
             bool canSpend = false;
             COptCCParams p;
 
-            if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version == p.VERSION_V3)
+            if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
             {
                 // assert and fix if we find any spot where this wouldn't be held, rather than
                 // creating a deadlock by attempting to take the cs out of order
@@ -2253,7 +2254,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                         {
                             if (canSignCanSpend.first != wasCanSignCanSpend.first)
                             {
-                                if (!canSignCanSpend.first)
+                                if (canSignCanSpend.first)
+                                {
+                                    // TODO: add all UTXOs that are sent to the address to this wallet
+                                }
+                                else
                                 {
                                     // we have gone from canSign to no control over this ID, either by deletion of tx or removal from signers. this will take effect retroactively on deletion and next block on addition
                                     // 1. remove all transactions that have UTXOs sent to this ID and are no longer can sign or can spend for us from the wallet
@@ -2422,82 +2427,20 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             {
                                 if (!canSignCanSpend.second)
                                 {
-
+                                    // TODO:PBAAS mark all transactions that are sent to this ID, which we have lost spending authority over as dirty
                                 }
                             }
                         }
                     }
                 }
-
-
-
-
-
-                // figure out if we can sign or spend this transaction as of this block and if we can sign, add any identity definitions needed to sign the transaction to the wallet
-                // TODO - FINISH - we may need to add an optional height to extract destinations
-                //if (ExtractDestinations(output.scriptPubKey,))
-
-
-                CCcontract_info C;
-                CKeyID pkID;
-
-                if (CCinit(&C, p.evalCode))
-                {
-                    pkID = CPubKey(ParseHex(C.CChexstr)).GetID();
-                }
-
-                // check all destinations, including IDs
-                std::set<CTxDestination> keySet;
-                bool watchOnly = false;
-                for (auto key : p.vKeys)
-                {
-                    if (key.which() == COptCCParams::ADDRTYPE_SH)
-                    {
-                        CScript idScript;
-                        CIdentity idp;
-                        std::set<CKeyID> ownKeySet;
-                        if (GetCScript(CScriptID(GetDestinationID(key)), idScript) && (idp = CIdentity(idScript)).IsValid() && (idp.GetNameID() == GetDestinationID(key)))
-                        {
-                            for (auto oneKey : idp.primaryAddresses)
-                            {
-                                ownKeySet.insert(GetDestinationID(oneKey));
-                            }
-                            if (ownKeySet.size())
-                            {
-                                watchOnly = true;
-                            }
-                            if (ownKeySet.size() >= idp.minSigs)
-                            {
-                                keySet.insert(key);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        CKeyID keyID = CKeyID(GetDestinationID(key));
-                        if (HaveKey(keyID))
-                        {
-                            keySet.insert(key);
-                        }
-                    }
-                }
-                if (keySet.size() >= p.m)
-                {
-                    return ISMINE_SPENDABLE;
-                }
-                else
-                {
-                    return watchOnly ? ISMINE_WATCH_ONLY : ISMINE_NO;
-                }
             }
         }
 
+        isMine = IsMine(tx);
 
-
-        bool isMine = IsMine(tx);
         if (fExisted || isMine || IsFromMe(tx) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
         {
-            CWalletTx wtx(this,tx);
+            CWalletTx wtx(this, tx);
 
             if (sproutNoteData.size() > 0) {
                 wtx.SetSproutNoteData(sproutNoteData);
@@ -2514,22 +2457,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             // Do not flush the wallet here for performance reasons
             // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
             CWalletDB walletdb(strWalletFile, "r+", false);
-
-            // if this is an ID, add the ID as a script
-            if (isMine)
-            {
-                CIdentity identity;
-                int i;
-                for (i = 0; !identity.IsValid() && i < tx.vout.size(); i++)
-                {
-                    identity = CIdentity(tx.vout[i].scriptPubKey);
-                }
-
-                if (identity.IsValid())
-                {
-                    AddCScript(tx.vout[i].scriptPubKey);
-                }
-            }
 
             return AddToWallet(wtx, false, &walletdb);
         }
@@ -2919,6 +2846,10 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
             else if (canSign)
             {
                 return ISMINE_WATCH_ONLY;
+            }
+            else
+            {
+                return ISMINE_NO;
             }
         }
         else
@@ -5017,7 +4948,9 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                         }
                     }
 
-                    if (txout.IsDust(::minRelayTxFee))
+                    COptCCParams p;
+
+                    if (txout.IsDust(::minRelayTxFee) && !(txout.nValue == 0 && txout.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode != EVAL_NONE))
                     {
                         if (recipient.fSubtractFeeFromAmount && nFeeRet > 0)
                         {
@@ -5150,7 +5083,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                     }
 
                     // Never create dust outputs; if we would, just
-                    // add the dust to the fee.
+                    // add the dust to the fee. Valid cryptoconditions with a valid eval function are allowed to create outputs of 0
                     if (newTxOut.IsDust(::minRelayTxFee))
                     {
                         nFeeRet += nChange;

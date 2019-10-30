@@ -35,7 +35,8 @@
 class CCommitmentHash
 {
 public:
-    static const CAmount DEFAULT_OUTPUT_AMOUNT = 0x10000;
+    static const CAmount DEFAULT_OUTPUT_AMOUNT = 0;
+    static const CAmount POSITIVE_OUTPUT_AMOUNT = 10000;
     uint256 hash;
 
     CCommitmentHash() {}
@@ -98,13 +99,7 @@ public:
         READWRITE(salt);
     }
 
-    UniValue ToUniValue() const
-    {
-        UniValue ret(UniValue::VOBJ);
-        ret.push_back(Pair("name", name));
-        ret.push_back(Pair("salt", salt.GetHex()));
-        return ret;
-    }
+    UniValue ToUniValue() const;
 
     CCommitmentHash GetCommitment()
     {
@@ -195,16 +190,16 @@ public:
 
     bool IsValid() const
     {
-        return (nVersion > VERSION_FIRSTVALID || nVersion < VERSION_LASTVALID);
+        return (nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID);
     }
 };
 
 class CIdentity : public CPrincipal
 {
 public:
-    static const uint8_t FLAG_REVOKED = 0x80;
+    static const uint32_t FLAG_REVOKED = 0x8000;
     static const int64_t MIN_UPDATE_AMOUNT = 0x10000;
-    static const int64_t MIN_REGISTRATION_AMOUNT = 0x100000000;
+    static const int64_t MIN_REGISTRATION_AMOUNT = 100000000;
 
     uint160 parent;
 
@@ -325,7 +320,7 @@ public:
 
         if (IsValidUnrevoked())
         {
-            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(evalcode, std::vector<CTxDestination>({CTxDestination(CScriptID(GetNameID()))}), &obj);
+            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(evalcode, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}), &obj);
             ret = CTxOut(nValue, MakeMofNCCScript(ccObj));
         }
         return ret;
@@ -338,7 +333,7 @@ public:
 
         if (IsValidUnrevoked())
         {
-            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(0, std::vector<CTxDestination>({CTxDestination(CScriptID(GetNameID()))}));
+            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}));
             ret = CTxOut(nValue, MakeMofNCCScript(ccObj));
         }
         return ret;
@@ -429,5 +424,15 @@ public:
         READWRITE(txid);
     }
 };
+
+struct CCcontract_info;
+struct Eval;
+
+bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool IsIdentityInput(const CScript &scriptSig);
 
 #endif // IDENTITY_H

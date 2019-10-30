@@ -360,9 +360,10 @@ bool CScript::GetOpretData(std::vector<std::vector<unsigned char>>& vData) const
 bool CScript::IsPayToCryptoCondition(CScript *pCCSubScript, std::vector<std::vector<unsigned char>>& vParams) const
 {
     const_iterator pc = begin();
+    vector<unsigned char> firstParam;
     vector<unsigned char> data;
     opcodetype opcode;
-    if (this->GetOp(pc, opcode, data))
+    if (this->GetOp(pc, opcode, firstParam))
         // Sha256 conditions are <76 bytes
         if (opcode > OP_0 && opcode < OP_PUSHDATA1)
             if (this->GetOp(pc, opcode, data))
@@ -373,7 +374,7 @@ bool CScript::IsPayToCryptoCondition(CScript *pCCSubScript, std::vector<std::vec
                     {
                         if (pCCSubScript)
                             *pCCSubScript = CScript(begin(), pcCCEnd);
-                        vParams.push_back(data);
+                        vParams.push_back(firstParam);
                         return true;
                     }
                 }
@@ -421,6 +422,10 @@ bool CScript::IsPayToCryptoCondition(COptCCParams &ccParams) const
         if (!vParams.empty())
         {
             ccParams = COptCCParams(vParams[0]);
+            for (int i = 1; i < vParams.size(); i++)
+            {
+                ccParams.vData.push_back(vParams[i]);
+            }
         }
         else
         {
@@ -742,7 +747,15 @@ uint160 CScript::AddressHash() const
     else if (this->IsPayToCryptoCondition(p)) {
         if (p.IsValid() && (p.vKeys.size()))
         {
-            addressHash = GetDestinationID(p.vKeys[0]);
+            COptCCParams master;
+            if (p.version >= p.VERSION_V3 && p.vData.size() > 1 && (master = COptCCParams(p.vData.back())).IsValid() && master.vKeys.size())
+            {
+                addressHash = GetDestinationID(master.vKeys[0]);
+            }
+            else
+            {
+                addressHash = GetDestinationID(p.vKeys[0]);
+            }
         }
         else
         {
@@ -751,5 +764,67 @@ uint160 CScript::AddressHash() const
         }
     }
     return addressHash;
+}
+
+std::vector<uint160> CScript::AddressHashes() const
+{
+    std::vector<uint160> addressHashes;
+    COptCCParams p;
+    if (this->IsPayToScriptHash()) {
+        addressHashes.push_back(uint160(std::vector<unsigned char>(this->begin()+2, this->begin()+22)));
+    }
+    else if (this->IsPayToPublicKeyHash())
+    {
+        addressHashes.push_back(uint160(std::vector<unsigned char>(this->begin()+3, this->begin()+23)));
+    }
+    else if (this->IsPayToPublicKey())
+    {
+        std::vector<unsigned char> hashBytes(this->begin()+1, this->begin()+34);
+        addressHashes.push_back(Hash160(hashBytes));
+    }
+    else if (this->IsPayToCryptoCondition(p)) {
+        if (p.IsValid() && (p.vKeys.size()))
+        {
+            COptCCParams master;
+            if (p.version >= p.VERSION_V3 && p.vData.size() > 1 && (master = COptCCParams(p.vData.back())).IsValid() && master.vKeys.size())
+            {
+                for (auto dest : master.vKeys)
+                {
+                    addressHashes.push_back(GetDestinationID(dest));
+                }
+                for (auto dest : p.vKeys)
+                {
+                    if (dest.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        addressHashes.push_back(GetDestinationID(dest));
+                    }
+                }
+                for (int i = 1; i < (int)(p.vData.size() - 1); i++)
+                {
+                    COptCCParams oneP(p.vData[i]);
+                    if (oneP.IsValid())
+                    {
+                        for (auto dest : oneP.vKeys)
+                        {
+                            if (dest.which() == COptCCParams::ADDRTYPE_ID)
+                            {
+                                addressHashes.push_back(GetDestinationID(dest));
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                addressHashes.push_back(GetDestinationID(p.vKeys[0]));
+            }
+        }
+        else
+        {
+            vector<unsigned char> hashBytes(this->begin(), this->end());
+            addressHashes.push_back(Hash160(hashBytes));
+        }
+    }
+    return addressHashes;
 }
 

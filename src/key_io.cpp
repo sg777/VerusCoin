@@ -12,6 +12,7 @@
 
 #include <boost/variant/apply_visitor.hpp>
 #include <boost/variant/static_visitor.hpp>
+#include "pbaas/identity.h"
 
 #include <assert.h>
 #include <string.h>
@@ -141,6 +142,11 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
             return CIdentityID(hash);
         }
     }
+    else if (std::count(str.begin(), str.end(), '@') == 1)
+    {
+        return CIdentityID(CIdentity::GetNameID(str, uint160()));
+    }
+    
     return CNoDestination();
 }
 

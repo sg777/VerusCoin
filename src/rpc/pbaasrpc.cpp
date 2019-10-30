@@ -4153,6 +4153,8 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             "    {\n"
             "        \"name\": \"namestr\",     (string) the unique name in this commitment\n"
             "        \"salt\": \"hexstr\",      (hex)    salt used to hide the commitment\n"
+            "        \"parent\": \"namestr\",   (string) name of the parent if not Verus or Verus test\n"
+            "        \"nameid\": \"address\",   (base58) identity address for this identity if it is created\n"
             "    }\n"
             "}\n"
 
@@ -4183,8 +4185,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CCommitmentHash commitment(nameRes.GetCommitment());
     
     CConditionObj<CCommitmentHash> condObj(EVAL_IDENTITY_COMMITMENT, std::vector<CTxDestination>({dest}), 1, &commitment);
-    CTxDestination indexDest(CKeyID(CCrossChainRPCData::GetConditionID(GetDestinationID(dest), EVAL_IDENTITY_COMMITMENT)));
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{MakeMofNCCScript(condObj, &indexDest), CCommitmentHash::DEFAULT_OUTPUT_AMOUNT, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{MakeMofNCCScript(condObj, &dest), CCommitmentHash::DEFAULT_OUTPUT_AMOUNT, false}});
     CWalletTx wtx;
 
     // create the transaction with native coin as input
@@ -4225,7 +4226,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "{\n"
-            "    \"txid\" : \"hexid\"\n"
+            "    \"txid\" : \"hexid\",          (hex)    the transaction ID of the name committment for this ID name\n"
             "    \"namereservation\" :\n"
             "    {\n"
             "        \"name\": \"namestr\",     (string) the unique name in this commitment\n"
@@ -4243,7 +4244,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
             "\nExamples:\n"
             + HelpExampleCli("registeridentity", "jsonidregistration")
-            + HelpExampleRpc("createidentity", "jsonidregistration")
+            + HelpExampleRpc("registeridentity", "jsonidregistration")
         );
     }
 
@@ -4255,6 +4256,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     uint256 txid = uint256S(uni_get_str(find_value(params[0], "txid")));
     CNameReservation reservation(find_value(params[0], "namereservation"));
     CIdentity newID(find_value(params[0], "identity"));
+    if (!newID.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
+    }
+
     CAmount feeOffer = AmountFromValue(params[1]);
 
     if (feeOffer < CIdentity::MIN_REGISTRATION_AMOUNT)
@@ -4273,12 +4279,28 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     uint256 hashBlk;
     CTransaction txOut;
     CCommitmentHash ch;
+    int commitmentOutput;
+
     // must be present and in a mined block
     {
         LOCK(mempool.cs);
-        if (!myGetTransaction(txid, txOut, hashBlk) || hashBlk.IsNull() || (ch = CCommitmentHash(txOut)).hash.IsNull())
+        if (!myGetTransaction(txid, txOut, hashBlk) || hashBlk.IsNull())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or unconfirmed commitment transaction id");
+        }
+        for (int i = 0; i < txOut.vout.size(); i++)
+        {
+            COptCCParams p;
+            if (txOut.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
+            {
+                commitmentOutput = i;
+                ::FromVector(p.vData[0], ch);
+                break;
+            }
+        }
+        if (ch.hash.IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid commitment hash");
         }
     }
 
@@ -4302,8 +4324,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
 
     // make sure we have a revocation and recovery authority defined
-    CIdentity revocationAuth = newID.revocationAuthority.IsNull() ? newID : newID.LookupIdentity(newID.revocationAuthority);
-    CIdentity recoveryAuth = newID.recoveryAuthority.IsNull() ? newID : newID.LookupIdentity(newID.recoveryAuthority);
+    CIdentity revocationAuth = (newID.revocationAuthority.IsNull() || newID.revocationAuthority == newID.GetNameID()) ? newID : newID.LookupIdentity(newID.revocationAuthority);
+    CIdentity recoveryAuth = (newID.recoveryAuthority.IsNull() || newID.recoveryAuthority == newID.GetNameID()) ? newID : newID.LookupIdentity(newID.recoveryAuthority);
 
     if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
     {
@@ -4315,9 +4337,9 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     newID.recoveryAuthority = recoveryAuth.GetNameID();
 
     // create the identity definition transaction & reservation key output
-    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CScriptID(newID.GetNameID())}), 1, &reservation);
+    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetNameID())}), 1, &reservation);
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false},
-                                                               {MakeMofNCCScript(condObj), feeOffer + CCommitmentHash::DEFAULT_OUTPUT_AMOUNT, false}});
+                                                               {MakeMofNCCScript(condObj), feeOffer + CCommitmentHash::POSITIVE_OUTPUT_AMOUNT, false}});
 
     CWalletTx wtx;
 
@@ -4332,9 +4354,22 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
     CMutableTransaction mtx(wtx);
 
+    // add the commitment input
+    mtx.vin.push_back(CTxIn(txid, commitmentOutput));
+
     // all of the reservation output is actually the fee offer, so set to default output
-    mtx.vout[1].nValue = CCommitmentHash::DEFAULT_OUTPUT_AMOUNT;
-    (CTransaction)wtx = CTransaction(mtx);
+    for (auto &oneOut : mtx.vout)
+    {
+        COptCCParams p;
+        oneOut.scriptPubKey.IsPayToCryptoCondition(p);
+        if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_RESERVATION)
+        {
+            oneOut.nValue = CCommitmentHash::POSITIVE_OUTPUT_AMOUNT;
+            break;
+        }
+    }
+
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
 
     // now sign
     CCoinsViewCache view(pcoinsTip);
@@ -4342,7 +4377,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     {
         bool signSuccess;
         SignatureData sigdata;
-        CAmount value;
 
         CCoins coins;
         if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
@@ -4350,7 +4384,9 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             break;
         }
 
-        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, SIGHASH_ALL), coins.vout[i].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
+        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
+
+        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, SIGHASH_ALL), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
 
         if (!signSuccess)
         {
@@ -4361,7 +4397,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             UpdateTransaction(mtx, i, sigdata);
         }
     }
-    (CTransaction)wtx = CTransaction(mtx);
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
 
     if (!pwalletMain->CommitTransaction(wtx, reserveKey))
     {
@@ -4445,7 +4481,6 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     {
         bool signSuccess;
         SignatureData sigdata;
-        CAmount value;
 
         CCoins coins;
         if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
@@ -4453,7 +4488,9 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
             break;
         }
 
-        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, SIGHASH_ALL), coins.vout[i].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
+        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
+
+        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, SIGHASH_ALL), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
 
         if (!signSuccess)
         {
@@ -4479,7 +4516,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
 UniValue revokeidentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 5)
+    if (fHelp || params.size() != 1)
     {
         throw runtime_error(
             "revokeidentity \"nameorID\" (returntx)\n"
@@ -4501,7 +4538,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
 UniValue recoveridentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 5)
+    if (fHelp || params.size() != 2)
     {
         throw runtime_error(
             "recoveridentity \"jsonidentity\" (returntx)\n"
@@ -4523,7 +4560,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
 UniValue getidentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 5)
+    if (fHelp || params.size() != 1)
     {
         throw runtime_error(
             "getidentity \"name\"\n"
@@ -4542,6 +4579,9 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     CheckPBaaSAPIsValid();
 
     uint160 nameID = CIdentity::GetNameID(uni_get_str(params[0]), uint160());
+
+    printf("looking for %s\n", EncodeDestination(CTxDestination(CIdentityID(nameID))));
+
     CTxIn idTxIn;
     uint32_t height;
 

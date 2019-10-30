@@ -36,18 +36,44 @@ CCommitmentHash::CCommitmentHash(const CTransaction &tx)
     }
 }
 
+UniValue CNameReservation::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("name", name));
+    ret.push_back(Pair("salt", salt.GetHex()));
+    if (IsVerusActive())
+    {
+        ret.push_back(Pair("parent", ""));
+        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetNameID(name, uint160())))));
+    }
+    else
+    {
+        ret.push_back(Pair("parent", ConnectedChains.ThisChain().name));
+        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetNameID(name + "." + ConnectedChains.ThisChain().name, uint160())))));
+    }
+    return ret;
+}
+
 CPrincipal::CPrincipal(const UniValue &uni)
 {
     nVersion = uni_get_int(find_value(uni, "version"));
+    if (nVersion == VERSION_INVALID)
+    {
+        nVersion = VERSION_CURRENT;
+    }
     flags = uni_get_int(find_value(uni, "flags"));
-    UniValue primaryAddressesUni = find_value(uni, "primaryAddresses");
+    UniValue primaryAddressesUni = find_value(uni, "primaryaddresses");
     if (primaryAddressesUni.isArray())
     {
         for (int i = 0; i < primaryAddressesUni.size(); i++)
         {
             try
             {
-                primaryAddresses.push_back(DecodeDestination(uni_get_str(primaryAddressesUni[i])));
+                CTxDestination dest = DecodeDestination(uni_get_str(primaryAddressesUni[i]));
+                if (dest.which() == COptCCParams::ADDRTYPE_PK || dest.which() == COptCCParams::ADDRTYPE_PKH)
+                {
+                    primaryAddresses.push_back(dest);
+                }
             }
             catch (const std::exception &e)
             {
@@ -58,7 +84,7 @@ CPrincipal::CPrincipal(const UniValue &uni)
         }
     }
 
-    minSigs = uni_get_int(find_value(uni, "minimumtransparent"));
+    minSigs = uni_get_int(find_value(uni, "minimumsignatures"));
 }
 
 UniValue CPrincipal::ToUniValue() const
@@ -72,14 +98,14 @@ UniValue CPrincipal::ToUniValue() const
     {
         primaryAddressesUni.push_back(EncodeDestination(primaryAddresses[i]));
     }
-    obj.push_back(Pair("primaryAddresses", primaryAddressesUni));
-    obj.push_back(Pair("minimumtransparent", minSigs));
+    obj.push_back(Pair("primaryaddresses", primaryAddressesUni));
+    obj.push_back(Pair("minimumsignatures", minSigs));
     return obj;
 }
 
 CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 {
-    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(uni, "parent"))));
+    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "parent")))));
     name = CleanName(uni_get_str(find_value(uni, "name")), parent);
 
     UniValue hashesUni = find_value(uni, "contenthashes");
@@ -90,6 +116,10 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             try
             {
                 contentHashes.push_back(uint256S(uni_get_str(hashesUni[i])));
+                if (contentHashes.back().IsNull())
+                {
+                    contentHashes.pop_back();
+                }
             }
             catch (const std::exception &e)
             {
@@ -99,14 +129,14 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             }
         }
     }
-    revocationAuthority = uint160(GetDestinationID(DecodeDestination(uni_get_str(uni, "revocationauthorityid"))));
-    recoveryAuthority = uint160(GetDestinationID(DecodeDestination(uni_get_str(uni, "recoveryauthorityid"))));
-    libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(uni, "privateaddress"));
+    revocationAuthority = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "revocationauthorityid")))));
+    recoveryAuthority = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "recoveryauthorityid")))));
+    libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
 
     if (revocationAuthority.IsNull() || recoveryAuthority.IsNull() || boost::get<libzcash::SaplingPaymentAddress>(&pa) == nullptr)
     {
-        printf("%s: invalid Sapling address %s\n", __func__, uni_get_str(uni, "privateaddress").c_str());
-        LogPrintf("%s: invalid Sapling address %s\n", __func__, uni_get_str(uni, "privateaddress").c_str());
+        printf("%s: invalid address\n", __func__);
+        LogPrintf("%s: invalid address\n", __func__);
         nVersion = VERSION_INVALID;
     }
     else
@@ -131,9 +161,9 @@ UniValue CIdentity::ToUniValue() const
 {
     UniValue obj = ((CPrincipal *)this)->ToUniValue();
 
-    obj.push_back(Pair("parent", EncodeDestination(CTxDestination(CScriptID(parent)))));
-    obj.push_back(Pair("name", name));
     obj.push_back(Pair("identityaddress", EncodeDestination(CIdentityID(GetNameID()))));
+    obj.push_back(Pair("parent", parent.GetHex()));
+    obj.push_back(Pair("name", name));
 
     UniValue hashes(UniValue::VARR);
     for (int i = 0; i < contentHashes.size(); i++)
@@ -142,8 +172,8 @@ UniValue CIdentity::ToUniValue() const
     }
     obj.push_back(Pair("contenthashes", hashes));
 
-    obj.push_back(Pair("revocationauthorityid", EncodeDestination(CTxDestination(CKeyID(revocationAuthority)))));
-    obj.push_back(Pair("recoveryauthorityid", EncodeDestination(CTxDestination(CKeyID(recoveryAuthority)))));
+    obj.push_back(Pair("revocationauthorityid", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
+    obj.push_back(Pair("recoveryauthorityid", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
     obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddress)));
     return obj;
 }
@@ -299,21 +329,25 @@ CScript CIdentity::IdentityUpdateOutputScript() const
         return ret;
     }
 
-    std::vector<CTxDestination> dests1({CTxDestination(CScriptID(GetNameID()))});
+    std::vector<CTxDestination> dests1({CTxDestination(CIdentityID(GetNameID()))});
     CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
-    std::vector<CTxDestination> dests2({CTxDestination(CScriptID(revocationAuthority))});
+    std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
     CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
-    std::vector<CTxDestination> dests3({CTxDestination(CScriptID(recoveryAuthority))});
+    std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
     CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
 
-    CTxDestination indexDest(CKeyID(CCrossChainRPCData::GetConditionID(GetNameID(), EVAL_IDENTITY_PRIMARY)));
-    ret = MakeMofNCCScript(1, primary, revocation, recovery, &indexDest);
+    std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetNameID(), EVAL_IDENTITY_PRIMARY))), CTxDestination(CIdentityID(revocationAuthority)), CTxDestination(CIdentityID(recoveryAuthority))});
+
+    ret = MakeMofNCCScript(1, primary, revocation, recovery, &indexDests);
     return ret;
 }
 
 bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
 {
-    // validate that from the input to the output, the only changes are those allowed by the primary identity
+    // TODO:PBAAS right now, any of the three controlling identities can do any modification
+    // ensure that each can only do what it is allowed. the best way to do this would be to change
+    // evaluation of crypto conditions to create multi-condition branches in the tree at each
+    // threshold condition, enabling evals to be naturally connected to their sub-group of signatures
     return true;
 }
 
@@ -326,6 +360,17 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
 {
     // validate that from the input to the output, the only changes are those allowed by the primary identity
+    return true;
+}
+
+bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+{
+    return true;
+}
+
+bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+{
+    // validate that spender follows the rules of the role they spent in
     return true;
 }
 

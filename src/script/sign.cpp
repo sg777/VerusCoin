@@ -302,7 +302,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
             for (int i = 0; ccValid && i < p.vData.size() - 1; i++)
             {
                 // "p", our first COptCCParams object will be considered first, then nested objects after
-                COptCCParams oneP(i ? p.vData[i] : p);
+                COptCCParams oneP = i ? COptCCParams(p.vData[i]) : p;
                 ccValid = oneP.IsValid();
                 std::vector<CC*> vCC;
                 if (ccValid)
@@ -326,7 +326,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         }
                     }
 
-                    for (auto dest : oneP.vKeys)
+                    for (auto &dest : oneP.vKeys)
                     {
                         uint160 destId = GetDestinationID(dest);
                         if (dest.which() == COptCCParams::ADDRTYPE_ID)
@@ -404,16 +404,25 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                 std::map<CKeyID, CKey> privKeys;
                 for (auto destPair : destMap)
                 {
+                    printf("Checking for private key of destination: %s ", EncodeDestination(destPair.second).c_str());
+
                     CKey privKey;
                     auto dit = privKeyMap.find(destPair.first);
                     if (dit != privKeyMap.end())
                     {
                         privKeys[dit->first] = dit->second;
+                        printf("...using key for crypto condition\n");
                     }
-                    else if (creator.IsKeystoreValid() && creator.KeyStore().GetKey(dit->first, privKey))
+                    else if (creator.IsKeystoreValid() && creator.KeyStore().GetKey(destPair.first, privKey))
                     {
-                        privKeys[dit->first] = privKey;
+                        privKeys[destPair.first] = privKey;
+                        printf("...using key from wallet\n");
                     }
+                    else
+                    {
+                        printf("...no private key available\n");
+                    }
+                    
                 }
 
                 vector<unsigned char> vch = ret.size() ? ret[0] : vector<unsigned char>();

@@ -229,6 +229,10 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "definechain", 0},
     { "getdefinedchains", 0},
     { "sendreserve", 0},
+    { "registeridentity", 0},
+    { "updateidentity", 0},
+    { "recoveridentity", 0},
+    // Zcash addition
     { "z_setmigration", 0},
 };
 

@@ -13,7 +13,7 @@
 
 #include <boost/foreach.hpp>
 
-std::vector<std::string> ParseSubNames(const std::string &Name)
+std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
 {
     std::string nameCopy = Name;
     std::string invalidChars = "\\/:*?\"<>|";
@@ -25,13 +25,48 @@ std::vector<std::string> ParseSubNames(const std::string &Name)
         }
     }
     std::vector<std::string> retNames;
-    boost::split(retNames, nameCopy, boost::is_any_of(".@"));
+    boost::split(retNames, nameCopy, boost::is_any_of("@"));
+    if (!retNames.size() || retNames.size() > 2)
+    {
+        return std::vector<std::string>();
+    }
+
+    bool explicitChain = false;
+    if (retNames.size() == 2)
+    {
+        ChainOut = retNames[1];
+        explicitChain = true;
+    }    
+
+    nameCopy = retNames[0];
+    boost::split(retNames, nameCopy, boost::is_any_of("."));
 
     for (int i = 0; i < retNames.size(); i++)
     {
         if (retNames[i].size() > KOMODO_ASSETCHAIN_MAXLEN - 1)
         {
             retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
+        }
+    }
+
+    // if no chain is specified, default to chain of the ID
+    if (!explicitChain && retNames.size())
+    {
+        if (retNames.size() == 1)
+        {
+            // by default, we assume the Verus chain for no suffix
+            ChainOut = "";
+        }
+        else
+        {
+            for (int i = 1; i < retNames.size(); i++)
+            {
+                if (ChainOut.size())
+                {
+                    ChainOut = ChainOut + ".";
+                }
+                ChainOut = ChainOut + retNames[i];
+            }
         }
     }
 
@@ -42,7 +77,8 @@ std::vector<std::string> ParseSubNames(const std::string &Name)
 // hash its parent names into a parent ID and return the parent hash and cleaned, single name
 std::string CIdentity::CleanName(const std::string &Name, uint160 &Parent)
 {
-    std::vector<std::string> subNames = ParseSubNames(Name);
+    std::string chainName;
+    std::vector<std::string> subNames = ParseSubNames(Name, chainName);
 
     if (!subNames.size())
     {
