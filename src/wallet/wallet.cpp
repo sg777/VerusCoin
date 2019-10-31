@@ -60,6 +60,7 @@ extern uint160 ASSETCHAINS_CHAINID;
 extern int32_t VERUS_MIN_STAKEAGE;
 CBlockIndex *komodo_chainactive(int32_t height);
 extern std::string DONATION_PUBKEY;
+extern BlockMap mapBlockIndex;
 
 /**
  * Fees smaller than this (in satoshi) are considered zero fee (for transaction creation)
@@ -2096,6 +2097,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 {
     {
         AssertLockHeld(cs_wallet);
+        uint256 txHash = tx.GetHash();
         bool fExisted = mapWallet.count(tx.GetHash()) != 0;
         if (fExisted && !fUpdate) return false;
         auto sproutNoteData = FindMySproutNotes(tx);
@@ -2248,15 +2250,81 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                         // the address.
                         // we assume that at the time we are set to manual hold, that the wallet is brought up to date with can sign or can spend changes at that time, so if manual hold is set
                         // we are working on a wallet that should be in sync
+                        /*
                         if ((!idHistory.second.IsValid() && idMapKey.flags & idMapKey.MANUAL_HOLD) || 
                                 (idHistory.second.IsValid() && idHistory.first.flags & idHistory.first.MANUAL_HOLD) && 
                             (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second))
+                        */
+                        if (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second)
                         {
                             if (canSignCanSpend.first != wasCanSignCanSpend.first)
                             {
                                 if (canSignCanSpend.first)
                                 {
-                                    // TODO: add all UTXOs that are sent to the address to this wallet
+                                    // add all UTXOs that are sent to this address to this wallet
+                                    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
+                                    if (GetAddressUnspent(idID, 1, unspentOutputs))
+                                    {
+                                        COptCCParams newP;
+                                        auto consensus = Params().GetConsensus();
+                                        for (auto &newOut : unspentOutputs)
+                                        {
+                                            // must not be the current tx, not already present, and be a CC output to be correctly send to an identity
+                                            if (txHash != newOut.first.txhash && GetWalletTx(newOut.first.txhash) == nullptr && newOut.second.script.IsPayToCryptoCondition(newP))
+                                            {
+                                                txnouttype newTypeRet;
+                                                std::vector<CTxDestination> newAddressRet;
+                                                int newNRequired;
+                                                bool newCanSign, newCanSpend;
+                                                if (!ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend) && newCanSign)
+                                                {
+                                                    continue;
+                                                }
+                                                uint256 blkHash;
+                                                CTransaction newTx;
+                                                if (myGetTransaction(newOut.first.txhash, newTx, blkHash))
+                                                {
+                                                    auto sprNoteData = FindMySproutNotes(newTx);
+                                                    auto sapNoteDataAndAddressesToAdd = FindMySaplingNotes(newTx);
+                                                    auto sapNoteData = sapNoteDataAndAddressesToAdd.first;
+                                                    auto addrsToAdd = sapNoteDataAndAddressesToAdd.second;
+                                                    for (const auto &addressToAdd : addrsToAdd)
+                                                    {
+                                                        AddSaplingIncomingViewingKey(addressToAdd.second, addressToAdd.first);
+                                                    }
+
+                                                    CWalletTx wtx(this, newTx);
+
+                                                    if (sprNoteData.size() > 0) {
+                                                        wtx.SetSproutNoteData(sprNoteData);
+                                                    }
+
+                                                    if (sapNoteData.size() > 0) {
+                                                        wtx.SetSaplingNoteData(sapNoteData);
+                                                    }
+
+                                                    // Get merkle branch if transaction was found in a block
+                                                    CBlock block;
+                                                    auto blkIndexIt = mapBlockIndex.find(blkHash);
+                                                    if (!blkHash.IsNull() && blkIndexIt != mapBlockIndex.end() && chainActive.Contains(blkIndexIt->second))
+                                                    {
+                                                        // if it's supposed to be in a block, but can't be loaded, don't add without merkle
+                                                        if (!ReadBlockFromDisk(block, blkIndexIt->second, consensus))
+                                                        {
+                                                            continue;
+                                                        }
+                                                        wtx.SetMerkleBranch(block);
+                                                    }
+
+                                                    // Do not flush the wallet here for performance reasons
+                                                    // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
+                                                    CWalletDB walletdb(strWalletFile, "r+", false);
+
+                                                    AddToWallet(wtx, false, &walletdb);
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 else
                                 {
@@ -2427,7 +2495,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             {
                                 if (!canSignCanSpend.second)
                                 {
-                                    // TODO:PBAAS mark all transactions that are sent to this ID, which we have lost spending authority over as dirty
+                                    // mark all transactions dirty to recalculate numbers
+                                    for (auto &txidAndWtx : mapWallet)
+                                    {
+                                        txidAndWtx.second.MarkDirty();
+                                    }
                                 }
                             }
                         }

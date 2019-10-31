@@ -584,15 +584,18 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
     // reserve exchange transactions cannot run on the Verus chain and must have a supported chain on which to execute
     if (!chainActive.LastTip() ||
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) != CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3 ||
-        IsVerusActive() ||
-        !(ConnectedChains.ThisChain().ChainOptions() & ConnectedChains.ThisChain().OPTION_RESERVE))
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) != CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3)
     {
         return;
     }
 
+    bool isVerusActive = IsVerusActive();
+
     CCrossChainImport cci;
     CCrossChainExport ccx;
+
+    CNameReservation nameReservation;
+    CIdentity identity;
 
     flags |= IS_VALID;
 
@@ -604,6 +607,57 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         {
             switch (p.evalCode)
             {
+                case EVAL_IDENTITY_RESERVATION:
+                {
+                    // one name reservation per transaction
+                    if (p.version < p.VERSION_V3 || !p.vData.size() || nameReservation.IsValid() || !(nameReservation = CNameReservation(p.vData[0])).IsValid())
+                    {
+                        flags &= ~IS_VALID;
+                        flags |= IS_REJECT;
+                        return;
+                    }
+                    if (identity.IsValid())
+                    {
+                        if (identity.name == nameReservation.name)
+                        {
+                            flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
+                        }
+                        else
+                        {
+                            flags &= ~IS_VALID;
+                            flags |= IS_REJECT;
+                            return;
+                        }
+                    }
+                }
+                break;
+
+                case EVAL_IDENTITY_PRIMARY:
+                {
+                    // one identity per transaction
+                    if (p.version < p.VERSION_V3 || !p.vData.size() || identity.IsValid() || !(identity = CIdentity(p.vData[0])).IsValid())
+                    {
+                        flags &= ~IS_VALID;
+                        flags |= IS_REJECT;
+                        return;
+                    }
+                    flags |= IS_IDENTITY;
+                    if (nameReservation.IsValid())
+                    {
+                        if (identity.name == nameReservation.name)
+                        {
+                            flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
+                        }
+                        else
+                        {
+                            flags &= ~IS_VALID;
+                            flags |= IS_REJECT;
+                            return;
+                        }
+                    }
+                }
+                break;
+
                 case EVAL_RESERVE_OUTPUT:
                 {
                     CReserveOutput ro;
@@ -635,7 +689,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 case EVAL_RESERVE_EXCHANGE:
                 {
                     CReserveExchange rex;
-                    if (!p.vData.size() || !(rex = CReserveExchange(p.vData[0])).IsValid())
+                    if (isVerusActive || !p.vData.size() || !(rex = CReserveExchange(p.vData[0])).IsValid())
                     {
                         flags &= ~IS_VALID;
                         flags |= IS_REJECT;
@@ -729,9 +783,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 case EVAL_CROSSCHAIN_EXPORT:
                 {
                     // cross chain export is incompatible with reserve exchange outputs
-                    if (!(nHeight == 1 && tx.IsCoinBase() && !IsVerusActive()) &&
-                        !(CPBaaSChainDefinition(tx).IsValid() && IsVerusActive()) &&
-                        (IsReserveExchange() || (flags & IS_IMPORT)))
+                    if (IsReserveExchange() ||
+                        (!(nHeight == 1 && tx.IsCoinBase() && !isVerusActive) &&
+                        !(CPBaaSChainDefinition(tx).IsValid() && isVerusActive) &&
+                        (flags & IS_IMPORT)))
                     {
                         flags &= ~IS_VALID;
                         flags |= IS_REJECT;

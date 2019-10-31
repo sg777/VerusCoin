@@ -1795,7 +1795,8 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
 
         CReserveTransactionDescriptor txDesc;
         CCurrencyState currencyState;
-        if (!IsVerusActive())
+        bool isVerusActive = IsVerusActive();
+
         {
             LOCK(mempool.cs);
             // if we don't recognize it, process and check
@@ -1817,7 +1818,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         nValueOut = tx.GetValueOut();
 
         // need to fix GetPriority to incorporate reserve
-        if (txDesc.IsValid() && currencyState.IsValid())
+        if (isVerusActive && txDesc.IsValid() && currencyState.IsValid())
         {
             nFees = txDesc.AllFeesAsNative(currencyState, currencyState.PriceInReserve());
             dPriority = view.GetPriority(tx, chainActive.Height(), &txDesc, &currencyState);
@@ -1895,8 +1896,8 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             dFreeCount += nSize;
         }
 
-        // TODO:PBAAS - make sure this will check any normal error case and not fail with exchanges, exports or imports
-        if (!txDesc.IsValid() && fRejectAbsurdFee && nFees > ::minRelayTxFee.GetFee(nSize) * 10000 && nFees > nValueOut/19) 
+        // make sure this will check any normal error case and not fail with exchanges, exports/imports, identities, etc.
+        if ((!txDesc.IsValid() || !txDesc.IsHighFee()) && fRejectAbsurdFee && nFees > ::minRelayTxFee.GetFee(nSize) * 10000 && nFees > nValueOut/19) 
         {
             string errmsg = strprintf("absurdly high fees %s, %d > %d",
                                       hash.ToString(),
@@ -3640,7 +3641,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (!tx.IsCoinBase())
         {
             rtxd = CReserveTransactionDescriptor(tx, view, nHeight);
-            if (rtxd.IsValid())
+            if (rtxd.IsValid() && !isVerusActive)
             {
                 if (currencyState.IsReserve())
                 {

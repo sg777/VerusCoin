@@ -4255,6 +4255,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     uint256 txid = uint256S(uni_get_str(find_value(params[0], "txid")));
     CNameReservation reservation(find_value(params[0], "namereservation"));
+
     CIdentity newID(find_value(params[0], "identity"));
     if (!newID.IsValid())
     {
@@ -4268,7 +4269,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee offer must be at least " + ValueFromAmount(CIdentity::MinRegistrationAmount()).write());
     }
 
-    if (txid.IsNull() || !newID.IsValid() || reservation.name != newID.name)
+    if (txid.IsNull() || reservation.name != newID.name)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched reservation.");
     }
@@ -4337,9 +4338,9 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     newID.recoveryAuthority = recoveryAuth.GetNameID();
 
     // create the identity definition transaction & reservation key output
-    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetNameID())}), 1, &reservation);
+    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetNameID())}), CIdentity::MinRegistrationAmount(), &reservation);
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false},
-                                                               {MakeMofNCCScript(condObj), feeOffer + CCommitmentHash::POSITIVE_OUTPUT_AMOUNT, false}});
+                                                               {MakeMofNCCScript(condObj), feeOffer + CCommitmentHash::POSITIVE_OUTPUT_AMOUNT, true}});
 
     CWalletTx wtx;
 
@@ -4454,8 +4455,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
     }
 
-    // create the identity definition transaction & reservation key output
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), CIdentity::MinUpdateAmount(), false}});
+    // create the identity definition transaction
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
     CWalletTx wtx;
 
     CReserveKey reserveKey(pwalletMain);
@@ -4580,7 +4581,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
 
     uint160 nameID = CIdentity::GetNameID(uni_get_str(params[0]), uint160());
 
-    printf("looking for %s\n", EncodeDestination(CTxDestination(CIdentityID(nameID))));
+    //printf("looking for %s\n", EncodeDestination(CTxDestination(CIdentityID(nameID))).c_str());
 
     CTxIn idTxIn;
     uint32_t height;

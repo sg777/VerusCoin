@@ -216,6 +216,9 @@ public:
     static const uint32_t IS_FILLORKILLFAIL=0x40; // If set, this is an expired fill or kill in a valid tx
     static const uint32_t IS_IMPORT=0x80;       // If set, this is an expired fill or kill in a valid tx
     static const uint32_t IS_EXPORT=0x100;      // If set, this is an expired fill or kill in a valid tx
+    static const uint32_t IS_IDENTITY=0x200;    // If set, this is an identity definition or update
+    static const uint32_t IS_IDENTITY_DEFINITION=0x400; // If set, this is an identity definition
+    static const uint32_t IS_HIGH_FEE=0x800;    // If set, this may have "absurdly high fees"
 
     const CTransaction *ptx;                    // pointer to the actual transaction if valid
     uint32_t flags;                             // indicates transaction state
@@ -257,6 +260,9 @@ public:
     bool IsFillOrKill() const { return flags & IS_FILLORKILL; }
     bool IsMarket() const { return IsReserveExchange() && !IsLimit(); }
     bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
+    bool IsIdentity() const { return flags & IS_IDENTITY; }
+    bool IsIdentityDefinition() const { return flags & IS_IDENTITY_DEFINITION; }
+    bool IsHighFee() const { return flags & IS_HIGH_FEE; }
 
     static CAmount CalculateConversionFee(CAmount inputAmount);
     static CAmount CalculateAdditionalConversionFee(CAmount inputAmount);

@@ -404,25 +404,20 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                 std::map<CKeyID, CKey> privKeys;
                 for (auto destPair : destMap)
                 {
-                    printf("Checking for private key of destination: %s ", EncodeDestination(destPair.second).c_str());
+                    //printf("Checking for private key of destination: %s ", EncodeDestination(destPair.second).c_str());
 
                     CKey privKey;
                     auto dit = privKeyMap.find(destPair.first);
                     if (dit != privKeyMap.end())
                     {
                         privKeys[dit->first] = dit->second;
-                        printf("...using key for crypto condition\n");
+                        //printf("...using key for crypto condition\n");
                     }
                     else if (creator.IsKeystoreValid() && creator.KeyStore().GetKey(destPair.first, privKey))
                     {
                         privKeys[destPair.first] = privKey;
-                        printf("...using key from wallet\n");
+                        //printf("...using key from wallet\n");
                     }
-                    else
-                    {
-                        printf("...no private key available\n");
-                    }
-                    
                 }
 
                 vector<unsigned char> vch = ret.size() ? ret[0] : vector<unsigned char>();

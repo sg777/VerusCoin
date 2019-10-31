@@ -110,7 +110,7 @@ CIdentityID CIdentity::GetNameID(const std::string &Name, const uint160 &parent)
     uint160 newParent = parent;
     std::string cleanName = CleanName(Name, newParent);
 
-    const char *idName = boost::algorithm::to_lower_copy(Name).c_str();
+    const char *idName = boost::algorithm::to_lower_copy(cleanName).c_str();
     uint256 idHash;
     if (parent.IsNull())
     {
@@ -130,7 +130,7 @@ CIdentityID CIdentity::GetNameID(const std::string &Name) const
     uint160 newLevel = parent;
     std::string cleanName = CleanName(Name, newLevel);
 
-    const char *idName = boost::algorithm::to_lower_copy(Name).c_str();
+    const char *idName = boost::algorithm::to_lower_copy(cleanName).c_str();
     uint256 idHash;
     if (parent.IsNull())
     {

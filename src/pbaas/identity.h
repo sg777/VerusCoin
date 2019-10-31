@@ -198,8 +198,7 @@ class CIdentity : public CPrincipal
 {
 public:
     static const uint32_t FLAG_REVOKED = 0x8000;
-    static const int64_t MIN_UPDATE_AMOUNT = 0x10000;
-    static const int64_t MIN_REGISTRATION_AMOUNT = 100000000;
+    static const int64_t MIN_REGISTRATION_AMOUNT = 10000000000;
 
     uint160 parent;
 
@@ -345,11 +344,6 @@ public:
     inline static CAmount MinRegistrationAmount()
     {
         return MIN_REGISTRATION_AMOUNT;
-    }
-
-    inline static CAmount MinUpdateAmount()
-    {
-        return MIN_UPDATE_AMOUNT;
     }
 };
 

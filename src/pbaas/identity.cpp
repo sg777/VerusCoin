@@ -129,8 +129,11 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             }
         }
     }
-    revocationAuthority = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "revocationauthorityid")))));
-    recoveryAuthority = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "recoveryauthorityid")))));
+    std::string revocationStr = uni_get_str(find_value(uni, "revocationauthorityid"));
+    std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthorityid"));
+    uint160 nameID = GetNameID();
+    revocationAuthority = revocationStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(revocationStr)));
+    recoveryAuthority = recoveryStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(recoveryStr)));
     libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
 
     if (revocationAuthority.IsNull() || recoveryAuthority.IsNull() || boost::get<libzcash::SaplingPaymentAddress>(&pa) == nullptr)
@@ -151,9 +154,6 @@ CIdentity::CIdentity(const CScript &scriptPubKey)
     if (IsPayToCryptoCondition(scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size())
     {
         FromVector(p.vData[0], *this);
-
-        uint160 newLevel;
-        std::string name = CleanName(name, newLevel);
     }
 }
 
@@ -262,10 +262,6 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                         }
                     }
                 }
-            }
-            else
-            {
-                printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
             }
         }
 
