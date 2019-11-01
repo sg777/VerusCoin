@@ -75,7 +75,7 @@ COptCCParams::COptCCParams(std::vector<unsigned char> &vch)
                 evalCode = param[1];
                 m = param[2];
                 n = param[3];
-                if (version == 0 || version > VERSION_V3 || m > n || ((version < VERSION_V3 && n < 1) || n > 4) || data.size() <= n)
+                if (version == 0 || version > VERSION_V3 || m > n || ((version < VERSION_V3 && n < 1) || n > 4) || (version < VERSION_V3 ? data.size() <= n : data.size() < n))
                 {
                     // set invalid
                     version = 0;
@@ -658,10 +658,8 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     // all but ID types
                     if (dest.which() != COptCCParams::ADDRTYPE_ID)
                     {
-                        // include all non-name addresses as destinations as well
-                        // name addresses can only be destinations if they are at least "cansign"
-                        // there may be a reason to add this support to model the "informed" role of
-                        // RACI collaboration
+                        // include all non-name addresses from master as destinations as well
+                        // name addresses can only be destinations if they are at least "cansign" on one of the subconditions
                         addressRet.push_back(dest);
                     }
                 }
@@ -686,6 +684,8 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                                 // as if revoked or undefined
                                 std::pair<CIdentityMapKey, CIdentityMapValue> identity;
                                 idSet.insert(destId);
+
+                                //printf("checking: %s\n", EncodeDestination(dest).c_str());
 
                                 if (pKeyStore && pKeyStore->GetIdentity(destId, identity, lastIdHeight) && identity.second.IsValidUnrevoked())
                                 {
@@ -834,8 +834,7 @@ public:
     }
 
     bool operator()(const CIdentityID &idID) const {
-        CConditionObj<CReserveOutput> cro = CConditionObj<CReserveOutput>(EVAL_NONE, std::vector<CTxDestination>({idID}), 1);
-        *script = MakeMofNCCScript(cro);
+        *script = CIdentity::TransparentOutput(idID);
         return true;
     }
 

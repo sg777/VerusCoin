@@ -413,22 +413,32 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         }
 
         // Set change address if we are using transparent funds
-        // TODO: Should we just use fromtaddr_ as the change address?
+        // use fromtaddr_ if this is coming from an identity
         CReserveKey keyChange(pwalletMain);
         if (isfromtaddr_) {
             LOCK2(cs_main, pwalletMain->cs_wallet);
 
             EnsureWalletIsUnlocked();
-            CPubKey vchPubKey;
-            bool ret = keyChange.GetReservedKey(vchPubKey);
-            if (!ret) {
-                // should never fail, as we just unlocked
-                throw JSONRPCError(
-                    RPC_WALLET_KEYPOOL_RAN_OUT,
-                    "Could not generate a taddr to use as a change address");
-            }
 
-            CTxDestination changeAddr = vchPubKey.GetID();
+            CTxDestination changeAddr;
+
+            if (fromtaddr_.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                changeAddr = fromtaddr_;
+            }
+            else
+            {
+                CPubKey vchPubKey;
+                bool ret = keyChange.GetReservedKey(vchPubKey);
+                if (!ret) {
+                    // should never fail, as we just unlocked
+                    throw JSONRPCError(
+                        RPC_WALLET_KEYPOOL_RAN_OUT,
+                        "Could not generate a taddr to use as a change address");
+                }
+                changeAddr = vchPubKey.GetID();
+            }
+            
             builder_.SendChangeTo(changeAddr);
         }
 
@@ -475,6 +485,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
             builder_.AddSaplingOutput(ovk, to, value, memo);
         }
+
 
         // Add transparent outputs
         for (auto r : t_outputs_) {

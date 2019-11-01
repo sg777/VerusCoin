@@ -13,6 +13,25 @@
 
 #include <boost/foreach.hpp>
 
+uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
+{
+    uint160 cid = GetChainID(name);
+
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
 std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
 {
     std::string nameCopy = Name;
@@ -148,6 +167,40 @@ CIdentityID CIdentity::GetNameID(const std::string &Name) const
 CIdentityID CIdentity::GetNameID() const
 {
     return GetNameID(name);
+}
+
+CScript CIdentity::TransparentOutput() const
+{
+    CConditionObj<CIdentity> ccObj = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}), 1);
+    return MakeMofNCCScript(ccObj);
+}
+
+CScript CIdentity::TransparentOutput(const CIdentityID &destinationID)
+{
+    CConditionObj<CIdentity> ccObj = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({destinationID}), 1);
+    return MakeMofNCCScript(ccObj);
+}
+
+CScript CIdentity::IdentityUpdateOutputScript() const
+{
+    CScript ret;
+
+    if (!IsValid())
+    {
+        return ret;
+    }
+
+    std::vector<CTxDestination> dests1({CTxDestination(CIdentityID(GetNameID()))});
+    CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
+    std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
+    CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
+    std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
+    CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
+
+    std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetNameID(), EVAL_IDENTITY_PRIMARY))), CTxDestination(CIdentityID(revocationAuthority)), CTxDestination(CIdentityID(recoveryAuthority))});
+
+    ret = MakeMofNCCScript(1, primary, revocation, recovery, &indexDests);
+    return ret;
 }
 
 bool CKeyStore::GetPubKey(const CKeyID &address, CPubKey &vchPubKeyOut) const

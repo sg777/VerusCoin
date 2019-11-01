@@ -41,6 +41,10 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, 
     if (scriptCode.IsPayToCryptoCondition())
     {
         CC *cc = (CC *)extraData;
+
+        //CPubKey pubKey = key.GetPubKey();
+        //printf("signing with pubkey: %s, ID: %s\n\n", HexBytes(&(std::vector<unsigned char>(pubKey.begin(), pubKey.end())[0]), pubKey.size()).c_str(), pubKey.GetID().GetHex().c_str());
+
         // assume either 1of1 or 1of2. if the condition created by the
         if (!cc || cc_signTreeSecp256k1Msg32(cc, key.begin(), hash.begin()) == 0)
             return false;
@@ -164,6 +168,8 @@ CC *MakeCCcondMofN(uint8_t evalcode, const std::vector<CTxDestination> &dests, i
 
 CC *MakeCCcondOneSig(const CTxDestination &dest)
 {
+    //printf("making condition with ID: %s\n", GetDestinationID(dest).GetHex().c_str());
+
     CPubKey pk = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest);
     if (pk.IsValid())
     {
@@ -299,7 +305,10 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
             std::map<uint160, CKey> privKeyMap;         // private keys located for each id
             std::vector<CC*> ccs;
 
-            for (int i = 0; ccValid && i < p.vData.size() - 1; i++)
+            // if we are sign-only, "p" will have no data object of its own, so we do not have to subtract 1
+            int loopMax = p.evalCode ? p.vData.size() - 1 : p.vData.size();
+
+            for (int i = 0; ccValid && i < loopMax; i++)
             {
                 // "p", our first COptCCParams object will be considered first, then nested objects after
                 COptCCParams oneP = i ? COptCCParams(p.vData[i]) : p;
@@ -334,18 +343,25 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                             // lookup identity, we must have all registered target identity scripts in our keystore, or we try as if they are a keyID, which will be the same
                             // if revoked or undefined
                             CIdentity id;
-                            if (!(id = LookupIdentity(creator, CScriptID(destId))).IsValidUnrevoked())
+                            if (!(id = LookupIdentity(creator, CIdentityID(destId))).IsValidUnrevoked())
                             {
-                                destMap[destId] = CKeyID(GetDestinationID(dest));
+                                destMap[destId] = dest;
                                 vCC.push_back(MakeCCcondOneSig(CKeyID(GetDestinationID(dest))));
                             }
                             else
                             {
                                 idMap[destId] = id;
-                                vCC.push_back(MakeCCcondMofN(id.primaryAddresses, id.minSigs));
                                 for (auto oneKey : id.primaryAddresses)
                                 {
-                                    destMap[GetDestinationID(oneKey)] = dest;
+                                    destMap[GetDestinationID(oneKey)] = oneKey;
+                                }
+                                if (id.primaryAddresses.size() == 1)
+                                {
+                                    vCC.push_back(MakeCCcondOneSig(CKeyID(GetDestinationID(id.primaryAddresses[0]))));
+                                }
+                                else
+                                {
+                                    vCC.push_back(MakeCCcondMofN(id.primaryAddresses, id.minSigs));
                                 }
                             }
                         }
@@ -436,10 +452,11 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                             outputCC = signedCC;
                         }
                     }
-                    if (error || !(creator.CreateSig(vch, GetDestinationID(p.vKeys[0]), _CCPubKey(outputCC), consensusBranchId, &privKey.second, (void *)outputCC)))
+                    if (error || !(creator.CreateSig(vch, privKey.first, _CCPubKey(outputCC), consensusBranchId, &privKey.second, (void *)outputCC)))
                     {
                         error = true;
-                        fprintf(stderr,"vin has MofN CC signing error with address\n");
+                        //CPubKey errKey = privKey.second.GetPubKey();
+                        //fprintf(stderr,"vin has MofN CC signing error with pubkey: %s, ID: %s\n", HexBytes(&(std::vector<unsigned char>(errKey.begin(), errKey.end())[0]), errKey.size()).c_str(), errKey.GetID().GetHex().c_str());
                     }
                 }
 

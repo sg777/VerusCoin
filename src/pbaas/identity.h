@@ -332,11 +332,14 @@ public:
 
         if (IsValidUnrevoked())
         {
-            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}));
+            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}), 1);
             ret = CTxOut(nValue, MakeMofNCCScript(ccObj));
         }
         return ret;
     }
+
+    CScript TransparentOutput() const;
+    static CScript TransparentOutput(const CIdentityID &destinationID);
 
     // creates an output script to control updates to this identity
     CScript IdentityUpdateOutputScript() const;
@@ -364,8 +367,8 @@ public:
     uint32_t blockOrder;                        // 1-based numerical order if in the same block based on first to last spend, 1 otherwise, 0 is invalid except for queries
     uint32_t flags;
 
-    CIdentityMapKey() : blockHeight(0), blockOrder(0), flags(0) {}
-    CIdentityMapKey(const CIdentityID &id, uint32_t blkHeight=0, uint32_t orderInBlock=0, uint32_t Flags=0) : idID(id), blockHeight(blkHeight), blockOrder(orderInBlock), flags(Flags) {}
+    CIdentityMapKey() : blockHeight(0), blockOrder(1), flags(0) {}
+    CIdentityMapKey(const CIdentityID &id, uint32_t blkHeight=0, uint32_t orderInBlock=1, uint32_t Flags=0) : idID(id), blockHeight(blkHeight), blockOrder(orderInBlock), flags(Flags) {}
 
     CIdentityMapKey(const arith_uint256 &mapKey)
     {
@@ -391,7 +394,9 @@ public:
         std::vector<unsigned char> vch(idID.begin(), idID.end());
         vch.insert(vch.end(), 12, 0);
         arith_uint256 retVal = UintToArith256(uint256(vch));
-        retVal = ((retVal << 32 + blockHeight) << 32 + blockOrder) << 32 + flags;
+        retVal = (retVal << 32) + blockHeight;
+        retVal = (retVal << 32) + blockOrder;
+        retVal = (retVal << 32) + flags;
         return retVal;
     }
 

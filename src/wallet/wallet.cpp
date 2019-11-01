@@ -2144,14 +2144,14 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                 if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (*(CIdentity *)&identity = CIdentity(p.vData[0])).IsValid())
                 {
                     identity.txid = tx.GetHash();
-                    CIdentityMapKey idMapKey =CIdentityMapKey(identity.GetNameID(), 
-                                                              nHeight, 
-                                                              1, 
-                                                              CIdentityMapKey::VALID);
+                    CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetNameID(), 
+                                                               nHeight, 
+                                                               1, 
+                                                               CIdentityMapKey::VALID);
 
                     std::set<CKeyID> keySet;
                     CIdentityID idID(identity.GetNameID());
-                    int blockOrder = 0;
+                    int blockOrder = 1;
                     bool doneWithID = false;
 
                     std::pair<CIdentityMapKey, CIdentityMapValue> idHistory;

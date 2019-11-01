@@ -302,22 +302,3 @@ UniValue CCrossChainRPCData::ToUniValue() const
     return obj;
 }
 
-uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
-{
-    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
-    hw << condition;
-    hw << cid;
-    uint256 chainHash = hw.GetHash();
-    return Hash160(chainHash.begin(), chainHash.end());
-}
-
-uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
-{
-    uint160 cid = GetChainID(name);
-
-    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
-    hw << condition;
-    hw << cid;
-    uint256 chainHash = hw.GetHash();
-    return Hash160(chainHash.begin(), chainHash.end());
-}

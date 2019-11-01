@@ -1380,7 +1380,10 @@ int TransactionSignatureChecker::CheckCryptoCondition(
         // they are fully validated by miners, stakers, and native wallets.
         bool failToTrue = false;
 
-        for (int i = 0; ccValid && i < p.vData.size() - 1; i++)
+        // if we are sign-only, "p" will have no data object of its own, so we do not have to subtract 1
+        int loopMax = p.evalCode ? p.vData.size() - 1 : p.vData.size();
+
+        for (int i = 0; ccValid && i < loopMax; i++)
         {
             COptCCParams oneP(i ? p.vData[i] : p);
             ccValid = oneP.IsValid();
@@ -1427,7 +1430,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                             {
                                 addrs.push_back(CKeyID(destId));
                             }
-                            if (vCC.size() == 1)
+                            if (addrs.size() == 1)
                             {
                                 vCC.push_back(MakeCCcondOneSig(addrs[0]));
                             }

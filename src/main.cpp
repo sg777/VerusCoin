@@ -2777,9 +2777,12 @@ bool ContextualCheckInputs(const CTransaction& tx,
                     COptCCParams master = COptCCParams(p.vData.back());
                     bool ccValid = master.IsValid();
 
-                    for (int i = 0; ccValid && i < p.vData.size() - 1; i++)
+                    // if we are sign-only, "p" will have no data object of its own, so we do not have to subtract 1
+                    int loopMax = p.evalCode ? p.vData.size() - 1 : p.vData.size();
+
+                    for (int i = 0; ccValid && i < loopMax; i++)
                     {
-                        COptCCParams oneP(p.vData[i]);
+                        COptCCParams oneP(i ? p.vData[i] : p);
                         ccValid = oneP.IsValid();
 
                         if (ccValid)

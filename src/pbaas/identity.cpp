@@ -316,28 +316,6 @@ CIdentity CIdentity::LookupIdentity(const std::string &name, uint32_t height, ui
     return LookupIdentity(GetNameID(name), height, pHeightOut, idTxIn);
 }
 
-CScript CIdentity::IdentityUpdateOutputScript() const
-{
-    CScript ret;
-
-    if (!IsValid())
-    {
-        return ret;
-    }
-
-    std::vector<CTxDestination> dests1({CTxDestination(CIdentityID(GetNameID()))});
-    CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
-    std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
-    CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
-    std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
-    CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
-
-    std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetNameID(), EVAL_IDENTITY_PRIMARY))), CTxDestination(CIdentityID(revocationAuthority)), CTxDestination(CIdentityID(recoveryAuthority))});
-
-    ret = MakeMofNCCScript(1, primary, revocation, recovery, &indexDests);
-    return ret;
-}
-
 bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
 {
     // TODO:PBAAS right now, any of the three controlling identities can do any modification

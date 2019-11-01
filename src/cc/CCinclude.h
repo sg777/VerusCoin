@@ -184,9 +184,10 @@ template <typename TOBJ>
 CScript MakeMofNCCScript(const CConditionObj<TOBJ> &conditionObj, const CTxDestination *indexDest=nullptr)
 {
     // indexDest is always added, but we need to index on all can-sign identities as well
-    std::vector<CTxDestination> indexIDs = indexDest ? std::vector<CTxDestination>({*indexDest}) : std::vector<CTxDestination>({conditionObj.dests[0]});
+    std::vector<CTxDestination> indexIDs = indexDest ? std::vector<CTxDestination>({*indexDest}) : conditionObj.evalCode == EVAL_NONE ? std::vector<CTxDestination>() : std::vector<CTxDestination>({conditionObj.dests[0]});
+    int idxSize = indexIDs.size();
 
-    COptCCParams masterParams = COptCCParams(COptCCParams::VERSION_V3, 0, 1, 1, indexIDs, std::vector<std::vector<unsigned char>>());
+    COptCCParams masterParams = COptCCParams(COptCCParams::VERSION_V3, 0, idxSize, idxSize, indexIDs, std::vector<std::vector<unsigned char>>());
     CScript scriptRet = CScript() << masterParams.AsVector() << OP_CHECKCRYPTOCONDITION;
 
     std::vector<std::vector<unsigned char>> vvch = conditionObj.HaveObject() ? std::vector<std::vector<unsigned char>>({::AsVector(conditionObj.obj)}) : std::vector<std::vector<unsigned char>>();

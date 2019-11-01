@@ -536,7 +536,7 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             CIdentityMapKey mapKey;
             CIdentityMapValue identity;
             ssKey >> mapKey;
-            ssKey >> identity;
+            ssValue >> identity;
             pwallet->LoadIdentity(mapKey, identity);
         }
         else if (strType == "watchs")

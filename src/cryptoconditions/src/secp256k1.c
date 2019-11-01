@@ -224,6 +224,8 @@ static int secp256k1Sign(CC *cond, CCVisitor visitor) {
     // if we don't match, check if it is a pkhash
     if (memcmp(cond->publicKey, signing->pk, SECP256K1_PK_SIZE))
     {
+        //printf("Ready to sign condition: %s\n", cc_conditionToJSONString(cond));
+
         // no hash match if not a possible hash
         if (!cc_secp256k1IsPKHash(cond->publicKey))
         {

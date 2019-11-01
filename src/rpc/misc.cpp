@@ -934,8 +934,33 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
 
     for (std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> >::const_iterator it=unspentOutputs.begin(); it!=unspentOutputs.end(); it++) {
         UniValue output(UniValue::VOBJ);
-        std::string address;
-        if (!getAddressFromIndex(it->first.type, it->first.hashBytes, address)) {
+        
+        std::string address = "";
+
+        if (it->second.script.IsPayToCryptoCondition())
+        {
+            txnouttype outType;
+            std::vector<CTxDestination> addresses;
+            int required;
+            if (ExtractDestinations(it->second.script, outType, addresses, required))
+            {
+                UniValue addressesUni(UniValue::VARR);
+                for (auto addr : addresses)
+                {
+                    addressesUni.push_back(EncodeDestination(addr));
+                    if (GetDestinationID(addr) == it->first.hashBytes)
+                    {
+                        address = EncodeDestination(addr);
+                    }
+                }
+                if (addressesUni.size() > 1)
+                {
+                    output.push_back(Pair("addresses", addressesUni));
+                }
+            }
+        }
+        if (address == "" && !getAddressFromIndex(it->first.type, it->first.hashBytes, address)) 
+        {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unknown address type");
         }
 
