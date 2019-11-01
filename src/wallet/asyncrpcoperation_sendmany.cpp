@@ -225,10 +225,11 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     // When spending coinbase utxos, you can only specify a single zaddr as the change must go somewhere
     // and if there are multiple zaddrs, we don't know where to send it.
     if (isfromtaddr_) {
-        if (isSingleZaddrOutput) {
+        // if we don't need to protect coinbases, they can be included in inputs
+        if (isSingleZaddrOutput || !Params().GetConsensus().fCoinbaseMustBeProtected) {
             bool b = find_utxos(true);
             if (!b) {
-                throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient funds, no UTXOs found for taddr from address.");
+                throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient funds in UTXOs found for taddr from address.");
             }
         } else {
             bool b = find_utxos(false);
@@ -348,7 +349,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         if (isUsingBuilder_) {
             CScript scriptPubKey;
             for (auto t : t_inputs_) {
-                scriptPubKey = GetScriptForDestination(std::get<4>(t));
+                scriptPubKey = std::get<4>(t);
                 //printf("Checking new script: %s\n", scriptPubKey.ToString().c_str());
                 uint256 txid = std::get<0>(t);
                 int vout = std::get<1>(t);
@@ -960,6 +961,11 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptCoinbase=false)
             continue;
         }
 
+        if (!out.tx->vout[out.i].nValue)
+        {
+            continue;
+        }
+
         const CScript &scriptPubKey = out.tx->vout[out.i].scriptPubKey;
 
         if (destinations.size()) {
@@ -973,19 +979,16 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptCoinbase=false)
             }
         }
 
-        // By default we ignore coinbase outputs
-        // TODO: audit use of fAcceptCoinbase to ensure that when coinbase is not required to be shielded that this is skipped
+        // By default we ignore coinbase outputs if coinbase shielding is required
+        // TODO: audit use of fAcceptCoinbase to ensure that in all cases when coinbase is not required to be shielded that this is skipped
         bool isCoinbase = out.tx->IsCoinBase();
         if (isCoinbase && fAcceptCoinbase==false) {
             continue;
         }
 
-        if (!ExtractDestination(scriptPubKey, dest, true))
-            continue;
-
         CAmount nValue = out.tx->vout[out.i].nValue;
         
-        SendManyInputUTXO utxo(out.tx->GetHash(), out.i, nValue, isCoinbase, dest);
+        SendManyInputUTXO utxo(out.tx->GetHash(), out.i, nValue, isCoinbase, scriptPubKey);
         t_inputs_.push_back(utxo);
     }
 

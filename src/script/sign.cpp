@@ -372,9 +372,9 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         }
                     }
 
-                    if (oneP.evalCode)
+                    if (oneP.evalCode != EVAL_NONE)
                     {
-                        ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m));
+                        ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m ? oneP.m : 1));
                     }
                     else
                     {

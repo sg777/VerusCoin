@@ -1390,7 +1390,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
             std::vector<CC*> vCC;
             if (ccValid)
             {
-                for (auto dest : oneP.vKeys)
+                for (auto &dest : oneP.vKeys)
                 {
                     uint160 destId = GetDestinationID(dest);
                     if (dest.which() == COptCCParams::ADDRTYPE_ID)
@@ -1450,7 +1450,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                 {
                     if (oneP.evalCode != EVAL_NONE)
                     {
-                        ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m));
+                        ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m ? oneP.m : 1));
                     }
                     else
                     {

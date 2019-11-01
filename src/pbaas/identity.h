@@ -319,7 +319,7 @@ public:
 
         if (IsValidUnrevoked())
         {
-            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(evalcode, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}), &obj);
+            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(evalcode, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}), 1, &obj);
             ret = CTxOut(nValue, MakeMofNCCScript(ccObj));
         }
         return ret;

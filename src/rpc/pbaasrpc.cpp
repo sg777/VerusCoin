@@ -4338,7 +4338,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     newID.recoveryAuthority = recoveryAuth.GetNameID();
 
     // create the identity definition transaction & reservation key output
-    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetNameID())}), CIdentity::MinRegistrationAmount(), &reservation);
+    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetNameID())}), newID.minSigs, &reservation);
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false},
                                                                {MakeMofNCCScript(condObj), feeOffer + CCommitmentHash::POSITIVE_OUTPUT_AMOUNT, true}});
 
