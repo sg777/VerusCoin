@@ -4579,14 +4579,16 @@ UniValue getidentity(const UniValue& params, bool fHelp)
 
     CheckPBaaSAPIsValid();
 
-    uint160 nameID = CIdentity::GetNameID(uni_get_str(params[0]), uint160());
-
-    //printf("looking for %s\n", EncodeDestination(CTxDestination(CIdentityID(nameID))).c_str());
+    CTxDestination idID = DecodeDestination(uni_get_str(params[0]));
+    if (idID.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or identity address: \"" + uni_get_str(params[0]) + "\"");
+    }
 
     CTxIn idTxIn;
     uint32_t height;
 
-    CIdentity identity = CIdentity::LookupIdentity(nameID, 0, &height, &idTxIn);
+    CIdentity identity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(idID)), 0, &height, &idTxIn);
 
     UniValue ret(UniValue::VOBJ);
 
@@ -4596,7 +4598,93 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         ret.push_back(Pair("blockheight", (int64_t)height));
         ret.push_back(Pair("txid", idTxIn.prevout.hash.GetHex()));
         ret.push_back(Pair("vout", (int32_t)idTxIn.prevout.n));
-        return identity.ToUniValue();
+        return ret;
+    }
+    else
+    {
+        return NullUniValue;
+    }
+}
+
+UniValue IdentityPairToUni(const std::pair<CIdentityMapKey, CIdentityMapValue *> &identity)
+{
+    UniValue oneID(UniValue::VOBJ);
+
+    if (identity.first.IsValid() && identity.second->IsValid())
+    {
+        oneID.push_back(Pair("identity", identity.second->ToUniValue()));
+        oneID.push_back(Pair("blockheight", (int64_t)identity.first.blockHeight));
+        oneID.push_back(Pair("txid", identity.second->txid.GetHex()));
+        if (identity.second->IsRevoked())
+        {
+            oneID.push_back(Pair("status", "revoked"));
+            oneID.push_back(Pair("canspendfor", 0));
+            oneID.push_back(Pair("cansignfor", 0));
+        }
+        else
+        {
+            oneID.push_back(Pair("status", "active"));
+            oneID.push_back(Pair("canspendfor", bool(identity.first.flags & identity.first.CAN_SPEND)));
+            oneID.push_back(Pair("cansignfor", bool(identity.first.flags & identity.first.CAN_SIGN)));
+        }
+    }
+    return oneID;
+}
+
+UniValue listidentities(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 3)
+    {
+        throw runtime_error(
+            "listidentities (includecansign) (includewatchonly)\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "    \"includecanspend\"    (bool, optional, default=true)    Include identities for which we can spend/authorize\n"
+            "    \"includecansign\"     (bool, optional, default=true)    Include identities that we can only sign for but not spend\n"
+            "    \"includewatchonly\"   (bool, optional, default=false)   Include identities that we can neither sign nor spend, but are either watched or are co-signers with us\n"
+
+            "\nResult:\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("listidentities", "\'{\"name\" : \"myname\"}\'")
+            + HelpExampleRpc("listidentities", "\'{\"name\" : \"myname\"}\'")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+
+    std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> mine, imsigner, notmine;
+
+    bool includeCanSpend = params.size() > 0 ? uni_get_bool(params[0], true) : true;
+    bool includeCanSign = params.size() > 1 ? uni_get_bool(params[1], true) : true;
+    bool includeWatchOnly = params.size() > 2 ? uni_get_bool(params[2], false) : false;
+
+    if (pwalletMain->GetIdentities(mine, imsigner, notmine))
+    {
+        UniValue ret(UniValue::VARR);
+        if (includeCanSpend)
+        {
+            for (auto identity : mine)
+            {
+                ret.push_back(IdentityPairToUni(identity));
+            }
+        }
+        if (includeCanSign)
+        {
+            for (auto identity : imsigner)
+            {
+                ret.push_back(IdentityPairToUni(identity));
+            }
+        }
+        if (includeWatchOnly)
+        {
+            for (auto identity : notmine)
+            {
+                ret.push_back(IdentityPairToUni(identity));
+            }
+        }
+        return ret;
     }
     else
     {
@@ -5106,6 +5194,7 @@ static const CRPCCommand commands[] =
     { "pbaas",        "revokeidentity",               &revokeidentity,         true  },
     { "pbaas",        "recoveridentity",              &recoveridentity,        true  },
     { "pbaas",        "getidentity",                  &getidentity,            true  },
+    { "pbaas",        "listidentities",               &listidentities,         true  },
     { "pbaas",        "refundfailedlaunch",           &refundfailedlaunch,     true  },
     { "pbaas",        "getmergedblocktemplate",       &getmergedblocktemplate, true  },
     { "pbaas",        "addmergedblock",               &addmergedblock,         true  }

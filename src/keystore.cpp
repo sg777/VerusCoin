@@ -434,6 +434,28 @@ bool CBasicKeyStore::GetFirstIdentity(const CIdentityID &idID, std::pair<CIdenti
     return true;
 }
 
+bool CBasicKeyStore::GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> &mine, 
+                                   std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> &imsigner, 
+                                   std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> &notmine)
+{
+    for (auto &identity : mapIdentities)
+    {
+        CIdentityMapKey idKey(identity.first);
+        if (idKey.flags & idKey.CAN_SPEND)
+        {
+            mine.push_back(make_pair(idKey, &identity.second));
+        }
+        else if (idKey.flags & idKey.CAN_SIGN)
+        {
+            imsigner.push_back(make_pair(idKey, &identity.second));
+        }
+        else
+        {
+            notmine.push_back(make_pair(idKey, &identity.second));
+        }
+    }
+}
+
 bool CBasicKeyStore::AddWatchOnly(const CScript &dest)
 {
     LOCK(cs_KeyStore);

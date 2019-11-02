@@ -155,25 +155,6 @@ int secp256k1Verify(CC *cond, CCVisitor visitor) {
 }
 
 
-int secp256k1VerifyValidOnly(CC *cond, CCVisitor visitor) {
-    if (cond->type->typeId != CC_Secp256k1Type.typeId) return 1;
-    initVerify();
-
-    int rc;
-
-    // parse siganature
-    secp256k1_ecdsa_signature sig;
-    rc = secp256k1_ecdsa_signature_parse_compact(ec_ctx_verify, &sig, cond->signature);
-    if (rc != 1) return 0;
-
-    // Only accepts lower S signatures
-    rc = secp256k1_ecdsa_verify_validonly(ec_ctx_verify, &sig, visitor.msg);
-    if (rc != 1) return 0;
-
-    return 1;
-}
-
-
 int cc_secp256k1VerifyTreeMsg32(const CC *cond, const unsigned char *msg32) {
     int subtypes = cc_typeMask(cond);
     if (subtypes & (1 << CC_PrefixType.typeId) &&
@@ -183,20 +164,6 @@ int cc_secp256k1VerifyTreeMsg32(const CC *cond, const unsigned char *msg32) {
         return 0;
     }
     CCVisitor visitor = {&secp256k1Verify, msg32, 0, NULL};
-    int out = cc_visit(cond, visitor);
-    return out;
-}
-
-
-int cc_secp256k1VerifyTreeMsg32_PartialCheck(const CC *cond, const unsigned char *msg32) {
-    int subtypes = cc_typeMask(cond);
-    if (subtypes & (1 << CC_PrefixType.typeId) &&
-        subtypes & (1 << CC_Secp256k1Type.typeId)) {
-        // No support for prefix currently, due to pending protocol decision on
-        // how to combine message and prefix into 32 byte hash
-        return 0;
-    }
-    CCVisitor visitor = {&secp256k1VerifyValidOnly, msg32, 0, NULL};
     int out = cc_visit(cond, visitor);
     return out;
 }

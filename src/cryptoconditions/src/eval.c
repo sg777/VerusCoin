@@ -124,6 +124,13 @@ int evalVisit(CC *cond, CCVisitor visitor) {
     return evalData->verify(cond, evalData->context);
 }
 
+int cc_isEvalVisitor(CCVisitor *visitor)
+{
+    if (visitor->visit == &evalVisit)
+        return 1;
+    else
+        return 0;
+}
 
 int cc_verifyEval(const CC *cond, VerifyEval verify, void *context) {
     CCEvalVerifyData evalData = {verify, context};
