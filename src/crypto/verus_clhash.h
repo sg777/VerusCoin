@@ -26,10 +26,16 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <assert.h>
+
 #ifdef _WIN32
 #undef __cpuid
 #include <intrin.h>
+#endif
+
+#if defined(__arm__)  || defined(__aarch64__)
+#include "crypto/SSE2NEON.h"
 #else
+#include <cpuid.h>
 #include <x86intrin.h>
 #endif // !WIN32
 
@@ -93,10 +99,12 @@ extern int __cpuverusoptimized;
 
 inline bool IsCPUVerusOptimized()
 {
+    #if defined(__arm__)  || defined(__aarch64__)
+    	__cpuverusoptimized = false;
+    #else
     if (__cpuverusoptimized & 0x80)
     {
         unsigned int eax,ebx,ecx,edx;
-
         if (!__get_cpuid(1,&eax,&ebx,&ecx,&edx))
         {
             __cpuverusoptimized = false;
@@ -106,6 +114,7 @@ inline bool IsCPUVerusOptimized()
             __cpuverusoptimized = ((ecx & (bit_AVX | bit_AES | bit_PCLMUL)) == (bit_AVX | bit_AES | bit_PCLMUL));
         }
     }
+    #endif
     return __cpuverusoptimized;
 };
 
