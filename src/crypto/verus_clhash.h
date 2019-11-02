@@ -20,7 +20,7 @@
 #ifndef INCLUDE_VERUS_CLHASH_H
 #define INCLUDE_VERUS_CLHASH_H
 
-#include <cpuid.h>
+
 
 #include <stdlib.h>
 #include <stdint.h>
