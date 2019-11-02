@@ -26,7 +26,6 @@
 #ifdef _WIN32
 #pragma warning (disable : 4146)
 #include <intrin.h>
-#endif // !WIN32
 #endif
 int __cpuverusoptimized = 0x80;
 
@@ -47,7 +46,17 @@ thread_local thread_specific_ptr verusclhasher_descr;
 // attempt to workaround horrible mingw/gcc destructor bug on Windows and Mac, which passes garbage in the this pointer
 // we use the opportunity of control here to clean up all of our tls variables. we could keep a list, but this is a safe,
 // functional hack
-
+thread_specific_ptr::~thread_specific_ptr() {
+    if (verusclhasher_key.ptr)
+    {
+        verusclhasher_key.reset();
+    }
+    if (verusclhasher_descr.ptr)
+    {
+        verusclhasher_descr.reset();
+    }
+}
+#endif // defined(__APPLE__) || defined(_WIN32)
 #if defined(__arm__)  || defined(__aarch64__) //intrinsics not defined in SSE2NEON.h
     static inline __attribute__((always_inline)) __m128i _mm_set_epi64x(uint64_t hi, uint64_t lo)
 	{
@@ -143,19 +152,6 @@ __m128i _mm_loadl_epi64(__m128i *a)
 }
 #endif 
 
-thread_specific_ptr::~thread_specific_ptr() {
-    if (verusclhasher_key.ptr)
-    {
-        verusclhasher_key.reset();
-    }
-    if (verusclhasher_descr.ptr)
-    {
-        verusclhasher_descr.reset();
-    }
-}
-#endif // defined(__APPLE__) || defined(_WIN32)
-
-int __cpuverusoptimized = 0x80;
 // multiply the length and the some key, no modulo
     static inline __attribute__((always_inline)) __m128i lazyLengthHash(uint64_t keylength, uint64_t length) {
 
@@ -651,7 +647,7 @@ uint64_t verusclhash(void * random, const unsigned char buf[64], uint64_t keyMas
 void *alloc_aligned_buffer(uint64_t bufSize)
 {
     void *answer = NULL;
-    if (posix_memalign(&answer, sizeof(__m128i) * 2, bufSize))
+    if (posix_memalign(&answer, sizeof(__m128i)*2, bufSize))
     {
         return NULL;
     }
