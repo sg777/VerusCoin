@@ -467,8 +467,8 @@ endif
 
 # Verus hash specific library - optimized
 if ARCH_ARM
-crypto_libverus_crypto_a_CPPFLAGS = -O3 -Wint-conversion -g -funroll-loops -fomit-frame-pointer -fPIC $(AM_CPPFLAGS)
-crypto_libverus_crypto_a_CXXFLAGS = -O3 -Wint-conversion -g -funroll-loops -fomit-frame-pointer -fPIC $(AM_CXXFLAGS)
+crypto_libverus_crypto_a_CPPFLAGS = -O3 -Wint-conversion -g -march=armv8.1-a+crypto -flax-vector-conversions -funroll-loops -fomit-frame-pointer -fPIC $(AM_CPPFLAGS)
+crypto_libverus_crypto_a_CXXFLAGS = -O3 -Wint-conversion -g -march=armv8.1-a+crypto -flax-vector-conversions -funroll-loops -fomit-frame-pointer -fPIC $(AM_CXXFLAGS)
 else
 crypto_libverus_crypto_a_CPPFLAGS = -O3 -Wint-conversion -mpclmul -msse4 -msse4.1 -msse4.2 -mssse3 -mavx -maes -g -funroll-loops -fomit-frame-pointer -fPIC $(AM_CPPFLAGS)
 crypto_libverus_crypto_a_CXXFLAGS = -O3 -Wint-conversion -mpclmul -msse4 -msse4.1 -msse4.2 -mssse3 -mavx -maes -g -funroll-loops -fomit-frame-pointer -fPIC $(AM_CXXFLAGS)
@@ -482,8 +482,8 @@ crypto_libverus_crypto_a_SOURCES = \
 
 # Verus hash specific library - portable
 if ARCH_ARM
-crypto_libverus_portable_crypto_a_CPPFLAGS = -O3 -Wint-conversion -g -funroll-loops -fomit-frame-pointer -fPIC $(AM_CPPFLAGS)
-crypto_libverus_portable_crypto_a_CXXFLAGS = -O3 -Wint-conversion -g -funroll-loops -fomit-frame-pointer -fPIC $(AM_CXXFLAGS)
+crypto_libverus_portable_crypto_a_CPPFLAGS = -O3 -Wint-conversion -g -march=armv8.1-a+crypto -flax-vector-conversions -funroll-loops -fomit-frame-pointer -fPIC $(AM_CPPFLAGS)
+crypto_libverus_portable_crypto_a_CXXFLAGS = -O3 -Wint-conversion -g -march=armv8.1-a+crypto -flax-vector-conversions -funroll-loops -fomit-frame-pointer -fPIC $(AM_CXXFLAGS)
 else
 crypto_libverus_portable_crypto_a_CPPFLAGS = -O3 -Wint-conversion -march=x86-64 -g -funroll-loops -fomit-frame-pointer -fPIC $(AM_CPPFLAGS)
 crypto_libverus_portable_crypto_a_CXXFLAGS = -O3 -Wint-conversion -march=x86-64 -g -funroll-loops -fomit-frame-pointer -fPIC $(AM_CXXFLAGS)

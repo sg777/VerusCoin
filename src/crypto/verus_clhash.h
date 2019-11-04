@@ -34,6 +34,8 @@
 
 #if defined(__arm__)  || defined(__aarch64__)
 #include "crypto/SSE2NEON.h"
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
 #else
 #include <cpuid.h>
 #include <x86intrin.h>
@@ -100,7 +102,13 @@ extern int __cpuverusoptimized;
 inline bool IsCPUVerusOptimized()
 {
     #if defined(__arm__)  || defined(__aarch64__)
-    	__cpuverusoptimized = false;
+    long hwcaps= getauxval(AT_HWCAP);
+
+    if((hwcaps & HWCAP_AES) && (hwcaps & HWCAP_PMULL))
+        __cpuverusoptimized = true;
+    else
+        __cpuverusoptimized = false;
+        
     #else
     if (__cpuverusoptimized & 0x80)
     {

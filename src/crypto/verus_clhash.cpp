@@ -58,7 +58,8 @@ thread_specific_ptr::~thread_specific_ptr() {
 }
 #endif // defined(__APPLE__) || defined(_WIN32)
 #if defined(__arm__)  || defined(__aarch64__) //intrinsics not defined in SSE2NEON.h
-    static inline __attribute__((always_inline)) __m128i _mm_set_epi64x(uint64_t hi, uint64_t lo)
+
+static inline __attribute__((always_inline)) __m128i _mm_set_epi64x(uint64_t hi, uint64_t lo)
 	{
 	__m128i result;
 	((uint64_t *)&result)[0] = lo;
@@ -85,22 +86,16 @@ __m128i _mm_cvtsi64_si128(uint64_t lo)
 	((uint64_t *)&result)[1] = 0;
 	return result;
 }
-__m128i _mm_aesenc_si128 (__m128i a, __m128i RoundKey)
-{
-    uint8x16_t a1; memcpy(&a1,&a,16);
-	uint8x16_t b1; memcpy(&b1,&RoundKey,16);
-	uint8x16_t c; //FIXME NEEDS -maes compile flags in ARM  = vaesmcq_u8(vaeseq_u8(a1, (uint8x16_t){})) ^ b1;
-	__m128i d; memcpy(&d,&c,16);
-	return d;
-}	
-__m128i _mm_clmulepi64_si128(const __m128i a, const __m128i b, int imm)
-{
-	__m128i result;
-     uint64x2_t a1 ; memcpy(&a1,&a,16);
-	  uint64x2_t b1 ; memcpy(&b1,&b,16);
- result = a; //FIXME NEEDS -maes compile flags in ARM (__m128i)vmull_p64(vgetq_lane_u64(a1, 1), vgetq_lane_u64(b1,0)); 
 
-	return result;
+ static inline __attribute__((always_inline)) uint8x16_t _mm_aesenc_si128 (uint8x16_t a, uint8x16_t RoundKey)
+{
+    return vaesmcq_u8(vaeseq_u8(a, (uint8x16_t){})) ^ RoundKey;
+}
+
+
+ static inline __attribute__((always_inline))  __m128i _mm_clmulepi64_si128(const __m128i a, const __m128i &b, int imm)
+{
+ return  (__m128i)vmull_p64(vgetq_lane_u64(a, 1), vgetq_lane_u64(b,0)); 
 
 }
 
