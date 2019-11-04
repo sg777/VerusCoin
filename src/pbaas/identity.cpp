@@ -41,6 +41,15 @@ UniValue CNameReservation::ToUniValue() const
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("name", name));
     ret.push_back(Pair("salt", salt.GetHex()));
+    if (referral.IsNull())
+    {
+        ret.push_back(Pair("referredby", ""));
+    }
+    else
+    {
+        ret.push_back(Pair("referredby", EncodeDestination(referral)));
+    }
+
     if (IsVerusActive())
     {
         ret.push_back(Pair("parent", ""));
@@ -51,6 +60,7 @@ UniValue CNameReservation::ToUniValue() const
         ret.push_back(Pair("parent", ConnectedChains.ThisChain().name));
         ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetNameID(name + "." + ConnectedChains.ThisChain().name, uint160())))));
     }
+
     return ret;
 }
 
@@ -222,7 +232,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
 
     CKeyID keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
 
-    if (GetAddressUnspent(keyID, 1, unspentOutputs))
+    if (GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
         CCoinsViewCache view(pcoinsTip);
 
@@ -314,6 +324,92 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
 CIdentity CIdentity::LookupIdentity(const std::string &name, uint32_t height, uint32_t *pHeightOut, CTxIn *idTxIn)
 {
     return LookupIdentity(GetNameID(name), height, pHeightOut, idTxIn);
+}
+
+// this enables earliest rejection of invalid CC transactions
+bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height, bool referrals)
+{
+    // CHECK #1 - there is only one reservation output, and there is also one identity output that matches the reservation.
+    //            the identity output must come first and have from 0 to 3 referral outputs between it and the reservation.
+    int numReferrers = 0;
+    int identityCount = 0;
+    int reservationCount = 0;
+    CIdentity newIdentity;
+    CNameReservation newName;
+    std::vector<CTxDestination> referrers;
+    bool valid = true;
+
+    for (auto &txout : tx.vout)
+    {
+        COptCCParams p;
+        if (txout.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+        {
+            if (p.evalCode == EVAL_IDENTITY_PRIMARY)
+            {
+                if (identityCount++ || p.vData.size() < 2)
+                {
+                    valid = false;
+                    break;
+                }
+                newIdentity = CIdentity(p.vData[0]);
+            }
+            else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
+            {
+                if (reservationCount++ || p.vData.size() < 2)
+                {
+                    valid = false;
+                    break;
+                }
+                newName = CNameReservation(p.vData[0]);
+            }
+            else if (identityCount && !reservationCount)
+            {
+                if (!referrals || p.vKeys.size() < 1 || referrers.size() > 2)
+                {
+                    valid = false;
+                    break;
+                }
+                referrers.push_back(p.vKeys[0]);
+            }
+            else if (identityCount != reservationCount)
+            {
+                valid = false;
+                break;
+            }
+        }
+    }
+    if (!valid)
+    {
+        return false;
+    }
+
+    // CHECK #2 - the name is not used on the blockchain or in the mempool
+    // lookup name on both blockchain and in mempool. if it is already present in either, then this cannot be valid
+    // TODO:PBAAS - make sure that RemoveConflicts on memory pool removes name conflicts as well
+    std::vector<std::pair<uint160, int>> addresses;
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> results;
+    mempool.getAddressIndex(addresses, results);
+
+    // CHECK #3 - transaction spends a matching name commitment
+
+    // CHECK #4 - if blockchain referrals are not enabled, we are done, all further checks only if enabled
+
+    // CHECK #5 - if there is no referring identity, make sure the fees of this transaction are full price for an identity, all further checks only if there is a referrer
+
+    // CHECK #6 - ensure that the first referring output goes to the referring identity followed by up 
+    //            to two identities that come from the original definition transaction of the referring identity. account for all outputs between
+    //            identity out and reservation out and ensure that they are correct and pay 20% of the price of an identity
+
+    // CHECK #7 - remove any referral identities that are revoked
+
+    // CHECK #8 - ensure that the transaction pays a fee of 80% of the full price for an identity, minus the value of each referral output between identity and reservation
+
+    return valid;
+}
+
+bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height)
+{
+    return PrecheckIdentityReservation(tx, outNum, height, true);
 }
 
 bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)

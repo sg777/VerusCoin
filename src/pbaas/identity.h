@@ -36,7 +36,6 @@ class CCommitmentHash
 {
 public:
     static const CAmount DEFAULT_OUTPUT_AMOUNT = 0;
-    static const CAmount POSITIVE_OUTPUT_AMOUNT = 10000;
     uint256 hash;
 
     CCommitmentHash() {}
@@ -70,17 +69,28 @@ public:
 class CNameReservation
 {
 public:
+    static const CAmount DEFAULT_OUTPUT_AMOUNT = 10000;
     static const int MAX_NAME_SIZE = (KOMODO_ASSETCHAIN_MAXLEN - 1);
     std::string name;
+    CIdentityID referral;
     uint256 salt;
 
     CNameReservation() {}
-    CNameReservation(const std::string &Name, const uint256 &Salt) : name(Name.size() > MAX_NAME_SIZE ? std::string(Name.begin(), Name.begin() + MAX_NAME_SIZE) : Name), salt(Salt) {}
+    CNameReservation(const std::string &Name, const CIdentityID &Referral, const uint256 &Salt) : name(Name.size() > MAX_NAME_SIZE ? std::string(Name.begin(), Name.begin() + MAX_NAME_SIZE) : Name), referral(Referral), salt(Salt) {}
 
     CNameReservation(const UniValue &uni)
     {
         name = uni_get_str(find_value(uni, "name"));
         salt = uint256S(uni_get_str(find_value(uni, "salt")));
+        CTxDestination dest = DecodeDestination(uni_get_str(find_value(uni, "referral")));
+        if (dest.which() == COptCCParams::ADDRTYPE_ID)
+        {
+            referral = CIdentityID(GetDestinationID(dest));
+        }
+        else if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
+        {
+            salt.SetNull(); // either valid destination, no destination, or invalid reservation
+        }
     }
     CNameReservation(std::vector<unsigned char> asVector)
     {
@@ -96,6 +106,7 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(name);
+        READWRITE(referral);
         READWRITE(salt);
     }
 
@@ -432,6 +443,8 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
 bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
 bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height);
+bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height, bool referrals);
 bool IsIdentityInput(const CScript &scriptSig);
 
 #endif // IDENTITY_H

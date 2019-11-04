@@ -878,6 +878,8 @@ CTxDestination DestFromAddressHash(int scriptType, uint160& addressHash)
     switch (scriptType) {
     case CScript::P2PKH:
         return CTxDestination(CKeyID(addressHash));
+    case CScript::P2ID:
+        return CTxDestination(CIdentityID(addressHash));
     case CScript::P2SH:
         return CTxDestination(CScriptID(addressHash));
     default:
@@ -887,3 +889,31 @@ CTxDestination DestFromAddressHash(int scriptType, uint160& addressHash)
         return CNoDestination();
     }
 }
+
+CScript::ScriptType AddressTypeFromDest(const CTxDestination &dest)
+{
+    switch (dest.which()) {
+
+
+        static const uint8_t ADDRTYPE_INVALID = 0;
+        static const uint8_t ADDRTYPE_PK = 1;
+        static const uint8_t ADDRTYPE_PKH = 2;
+        static const uint8_t ADDRTYPE_SH = 3;
+        static const uint8_t ADDRTYPE_ID = 4;
+        static const uint8_t ADDRTYPE_LAST = 3;
+
+    case COptCCParams::ADDRTYPE_PK:
+    case COptCCParams::ADDRTYPE_PKH:
+        return CScript::P2PKH;
+    case COptCCParams::ADDRTYPE_SH:
+        return CScript::P2SH;
+    case COptCCParams::ADDRTYPE_ID:
+        return CScript::P2ID;
+    default:
+        // This probably won't ever happen, because it would mean that
+        // the addressindex contains a type (say, 3) that we (currently)
+        // don't recognize; maybe we "dropped support" for it?
+        return CScript::UNKNOWN;
+    }
+}
+

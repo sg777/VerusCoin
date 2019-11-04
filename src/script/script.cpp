@@ -398,7 +398,7 @@ bool CScript::IsInstantSpend() const
 {
     COptCCParams p;
     bool isInstantSpend = false;
-    if (IsPayToCryptoCondition(p))
+    if (!_IsVerusActive() && IsPayToCryptoCondition(p))
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
         if ((p.evalCode == EVAL_EARNEDNOTARIZATION && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)) || 
@@ -766,37 +766,39 @@ uint160 CScript::AddressHash() const
     return addressHash;
 }
 
-std::vector<uint160> CScript::AddressHashes() const
+std::vector<CTxDestination> CScript::GetDestinations() const
 {
-    std::vector<uint160> addressHashes;
+    std::vector<CTxDestination> destinations;
     COptCCParams p;
     if (this->IsPayToScriptHash()) {
-        addressHashes.push_back(uint160(std::vector<unsigned char>(this->begin()+2, this->begin()+22)));
+        destinations.push_back(CScriptID(uint160(std::vector<unsigned char>(this->begin()+2, this->begin()+22))));
     }
     else if (this->IsPayToPublicKeyHash())
     {
-        addressHashes.push_back(uint160(std::vector<unsigned char>(this->begin()+3, this->begin()+23)));
+        destinations.push_back(CKeyID(uint160(std::vector<unsigned char>(this->begin()+3, this->begin()+23))));
     }
     else if (this->IsPayToPublicKey())
     {
         std::vector<unsigned char> hashBytes(this->begin()+1, this->begin()+34);
-        addressHashes.push_back(Hash160(hashBytes));
+        destinations.push_back(CPubKey(hashBytes));
     }
-    else if (this->IsPayToCryptoCondition(p)) {
+    else if (this->IsPayToCryptoCondition(p))
+    {
         if (p.IsValid() && (p.vKeys.size()))
         {
             COptCCParams master;
-            if (p.version >= p.VERSION_V3 && p.vData.size() > 1 && (master = COptCCParams(p.vData.back())).IsValid() && master.vKeys.size())
+            if (p.version >= p.VERSION_V3 && p.vData.size() > 1 && (master = COptCCParams(p.vData.back())).IsValid())
             {
+                std::set<CTxDestination> dests;
                 for (auto dest : master.vKeys)
                 {
-                    addressHashes.push_back(GetDestinationID(dest));
+                    dests.insert(dest);
                 }
                 for (auto dest : p.vKeys)
                 {
                     if (dest.which() == COptCCParams::ADDRTYPE_ID)
                     {
-                        addressHashes.push_back(GetDestinationID(dest));
+                        dests.insert(dest);
                     }
                 }
                 for (int i = 1; i < (int)(p.vData.size() - 1); i++)
@@ -808,23 +810,27 @@ std::vector<uint160> CScript::AddressHashes() const
                         {
                             if (dest.which() == COptCCParams::ADDRTYPE_ID)
                             {
-                                addressHashes.push_back(GetDestinationID(dest));
+                                dests.insert(dest);
                             }
                         }
                     }
                 }
+                for (auto dest : dests)
+                {
+                    destinations.push_back(dest);
+                }
             }
             else
             {
-                addressHashes.push_back(GetDestinationID(p.vKeys[0]));
+                destinations.push_back(p.vKeys[0]);
             }
         }
         else
         {
             vector<unsigned char> hashBytes(this->begin(), this->end());
-            addressHashes.push_back(Hash160(hashBytes));
+            destinations.push_back(CKeyID(Hash160(hashBytes)));
         }
     }
-    return addressHashes;
+    return destinations;
 }
 

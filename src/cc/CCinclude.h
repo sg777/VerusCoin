@@ -76,11 +76,12 @@ struct CC_meta
 
 struct CCcontract_info
 {
-    char unspendableCCaddr[64],CChexstr[72],normaladdr[64],unspendableaddr2[64],unspendableaddr3[64];
-    uint8_t CCpriv[32],unspendablepriv2[32],unspendablepriv3[32];
-    CPubKey unspendablepk2,unspendablepk3;
+    char unspendableCCaddr[64], CChexstr[72], normaladdr[64], unspendableaddr2[64], unspendableaddr3[64];
+    uint8_t CCpriv[32], unspendablepriv2[32], unspendablepriv3[32];
+    CPubKey unspendablepk2, unspendablepk3;
     bool (*validate)(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
     bool (*ismyvin)(CScript const& scriptSig);
+    bool (*contextualprecheck)(const CTransaction &tx, int32_t outNum, uint32_t height);
     uint8_t evalcode,evalcode2,evalcode3,didinit;
 };
 struct CCcontract_info *CCinit(struct CCcontract_info *cp,uint8_t evalcode);

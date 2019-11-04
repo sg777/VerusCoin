@@ -152,12 +152,12 @@ void CTxMemPool::addAddressIndex(const CTxMemPoolEntry &entry, const CCoinsViewC
 
             if (type == CScript::P2CC)
             {
-                std::vector<uint160> addrHashes = prevout.scriptPubKey.AddressHashes();
-                for (auto addrHash : addrHashes)
+                std::vector<CTxDestination> dests = prevout.scriptPubKey.GetDestinations();
+                for (auto dest : dests)
                 {
-                    if (!addrHash.IsNull())
+                    if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                     {
-                        CMempoolAddressDeltaKey key(type, addrHash, txhash, j, 1);
+                        CMempoolAddressDeltaKey key(AddressTypeFromDest(dest), GetDestinationID(dest), txhash, j, 1);
                         CMempoolAddressDelta delta(entry.GetTime(), prevout.nValue * -1, input.prevout.hash, input.prevout.n);
                         mapAddress.insert(make_pair(key, delta));
                         inserted.push_back(key);
@@ -183,12 +183,12 @@ void CTxMemPool::addAddressIndex(const CTxMemPoolEntry &entry, const CCoinsViewC
 
         if (type == CScript::P2CC)
         {
-            std::vector<uint160> addrHashes = out.scriptPubKey.AddressHashes();
-            for (auto addrHash : addrHashes)
+            std::vector<CTxDestination> dests = out.scriptPubKey.GetDestinations();
+            for (auto dest : dests)
             {
-                if (!addrHash.IsNull())
+                if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                 {
-                    CMempoolAddressDeltaKey key(type, addrHash, txhash, j, 0);
+                    CMempoolAddressDeltaKey key(AddressTypeFromDest(dest), GetDestinationID(dest), txhash, j, 0);
                     mapAddress.insert(make_pair(key, CMempoolAddressDelta(entry.GetTime(), out.nValue)));
                     inserted.push_back(key);
                 }

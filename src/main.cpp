@@ -3084,19 +3084,19 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                 if (scriptType != CScript::UNKNOWN) {
                     if (scriptType == CScript::P2CC)
                     {
-                        std::vector<uint160> addrHashes = out.scriptPubKey.AddressHashes();
-                        for (auto addrHash : addrHashes)
+                        std::vector<CTxDestination> dests = out.scriptPubKey.GetDestinations();
+                        for (auto dest : dests)
                         {
-                            if (!addrHash.IsNull())
+                            if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                             {
                                 // undo receiving activity
                                 addressIndex.push_back(make_pair(
-                                    CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, k, false),
+                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, k, false),
                                     out.nValue));
 
                                 // undo unspent index
                                 addressUnspentIndex.push_back(make_pair(
-                                    CAddressUnspentKey(scriptType, addrHash, hash, k),
+                                    CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), hash, k),
                                     CAddressUnspentValue()));
                             }
                         }
@@ -3163,19 +3163,19 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                     if (scriptType != CScript::UNKNOWN) {
                         if (scriptType == CScript::P2CC)
                         {
-                            std::vector<uint160> addrHashes = prevout.scriptPubKey.AddressHashes();
-                            for (auto addrHash : addrHashes)
+                            std::vector<CTxDestination> dests = prevout.scriptPubKey.GetDestinations();
+                            for (auto dest : dests)
                             {
-                                if (!addrHash.IsNull())
+                                if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                                 {
                                     // undo spending activity
                                     addressIndex.push_back(make_pair(
-                                        CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, j, true),
+                                        CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, j, true),
                                         prevout.nValue * -1));
 
                                     // restore unspent index
                                     addressUnspentIndex.push_back(make_pair(
-                                        CAddressUnspentKey(scriptType, addrHash, input.prevout.hash, input.prevout.n),
+                                        CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
                                         CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undo.nHeight)));
                                 }
                             }
@@ -3560,19 +3560,19 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     {
                         if (scriptType == CScript::P2CC)
                         {
-                            std::vector<uint160> addrHashes = prevout.scriptPubKey.AddressHashes();
-                            for (auto addrHash : addrHashes)
+                            std::vector<CTxDestination> dests = prevout.scriptPubKey.GetDestinations();
+                            for (auto dest : dests)
                             {
-                                if (!addrHash.IsNull()) 
+                                if (dest.which() != COptCCParams::ADDRTYPE_INVALID) 
                                 {
                                     // record spending activity
                                     addressIndex.push_back(make_pair(
-                                        CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, txhash, j, true),
+                                        CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, j, true),
                                         prevout.nValue * -1));
 
                                     // remove address from unspent index
                                     addressUnspentIndex.push_back(make_pair(
-                                        CAddressUnspentKey(scriptType, addrHash, input.prevout.hash, input.prevout.n),
+                                        CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
                                         CAddressUnspentValue()));
                                 }
                             }
@@ -3583,7 +3583,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 // spentindex db, with a script type of 0 and addrhash of all zeroes.
                                 spentIndex.push_back(make_pair(
                                     CSpentIndexKey(input.prevout.hash, input.prevout.n),
-                                    CSpentIndexValue(txhash, j, pindex->GetHeight(), prevout.nValue, scriptType, addrHashes.size() ? addrHashes[0] : uint160())));
+                                    CSpentIndexValue(txhash, j, pindex->GetHeight(), prevout.nValue, dests.size() ? AddressTypeFromDest(dests[0]) : CScript::UNKNOWN, dests.size() ? GetDestinationID(dests[0]) : uint160())));
                             }
                         }
                         else
@@ -3677,19 +3677,19 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 {
                     if (scriptType == CScript::P2CC)
                     {
-                        std::vector<uint160> addrHashes = out.scriptPubKey.AddressHashes();
-                        for (auto addrHash : addrHashes)
+                        std::vector<CTxDestination> dests = out.scriptPubKey.GetDestinations();
+                        for (auto dest : dests)
                         {
-                            if (!addrHash.IsNull())
+                            if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                             {
                                 // record receiving activity
                                 addressIndex.push_back(make_pair(
-                                    CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, txhash, k, false),
+                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, k, false),
                                     out.nValue));
 
                                 // record unspent output
                                 addressUnspentIndex.push_back(make_pair(
-                                    CAddressUnspentKey(scriptType, addrHash, txhash, k),
+                                    CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), txhash, k),
                                     CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->GetHeight())));
                             }
                         }

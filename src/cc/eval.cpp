@@ -53,6 +53,10 @@ bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn)
     return false;
 }
 
+bool DefaultCCContextualPreCheck(const CTransaction &tx, int32_t outNum, uint32_t height)
+{
+    return true;
+}
 
 /*
  * Test the validity of an Eval node

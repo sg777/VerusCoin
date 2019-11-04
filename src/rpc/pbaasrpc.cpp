@@ -4133,10 +4133,10 @@ UniValue definechain(const UniValue& params, bool fHelp)
 
 UniValue registernamecommitment(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 2)
+    if (fHelp || (params.size() < 2 && params.size() > 3))
     {
         throw runtime_error(
-            "registernamecommitment \"name\" \"transparentaddress\"\n"
+            "registernamecommitment \"name\" \"controladdress\" (\"referralidentity\")\n"
             "\nRegisters a name commitment, which is required as a source for the name to be used when registering an identity. The name commitment hides the name itself\n"
             "while ensuring that the miner who mines in the registration cannot front-run the name unless they have also registered a name commitment for the same name or\n"
             "are willing to forfeit the offer of payment for the chance that a commitment made now will allow them to register the name in the future.\n"
@@ -4144,17 +4144,19 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             "\nArguments\n"
             "\"name\"                           (string, required)  the unique name to commit to. creating a name commitment is not a registration, and if one is\n"
             "                                                       created for a name that exists, it may succeed, but will never be able to be used.\n"
-            "\"transparentaddress\"             (address, required) address that will control this commitment\n"
+            "\"controladdress\"                 (address, required) address that will control this commitment\n"
+            "\"referralidentity\"               (identity, optional)friendly name or identity address that is provided as a referral mechanism and to lower network cost of the ID\n"
 
             "\nResult: obj\n"
             "{\n"
             "    \"txid\" : \"hexid\"\n"
             "    \"namereservation\" :\n"
             "    {\n"
-            "        \"name\": \"namestr\",     (string) the unique name in this commitment\n"
-            "        \"salt\": \"hexstr\",      (hex)    salt used to hide the commitment\n"
-            "        \"parent\": \"namestr\",   (string) name of the parent if not Verus or Verus test\n"
-            "        \"nameid\": \"address\",   (base58) identity address for this identity if it is created\n"
+            "        \"name\"    : \"namestr\",     (string) the unique name in this commitment\n"
+            "        \"salt\"    : \"hexstr\",      (hex)    salt used to hide the commitment\n"
+            "        \"referral\": \"identityaddress\", (base58) address of the referring identity if there is one\n"
+            "        \"parent\"  : \"namestr\",   (string) name of the parent if not Verus or Verus test\n"
+            "        \"nameid\"  : \"address\",   (base58) identity address for this identity if it is created\n"
             "    }\n"
             "}\n"
 
@@ -4178,10 +4180,21 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CTxDestination dest = DecodeDestination(uni_get_str(params[1]));
     if (dest.which() == COptCCParams::ADDRTYPE_INVALID)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid destination for commitment");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid control address for commitment");
     }
 
-    CNameReservation nameRes(name, GetRandHash());
+    CIdentityID referrer;
+    if (params.size() > 2)
+    {
+        CTxDestination referDest = DecodeDestination(uni_get_str(params[1]));
+        if (referDest.which() != COptCCParams::ADDRTYPE_ID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid referral identity for commitment, must be a currently registered friendly name or i-address");
+        }
+        referrer = CIdentityID(GetDestinationID(referDest));
+    }
+
+    CNameReservation nameRes(name, referrer, GetRandHash());
     CCommitmentHash commitment(nameRes.GetCommitment());
     
     CConditionObj<CCommitmentHash> condObj(EVAL_IDENTITY_COMMITMENT, std::vector<CTxDestination>({dest}), 1, &commitment);
@@ -4340,7 +4353,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // create the identity definition transaction & reservation key output
     CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetNameID())}), newID.minSigs, &reservation);
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false},
-                                                               {MakeMofNCCScript(condObj), feeOffer + CCommitmentHash::POSITIVE_OUTPUT_AMOUNT, true}});
+                                                               {MakeMofNCCScript(condObj), feeOffer, false}});
 
     CWalletTx wtx;
 
@@ -4365,7 +4378,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         oneOut.scriptPubKey.IsPayToCryptoCondition(p);
         if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_RESERVATION)
         {
-            oneOut.nValue = CCommitmentHash::POSITIVE_OUTPUT_AMOUNT;
+            oneOut.nValue = CNameReservation::DEFAULT_OUTPUT_AMOUNT;
             break;
         }
     }
