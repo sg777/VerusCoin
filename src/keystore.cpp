@@ -32,6 +32,7 @@ uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
     uint256 chainHash = hw.GetHash();
     return Hash160(chainHash.begin(), chainHash.end());
 }
+
 std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
 {
     std::string nameCopy = Name;
@@ -124,7 +125,7 @@ std::string CIdentity::CleanName(const std::string &Name, uint160 &Parent)
     return subNames[0];
 }
 
-CIdentityID CIdentity::GetNameID(const std::string &Name, const uint160 &parent)
+CIdentityID CIdentity::GetID(const std::string &Name, const uint160 &parent)
 {
     uint160 newParent = parent;
     std::string cleanName = CleanName(Name, newParent);
@@ -144,7 +145,7 @@ CIdentityID CIdentity::GetNameID(const std::string &Name, const uint160 &parent)
     return Hash160(idHash.begin(), idHash.end());
 }
 
-CIdentityID CIdentity::GetNameID(const std::string &Name) const
+CIdentityID CIdentity::GetID(const std::string &Name) const
 {
     uint160 newLevel = parent;
     std::string cleanName = CleanName(Name, newLevel);
@@ -164,14 +165,14 @@ CIdentityID CIdentity::GetNameID(const std::string &Name) const
     return Hash160(idHash.begin(), idHash.end());
 }
 
-CIdentityID CIdentity::GetNameID() const
+CIdentityID CIdentity::GetID() const
 {
-    return GetNameID(name);
+    return GetID(name);
 }
 
 CScript CIdentity::TransparentOutput() const
 {
-    CConditionObj<CIdentity> ccObj = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}), 1);
+    CConditionObj<CIdentity> ccObj = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetID()))}), 1);
     return MakeMofNCCScript(ccObj);
 }
 
@@ -190,14 +191,14 @@ CScript CIdentity::IdentityUpdateOutputScript() const
         return ret;
     }
 
-    std::vector<CTxDestination> dests1({CTxDestination(CIdentityID(GetNameID()))});
+    std::vector<CTxDestination> dests1({CTxDestination(CIdentityID(GetID()))});
     CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
     std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
     CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
     std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
     CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
 
-    std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetNameID(), EVAL_IDENTITY_PRIMARY))), CTxDestination(CIdentityID(revocationAuthority)), CTxDestination(CIdentityID(recoveryAuthority))});
+    std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetID(), EVAL_IDENTITY_PRIMARY))), CTxDestination(CIdentityID(revocationAuthority)), CTxDestination(CIdentityID(recoveryAuthority))});
 
     ret = MakeMofNCCScript(1, primary, revocation, recovery, &indexDests);
     return ret;
@@ -251,7 +252,7 @@ CScriptID ScriptOrIdentityID(const CScript& scr)
     CIdentity identity;
     if (scr.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (identity = CIdentity(p.vData[0])).IsValid())
     {
-        return CScriptID(identity.GetNameID());
+        return CScriptID(identity.GetID());
     }
     else
     {
@@ -380,7 +381,7 @@ bool CBasicKeyStore::GetIdentity(const CIdentityID &idID, std::pair<CIdentityMap
     return true;
 }
 
-// return all identities matching a specific key and between two block heights
+// return all identities between two map keys, inclusive
 bool CBasicKeyStore::GetIdentity(const CIdentityMapKey &keyStart, const CIdentityMapKey &keyEnd, std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &keysAndIdentityUpdates) const
 {
     auto itStart = mapIdentities.lower_bound(keyStart.MapKey());

@@ -16,7 +16,9 @@
 #include "utilmoneystr.h"
 #include "validationinterface.h"
 #include "version.h"
+#include "cc/CCinclude.h"
 #include "pbaas/pbaas.h"
+#include "pbaas/identity.h"
 #define _COINBASE_MATURITY 100
 
 using namespace std;
@@ -424,11 +426,108 @@ void CTxMemPool::removeWithAnchor(const uint256 &invalidRoot, ShieldedType type)
     }
 }
 
+bool CTxMemPool::checkNameConflicts(const CTransaction &tx, std::list<CTransaction> &conflicting)
+{
+    LOCK(cs);
+
+    // easy way to check if there are any transactions in the memory pool that define the name specified but are not the same as tx
+    conflicting.clear();
+
+    // first, be sure that this is a name definition. if so, it will have both a definition and reservation output. if it is a name definition,
+    // our only concern is whether or not there is a conflicting definition in the mempool. we assume that a check for any conflicting definition
+    // in the blockchain has already taken place.
+    CIdentity identity;
+    CNameReservation reservation;
+    for (auto output : tx.vout)
+    {
+        COptCCParams p;
+        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+        {
+            if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1)
+            {
+                if (identity.IsValid())
+                {
+                    identity = CIdentity();
+                    break;
+                }
+                else
+                {
+                    identity = CIdentity(p.vData[0]);
+                }
+            }
+            else if (p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1)
+            {
+                if (reservation.IsValid())
+                {
+                    reservation = CNameReservation();
+                    break;
+                }
+                else
+                {
+                    reservation = CNameReservation(p.vData[0]);
+                }
+            }
+        }
+    }
+
+    // it can't conflict if it's not a definition
+    if (!(identity.IsValid() && reservation.IsValid()))
+    {
+        return false;
+    }
+
+    std::vector<std::pair<uint160, int>> addresses = std::vector<std::pair<uint160, int>>({{identity.GetID(), CScript::P2ID}});
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> results;
+    if (mempool.getAddressIndex(addresses, results) && results.size())
+    {
+        std::map<uint256, std::pair<CTransaction, int>> txesAndSources;   // first hash is transaction of input of prior identity or commitment output in the mempool, second pair is tx and ID output num if identity
+
+        uint256 txHash = tx.GetHash();
+        CNameReservation conflictingRes;
+        for (auto r : results)
+        {
+            if (r.first.txhash == txHash)
+            {
+                continue;
+            }
+            CTransaction mpTx;
+            if (lookup(r.first.txhash, mpTx))
+            {
+                COptCCParams p;
+                if (mpTx.vout[r.first.index].scriptPubKey.IsPayToCryptoCondition(p) && 
+                    p.IsValid() && 
+                    p.evalCode == EVAL_IDENTITY_RESERVATION && 
+                    p.vData.size() > 1 && 
+                    (conflictingRes = CNameReservation(p.vData[0])).IsValid() &&
+                    CIdentity(mpTx).IsValid())
+                {
+                    conflicting.push_back(mpTx);
+                }
+            }
+        }
+    }
+
+    return conflicting.size();
+}
+
 void CTxMemPool::removeConflicts(const CTransaction &tx, std::list<CTransaction>& removed)
 {
+    LOCK(cs);
+
+    // names are enforced as unique without requiring related spends.
+    // if this is a definition that conflicts with an existing, unrelated name definition, remove the
+    // definition that exists in the mempool
+    std::list<CTransaction> conflicting;
+    if (checkNameConflicts(tx, conflicting))
+    {
+        for (auto &remTx : conflicting)
+        {
+            remove(remTx, removed, true);
+        }
+    }
+
     // Remove transactions which depend on inputs of tx, recursively
     list<CTransaction> result;
-    LOCK(cs);
     BOOST_FOREACH(const CTxIn &txin, tx.vin) {
         std::map<COutPoint, CInPoint>::iterator it = mapNextTx.find(txin.prevout);
         if (it != mapNextTx.end()) {

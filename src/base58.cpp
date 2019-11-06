@@ -272,7 +272,7 @@ bool CBitcoinAddress::SetString(const char* pszAddress)
 
     if (std::count(pszAddress, pszAddress + strlen(pszAddress), '@') == 1)
     {
-        return Set(CIdentityID(CIdentity::GetNameID(std::string(pszAddress), uint160())));
+        return Set(CIdentityID(CIdentity::GetID(std::string(pszAddress), uint160())));
     }
     else
     {

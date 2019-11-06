@@ -20,6 +20,8 @@
 #include "script/cc.h"
 #include "cc/CCinclude.h"
 #include "pbaas/pbaas.h"
+#include "pbaas/reserves.h"
+#include "main.h"
 
 extern CTxMemPool mempool;
 
@@ -53,12 +55,12 @@ UniValue CNameReservation::ToUniValue() const
     if (IsVerusActive())
     {
         ret.push_back(Pair("parent", ""));
-        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetNameID(name, uint160())))));
+        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetID(name, uint160())))));
     }
     else
     {
         ret.push_back(Pair("parent", ConnectedChains.ThisChain().name));
-        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetNameID(name + "." + ConnectedChains.ThisChain().name, uint160())))));
+        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetID(name + "." + ConnectedChains.ThisChain().name, uint160())))));
     }
 
     return ret;
@@ -141,7 +143,7 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     }
     std::string revocationStr = uni_get_str(find_value(uni, "revocationauthorityid"));
     std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthorityid"));
-    uint160 nameID = GetNameID();
+    uint160 nameID = GetID();
     revocationAuthority = revocationStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(revocationStr)));
     recoveryAuthority = recoveryStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(recoveryStr)));
     libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
@@ -171,7 +173,7 @@ UniValue CIdentity::ToUniValue() const
 {
     UniValue obj = ((CPrincipal *)this)->ToUniValue();
 
-    obj.push_back(Pair("identityaddress", EncodeDestination(CIdentityID(GetNameID()))));
+    obj.push_back(Pair("identityaddress", EncodeDestination(CIdentityID(GetID()))));
     obj.push_back(Pair("parent", parent.GetHex()));
     obj.push_back(Pair("name", name));
 
@@ -254,14 +256,8 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                         p.evalCode == EVAL_IDENTITY_PRIMARY && 
                         (ret = CIdentity(coins.vout[it->first.index].scriptPubKey)).IsValid())
                     {
-                        if (ret.GetNameID() == nameID)
+                        if (ret.GetID() == nameID)
                         {
-                            // to be a confirmed identity, this identity either needs to:
-                            // 1. have only one identity output
-                            // 2. one of:
-                            //   a. spend an identity of the same ID
-                            //   b. spend an identity commitment and have an output matching both the identity commitment and identity output
-                            // ensuring this to be true is the responsibility of contextual transaction check
                             idTxIn = CTxIn(it->first.txhash, it->first.index);
                             *pHeightOut = it->second.blockHeight;
                         }
@@ -323,7 +319,84 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
 
 CIdentity CIdentity::LookupIdentity(const std::string &name, uint32_t height, uint32_t *pHeightOut, CTxIn *idTxIn)
 {
-    return LookupIdentity(GetNameID(name), height, pHeightOut, idTxIn);
+    return LookupIdentity(GetID(name), height, pHeightOut, idTxIn);
+}
+
+CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHeightOut, CTxIn *pIdTxIn, CTransaction *pidTx)
+{
+    CIdentity ret;
+
+    uint32_t heightOut = 0;
+
+    if (!pHeightOut)
+    {
+        pHeightOut = &heightOut;
+    }
+    else
+    {
+        *pHeightOut = 0;
+    }
+
+    CTxIn _idTxIn;
+    if (!pIdTxIn)
+    {
+        pIdTxIn = &_idTxIn;
+    }
+    CTxIn &idTxIn = *pIdTxIn;
+
+    std::vector<CAddressUnspentDbEntry> unspentOutputs;
+
+    LOCK(cs_main);
+
+    CKeyID keyID(CCrossChainRPCData::GetConditionID(idID, EVAL_IDENTITY_RESERVATION));
+
+    if (GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
+    {
+        CCoinsViewCache view(pcoinsTip);
+
+        for (auto it = unspentOutputs.begin(); !ret.IsValid() && it != unspentOutputs.end(); it++)
+        {
+            CCoins coins;
+
+            if (view.GetCoins(it->first.txhash, coins))
+            {
+                if (coins.IsAvailable(it->first.index))
+                {
+                    COptCCParams p;
+                    if (coins.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() && 
+                        p.evalCode == EVAL_IDENTITY_RESERVATION)
+                    {
+                        CTransaction idTx;
+                        uint256 blkHash;
+                        if (myGetTransaction(it->first.txhash, idTx, blkHash) && (ret = CIdentity(idTx)).IsValid() && ret.GetID() == idID)
+                        {
+                            int i;
+                            for (i = 0; i < idTx.vout.size(); i++)
+                            {
+                                COptCCParams p;
+                                if (idTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+                                {
+                                    break;
+                                }
+                            }
+
+                            if (i < idTx.vout.size())
+                            {
+                                if (pidTx)
+                                {
+                                    *pidTx = idTx;
+                                }
+                                idTxIn = CTxIn(it->first.txhash, it->first.index);
+                                *pHeightOut = it->second.blockHeight;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return ret;
 }
 
 // this enables earliest rejection of invalid CC transactions
@@ -336,8 +409,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
     int reservationCount = 0;
     CIdentity newIdentity;
     CNameReservation newName;
+    int referralsStart = 0;
     std::vector<CTxDestination> referrers;
     bool valid = true;
+
+    AssertLockHeld(cs_main);
 
     for (auto &txout : tx.vout)
     {
@@ -351,11 +427,12 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
                     valid = false;
                     break;
                 }
+                referralsStart++;
                 newIdentity = CIdentity(p.vData[0]);
             }
             else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
             {
-                if (reservationCount++ || p.vData.size() < 2)
+                if (identityCount || reservationCount++ || p.vData.size() < 2)
                 {
                     valid = false;
                     break;
@@ -364,7 +441,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
             }
             else if (identityCount && !reservationCount)
             {
-                if (!referrals || p.vKeys.size() < 1 || referrers.size() > 2)
+                if (!referrals || p.vKeys.size() < 1 || referrers.size() > 2 || p.evalCode != 0 || p.n > 1 || txout.nValue < newIdentity.ReferralAmount())
                 {
                     valid = false;
                     break;
@@ -377,34 +454,167 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
                 break;
             }
         }
+        else
+        {
+            if (!identityCount)
+            {
+                referralsStart++;
+            }
+        }
     }
-    if (!valid)
+    if (!identityCount || !valid)
     {
         return false;
     }
 
     // CHECK #2 - the name is not used on the blockchain or in the mempool
-    // lookup name on both blockchain and in mempool. if it is already present in either, then this cannot be valid
-    // TODO:PBAAS - make sure that RemoveConflicts on memory pool removes name conflicts as well
-    std::vector<std::pair<uint160, int>> addresses;
-    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> results;
-    mempool.getAddressIndex(addresses, results);
+    // lookup name on both blockchain and in mempool. if it is already present in either, then this is not valid
+    std::list<CTransaction> conflicts;
+    if (mempool.checkNameConflicts(tx, conflicts))
+    {
+        return false;
+    }
 
-    // CHECK #3 - transaction spends a matching name commitment
+    CTxIn idTxIn;
+    uint32_t priorHeightOut;
+    CIdentity dupID = newIdentity.LookupIdentity(newIdentity.GetID(), height, &priorHeightOut, &idTxIn);
+    if (dupID.IsValidUnrevoked())
+    {
+        return false;
+    }
 
-    // CHECK #4 - if blockchain referrals are not enabled, we are done, all further checks only if enabled
+    CCoinsViewCache view(pcoinsTip);
 
-    // CHECK #5 - if there is no referring identity, make sure the fees of this transaction are full price for an identity, all further checks only if there is a referrer
+    // CHECK #3a - if dupID is valid (and revoked), we need to be spending it to recover, or we are invalid
+    if (dupID.IsValid())
+    {
+        bool valid = false;
+        for (auto &oneTxIn : tx.vin)
+        {
+            if (oneTxIn.prevout.hash == idTxIn.prevout.hash && oneTxIn.prevout.n == idTxIn.prevout.n)
+            {
+                valid = true;
+                break;
+            }
+        }
+        if (!valid)
+        {
+            return false;
+        }
+    }
+    // CHECK #3b - if dupID is invalid, we need to spend matching name commitment
+    else
+    {
+        CCommitmentHash ch;
+        CCoins coins;
 
-    // CHECK #6 - ensure that the first referring output goes to the referring identity followed by up 
+        // from here, we must spend a matching name commitment
+        for (auto &oneTxIn : tx.vin)
+        {
+            if (!view.GetCoins(oneTxIn.prevout.hash, coins))
+            {
+                return false;   // can't get our input
+            }
+
+            COptCCParams p;
+            if (coins.vout[oneTxIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
+            {
+                ::FromVector(p.vData[0], ch);
+            }
+        }
+
+        if (ch.hash.IsNull())
+        {
+            return false;
+        }
+
+        // are we spending a matching name commitment?
+        if (ch.hash != newName.GetCommitment().hash)
+        {
+            return false;
+        }
+    }
+
+    CReserveTransactionDescriptor rtxd(tx, view, height);
+
+    // CHECK #4 - if blockchain referrals are not enabled or if there is no referring identity, make sure the fees of this transaction are full price for an identity, 
+    // all further checks only if referrals are enabled and there is a referrer
+    if (!referrals || newName.referral.IsNull())
+    {
+        // make sure the fees of this transaction are full price for an identity, all further checks only if there is a referrer
+        if (rtxd.NativeFees() < newIdentity.FullRegistrationAmount())
+        {
+            return false;
+        }
+        return true;
+    }
+
+    // CHECK #5 - ensure that the first referring output goes to the referring identity followed by up 
     //            to two identities that come from the original definition transaction of the referring identity. account for all outputs between
     //            identity out and reservation out and ensure that they are correct and pay 20% of the price of an identity
+    uint32_t heightOut = 0;
+    CTransaction referralTx;
 
-    // CHECK #7 - remove any referral identities that are revoked
+    CIdentity firstReferralIdentity = CIdentity::LookupFirstIdentity(newName.referral, &heightOut, &idTxIn, &referralTx);
+    // referrer must be mined in when this transaction is put into the mem pool
+    if (heightOut >= height || !firstReferralIdentity.IsValid())
+    {
+        return false;
+    }
 
-    // CHECK #8 - ensure that the transaction pays a fee of 80% of the full price for an identity, minus the value of each referral output between identity and reservation
+    bool isReferral = false;
+    std::vector<CTxDestination> checkReferrers = std::vector<CTxDestination>({newName.referral});
+    for (auto &txout : referralTx.vout)
+    {
+        COptCCParams p;
+        if (txout.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+        {
+            if (p.evalCode == EVAL_IDENTITY_PRIMARY)
+            {
+                isReferral = true;
+            }
+            else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
+            {
+                break;
+            }
+            else if (isReferral)
+            {
+                if (p.vKeys.size() == 0 || p.vKeys[0].which() != COptCCParams::ADDRTYPE_ID)
+                {
+                    // invalid referral
+                    return false;
+                }
+                else
+                {
+                    checkReferrers.push_back(p.vKeys[0]);
+                    if (checkReferrers.size() == 3)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if (referrers.size() != checkReferrers.size())
+    {
+        return false;
+    }
+    // make sure all paid referrers are correct
+    for (int i = 0; i < referrers.size(); i++)
+    {
+        if (referrers[i] != checkReferrers[i])
+        {
+            return false;
+        }
+    }
 
-    return valid;
+    // CHECK #6 - ensure that the transaction pays a fee of 80% of the full price for an identity, minus the value of each referral output between identity and reservation
+    if (rtxd.NativeFees() < newIdentity.ReferredRegistrationAmount())
+    {
+        return false;
+    }
+
+    return true;
 }
 
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height)

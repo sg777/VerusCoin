@@ -2144,13 +2144,13 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                 if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (*(CIdentity *)&identity = CIdentity(p.vData[0])).IsValid())
                 {
                     identity.txid = tx.GetHash();
-                    CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetNameID(), 
+                    CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
                                                                nHeight, 
                                                                1, 
                                                                CIdentityMapKey::VALID);
 
                     std::set<CKeyID> keySet;
-                    CIdentityID idID(identity.GetNameID());
+                    CIdentityID idID(identity.GetID());
                     int blockOrder = 1;
                     bool doneWithID = false;
 
@@ -2164,10 +2164,79 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     {
                         if (idHistory.first.blockHeight == nHeight && idHistory.second.txid != identity.txid)
                         {
-                            // if we find two identity updates at the same height, we need to determine all of the identities with this ID in this block
-                            // and make sure we set the order properly for all of them. the last one is the one that takes effect after the block is
-                            // mined
-                            // TODO - FINISH
+                            std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> thisHeightIdentities;
+                            CIdentityMapKey heightKey(idID, nHeight);
+                            GetIdentity(heightKey, heightKey, thisHeightIdentities);
+
+                            canSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
+                            std::map<uint256, std::pair<CIdentityMapKey, CIdentityMapValue>> firstIDMap({make_pair(identity.txid, 
+                                                                                                            make_pair(CIdentityMapKey(idID, 
+                                                                                                                                      nHeight,
+                                                                                                                                      thisHeightIdentities.size() + 1, 
+                                                                                                                                      canSignCanSpend.first ? CIdentityMapKey::CAN_SIGN : 0 + canSignCanSpend.second ? CIdentityMapKey::CAN_SPEND : 0), 
+                                                                                                                      identity))});
+                            for (auto &foundID : thisHeightIdentities)
+                            {
+                                firstIDMap[foundID.second.txid] = foundID;
+                            }
+
+                            // now we have all the entries of the specified height, including those from before and the new one in the firstIDMap
+                            // the #1 in the block is one that has none of its input txes in the map. the last is not present in any input tx
+                            // to sort, we make a new map, indexed by the one that it spends, then follow the chain
+                            std::map<uint256, std::pair<CIdentityMapKey, CIdentityMapValue>> indexedByPrior;
+                            std::pair<CIdentityMapKey, CIdentityMapValue> firstInBlock;
+
+                            for (auto &idEntry : firstIDMap)
+                            {
+                                uint256 spendsTxId;
+                                CTransaction entryTx;
+                                uint256 blkHash;
+                                if (!myGetTransaction(idEntry.first, entryTx, blkHash))
+                                {
+                                    LogPrint("%s - error: cannot retrieve transaction %s during sort of identity transactions in block, blockchain state may be corrupt and need resynchronization\n", __func__, idEntry.first.GetHex().c_str());
+                                }
+                                else
+                                {
+                                    bool isFirst = true;
+                                    for (auto &input : entryTx.vin)
+                                    {
+                                        auto idMapIt = firstIDMap.find(input.prevout.hash);
+                                        if (idMapIt != firstIDMap.end())
+                                        {
+                                            indexedByPrior[input.prevout.hash] = idEntry.second;
+                                            isFirst = false;
+                                        }
+                                    }
+                                    if (isFirst)
+                                    {
+                                        // this should first be added solo, so #1 should always be set
+                                        if (idEntry.second.first.blockOrder != 1)
+                                        {
+                                            LogPrint("%s - error: unexpected block order in %s\n", __func__, idEntry.first.GetHex().c_str());
+                                        }
+                                        firstInBlock = idEntry.second;
+                                    }
+                                }
+                            }
+
+                            if (!firstInBlock.first.IsValid())
+                            {
+                                LogPrint("%s - error: missing first in block\n", __func__);
+                            }
+                            else
+                            {
+                                // now validate that from 1st to last, we have order correct
+                                std::pair<CIdentityMapKey, CIdentityMapValue> *pCurID;
+                                int i = 1;
+                                for (pCurID = &firstInBlock; pCurID; i++)
+                                {
+                                    if (pCurID->first.blockOrder != i)
+                                    {
+                                        LogPrint("%s - error: incorrect block order in entry %s\n", __func__, pCurID->second.txid.GetHex().c_str());
+                                        printf("%s - error: incorrect block order in entry %s\n", __func__, pCurID->second.txid.GetHex().c_str());
+                                    }
+                                }
+                            }
                         }
                         else if (idHistory.first.blockHeight == nHeight)
                         {
@@ -2209,6 +2278,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     if (!doneWithID)
                     {
                         if (pblock)
+
                         {
                             // if we are deleting, current identity is what it was, idHistory is what it will roll back to, if adding, current is what it will be, idHistory is what it is
                             canSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
@@ -2217,7 +2287,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             if (!idHistory.second.IsValid() && canSignCanSpend.first)
                             {
                                 // add
-                                CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetNameID(), 
+                                CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
                                                                         nHeight, 
                                                                         blockOrder, 
                                                                         idHistory.first.VALID |
@@ -2227,7 +2297,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             }
                             else if (((canSignCanSpend.first || canSignCanSpend.first != wasCanSignCanSpend.first) && !(idHistory.first.flags & idHistory.first.BLACKLIST)) || (idHistory.first.flags & idHistory.first.MANUAL_HOLD))
                             {
-                                CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetNameID(), 
+                                CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
                                                                         nHeight, 
                                                                         blockOrder, 
                                                                         idHistory.first.VALID | 
@@ -2263,7 +2333,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                 {
                                     // add all UTXOs that are sent to this address to this wallet
                                     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
-                                    if (GetAddressUnspent(idID, 1, unspentOutputs))
+                                    if (GetAddressUnspent(idID, CScript::P2ID, unspentOutputs))
                                     {
                                         COptCCParams newP;
                                         auto consensus = Params().GetConsensus();

@@ -4154,7 +4154,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             "    {\n"
             "        \"name\"    : \"namestr\",     (string) the unique name in this commitment\n"
             "        \"salt\"    : \"hexstr\",      (hex)    salt used to hide the commitment\n"
-            "        \"referral\": \"identityaddress\", (base58) address of the referring identity if there is one\n"
+            "        \"referredby\": \"identityaddress\", (base58) address of the referring identity if there is one\n"
             "        \"parent\"  : \"namestr\",   (string) name of the parent if not Verus or Verus test\n"
             "        \"nameid\"  : \"address\",   (base58) identity address for this identity if it is created\n"
             "    }\n"
@@ -4204,7 +4204,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     // create the transaction with native coin as input
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    if (CIdentity::LookupIdentity(CIdentity::GetNameID(name, parent)).IsValid())
+    if (CIdentity::LookupIdentity(CIdentity::GetID(name, parent)).IsValid())
     {
         throw JSONRPCError(RPC_VERIFY_ALREADY_IN_CHAIN, "Identity already exists.");
     }
@@ -4331,15 +4331,15 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     newID.parent = parent;
 
-    CIdentity dupID = newID.LookupIdentity(newID.GetNameID());
+    CIdentity dupID = newID.LookupIdentity(newID.GetID());
     if (dupID.IsValid())
     {
         throw JSONRPCError(RPC_VERIFY_ALREADY_IN_CHAIN, "Identity already exists.");
     }
 
     // make sure we have a revocation and recovery authority defined
-    CIdentity revocationAuth = (newID.revocationAuthority.IsNull() || newID.revocationAuthority == newID.GetNameID()) ? newID : newID.LookupIdentity(newID.revocationAuthority);
-    CIdentity recoveryAuth = (newID.recoveryAuthority.IsNull() || newID.recoveryAuthority == newID.GetNameID()) ? newID : newID.LookupIdentity(newID.recoveryAuthority);
+    CIdentity revocationAuth = (newID.revocationAuthority.IsNull() || newID.revocationAuthority == newID.GetID()) ? newID : newID.LookupIdentity(newID.revocationAuthority);
+    CIdentity recoveryAuth = (newID.recoveryAuthority.IsNull() || newID.recoveryAuthority == newID.GetID()) ? newID : newID.LookupIdentity(newID.recoveryAuthority);
 
     if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
     {
@@ -4347,13 +4347,13 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
 
     // now we have a new and valid primary, revocation, and recovery identity, as well as a valid reservation
-    newID.revocationAuthority = revocationAuth.GetNameID();
-    newID.recoveryAuthority = recoveryAuth.GetNameID();
+    newID.revocationAuthority = revocationAuth.GetID();
+    newID.recoveryAuthority = recoveryAuth.GetID();
 
     // create the identity definition transaction & reservation key output
-    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetNameID())}), newID.minSigs, &reservation);
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false},
-                                                               {MakeMofNCCScript(condObj), feeOffer, false}});
+    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), newID.minSigs, &reservation);
+    CTxDestination resIndexDest = CKeyID(CCrossChainRPCData::GetConditionID(newID.GetID(), EVAL_IDENTITY_RESERVATION));
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}, {MakeMofNCCScript(condObj, &resIndexDest), feeOffer, false}});
 
     CWalletTx wtx;
 
@@ -4463,7 +4463,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    if (!(oldID = CIdentity::LookupIdentity(newID.GetNameID(), 0, &idHeight, &idTxIn)).IsValid())
+    if (!(oldID = CIdentity::LookupIdentity(newID.GetID(), 0, &idHeight, &idTxIn)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
     }

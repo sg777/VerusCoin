@@ -144,7 +144,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     }
     else if (std::count(str.begin(), str.end(), '@') == 1)
     {
-        return CIdentityID(CIdentity::GetNameID(str, uint160()));
+        return CIdentityID(CIdentity::GetID(str, uint160()));
     }
     
     return CNoDestination();

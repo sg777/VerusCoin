@@ -69,7 +69,7 @@ public:
 class CNameReservation
 {
 public:
-    static const CAmount DEFAULT_OUTPUT_AMOUNT = 10000;
+    static const CAmount DEFAULT_OUTPUT_AMOUNT = 0;
     static const int MAX_NAME_SIZE = (KOMODO_ASSETCHAIN_MAXLEN - 1);
     std::string name;
     CIdentityID referral;
@@ -82,7 +82,7 @@ public:
     {
         name = uni_get_str(find_value(uni, "name"));
         salt = uint256S(uni_get_str(find_value(uni, "salt")));
-        CTxDestination dest = DecodeDestination(uni_get_str(find_value(uni, "referral")));
+        CTxDestination dest = DecodeDestination(uni_get_str(find_value(uni, "referredby")));
         if (dest.which() == COptCCParams::ADDRTYPE_ID)
         {
             referral = CIdentityID(GetDestinationID(dest));
@@ -305,22 +305,38 @@ public:
         return IsValid() && !IsRevoked();
     }
 
+    inline static CAmount FullRegistrationAmount()
+    {
+        return MIN_REGISTRATION_AMOUNT;
+    }
+
+    inline static CAmount ReferredRegistrationAmount()
+    {
+        return (MIN_REGISTRATION_AMOUNT * 4) / 5;
+    }
+
+    inline static CAmount ReferralAmount()
+    {
+        return MIN_REGISTRATION_AMOUNT / 5;
+    }
+
     static std::string CleanName(const std::string &Name, uint160 &Parent);
-    CIdentityID GetNameID() const;
-    CIdentityID GetNameID(const std::string &Name) const;
-    static CIdentityID GetNameID(const std::string &Name, const uint160 &parent);
+    CIdentityID GetID() const;
+    CIdentityID GetID(const std::string &Name) const;
+    static CIdentityID GetID(const std::string &Name, const uint160 &parent);
 
     CIdentity LookupIdentity(const std::string &name, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr);
     static CIdentity LookupIdentity(const CIdentityID &nameID, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr);
+    static CIdentity LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHeightOut=nullptr, CTxIn *idTxIn=nullptr, CTransaction *pidTx=nullptr);
 
     CIdentity RevocationAuthority() const
     {
-        return GetNameID() == revocationAuthority ? *this : LookupIdentity(revocationAuthority);
+        return GetID() == revocationAuthority ? *this : LookupIdentity(revocationAuthority);
     }
 
     CIdentity RecoveryAuthority() const
     {
-        return GetNameID() == recoveryAuthority ? *this : LookupIdentity(recoveryAuthority);
+        return GetID() == recoveryAuthority ? *this : LookupIdentity(recoveryAuthority);
     }
 
     template <typename TOBJ>
@@ -330,7 +346,7 @@ public:
 
         if (IsValidUnrevoked())
         {
-            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(evalcode, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}), 1, &obj);
+            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(evalcode, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetID()))}), 1, &obj);
             ret = CTxOut(nValue, MakeMofNCCScript(ccObj));
         }
         return ret;
@@ -343,7 +359,7 @@ public:
 
         if (IsValidUnrevoked())
         {
-            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetNameID()))}), 1);
+            CConditionObj<TOBJ> ccObj = CConditionObj<TOBJ>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetID()))}), 1);
             ret = CTxOut(nValue, MakeMofNCCScript(ccObj));
         }
         return ret;
