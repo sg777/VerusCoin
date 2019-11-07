@@ -1260,6 +1260,24 @@ bool ContextualCheckTransaction(
 
         librustzcash_sapling_verification_ctx_free(ctx);
     }
+    // precheck all crypto conditions
+    for (int i = 0; i < tx.vout.size(); i++)
+    {
+        COptCCParams p;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode != EVAL_NONE)
+        {
+            CCcontract_info CC;
+            CCcontract_info *cp;
+            if (!(cp = CCinit(&CC, p.evalCode)))
+            {
+                return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
+            }
+            if (!CC.contextualprecheck(tx, i, nHeight))
+            {
+                return state.DoS(100, error(("ContextualCheckTransaction(): Contextual precheck for eval code " + to_string(p.evalCode) + " failed").c_str()), REJECT_INVALID, "bad-txns-evalcode-invalid");
+            }
+        }
+    }
     return true;
 }
 
