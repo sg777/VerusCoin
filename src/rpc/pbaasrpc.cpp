@@ -4373,6 +4373,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // add referrals
     if (ConnectedChains.ThisChain().IDReferrals() && !reservation.referral.IsNull())
     {
+        feeOffer = (feeOffer * 4) / 5;
         uint32_t referralHeight;
         CTxIn referralTxIn;
         CTransaction referralIdTx;
@@ -4386,13 +4387,16 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
             // create outputs for this referral and up to n identities back in the referral chain
             outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), CIdentity::MIN_REGISTRATION_AMOUNT / 5, false});
+            feeOffer -= CIdentity::MIN_REGISTRATION_AMOUNT / 5;
             for (int i = referralTxIn.prevout.n + 1; i < referralIdTx.vout.size() && i < CIdentity::REFERRAL_LEVELS; i++)
             {
                 CTxDestination nextID;
                 COptCCParams p;
+
                 if (referralIdTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == 0 && p.vKeys.size() && p.vKeys[0].which() == COptCCParams::ADDRTYPE_ID)
                 {
                     outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), CIdentity::MIN_REGISTRATION_AMOUNT / 5, false});
+                    feeOffer -= CIdentity::MIN_REGISTRATION_AMOUNT / 5;
                 }
                 else
                 {
