@@ -4630,7 +4630,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
     if (!(oldID = CIdentity::LookupIdentity(idID, 0, &idHeight, &idTxIn)).IsValid())
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + EncodeDestination(idID));
     }
 
     CIdentity newID(oldID);
