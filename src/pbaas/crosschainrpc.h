@@ -142,10 +142,10 @@ public:
     static const int64_t MIN_BILLING_PERIOD = 480;  // 8 hour minimum billing period for notarization, typically expect days/weeks/months
     static const int64_t DEFAULT_OUTPUT_VALUE = 100000;  // 0.001 VRSC default output value
 
-    static const uint32_t OPTION_RESERVE = 1; // allows reserve conversion using base calculations when set
-    static const uint32_t OPTION_ID_ISSUANCE = 2; // clear is permissionless, if set, IDs may only be created by controlling ID
-    static const uint32_t OPTION_ID_IMPORT = 4; // this allows the controlling ID to import
-    static const uint32_t OPTION_ID_STAKING = 8; // all IDs on chain stake equally, rather than value-based staking
+    static const uint32_t OPTION_RESERVE = 1;       // allows reserve conversion using base calculations when set
+    static const uint32_t OPTION_ID_ISSUANCE = 2;   // clear is permissionless, if set, IDs may only be created by controlling ID
+    static const uint32_t OPTION_ID_STAKING = 4;    // all IDs on chain stake equally, rather than value-based staking
+    static const uint32_t OPTION_ID_REFERRALS = 8;  // if set, this chain supports referrals
 
     uint32_t nVersion;                      // version of this chain definition data structure to allow for extensions (not daemon version)
     std::string name;                       // chain name - specifies the ID
@@ -282,6 +282,21 @@ public:
     bool IsReserve() const
     {
         return ChainOptions() & OPTION_RESERVE;
+    }
+
+    bool IDRequiresPermission() const
+    {
+        return ChainOptions() & OPTION_ID_ISSUANCE;
+    }
+
+    bool IDStaking() const
+    {
+        return ChainOptions() & OPTION_ID_STAKING;
+    }
+
+    bool IDReferrals() const
+    {
+        return ChainOptions() & OPTION_ID_REFERRALS;
     }
 };
 

@@ -82,7 +82,7 @@ public:
     {
         name = uni_get_str(find_value(uni, "name"));
         salt = uint256S(uni_get_str(find_value(uni, "salt")));
-        CTxDestination dest = DecodeDestination(uni_get_str(find_value(uni, "referredby")));
+        CTxDestination dest = DecodeDestination(uni_get_str(find_value(uni, "referral")));
         if (dest.which() == COptCCParams::ADDRTYPE_ID)
         {
             referral = CIdentityID(GetDestinationID(dest));
@@ -210,6 +210,7 @@ class CIdentity : public CPrincipal
 public:
     static const uint32_t FLAG_REVOKED = 0x8000;
     static const int64_t MIN_REGISTRATION_AMOUNT = 10000000000;
+    static const int REFERRAL_LEVELS = 3;
 
     uint160 parent;
 

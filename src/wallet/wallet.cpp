@@ -2169,15 +2169,35 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             GetIdentity(heightKey, heightKey, thisHeightIdentities);
 
                             canSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
-                            std::map<uint256, std::pair<CIdentityMapKey, CIdentityMapValue>> firstIDMap({make_pair(identity.txid, 
-                                                                                                            make_pair(CIdentityMapKey(idID, 
-                                                                                                                                      nHeight,
-                                                                                                                                      thisHeightIdentities.size() + 1, 
-                                                                                                                                      canSignCanSpend.first ? CIdentityMapKey::CAN_SIGN : 0 + canSignCanSpend.second ? CIdentityMapKey::CAN_SPEND : 0), 
-                                                                                                                      identity))});
+                            std::map<uint256, std::pair<CIdentityMapKey, CIdentityMapValue>> firstIDMap;
                             for (auto &foundID : thisHeightIdentities)
                             {
                                 firstIDMap[foundID.second.txid] = foundID;
+                            }
+
+                            if (firstIDMap.count(identity.txid))
+                            {
+                                blockOrder = firstIDMap[identity.txid].first.blockOrder;
+                                // no change, since we are already present
+                                wasCanSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
+                            }
+                            else
+                            {
+                                blockOrder = thisHeightIdentities.size() + 1;
+                                firstIDMap.insert(make_pair(identity.txid, 
+                                                            make_pair(CIdentityMapKey(idID, 
+                                                                                        nHeight,
+                                                                                        blockOrder, 
+                                                                                        canSignCanSpend.first ? CIdentityMapKey::CAN_SIGN : 0 + canSignCanSpend.second ? CIdentityMapKey::CAN_SPEND : 0), 
+                                                                      identity)));
+                                if (pblock)
+                                {
+                                    wasCanSignCanSpend = CheckAuthority(idHistory.second.primaryAddresses, idHistory.second.minSigs);
+                                }
+                                else
+                                {
+                                    wasCanSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
+                                }
                             }
 
                             // now we have all the entries of the specified height, including those from before and the new one in the firstIDMap
@@ -2278,7 +2298,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     if (!doneWithID)
                     {
                         if (pblock)
-
                         {
                             // if we are deleting, current identity is what it was, idHistory is what it will roll back to, if adding, current is what it will be, idHistory is what it is
                             canSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);

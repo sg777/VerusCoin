@@ -43,14 +43,7 @@ UniValue CNameReservation::ToUniValue() const
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("name", name));
     ret.push_back(Pair("salt", salt.GetHex()));
-    if (referral.IsNull())
-    {
-        ret.push_back(Pair("referredby", ""));
-    }
-    else
-    {
-        ret.push_back(Pair("referredby", EncodeDestination(referral)));
-    }
+    ret.push_back(Pair("referral", referral.IsNull() ? "" : EncodeDestination(referral)));
 
     if (IsVerusActive())
     {
@@ -441,7 +434,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
             }
             else if (identityCount && !reservationCount)
             {
-                if (!referrals || p.vKeys.size() < 1 || referrers.size() > 2 || p.evalCode != 0 || p.n > 1 || txout.nValue < newIdentity.ReferralAmount())
+                if (!referrals || p.vKeys.size() < 1 || referrers.size() > (CIdentity::REFERRAL_LEVELS - 1) || p.evalCode != 0 || p.n > 1 || txout.nValue < newIdentity.ReferralAmount())
                 {
                     valid = false;
                     break;
@@ -520,6 +513,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
             if (coins.vout[oneTxIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
             {
                 ::FromVector(p.vData[0], ch);
+                break;
             }
         }
 
@@ -531,6 +525,12 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
         // are we spending a matching name commitment?
         if (ch.hash != newName.GetCommitment().hash)
         {
+            return false;
+        }
+
+        if (!newName.referral.IsNull() && referrals && !(CIdentity::LookupIdentity(newName.referral, coins.nHeight - 1).IsValid()))
+        {
+            // invalid referral identity
             return false;
         }
     }
@@ -587,7 +587,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
                 else
                 {
                     checkReferrers.push_back(p.vKeys[0]);
-                    if (checkReferrers.size() == 3)
+                    if (checkReferrers.size() == CIdentity::REFERRAL_LEVELS)
                     {
                         break;
                     }
@@ -619,7 +619,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
 
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height)
 {
-    return PrecheckIdentityReservation(tx, outNum, height, true);
+    return PrecheckIdentityReservation(tx, outNum, height, ConnectedChains.ThisChain().IDReferrals());
 }
 
 bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)

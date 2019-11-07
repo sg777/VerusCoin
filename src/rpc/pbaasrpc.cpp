@@ -4154,7 +4154,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             "    {\n"
             "        \"name\"    : \"namestr\",     (string) the unique name in this commitment\n"
             "        \"salt\"    : \"hexstr\",      (hex)    salt used to hide the commitment\n"
-            "        \"referredby\": \"identityaddress\", (base58) address of the referring identity if there is one\n"
+            "        \"referral\": \"identityaddress\", (base58) address of the referring identity if there is one\n"
             "        \"parent\"  : \"namestr\",   (string) name of the parent if not Verus or Verus test\n"
             "        \"nameid\"  : \"address\",   (base58) identity address for this identity if it is created\n"
             "    }\n"
@@ -4183,15 +4183,22 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid control address for commitment");
     }
 
+    // create the transaction with native coin as input
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
     CIdentityID referrer;
     if (params.size() > 2)
     {
-        CTxDestination referDest = DecodeDestination(uni_get_str(params[1]));
+        CTxDestination referDest = DecodeDestination(uni_get_str(params[2]));
         if (referDest.which() != COptCCParams::ADDRTYPE_ID)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid referral identity for commitment, must be a currently registered friendly name or i-address");
         }
         referrer = CIdentityID(GetDestinationID(referDest));
+        if (!CIdentity::LookupIdentity(referrer).IsValidUnrevoked())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Referral identity for commitment must be a currently valid, unrevoked friendly name or i-address");
+        }
     }
 
     CNameReservation nameRes(name, referrer, GetRandHash());
@@ -4200,9 +4207,6 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CConditionObj<CCommitmentHash> condObj(EVAL_IDENTITY_COMMITMENT, std::vector<CTxDestination>({dest}), 1, &commitment);
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{MakeMofNCCScript(condObj, &dest), CCommitmentHash::DEFAULT_OUTPUT_AMOUNT, false}});
     CWalletTx wtx;
-
-    // create the transaction with native coin as input
-    LOCK2(cs_main, pwalletMain->cs_wallet);
 
     if (CIdentity::LookupIdentity(CIdentity::GetID(name, parent)).IsValid())
     {
@@ -4244,6 +4248,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             "    {\n"
             "        \"name\": \"namestr\",     (string) the unique name in this commitment\n"
             "        \"salt\": \"hexstr\",      (hex)    salt used to hide the commitment\n"
+            "        \"referrer\": \"identityID\", (name@ or address) must be a valid ID to use as a referrer to receive a discount\n"
             "    }\n"
             "    \"identity\" :\n"
             "    {\n"
@@ -4291,6 +4296,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     uint256 hashBlk;
+    uint32_t commitmentHeight;
     CTransaction txOut;
     CCommitmentHash ch;
     int commitmentOutput;
@@ -4302,6 +4308,15 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or unconfirmed commitment transaction id");
         }
+
+        auto indexIt = mapBlockIndex.find(hashBlk);
+        if (indexIt == mapBlockIndex.end() || indexIt->second->GetHeight() <= chainActive.Height() || chainActive[indexIt->second->GetHeight()]->GetBlockHash() != indexIt->second->GetBlockHash())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or unconfirmed commitment");
+        }
+
+        commitmentHeight = indexIt->second->GetHeight();
+
         for (int i = 0; i < txOut.vout.size(); i++)
         {
             COptCCParams p;
@@ -4353,7 +4368,46 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // create the identity definition transaction & reservation key output
     CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), newID.minSigs, &reservation);
     CTxDestination resIndexDest = CKeyID(CCrossChainRPCData::GetConditionID(newID.GetID(), EVAL_IDENTITY_RESERVATION));
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}, {MakeMofNCCScript(condObj, &resIndexDest), feeOffer, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
+
+    // add referrals
+    if (ConnectedChains.ThisChain().IDReferrals() && !reservation.referral.IsNull())
+    {
+        uint32_t referralHeight;
+        CTxIn referralTxIn;
+        CTransaction referralIdTx;
+        auto referralIdentity =  newID.LookupIdentity(reservation.referral, commitmentHeight - 1);
+        if (referralIdentity.IsValidUnrevoked())
+        {
+            if (!newID.LookupFirstIdentity(reservation.referral, &referralHeight, &referralTxIn, &referralIdTx).IsValid())
+            {
+                throw JSONRPCError(RPC_DATABASE_ERROR, "Database or blockchain data error, \"" + referralIdentity.name + "\" seems valid, but first instance is not found in index");
+            }
+
+            // create outputs for this referral and up to n identities back in the referral chain
+            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), CIdentity::MIN_REGISTRATION_AMOUNT / 5, false});
+            for (int i = referralTxIn.prevout.n + 1; i < referralIdTx.vout.size() && i < CIdentity::REFERRAL_LEVELS; i++)
+            {
+                CTxDestination nextID;
+                COptCCParams p;
+                if (referralIdTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == 0 && p.vKeys.size() && p.vKeys[0].which() == COptCCParams::ADDRTYPE_ID)
+                {
+                    outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), CIdentity::MIN_REGISTRATION_AMOUNT / 5, false});
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked referral identity at time of commitment");
+
+        }
+    }
+
+    outputs.push_back({MakeMofNCCScript(condObj, &resIndexDest), feeOffer, false});
 
     CWalletTx wtx;
 
