@@ -4373,7 +4373,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // add referrals
     if (ConnectedChains.ThisChain().IDReferrals() && !reservation.referral.IsNull())
     {
-        feeOffer = (feeOffer * 4) / 5;
+        feeOffer = (feeOffer * (CIdentity::REFERRAL_LEVELS + 1)) / (CIdentity::REFERRAL_LEVELS + 2);
         uint32_t referralHeight;
         CTxIn referralTxIn;
         CTransaction referralIdTx;
@@ -4386,8 +4386,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             }
 
             // create outputs for this referral and up to n identities back in the referral chain
-            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), CIdentity::MIN_REGISTRATION_AMOUNT / 5, false});
-            feeOffer -= CIdentity::MIN_REGISTRATION_AMOUNT / 5;
+            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), CIdentity::MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2), false});
+            feeOffer -= CIdentity::MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2);
             for (int i = referralTxIn.prevout.n + 1; i < referralIdTx.vout.size() && i < CIdentity::REFERRAL_LEVELS; i++)
             {
                 CTxDestination nextID;
@@ -4395,8 +4395,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
                 if (referralIdTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == 0 && p.vKeys.size() && p.vKeys[0].which() == COptCCParams::ADDRTYPE_ID)
                 {
-                    outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), CIdentity::MIN_REGISTRATION_AMOUNT / 5, false});
-                    feeOffer -= CIdentity::MIN_REGISTRATION_AMOUNT / 5;
+                    outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), CIdentity::MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2), false});
+                    feeOffer -= CIdentity::MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2);
                 }
                 else
                 {
@@ -4407,7 +4407,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         else
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked referral identity at time of commitment");
-
         }
     }
 
@@ -4545,7 +4544,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     mtx.vin.push_back(idTxIn);
 
     // all of the reservation output is actually the fee offer, so zero the output
-    (CTransaction)wtx = CTransaction(mtx);
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
 
     // now sign
     CCoinsViewCache view(pcoinsTip);
@@ -4573,7 +4572,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
             UpdateTransaction(mtx, i, sigdata);
         }
     }
-    (CTransaction)wtx = CTransaction(mtx);
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
 
     if (returnTx)
     {
@@ -4606,6 +4605,95 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
     }
 
     CheckPBaaSAPIsValid();
+
+    // get identity
+    bool returnTx = false;
+    CTxDestination idDest = DecodeDestination(uni_get_str(params[0]));
+
+    if (!idDest.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
+    }
+
+    CIdentityID idID(GetDestinationID(idDest));
+
+    if (params.size() > 1)
+    {
+        returnTx = uni_get_bool(params[1], false);
+    }
+
+    CTxIn idTxIn;
+    CIdentity oldID;
+    uint32_t idHeight;
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    if (!(oldID = CIdentity::LookupIdentity(idID, 0, &idHeight, &idTxIn)).IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
+    }
+
+    CIdentity newID(oldID);
+    newID.Revoke();
+
+    // create the identity definition transaction
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
+    CWalletTx wtx;
+
+    CReserveKey reserveKey(pwalletMain);
+    CAmount fee;
+    int nChangePos;
+    string failReason;
+
+    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, nullptr, false))
+    {
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to create update transaction: " + failReason);
+    }
+    CMutableTransaction mtx(wtx);
+
+    // add the spend of the last ID transaction output
+    mtx.vin.push_back(idTxIn);
+
+    // all of the reservation output is actually the fee offer, so zero the output
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    // now sign
+    CCoinsViewCache view(pcoinsTip);
+    for (int i = 0; i < wtx.vin.size(); i++)
+    {
+        bool signSuccess;
+        SignatureData sigdata;
+
+        CCoins coins;
+        if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
+        {
+            break;
+        }
+
+        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
+
+        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, SIGHASH_ALL), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
+
+        if (!signSuccess)
+        {
+            LogPrintf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            printf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
+        } else {
+            UpdateTransaction(mtx, i, sigdata);
+        }
+    }
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    if (returnTx)
+    {
+        return EncodeHexTx(wtx);
+    }
+    else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+    {
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+    }
+    return wtx.GetHash().GetHex();
 }
 
 UniValue recoveridentity(const UniValue& params, bool fHelp)
@@ -4626,8 +4714,96 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
             + HelpExampleRpc("recoveridentity", "\'{\"name\" : \"myname\"}\'")
         );
     }
-
     CheckPBaaSAPIsValid();
+
+    // get identity
+    bool returnTx = false;
+    CIdentity newID(params[0]);
+
+    if (!newID.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
+    }
+
+    if (params.size() > 1)
+    {
+        returnTx = uni_get_bool(params[1], false);
+    }
+
+    CTxIn idTxIn;
+    CIdentity oldID;
+    uint32_t idHeight;
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    if (!(oldID = CIdentity::LookupIdentity(newID.GetID(), 0, &idHeight, &idTxIn)).IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
+    }
+
+    if (!oldID.IsRevoked())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity must be revoked in order to recover : " + newID.name);
+    }
+
+    // create the identity definition transaction
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
+    CWalletTx wtx;
+
+    CReserveKey reserveKey(pwalletMain);
+    CAmount fee;
+    int nChangePos;
+    string failReason;
+
+    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, nullptr, false))
+    {
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to create update transaction: " + failReason);
+    }
+    CMutableTransaction mtx(wtx);
+
+    // add the spend of the last ID transaction output
+    mtx.vin.push_back(idTxIn);
+
+    // all of the reservation output is actually the fee offer, so zero the output
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    // now sign
+    CCoinsViewCache view(pcoinsTip);
+    for (int i = 0; i < wtx.vin.size(); i++)
+    {
+        bool signSuccess;
+        SignatureData sigdata;
+
+        CCoins coins;
+        if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
+        {
+            break;
+        }
+
+        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
+
+        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, SIGHASH_ALL), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
+
+        if (!signSuccess)
+        {
+            LogPrintf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            printf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
+        } else {
+            UpdateTransaction(mtx, i, sigdata);
+        }
+    }
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    if (returnTx)
+    {
+        return EncodeHexTx(wtx);
+    }
+    else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+    {
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+    }
+    return wtx.GetHash().GetHex();
 }
 
 UniValue getidentity(const UniValue& params, bool fHelp)

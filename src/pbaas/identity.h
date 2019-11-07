@@ -313,12 +313,12 @@ public:
 
     inline static CAmount ReferredRegistrationAmount()
     {
-        return (MIN_REGISTRATION_AMOUNT * 4) / 5;
+        return (MIN_REGISTRATION_AMOUNT * (CIdentity::REFERRAL_LEVELS + 1)) / (CIdentity::REFERRAL_LEVELS + 2);
     }
 
     inline static CAmount ReferralAmount()
     {
-        return MIN_REGISTRATION_AMOUNT / 5;
+        return MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2);
     }
 
     static std::string CleanName(const std::string &Name, uint160 &Parent);
