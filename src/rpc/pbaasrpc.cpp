@@ -4379,8 +4379,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     CTxDestination resIndexDest = CKeyID(CCrossChainRPCData::GetConditionID(newID.GetID(), EVAL_IDENTITY_RESERVATION));
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
 
-    // add referrals
-    if (ConnectedChains.ThisChain().IDReferrals() && !reservation.referral.IsNull())
+    // add referrals, Verus supports referrals
+    if ((ConnectedChains.ThisChain().IDReferrals() || IsVerusActive()) && !reservation.referral.IsNull())
     {
         feeOffer = (feeOffer * (CIdentity::REFERRAL_LEVELS + 1)) / (CIdentity::REFERRAL_LEVELS + 2);
         uint32_t referralHeight;

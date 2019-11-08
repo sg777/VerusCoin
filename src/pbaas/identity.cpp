@@ -625,7 +625,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
 
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height)
 {
-    return PrecheckIdentityReservation(tx, outNum, height, ConnectedChains.ThisChain().IDReferrals());
+    return IsVerusActive() || PrecheckIdentityReservation(tx, outNum, height, ConnectedChains.ThisChain().IDReferrals());
 }
 
 CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn)
