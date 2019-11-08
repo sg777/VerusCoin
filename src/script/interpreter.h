@@ -184,7 +184,7 @@ public:
         const std::vector<unsigned char>& ffillBin,
         const CScript& scriptCode,
         uint32_t consensusBranchId) const;
-    virtual int CheckEvalCondition(const CC *cond) const;
+    virtual int CheckEvalCondition(const CC *cond, int fulfilled) const;
 };
 
 class MutableTransactionSignatureChecker : public TransactionSignatureChecker

@@ -1495,7 +1495,7 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
             bool validHash = (value != 0);
             bool enablePOSNonce = CPOSNonce::NewPOSActive(height);
             bool newPOSEnforcement = enablePOSNonce && (Params().GetConsensus().vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight <= height);
-            bool supportInstantSpend = CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::SOLUTION_VERUSV3;
+            bool supportInstantSpend = !IsVerusActive() && CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::SOLUTION_VERUSV3;
             uint256 rawHash;
             arith_uint256 posHash;
 

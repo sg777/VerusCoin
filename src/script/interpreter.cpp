@@ -1543,9 +1543,9 @@ int TransactionSignatureChecker::CheckCryptoCondition(
         return 0;
     }
 
-    VerifyEval eval = [] (CC *cond, void *checker) {
+    VerifyEval eval = [] (CC *cond, void *checker, int fulfilled) {
         //fprintf(stderr,"checker.%p\n",(TransactionSignatureChecker*)checker);
-        return ((TransactionSignatureChecker*)checker)->CheckEvalCondition(cond);
+        return ((TransactionSignatureChecker*)checker)->CheckEvalCondition(cond, fulfilled);
     };
 
     //fprintf(stderr,"non-checker path\n");
@@ -1558,7 +1558,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
 }
 
 
-int TransactionSignatureChecker::CheckEvalCondition(const CC *cond) const
+int TransactionSignatureChecker::CheckEvalCondition(const CC *cond, int filfilled) const
 {
     //fprintf(stderr, "Cannot check crypto-condition Eval outside of server, returning true in pre-checks\n");
     return true;

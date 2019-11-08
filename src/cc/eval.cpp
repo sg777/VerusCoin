@@ -32,11 +32,11 @@ Eval* EVAL_TEST = 0;
 struct CCcontract_info CCinfos[0x100];
 extern pthread_mutex_t KOMODO_CC_mutex;
 
-bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn)
+bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fulfilled)
 {
     EvalRef eval;
     pthread_mutex_lock(&KOMODO_CC_mutex);
-    bool out = eval->Dispatch(cond, tx, nIn);
+    bool out = eval->Dispatch(cond, tx, nIn, fulfilled);
     pthread_mutex_unlock(&KOMODO_CC_mutex);
     //fprintf(stderr,"out %d vs %d isValid\n",(int32_t)out,(int32_t)eval->state.IsValid());
     assert(eval->state.IsValid() == out);
@@ -61,7 +61,7 @@ bool DefaultCCContextualPreCheck(const CTransaction &tx, int32_t outNum, uint32_
 /*
  * Test the validity of an Eval node
  */
-bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn)
+bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn, bool fulfilled)
 {
     struct CCcontract_info *cp;
     if (cond->codeLength == 0)
@@ -89,6 +89,12 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn)
         case EVAL_CROSSCHAIN_EXPORT:
         case EVAL_CROSSCHAIN_IMPORT:
         case EVAL_CURRENCYSTATE:
+            if (!chainActive.LastTip() || CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight() + 1) < CActivationHeight::SOLUTION_VERUSV4)
+            {
+                // if chain is not able to process this yet, don't drop through to do so
+                break;
+            }
+
         case EVAL_IDENTITY_PRIMARY:
         case EVAL_IDENTITY_REVOKE:
         case EVAL_IDENTITY_RECOVER:
@@ -101,7 +107,7 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn)
             }
 
         case EVAL_STAKEGUARD:
-            return(ProcessCC(cp,this, vparams, txTo, nIn));
+            return(ProcessCC(cp,this, vparams, txTo, nIn, fulfilled));
             break;
 
         case EVAL_IMPORTPAYOUT:

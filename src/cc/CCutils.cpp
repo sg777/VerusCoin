@@ -417,7 +417,7 @@ CPubKey GetUnspendable(struct CCcontract_info *cp,uint8_t *unspendablepriv)
     return(pubkey2pk(ParseHex(cp->CChexstr)));
 }
 
-bool ProcessCC(struct CCcontract_info *cp,Eval* eval, std::vector<uint8_t> paramsNull,const CTransaction &ctx, unsigned int nIn)
+bool ProcessCC(struct CCcontract_info *cp,Eval* eval, std::vector<uint8_t> paramsNull,const CTransaction &ctx, unsigned int nIn, bool fulfilled)
 {
     CTransaction createTx; uint256 assetid,assetid2,hashBlock; uint8_t funcid; int32_t height,i,n,from_mempool = 0; int64_t amount; std::vector<uint8_t> origpubkey;
     height = KOMODO_CONNECTING;
@@ -442,7 +442,7 @@ bool ProcessCC(struct CCcontract_info *cp,Eval* eval, std::vector<uint8_t> param
         return eval->Invalid("Cannot have params");
     //else if ( ctx.vout.size() == 0 )      // spend can go to z-addresses
     //    return eval->Invalid("no-vouts");
-    else if ( (*cp->validate)(cp,eval,ctx,nIn) != 0 )
+    else if ( (*cp->validate)(cp, eval, ctx, nIn, fulfilled) != 0 )
     {
         //fprintf(stderr,"done CC %02x\n",cp->evalcode);
         //cp->prevtxid = txid;

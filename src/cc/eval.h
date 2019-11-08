@@ -95,7 +95,7 @@ public:
     /*
      * Test validity of a CC_Eval node
      */
-    virtual bool Dispatch(const CC *cond, const CTransaction &tx, unsigned int nIn);
+    virtual bool Dispatch(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fulfilled);
 
     /*
      * Dispute a payout using a VM
@@ -146,7 +146,7 @@ public:
 
 
 
-bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn);
+bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fulfilled);
 
 
 /*
@@ -301,7 +301,7 @@ typedef std::pair<uint256,MerkleBranch> TxProof;
 bool DefaultCCContextualPreCheck(const CTransaction &tx, int32_t outNum, uint32_t height);
 uint256 GetMerkleRoot(const std::vector<uint256>& vLeaves);
 struct CCcontract_info *CCinit(struct CCcontract_info *cp,uint8_t evalcode);
-bool ProcessCC(struct CCcontract_info *cp,Eval* eval, std::vector<uint8_t> paramsNull, const CTransaction &tx, unsigned int nIn);
+bool ProcessCC(struct CCcontract_info *cp,Eval* eval, std::vector<uint8_t> paramsNull, const CTransaction &tx, unsigned int nIn, bool fulfilled);
 
 
 #endif /* CC_EVAL_H */

@@ -455,7 +455,13 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
             }
         }
     }
-    if (!identityCount || !valid)
+
+    // we can close a reservation UTXO without an identity
+    if (valid && !identityCount)
+    {
+        return true;
+    }
+    else if (!valid)
     {
         return false;
     }
@@ -622,36 +628,161 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
     return PrecheckIdentityReservation(tx, outNum, height, ConnectedChains.ThisChain().IDReferrals());
 }
 
-bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn)
 {
-    // TODO:PBAAS right now, any of the three controlling identities can do any modification
-    // ensure that each can only do what it is allowed. the best way to do this would be to change
-    // evaluation of crypto conditions to create multi-condition branches in the tree at each
-    // threshold condition, enabling evals to be naturally connected to their sub-group of signatures
+    // if not fulfilled, ensure that no part of the primary identity is modified
+    CIdentity oldIdentity;
+    CTransaction sourceTx;
+    uint256 blkHash;
+    if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
+    {
+        COptCCParams p;
+        if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() && 
+            p.evalCode == EVAL_IDENTITY_PRIMARY && 
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
+        {
+            oldIdentity = CIdentity(p.vData[0]);
+        }
+    }
+    return oldIdentity;
+}
+
+bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
+{
+    CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn);
+    if (!oldIdentity.IsValid())
+    {
+        return false;
+    }
+
+    CIdentity newIdentity(spendingTx);
+    if (!newIdentity.IsValid())
+    {
+        return false;
+    }
+
+    if (oldIdentity.IsInvalidMutation(newIdentity))
+    {
+        return false;
+    }
+
+    if (!fulfilled && oldIdentity.IsPrimaryMutation(newIdentity))
+    {
+        return false;
+    }
     return true;
 }
 
-bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
-    // validate that from the input to the output, the only changes are those allowed by the primary identity
+    CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn);
+    if (!oldIdentity.IsValid())
+    {
+        return false;
+    }
+
+    CIdentity newIdentity(spendingTx);
+    if (!newIdentity.IsValid())
+    {
+        return false;
+    }
+
+    if (oldIdentity.IsInvalidMutation(newIdentity))
+    {
+        return false;
+    }
+
+    if (!fulfilled && oldIdentity.IsRevocation(newIdentity))
+    {
+        return false;
+    }
+
     return true;
 }
 
-bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
-    // validate that from the input to the output, the only changes are those allowed by the primary identity
+    CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn);
+    if (!oldIdentity.IsValid())
+    {
+        return false;
+    }
+
+    CIdentity newIdentity(spendingTx);
+    if (!newIdentity.IsValid())
+    {
+        return false;
+    }
+
+    if (oldIdentity.IsInvalidMutation(newIdentity))
+    {
+        return false;
+    }
+
+    if (!fulfilled && oldIdentity.IsRecovery(newIdentity))
+    {
+        return false;
+    }
+
     return true;
 }
 
-bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
+    // if not fulfilled, return true so as to allow it to fail if fulfillment matters, but not to veto
+    if (!fulfilled)
+    {
+        return true;
+    }
+
+    CCommitmentHash ch;
+    CNameReservation reservation;
+    CTransaction sourceTx;
+    uint256 blkHash;
+    if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
+    {
+        COptCCParams p;
+        if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() && 
+            p.evalCode == EVAL_IDENTITY_PRIMARY && 
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
+        {
+            ch = CCommitmentHash(p.vData[0]);
+        }
+        else
+        {
+            return false;
+        }
+
+        for (auto output : spendingTx.vout)
+        {
+            if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1)
+            {
+                if (reservation.IsValid())
+                {
+                    return false;
+                }
+                else
+                {
+                    reservation = CNameReservation(p.vData[0]);
+                    if (!reservation.IsValid() || reservation.GetCommitment().hash != ch.hash)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
     return true;
 }
 
-bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
-    // validate that spender follows the rules of the role they spent in
-    return true;
+    // identity reservations are unspendable
+    return false;
 }
 
 bool IsIdentityInput(const CScript &scriptSig)

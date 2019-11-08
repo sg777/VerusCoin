@@ -782,38 +782,38 @@ bool IsVerusActive();
 
 // used to export coins from one chain to another, if they are not native, they are represented on the other
 // chain as tokens
-bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsCrossChainExportInput(const CScript &scriptSig);
 
 // used to validate import of coins from one chain to another. if they are not native and are supported,
 // they are represented o the chain as tokens
-bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsCrossChainImportInput(const CScript &scriptSig);
 
 // used to validate a specific service reward based on the spending transaction
-bool ValidateServiceReward(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateServiceReward(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsServiceRewardInput(const CScript &scriptSig);
 
 // used as a proxy token output for a reserve currency on its fractional reserve chain
-bool ValidateReserveOutput(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateReserveOutput(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsReserveOutputInput(const CScript &scriptSig);
 
 // used to transfer a reserve currency between chains
-bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsReserveTransferInput(const CScript &scriptSig);
 
 // used as exchange tokens between reserves and fractional reserves
-bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsReserveExchangeInput(const CScript &scriptSig);
 
 // used to deposit reserves into a reserve UTXO set
-bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsReserveDepositInput(const CScript &scriptSig);
 
-bool ValidateChainDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateChainDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsChainDefinitionInput(const CScript &scriptSig);
 
-bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsCurrencyStateInput(const CScript &scriptSig);
 
 bool GetCCParams(const CScript &scr, COptCCParams &ccParams);

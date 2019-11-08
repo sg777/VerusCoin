@@ -24,7 +24,7 @@ public:
     virtual bool CanValidateIDs() const { return true; }
 
     bool VerifySignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
-    int CheckEvalCondition(const CC *cond) const;
+    int CheckEvalCondition(const CC *cond, int fulfilled) const;
 };
 
 #endif // BITCOIN_SCRIPT_SERVERCHECKER_H

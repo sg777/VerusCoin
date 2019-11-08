@@ -103,7 +103,7 @@ static uint32_t evalSubtypes(const CC *cond) {
 /*
  * The JSON api doesn't contain custom verifiers, so a stub method is provided suitable for testing
  */
-int jsonVerifyEval(CC *cond, void *context) {
+int jsonVerifyEval(CC *cond, void *context, int fulfilled) {
     if (cond->codeLength == 5 && 0 == memcmp(cond->code, "TEST", 4)) {
         return cond->code[5];
     }
@@ -118,10 +118,26 @@ typedef struct CCEvalVerifyData {
 } CCEvalVerifyData;
 
 
+void cc_setEvalVisitorFulfilled(CCVisitor *visitor, int fulfilled)
+{
+    const uint8_t *fulfilledStr = "1";
+    const uint8_t *notFulfilledStr = "0";
+    if (visitor->msgLength == 0)
+    {
+        visitor->msgLength = 1;
+    }
+    visitor->msg = fulfilled ? fulfilledStr : notFulfilledStr;
+}
+
+int cc_isEvalVisitorFulfilled(CCVisitor *visitor)
+{
+    return (visitor->msgLength == 1 && visitor->msg[0] == '1');
+}
+
 int evalVisit(CC *cond, CCVisitor visitor) {
     if (cond->type->typeId != CC_Eval) return 1;
     CCEvalVerifyData *evalData = visitor.context;
-    return evalData->verify(cond, evalData->context);
+    return evalData->verify(cond, evalData->context, cc_isEvalVisitorFulfilled(&visitor));
 }
 
 int cc_isEvalVisitor(CCVisitor *visitor)
@@ -134,7 +150,8 @@ int cc_isEvalVisitor(CCVisitor *visitor)
 
 int cc_verifyEval(const CC *cond, VerifyEval verify, void *context) {
     CCEvalVerifyData evalData = {verify, context};
-    CCVisitor visitor = {&evalVisit, "", 0, &evalData};
+    // assume fulfilled if not modified
+    CCVisitor visitor = {&evalVisit, "1", 1, &evalData};
     return cc_visit(cond, visitor);
 }
 

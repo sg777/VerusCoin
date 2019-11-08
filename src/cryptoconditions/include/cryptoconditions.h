@@ -27,9 +27,9 @@ enum CCTypeId {
 
 
 /*
- * Evaliliary verification callback
+ * Evaliliary verification callback, fulfilled is zero if the node was not fulfilled in its signatures, 1 if it was
  */
-typedef int (*VerifyEval)(struct CC *cond, void *context);
+typedef int (*VerifyEval)(struct CC *cond, void *context, int fulfilled);
 
 
 
@@ -76,6 +76,8 @@ int             cc_verify(const struct CC *cond, const uint8_t *msg, size_t msgL
                         VerifyEval verifyEval, void *evalContext, int checkSig);
 int             cc_visit(CC *cond, struct CCVisitor visitor);
 int             cc_isEvalVisitor(CCVisitor *visitor);
+void            cc_setEvalVisitorFulfilled(CCVisitor *visitor, int fulfilled);
+int             cc_isEvalVisitorFulfilled(CCVisitor *visitor);
 int             cc_signTreeEd25519(CC *cond, const uint8_t *privateKey, const uint8_t *msg,
                         const size_t msgLength);
 int             cc_signTreeSecp256k1Msg32(CC *cond, const uint8_t *privateKey, const uint8_t *msg32);

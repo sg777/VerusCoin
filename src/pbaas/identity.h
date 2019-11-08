@@ -203,6 +203,25 @@ public:
     {
         return (nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID);
     }
+
+    bool IsPrimaryMutation(const CPrincipal &newPrincipal)
+    {
+        if (nVersion != newPrincipal.nVersion ||
+            minSigs != minSigs ||
+            primaryAddresses.size() != newPrincipal.primaryAddresses.size())
+        {
+            return true;
+        }
+        for (int i = 0; i < primaryAddresses.size(); i++)
+        {
+            if (primaryAddresses[i] != newPrincipal.primaryAddresses[i])
+            {
+                return true;
+            }
+        }       
+        return false; 
+    }
+
 };
 
 class CIdentity : public CPrincipal
@@ -376,6 +395,56 @@ public:
     {
         return MIN_REGISTRATION_AMOUNT;
     }
+
+    bool IsInvalidMutation(const CIdentity &newIdentity)
+    {
+        if (parent != newIdentity.parent ||
+            name != newIdentity.name)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    bool IsPrimaryMutation(const CIdentity &newIdentity)
+    {
+        if (CPrincipal::IsPrimaryMutation(newIdentity) ||
+            (flags & ~FLAG_REVOKED != newIdentity.flags & ~newIdentity.FLAG_REVOKED) ||
+            parent != newIdentity.parent ||
+            name != newIdentity.name || 
+            revocationAuthority != newIdentity.revocationAuthority ||
+            recoveryAuthority != newIdentity.recoveryAuthority ||
+            privateAddress.GetHash() != newIdentity.privateAddress.GetHash())
+        {
+            return true;
+        }
+        for (int i = 0; i < contentHashes.size(); i++)
+        {
+            if (contentHashes[i] != newIdentity.contentHashes[i])
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool IsRevocation(const CIdentity &newIdentity)
+    {
+        if (!IsRevoked() && newIdentity.IsRevoked())
+        {
+            return true;
+        }
+        return false;
+    }
+
+    bool IsRecovery(const CIdentity &newIdentity)
+    {
+        if (IsRevoked() && !newIdentity.IsRevoked())
+        {
+            return true;
+        }
+        return false;
+    }
 };
 
 class CIdentityMapKey
@@ -455,11 +524,11 @@ public:
 struct CCcontract_info;
 struct Eval;
 
-bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
-bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
-bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
-bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
-bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn);
+bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height);
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height, bool referrals);
 bool IsIdentityInput(const CScript &scriptSig);
