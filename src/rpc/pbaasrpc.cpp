@@ -4244,7 +4244,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
 UniValue registeridentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 2)
+    if (fHelp || params.size() < 1 || params.size() > 2)
     {
         throw runtime_error(
             "registeridentity \"jsonidregistration\" feeoffer\n"
@@ -4265,7 +4265,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             "        ...\n"
             "    }\n"
             "}\n"
-            "feeoffer                           (amount) amount to offer miner/staker for the registration fee"
+            "feeoffer                           (amount, optional) amount to offer miner/staker for the registration fee, if missing, uses standard price\n"
 
             "\nResult:\n"
 
@@ -4289,12 +4289,24 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
     }
 
-    CAmount feeOffer = AmountFromValue(params[1]);
+    CAmount feeOffer;
+    CAmount minFeeOffer = reservation.referral.IsNull() ? CIdentity::FullRegistrationAmount() : CIdentity::ReferredRegistrationAmount();
 
-    if (feeOffer < CIdentity::MIN_REGISTRATION_AMOUNT)
+    if (params.size() > 1)
+    {
+        feeOffer = AmountFromValue(params[1]);
+    }
+    else
+    {
+        feeOffer = minFeeOffer;
+    }
+
+
+    if (feeOffer < minFeeOffer)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee offer must be at least " + ValueFromAmount(CIdentity::MinRegistrationAmount()).write());
     }
+
 
     if (txid.IsNull() || reservation.name != newID.name)
     {
@@ -4382,7 +4394,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // add referrals, Verus supports referrals
     if ((ConnectedChains.ThisChain().IDReferrals() || IsVerusActive()) && !reservation.referral.IsNull())
     {
-        feeOffer = (feeOffer * (CIdentity::REFERRAL_LEVELS + 1)) / (CIdentity::REFERRAL_LEVELS + 2);
         uint32_t referralHeight;
         CTxIn referralTxIn;
         CTransaction referralIdTx;
@@ -4395,17 +4406,25 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             }
 
             // create outputs for this referral and up to n identities back in the referral chain
-            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), CIdentity::MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2), false});
-            feeOffer -= CIdentity::MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2);
-            for (int i = referralTxIn.prevout.n + 1; i < referralIdTx.vout.size() && i < CIdentity::REFERRAL_LEVELS; i++)
+            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), CIdentity::ReferralAmount(), false});
+            feeOffer -= CIdentity::ReferralAmount();
+            int afterId = referralTxIn.prevout.n + 1;
+            for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < CIdentity::REFERRAL_LEVELS; i++)
             {
                 CTxDestination nextID;
-                COptCCParams p;
+                COptCCParams p, master;
 
-                if (referralIdTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == 0 && p.vKeys.size() && p.vKeys[0].which() == COptCCParams::ADDRTYPE_ID)
+                if (referralIdTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                    p.IsValid() && 
+                    p.evalCode == EVAL_NONE && 
+                    p.vKeys.size() == 1 && 
+                    p.vData.size() == 2 && 
+                    p.vKeys[0].which() == COptCCParams::ADDRTYPE_ID &&
+                    (master = COptCCParams(p.vData[1])).IsValid() &&
+                    master.evalCode == EVAL_NONE)
                 {
-                    outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), CIdentity::MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2), false});
-                    feeOffer -= CIdentity::MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2);
+                    outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), CIdentity::ReferralAmount(), false});
+                    feeOffer -= CIdentity::ReferralAmount();
                 }
                 else
                 {
