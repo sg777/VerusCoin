@@ -125,30 +125,40 @@ std::string CurrencyStateAddr = "REU1HKkmdwdxKMpfD3QoxeERYd9tfMN6n9";
 std::string CurrencyStatePubKey = "0219af977f9a6c3779f1185decee2b77da446040055b912b00e115a52d4786059c";
 std::string CurrencyStateWIF = "Ur8YQJQ6guqmD6rXtrUtJ7fWxaEB5FaejCr3MxHAgMEwnjJnuGo5";
 
-// indentity primary output
-std::string IdentityPrimaryAddr = "";
-std::string IdentityPrimaryPubKey = "";
-std::string IdentityPrimaryWIF = "";
+// identity primary output
+std::string IdentityPrimaryAddr = "RS545EBdK5AzPTaGHNUg78wFuuAzBb74FB";
+std::string IdentityPrimaryPubKey = "030b2c39fb8357ca54a56ca3b07a74a6b162addb4d31afaefc9c53bfc17aae052c";
+std::string IdentityPrimaryWIF = "UtPq2QgtE9qcukeMA5grsHhr7eDzLo9BVwoN4QQRiv3coZn2ryXF";
 
-// indentity revoke output
-std::string IdentityRevokeAddr = "";
-std::string IdentityRevokePubKey = "";
-std::string IdentityRevokeWIF = "";
+// identity revoke output
+std::string IdentityRevokeAddr = "RG6My2zwh9hBFSgUhZ5UmmUtxBap57aU4N";
+std::string IdentityRevokePubKey = "03098d3fee3585ff42090c9cee5723a718dd27e7854761db4520eb70ade22a7802";
+std::string IdentityRevokeWIF = "UuLt6xUQqG74M4Rgm96xEb672DjfkHYEukdUHWfAMBE4Tsc8cBvC";
 
-// indentity recover output
-std::string IdentityRecoverAddr = "";
-std::string IdentityRecoverPubKey = "";
-std::string IdentityRecoverWIF = "";
+// identity recover output
+std::string IdentityRecoverAddr = "RRw9rJMPwdNqC1wgXn5vryJwMDyBgpXjYT";
+std::string IdentityRecoverPubKey = "03a058410b33f893fe182f15336577f3941c28c8cadcfb0395b9c31dd5c07ccd11";
+std::string IdentityRecoverWIF = "UuGtno91gaoJgy7nRgaBkWj6So3oBZ24fJWzULfU6LrsN4XZJckC";
 
-// indentity commitment output
-std::string IdentityCommitmentAddr = "";
-std::string IdentityCommitmentPubKey = "";
-std::string IdentityCommitmentWIF = "";
+// identity commitment output
+std::string IdentityCommitmentAddr = "RCySaThHfVBcHZgjJGoBw3un4vcsRJNPYw";
+std::string IdentityCommitmentPubKey = "03c4eac0982458644a87458eebe2fdc4e754e15c378b66f16fbd913ae2792d2cb0";
+std::string IdentityCommitmentWIF = "Upfbmz3v16NM3zmQujmLSuaWeJ519fUKMqjusFwSDKgpBGMckWCr";
 
-// indentity reservation output
-std::string IdentityReservationAddr = "";
-std::string IdentityReservationPubKey = "";
-std::string IdentityReservationWIF = "";
+// identity reservation output
+std::string IdentityReservationAddr = "RDbzJU8rEv4CkMABNUnKQoKDTfnikSm9fM";
+std::string IdentityReservationPubKey = "03974e76f57409197870d4e5539380b2f8468465c2bd374e3610edf1282cd1a304";
+std::string IdentityReservationWIF = "UqCXEj8oonBt6p9iDXbsAshCeFX7RsDpL6R62GUhTVRiSKDCQkYi";
+
+// atomic swap condition
+std::string AtomicSwapConditionAddr = "RQ55dLQ7uGnLx8scXfkaFV6QS6qVBGyxAG";
+std::string AtomicSwapConditionPubKey = "0231dbadc511bcafdb557faf0b49bea1e2a4ccc0259aeae16c618e1cc4d38f2f4d";
+std::string AtomicSwapConditionWIF = "Ux4w6K5ptuQG4SUEQd1bRV8X1LwzcLrVirApbXvThKYfm6uXEafJ";
+
+// condition to put time limits on a transaction output
+std::string TimeLimitsAddr = "REL7oLNeaeoQB1XauiHfcvjKMZC52Uj5xF";
+std::string TimeLimitsPubKey = "0391fa230bd2509cbcc165c636c79ff540a8e3615993b16b8e366770bc4261bf10";
+std::string TimeLimitsWIF = "UrRwoqyLMNddbASS7XV6rm3Q1JCBmMV9V5oPr92KEFmH5U8Evkf6";
 
 // Assets, aka Tokens
 #define FUNCNAME IsAssetsInput
