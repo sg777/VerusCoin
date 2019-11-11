@@ -305,6 +305,16 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
             std::map<uint160, CKey> privKeyMap;         // private keys located for each id
             std::vector<CC*> ccs;
 
+            CIdentity identity;
+            bool identitySpend = false;
+            uint160 idID;
+            if (p.evalCode == EVAL_IDENTITY_PRIMARY)
+            {
+                identity = CIdentity(p.vData[0]);
+                identitySpend = identity.IsValid();
+                idID = identity.GetID();
+            }
+
             // if we are sign-only, "p" will have no data object of its own, so we do not have to subtract 1
             int loopMax = p.evalCode ? p.vData.size() - 1 : p.vData.size();
 
@@ -343,7 +353,14 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                             // lookup identity, we must have all registered target identity scripts in our keystore, or we try as if they are a keyID, which will be the same
                             // if revoked or undefined
                             CIdentity id;
-                            if (!(id = LookupIdentity(creator, CIdentityID(destId))).IsValidUnrevoked())
+
+                            // if this is an identity self spend, we always use the absolute latest version to control it ,mcf 
+                            if (destId == idID)
+                            {
+                                id = identity;
+                            }
+
+                            if ((!id.IsValid() && !(id = LookupIdentity(creator, CIdentityID(destId))).IsValid()) || id.IsRevoked())
                             {
                                 destMap[destId] = dest;
                                 vCC.push_back(MakeCCcondOneSig(CKeyID(GetDestinationID(dest))));

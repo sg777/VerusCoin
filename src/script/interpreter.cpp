@@ -1380,6 +1380,16 @@ int TransactionSignatureChecker::CheckCryptoCondition(
         // they are fully validated by miners, stakers, and native wallets.
         bool failToTrue = false;
 
+        CIdentity identity;
+        bool identitySpend = false;
+        uint160 idID;
+        if (p.evalCode == EVAL_IDENTITY_PRIMARY)
+        {
+            identity = CIdentity(p.vData[0]);
+            identitySpend = identity.IsValid();
+            idID = identity.GetID();
+        }
+
         // if we are sign-only, "p" will have no data object of its own, so we do not have to subtract 1
         int loopMax = p.evalCode ? p.vData.size() - 1 : p.vData.size();
 
@@ -1395,7 +1405,8 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                     uint160 destId = GetDestinationID(dest);
                     if (dest.which() == COptCCParams::ADDRTYPE_ID)
                     {
-                        if (!IsIDMapSet())
+                        bool identitySelfSpend = destId == idID;
+                        if (!IsIDMapSet() && !identitySelfSpend)
                         {
                             // we cannot check the fullfillment form
                             failToTrue = !CanValidateIDs();
@@ -1408,8 +1419,22 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                             // in the spend condition, as are revoked identities
                             std::vector<CTxDestination> addrs;
                             auto dit = idMap.find(destId);
-                            if (dit != idMap.end() && dit->second.first)
+                            int minSigs = 1;
+                            if (identitySelfSpend)
                             {
+                                if (identity.IsRevoked())
+                                {
+                                    addrs.push_back(CKeyID(destId));
+                                }
+                                else
+                                {
+                                    addrs = identity.primaryAddresses;
+                                    minSigs = identity.minSigs;
+                                }
+                            }
+                            else if (dit != idMap.end() && dit->second.first)
+                            {
+                                minSigs = dit->second.first;
                                 for (auto destVch : dit->second.second)
                                 {
                                     if (destVch.size() == 20)
@@ -1436,7 +1461,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                             }
                             else
                             {
-                                vCC.push_back(MakeCCcondMofN(addrs, dit->second.first));
+                                vCC.push_back(MakeCCcondMofN(addrs, minSigs));
                             }
                         }
                     }
