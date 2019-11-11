@@ -204,7 +204,7 @@ public:
         return (nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID);
     }
 
-    bool IsPrimaryMutation(const CPrincipal &newPrincipal)
+    bool IsPrimaryMutation(const CPrincipal &newPrincipal) const
     {
         if (nVersion != newPrincipal.nVersion ||
             minSigs != minSigs ||
@@ -396,7 +396,7 @@ public:
         return MIN_REGISTRATION_AMOUNT;
     }
 
-    bool IsInvalidMutation(const CIdentity &newIdentity)
+    bool IsInvalidMutation(const CIdentity &newIdentity) const
     {
         if (parent != newIdentity.parent ||
             name != newIdentity.name)
@@ -406,7 +406,7 @@ public:
         return false;
     }
 
-    bool IsPrimaryMutation(const CIdentity &newIdentity)
+    bool IsPrimaryMutation(const CIdentity &newIdentity) const
     {
         if (CPrincipal::IsPrimaryMutation(newIdentity) ||
             (flags & ~FLAG_REVOKED != newIdentity.flags & ~newIdentity.FLAG_REVOKED) ||
@@ -426,7 +426,7 @@ public:
         return false;
     }
 
-    bool IsRevocation(const CIdentity &newIdentity)
+    bool IsRevocation(const CIdentity &newIdentity) const 
     {
         if (!IsRevoked() && newIdentity.IsRevoked())
         {
@@ -435,7 +435,7 @@ public:
         return false;
     }
 
-    bool IsRevocationMutation(const CIdentity &newIdentity)
+    bool IsRevocationMutation(const CIdentity &newIdentity) const 
     {
         if (revocationAuthority != newIdentity.revocationAuthority)
         {
@@ -444,7 +444,7 @@ public:
         return false;
     }
 
-    bool IsRecovery(const CIdentity &newIdentity)
+    bool IsRecovery(const CIdentity &newIdentity) const
     {
         if (IsRevoked() && !newIdentity.IsRevoked())
         {
@@ -453,7 +453,7 @@ public:
         return false;
     }
 
-    bool IsRecoveryMutation(const CIdentity &newIdentity)
+    bool IsRecoveryMutation(const CIdentity &newIdentity) const
     {
         if (recoveryAuthority != newIdentity.recoveryAuthority)
         {
