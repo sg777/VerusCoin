@@ -412,8 +412,6 @@ public:
             (flags & ~FLAG_REVOKED != newIdentity.flags & ~newIdentity.FLAG_REVOKED) ||
             parent != newIdentity.parent ||
             name != newIdentity.name || 
-            revocationAuthority != newIdentity.revocationAuthority ||
-            recoveryAuthority != newIdentity.recoveryAuthority ||
             privateAddress.GetHash() != newIdentity.privateAddress.GetHash())
         {
             return true;
@@ -437,9 +435,27 @@ public:
         return false;
     }
 
+    bool IsRevocationMutation(const CIdentity &newIdentity)
+    {
+        if (revocationAuthority != newIdentity.revocationAuthority)
+        {
+            return true;
+        }
+        return false;
+    }
+
     bool IsRecovery(const CIdentity &newIdentity)
     {
         if (IsRevoked() && !newIdentity.IsRevoked())
+        {
+            return true;
+        }
+        return false;
+    }
+
+    bool IsRecoveryMutation(const CIdentity &newIdentity)
+    {
+        if (recoveryAuthority != newIdentity.recoveryAuthority)
         {
             return true;
         }

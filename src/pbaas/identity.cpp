@@ -668,7 +668,7 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
         return false;
     }
 
-    if (!fulfilled && oldIdentity.IsPrimaryMutation(newIdentity))
+    if (!fulfilled && !oldIdentity.IsRevoked() && oldIdentity.IsPrimaryMutation(newIdentity))
     {
         return false;
     }
@@ -694,7 +694,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return false;
     }
 
-    if (!fulfilled && oldIdentity.IsRevocation(newIdentity))
+    if (!fulfilled && (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity)))
     {
         return false;
     }
@@ -721,7 +721,7 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         return false;
     }
 
-    if (!fulfilled && oldIdentity.IsRecovery(newIdentity))
+    if (!fulfilled && oldIdentity.IsRevoked() && (oldIdentity.IsPrimaryMutation(newIdentity) || oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity)))
     {
         return false;
     }
