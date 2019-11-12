@@ -541,7 +541,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 void CheckPBaaSAPIsValid()
 {
     if (!chainActive.LastTip() ||
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV4)
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV4)
     {
         throw JSONRPCError(RPC_INVALID_REQUEST, "PBaaS not activated on blockchain.");
     }
@@ -550,9 +550,9 @@ void CheckPBaaSAPIsValid()
 void CheckIdentityAPIsValid()
 {
     if (!chainActive.LastTip() ||
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3)
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3)
     {
-        throw JSONRPCError(RPC_INVALID_REQUEST, "PBaaS not activated on blockchain.");
+        throw JSONRPCError(RPC_INVALID_REQUEST, "Identity APIs not activated on blockchain.");
     }
 }
 
@@ -4175,7 +4175,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         );
     }
 
-    CheckPBaaSAPIsValid();
+    CheckIdentityAPIsValid();
 
     uint160 parent = IsVerusActive() ? uint160() : ConnectedChains.ThisChain().GetChainID();
     std::string name = CIdentity::CleanName(uni_get_str(params[0]), parent);
@@ -4275,7 +4275,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         );
     }
 
-    CheckPBaaSAPIsValid();
+    CheckIdentityAPIsValid();
 
     // all names have a parent of the current chain, except if defined on the Verus chain, which has a parent of null
     uint160 parent = IsVerusActive() ? uint160() : ConnectedChains.ThisChain().GetChainID();
@@ -4526,7 +4526,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         );
     }
 
-    CheckPBaaSAPIsValid();
+    CheckIdentityAPIsValid();
 
     // get identity
     bool returnTx = false;
@@ -4632,7 +4632,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
         );
     }
 
-    CheckPBaaSAPIsValid();
+    CheckIdentityAPIsValid();
 
     // get identity
     bool returnTx = false;
@@ -4742,7 +4742,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
             + HelpExampleRpc("recoveridentity", "\'{\"name\" : \"myname\"}\'")
         );
     }
-    CheckPBaaSAPIsValid();
+    CheckIdentityAPIsValid();
 
     // get identity
     bool returnTx = false;
@@ -4852,7 +4852,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         );
     }
 
-    CheckPBaaSAPIsValid();
+    CheckIdentityAPIsValid();
 
     CTxDestination idID = DecodeDestination(uni_get_str(params[0]));
     if (idID.which() != COptCCParams::ADDRTYPE_ID)
@@ -4927,7 +4927,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
         );
     }
 
-    CheckPBaaSAPIsValid();
+    CheckIdentityAPIsValid();
 
     std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> mine, imsigner, notmine;
 
@@ -5446,33 +5446,33 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         okSafeMode
   //  --------------------- ------------------------  -----------------------  ----------
-    { "pbaas",        "definechain",                  &definechain,            true  },
-    { "pbaas",        "getdefinedchains",             &getdefinedchains,       true  },
-    { "pbaas",        "getchaindefinition",           &getchaindefinition,     true  },
-    { "pbaas",        "getnotarizationdata",          &getnotarizationdata,    true  },
-    { "pbaas",        "getcrossnotarization",         &getcrossnotarization,   true  },
-    { "pbaas",        "submitacceptednotarization",   &submitacceptednotarization, true },
-    { "pbaas",        "paynotarizationrewards",       &paynotarizationrewards, true  },
-    { "pbaas",        "getinitialcurrencystate",      &getinitialcurrencystate, true  },
-    { "pbaas",        "getcurrencystate",             &getcurrencystate,       true  },
-    { "pbaas",        "sendreserve",                  &sendreserve,            true  },
-    { "pbaas",        "getpendingchaintransfers",     &getpendingchaintransfers, true  },
-    { "pbaas",        "getchainexports",              &getchainexports,        true  },
-    { "pbaas",        "getchainimports",              &getchainimports,        true  },
-    { "pbaas",        "reserveexchange",              &reserveexchange,        true  },
-    { "pbaas",        "getlatestimportsout",          &getlatestimportsout,    true  },
-    { "pbaas",        "getlastimportin",              &getlastimportin,        true  },
-    { "pbaas",        "refundfailedlaunch",           &refundfailedlaunch,     true  },
-    { "pbaas",        "registernamecommitment",       &registernamecommitment, true  },
-    { "pbaas",        "registeridentity",             &registeridentity,       true  },
-    { "pbaas",        "updateidentity",               &updateidentity,         true  },
-    { "pbaas",        "revokeidentity",               &revokeidentity,         true  },
-    { "pbaas",        "recoveridentity",              &recoveridentity,        true  },
-    { "pbaas",        "getidentity",                  &getidentity,            true  },
-    { "pbaas",        "listidentities",               &listidentities,         true  },
-    { "pbaas",        "refundfailedlaunch",           &refundfailedlaunch,     true  },
-    { "pbaas",        "getmergedblocktemplate",       &getmergedblocktemplate, true  },
-    { "pbaas",        "addmergedblock",               &addmergedblock,         true  }
+    { "identity",     "registernamecommitment",       &registernamecommitment, true  },
+    { "identity",     "registeridentity",             &registeridentity,       true  },
+    { "identity",     "updateidentity",               &updateidentity,         true  },
+    { "identity",     "revokeidentity",               &revokeidentity,         true  },
+    { "identity",     "recoveridentity",              &recoveridentity,        true  },
+    { "identity",     "getidentity",                  &getidentity,            true  },
+    { "identity",     "listidentities",               &listidentities,         true  },
+    { "PBaaS",        "definechain",                  &definechain,            true  },
+    { "PBaaS",        "getdefinedchains",             &getdefinedchains,       true  },
+    { "PBaaS",        "getchaindefinition",           &getchaindefinition,     true  },
+    { "PBaaS",        "getnotarizationdata",          &getnotarizationdata,    true  },
+    { "PBaaS",        "getcrossnotarization",         &getcrossnotarization,   true  },
+    { "PBaaS",        "submitacceptednotarization",   &submitacceptednotarization, true },
+    { "PBaaS",        "paynotarizationrewards",       &paynotarizationrewards, true  },
+    { "PBaaS",        "getinitialcurrencystate",      &getinitialcurrencystate, true  },
+    { "PBaaS",        "getcurrencystate",             &getcurrencystate,       true  },
+    { "PBaaS",        "sendreserve",                  &sendreserve,            true  },
+    { "PBaaS",        "getpendingchaintransfers",     &getpendingchaintransfers, true  },
+    { "PBaaS",        "getchainexports",              &getchainexports,        true  },
+    { "PBaaS",        "getchainimports",              &getchainimports,        true  },
+    { "PBaaS",        "reserveexchange",              &reserveexchange,        true  },
+    { "PBaaS",        "getlatestimportsout",          &getlatestimportsout,    true  },
+    { "PBaaS",        "getlastimportin",              &getlastimportin,        true  },
+    { "PBaaS",        "refundfailedlaunch",           &refundfailedlaunch,     true  },
+    { "PBaaS",        "refundfailedlaunch",           &refundfailedlaunch,     true  },
+    { "PBaaS",        "getmergedblocktemplate",       &getmergedblocktemplate, true  },
+    { "PBaaS",        "addmergedblock",               &addmergedblock,         true  }
 };
 
 void RegisterPBaaSRPCCommands(CRPCTable &tableRPC)
