@@ -28,11 +28,12 @@
 
 class CCurrencyState;
 
-static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 1024; // bytes
-static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_PRE_PBAAS = 520;
+static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V2 = 520;
+static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V3 = 1024;
+static unsigned int MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3; // bytes
 
 // Max size of pushdata in a CC sig in bytes
-static const unsigned int MAX_SCRIPT_CRYPTOCONDITION_FULFILLMENT_SIZE = 2048;
+static const unsigned int MAX_SCRIPT_CRYPTOCONDITION_FULFILLMENT_SIZE = 3072;
 
 // Maximum script length in bytes
 static const int MAX_SCRIPT_SIZE = 10000;

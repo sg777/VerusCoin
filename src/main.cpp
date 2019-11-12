@@ -828,8 +828,7 @@ bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
     {
         if ( txin.nSequence == 0xfffffffe && (((int64_t)tx.nLockTime >= LOCKTIME_THRESHOLD && (int64_t)tx.nLockTime > nBlockTime) || ((int64_t)tx.nLockTime < LOCKTIME_THRESHOLD && (int64_t)tx.nLockTime > nBlockHeight)) )
         {
-            // TODO:PBAAS set height properly
-            if (!IsVerusActive() || nBlockHeight > 1000000)
+            if (!IsVerusActive() || nBlockHeight > 782000)
             {
                 return false;
             }
@@ -2858,12 +2857,6 @@ bool ContextualCheckInputs(const CTransaction& tx,
                 }
             }
         }
-    }
-
-    // we pre-check cc's on all outputs, including coinbase or mint
-    if (fScriptChecks)
-    {
-        // TODO: cc-precheck to ensure cc integrity on mined transactions
     }
 
     if (tx.IsCoinImport())
@@ -7932,11 +7925,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         
         // Nodes must NEVER send a data item bigger than the max size for a script data object,
         // and thus, the maximum size any matched object can have) in a filteradd message
-        int maxDataSize = MAX_SCRIPT_ELEMENT_SIZE_PRE_PBAAS;
+        int maxDataSize = MAX_SCRIPT_ELEMENT_SIZE_V2;
         if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3 &&
             pfrom->nVersion >= MIN_PBAAS_VERSION)
         {
-            maxDataSize = MAX_SCRIPT_ELEMENT_SIZE;
+            maxDataSize = MAX_SCRIPT_ELEMENT_SIZE_V3;
         }
         if (vData.size() > maxDataSize)
         {
