@@ -47,6 +47,7 @@
 
 #include "pbaas/pbaas.h"
 #include "pbaas/notarization.h"
+#include "pbaas/identity.h"
 #include "rpc/pbaasrpc.h"
 #include "transaction_builder.h"
 
@@ -529,6 +530,41 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                     if (typeRet == TX_PUBKEY)
                     {
                         pk = CPubKey(vSolutions[0]);
+                    }
+                    else if (typeRet == TX_CRYPTOCONDITION)
+                    {
+                        if (vSolutions[0].size() == 33)
+                        {
+                            pk = CPubKey(vSolutions[0]);
+                        }
+                        else if (vSolutions[0].size() == 34 && vSolutions[0][0] == COptCCParams::ADDRTYPE_PK)
+                        {
+                            pk = CPubKey(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()));
+                        }
+                        else if (vSolutions[0].size() == 20)
+                        {
+                            pwalletMain->GetPubKey(CKeyID(uint160(vSolutions[0])), pk);
+                        }
+                        else if (vSolutions[0].size() == 21 && vSolutions[0][0] == COptCCParams::ADDRTYPE_ID)
+                        {
+                            // destination is an identity, see if we can get its public key
+                            std::pair<CIdentityMapKey, CIdentityMapValue> identity;
+
+                            if (pwalletMain->GetIdentity(CIdentityID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), identity) && 
+                                identity.second.IsValidUnrevoked() && 
+                                identity.second.primaryAddresses.size())
+                            {
+                                CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.second.primaryAddresses[0]);
+                                if (pkTmp.IsValid())
+                                {
+                                    pk = pkTmp;
+                                }
+                                else
+                                {
+                                    pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.second.primaryAddresses[0])), pk);
+                                }
+                            }
+                        }
                     }
                     else
                     {
@@ -1988,7 +2024,7 @@ static bool ProcessBlockFound(CBlock* pblock)
 #endif
     //fprintf(stderr,"process new block\n");
 
-    // Process this block the same as if we had received it from another node
+    // Process this block (almost) the same as if we had received it from another node
     CValidationState state;
     if (!ProcessNewBlock(1, chainActive.LastTip()->GetHeight()+1, state, Params(), NULL, pblock, true, NULL))
         return error("VerusMiner: ProcessNewBlock, block not accepted");
@@ -2394,7 +2430,7 @@ void static BitcoinMiner_noeq()
             savebits = pblock->nBits;
 
             bool verusHashV2 = pblock->nVersion == CBlockHeader::VERUS_V2;
-            bool verusSolutionV3 = CConstVerusSolutionVector::Version(pblock->nSolution) == CActivationHeight::SOLUTION_VERUSV3;
+            bool verusSolutionV3 = CConstVerusSolutionVector::Version(pblock->nSolution) >= CActivationHeight::SOLUTION_VERUSV3;
 
             if ( ASSETCHAINS_SYMBOL[0] != 0 )
             {
@@ -2411,8 +2447,8 @@ void static BitcoinMiner_noeq()
                 }
             }
 
-            // this builds the Merkle tree and sets our easiest target
-            IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, false, &savebits);
+            // set our easiest target, if V3+, no need to rebuild the merkle tree
+            IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, verusSolutionV3 ? false : true, &savebits);
 
             // update PBaaS header
             if (verusSolutionV3)
@@ -2574,7 +2610,7 @@ void static BitcoinMiner_noeq()
                             // pickup/remove any new/deleted headers
                             if (ConnectedChains.dirty || (pblock->NumPBaaSHeaders() < ConnectedChains.mergeMinedChains.size() + 1))
                             {
-                                IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, false, &savebits);
+                                IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, verusSolutionV3 ? false : true, &savebits);
 
                                 hashTarget.SetCompact(savebits);
                                 uintTarget = ArithToUint256(hashTarget);

@@ -20,8 +20,10 @@ class CActivationHeight
         static const int32_t MAX_HEIGHT = 0x7fffffff;
         static const int32_t DEFAULT_UPGRADE_HEIGHT = MAX_HEIGHT;
         static const int32_t NUM_VERSIONS = 3;
+        static const int32_t SOLUTION_VERUSV1 = 0;
         static const int32_t SOLUTION_VERUSV2 = 1;
         static const int32_t SOLUTION_VERUSV3 = 2;
+        static const int32_t SOLUTION_VERUSV4 = 3;
         bool active;
         int32_t heights[NUM_VERSIONS];
         CActivationHeight() : heights{0, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT}, active(true) {}

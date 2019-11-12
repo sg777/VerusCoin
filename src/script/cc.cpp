@@ -88,6 +88,13 @@ CScript CCPubKey(const CC *cond)
     return CScript() << std::vector<unsigned char>(buf, buf+len) << OP_CHECKCRYPTOCONDITION;
 }
 
+std::vector<unsigned char> CCPubKeyVec(const CC *cond)
+{
+    unsigned char buf[1000];
+    size_t len = cc_conditionBinary(cond, buf);
+    return std::vector<unsigned char>(buf, buf+len);
+}
+
 
 CScript CCSig(const CC *cond)
 {

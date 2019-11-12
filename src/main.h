@@ -437,6 +437,7 @@ private:
     uint32_t consensusBranchId;
     ScriptError error;
     PrecomputedTransactionData *txdata;
+    std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> idMap;
 
 public:
     CScriptCheck(): amount(0), ptxTo(0), nIn(0), nFlags(0), cacheStore(false), consensusBranchId(0), error(SCRIPT_ERR_UNKNOWN_ERROR) {}
@@ -456,7 +457,13 @@ public:
         std::swap(consensusBranchId, check.consensusBranchId);
         std::swap(error, check.error);
         std::swap(txdata, check.txdata);
+        std::swap(idMap, check.idMap);
     }
+
+    void SetIDMap(const std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> &map) { idMap = map; }
+
+    void AddIDAddresses(const uint160 &addr, const std::pair<int, std::vector<std::vector<unsigned char>>> &dests) { idMap[addr] = dests; }
+    void ClearIDAddresses() { idMap.clear(); }
 
     ScriptError GetScriptError() const { return error; }
 };

@@ -7,8 +7,202 @@
 
 #include "key.h"
 #include "util.h"
+#include "pbaas/identity.h"
+#include "cc/CCinclude.h"
+#include "boost/algorithm/string.hpp"
 
 #include <boost/foreach.hpp>
+
+uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
+{
+    uint160 cid = GetChainID(name);
+
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
+{
+    std::string nameCopy = Name;
+    std::string invalidChars = "\\/:*?\"<>|";
+    for (int i = 0; i < nameCopy.size(); i++)
+    {
+        if (invalidChars.find(nameCopy[i]) != std::string::npos)
+        {
+            nameCopy[i] = '_';
+        }
+    }
+    std::vector<std::string> retNames;
+    boost::split(retNames, nameCopy, boost::is_any_of("@"));
+    if (!retNames.size() || retNames.size() > 2)
+    {
+        return std::vector<std::string>();
+    }
+
+    bool explicitChain = false;
+    if (retNames.size() == 2)
+    {
+        ChainOut = retNames[1];
+        explicitChain = true;
+    }    
+
+    nameCopy = retNames[0];
+    boost::split(retNames, nameCopy, boost::is_any_of("."));
+
+    for (int i = 0; i < retNames.size(); i++)
+    {
+        if (retNames[i].size() > KOMODO_ASSETCHAIN_MAXLEN - 1)
+        {
+            retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
+        }
+    }
+
+    // if no chain is specified, default to chain of the ID
+    if (!explicitChain && retNames.size())
+    {
+        if (retNames.size() == 1)
+        {
+            // by default, we assume the Verus chain for no suffix
+            ChainOut = "";
+        }
+        else
+        {
+            for (int i = 1; i < retNames.size(); i++)
+            {
+                if (ChainOut.size())
+                {
+                    ChainOut = ChainOut + ".";
+                }
+                ChainOut = ChainOut + retNames[i];
+            }
+        }
+    }
+
+    return retNames;
+}
+
+// takes a multipart name, either complete or partially processed with a Parent hash,
+// hash its parent names into a parent ID and return the parent hash and cleaned, single name
+std::string CIdentity::CleanName(const std::string &Name, uint160 &Parent)
+{
+    std::string chainName;
+    std::vector<std::string> subNames = ParseSubNames(Name, chainName);
+
+    if (!subNames.size())
+    {
+        return "";
+    }
+
+    for (int i = subNames.size() - 1; i > 0; i--)
+    {
+        const char *idName = boost::algorithm::to_lower_copy(subNames[i]).c_str();
+        uint256 idHash;
+
+        if (Parent.IsNull())
+        {
+            idHash = Hash(idName, idName + strlen(idName));
+        }
+        else
+        {
+            idHash = Hash(idName, idName + strlen(idName));
+            idHash = Hash(Parent.begin(), Parent.end(), idHash.begin(), idHash.end());
+
+        }
+        Parent = Hash160(idHash.begin(), idHash.end());
+    }
+    return subNames[0];
+}
+
+CIdentityID CIdentity::GetID(const std::string &Name, const uint160 &parent)
+{
+    uint160 newParent = parent;
+    std::string cleanName = CleanName(Name, newParent);
+
+    const char *idName = boost::algorithm::to_lower_copy(cleanName).c_str();
+    uint256 idHash;
+    if (parent.IsNull())
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+    }
+    else
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+        idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
+
+    }
+    return Hash160(idHash.begin(), idHash.end());
+}
+
+CIdentityID CIdentity::GetID(const std::string &Name) const
+{
+    uint160 newLevel = parent;
+    std::string cleanName = CleanName(Name, newLevel);
+
+    const char *idName = boost::algorithm::to_lower_copy(cleanName).c_str();
+    uint256 idHash;
+    if (parent.IsNull())
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+    }
+    else
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+        idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
+
+    }
+    return Hash160(idHash.begin(), idHash.end());
+}
+
+CIdentityID CIdentity::GetID() const
+{
+    return GetID(name);
+}
+
+CScript CIdentity::TransparentOutput() const
+{
+    CConditionObj<CIdentity> ccObj = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetID()))}), 1);
+    return MakeMofNCCScript(ccObj);
+}
+
+CScript CIdentity::TransparentOutput(const CIdentityID &destinationID)
+{
+    CConditionObj<CIdentity> ccObj = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({destinationID}), 1);
+    return MakeMofNCCScript(ccObj);
+}
+
+CScript CIdentity::IdentityUpdateOutputScript() const
+{
+    CScript ret;
+
+    if (!IsValid())
+    {
+        return ret;
+    }
+
+    std::vector<CTxDestination> dests1({CTxDestination(CIdentityID(GetID()))});
+    CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
+    std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
+    CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
+    std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
+    CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
+
+    std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetID(), EVAL_IDENTITY_PRIMARY))), CTxDestination(CIdentityID(revocationAuthority)), CTxDestination(CIdentityID(recoveryAuthority))});
+
+    ret = MakeMofNCCScript(1, primary, revocation, recovery, &indexDests);
+    return ret;
+}
 
 bool CKeyStore::GetPubKey(const CKeyID &address, CPubKey &vchPubKeyOut) const
 {
@@ -52,6 +246,20 @@ bool CBasicKeyStore::GetHDSeed(HDSeed& seedOut) const
     }
 }
 
+CScriptID ScriptOrIdentityID(const CScript& scr)
+{
+    COptCCParams p;
+    CIdentity identity;
+    if (scr.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (identity = CIdentity(p.vData[0])).IsValid())
+    {
+        return CScriptID(identity.GetID());
+    }
+    else
+    {
+        return CScriptID(scr);
+    }
+}
+
 bool CBasicKeyStore::AddKeyPubKey(const CKey& key, const CPubKey &pubkey)
 {
     LOCK(cs_KeyStore);
@@ -65,7 +273,7 @@ bool CBasicKeyStore::AddCScript(const CScript& redeemScript)
         return error("CBasicKeyStore::AddCScript(): redeemScripts > %i bytes are invalid", MAX_SCRIPT_ELEMENT_SIZE);
 
     LOCK(cs_KeyStore);
-    mapScripts[CScriptID(redeemScript)] = redeemScript;
+    mapScripts[ScriptOrIdentityID(redeemScript)] = redeemScript;
     return true;
 }
 
@@ -85,6 +293,168 @@ bool CBasicKeyStore::GetCScript(const CScriptID &hash, CScript& redeemScriptOut)
         return true;
     }
     return false;
+}
+
+bool CBasicKeyStore::HaveIdentity(const CIdentityID &idID) const
+{
+    return mapIdentities.count(CIdentityMapKey(idID).MapKey()) != 0;
+}
+
+bool CBasicKeyStore::AddIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity)
+{
+    if (mapIdentities.count(mapKey.MapKey()) || !mapKey.IsValid())
+    {
+        return false;
+    }
+    mapIdentities.insert(make_pair(mapKey.MapKey(), identity));
+    return true;
+}
+
+bool CBasicKeyStore::UpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity)
+{
+    if (!mapIdentities.count(mapKey.MapKey()) || !mapKey.IsValid())
+    {
+        return false;
+    }
+    // erase and insert to replace
+    mapIdentities.erase(mapKey.MapKey());
+    mapIdentities.insert(make_pair(mapKey.MapKey(), identity));
+    return true;
+}
+
+bool CBasicKeyStore::AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity)
+{
+    arith_uint256 arithKey = mapKey.MapKey();
+    return CBasicKeyStore::AddIdentity(mapKey, identity) || CBasicKeyStore::UpdateIdentity(mapKey, identity);
+}
+
+bool CBasicKeyStore::RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid)
+{
+    auto localKey = mapKey;
+    if (localKey.idID.IsNull())
+    {
+        return false;
+    }
+    auto startIt = mapIdentities.lower_bound(localKey.MapKey());
+    if (localKey.blockHeight == 0)
+    {
+        localKey.blockHeight = 0x7fffffff;
+    }
+
+    if (startIt != mapIdentities.end())
+    {
+        if (txid.IsNull())
+        {
+            mapIdentities.erase(startIt, mapIdentities.upper_bound(localKey.MapKey()));
+        }
+        else
+        {
+            auto endIt = mapIdentities.upper_bound(localKey.MapKey());
+            for (; startIt != endIt; startIt++)
+            {
+                if (startIt->second.txid == txid)
+                {
+                    mapIdentities.erase(startIt);
+                    break;
+                }
+            }
+        }
+        
+        return true;
+    }
+    return false;
+}
+
+// return the first identity not less than a specific key
+bool CBasicKeyStore::GetIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t lteHeight) const
+{
+    auto itStart = mapIdentities.lower_bound(CIdentityMapKey(idID).MapKey());
+    if (itStart == mapIdentities.end())
+    {
+        return false;
+    }
+    // point to the last
+    CIdentityMapKey endKey(idID, lteHeight);
+    auto itEnd = mapIdentities.upper_bound(CIdentityMapKey(idID).MapKey());
+    itEnd--;
+    keyAndIdentity = make_pair(CIdentityMapKey(itEnd->first), itEnd->second);
+    return true;
+}
+
+// return all identities between two map keys, inclusive
+bool CBasicKeyStore::GetIdentity(const CIdentityMapKey &keyStart, const CIdentityMapKey &keyEnd, std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &keysAndIdentityUpdates) const
+{
+    auto itStart = mapIdentities.lower_bound(keyStart.MapKey());
+    if (itStart == mapIdentities.end())
+    {
+        return false;
+    }
+    auto itEnd = mapIdentities.upper_bound(keyEnd.MapKey());
+    for (; itStart != mapIdentities.end() && itStart != itEnd; itStart++)
+    {
+        keysAndIdentityUpdates.push_back(make_pair(CIdentityMapKey(itStart->first), itStart->second));
+    }
+    return true;
+}
+
+bool CBasicKeyStore::GetIdentity(const CIdentityMapKey &mapKey, const uint256 &txid, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity)
+{
+    CIdentityMapKey localKey = mapKey;
+    std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> toCheck;
+    bool found = false;
+
+    if (localKey.blockHeight == 0)
+    {
+        localKey.blockHeight = 0x7fffffff;
+    }
+    if (!GetIdentity(mapKey, localKey, toCheck))
+    {
+        return found;
+    }
+
+    for (auto id : toCheck)
+    {
+        if (id.second.txid == txid)
+        {
+            keyAndIdentity = id;
+            found = true;
+        }
+    }
+    return found;
+}
+
+// return the first identity not less than a specific key
+bool CBasicKeyStore::GetFirstIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t gteHeight) const
+{
+    auto it = mapIdentities.lower_bound(CIdentityMapKey(idID).MapKey());
+    if (it == mapIdentities.end())
+    {
+        return false;
+    }
+    keyAndIdentity = make_pair(CIdentityMapKey(it->first), it->second);
+    return true;
+}
+
+bool CBasicKeyStore::GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> &mine, 
+                                   std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> &imsigner, 
+                                   std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> &notmine)
+{
+    for (auto &identity : mapIdentities)
+    {
+        CIdentityMapKey idKey(identity.first);
+        if (idKey.flags & idKey.CAN_SPEND)
+        {
+            mine.push_back(make_pair(idKey, &identity.second));
+        }
+        else if (idKey.flags & idKey.CAN_SIGN)
+        {
+            imsigner.push_back(make_pair(idKey, &identity.second));
+        }
+        else
+        {
+            notmine.push_back(make_pair(idKey, &identity.second));
+        }
+    }
 }
 
 bool CBasicKeyStore::AddWatchOnly(const CScript &dest)

@@ -283,6 +283,31 @@ public:
         }
         return obj;
     }
+
+    UniValue operator()(const CIdentityID &idID) const {
+        UniValue obj(UniValue::VOBJ);
+        CScript subscript;
+        obj.push_back(Pair("isscript", false));
+        obj.push_back(Pair("isidentity", true));
+        CIdentity id = CIdentity::LookupIdentity(idID);
+        if (id.IsValid()) {
+            if (id.IsRevoked())
+            {
+                obj.push_back(Pair("isrevoked", true));
+            }
+            else
+            {
+                obj.push_back(Pair("isrevoked", false));
+                UniValue a(UniValue::VARR);
+                for (const CTxDestination& addr : id.primaryAddresses) {
+                    a.push_back(EncodeDestination(addr));
+                }
+                obj.push_back(Pair("addresses", a));
+                obj.push_back(Pair("sigsrequired", id.minSigs));
+            }
+        }
+        return obj;
+    }
 };
 #endif
 
@@ -909,8 +934,33 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
 
     for (std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> >::const_iterator it=unspentOutputs.begin(); it!=unspentOutputs.end(); it++) {
         UniValue output(UniValue::VOBJ);
-        std::string address;
-        if (!getAddressFromIndex(it->first.type, it->first.hashBytes, address)) {
+        
+        std::string address = "";
+
+        if (it->second.script.IsPayToCryptoCondition())
+        {
+            txnouttype outType;
+            std::vector<CTxDestination> addresses;
+            int required;
+            if (ExtractDestinations(it->second.script, outType, addresses, required))
+            {
+                UniValue addressesUni(UniValue::VARR);
+                for (auto addr : addresses)
+                {
+                    addressesUni.push_back(EncodeDestination(addr));
+                    if (GetDestinationID(addr) == it->first.hashBytes)
+                    {
+                        address = EncodeDestination(addr);
+                    }
+                }
+                if (addressesUni.size() > 1)
+                {
+                    output.push_back(Pair("addresses", addressesUni));
+                }
+            }
+        }
+        if (address == "" && !getAddressFromIndex(it->first.type, it->first.hashBytes, address)) 
+        {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unknown address type");
         }
 

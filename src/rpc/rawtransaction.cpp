@@ -245,6 +245,14 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 out.push_back(Pair("identityrecover", ""));
                 break;
 
+            case EVAL_IDENTITY_COMMITMENT:
+                out.push_back(Pair("identitycommitment", ""));
+                break;
+
+            case EVAL_IDENTITY_RESERVATION:
+                out.push_back(Pair("identityreservation", ""));
+                break;
+
             case EVAL_STAKEGUARD:
                 out.push_back(Pair("stakeguard", ""));
                 break;

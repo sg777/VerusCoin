@@ -43,6 +43,18 @@ int32_t uni_get_int(UniValue uv, int32_t def)
     }
 }
 
+bool uni_get_bool(UniValue uv, bool def)
+{
+    try
+    {
+        return uv.get_bool();
+    }
+    catch(const std::exception& e)
+    {
+        return def;
+    }
+}
+
 int64_t uni_get_int64(UniValue uv, int64_t def)
 {
     try
@@ -217,6 +229,10 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "definechain", 0},
     { "getdefinedchains", 0},
     { "sendreserve", 0},
+    { "registeridentity", 0},
+    { "updateidentity", 0},
+    { "recoveridentity", 0},
+    // Zcash addition
     { "z_setmigration", 0},
 };
 

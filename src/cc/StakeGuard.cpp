@@ -359,7 +359,7 @@ int IsCCFulfilled(CC *cc, ccFulfillmentCheck *ctx)
     return ctx->vCount[0];
 }
 
-bool StakeGuardValidate(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool StakeGuardValidate(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     // WARNING: this has not been tested combined with time locks
     // validate this spend of a transaction with it being past any applicable time lock and one of the following statements being true:

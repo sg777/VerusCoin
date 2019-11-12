@@ -58,6 +58,19 @@ static unsigned long thresholdCost(const CC *cond) {
 
 
 static int thresholdVisitChildren(CC *cond, CCVisitor visitor) {
+    if (cc_isEvalVisitor(&visitor))
+    {
+        // at this level, we can see whether this node is fulfilled or not. we make that information available to any eval nodes that may
+        // get evaluated, so they can determine if they have a reason to fail or not that may depend on signature/fulfillment state
+        if (!cc_isFulfilled(cond))
+        {
+            cc_setEvalVisitorFulfilled(&visitor, 0);
+        }
+        else
+        {
+            cc_setEvalVisitorFulfilled(&visitor, 1);
+        }
+    }
     for (int i=0; i<cond->size; i++) {
         if (!cc_visit(cond->subconditions[i], visitor)) {
             return 0;

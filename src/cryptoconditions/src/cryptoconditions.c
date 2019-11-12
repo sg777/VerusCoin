@@ -86,6 +86,11 @@ char *cc_conditionUri(const CC *cond) {
 
 ConditionTypes_t asnSubtypes(uint32_t mask) {
     ConditionTypes_t types;
+    types._asn_ctx.context = 0;
+    types._asn_ctx.left = 0;
+    types._asn_ctx.phase = 0;
+    types._asn_ctx.ptr = 0;
+    types._asn_ctx.step = 0;
     uint8_t buf[4] = {0,0,0,0};
     int maxId = 0;
 
@@ -256,7 +261,7 @@ int cc_visit(CC *cond, CCVisitor visitor) {
 int cc_verify(const struct CC *cond, const unsigned char *msg, size_t msgLength, int doHashMsg,
               const unsigned char *condBin, size_t condBinLength,
               VerifyEval verifyEval, void *evalContext, int checkSig) {
-    unsigned char targetBinary[1000];
+    unsigned char targetBinary[2000];
     //fprintf(stderr,"in cc_verify cond.%p msg.%p[%d] dohash.%d condbin.%p[%d]\n",cond,msg,(int32_t)msgLength,doHashMsg,condBin,(int32_t)condBinLength);
     const size_t binLength = cc_conditionBinary(cond, targetBinary);
 
@@ -264,7 +269,8 @@ int cc_verify(const struct CC *cond, const unsigned char *msg, size_t msgLength,
         fprintf(stderr,"cc_verify error A\n");
         return 0;
     }
-    if (!cc_ed25519VerifyTree(cond, msg, msgLength)) {
+
+    if (checkSig && !cc_ed25519VerifyTree(cond, msg, msgLength)) {
         fprintf(stderr,"cc_verify error B\n");
         return 0;
     }
@@ -273,8 +279,6 @@ int cc_verify(const struct CC *cond, const unsigned char *msg, size_t msgLength,
     if (doHashMsg) sha256(msg, msgLength, msgHash);
     else memcpy(msgHash, msg, 32);
 
-    // TODO:PBAAS this needs to be improved, to validate the signature,
-    // and before release to finish validation of signature hash before checking the eval
     if (checkSig && !cc_secp256k1VerifyTreeMsg32(cond, msgHash)) {
         fprintf(stderr,"cc_verify error C %d\n", cc_secp256k1VerifyTreeMsg32(cond, msgHash));
         return 0;

@@ -10,10 +10,11 @@
  * 
  */
 
+#include "pbaas/crosschainrpc.h"
 #include "pbaas/pbaas.h"
 #include "pbaas/notarization.h"
+#include "pbaas/identity.h"
 #include "rpc/pbaasrpc.h"
-#include "pbaas/crosschainrpc.h"
 #include "base58.h"
 #include "timedata.h"
 #include "main.h"
@@ -91,7 +92,7 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
 
 // used to export coins from one chain to another, if they are not native, they are represented on the other
 // chain as tokens
-bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -102,7 +103,7 @@ bool IsCrossChainExportInput(const CScript &scriptSig)
 
 // used to validate import of coins from one chain to another. if they are not native and are supported,
 // they are represented o the chain as tokens
-bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -111,7 +112,7 @@ bool IsCrossChainImportInput(const CScript &scriptSig)
 }
 
 // used to validate a specific service reward based on the spending transaction
-bool ValidateServiceReward(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateServiceReward(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     // for each type of service reward, we need to check and see if the spender is
     // correctly formatted to be a valid spend of the service reward. for notarization
@@ -124,7 +125,7 @@ bool IsServiceRewardInput(const CScript &scriptSig)
 }
 
 // used as a proxy token output for a reserve currency on its fractional reserve chain
-bool ValidateReserveOutput(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateReserveOutput(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -132,7 +133,7 @@ bool IsReserveOutputInput(const CScript &scriptSig)
 {
 }
 
-bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -140,7 +141,7 @@ bool IsReserveTransferInput(const CScript &scriptSig)
 {
 }
 
-bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -148,7 +149,7 @@ bool IsReserveDepositInput(const CScript &scriptSig)
 {
 }
 
-bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -157,7 +158,7 @@ bool IsCurrencyStateInput(const CScript &scriptSig)
 }
 
 // used to convert a fractional reserve currency into its reserve and back 
-bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -362,7 +363,7 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const UniValue &obj)
     nVersion = PBAAS_VERSION;
     name = std::string(uni_get_str(find_value(obj, "name")), 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
 
-    string invalidChars = "\\/:?\"<>|";
+    string invalidChars = "\\/:*?\"<>|";
     for (int i = 0; i < name.size(); i++)
     {
         if (invalidChars.find(name[i]) != string::npos)
@@ -388,7 +389,6 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const UniValue &obj)
     {
         vEras.resize(ASSETCHAINS_MAX_ERAS);
     }
-    eras = !vEras.size() ? 1 : vEras.size();
 
     for (auto era : vEras)
     {
@@ -524,7 +524,7 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("endblock", (int32_t)endBlock));
 
     UniValue eraArr(UniValue::VARR);
-    for (int i = 0; i < eras; i++)
+    for (int i = 0; i < rewards.size(); i++)
     {
         UniValue era(UniValue::VOBJ);
         era.push_back(Pair("reward", rewards.size() > i ? rewards[i] : (int64_t)0));
@@ -587,19 +587,17 @@ bool SetThisChain(UniValue &chainDefinition)
             // setup Verus test parameters
             notaryChainDef.name = "VRSCTEST";
             notaryChainDef.premine = 5000000000000000;
-            notaryChainDef.eras = 1;
             notaryChainDef.rewards = std::vector<int64_t>({2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
             notaryChainDef.halving = std::vector<int32_t>({225680});
             notaryChainDef.eraEnd = std::vector<int32_t>({0});
-            notaryChainDef.eraOptions = std::vector<int32_t>({0,0,0});
+            notaryChainDef.eraOptions = std::vector<int32_t>({0});
         }
         else
         {
             // first setup Verus parameters
             notaryChainDef.name = "VRSC";
             notaryChainDef.premine = 0;
-            notaryChainDef.eras = 3;
             notaryChainDef.rewards = std::vector<int64_t>({0,38400000000,2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
             notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
@@ -637,7 +635,7 @@ bool SetThisChain(UniValue &chainDefinition)
         ASSETCHAINS_TIMEUNLOCKFROM = 0;
         ASSETCHAINS_TIMEUNLOCKTO = 0;
 
-        auto numEras = ConnectedChains.ThisChain().eras;
+        auto numEras = ConnectedChains.ThisChain().rewards.size();
         ASSETCHAINS_LASTERA = numEras - 1;
         mapArgs["-ac_eras"] = to_string(numEras);
 
@@ -704,7 +702,7 @@ bool SetThisChain(UniValue &chainDefinition)
 
 // ensures that the chain definition is valid and that there are no other definitions of the same name
 // that have been confirmed.
-bool ValidateChainDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateChainDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     // the chain definition output can be spent when the chain is at the end of its life and only then
     // TODO
@@ -1169,6 +1167,51 @@ bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScrip
         else if (outType == TX_PUBKEYHASH)
         {
             firstDestinationOut = CTxDestination(CKeyID(uint160(vSolutions[0])));
+        }
+        else if (outType == TX_CRYPTOCONDITION)
+        {
+            if (vSolutions[0].size() == 33)
+            {
+                firstDestinationOut = CPubKey(vSolutions[0]);
+            }
+            else if (vSolutions[0].size() == 34 && vSolutions[0][0] == COptCCParams::ADDRTYPE_PK)
+            {
+                firstDestinationOut = CPubKey(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()));
+            }
+            else if (vSolutions[0].size() == 20)
+            {
+                CPubKey pkTmp;
+                pwalletMain->GetPubKey(CKeyID(uint160(vSolutions[0])), pkTmp);
+                if (pkTmp.IsValid())
+                {
+                    firstDestinationOut = pkTmp;
+                }
+            }
+            else if (vSolutions[0].size() == 21 && vSolutions[0][0] == COptCCParams::ADDRTYPE_ID)
+            {
+                // destination is an identity, see if we can get its public key
+                std::pair<CIdentityMapKey, CIdentityMapValue> identity;
+
+                if (pwalletMain->GetIdentity(CIdentityID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), identity) && 
+                    identity.second.IsValidUnrevoked() && 
+                    identity.second.primaryAddresses.size())
+                {
+                    CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.second.primaryAddresses[0]);
+                    if (pkTmp.IsValid())
+                    {
+                        firstDestinationOut = pkTmp;
+                    }
+                    else
+                    {
+                        pkTmp = CPubKey();
+                        pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.second.primaryAddresses[0])), pkTmp);
+                        if (pkTmp.IsValid())
+                        {
+                            firstDestinationOut = pkTmp;
+                        }
+                    }
+                }
+            }
         }
         else
         {
