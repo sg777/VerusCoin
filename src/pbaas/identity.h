@@ -32,6 +32,8 @@
 #include "primitives/transaction.h"
 #include "arith_uint256.h"
 
+std::string CleanName(const std::string &Name, uint160 &Parent);
+
 class CCommitmentHash
 {
 public:
@@ -80,7 +82,8 @@ public:
 
     CNameReservation(const UniValue &uni)
     {
-        name = uni_get_str(find_value(uni, "name"));
+        uint160 parent;
+        name = CleanName(uni_get_str(find_value(uni, "name")), parent);
         salt = uint256S(uni_get_str(find_value(uni, "salt")));
         CTxDestination dest = DecodeDestination(uni_get_str(find_value(uni, "referral")));
         if (dest.which() == COptCCParams::ADDRTYPE_ID)
@@ -340,7 +343,6 @@ public:
         return MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2);
     }
 
-    static std::string CleanName(const std::string &Name, uint160 &Parent);
     CIdentityID GetID() const;
     CIdentityID GetID(const std::string &Name) const;
     static CIdentityID GetID(const std::string &Name, const uint160 &parent);

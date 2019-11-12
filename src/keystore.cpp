@@ -95,7 +95,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 
 // takes a multipart name, either complete or partially processed with a Parent hash,
 // hash its parent names into a parent ID and return the parent hash and cleaned, single name
-std::string CIdentity::CleanName(const std::string &Name, uint160 &Parent)
+std::string CleanName(const std::string &Name, uint160 &Parent)
 {
     std::string chainName;
     std::vector<std::string> subNames = ParseSubNames(Name, chainName);

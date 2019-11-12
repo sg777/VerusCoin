@@ -4178,7 +4178,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CheckIdentityAPIsValid();
 
     uint160 parent = IsVerusActive() ? uint160() : ConnectedChains.ThisChain().GetChainID();
-    std::string name = CIdentity::CleanName(uni_get_str(params[0]), parent);
+    std::string name = CleanName(uni_get_str(params[0]), parent);
 
     // if either we have an invalid name or an implied parent, that is not valid
     if (name == "" || !parent.IsNull())
@@ -4258,7 +4258,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             "        \"name\": \"namestr\",     (string) the unique name in this commitment\n"
             "        \"salt\": \"hexstr\",      (hex)    salt used to hide the commitment\n"
             "        \"referrer\": \"identityID\", (name@ or address) must be a valid ID to use as a referrer to receive a discount\n"
-            "    }\n"
+            "    },\n"
             "    \"identity\" :\n"
             "    {\n"
             "        \"name\": \"namestr\",     (string) the unique name for this identity\n"
@@ -4307,8 +4307,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee offer must be at least " + ValueFromAmount(CIdentity::MinRegistrationAmount()).write());
     }
 
-
-    if (txid.IsNull() || reservation.name != newID.name)
+    uint160 impliedParent;
+    if (txid.IsNull() || CleanName(reservation.name, impliedParent) != CleanName(newID.name, impliedParent) || !impliedParent.IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched reservation.");
     }
@@ -4331,7 +4331,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         }
 
         auto indexIt = mapBlockIndex.find(hashBlk);
-        if (indexIt == mapBlockIndex.end() || indexIt->second->GetHeight() <= chainActive.Height() || chainActive[indexIt->second->GetHeight()]->GetBlockHash() != indexIt->second->GetBlockHash())
+        if (indexIt == mapBlockIndex.end() || indexIt->second->GetHeight() > chainActive.Height() || chainActive[indexIt->second->GetHeight()]->GetBlockHash() != indexIt->second->GetBlockHash())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or unconfirmed commitment");
         }
