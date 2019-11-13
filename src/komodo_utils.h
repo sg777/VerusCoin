@@ -1432,8 +1432,8 @@ void komodo_configfile(char *symbol,uint16_t rpcport)
                 {
                     if (PBAAS_TESTMODE)
                     {
-                        fprintf(fp,"addnode=%s\n", "185.25.48.72:17136");
-                        fprintf(fp,"addnode=%s\n", "185.64.105.111:17136");
+                        //fprintf(fp,"addnode=%s\n", "185.25.48.72:17136");
+                        //fprintf(fp,"addnode=%s\n", "185.64.105.111:17136");
                     }
                 }
                 else
