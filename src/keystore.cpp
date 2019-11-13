@@ -365,19 +365,27 @@ bool CBasicKeyStore::RemoveIdentity(const CIdentityMapKey &mapKey, const uint256
     return false;
 }
 
-// return the first identity not less than a specific key
+// return an identity if it is in the store
 bool CBasicKeyStore::GetIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t lteHeight) const
 {
     auto itStart = mapIdentities.lower_bound(CIdentityMapKey(idID).MapKey());
     if (itStart == mapIdentities.end())
     {
         return false;
-    }
+    } 
     // point to the last
-    CIdentityMapKey endKey(idID, lteHeight);
-    auto itEnd = mapIdentities.upper_bound(CIdentityMapKey(idID).MapKey());
+    auto itEnd = mapIdentities.upper_bound(CIdentityMapKey(idID, lteHeight == UINT32_MAX ? UINT32_MAX : lteHeight + 1).MapKey());
+    if (itStart == mapIdentities.begin())
+    {
+        return false;
+    }
     itEnd--;
-    keyAndIdentity = make_pair(CIdentityMapKey(itEnd->first), itEnd->second);
+    CIdentityMapKey foundKey(itEnd->first);
+    if (foundKey.idID != idID)
+    {
+        return false;
+    }
+    keyAndIdentity = make_pair(foundKey, itEnd->second);
     return true;
 }
 

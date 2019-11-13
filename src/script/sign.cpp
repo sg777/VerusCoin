@@ -993,6 +993,15 @@ public:
     {
         return true;
     }
+
+    int CheckCryptoCondition(
+            const std::vector<unsigned char>& condBin,
+            const std::vector<unsigned char>& ffillBin,
+            const CScript& scriptCode,
+            uint32_t consensusBranchId) const
+    {
+        return true;
+    }
 };
 const DummySignatureChecker dummyChecker;
 }

@@ -4356,7 +4356,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     if (ch.hash != reservation.GetCommitment().hash)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid commitment salt");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid commitment salt or referral ID");
     }
 
     // when creating an ID, the parent is always the current chains, and it is invalid to specify a parent
@@ -4409,7 +4409,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), CIdentity::ReferralAmount(), false});
             feeOffer -= CIdentity::ReferralAmount();
             int afterId = referralTxIn.prevout.n + 1;
-            for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < CIdentity::REFERRAL_LEVELS; i++)
+            for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < (CIdentity::REFERRAL_LEVELS - 1); i++)
             {
                 CTxDestination nextID;
                 COptCCParams p, master;
@@ -4418,10 +4418,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                     p.IsValid() && 
                     p.evalCode == EVAL_NONE && 
                     p.vKeys.size() == 1 && 
-                    p.vData.size() == 2 && 
+                    (p.vData.size() == 1 ||
+                    (p.vData.size() == 2 && 
                     p.vKeys[0].which() == COptCCParams::ADDRTYPE_ID &&
                     (master = COptCCParams(p.vData[1])).IsValid() &&
-                    master.evalCode == EVAL_NONE)
+                    master.evalCode == EVAL_NONE)))
                 {
                     outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), CIdentity::ReferralAmount(), false});
                     feeOffer -= CIdentity::ReferralAmount();
@@ -4438,7 +4439,12 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         }
     }
 
-    outputs.push_back({MakeMofNCCScript(condObj, &resIndexDest), feeOffer, false});
+    CScript reservationOutScript = MakeMofNCCScript(condObj, &resIndexDest);
+    outputs.push_back({reservationOutScript, CNameReservation::DEFAULT_OUTPUT_AMOUNT, false});
+
+    // make one dummy output, which CreateTransaction will leave as last, and we will remove to add its output to the fee
+    // this serves to keep the change output after our real reservation output
+    outputs.push_back({reservationOutScript, feeOffer, false});
 
     CWalletTx wtx;
 
@@ -4449,24 +4455,15 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, nullptr, false))
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to create commitment transaction: " + failReason);
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to create identity transaction: " + failReason);
     }
-    CMutableTransaction mtx(wtx);
 
-    // add the commitment input
+    // add commitment output
+    CMutableTransaction mtx(wtx);
     mtx.vin.push_back(CTxIn(txid, commitmentOutput));
 
-    // all of the reservation output is actually the fee offer, so set to default output
-    for (auto &oneOut : mtx.vout)
-    {
-        COptCCParams p;
-        oneOut.scriptPubKey.IsPayToCryptoCondition(p);
-        if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_RESERVATION)
-        {
-            oneOut.nValue = CNameReservation::DEFAULT_OUTPUT_AMOUNT;
-            break;
-        }
-    }
+    // remove the fee offer output
+    mtx.vout.pop_back();
 
     *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
 
@@ -4566,12 +4563,9 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to create update transaction: " + failReason);
     }
+
     CMutableTransaction mtx(wtx);
-
-    // add the spend of the last ID transaction output
     mtx.vin.push_back(idTxIn);
-
-    // all of the reservation output is actually the fee offer, so zero the output
     *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
 
     // now sign

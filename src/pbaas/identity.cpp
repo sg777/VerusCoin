@@ -134,8 +134,8 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             }
         }
     }
-    std::string revocationStr = uni_get_str(find_value(uni, "revocationauthorityid"));
-    std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthorityid"));
+    std::string revocationStr = uni_get_str(find_value(uni, "revocationauthority"));
+    std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthority"));
     uint160 nameID = GetID();
     revocationAuthority = revocationStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(revocationStr)));
     recoveryAuthority = recoveryStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(recoveryStr)));
@@ -177,8 +177,8 @@ UniValue CIdentity::ToUniValue() const
     }
     obj.push_back(Pair("contenthashes", hashes));
 
-    obj.push_back(Pair("revocationauthorityid", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
-    obj.push_back(Pair("recoveryauthorityid", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
+    obj.push_back(Pair("revocationauthority", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
+    obj.push_back(Pair("recoveryauthority", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
     obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddress)));
     return obj;
 }
@@ -368,7 +368,7 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
                             for (i = 0; i < idTx.vout.size(); i++)
                             {
                                 COptCCParams p;
-                                if (idTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+                                if (idTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3 && p.evalCode == EVAL_IDENTITY_PRIMARY)
                                 {
                                     break;
                                 }
@@ -380,7 +380,7 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
                                 {
                                     *pidTx = idTx;
                                 }
-                                idTxIn = CTxIn(it->first.txhash, it->first.index);
+                                idTxIn = CTxIn(it->first.txhash, i);
                                 *pHeightOut = it->second.blockHeight;
                             }
                         }
@@ -402,7 +402,6 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
     int reservationCount = 0;
     CIdentity newIdentity;
     CNameReservation newName;
-    int referralsStart = 0;
     std::vector<CTxDestination> referrers;
     bool valid = true;
 
@@ -420,12 +419,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
                     valid = false;
                     break;
                 }
-                referralsStart++;
                 newIdentity = CIdentity(p.vData[0]);
             }
             else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
             {
-                if (identityCount || reservationCount++ || p.vData.size() < 2)
+                if (reservationCount++ || p.vData.size() < 2)
                 {
                     valid = false;
                     break;
@@ -447,13 +445,6 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
                 break;
             }
         }
-        else
-        {
-            if (!identityCount)
-            {
-                referralsStart++;
-            }
-        }
     }
 
     // we can close a reservation UTXO without an identity
@@ -461,6 +452,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
     {
         return true;
     }
+
     else if (!valid)
     {
         return false;
@@ -477,7 +469,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
     CTxIn idTxIn;
     uint32_t priorHeightOut;
     CIdentity dupID = newIdentity.LookupIdentity(newIdentity.GetID(), height, &priorHeightOut, &idTxIn);
-    if (dupID.IsValidUnrevoked())
+    if (dupID.IsValid())
     {
         return false;
     }
@@ -615,7 +607,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
     }
 
     // CHECK #6 - ensure that the transaction pays a fee of 80% of the full price for an identity, minus the value of each referral output between identity and reservation
-    if (rtxd.NativeFees() < newIdentity.ReferredRegistrationAmount())
+    if (rtxd.NativeFees() < (newIdentity.ReferredRegistrationAmount() - (referrers.size() * newIdentity.ReferralAmount())))
     {
         return false;
     }
@@ -625,7 +617,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
 
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height)
 {
-    return IsVerusActive() || PrecheckIdentityReservation(tx, outNum, height, ConnectedChains.ThisChain().IDReferrals());
+    return PrecheckIdentityReservation(tx, outNum, height, ConnectedChains.ThisChain().IDReferrals());
 }
 
 CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn)
