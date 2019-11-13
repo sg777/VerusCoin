@@ -441,8 +441,7 @@ bool StakeGuardValidate(struct CCcontract_info *cp, Eval* eval, const CTransacti
     }
     if (!(signedByFirstKey || validCheat))
     {
-        eval->Error("error reading coinbase or spending proof invalid\n");
-        return false;
+        return eval->Error("error reading coinbase or spending proof invalid\n");
     }
     else return true;
 }

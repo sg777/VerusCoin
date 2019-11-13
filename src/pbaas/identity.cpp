@@ -654,23 +654,23 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
     CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn);
     if (!oldIdentity.IsValid())
     {
-        return false;
+        return eval->Error("Spending invalid identity");
     }
 
     CIdentity newIdentity(spendingTx);
     if (!newIdentity.IsValid())
     {
-        return false;
+        return eval->Error("Attempting to define invalid identity");
     }
 
     if (oldIdentity.IsInvalidMutation(newIdentity))
     {
-        return false;
+        return eval->Error("Invalid identity modification");
     }
 
     if (!fulfilled && !oldIdentity.IsRevoked() && oldIdentity.IsPrimaryMutation(newIdentity))
     {
-        return false;
+        return eval->Error("Unauthorized identity modification");
     }
     return true;
 }
@@ -680,23 +680,23 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn);
     if (!oldIdentity.IsValid())
     {
-        return false;
+        return eval->Error("Invalid source identity");
     }
 
     CIdentity newIdentity(spendingTx);
     if (!newIdentity.IsValid())
     {
-        return false;
+        return eval->Error("Attempting to replace identity with one that is invalid");
     }
 
     if (oldIdentity.IsInvalidMutation(newIdentity))
     {
-        return false;
+        return eval->Error("Invalid identity modification");
     }
 
     if (!fulfilled && (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity)))
     {
-        return false;
+        return eval->Error("Unauthorized modification of revocation information");
     }
 
     return true;
@@ -707,23 +707,23 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn);
     if (!oldIdentity.IsValid())
     {
-        return false;
+        return eval->Error("Invalid source identity");
     }
 
     CIdentity newIdentity(spendingTx);
     if (!newIdentity.IsValid())
     {
-        return false;
+        return eval->Error("Attempting to replace identity with one that is invalid");
     }
 
     if (oldIdentity.IsInvalidMutation(newIdentity))
     {
-        return false;
+        return eval->Error("Invalid identity modification");
     }
 
     if (!fulfilled && oldIdentity.IsRevoked() && (oldIdentity.IsPrimaryMutation(newIdentity) || oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity)))
     {
-        return false;
+        return eval->Error("Unauthorized modification of recovery information");
     }
 
     return true;
@@ -746,7 +746,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
         COptCCParams p;
         if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
             p.IsValid() && 
-            p.evalCode == EVAL_IDENTITY_PRIMARY && 
+            p.evalCode == EVAL_IDENTITY_COMMITMENT && 
             p.version >= COptCCParams::VERSION_V3 &&
             p.vData.size() > 1)
         {
@@ -754,7 +754,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
         }
         else
         {
-            return false;
+            return eval->Error("Invalid source commitment output");
         }
 
         for (auto output : spendingTx.vout)
@@ -763,14 +763,14 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
             {
                 if (reservation.IsValid())
                 {
-                    return false;
+                    return eval->Error("Invalid identity reservation output spend");
                 }
                 else
                 {
                     reservation = CNameReservation(p.vData[0]);
                     if (!reservation.IsValid() || reservation.GetCommitment().hash != ch.hash)
                     {
-                        return false;
+                        return eval->Error("Identity reservation output spend does not match commitment");
                     }
                 }
             }
@@ -782,7 +782,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
 bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
     // identity reservations are unspendable
-    return false;
+    return eval->Error("Identity reservations are unspendable");
 }
 
 bool IsIdentityInput(const CScript &scriptSig)
