@@ -509,7 +509,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv, DecodeSecret(IdentityReservationWIF).begin(),32);
             cp->validate = ValidateIdentityReservation;
             cp->ismyvin = IsIdentityInput;
-            cp->contextualprecheck = PrecheckIdentityReservation;
+            cp->contextualprecheck = &PrecheckIdentityReservation;
             break;
 
         // these are currently not used and should be triple checked if reenabled

@@ -4356,7 +4356,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     if (ch.hash != reservation.GetCommitment().hash)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid commitment salt or other inconsistency");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid commitment salt or referral ID");
     }
 
     // when creating an ID, the parent is always the current chains, and it is invalid to specify a parent
@@ -4409,7 +4409,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), CIdentity::ReferralAmount(), false});
             feeOffer -= CIdentity::ReferralAmount();
             int afterId = referralTxIn.prevout.n + 1;
-            for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < CIdentity::REFERRAL_LEVELS; i++)
+            for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < (CIdentity::REFERRAL_LEVELS - 1); i++)
             {
                 CTxDestination nextID;
                 COptCCParams p, master;

@@ -591,7 +591,7 @@ bool SetThisChain(UniValue &chainDefinition)
             notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
             notaryChainDef.halving = std::vector<int32_t>({225680});
             notaryChainDef.eraEnd = std::vector<int32_t>({0});
-            notaryChainDef.eraOptions = std::vector<int32_t>({0});
+            notaryChainDef.eraOptions = std::vector<int32_t>({notaryChainDef.OPTION_ID_REFERRALS});
         }
         else
         {
@@ -602,7 +602,7 @@ bool SetThisChain(UniValue &chainDefinition)
             notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
             notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
             notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
-            notaryChainDef.eraOptions = std::vector<int32_t>({0,0,0});
+            notaryChainDef.eraOptions = std::vector<int32_t>({notaryChainDef.OPTION_ID_REFERRALS,0,0});
         }
     }
 
