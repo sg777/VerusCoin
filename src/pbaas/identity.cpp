@@ -134,8 +134,8 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             }
         }
     }
-    std::string revocationStr = uni_get_str(find_value(uni, "revocationauthorityid"));
-    std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthorityid"));
+    std::string revocationStr = uni_get_str(find_value(uni, "revocationauthority"));
+    std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthority"));
     uint160 nameID = GetID();
     revocationAuthority = revocationStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(revocationStr)));
     recoveryAuthority = recoveryStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(recoveryStr)));
@@ -177,8 +177,8 @@ UniValue CIdentity::ToUniValue() const
     }
     obj.push_back(Pair("contenthashes", hashes));
 
-    obj.push_back(Pair("revocationauthorityid", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
-    obj.push_back(Pair("recoveryauthorityid", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
+    obj.push_back(Pair("revocationauthority", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
+    obj.push_back(Pair("recoveryauthority", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
     obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddress)));
     return obj;
 }
