@@ -368,7 +368,7 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
                             for (i = 0; i < idTx.vout.size(); i++)
                             {
                                 COptCCParams p;
-                                if (idTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+                                if (idTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3 && p.evalCode == EVAL_IDENTITY_PRIMARY)
                                 {
                                     break;
                                 }
@@ -380,7 +380,7 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
                                 {
                                     *pidTx = idTx;
                                 }
-                                idTxIn = CTxIn(it->first.txhash, it->first.index);
+                                idTxIn = CTxIn(it->first.txhash, i);
                                 *pHeightOut = it->second.blockHeight;
                             }
                         }

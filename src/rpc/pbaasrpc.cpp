@@ -4418,10 +4418,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                     p.IsValid() && 
                     p.evalCode == EVAL_NONE && 
                     p.vKeys.size() == 1 && 
-                    p.vData.size() == 2 && 
+                    (p.vData.size() == 1 ||
+                    (p.vData.size() == 2 && 
                     p.vKeys[0].which() == COptCCParams::ADDRTYPE_ID &&
                     (master = COptCCParams(p.vData[1])).IsValid() &&
-                    master.evalCode == EVAL_NONE)
+                    master.evalCode == EVAL_NONE)))
                 {
                     outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), CIdentity::ReferralAmount(), false});
                     feeOffer -= CIdentity::ReferralAmount();
