@@ -442,7 +442,7 @@ void CNode::PushVersion()
     else
         LogPrint("net", "send version message: version %d, blocks=%d, us=%s, peer=%d\n", PROTOCOL_VERSION, nBestHeight, addrMe.ToString(), id);
 
-    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nBestHeight + 1) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3)
+    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nBestHeight + 1) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV4)
     {
         CKeyID nodePaymentAddress;
         if (USE_EXTERNAL_PUBKEY)

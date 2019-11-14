@@ -1542,7 +1542,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
-            if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) == CActivationHeight::SOLUTION_VERUSV3)
+            if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) == CActivationHeight::SOLUTION_VERUSV4)
             {
                 CDataStream txStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 

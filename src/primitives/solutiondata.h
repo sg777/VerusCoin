@@ -303,7 +303,7 @@ class CConstVerusSolutionVector
         // returns 0 if not PBaaS, 1 if PBaaS PoW, -1 if PBaaS PoS
         static int32_t IsPBaaS(const std::vector<unsigned char> &vch)
         {
-            if (Version(vch) == CActivationHeight::SOLUTION_VERUSV3)
+            if (Version(vch) == CActivationHeight::SOLUTION_VERUSV4)
             {
                 return  (DescriptorBits(vch) & SOLUTION_POW) ? 1 : -1;
             }
@@ -327,7 +327,7 @@ class CConstVerusSolutionVector
         {
             int len;
 
-            if (Version(vch) < CActivationHeight::SOLUTION_VERUSV3)
+            if (Version(vch) < CActivationHeight::SOLUTION_VERUSV4)
             {
                 len = 0;
             }
@@ -437,7 +437,7 @@ class CVerusSolutionVector
         {
             int len;
 
-            if (Version() < CActivationHeight::SOLUTION_VERUSV3)
+            if (Version() < CActivationHeight::SOLUTION_VERUSV4)
             {
                 len = 0;
             }
@@ -497,7 +497,7 @@ class CVerusSolutionVector
         // set the extra data with a pointer to bytes and length
         bool SetExtraData(const unsigned char *pbegin, uint32_t len)
         {
-            if (Version() < CActivationHeight::SOLUTION_VERUSV3 || len > ExtraDataLen())
+            if (Version() < CActivationHeight::SOLUTION_VERUSV4 || len > ExtraDataLen())
             {
                 return false;
             }
