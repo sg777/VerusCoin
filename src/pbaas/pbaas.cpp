@@ -493,9 +493,7 @@ CCrossChainExport::CCrossChainExport(const CTransaction &tx)
 
 uint160 CPBaaSChainDefinition::GetChainID(std::string name)
 {
-    const char *chainName = name.c_str();
-    uint256 chainHash = Hash(chainName, chainName + strlen(chainName));
-    return Hash160(chainHash.begin(), chainHash.end());
+    return CIdentity::GetID(name, uint160());
 }
 
 uint160 CPBaaSChainDefinition::GetConditionID(int32_t condition) const

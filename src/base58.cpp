@@ -19,6 +19,7 @@
 
 /** All alphanumeric characters except for "0", "I", "O", and "l" */
 static const char* pszBase58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+extern uint160 VERUS_CHAINID;
 
 bool DecodeBase58(const char* psz, std::vector<unsigned char>& vch)
 {
@@ -272,7 +273,14 @@ bool CBitcoinAddress::SetString(const char* pszAddress)
 
     if (std::count(pszAddress, pszAddress + strlen(pszAddress), '@') == 1)
     {
-        return Set(CIdentityID(CIdentity::GetID(std::string(pszAddress), uint160())));
+        if (std::count(pszAddress, pszAddress + strlen(pszAddress), '.') == 0)
+        {
+            return Set(CIdentity::GetID(std::string(pszAddress), VERUS_CHAINID));
+        }
+        else
+        {
+            return Set(CIdentity::GetID(std::string(pszAddress), uint160()));
+        }
     }
     else
     {

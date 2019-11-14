@@ -40,6 +40,7 @@
 #include "uint256.h"
 #include "hash.h"
 #include "pbaas/crosschainrpc.h"
+#include "pbaas/identity.h"
 
 using namespace std;
 

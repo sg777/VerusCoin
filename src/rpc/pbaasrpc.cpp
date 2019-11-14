@@ -4177,7 +4177,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     CheckIdentityAPIsValid();
 
-    uint160 parent = IsVerusActive() ? uint160() : ConnectedChains.ThisChain().GetChainID();
+    uint160 parent;
     std::string name = CleanName(uni_get_str(params[0]), parent);
 
     // if either we have an invalid name or an implied parent, that is not valid
@@ -4185,6 +4185,8 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid name for commitment");
     }
+
+    parent = ConnectedChains.ThisChain().GetChainID();
 
     CTxDestination dest = DecodeDestination(uni_get_str(params[1]));
     if (dest.which() == COptCCParams::ADDRTYPE_INVALID)
@@ -4277,8 +4279,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     CheckIdentityAPIsValid();
 
-    // all names have a parent of the current chain, except if defined on the Verus chain, which has a parent of null
-    uint160 parent = IsVerusActive() ? uint160() : ConnectedChains.ThisChain().GetChainID();
+    // all names have a parent of the current chain
+    uint160 parent = ConnectedChains.ThisChain().GetChainID();
 
     uint256 txid = uint256S(uni_get_str(find_value(params[0], "txid")));
     CNameReservation reservation(find_value(params[0], "namereservation"));
@@ -4300,7 +4302,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     {
         feeOffer = minFeeOffer;
     }
-
 
     if (feeOffer < minFeeOffer)
     {

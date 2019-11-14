@@ -48,12 +48,12 @@ UniValue CNameReservation::ToUniValue() const
     if (IsVerusActive())
     {
         ret.push_back(Pair("parent", ""));
-        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetID(name, uint160())))));
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "@"))));
     }
     else
     {
         ret.push_back(Pair("parent", ConnectedChains.ThisChain().name));
-        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetID(name + "." + ConnectedChains.ThisChain().name, uint160())))));
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "." + ConnectedChains.ThisChain().name + "@"))));
     }
 
     return ret;
@@ -136,9 +136,9 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     }
     std::string revocationStr = uni_get_str(find_value(uni, "revocationauthority"));
     std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthority"));
-    uint160 nameID = GetID();
-    revocationAuthority = revocationStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(revocationStr)));
-    recoveryAuthority = recoveryStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(recoveryStr)));
+
+    revocationAuthority = uint160(GetDestinationID(DecodeDestination(revocationStr == "" ? name + "@" : revocationStr)));
+    recoveryAuthority = uint160(GetDestinationID(DecodeDestination(recoveryStr == "" ? name + "@" : recoveryStr)));
     libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
 
     if (revocationAuthority.IsNull() || recoveryAuthority.IsNull() || boost::get<libzcash::SaplingPaymentAddress>(&pa) == nullptr)
@@ -466,6 +466,12 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         return state.Error("Invalid identity redefinition");
     }
 
+    // CHECK #3 - must be rooted in this chain
+    if (newIdentity.parent != ConnectedChains.ThisChain().GetChainID())
+    {
+        return state.Error("Identity parent of new identity must be current chain");
+    }
+
     // CHECK #3a - if dupID is valid, we need to be spending it to recover. redefinition is invalid
     CTxIn idTxIn;
     uint32_t priorHeightOut;
@@ -611,19 +617,43 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 {
     AssertLockHeld(cs_main);
 
+    bool validReservation = false;
+    bool validIdentity = false;
+
+    CNameReservation nameRes;
+    CIdentity identity;
+
     for (auto &output : tx.vout)
     {
         COptCCParams p;
-        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_RESERVATION)
+        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1 && (nameRes = CNameReservation(p.vData[0])).IsValid())
         {
-            return true;
+            // twice through makes it invalid
+            if (validReservation)
+            {
+                return state.Error("Invalid multiple identity reservations on one transaction");
+            }
+            validReservation = true;
         }
+        else if (p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (identity = CIdentity(p.vData[0])).IsValid())
+        {
+            // twice through makes it invalid
+            if (validIdentity)
+            {
+                return state.Error("Invalid multiple identity definitions on one transaction");
+            }
+            validIdentity = true;
+        }
+    }
+
+    if (validIdentity && validReservation && nameRes.name == identity.name)
+    {
+        return true;
     }
 
     // if we made it to here without an early, positive exit, we must determine that we are spending a matching identity, and if so, all is fine so far
     CTransaction inTx;
     uint256 blkHash;
-    CIdentity identity;
     COptCCParams p;
     LOCK(mempool.cs);
     for (auto &input : tx.vin)
