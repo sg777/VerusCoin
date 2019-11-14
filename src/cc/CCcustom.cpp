@@ -469,7 +469,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv, DecodeSecret(IdentityPrimaryWIF).begin(),32);
             cp->validate = ValidateIdentityPrimary;
             cp->ismyvin = IsIdentityInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = &PrecheckIdentityPrimary;
             break;
 
         case EVAL_IDENTITY_REVOKE:
