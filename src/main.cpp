@@ -1263,17 +1263,27 @@ bool ContextualCheckTransaction(
     for (int i = 0; i < tx.vout.size(); i++)
     {
         COptCCParams p;
-        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode != EVAL_NONE)
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
         {
-            CCcontract_info CC;
-            CCcontract_info *cp;
-            if (!(cp = CCinit(&CC, p.evalCode)))
+            if (p.evalCode == EVAL_NONE)
             {
-                return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
+                if (!DefaultCCContextualPreCheck(tx, i, state, nHeight))
+                {
+                    return state.DoS(100, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
+                }
             }
-            if (!CC.contextualprecheck(tx, i, state, nHeight))
+            else
             {
-                return state.DoS(100, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
+                CCcontract_info CC;
+                CCcontract_info *cp;
+                if (!(cp = CCinit(&CC, p.evalCode)))
+                {
+                    return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
+                }
+                if (!CC.contextualprecheck(tx, i, state, nHeight))
+                {
+                    return state.DoS(100, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
+                }
             }
         }
     }

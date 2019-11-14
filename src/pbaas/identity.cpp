@@ -452,10 +452,25 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     {
         return state.Error("Transaction may not have an identity reservation without a matching identity");
     }
-
     else if (!valid)
     {
         return state.Error("Improperly formed identity definition transaction");
+    }
+
+    std::vector<CTxDestination> dests;
+    int minSigs;
+    txnouttype outType;
+    if (ExtractDestinations(tx.vout[outNum].scriptPubKey, outType, dests, minSigs))
+    {
+        uint160 thisID = newIdentity.GetID();
+        for (auto &dest : dests)
+        {
+            uint160 oneDestID;
+            if (dest.which() == COptCCParams::ADDRTYPE_ID && ((oneDestID = GetDestinationID(dest)) == thisID || !CIdentity::LookupIdentity(CIdentityID(oneDestID)).IsValid()))
+            {
+                return state.Error("Destination includes invalid identity");
+            }
+        }
     }
 
     // CHECK #2 - the name is not used on the blockchain or in the mempool
@@ -646,7 +661,28 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
-    if (validIdentity && validReservation && nameRes.name == identity.name)
+    if (!validIdentity)
+    {
+        return state.Error("Invalid identity definition");
+    }
+
+    std::vector<CTxDestination> dests;
+    int minSigs;
+    txnouttype outType;
+    if (ExtractDestinations(tx.vout[outNum].scriptPubKey, outType, dests, minSigs))
+    {
+        uint160 thisID = identity.GetID();
+        for (auto &dest : dests)
+        {
+            uint160 oneDestID;
+            if (dest.which() == COptCCParams::ADDRTYPE_ID && ((oneDestID = GetDestinationID(dest)) == thisID || !CIdentity::LookupIdentity(CIdentityID(oneDestID)).IsValid()))
+            {
+                return state.Error("Destination includes invalid identity");
+            }
+        }
+    }
+
+    if (validReservation && nameRes.name == identity.name)
     {
         return true;
     }
