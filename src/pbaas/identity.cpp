@@ -393,7 +393,7 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
 }
 
 // this enables earliest rejection of invalid CC transactions
-bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height, bool referrals)
+bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, bool referrals)
 {
     // CHECK #1 - there is only one reservation output, and there is also one identity output that matches the reservation.
     //            the identity output must come first and have from 0 to 3 referral outputs between it and the reservation.
@@ -447,15 +447,15 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
         }
     }
 
-    // we can close a reservation UTXO without an identity
+    // we can close a commitment UTXO without an identity
     if (valid && !identityCount)
     {
-        return true;
+        return state.Error("Transaction may not have an identity reservation without a matching identity");
     }
 
     else if (!valid)
     {
-        return false;
+        return state.Error("Improperly formed identity definition transaction");
     }
 
     // CHECK #2 - the name is not used on the blockchain or in the mempool
@@ -463,35 +463,18 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
     std::list<CTransaction> conflicts;
     if (mempool.checkNameConflicts(tx, conflicts))
     {
-        return false;
+        return state.Error("Invalid identity redefinition");
     }
 
+    // CHECK #3a - if dupID is valid, we need to be spending it to recover. redefinition is invalid
     CTxIn idTxIn;
     uint32_t priorHeightOut;
     CIdentity dupID = newIdentity.LookupIdentity(newIdentity.GetID(), height, &priorHeightOut, &idTxIn);
-    if (dupID.IsValid())
-    {
-        return false;
-    }
 
     CCoinsViewCache view(pcoinsTip);
-
-    // CHECK #3a - if dupID is valid (and revoked), we need to be spending it to recover, or we are invalid
     if (dupID.IsValid())
     {
-        bool valid = false;
-        for (auto &oneTxIn : tx.vin)
-        {
-            if (oneTxIn.prevout.hash == idTxIn.prevout.hash && oneTxIn.prevout.n == idTxIn.prevout.n)
-            {
-                valid = true;
-                break;
-            }
-        }
-        if (!valid)
-        {
-            return false;
-        }
+        return state.Error("Identity already exists");
     }
     // CHECK #3b - if dupID is invalid, we need to spend matching name commitment
     else
@@ -504,7 +487,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
         {
             if (!view.GetCoins(oneTxIn.prevout.hash, coins))
             {
-                return false;   // can't get our input
+                return state.Error("Cannot access input");
             }
 
             COptCCParams p;
@@ -517,19 +500,19 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
 
         if (ch.hash.IsNull())
         {
-            return false;
+            return state.Error("Invalid identity commitment");
         }
 
         // are we spending a matching name commitment?
         if (ch.hash != newName.GetCommitment().hash)
         {
-            return false;
+            return state.Error("Mismatched identity commitment");
         }
 
         if (!newName.referral.IsNull() && referrals && !(CIdentity::LookupIdentity(newName.referral, coins.nHeight - 1).IsValid()))
         {
             // invalid referral identity
-            return false;
+            return state.Error("Invalid referral identity specified");
         }
     }
 
@@ -542,7 +525,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
         // make sure the fees of this transaction are full price for an identity, all further checks only if there is a referrer
         if (rtxd.NativeFees() < newIdentity.FullRegistrationAmount())
         {
-            return false;
+            return state.Error("Invalid identity registration - insufficient fee");
         }
         return true;
     }
@@ -554,10 +537,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
     CTransaction referralTx;
 
     CIdentity firstReferralIdentity = CIdentity::LookupFirstIdentity(newName.referral, &heightOut, &idTxIn, &referralTx);
+
     // referrer must be mined in when this transaction is put into the mem pool
     if (heightOut >= height || !firstReferralIdentity.IsValid())
     {
-        return false;
+        return state.Error("Invalid identity registration referral");
     }
 
     bool isReferral = false;
@@ -580,7 +564,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
                 if (p.vKeys.size() == 0 || p.vKeys[0].which() != COptCCParams::ADDRTYPE_ID)
                 {
                     // invalid referral
-                    return false;
+                    return state.Error("Invalid identity registration referral outputs");
                 }
                 else
                 {
@@ -595,29 +579,65 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_
     }
     if (referrers.size() != checkReferrers.size())
     {
-        return false;
+        return state.Error("Invalid identity registration - incorrect referral payments");
     }
+
     // make sure all paid referrers are correct
     for (int i = 0; i < referrers.size(); i++)
     {
         if (referrers[i] != checkReferrers[i])
         {
-            return false;
+            return state.Error("Invalid identity registration - incorrect referral payments");
         }
     }
 
     // CHECK #6 - ensure that the transaction pays a fee of 80% of the full price for an identity, minus the value of each referral output between identity and reservation
     if (rtxd.NativeFees() < (newIdentity.ReferredRegistrationAmount() - (referrers.size() * newIdentity.ReferralAmount())))
     {
-        return false;
+        return state.Error("Invalid identity registration - insufficient fee");
     }
 
     return true;
 }
 
-bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, uint32_t height)
+bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
-    return PrecheckIdentityReservation(tx, outNum, height, ConnectedChains.ThisChain().IDReferrals());
+    return PrecheckIdentityReservation(tx, outNum, state, height, ConnectedChains.ThisChain().IDReferrals());
+}
+
+// with the thorough check for an identity reservation, the only thing we need to check is that either 1) this transaction includes an identity reservation output or 2)
+// this transaction spends a prior identity transaction that does not create a clearly invalid mutation between the two
+bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    AssertLockHeld(cs_main);
+
+    for (auto &output : tx.vout)
+    {
+        COptCCParams p;
+        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_RESERVATION)
+        {
+            return true;
+        }
+    }
+
+    // if we made it to here without an early, positive exit, we must determine that we are spending a matching identity, and if so, all is fine so far
+    CTransaction inTx;
+    uint256 blkHash;
+    CIdentity identity;
+    COptCCParams p;
+    LOCK(mempool.cs);
+    for (auto &input : tx.vin)
+    {
+        if (input.prevout.hash == inTx.GetHash() || myGetTransaction(input.prevout.hash, inTx, blkHash))
+        {
+            if (inTx.vout[input.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (identity = CIdentity(p.vData[0])).IsValid())
+            {
+                return true;
+            }
+        }
+    }
+
+    return state.Error("Invalid primary identity - does not include identity reservation or spend matching identity");
 }
 
 CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn)

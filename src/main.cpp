@@ -1271,9 +1271,9 @@ bool ContextualCheckTransaction(
             {
                 return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
             }
-            if (!CC.contextualprecheck(tx, i, nHeight))
+            if (!CC.contextualprecheck(tx, i, state, nHeight))
             {
-                return state.DoS(100, error(("ContextualCheckTransaction(): Contextual precheck for eval code " + to_string(p.evalCode) + " failed").c_str()), REJECT_INVALID, "bad-txns-evalcode-invalid");
+                return state.DoS(100, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
             }
         }
     }
