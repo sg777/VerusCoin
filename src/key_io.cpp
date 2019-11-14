@@ -18,6 +18,8 @@
 #include <string.h>
 #include <algorithm>
 
+extern uint160 VERUS_CHAINID;
+
 namespace
 {
 class DestinationEncoder : public boost::static_visitor<std::string>
@@ -144,7 +146,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     }
     else if (std::count(str.begin(), str.end(), '@') == 1)
     {
-        return CIdentityID(CIdentity::GetID(str, uint160()));
+        return CIdentityID(CIdentity::GetID(str, VERUS_CHAINID));
     }
     
     return CNoDestination();

@@ -20,6 +20,7 @@
 #include "streams.h"
 #include "pubkey.h"
 #include "base58.h"
+#include "boost/algorithm/string.hpp"
 
 static const int DEFAULT_RPC_TIMEOUT=900;
 static const uint32_t PBAAS_VERSION = 1;
@@ -50,7 +51,7 @@ public:
 
     inline static uint160 GetChainID(std::string name)
     {
-        const char *chainName = name.c_str();
+        const char *chainName = boost::algorithm::to_lower_copy(name).c_str();
         uint256 chainHash = Hash(chainName, chainName + strlen(chainName));
         return Hash160(chainHash.begin(), chainHash.end());
     }
