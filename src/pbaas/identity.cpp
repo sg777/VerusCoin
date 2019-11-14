@@ -48,12 +48,12 @@ UniValue CNameReservation::ToUniValue() const
     if (IsVerusActive())
     {
         ret.push_back(Pair("parent", ""));
-        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetID(name, uint160())))));
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "@"))));
     }
     else
     {
         ret.push_back(Pair("parent", ConnectedChains.ThisChain().name));
-        ret.push_back(Pair("nameid", EncodeDestination(CTxDestination(CIdentity::GetID(name + "." + ConnectedChains.ThisChain().name, uint160())))));
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "." + ConnectedChains.ThisChain().name + "@"))));
     }
 
     return ret;
@@ -136,9 +136,9 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     }
     std::string revocationStr = uni_get_str(find_value(uni, "revocationauthority"));
     std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthority"));
-    uint160 nameID = GetID();
-    revocationAuthority = revocationStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(revocationStr)));
-    recoveryAuthority = recoveryStr == "" ? nameID : uint160(GetDestinationID(DecodeDestination(recoveryStr)));
+
+    revocationAuthority = uint160(GetDestinationID(DecodeDestination(revocationStr == "" ? name + "@" : revocationStr)));
+    recoveryAuthority = uint160(GetDestinationID(DecodeDestination(recoveryStr == "" ? name + "@" : recoveryStr)));
     libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
 
     if (revocationAuthority.IsNull() || recoveryAuthority.IsNull() || boost::get<libzcash::SaplingPaymentAddress>(&pa) == nullptr)
@@ -644,6 +644,11 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
             }
             validIdentity = true;
         }
+    }
+
+    if (validIdentity && validReservation && nameRes.name == identity.name)
+    {
+        return true;
     }
 
     // if we made it to here without an early, positive exit, we must determine that we are spending a matching identity, and if so, all is fine so far

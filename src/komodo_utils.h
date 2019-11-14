@@ -15,6 +15,7 @@
 #include "komodo_defs.h"
 #include "key_io.h"
 #include "pbaas/crosschainrpc.h"
+#include "pbaas/identity.h"
 #include <string.h>
 
 #ifdef _WIN32

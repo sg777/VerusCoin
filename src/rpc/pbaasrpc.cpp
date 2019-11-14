@@ -4303,7 +4303,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         feeOffer = minFeeOffer;
     }
 
-
     if (feeOffer < minFeeOffer)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee offer must be at least " + ValueFromAmount(CIdentity::MinRegistrationAmount()).write());

@@ -49,12 +49,7 @@ public:
 
     static CCrossChainRPCData LoadFromConfig(std::string fPath="");
 
-    inline static uint160 GetChainID(std::string name)
-    {
-        const char *chainName = boost::algorithm::to_lower_copy(name).c_str();
-        uint256 chainHash = Hash(chainName, chainName + strlen(chainName));
-        return Hash160(chainHash.begin(), chainHash.end());
-    }
+    static uint160 GetChainID(std::string name);
 
     static uint160 GetConditionID(uint160 cid, int32_t condition);
     static uint160 GetConditionID(std::string name, int32_t condition);

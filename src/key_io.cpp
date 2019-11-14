@@ -12,7 +12,10 @@
 
 #include <boost/variant/apply_visitor.hpp>
 #include <boost/variant/static_visitor.hpp>
+
 #include "pbaas/identity.h"
+#include "cc/CCinclude.h"
+#include "boost/algorithm/string.hpp"
 
 #include <assert.h>
 #include <string.h>
@@ -146,7 +149,14 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     }
     else if (std::count(str.begin(), str.end(), '@') == 1)
     {
-        return CIdentityID(CIdentity::GetID(str, VERUS_CHAINID));
+        if (std::count(str.begin(), str.end(), '.') == 0)
+        {
+            return CIdentityID(CIdentity::GetID(str, VERUS_CHAINID));
+        }
+        else
+        {
+            return CIdentityID(CIdentity::GetID(str, uint160()));
+        }
     }
     
     return CNoDestination();
@@ -461,3 +471,201 @@ libzcash::SpendingKey DecodeSpendingKey(const std::string& str)
     memory_cleanse(data.data(), data.size());
     return libzcash::InvalidEncoding();
 }
+
+uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
+{
+    uint160 cid = CIdentity::GetID(name, uint160());
+
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
+{
+    std::string nameCopy = Name;
+    std::string invalidChars = "\\/:*?\"<>|";
+    for (int i = 0; i < nameCopy.size(); i++)
+    {
+        if (invalidChars.find(nameCopy[i]) != std::string::npos)
+        {
+            nameCopy[i] = '_';
+        }
+    }
+    std::vector<std::string> retNames;
+    boost::split(retNames, nameCopy, boost::is_any_of("@"));
+    if (!retNames.size() || retNames.size() > 2)
+    {
+        return std::vector<std::string>();
+    }
+
+    bool explicitChain = false;
+    if (retNames.size() == 2)
+    {
+        ChainOut = retNames[1];
+        explicitChain = true;
+    }    
+
+    nameCopy = retNames[0];
+    boost::split(retNames, nameCopy, boost::is_any_of("."));
+
+    for (int i = 0; i < retNames.size(); i++)
+    {
+        if (retNames[i].size() > KOMODO_ASSETCHAIN_MAXLEN - 1)
+        {
+            retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
+        }
+    }
+
+    // if no chain is specified, default to chain of the ID
+    if (!explicitChain && retNames.size())
+    {
+        if (retNames.size() == 1)
+        {
+            // by default, we assume the Verus chain for no suffix
+            ChainOut = "";
+        }
+        else
+        {
+            for (int i = 1; i < retNames.size(); i++)
+            {
+                if (ChainOut.size())
+                {
+                    ChainOut = ChainOut + ".";
+                }
+                ChainOut = ChainOut + retNames[i];
+            }
+        }
+    }
+
+    return retNames;
+}
+
+// takes a multipart name, either complete or partially processed with a Parent hash,
+// hash its parent names into a parent ID and return the parent hash and cleaned, single name
+std::string CleanName(const std::string &Name, uint160 &Parent)
+{
+    std::string chainName;
+    std::vector<std::string> subNames = ParseSubNames(Name, chainName);
+
+    if (!subNames.size())
+    {
+        return "";
+    }
+
+    for (int i = subNames.size() - 1; i > 0; i--)
+    {
+        const char *idName = boost::algorithm::to_lower_copy(subNames[i]).c_str();
+        uint256 idHash;
+
+        if (Parent.IsNull())
+        {
+            idHash = Hash(idName, idName + strlen(idName));
+        }
+        else
+        {
+            idHash = Hash(idName, idName + strlen(idName));
+            idHash = Hash(Parent.begin(), Parent.end(), idHash.begin(), idHash.end());
+
+        }
+        Parent = Hash160(idHash.begin(), idHash.end());
+    }
+    return subNames[0];
+}
+
+CIdentityID CIdentity::GetID(const std::string &Name, const uint160 &parent)
+{
+    uint160 newParent = parent;
+    std::string cleanName = CleanName(Name, newParent);
+
+    const char *idName = boost::algorithm::to_lower_copy(cleanName).c_str();
+    uint256 idHash;
+    if (parent.IsNull())
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+    }
+    else
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+        idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
+
+    }
+    return Hash160(idHash.begin(), idHash.end());
+}
+
+CIdentityID CIdentity::GetID(const std::string &Name) const
+{
+    uint160 newLevel = parent;
+    std::string cleanName = CleanName(Name, newLevel);
+
+    const char *idName = boost::algorithm::to_lower_copy(cleanName).c_str();
+    uint256 idHash;
+    if (parent.IsNull())
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+    }
+    else
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+        idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
+
+    }
+    return Hash160(idHash.begin(), idHash.end());
+}
+
+CIdentityID CIdentity::GetID() const
+{
+    return GetID(name);
+}
+
+uint160 CCrossChainRPCData::GetChainID(std::string name)
+{
+    return CIdentity::GetID(name, uint160());
+}
+
+CScript CIdentity::TransparentOutput() const
+{
+    CConditionObj<CIdentity> ccObj = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({CTxDestination(CIdentityID(GetID()))}), 1);
+    return MakeMofNCCScript(ccObj);
+}
+
+CScript CIdentity::TransparentOutput(const CIdentityID &destinationID)
+{
+    CConditionObj<CIdentity> ccObj = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({destinationID}), 1);
+    return MakeMofNCCScript(ccObj);
+}
+
+CScript CIdentity::IdentityUpdateOutputScript() const
+{
+    CScript ret;
+
+    if (!IsValid())
+    {
+        return ret;
+    }
+
+    std::vector<CTxDestination> dests1({CTxDestination(CIdentityID(GetID()))});
+    CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
+    std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
+    CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
+    std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
+    CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
+
+    std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetID(), EVAL_IDENTITY_PRIMARY))), CTxDestination(CIdentityID(revocationAuthority)), CTxDestination(CIdentityID(recoveryAuthority))});
+
+    ret = MakeMofNCCScript(1, primary, revocation, recovery, &indexDests);
+    return ret;
+}
+
+
