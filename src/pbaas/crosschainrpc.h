@@ -263,7 +263,7 @@ public:
 
     bool IsValid() const
     {
-        return (nVersion != PBAAS_VERSION_INVALID) && (name.size() && rewards.size() > 0) && (rewards.size() <= ASSETCHAINS_MAX_ERAS);
+        return (nVersion != PBAAS_VERSION_INVALID) && name.size() > 0 && name.size() <= (KOMODO_ASSETCHAIN_MAXLEN - 1) && rewards.size() > 0 && (rewards.size() <= ASSETCHAINS_MAX_ERAS);
     }
 
     int32_t ChainOptions() const

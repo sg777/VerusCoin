@@ -158,7 +158,7 @@ CIdentity::CIdentity(const CScript &scriptPubKey)
     COptCCParams p;
     if (IsPayToCryptoCondition(scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size())
     {
-        FromVector(p.vData[0], *this);
+        *this = CIdentity(p.vData[0]);
     }
 }
 
@@ -187,14 +187,19 @@ CIdentity::CIdentity(const CTransaction &tx)
 {
     std::set<uint160> ids;
     int idCount;
+    bool found = false;
 
     nVersion = PBAAS_VERSION_INVALID;
     for (auto out : tx.vout)
     {
         *this = CIdentity(out.scriptPubKey);
-        if (IsValid())
+        if (IsValid() && !found)
         {
-            break;
+            found = true;
+        }
+        else if (found)
+        {
+            *this = CIdentity();
         }
     }
 }
@@ -759,6 +764,11 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (!oldIdentity.IsValid())
     {
         return eval->Error("Invalid source identity");
+    }
+
+    if (oldIdentity.recoveryAuthority == oldIdentity.GetID())
+    {
+        return eval->Error("Cannot revoke an identity with self as the recovery authority");
     }
 
     CIdentity newIdentity(spendingTx);

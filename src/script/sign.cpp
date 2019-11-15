@@ -272,7 +272,7 @@ CIdentity LookupIdentity(const BaseSignatureCreator& creator, const CIdentityID 
 {
     std::pair<CIdentityMapKey, CIdentityMapValue> identity;
     COptCCParams p;
-    printf("Looking up %s identity\n", EncodeDestination(CTxDestination(idID)).c_str());
+    //printf("Looking up %s identity\n", EncodeDestination(CTxDestination(idID)).c_str());
     if (creator.IsKeystoreValid() && 
         creator.KeyStore().GetIdentity(idID, identity) && 
         identity.second.IsValidUnrevoked())
