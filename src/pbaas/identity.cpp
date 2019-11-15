@@ -192,12 +192,13 @@ CIdentity::CIdentity(const CTransaction &tx)
     nVersion = PBAAS_VERSION_INVALID;
     for (auto out : tx.vout)
     {
-        *this = CIdentity(out.scriptPubKey);
-        if (IsValid() && !found)
+        CIdentity foundIdentity(out.scriptPubKey);
+        if (foundIdentity.IsValid() && !found)
         {
+            *this = foundIdentity;
             found = true;
         }
-        else if (found)
+        else if (foundIdentity.IsValid())
         {
             *this = CIdentity();
         }
