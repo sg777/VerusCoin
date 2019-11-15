@@ -681,7 +681,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         for (auto &dest : dests)
         {
             uint160 oneDestID;
-            if (dest.which() == COptCCParams::ADDRTYPE_ID && ((oneDestID = GetDestinationID(dest)) == thisID || !CIdentity::LookupIdentity(CIdentityID(oneDestID)).IsValid()))
+            if (dest.which() == COptCCParams::ADDRTYPE_ID && (oneDestID = GetDestinationID(dest)) != thisID && !CIdentity::LookupIdentity(CIdentityID(oneDestID)).IsValid())
             {
                 return state.Error("Destination includes invalid identity");
             }
