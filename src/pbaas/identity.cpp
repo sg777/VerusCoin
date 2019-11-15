@@ -204,11 +204,6 @@ CIdentity::CIdentity(const CTransaction &tx)
     }
 }
 
-CIdentity::CIdentity(const std::vector<unsigned char> &asVector)
-{
-    ::FromVector(asVector, *this);
-}
-
 CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn)
 {
     CIdentity ret;

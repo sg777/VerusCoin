@@ -289,7 +289,11 @@ public:
     CIdentity(const UniValue &uni);
     CIdentity(const CTransaction &tx);
     CIdentity(const CScript &scriptPubKey);
-    CIdentity(const std::vector<unsigned char> &asVector);
+    CIdentity(const std::vector<unsigned char> &asVector)
+    {
+        ::FromVector(asVector, *this);
+    }
+
 
     ADD_SERIALIZE_METHODS;
 
