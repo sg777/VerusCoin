@@ -462,7 +462,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     if (vch.size())
                     {
                         CC *signedCC = nullptr;
-                        error = !cc_readFulfillmentBinaryExt(&vch[0], vch.size() - 1, &signedCC) || !signedCC;
+                        error = cc_readFulfillmentBinaryExt(&vch[0], vch.size() - 1, &signedCC) || !signedCC;
 
                         if (!error)
                         {

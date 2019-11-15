@@ -4487,8 +4487,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
         if (!signSuccess)
         {
-            LogPrintf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            LogPrintf("%s: failure to sign identity registration tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            printf("%s: failure to sign identity registration tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
         } else {
             UpdateTransaction(mtx, i, sigdata);
@@ -4588,8 +4588,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
         if (!signSuccess)
         {
-            LogPrintf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            LogPrintf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            printf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
         } else {
             UpdateTransaction(mtx, i, sigdata);
@@ -4699,8 +4699,8 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
         if (!signSuccess)
         {
-            LogPrintf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            LogPrintf("%s: failure to sign identity revocation tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            printf("%s: failure to sign identity revocation tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
         } else {
             UpdateTransaction(mtx, i, sigdata);
@@ -4809,8 +4809,8 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
         if (!signSuccess)
         {
-            LogPrintf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign conversion tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            LogPrintf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            printf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
         } else {
             UpdateTransaction(mtx, i, sigdata);
