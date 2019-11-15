@@ -29,9 +29,9 @@
 
 #ifdef __linux__ 
 
-#ifdef __i386__ || __X86_64__
+#if defined(__i386__) || defined(__X86_64__)
 #include <x86intrin.h>
-#elif defined(__arm__)  || defined(__aarch64__)
+#elif defined(__arm__) || defined(__aarch64__)
 #include "crypto/SSE2NEON.h"
 #endif 
 

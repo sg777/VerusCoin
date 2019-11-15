@@ -177,14 +177,20 @@ bool CBasicKeyStore::RemoveIdentity(const CIdentityMapKey &mapKey, const uint256
 // return an identity if it is in the store
 bool CBasicKeyStore::GetIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t lteHeight) const
 {
+    // debug test - comment normally
+    // printf("lower_bound: %s\n", CIdentityMapKey(idID).ToString().c_str());
+    // printf("upper_bound: %s\n", CIdentityMapKey(idID, lteHeight >= INT32_MAX ? INT32_MAX : lteHeight + 1).ToString().c_str());
+    // printf("first: %s\n", mapIdentities.size() ? CIdentityMapKey(mapIdentities.begin()->first).ToString().c_str() : "");
+    // end debug test
+
     auto itStart = mapIdentities.lower_bound(CIdentityMapKey(idID).MapKey());
     if (itStart == mapIdentities.end())
     {
         return false;
     } 
     // point to the last
-    auto itEnd = mapIdentities.upper_bound(CIdentityMapKey(idID, lteHeight == UINT32_MAX ? UINT32_MAX : lteHeight + 1).MapKey());
-    if (itStart == mapIdentities.begin())
+    auto itEnd = mapIdentities.upper_bound(CIdentityMapKey(idID, lteHeight >= INT32_MAX ? INT32_MAX : lteHeight + 1).MapKey());
+    if (itEnd == mapIdentities.begin())
     {
         return false;
     }

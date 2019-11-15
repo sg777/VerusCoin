@@ -169,7 +169,7 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
 
     int32_t nHeight = pindexPrev->GetHeight() + 1;
 
-    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3)
+    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV4)
     {
         // coinbase should already be finalized in the new version
         if (buildMerkle)
@@ -2430,7 +2430,7 @@ void static BitcoinMiner_noeq()
             savebits = pblock->nBits;
 
             bool verusHashV2 = pblock->nVersion == CBlockHeader::VERUS_V2;
-            bool verusSolutionV3 = CConstVerusSolutionVector::Version(pblock->nSolution) >= CActivationHeight::SOLUTION_VERUSV3;
+            bool verusSolutionV4 = CConstVerusSolutionVector::Version(pblock->nSolution) >= CActivationHeight::SOLUTION_VERUSV4;
 
             if ( ASSETCHAINS_SYMBOL[0] != 0 )
             {
@@ -2448,10 +2448,10 @@ void static BitcoinMiner_noeq()
             }
 
             // set our easiest target, if V3+, no need to rebuild the merkle tree
-            IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, verusSolutionV3 ? false : true, &savebits);
+            IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, verusSolutionV4 ? false : true, &savebits);
 
             // update PBaaS header
-            if (verusSolutionV3)
+            if (verusSolutionV4)
             {
                 if (!IsVerusActive() && ConnectedChains.IsVerusPBaaSAvailable())
                 {
@@ -2610,7 +2610,7 @@ void static BitcoinMiner_noeq()
                             // pickup/remove any new/deleted headers
                             if (ConnectedChains.dirty || (pblock->NumPBaaSHeaders() < ConnectedChains.mergeMinedChains.size() + 1))
                             {
-                                IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, verusSolutionV3 ? false : true, &savebits);
+                                IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, verusSolutionV4 ? false : true, &savebits);
 
                                 hashTarget.SetCompact(savebits);
                                 uintTarget = ArithToUint256(hashTarget);
@@ -2621,7 +2621,7 @@ void static BitcoinMiner_noeq()
                             uint64_t start = i * hashesToGo + totalDone;
                             hashesToGo -= totalDone;
 
-                            if (verusSolutionV3)
+                            if (verusSolutionV4)
                             {
                                 // mine on canonical header for merge mining
                                 CPBaaSPreHeader savedHeader(*pblock);

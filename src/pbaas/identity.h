@@ -509,9 +509,9 @@ public:
         std::vector<unsigned char> vch(idID.begin(), idID.end());
         vch.insert(vch.end(), 12, 0);
         arith_uint256 retVal = UintToArith256(uint256(vch));
-        retVal = (retVal << 32) + blockHeight;
-        retVal = (retVal << 32) + blockOrder;
-        retVal = (retVal << 32) + flags;
+        retVal = (retVal << 32) | blockHeight;
+        retVal = (retVal << 32) | blockOrder;
+        retVal = (retVal << 32) | flags;
         return retVal;
     }
 
@@ -519,6 +519,11 @@ public:
     bool IsValid() const
     {
         return !idID.IsNull() && blockHeight != 0 && flags & VALID && blockOrder >= 1;
+    }
+
+    std::string ToString() const
+    {
+        return "{\"id\":" + idID.GetHex() + ", \"blockheight\":" + std::to_string(blockHeight) + ", \"blockorder\":" + std::to_string(blockOrder) + ", \"flags\":" + std::to_string(flags) + ", \"mapkey\":" + ArithToUint256(MapKey()).GetHex() + "}";
     }
 };
 

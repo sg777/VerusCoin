@@ -1118,7 +1118,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
     LOCK(cs_main);
     bool isVerusActive = IsVerusActive();
     if (!isVerusActive && 
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::SOLUTION_VERUSV3 &&
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::SOLUTION_VERUSV4 &&
         height != 0 && 
         height <= chainActive.Height() && 
         chainActive[height] && 

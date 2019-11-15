@@ -582,7 +582,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         return;
     }
 
-    // reserve exchange transactions cannot run until VerusV3 and must have a supported chain on which to execute
+    // reserve exchange transactions cannot run until VerusV4 and must have a supported chain on which to execute
     if (!chainActive.LastTip() ||
         CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) < CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3)
     {
