@@ -233,6 +233,7 @@ public:
     static const uint32_t FLAG_REVOKED = 0x8000;
     static const int64_t MIN_REGISTRATION_AMOUNT = 10000000000;
     static const int REFERRAL_LEVELS = 3;
+    static const int MAX_NAME_LEN = 64;
 
     uint160 parent;
 
@@ -288,10 +289,7 @@ public:
     CIdentity(const UniValue &uni);
     CIdentity(const CTransaction &tx);
     CIdentity(const CScript &scriptPubKey);
-    CIdentity(const std::vector<unsigned char> &asVector)
-    {
-        ::FromVector(asVector, *this);
-    }
+    CIdentity(const std::vector<unsigned char> &asVector);
 
     ADD_SERIALIZE_METHODS;
 
@@ -321,6 +319,11 @@ public:
     bool IsRevoked() const
     {
         return flags & FLAG_REVOKED;
+    }
+
+    bool IsValid() const
+    {
+        return CPrincipal::IsValid() && (name.size() <= MAX_NAME_LEN);
     }
 
     bool IsValidUnrevoked() const
