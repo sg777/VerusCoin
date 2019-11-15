@@ -323,7 +323,7 @@ public:
 
     bool IsValid() const
     {
-        return CPrincipal::IsValid() && (name.size() <= MAX_NAME_LEN);
+        return CPrincipal::IsValid() && name.size() > 0 && (name.size() <= MAX_NAME_LEN);
     }
 
     bool IsValidUnrevoked() const
