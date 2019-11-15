@@ -294,7 +294,6 @@ public:
         ::FromVector(asVector, *this);
     }
 
-
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
