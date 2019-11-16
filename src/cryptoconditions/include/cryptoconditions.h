@@ -78,6 +78,7 @@ int             cc_visit(CC *cond, struct CCVisitor visitor);
 int             cc_isEvalVisitor(CCVisitor *visitor);
 void            cc_setEvalVisitorFulfilled(CCVisitor *visitor, int fulfilled);
 int             cc_isEvalVisitorFulfilled(CCVisitor *visitor);
+int             cc_countEvals(const CC *cond);
 int             cc_signTreeEd25519(CC *cond, const uint8_t *privateKey, const uint8_t *msg,
                         const size_t msgLength);
 int             cc_signTreeSecp256k1Msg32(CC *cond, const uint8_t *privateKey, const uint8_t *msg32);

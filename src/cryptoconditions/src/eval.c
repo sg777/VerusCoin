@@ -140,6 +140,12 @@ int evalVisit(CC *cond, CCVisitor visitor) {
     return evalData->verify(cond, evalData->context, cc_isEvalVisitorFulfilled(&visitor));
 }
 
+int evalCountVisits(CC *cond, CCVisitor visitor) {
+    if (cond->type->typeId != CC_Eval) return 1;
+    *((int *)(visitor.context)) += 1;
+    return 1;
+}
+
 int cc_isEvalVisitor(CCVisitor *visitor)
 {
     if (visitor->visit == &evalVisit)
@@ -153,6 +159,14 @@ int cc_verifyEval(const CC *cond, VerifyEval verify, void *context) {
     // assume fulfilled if not modified
     CCVisitor visitor = {&evalVisit, "1", 1, &evalData};
     return cc_visit(cond, visitor);
+}
+
+int cc_countEvals(const CC *cond) {
+    int evalCount = 0;
+    // assume fulfilled if not modified
+    CCVisitor visitor = {&evalCountVisits, "", 0, &evalCount};
+    cc_visit(cond, visitor);
+    return evalCount;
 }
 
 

@@ -490,6 +490,13 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         CC *signedCC = nullptr;
                         error = cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &signedCC) || !signedCC;
 
+                        // we must always retain all eval nodes... ensure that any partial signature does so to prevent circumventing any eval condition
+                        if (cc_countEvals(signedCC) != cc_countEvals(outputCC))
+                        {
+                            error = true;
+                            cc_free(signedCC);
+                        }
+
                         if (!error)
                         {
                             cc_free(outputCC);
@@ -504,7 +511,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     }
                 }
 
-                if (vch.size())
+                if (!error && vch.size())
                 {
                     ret.push_back(vch);
                 }
