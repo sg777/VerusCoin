@@ -767,11 +767,6 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("Invalid source identity");
     }
 
-    if (oldIdentity.recoveryAuthority == oldIdentity.GetID())
-    {
-        return eval->Error("Cannot revoke an identity with self as the recovery authority");
-    }
-
     CIdentity newIdentity(spendingTx);
     if (!newIdentity.IsValid())
     {
@@ -781,6 +776,11 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (oldIdentity.IsInvalidMutation(newIdentity))
     {
         return eval->Error("Invalid identity modification");
+    }
+
+    if (oldIdentity.IsRevocation(newIdentity) && oldIdentity.recoveryAuthority == oldIdentity.GetID())
+    {
+        return eval->Error("Cannot revoke an identity with self as the recovery authority");
     }
 
     if (!fulfilled && (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity)))

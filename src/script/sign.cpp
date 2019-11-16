@@ -48,7 +48,33 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, 
         // assume either 1of1 or 1of2. if the condition created by the
         if (!cc || cc_signTreeSecp256k1Msg32(cc, key.begin(), hash.begin()) == 0)
             return false;
-        vchSig = CCSigVec(cc);
+
+        /*
+        char *jsonCondStr = cc_conditionToJSONString(cc);
+        if (jsonCondStr)
+        {
+            printf("Freshly signed condition: %s\n", jsonCondStr);
+            cJSON_free(jsonCondStr);
+            uint8_t buf[2000];
+            int ccLen = cc_conditionBinary(cc, buf, 2000);
+            if (ccLen)
+            {
+                CC *transformedCC = cc_readConditionBinary(buf, ccLen);
+                if (transformedCC)
+                {
+                    jsonCondStr = cc_conditionToJSONString(transformedCC);
+                    if (jsonCondStr)
+                    {
+                        printf("Signed, transformed condition: %s\n", jsonCondStr);
+                        cJSON_free(jsonCondStr);
+                    }
+                    cc_free(transformedCC);
+                }
+            }
+        }
+        */
+
+        vchSig = CCPartialSigVec(cc);
         return true;
     }
     else
@@ -264,7 +290,7 @@ CC *MakeMofNCC(int M, TOBJ1 &condition1, TOBJ2 &condition2, TOBJ3 &condition3, T
 CScript _CCPubKey(const CC *cond)
 {
     unsigned char buf[2000];
-    size_t len = cc_conditionBinary(cond, buf);
+    size_t len = cc_conditionBinary(cond, buf, 2000);
     return CScript() << std::vector<unsigned char>(buf, buf+len) << OP_CHECKCRYPTOCONDITION;
 }
 
@@ -462,7 +488,14 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     if (vch.size())
                     {
                         CC *signedCC = nullptr;
-                        error = cc_readFulfillmentBinaryExt(&vch[0], vch.size() - 1, &signedCC) || !signedCC;
+                        error = cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &signedCC) || !signedCC;
+
+                        // we must always retain all eval nodes... ensure that any partial signature does so to prevent circumventing any eval condition
+                        if (cc_countEvals(signedCC) != cc_countEvals(outputCC))
+                        {
+                            error = true;
+                            cc_free(signedCC);
+                        }
 
                         if (!error)
                         {
@@ -478,7 +511,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     }
                 }
 
-                if (vch.size())
+                if (!error && vch.size())
                 {
                     ret.push_back(vch);
                 }

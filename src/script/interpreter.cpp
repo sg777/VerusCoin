@@ -1552,7 +1552,16 @@ int TransactionSignatureChecker::CheckCryptoCondition(
     int out = false;
 
     CC *cond;
-    int error = cc_readFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
+    int error;
+    if (p.IsValid() && p.version >= p.VERSION_V3)
+    {
+        error = cc_readPartialFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
+    }
+    else
+    {
+        error = cc_readFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
+    }
+    
     if (error || !cond) return -1;
 
     if (!IsSupportedCryptoCondition(cond, p.IsValid() ? p.evalCode : 0)) return 0;

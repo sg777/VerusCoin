@@ -43,6 +43,7 @@ bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fu
 
     if (eval->state.IsValid()) return true;
 
+    /*
     std::string lvl = eval->state.IsInvalid() ? "Invalid" : "Error!";
     fprintf(stderr, "CC Eval %s %s: %s spending tx %s\n",
             EvalToStr(cond->code[0]).data(),
@@ -50,6 +51,7 @@ bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fu
             eval->state.GetRejectReason().data(),
             tx.vin[nIn].prevout.hash.GetHex().data());
     if (eval->state.IsError()) fprintf(stderr, "Culprit: %s\n", EncodeHexTx(tx).data());
+    */
     return false;
 }
 

@@ -86,4 +86,4 @@ static uint32_t preimageSubtypes(const CC *cond) {
 }
 
 
-struct CCType CC_PreimageType = { 0, "preimage-sha-256", Condition_PR_preimageSha256, 0, &preimageFingerprint, &preimageCost, &preimageSubtypes, &preimageFromJSON, &preimageToJSON, &preimageFromFulfillment, &preimageToFulfillment, &preimageIsFulfilled, &preimageFree };
+struct CCType CC_PreimageType = { 0, "preimage-sha-256", Condition_PR_preimageSha256, 0, &preimageFingerprint, &preimageCost, &preimageSubtypes, &preimageFromJSON, &preimageToJSON, &preimageFromFulfillment, &preimageToFulfillment, &preimageFromFulfillment, &preimageToFulfillment, &preimageIsFulfilled, &preimageFree };

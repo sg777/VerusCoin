@@ -83,15 +83,15 @@ CC* CCNewEval(std::vector<unsigned char> code)
 
 CScript CCPubKey(const CC *cond)
 {
-    unsigned char buf[1000];
-    size_t len = cc_conditionBinary(cond, buf);
+    unsigned char buf[2000];
+    size_t len = cc_conditionBinary(cond, buf, 2000);
     return CScript() << std::vector<unsigned char>(buf, buf+len) << OP_CHECKCRYPTOCONDITION;
 }
 
 std::vector<unsigned char> CCPubKeyVec(const CC *cond)
 {
-    unsigned char buf[1000];
-    size_t len = cc_conditionBinary(cond, buf);
+    unsigned char buf[2000];
+    size_t len = cc_conditionBinary(cond, buf, 2000);
     return std::vector<unsigned char>(buf, buf+len);
 }
 
@@ -109,6 +109,15 @@ std::vector<unsigned char> CCSigVec(const CC *cond)
 {
     unsigned char buf[10000];
     size_t len = cc_fulfillmentBinary(cond, buf, 10000);
+    auto ffill = std::vector<unsigned char>(buf, buf+len);
+    ffill.push_back(1);  // SIGHASH_ALL
+    return ffill;
+}
+
+std::vector<unsigned char> CCPartialSigVec(const CC *cond)
+{
+    unsigned char buf[10000];
+    size_t len = cc_partialFulfillmentBinary(cond, buf, 10000);
     auto ffill = std::vector<unsigned char>(buf, buf+len);
     ffill.push_back(1);  // SIGHASH_ALL
     return ffill;
