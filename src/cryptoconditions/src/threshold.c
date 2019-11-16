@@ -135,7 +135,8 @@ static CC *thresholdFromFulfillment(const Fulfillment_t *ffill) {
 
     CC **subconditions = calloc(size, sizeof(CC*));
 
-    for (int i=0; i<size; i++) {
+    for (int i=0; i<size; i++)
+    {
         subconditions[i] = (i < threshold) ?
             fulfillmentToCC(t->subfulfillments.list.array[i]) :
             mkAnon(t->subconditions.list.array[i-threshold]);
@@ -155,6 +156,81 @@ static CC *thresholdFromFulfillment(const Fulfillment_t *ffill) {
 }
 
 
+static CC *thresholdFromPartialFulfillment(const Fulfillment_t *ffill) {
+    ThresholdFulfillment_t *t = ffill->choice.thresholdSha256;
+    int size = t->subfulfillments.list.count;
+    int threshold = size - t->subconditions.list.count;
+
+    CC **subconditions = calloc(size, sizeof(CC*));
+
+    for (int i=0; i < size; i++)
+    {
+        subconditions[i] = partialFulfillmentToCC(t->subfulfillments.list.array[i]);
+
+        if (!subconditions[i]) {
+            for (int j=0; j<i; j++) free(subconditions[j]);
+            free(subconditions);
+            return 0;
+        }
+    }
+
+    CC *cond = cc_new(CC_Threshold);
+    cond->threshold = threshold;
+    cond->size = size;
+    cond->subconditions = subconditions;
+    return cond;
+}
+
+
+static Fulfillment_t *thresholdToPartialFulfillment(const CC *cond) {
+    CC *sub;
+    Fulfillment_t *fulfillment;
+
+    // Make a copy of subconditions so we can leave original order alone
+    CC** subconditions = malloc(cond->size*sizeof(CC*));
+    memcpy(subconditions, cond->subconditions, cond->size*sizeof(CC*));
+    
+    qsort(subconditions, cond->size, sizeof(CC*), cmpConditionCost);
+
+    ThresholdFulfillment_t *tf = calloc(1, sizeof(ThresholdFulfillment_t));
+
+    int needed = cond->threshold;
+
+    for (int i = 0; i < cond->size; i++)
+    {
+        sub = subconditions[i];
+        fulfillment = asnPartialFulfillmentNew(sub);
+        if (fulfillment)
+        {
+            if (needed)
+            {
+                asn_set_add(&tf->subfulfillments, fulfillment);
+                needed--;
+            }
+            else
+            {
+                asn_set_add(&tf->subfulfillments, fulfillment);
+                asn_set_add(&tf->subconditions, asnConditionNew(sub));
+            }
+        }
+        else
+        {
+            printf("ERROR: cannot decode partial fulfillment\n");
+            free(subconditions);
+            ASN_STRUCT_FREE(asn_DEF_ThresholdFulfillment, tf);
+            return NULL;
+        }
+    }
+
+    free(subconditions);
+
+    fulfillment = calloc(1, sizeof(Fulfillment_t));
+    fulfillment->present = Fulfillment_PR_thresholdSha256;
+    fulfillment->choice.thresholdSha256 = tf;
+    return fulfillment;
+}
+
+
 static Fulfillment_t *thresholdToFulfillment(const CC *cond) {
     CC *sub;
     Fulfillment_t *fulfillment;
@@ -169,12 +245,15 @@ static Fulfillment_t *thresholdToFulfillment(const CC *cond) {
 
     int needed = cond->threshold;
 
-    for (int i=0; i<cond->size; i++) {
+    for (int i=0; i < cond->size; i++) {
         sub = subconditions[i];
-        if (needed && (fulfillment = asnFulfillmentNew(sub))) {
+        if (needed && (fulfillment = asnFulfillmentNew(sub)))
+        {
             asn_set_add(&tf->subfulfillments, fulfillment);
             needed--;
-        } else {
+        }
+        else
+        {
             asn_set_add(&tf->subconditions, asnConditionNew(sub));
         }
     }
@@ -254,4 +333,4 @@ static void thresholdFree(CC *cond) {
 }
 
 
-struct CCType CC_ThresholdType = { 2, "threshold-sha-256", Condition_PR_thresholdSha256, &thresholdVisitChildren, &thresholdFingerprint, &thresholdCost, &thresholdSubtypes, &thresholdFromJSON, &thresholdToJSON, &thresholdFromFulfillment, &thresholdToFulfillment, &thresholdIsFulfilled, &thresholdFree };
+struct CCType CC_ThresholdType = { 2, "threshold-sha-256", Condition_PR_thresholdSha256, &thresholdVisitChildren, &thresholdFingerprint, &thresholdCost, &thresholdSubtypes, &thresholdFromJSON, &thresholdToJSON, &thresholdFromFulfillment, &thresholdToFulfillment, &thresholdFromPartialFulfillment, &thresholdToPartialFulfillment, &thresholdIsFulfilled, &thresholdFree };

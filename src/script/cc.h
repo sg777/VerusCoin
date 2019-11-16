@@ -70,6 +70,12 @@ CScript CCSig(const CC *cond);
 std::vector<unsigned char> CCSigVec(const CC *cond);
 
 /*
+ * Turn a partial fulfillment that may still need more signatures into a scriptSig
+ *
+ */
+std::vector<unsigned char> CCPartialSigVec(const CC *cond);
+
+/*
  * Produces a string showing the structure of a CC condition
  */
 std::string CCShowStructure(CC *cond);

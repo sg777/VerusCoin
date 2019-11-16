@@ -188,11 +188,18 @@ static int secp256k1Sign(CC *cond, CCVisitor visitor) {
 
     bool pkHashMatch = 0;
 
+    /*
+    char *jsonCondStr = cc_conditionToJSONString(cond);
+    if (jsonCondStr)
+    {
+        printf("Ready to sign condition: %s\n", jsonCondStr);
+        cJSON_free(jsonCondStr);
+    }
+    */
+
     // if we don't match, check if it is a pkhash
     if (memcmp(cond->publicKey, signing->pk, SECP256K1_PK_SIZE))
     {
-        //printf("Ready to sign condition: %s\n", cc_conditionToJSONString(cond));
-
         // no hash match if not a possible hash
         if (!cc_secp256k1IsPKHash(cond->publicKey))
         {
@@ -267,6 +274,36 @@ int cc_signTreeSecp256k1Msg32(CC *cond, const unsigned char *privateKey, const u
 
     // sign
     CCSecp256k1SigningData signing = {publicKey, privateKey, 0};
+
+    /*
+    char *jsonCondStr = cc_conditionToJSONString(cond);
+    if (jsonCondStr)
+    {
+        printf("Ready to sign condition: %s\nusing privkey with pubkey: ", jsonCondStr);
+        for (int i = 0; i < SECP256K1_PK_SIZE; i++)
+        {
+            printf("%02X", *(signing.pk + i));
+        }
+        printf("\nand a pkhash value of: ");
+        // we will sign a node if either the keys match, or the node holds a KeyID of the public key followed by zeros, which is a sha256+ripemd hash of the contents
+        unsigned char *shaHash = calloc(1,32);
+        unsigned char *ripemdHash = calloc(1, 20);
+
+        sha256(signing.pk, SECP256K1_PK_SIZE, shaHash);
+        hash160(shaHash, 32, ripemdHash);
+        for (int i = 0; i < 20; i++)
+        {
+            printf("%02X", *(ripemdHash + i));
+        }
+        printf("\n");
+
+        free(shaHash);
+        free(ripemdHash);
+
+        cJSON_free(jsonCondStr);
+    }
+    */
+
     CCVisitor visitor = {&secp256k1Sign, msg32, 32, &signing};
     cc_visit(cond, visitor);
 
@@ -389,6 +426,41 @@ static Fulfillment_t *secp256k1ToFulfillment(const CC *cond) {
 }
 
 
+static CC *secp256k1FromPartialFulfillment(const Fulfillment_t *ffill) {
+    return cc_secp256k1Condition(ffill->choice.secp256k1Sha256.publicKey.buf,
+                                 ffill->choice.secp256k1Sha256.signature.size == 0 ? NULL : ffill->choice.secp256k1Sha256.signature.buf);
+}
+
+
+static Fulfillment_t *secp256k1ToPartialFulfillment(const CC *cond) {
+    Fulfillment_t *ffill = calloc(1, sizeof(Fulfillment_t));
+    ffill->present = Fulfillment_PR_secp256k1Sha256;
+    Secp256k1Fulfillment_t *sec = &ffill->choice.secp256k1Sha256;
+
+    OCTET_STRING_fromBuf(&sec->publicKey, cond->publicKey, SECP256K1_PK_SIZE);
+
+    if (cond->signature)
+    {
+        // not all zero in first 20, all zero from that to the end means we assume this is a hash and carries the public key with the signature
+        if (cc_secp256k1IsPKHash(cond->publicKey))
+        {
+            OCTET_STRING_fromBuf(&sec->signature, cond->signature, SECP256K1_SIG_SIZE + SECP256K1_PK_SIZE);
+        }
+        else
+        {
+            OCTET_STRING_fromBuf(&sec->signature, cond->signature, SECP256K1_SIG_SIZE);
+        }
+    }
+    else
+    {
+        sec->signature.buf = NULL;
+        sec->signature.size = 0;
+    }
+    
+    return ffill;
+}
+
+
 int secp256k1IsFulfilled(const CC *cond) {
     return cond->signature != 0;
 }
@@ -407,4 +479,4 @@ static uint32_t secp256k1Subtypes(const CC *cond) {
 }
 
 
-struct CCType CC_Secp256k1Type = { 5, "secp256k1-sha-256", Condition_PR_secp256k1Sha256, 0, &secp256k1Fingerprint, &secp256k1Cost, &secp256k1Subtypes, &secp256k1FromJSON, &secp256k1ToJSON, &secp256k1FromFulfillment, &secp256k1ToFulfillment, &secp256k1IsFulfilled, &secp256k1Free };
+struct CCType CC_Secp256k1Type = { 5, "secp256k1-sha-256", Condition_PR_secp256k1Sha256, 0, &secp256k1Fingerprint, &secp256k1Cost, &secp256k1Subtypes, &secp256k1FromJSON, &secp256k1ToJSON, &secp256k1FromFulfillment, &secp256k1ToFulfillment, &secp256k1FromPartialFulfillment, &secp256k1ToPartialFulfillment, &secp256k1IsFulfilled, &secp256k1Free };
