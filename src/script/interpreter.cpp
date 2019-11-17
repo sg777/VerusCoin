@@ -1369,6 +1369,8 @@ int TransactionSignatureChecker::CheckCryptoCondition(
     if (ffillBin.empty())
         return false;
 
+    int expectedEvals = 1;
+
     if (p.IsValid() && p.version >= p.VERSION_V3 && p.vData.size())
     {
         // create the starting condition from the data we have
@@ -1535,6 +1537,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
         }
         else
         {
+            expectedEvals = cc_countEvals(outputCC);
             condBinary = CCPubKeyVec(outputCC);
             cc_free(outputCC);
         }
@@ -1551,19 +1554,36 @@ int TransactionSignatureChecker::CheckCryptoCondition(
 
     int out = false;
 
-    CC *cond;
+    CC *cond = NULL;
     int error;
     if (p.IsValid() && p.version >= p.VERSION_V3)
     {
         error = cc_readPartialFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
-        // TODO: validate number of evals
+        if (!error && cond && cc_countEvals(cond) != expectedEvals)
+        {
+            // if we don't have the expected number of evals, fail validation
+            // that would allow an attacker to skip validation by optimizing an eval away that
+            // might pass the crypto-condition signature check, since it would not be necessary
+            // for all M of Ns. the ensure that all code validation checks happen for any smart
+            // transaction, we fail if they are optimized away. normal signature checks can be
+            // optimized away
+            error = true;
+        }
     }
     else
     {
         error = cc_readFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
     }
     
-    if (error || !cond) return -1;
+    if (error || !cond)
+    {
+        if (cond)
+        {
+            cc_free(cond);
+
+        }
+        return -1;
+    }
 
     if (!IsSupportedCryptoCondition(cond, p.IsValid() ? p.evalCode : 0)) return 0;
 
