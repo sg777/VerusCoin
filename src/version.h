@@ -35,6 +35,6 @@ static const int MEMPOOL_GD_VERSION = 60002;
 static const int NO_BLOOM_VERSION = 170004;
 
 #define KOMODO_VERSION "0.2.1"
-#define VERUS_VERSION "0.5.9-16"
+#define VERUS_VERSION "0.5.9-17"
 
 #endif // BITCOIN_VERSION_H
