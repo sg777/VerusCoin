@@ -1556,6 +1556,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
     if (p.IsValid() && p.version >= p.VERSION_V3)
     {
         error = cc_readPartialFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
+        // TODO: validate number of evals
     }
     else
     {

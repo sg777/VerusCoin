@@ -262,8 +262,8 @@ public:
     // recovery authority - can change primary addresses in case of primary key loss or compromise
     uint160 recoveryAuthority;
 
-    // z-address for contact and privately made attestations that can be proven to others
-    libzcash::SaplingPaymentAddress privateAddress;
+    // z-addresses for contact and privately made attestations that can be proven to others
+    std::vector<libzcash::SaplingPaymentAddress> privateAddresses;
 
     CIdentity() : CPrincipal() {}
 
@@ -276,15 +276,16 @@ public:
               const std::vector<uint256> &hashes,
               const uint160 &Revocation,
               const uint160 &Recovery,
-              const libzcash::SaplingPaymentAddress &Inbox) : 
+              const std::vector<libzcash::SaplingPaymentAddress> &Inboxes = std::vector<libzcash::SaplingPaymentAddress>()) : 
               CPrincipal(Version, Flags, primary, minPrimarySigs),
               parent(Parent),
               name(Name),
               contentHashes(hashes),
               revocationAuthority(Revocation),
               recoveryAuthority(Recovery),
-              privateAddress(Inbox)
-    {}
+              privateAddresses(Inboxes)
+    {
+    }
 
     CIdentity(const UniValue &uni);
     CIdentity(const CTransaction &tx);
@@ -304,7 +305,7 @@ public:
         READWRITE(contentHashes);
         READWRITE(revocationAuthority);
         READWRITE(recoveryAuthority);
-        READWRITE(privateAddress);
+        READWRITE(privateAddresses);
     }
 
     UniValue ToUniValue() const;
@@ -407,7 +408,10 @@ public:
     bool IsInvalidMutation(const CIdentity &newIdentity) const
     {
         if (parent != newIdentity.parent ||
-            name != newIdentity.name)
+            name != newIdentity.name ||
+            newIdentity.flags & ~(FLAG_REVOKED) != 0 ||
+            newIdentity.nVersion < VERSION_FIRSTVALID ||
+            newIdentity.nVersion > VERSION_LASTVALID)
         {
             return true;
         }
@@ -417,19 +421,10 @@ public:
     bool IsPrimaryMutation(const CIdentity &newIdentity) const
     {
         if (CPrincipal::IsPrimaryMutation(newIdentity) ||
-            (flags & ~FLAG_REVOKED != newIdentity.flags & ~newIdentity.FLAG_REVOKED) ||
-            parent != newIdentity.parent ||
-            name != newIdentity.name || 
-            privateAddress.GetHash() != newIdentity.privateAddress.GetHash())
+            contentHashes != newIdentity.contentHashes ||
+            privateAddresses != newIdentity.privateAddresses)
         {
             return true;
-        }
-        for (int i = 0; i < contentHashes.size(); i++)
-        {
-            if (contentHashes[i] != newIdentity.contentHashes[i])
-            {
-                return true;
-            }
         }
         return false;
     }
