@@ -1679,7 +1679,7 @@ bool EvalCryptoConditionSig(
     if (!scriptSig.GetOp(pc, opcode, vchPushValue))
         return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
 
-    if (opcode == 0 || opcode > OP_PUSHDATA4)
+    if (opcode == 0 || opcode > OP_16)
         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
 
     if (pc != scriptSig.end())
