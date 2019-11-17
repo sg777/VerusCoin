@@ -4555,6 +4555,11 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
         if (!output.fSpendable)
             continue;
 
+        if (output.tx->vout[output.i].nValue == 0)
+        {
+            continue;
+        }
+
         const CWalletTx *pcoin = output.tx;
 
         if (output.nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? nConfMine : nConfTheirs))
