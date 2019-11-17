@@ -2020,7 +2020,7 @@ bool CWallet::UpdatedNoteData(const CWalletTx& wtxIn, CWalletTx& wtx)
 
 std::pair<bool, bool> CWallet::CheckAuthority(const std::vector<CTxDestination> addrList, int minSigs)
 {
-    std::pair<bool, bool> canSignCanSpend;
+    std::pair<bool, bool> canSignCanSpend({false, false});
     std::set<CIdentityID> keySet;
 
     // determine our status of cansign or canspend for this new ID
@@ -2042,7 +2042,6 @@ std::pair<bool, bool> CWallet::CheckAuthority(const std::vector<CTxDestination> 
     else if (keySet.size())
     {
         canSignCanSpend.first = true;
-        canSignCanSpend.second = false;
     }
     return canSignCanSpend;
 }

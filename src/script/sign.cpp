@@ -45,7 +45,6 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, 
         //CPubKey pubKey = key.GetPubKey();
         //printf("signing with pubkey: %s, ID: %s\n\n", HexBytes(&(std::vector<unsigned char>(pubKey.begin(), pubKey.end())[0]), pubKey.size()).c_str(), pubKey.GetID().GetHex().c_str());
 
-        // assume either 1of1 or 1of2. if the condition created by the
         if (!cc || cc_signTreeSecp256k1Msg32(cc, key.begin(), hash.begin()) == 0)
             return false;
 
@@ -569,7 +568,13 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         vector<unsigned char> vch;
                         if (creator.CreateSig(vch, GetDestinationID(p.vKeys[0]), _CCPubKey(cc), consensusBranchId, &privKey, (void *)cc))
                         {
-                            ret.push_back(vch);
+                            // convert to old style CC sig
+                            cc_free(cc);
+                            cc = NULL;
+                            if (!cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &cc) && cc)
+                            {
+                                ret.push_back(CCSigVec(cc));
+                            }
                         }
                         else
                         {
@@ -615,7 +620,13 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         vector<unsigned char> vch;
                         if (creator.CreateSig(vch, GetDestinationID(p.vKeys[0]), _CCPubKey(cc), consensusBranchId, &privKey, (void *)cc))
                         {
-                            ret.push_back(vch);
+                            // convert to old style CC sig
+                            cc_free(cc);
+                            cc = NULL;
+                            if (!cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &cc) && cc)
+                            {
+                                ret.push_back(CCSigVec(cc));
+                            }
                         }
                         else
                         {
@@ -695,7 +706,13 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         vector<unsigned char> vch;
                         if (creator.CreateSig(vch, keys[0].GetID(), _CCPubKey(cc), consensusBranchId, &privKey, (void *)cc))
                         {
-                            ret.push_back(vch);
+                            // convert to old style CC sig
+                            cc_free(cc);
+                            cc = NULL;
+                            if (!cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &cc) && cc)
+                            {
+                                ret.push_back(CCSigVec(cc));
+                            }
                         }
                         else
                         {

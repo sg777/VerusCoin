@@ -141,15 +141,15 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     recoveryAuthority = uint160(GetDestinationID(DecodeDestination(recoveryStr == "" ? name + "@" : recoveryStr)));
     libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
 
-    if (revocationAuthority.IsNull() || recoveryAuthority.IsNull() || boost::get<libzcash::SaplingPaymentAddress>(&pa) == nullptr)
+    if (revocationAuthority.IsNull() || recoveryAuthority.IsNull())
     {
         printf("%s: invalid address\n", __func__);
         LogPrintf("%s: invalid address\n", __func__);
         nVersion = VERSION_INVALID;
     }
-    else
+    else if (boost::get<libzcash::SaplingPaymentAddress>(&pa) != nullptr)
     {
-        privateAddress = *boost::get<libzcash::SaplingPaymentAddress>(&pa);
+        privateAddresses.push_back(*boost::get<libzcash::SaplingPaymentAddress>(&pa));
     }
 }
 
@@ -179,7 +179,10 @@ UniValue CIdentity::ToUniValue() const
 
     obj.push_back(Pair("revocationauthority", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
     obj.push_back(Pair("recoveryauthority", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
-    obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddress)));
+    if (privateAddresses.size())
+    {
+        obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddresses[0])));
+    }
     return obj;
 }
 
