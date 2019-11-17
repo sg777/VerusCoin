@@ -103,7 +103,8 @@ uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
 
 uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
 {
-    uint160 cid = CIdentity::GetID(name, uint160());
+    uint160 parent;
+    uint160 cid = CIdentity::GetID(name, parent);
 
     CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
     hw << condition;
@@ -204,12 +205,14 @@ std::string CleanName(const std::string &Name, uint160 &Parent)
     return subNames[0];
 }
 
-CIdentityID CIdentity::GetID(const std::string &Name, const uint160 &parent)
+CIdentityID CIdentity::GetID(const std::string &Name, uint160 &parent)
 {
-    uint160 newParent = parent;
-    std::string cleanName = CleanName(Name, newParent);
+    std::string cleanName = CleanName(Name, parent);
 
-    const char *idName = boost::algorithm::to_lower_copy(cleanName).c_str();
+    std::string subName = boost::algorithm::to_lower_copy(cleanName);
+    const char *idName = subName.c_str();
+    //printf("hashing: %s, %s\n", idName, parent.GetHex().c_str());
+
     uint256 idHash;
     if (parent.IsNull())
     {
@@ -226,10 +229,13 @@ CIdentityID CIdentity::GetID(const std::string &Name, const uint160 &parent)
 
 CIdentityID CIdentity::GetID(const std::string &Name) const
 {
-    uint160 newLevel = parent;
-    std::string cleanName = CleanName(Name, newLevel);
+    uint160 parent;
+    std::string cleanName = CleanName(Name, parent);
 
-    const char *idName = boost::algorithm::to_lower_copy(cleanName).c_str();
+    std::string subName = boost::algorithm::to_lower_copy(cleanName);
+    const char *idName = subName.c_str();
+    //printf("hashing: %s, %s\n", idName, parent.GetHex().c_str());
+
     uint256 idHash;
     if (parent.IsNull())
     {
@@ -251,7 +257,8 @@ CIdentityID CIdentity::GetID() const
 
 uint160 CCrossChainRPCData::GetChainID(std::string name)
 {
-    return CIdentity::GetID(name, uint160());
+    uint160 parent;
+    return CIdentity::GetID(name,parent);
 }
 
 static const CRPCConvertParam vRPCConvertParams[] =

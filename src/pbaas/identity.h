@@ -352,7 +352,7 @@ public:
 
     CIdentityID GetID() const;
     CIdentityID GetID(const std::string &Name) const;
-    static CIdentityID GetID(const std::string &Name, const uint160 &parent);
+    static CIdentityID GetID(const std::string &Name, uint160 &parent);
 
     CIdentity LookupIdentity(const std::string &name, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr);
     static CIdentity LookupIdentity(const CIdentityID &nameID, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr);

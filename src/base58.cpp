@@ -279,7 +279,8 @@ bool CBitcoinAddress::SetString(const char* pszAddress)
         }
         else
         {
-            return Set(CIdentity::GetID(std::string(pszAddress), uint160()));
+            uint160 parent;
+            return Set(CIdentity::GetID(std::string(pszAddress), parent));
         }
     }
     else
