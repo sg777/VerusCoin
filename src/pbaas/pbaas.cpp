@@ -493,7 +493,8 @@ CCrossChainExport::CCrossChainExport(const CTransaction &tx)
 
 uint160 CPBaaSChainDefinition::GetChainID(std::string name)
 {
-    return CIdentity::GetID(name, uint160());
+    uint160 parent;
+    return CIdentity::GetID(name, parent);
 }
 
 uint160 CPBaaSChainDefinition::GetConditionID(int32_t condition) const
