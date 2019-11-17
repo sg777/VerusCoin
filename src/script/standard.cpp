@@ -737,7 +737,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
 
                 // if this is a compound cc, the master m of n is the top level as an m of n of the sub-conditions
                 nRequiredRet = p.vData.size() > 2 ? master.m : p.m;
-                if (canSpendCount >= master.m && pCanSpend)
+                if (canSpendCount >= nRequiredRet && pCanSpend)
                 {
                     *pCanSpend = true;
                 }
