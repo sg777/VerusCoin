@@ -6,9 +6,9 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.5.9-17
+  VERSION: 0.5.9-18
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
-  VERUS_CLI_LINUX: Verus-CLI-Linux-v${VERSION}.tar.gz
+  VERUS_CLI_LINUX: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
   VERUS_CLI_MACOS: Verus-CLI-MacOS-v${VERSION}.tar.gz
   DOWNSTREAM_AGAMA_BRANCH: ${CI_COMMIT_REF_NAME}
@@ -22,7 +22,7 @@ variables:
 ########################################################################################################################
 ########################################################################################################################
 ########################################################################################################################
-####START####          Build Stage: compile and package komodo binaries for Verus CLI                     ####START#####
+####START####          Build Stage: compile and package binaries for Verus CLI                     ####START#####
 ########################################################################################################################
 ########################################################################################################################
 ####START####                                            LINUX                                             ####START####
@@ -68,7 +68,7 @@ build:linux:
       - ${VERUS_CLI_LINUX}.sha256
     expire_in: 1 week
 
-build:linux:arm:
+build:linux:arm64:
   image: asherd/verus-builders:cross-arm
   variables:
     DOCKER_DRIVER: overlay2
@@ -356,7 +356,7 @@ deploy:
     - build:linux
     - build:windows
     - build:mac
-    - build:linux:arm
+    - build:linux:arm64
   script:
     - mkdir Windows && mkdir Linux && mkdir MacOS &&
       cp ${VERUS_CLI_WINDOWS} Windows &&
