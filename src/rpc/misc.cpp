@@ -748,7 +748,9 @@ UniValue setmocktime(const UniValue& params, bool fHelp)
 bool getAddressFromIndex(
     const int &type, const uint160 &hash, std::string &address)
 {
-    if (type == CScript::P2SH) {
+    if (type == CScript::P2ID) {
+        address = EncodeDestination(CIdentityID(hash));
+    } else if (type == CScript::P2SH) {
         address = EncodeDestination(CScriptID(hash));
     } else if (type == CScript::P2PKH) {
         address = EncodeDestination(CKeyID(hash));
