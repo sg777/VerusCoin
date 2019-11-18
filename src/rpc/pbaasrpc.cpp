@@ -4610,7 +4610,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
 UniValue revokeidentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 2)
     {
         throw runtime_error(
             "revokeidentity \"nameorID\" (returntx)\n"
@@ -4633,7 +4633,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
     bool returnTx = false;
     CTxDestination idDest = DecodeDestination(uni_get_str(params[0]));
 
-    if (!idDest.which() != COptCCParams::ADDRTYPE_ID)
+    if (idDest.which() != COptCCParams::ADDRTYPE_ID)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
     }
@@ -4721,7 +4721,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
 UniValue recoveridentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 2)
+    if (fHelp || params.size() < 1 || params.size() > 2)
     {
         throw runtime_error(
             "recoveridentity \"jsonidentity\" (returntx)\n"

@@ -104,6 +104,14 @@ static bool cc_secp256k1IsPKHash(const unsigned char *publicKey)
 
 int secp256k1Verify(CC *cond, CCVisitor visitor) {
     if (cond->type->typeId != CC_Secp256k1Type.typeId) return 1;
+
+    // isfulfilled should pass, and since the existing signatures that allow it to pass that are
+    // properly validated below, this is safe
+    if (!cond->signature)
+    {
+        return 1;
+    }
+
     initVerify();
 
     int rc;
