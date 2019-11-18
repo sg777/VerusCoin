@@ -204,7 +204,7 @@ public:
 
     bool IsValid() const
     {
-        return (nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID);
+        return nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID && primaryAddresses.size() && minSigs >= 1;
     }
 
     bool IsPrimaryMutation(const CPrincipal &newPrincipal) const
