@@ -249,7 +249,7 @@ bool CBasicKeyStore::GetIdentity(const CIdentityMapKey &mapKey, const uint256 &t
 // return the first identity not less than a specific key
 bool CBasicKeyStore::GetFirstIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t gteHeight) const
 {
-    auto it = mapIdentities.lower_bound(CIdentityMapKey(idID).MapKey());
+    auto it = mapIdentities.lower_bound(CIdentityMapKey(idID, gteHeight).MapKey());
     if (it == mapIdentities.end())
     {
         return false;
