@@ -2445,8 +2445,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             const CBlockIndex *pIndex;
                                             if (txidAndWtx.second.GetDepthInMainChain(pIndex))
                                             {
-                                                uint32_t wtxHeight = pIndex->GetHeight();
-                                                if ((deleteSpentFrom && wtxHeight <= deleteSpentFrom) || (deleteSpentTo && wtxHeight > deleteSpentTo))
+                                                uint32_t wtxHeight = pIndex ? pIndex->GetHeight() : 0;
+                                                if (wtxHeight && (deleteSpentFrom && wtxHeight <= deleteSpentFrom || deleteSpentTo && wtxHeight > deleteSpentTo))
                                                 {
                                                     continue;
                                                 }
@@ -2581,6 +2581,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     // mark all transactions dirty to recalculate numbers
                                     for (auto &txidAndWtx : mapWallet)
                                     {
+                                        // mark the whole wallet dirty. if this is an issue, we can optimize.
                                         txidAndWtx.second.MarkDirty();
                                     }
                                 }
