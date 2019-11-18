@@ -2322,7 +2322,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                         {
                             canSignCanSpend = idHistory.first.IsValid() ? make_pair(bool(idHistory.first.flags & idHistory.first.CAN_SIGN), bool(idHistory.first.flags & idHistory.first.CAN_SPEND)) : canSignCanSpend;
                         }
-                        
 
                         // By default, we will not automatically add identity associated UTXOs unless the identity is accepted to the wallet manually, to prevent spam and DoS attacks
                         // when identities are manually added to the wallet, UTXOs signable by that ID and spent transactions that were spent during the time that the ID was cansign
@@ -2438,6 +2437,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                                     for (auto &txidAndWtx : mapWallet)
                                     {
+                                        txidAndWtx.second.MarkDirty();
+
                                         // first check if it is within height range for deletion, and if not, continue
                                         if (deleteSpentFrom || deleteSpentTo)
                                         {
@@ -2456,7 +2457,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         if (IsFromMe(txidAndWtx.second))
                                         {
                                             // recalculate
-                                            txidAndWtx.second.MarkDirty();
                                             continue;
                                         }
 
@@ -2477,7 +2477,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 // if this is ours, we will not erase the tx, mark dirty
                                                 if (IsMine(txout))
                                                 {
-                                                    txidAndWtx.second.MarkDirty();
                                                     eraseTx = false;
                                                     break;
                                                 }
@@ -2491,7 +2490,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 if (canSignOut || canSpendOut)
                                                 {
                                                     // we should keep this transaction anyhow, check next
-                                                    txidAndWtx.second.MarkDirty();
                                                     eraseTx = false;
                                                     break;
                                                 }
