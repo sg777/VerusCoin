@@ -1190,7 +1190,7 @@ public:
     void EraseFromWallet(const uint256 &hash);
     void SyncTransaction(const CTransaction& tx, const CBlock* pblock);
     void RescanWallet();
-    std::pair<bool, bool> CheckAuthority(const std::vector<CTxDestination> addrList, int minSigs);
+    std::pair<bool, bool> CheckAuthority(const CIdentity &identity);
     bool MarkIdentityDirty(const CIdentityID &idID);
     bool AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate);
     void WitnessNoteCommitment(

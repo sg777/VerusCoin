@@ -2018,13 +2018,17 @@ bool CWallet::UpdatedNoteData(const CWalletTx& wtxIn, CWalletTx& wtx)
     return !unchangedSproutFlag || !unchangedSaplingFlag;
 }
 
-std::pair<bool, bool> CWallet::CheckAuthority(const std::vector<CTxDestination> addrList, int minSigs)
+std::pair<bool, bool> CWallet::CheckAuthority(const CIdentity &identity)
 {
     std::pair<bool, bool> canSignCanSpend({false, false});
+    if (!identity.IsValidUnrevoked())
+    {
+        return canSignCanSpend;
+    }
     std::set<CIdentityID> keySet;
 
     // determine our status of cansign or canspend for this new ID
-    for (auto key : addrList)
+    for (auto key : identity.primaryAddresses)
     {
         CKeyID keyID = CKeyID(GetDestinationID(key));
         if (HaveKey(keyID))
@@ -2034,7 +2038,7 @@ std::pair<bool, bool> CWallet::CheckAuthority(const std::vector<CTxDestination> 
     }
 
     // if we have enough keys to fully authorize, it is ours
-    if (keySet.size() >= minSigs)
+    if (keySet.size() >= identity.minSigs)
     {
         canSignCanSpend.first = true;
         canSignCanSpend.second = true;
@@ -2167,7 +2171,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             CIdentityMapKey heightKey(idID, nHeight);
                             GetIdentity(heightKey, heightKey, thisHeightIdentities);
 
-                            canSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
+                            canSignCanSpend = CheckAuthority(identity);
                             std::map<uint256, std::pair<CIdentityMapKey, CIdentityMapValue>> firstIDMap;
                             for (auto &foundID : thisHeightIdentities)
                             {
@@ -2178,7 +2182,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             {
                                 blockOrder = firstIDMap[identity.txid].first.blockOrder;
                                 // no change, since we are already present
-                                wasCanSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
+                                wasCanSignCanSpend = CheckAuthority(identity);
                             }
                             else
                             {
@@ -2191,11 +2195,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                                       identity)));
                                 if (pblock)
                                 {
-                                    wasCanSignCanSpend = CheckAuthority(idHistory.second.primaryAddresses, idHistory.second.minSigs);
+                                    wasCanSignCanSpend = CheckAuthority(idHistory.second);
                                 }
                                 else
                                 {
-                                    wasCanSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
+                                    wasCanSignCanSpend = CheckAuthority(identity);
                                 }
                             }
 
@@ -2271,7 +2275,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                 idHistory = std::pair<CIdentityMapKey, CIdentityMapValue>();
                                 GetIdentity(idID, idHistory, idHistory.first.blockHeight);
 
-                                wasCanSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
+                                wasCanSignCanSpend = CheckAuthority(identity);
                             }
                         }
 
@@ -2299,7 +2303,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                         if (pblock)
                         {
                             // if we are deleting, current identity is what it was, idHistory is what it will roll back to, if adding, current is what it will be, idHistory is what it is
-                            canSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
+                            canSignCanSpend = CheckAuthority(identity);
 
                             // if we don't already have this ID, but we can sign with it, store it
                             if (!(idHistory.second.IsValid() && (idHistory.first.flags & idHistory.first.BLACKLIST)))
