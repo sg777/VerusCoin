@@ -2302,27 +2302,16 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             canSignCanSpend = CheckAuthority(identity.primaryAddresses, identity.minSigs);
 
                             // if we don't already have this ID, but we can sign with it, store it
-                            if (!idHistory.second.IsValid() && canSignCanSpend.first)
-                            {
-                                // add
-                                CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
-                                                                        nHeight, 
-                                                                        blockOrder, 
-                                                                        idHistory.first.VALID |
-                                                                            (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
-                                                                            (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
-                                AddIdentity(idMapKey, identity);
-                            }
-                            else if (((canSignCanSpend.first || canSignCanSpend.first != wasCanSignCanSpend.first) && !(idHistory.first.flags & idHistory.first.BLACKLIST)) || (idHistory.first.flags & idHistory.first.MANUAL_HOLD))
+                            if (!(idHistory.second.IsValid() && (idHistory.first.flags & idHistory.first.BLACKLIST)))
                             {
                                 CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
                                                                         nHeight, 
                                                                         blockOrder, 
                                                                         idHistory.first.VALID | 
-                                                                            (idHistory.first.flags & idHistory.first.MANUAL_HOLD) | 
+                                                                            ((idHistory.second.IsValid() ? idHistory.first.flags : 0) & idHistory.first.MANUAL_HOLD) | 
                                                                             (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
                                                                             (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
-                                UpdateIdentity(idMapKey, identity);
+                                AddUpdateIdentity(idMapKey, identity);
                             }
                         }
                         else
@@ -2452,7 +2441,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             if (txidAndWtx.second.GetDepthInMainChain(pIndex))
                                             {
                                                 uint32_t wtxHeight = pIndex->GetHeight();
-                                                if ((deleteSpentFrom || wtxHeight <= deleteSpentFrom) || (deleteSpentTo && wtxHeight > deleteSpentTo))
+                                                if ((deleteSpentFrom && wtxHeight <= deleteSpentFrom) || (deleteSpentTo && wtxHeight > deleteSpentTo))
                                                 {
                                                     continue;
                                                 }
@@ -2462,6 +2451,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         // if the tx is from this wallet, we will not erase it
                                         if (IsFromMe(txidAndWtx.second))
                                         {
+                                            // recalculate
+                                            txidAndWtx.second.MarkDirty();
                                             continue;
                                         }
 
@@ -2479,9 +2470,10 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             // we only want to remove UTXOs that are sent to this ID, used to be ours, and are no longer cansign
                                             if (!txout.scriptPubKey.IsPayToCryptoCondition() || IsSpent(hashTx, i))
                                             {
-                                                // if this is ours, we will not erase the tx
+                                                // if this is ours, we will not erase the tx, mark dirty
                                                 if (IsMine(txout))
                                                 {
+                                                    txidAndWtx.second.MarkDirty();
                                                     eraseTx = false;
                                                     break;
                                                 }
@@ -2495,6 +2487,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 if (canSignOut || canSpendOut)
                                                 {
                                                     // we should keep this transaction anyhow, check next
+                                                    txidAndWtx.second.MarkDirty();
                                                     eraseTx = false;
                                                     break;
                                                 }
