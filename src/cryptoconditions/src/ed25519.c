@@ -35,7 +35,13 @@ static unsigned char *ed25519Fingerprint(const CC *cond) {
 
 int ed25519Verify(CC *cond, CCVisitor visitor) {
     if (cond->type->typeId != CC_Ed25519Type.typeId) return 1;
-    // TODO: test failure mode: empty sig / null pointer
+    // an empty sig needs to return 1 to allow it to continue,
+    // isfulfilled + verification yields proper validation
+    if (!cond->signature)
+    {
+        return 1;
+    }
+
     return ed25519_verify(cond->signature, visitor.msg, visitor.msgLength, cond->publicKey);
 }
 
