@@ -2443,7 +2443,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         if (deleteSpentFrom || deleteSpentTo)
                                         {
                                             const CBlockIndex *pIndex;
-                                            if (txidAndWtx.second.GetDepthInMainChain(pIndex))
+                                            if (txidAndWtx.second.GetDepthInMainChain(pIndex) == 1)
                                             {
                                                 uint32_t wtxHeight = pIndex ? pIndex->GetHeight() : 0;
                                                 if (wtxHeight && (deleteSpentFrom && wtxHeight <= deleteSpentFrom || deleteSpentTo && wtxHeight > deleteSpentTo))
