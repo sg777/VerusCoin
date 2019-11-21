@@ -186,25 +186,30 @@ UniValue CIdentity::ToUniValue() const
     return obj;
 }
 
-CIdentity::CIdentity(const CTransaction &tx)
+CIdentity::CIdentity(const CTransaction &tx, int *voutNum)
 {
     std::set<uint160> ids;
-    int idCount;
+    int idIndex;
     bool found = false;
 
     nVersion = PBAAS_VERSION_INVALID;
-    for (auto out : tx.vout)
+    for (int i = 0; i < tx.vout.size(); i++)
     {
-        CIdentity foundIdentity(out.scriptPubKey);
+        CIdentity foundIdentity(tx.vout[i].scriptPubKey);
         if (foundIdentity.IsValid() && !found)
         {
             *this = foundIdentity;
             found = true;
+            idIndex = i;
         }
         else if (foundIdentity.IsValid())
         {
             *this = CIdentity();
         }
+    }
+    if (voutNum && IsValid())
+    {
+        *voutNum = idIndex;
     }
 }
 
@@ -646,10 +651,10 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 
     CNameReservation nameRes;
     CIdentity identity;
+    COptCCParams p;
 
     for (auto &output : tx.vout)
     {
-        COptCCParams p;
         if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1 && (nameRes = CNameReservation(p.vData[0])).IsValid())
         {
             // twice through makes it invalid
@@ -675,6 +680,66 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         return state.Error("Invalid identity definition");
     }
 
+    CIdentityID idID = identity.GetID();
+
+    // ensure that we have all required spend conditions for primary, revocation, and recovery
+    // if there are additional spend conditions, their addition or removal is checked for validity
+    // depending on which of the mandatory spend conditions is authorized.
+    COptCCParams master;
+    if (p.vData.size() < 4 || !(master = COptCCParams(p.vData.back())).IsValid() || master.evalCode != 0 || master.m != 1)
+    {
+        // we need to have 3 authority spend conditions mandatory at a top level for any primary ID output
+        bool primary = false, revocation = false, recovery = false;
+
+        for (auto dest : p.vKeys)
+        {
+            if (dest.which() == COptCCParams::ADDRTYPE_ID && (idID == GetDestinationID(dest)))
+            {
+                primary = true;
+            }
+        }
+        if (!primary)
+        {
+            std::string errorOut = "Primary identity output condition of \"" + identity.name + "\" is not spendable by self";
+            return state.Error(errorOut.c_str());
+        }
+        for (int i = 1; i < p.vData.size() - 1; i++)
+        {
+            COptCCParams oneP(p.vData[i]);
+            // must be valid and composable
+            if (!oneP.IsValid() || oneP.version < oneP.VERSION_V3)
+            {
+                std::string errorOut = "Invalid output condition from identity: \"" + identity.name + "\"";
+                return state.Error(errorOut.c_str());
+            }
+
+            if (oneP.evalCode == EVAL_IDENTITY_REVOKE || oneP.evalCode == EVAL_IDENTITY_RECOVER)
+            {
+                for (auto dest : oneP.vKeys)
+                {
+                    if (dest.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        if (oneP.evalCode == EVAL_IDENTITY_REVOKE && (identity.revocationAuthority == GetDestinationID(dest)))
+                        {
+                            revocation = true;
+                        }
+                        else if (oneP.evalCode == EVAL_IDENTITY_RECOVER && (identity.recoveryAuthority == GetDestinationID(dest)))
+                        {
+                            recovery = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // we need separate spend conditions for both revoke and recover in all cases
+        if (!revocation || !recovery)
+        {
+            std::string errorOut = "Primary identity output \"" + identity.name + "\" must be spendable by revocation and recovery authorities";
+            return state.Error(errorOut.c_str());
+        }
+    }
+
     std::vector<CTxDestination> dests;
     int minSigs;
     txnouttype outType;
@@ -691,7 +756,9 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
-    if (validReservation && nameRes.name == identity.name)
+    // compare commitment without regard to case or other textual transformations that are irrelevant to matching
+    uint160 parentChain = ConnectedChains.ThisChain().GetChainID();
+    if (validReservation && identity.GetID(nameRes.name, parentChain) == identity.GetID())
     {
         return true;
     }
@@ -699,7 +766,6 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     // if we made it to here without an early, positive exit, we must determine that we are spending a matching identity, and if so, all is fine so far
     CTransaction inTx;
     uint256 blkHash;
-    COptCCParams p;
     LOCK(mempool.cs);
     for (auto &input : tx.vin)
     {
@@ -715,11 +781,14 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     return state.Error("Invalid primary identity - does not include identity reservation or spend matching identity");
 }
 
-CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn)
+CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx = nullptr);
+CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx)
 {
+    CTransaction _sourceTx;
+    CTransaction &sourceTx(pSourceTx ? *pSourceTx : _sourceTx);
+
     // if not fulfilled, ensure that no part of the primary identity is modified
     CIdentity oldIdentity;
-    CTransaction sourceTx;
     uint256 blkHash;
     if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
     {
@@ -738,13 +807,16 @@ CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn)
 
 bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
-    CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn);
+    CTransaction sourceTx;
+    CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn, &sourceTx);
+
     if (!oldIdentity.IsValid())
     {
         return eval->Error("Spending invalid identity");
     }
 
-    CIdentity newIdentity(spendingTx);
+    int idIndex;
+    CIdentity newIdentity(spendingTx, &idIndex);
     if (!newIdentity.IsValid())
     {
         return eval->Error("Attempting to define invalid identity");
@@ -755,22 +827,43 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Invalid identity modification");
     }
 
-    if (!fulfilled && !oldIdentity.IsRevoked() && oldIdentity.IsPrimaryMutation(newIdentity))
+    // if not fullfilled and not revoked, we are responsible for rejecting any modification of
+    // data under primary authority control
+    if (!fulfilled && !oldIdentity.IsRevoked())
     {
-        return eval->Error("Unauthorized identity modification");
+        if (oldIdentity.IsPrimaryMutation(newIdentity))
+        {
+            return eval->Error("Unauthorized identity modification");
+        }
+        // make sure that the primary spend conditions are not modified
+        COptCCParams p, q;
+        sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
+        spendingTx.vout[idIndex].scriptPubKey.IsPayToCryptoCondition(q);
+
+        if (q.evalCode != EVAL_IDENTITY_PRIMARY ||
+            p.version > q.version ||
+            p.m != q.m ||
+            p.n != q.n ||
+            p.vKeys != q.vKeys)
+        {
+            return eval->Error("Unauthorized modification of identity primary spend condition");
+        }
     }
+
     return true;
 }
 
 bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
-    CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn);
+    CTransaction sourceTx;
+    CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn, &sourceTx);
     if (!oldIdentity.IsValid())
     {
         return eval->Error("Invalid source identity");
     }
 
-    CIdentity newIdentity(spendingTx);
+    int idIndex;
+    CIdentity newIdentity(spendingTx, &idIndex);
     if (!newIdentity.IsValid())
     {
         return eval->Error("Attempting to replace identity with one that is invalid");
@@ -786,9 +879,73 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("Cannot revoke an identity with self as the recovery authority");
     }
 
-    if (!fulfilled && (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity)))
+    // make sure that spend conditions are valid and revocation spend conditions are not modified
+    COptCCParams p, q;
+
+    spendingTx.vout[idIndex].scriptPubKey.IsPayToCryptoCondition(q);
+
+    if (q.evalCode != EVAL_IDENTITY_PRIMARY)
     {
-        return eval->Error("Unauthorized modification of revocation information");
+        return eval->Error("Invalid identity output in spending transaction");
+    }
+
+    COptCCParams oldRevokeP, newRevokeP;
+
+    for (int i = 1; i < q.vData.size() - 1; i++)
+    {
+        COptCCParams oneP(q.vData[i]);
+        // must be valid and composable
+        if (!oneP.IsValid() || oneP.version < oneP.VERSION_V3)
+        {
+            std::string errorOut = "Invalid output condition from identity: \"" + newIdentity.name + "\"";
+            return eval->Error(errorOut.c_str());
+        }
+
+        if (oneP.evalCode == EVAL_IDENTITY_REVOKE)
+        {
+            if (newRevokeP.IsValid())
+            {
+                std::string errorOut = "Invalid output condition from identity: \"" + newIdentity.name + "\", more than one revocation condition";
+                return eval->Error(errorOut.c_str());
+            }
+            newRevokeP = oneP;
+        }
+    }
+
+    if (!newRevokeP.IsValid())
+    {
+        std::string errorOut = "Invalid revocation output condition for identity: \"" + newIdentity.name + "\"";
+        return eval->Error(errorOut.c_str());
+    }
+
+    // if not fulfilled, neither revocation data nor its spend condition may be modified
+    if (!fulfilled)
+    {
+        sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
+
+        if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity))
+        {
+            return eval->Error("Unauthorized modification of revocation information");
+        }
+
+        for (int i = 1; i < p.vData.size() - 1; i++)
+        {
+            COptCCParams oneP(p.vData[i]);
+            if (oneP.evalCode == EVAL_IDENTITY_REVOKE)
+            {
+                oldRevokeP = oneP;
+            }
+        }
+
+        if (!oldRevokeP.IsValid() || 
+            !newRevokeP.IsValid() ||
+            oldRevokeP.version > newRevokeP.version ||
+            oldRevokeP.m != newRevokeP.m ||
+            oldRevokeP.n != newRevokeP.n ||
+            oldRevokeP.vKeys != newRevokeP.vKeys)
+        {
+            return eval->Error("Unauthorized modification of identity revocation spend condition");
+        }
     }
 
     return true;
@@ -796,13 +953,15 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 
 bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
-    CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn);
+    CTransaction sourceTx;
+    CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn, &sourceTx);
     if (!oldIdentity.IsValid())
     {
         return eval->Error("Invalid source identity");
     }
 
-    CIdentity newIdentity(spendingTx);
+    int idIndex;
+    CIdentity newIdentity(spendingTx, &idIndex);
     if (!newIdentity.IsValid())
     {
         return eval->Error("Attempting to replace identity with one that is invalid");
@@ -813,11 +972,80 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Invalid identity modification");
     }
 
-    if (!fulfilled && oldIdentity.IsRevoked() && (oldIdentity.IsPrimaryMutation(newIdentity) || oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity)))
+    // make sure that spend conditions are valid and revocation spend conditions are not modified
+    COptCCParams p, q;
+
+    spendingTx.vout[idIndex].scriptPubKey.IsPayToCryptoCondition(q);
+
+    if (q.evalCode != EVAL_IDENTITY_PRIMARY)
     {
-        return eval->Error("Unauthorized modification of recovery information");
+        return eval->Error("Invalid identity output in spending transaction");
     }
 
+    COptCCParams oldRecoverP, newRecoverP;
+
+    for (int i = 1; i < q.vData.size() - 1; i++)
+    {
+        COptCCParams oneP(q.vData[i]);
+        // must be valid and composable
+        if (!oneP.IsValid() || oneP.version < oneP.VERSION_V3)
+        {
+            std::string errorOut = "Invalid output condition from identity: \"" + newIdentity.name + "\"";
+            return eval->Error(errorOut.c_str());
+        }
+
+        if (oneP.evalCode == EVAL_IDENTITY_RECOVER)
+        {
+            if (newRecoverP.IsValid())
+            {
+                std::string errorOut = "Invalid output condition from identity: \"" + newIdentity.name + "\", more than one recovery condition";
+                return eval->Error(errorOut.c_str());
+            }
+            newRecoverP = oneP;
+        }
+    }
+
+    if (!newRecoverP.IsValid())
+    {
+        std::string errorOut = "Invalid recovery output condition for identity: \"" + newIdentity.name + "\"";
+        return eval->Error(errorOut.c_str());
+    }
+
+    // if not fulfilled, neither recovery data nor its spend condition may be modified
+    if (!fulfilled)
+    {
+        sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
+
+        // if revoked, only fulfilled recovery condition allows primary mutation
+        if (oldIdentity.IsRevoked() && (oldIdentity.IsPrimaryMutation(newIdentity)))
+        {
+            return eval->Error("Unauthorized modification of revoked identity without recovery authority");
+        }
+
+        if (oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity))
+        {
+            return eval->Error("Unauthorized modification of recovery information");
+        }
+
+        for (int i = 1; i < p.vData.size() - 1; i++)
+        {
+            COptCCParams oneP(p.vData[i]);
+            if (oneP.evalCode == EVAL_IDENTITY_RECOVER)
+            {
+                oldRecoverP = oneP;
+            }
+        }
+
+        if (!oldRecoverP.IsValid() || 
+            !newRecoverP.IsValid() ||
+            oldRecoverP.version > newRecoverP.version ||
+            oldRecoverP.m != newRecoverP.m ||
+            oldRecoverP.n != newRecoverP.n ||
+            oldRecoverP.vKeys != newRecoverP.vKeys)
+        {
+            return eval->Error("Unauthorized modification of identity recovery spend condition");
+        }
+    }
     return true;
 }
 
