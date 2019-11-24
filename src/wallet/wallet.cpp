@@ -1496,13 +1496,14 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     auto consensusParams = Params().GetConsensus();
     CValidationState state;
 
-    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, !consensusParams.fCoinbaseMustBeProtected);
+    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
 
     if (pastBlockIndex = komodo_chainactive(nHeight - 100))
     {
         uint256 pastHash = pastBlockIndex->GetVerusEntropyHash();
         CPOSNonce curNonce;
         uint32_t srcIndex;
+        uint32_t solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
 
         BOOST_FOREACH(COutput &txout, vecOutputs)
         {
@@ -1512,7 +1513,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 int32_t txSize = GetSerializeSize(s, *(CTransaction *)txout.tx);
 
                 //printf("Serialized size of transaction %s is %lu\n", txout.tx->GetHash().GetHex().c_str(), txSize);
-                if (txSize > MAX_TX_SIZE_FOR_STAKING)
+                if (solutionVersion >= CActivationHeight::SOLUTION_VERUSV4 && txSize > MAX_TX_SIZE_FOR_STAKING)
                 {
                     LogPrintf("Transaction %s is too large to stake. Serialized size == %lu\n", txout.tx->GetHash().GetHex().c_str(), txSize);
                 }
@@ -1522,8 +1523,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 uint256 txHash = txout.tx->GetHash();
                 checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
 
-                if (txSize <= MAX_TX_SIZE_FOR_STAKING &&
-                    (!pwinner || UintToArith256(curNonce) > UintToArith256(pBlock->nNonce)) &&
+                if ((!pwinner || UintToArith256(curNonce) > UintToArith256(pBlock->nNonce)) &&
                     (Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH)) &&
                     !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100) &&
                     view.AccessCoins(txHash) &&
@@ -1542,7 +1542,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
-            if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) == CActivationHeight::SOLUTION_VERUSV4)
+            if (solutionVersion >= CActivationHeight::SOLUTION_VERUSV4)
             {
                 CDataStream txStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 
@@ -4357,13 +4357,14 @@ CAmount CWallet::GetImmatureWatchOnlyReserveBalance() const
 uint64_t komodo_interestnew(int32_t txheight,uint64_t nValue,uint32_t nLockTime,uint32_t tiptime);
 uint64_t komodo_accrued_interest(int32_t *txheightp,uint32_t *locktimep,uint256 hash,int32_t n,int32_t checkheight,uint64_t checkvalue,int32_t tipheight);
 
-void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase) const
+void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase) const
 {
     uint64_t interest,*ptr;
     vCoins.clear();
 
     {
         LOCK2(cs_main, cs_wallet);
+        uint32_t nHeight = chainActive.Height() + 1;
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
         {
             const uint256& wtxid = it->first;
@@ -4375,16 +4376,22 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
             if (fOnlyConfirmed && !pcoin->IsTrusted())
                 continue;
 
-            if (pcoin->IsCoinBase() && !fIncludeCoinBase)
+            bool isCoinbase = pcoin->IsCoinBase();
+            if (isCoinbase && !fIncludeCoinBase)
                 continue;
-
-            if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0)
+            
+            if (isCoinbase && pcoin->GetBlocksToMaturity() > 0)
                 continue;
 
             int nDepth = pcoin->GetDepthInMainChain();
             if (nDepth < 0)
                 continue;
  
+            uint32_t coinHeight = nHeight - nDepth;
+            // even if we should include coinbases, we may opt to exclude protected coinbases, which must only be included when shielding
+            if (isCoinbase && !fIncludeProtectedCoinbase && Params().GetConsensus().fCoinbaseMustBeProtected && (CConstVerusSolutionVector::GetVersionByHeight(coinHeight) < CActivationHeight::SOLUTION_VERUSV3))
+                continue;
+
             for (int i = 0; i < pcoin->vout.size(); i++)
             {
                 isminetype mine = IsMine(pcoin->vout[i]);
@@ -4659,9 +4666,9 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
     return true;
 }
 
-bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet,  bool& fOnlyCoinbaseCoinsRet, bool& fNeedCoinbaseCoinsRet, const CCoinControl* coinControl) const
+bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet,  bool& fOnlyProtectedCoinbaseCoinsRet, bool& fNeedProtectedCoinbaseCoinsRet, const CCoinControl* coinControl) const
 {
-    // Output parameter fOnlyCoinbaseCoinsRet is set to true when the only available coins are coinbase utxos.
+    // Output parameter fOnlyProtectedCoinbaseCoinsRet is set to true when the only available coins are coinbase utxos.
     uint64_t tmp; int32_t retval;
     //if ( interestp == 0 )
     //{
@@ -4669,15 +4676,15 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*
     //    *interestp = 0;
     //}
     vector<COutput> vCoinsNoCoinbase, vCoinsWithCoinbase;
-    AvailableCoins(vCoinsNoCoinbase, true, coinControl, false, false);
-    AvailableCoins(vCoinsWithCoinbase, true, coinControl, false, true);
-    fOnlyCoinbaseCoinsRet = vCoinsNoCoinbase.size() == 0 && vCoinsWithCoinbase.size() > 0;
+    AvailableCoins(vCoinsNoCoinbase, true, coinControl, false, true, false);
+    AvailableCoins(vCoinsWithCoinbase, true, coinControl, false, true, true);
+    fOnlyProtectedCoinbaseCoinsRet = vCoinsNoCoinbase.size() == 0 && vCoinsWithCoinbase.size() > 0;
 
     // If coinbase utxos can only be sent to zaddrs, exclude any coinbase utxos from coin selection.
     bool fProtectCoinbase = Params().GetConsensus().fCoinbaseMustBeProtected;
     vector<COutput> vCoins = (fProtectCoinbase) ? vCoinsNoCoinbase : vCoinsWithCoinbase;
 
-    // Output parameter fNeedCoinbaseCoinsRet is set to true if coinbase utxos need to be spent to meet target amount
+    // Output parameter fNeedProtectedCoinbaseCoinsRet is set to true if coinbase utxos that must be shielded need to be spent to meet target amount
     if (fProtectCoinbase && vCoinsWithCoinbase.size() > vCoinsNoCoinbase.size()) {
         CAmount value = 0;
         for (const COutput& out : vCoinsNoCoinbase) {
@@ -4698,7 +4705,7 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*
                 if ( KOMODO_EXCHANGEWALLET == 0 )
                     valueWithCoinbase += out.tx->vout[out.i].interest;
             }
-            fNeedCoinbaseCoinsRet = (valueWithCoinbase >= nTargetValue);
+            fNeedProtectedCoinbaseCoinsRet = (valueWithCoinbase >= nTargetValue);
         }
     }
     // coin control -> return all selected outputs (we want all selected to go into the transaction for sure)
@@ -5130,15 +5137,15 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                 // Choose coins to use
                 set<pair<const CWalletTx*,unsigned int> > setCoins;
                 CAmount nValueIn = 0;
-                bool fOnlyCoinbaseCoins = false;
-                bool fNeedCoinbaseCoins = false;
+                bool fOnlyProtectedCoinbaseCoins = false;
+                bool fNeedProtectedCoinbaseCoins = false;
                 interest2 = 0;
-                if (!SelectCoins(nTotalValue, setCoins, nValueIn, fOnlyCoinbaseCoins, fNeedCoinbaseCoins, coinControl))
+                if (!SelectCoins(nTotalValue, setCoins, nValueIn, fOnlyProtectedCoinbaseCoins, fNeedProtectedCoinbaseCoins, coinControl))
                 {
-                    if (fOnlyCoinbaseCoins && Params().GetConsensus().fCoinbaseMustBeProtected) {
-                        strFailReason = _("Coinbase funds can only be sent to a zaddr");
-                    } else if (fNeedCoinbaseCoins) {
-                        strFailReason = _("Insufficient funds, coinbase funds can only be spent after they have been sent to a zaddr");
+                    if (fOnlyProtectedCoinbaseCoins) {
+                        strFailReason = _("Coinbase funds earned while shielding protection is active can only be sent to a zaddr");
+                    } else if (fNeedProtectedCoinbaseCoins) {
+                        strFailReason = _("Insufficient funds, protected coinbase funds can only be spent after they have been sent to a zaddr");
                     } else {
                         strFailReason = _("Insufficient funds");
                     }

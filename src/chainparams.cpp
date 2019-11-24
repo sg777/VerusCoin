@@ -93,7 +93,7 @@ public:
         strNetworkID = "main";
         strCurrencyUnits = "KMD";
         bip44CoinType = 133; // As registered in https://github.com/satoshilabs/slips/blob/master/slip-0044.md (ZCASH, should be VRSC)
-        consensus.fCoinbaseMustBeProtected = false; // true this is only true wuth Verus and enforced after block 12800
+        consensus.fCoinbaseMustBeProtected = false; // true this is only true wuth Verus and enforced after block 12800 (enforcement ending at solution V3)
         consensus.nSubsidySlowStartInterval = 20000;
         consensus.nPreBlossomSubsidyHalvingInterval = Consensus::PRE_BLOSSOM_HALVING_INTERVAL;
         consensus.nPostBlossomSubsidyHalvingInterval = Consensus::POST_BLOSSOM_HALVING_INTERVAL;
@@ -201,7 +201,7 @@ public:
 
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
 
-        fMiningRequiresPeers = true;
+        //fMiningRequiresPeers = true;
         fDefaultConsistencyChecks = false;
         fRequireStandard = true;
         fMineBlocksOnDemand = false;
@@ -271,12 +271,17 @@ void *chainparams_commandline(void *ptr)
             mainParams.consensus.nLwmaPOSAjustedWeight = 46531;
         }
 
+        // this includes VRSCTEST, unlike the checkpoints and changes below
+        if (_IsVerusActive())
+        {
+            mainParams.consensus.fCoinbaseMustBeProtected = true;
+        }
+
         // only require coinbase protection on Verus from the Komodo family of coins
         if (strcmp(ASSETCHAINS_SYMBOL,"VRSC") == 0)
         {
             mainParams.consensus.vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight = 227520;
             mainParams.consensus.vUpgrades[Consensus::UPGRADE_OVERWINTER].nActivationHeight = 227520;
-            mainParams.consensus.fCoinbaseMustBeProtected = true;
             checkpointData = //(Checkpoints::CCheckpointData)
                 {
                     boost::assign::map_list_of
@@ -747,6 +752,18 @@ const CChainParams &Params() {
         return mainParams;
     }
     return *pCurrentParams;
+}
+
+void DisableCoinbaseMustBeProtected()
+{
+    CChainParams &curParams = pCurrentParams ? *pCurrentParams : mainParams;
+    curParams.DisableCoinbaseMustBeProtected();
+}
+
+void EnableCoinbaseMustBeProtected()
+{
+    CChainParams &curParams = pCurrentParams ? *pCurrentParams : mainParams;
+    curParams.EnableCoinbaseMustBeProtected();
 }
 
 bool AreParamsInitialized()

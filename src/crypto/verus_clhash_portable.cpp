@@ -650,7 +650,7 @@ uint64_t verusclhash_port(void * random, const unsigned char buf[64], uint64_t k
     return precompReduction64_port(acc);
 }
 
-bool mine_verus_v2_port(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count)
+bool mine_verus_v2_port(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint32_t solutionVersion, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count)
 {
 	CVerusHashV2 &vh = vhw.GetState();
     verusclhasher &vclh = vh.vclh;

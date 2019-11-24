@@ -224,7 +224,7 @@ inline void fixupkey(__m128i **pMoveScratch, verusclhash_descr *pdesc)
 */
 __m128i __verusclmulwithoutreduction64alignedrepeat(__m128i *randomsource, const __m128i buf[4], uint64_t keyMask, __m128i **pMoveScratch);
 
-bool mine_verus_v2(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count)
+bool mine_verus_v2(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint32_t solutionVersion, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count)
 {
 	CVerusHashV2 &vh = vhw.GetState();
     verusclhasher &vclh = vh.vclh;
@@ -288,45 +288,6 @@ bool mine_verus_v2(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint256 &finalHas
         _mm_store_si128((u128 *)(&curBuf[32 + 16]), fill1);
         curBuf[32 + 15] = ch;
 
-        /*
-        if (!i)
-        {
-            std::cout << "pre-buffer = ";
-            std::cout << HexBytes(curBuf, 64);
-
-            std::cout << std::endl;
-            std::cout << "test_buf = [";
-            for (int k = 0; k < 64; k++)
-            {
-                if (k == 63)
-                {
-                    std::cout << strprintf("0x%02x]", *(curBuf + k));
-                }
-                else
-                {
-                    std::cout << strprintf("0x%02x, ", *(curBuf + k));
-                }
-            }
-            std::cout << std::endl;
-
-            std::cout << "test_key = [";
-            for (int k = 0; k < (((u128 *)hasherrefresh) - hashKey); k++)
-            {
-                std::cout << "0x";
-                std::cout << LEToHex(*(hashKey + k));
-                if (k == (((u128 *)hasherrefresh) - hashKey) - 1)
-                {
-                    std::cout << "]";
-                }
-                else
-                {
-                    std::cout << ", ";
-                }
-            }
-            std::cout << std::endl;
-        }
-        */
-
 		// run verusclhash on the buffer
         //const uint64_t intermediate = vclh(curBuf, hashKey, pMoveScratch);
         __m128i  acc = __verusclmulwithoutreduction64alignedrepeat(hashKey, (const __m128i *)curBuf, vclh.keyMask, pMoveScratch);
@@ -339,18 +300,6 @@ bool mine_verus_v2(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint256 &finalHas
         curBuf[32 + 15] = *((unsigned char *)&intermediate);
 
 		haraka512_keyed_local((unsigned char *)&curHash, curBuf, hashKey + vh.IntermediateTo128Offset(intermediate));
-
-        /*
-        if (!i)
-        {
-            std::cout << "intermediate: ";
-            std::cout << LEToHex(intermediate);
-            std::cout << std::endl;
-            std::cout << "hashBytes: ";
-            std::cout << HexBytes((unsigned char *)&curHash, 32);
-            std::cout << std::endl;
-        }
-        */
 
         if (compResult[3] > compTarget[3] || (compResult[3] == compTarget[3] && compResult[2] > compTarget[2]) ||
             (compResult[3] == compTarget[3] && compResult[2] == compTarget[2] && compResult[1] > compTarget[1]) ||

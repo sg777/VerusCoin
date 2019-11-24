@@ -324,7 +324,7 @@ int64_t AddNormalinputs(CMutableTransaction &mtx,CPubKey mypk,int64_t total,int3
     const CKeyStore& keystore = *pwalletMain;
     assert(pwalletMain != NULL);
     LOCK2(cs_main, pwalletMain->cs_wallet);
-    pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
+    pwalletMain->AvailableCoins(vecOutputs, false, NULL, false);
     utxos = (struct CC_utxo *)calloc(maxutxos,sizeof(*utxos));
     BOOST_FOREACH(const COutput& out, vecOutputs)
     {

@@ -4590,7 +4590,7 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
 
     // Get available utxos
     vector<COutput> vecOutputs;
-    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true);
+    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, true);
 
     // Find unspent coinbase utxos and update estimated size
     BOOST_FOREACH(const COutput& out, vecOutputs) {
@@ -4720,7 +4720,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
         throw runtime_error(
             "z_mergetoaddress [\"fromaddress\", ... ] \"toaddress\" ( fee ) ( transparent_limit ) ( shielded_limit ) ( memo )\n"
             + strDisabledMsg +
-            "\nMerge multiple UTXOs and notes into a single UTXO or note.  Coinbase UTXOs are ignored; use `z_shieldcoinbase`"
+            "\nMerge multiple UTXOs and notes into a single UTXO or note. Protected coinbase UTXOs are ignored, use `z_shieldcoinbase`"
             "\nto combine those into a single note."
             "\n\nThis is an asynchronous operation, and UTXOs selected for merging will be locked.  If there is an error, they"
             "\nare unlocked.  The RPC call `listlockunspent` can be used to return a list of locked UTXOs."
@@ -4929,7 +4929,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
     if (useAnyUTXO || taddrs.size() > 0) {
         // Get available utxos
         vector<COutput> vecOutputs;
-        pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, false);
+        pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
 
         // Find unspent utxos and update estimated size
         for (const COutput& out : vecOutputs) {
