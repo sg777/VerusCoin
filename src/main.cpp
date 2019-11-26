@@ -2671,9 +2671,12 @@ namespace Consensus {
                                      REJECT_INVALID, "bad-txns-premature-spend-of-coinbase");
                 }
 
-                // Ensure that coinbases cannot be spent to transparent outputs
-                // Disabled on regtest
-                if (fCoinbaseEnforcedProtectionEnabled &&
+                // As of solution version 3, we're done with the Zcash coinbase protection.
+                // After careful consideration, it seems that while there is no real privacy benefit to the
+                // coinbase protection beyond forcing the private address pool to be used at least a little by everyone, it does increase the size of the blockchain
+                // and often reduces privacy by mixing multiple coinbase payment addresses
+                if (CConstVerusSolutionVector::GetVersionByHeight(coins->nHeight) < CActivationHeight::SOLUTION_VERUSV3 &&
+                    fCoinbaseEnforcedProtectionEnabled &&
                     consensusParams.fCoinbaseMustBeProtected &&
                     !(tx.vout.size() == 0 || (tx.vout.size() == 1 && tx.vout[0].nValue == 0)) &&
                     (strcmp(ASSETCHAINS_SYMBOL, "VRSC") != 0 || (nSpendHeight >= 12800 && coins->nHeight >= 12800))) {

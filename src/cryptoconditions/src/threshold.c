@@ -181,6 +181,15 @@ static CC *thresholdFromPartialFulfillment(const Fulfillment_t *ffill) {
     return cond;
 }
 
+int maxThreshholdCountVisit(CC *cond, CCVisitor visitor)
+{
+    if (cond->type->typeId != CC_Threshold) return 1;
+    if (*(int *)visitor.context < cond->threshold)
+    {
+        *(int *)visitor.context = cond->threshold;
+    }
+    return 1;
+}
 
 static Fulfillment_t *thresholdToPartialFulfillment(const CC *cond) {
     CC *sub;
@@ -195,25 +204,124 @@ static Fulfillment_t *thresholdToPartialFulfillment(const CC *cond) {
     ThresholdFulfillment_t *tf = calloc(1, sizeof(ThresholdFulfillment_t));
 
     int needed = cond->threshold;
+    int maxSubThresholds = 1;   // maximum required in all nested thresholds, if it is 1, we know that one signature only is required, and we can optimize since waiting for another sig is unnecessary
+    CCVisitor subThresholdVisitor = {&maxThreshholdCountVisit, "", 0, &maxSubThresholds};
+    thresholdVisitChildren(cond, subThresholdVisitor);
+    int evalCount = cc_countEvals(cond);
+    int canOptimize = 0;
+
+    // if any sub threshold requires more than one condition, we cannot optimize this, 0 is invalid
+    if (maxSubThresholds == 1)
+    {
+        if (needed == 1 && evalCount == 0)
+        {
+            canOptimize = 1;
+        }
+        else if (needed == cond->size)
+        {
+            // if none will be optimized out and all evals are at the top level, we can optimize if it is satisfied
+            int topLevelEvals = 0;
+            for (int i = 0; i < cond->size; i++)
+            {
+                if (cond->type->typeId == CC_Eval)
+                    topLevelEvals++;
+            }
+            if (topLevelEvals == evalCount)
+            {
+                canOptimize = 1;
+            }
+        }
+    }
+
+    // if we are not fulfilled, do not optimize, this must be done above us if we are not needed
+    if (!cc_isFulfilled(cond))
+    {
+        canOptimize = 0;
+    }
 
     for (int i = 0; i < cond->size; i++)
     {
         sub = subconditions[i];
-        fulfillment = asnPartialFulfillmentNew(sub);
-        if (fulfillment)
+        int success = 1;
+
+        if (needed && cc_isFulfilled(sub))
         {
-            if (needed)
+            fulfillment = asnPartialFulfillmentNew(sub);
+            if (fulfillment)
             {
                 asn_set_add(&tf->subfulfillments, fulfillment);
                 needed--;
             }
             else
             {
-                asn_set_add(&tf->subfulfillments, fulfillment);
-                asn_set_add(&tf->subconditions, asnConditionNew(sub));
+                success = 0;
+            }
+        }
+        else if (canOptimize)
+        {
+            Condition_t *condNew = asnConditionNew(sub);
+            if (condNew)
+            {
+                CC *anonCC = mkAnon(condNew);
+                if (!anonCC)
+                {
+                    ASN_STRUCT_FREE(asn_DEF_Condition, condNew);
+                    success = 0;
+                }
+                else
+                {
+                    ASN_STRUCT_FREE(asn_DEF_Condition, condNew);
+                    fulfillment = (Fulfillment_t *)asnConditionNew(anonCC);
+                    condNew = asnConditionNew(anonCC);
+                    cc_free(anonCC);
+                    if (!condNew || !fulfillment)
+                    {
+                        if (fulfillment)
+                        {
+                            asn_set_add(&tf->subfulfillments, fulfillment); // put it here so it will be deleted
+                        }
+                        if (condNew)
+                        {
+                            asn_set_add(&tf->subconditions, condNew);
+                        }
+                        success = 0;
+                    }
+                    else
+                    {
+                        asn_set_add(&tf->subfulfillments, fulfillment);
+                        asn_set_add(&tf->subconditions, condNew);
+                    }
+                }
+            }
+            else
+            {
+                success = 0;
             }
         }
         else
+        {
+            fulfillment = asnPartialFulfillmentNew(sub);
+            Condition_t *condNew = asnConditionNew(sub);
+            if (fulfillment && condNew)
+            {
+                asn_set_add(&tf->subfulfillments, fulfillment);
+                asn_set_add(&tf->subconditions, condNew);
+            }
+            else
+            {
+                if (fulfillment)
+                {
+                    asn_set_add(&tf->subfulfillments, fulfillment); // put it here so it will be deleted
+                }
+                if (condNew)
+                {
+                    asn_set_add(&tf->subconditions, condNew);
+                }
+                success = 0;
+            }
+        }
+
+        if (!success)
         {
             printf("ERROR: cannot decode partial fulfillment\n");
             free(subconditions);

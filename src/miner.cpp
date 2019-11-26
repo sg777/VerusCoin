@@ -2348,9 +2348,6 @@ void static BitcoinMiner_noeq()
     try {
         printf("Mining %s with %s\n", ASSETCHAINS_SYMBOL, ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]);
 
-        // v2 hash writer
-        CVerusHashV2bWriter ss2 = CVerusHashV2bWriter(SER_GETHASH, PROTOCOL_VERSION);
-
         while (true)
         {
             miningTimer.stop();
@@ -2429,8 +2426,13 @@ void static BitcoinMiner_noeq()
             bool mergeMining = false;
             savebits = pblock->nBits;
 
+            uint32_t solutionVersion = CConstVerusSolutionVector::Version(pblock->nSolution);
             bool verusHashV2 = pblock->nVersion == CBlockHeader::VERUS_V2;
-            bool verusSolutionV4 = CConstVerusSolutionVector::Version(pblock->nSolution) >= CActivationHeight::SOLUTION_VERUSV4;
+            bool verusSolutionGTEV3 = solutionVersion >= CActivationHeight::SOLUTION_VERUSV3;
+            bool verusSolutionV4 = solutionVersion >= CActivationHeight::SOLUTION_VERUSV4;
+
+            // v2 hash writer with adjustments for the current height
+            CVerusHashV2bWriter ss2 = CVerusHashV2bWriter(SER_GETHASH, PROTOCOL_VERSION, solutionVersion);
 
             if ( ASSETCHAINS_SYMBOL[0] != 0 )
             {

@@ -222,6 +222,8 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     bool isPureTaddrOnlyTx = (isfromtaddr_ && z_outputs_.size() == 0);
     CAmount minersFee = fee_;
 
+    uint solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1);
+
     // When spending coinbase utxos, you can only specify a single zaddr as the change must go somewhere
     // and if there are multiple zaddrs, we don't know where to send it.
     if (isfromtaddr_) {
@@ -235,9 +237,9 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             bool b = find_utxos(false);
             if (!b) {
                 if (isMultipleZaddrOutput) {
-                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Could not find any non-coinbase UTXOs to spend. Coinbase UTXOs can only be sent to a single zaddr recipient.");
+                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Could not find any coinbase UTXOs without shielding requirements to spend. Protected coinbase UTXOs can only be sent to a single zaddr recipient.");
                 } else {
-                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Could not find any non-coinbase UTXOs to spend.");
+                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Could not find any coinbase UTXOs without shielding requirements to spend.");
                 }
             }
         }
@@ -938,7 +940,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     return true;
 }
 
-bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptCoinbase=false) 
+bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false) 
 {
     std::set<CTxDestination> destinations;
     destinations.insert(fromtaddr_);
@@ -948,7 +950,7 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptCoinbase=false)
     vector<COutput> vecOutputs;
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
-    pwalletMain->AvailableCoins(vecOutputs, false, NULL, true, fAcceptCoinbase);
+    pwalletMain->AvailableCoins(vecOutputs, false, NULL, false, true, fAcceptProtectedCoinbase);
 
     BOOST_FOREACH(const COutput& out, vecOutputs) {
         CTxDestination dest;
@@ -979,16 +981,9 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptCoinbase=false)
             }
         }
 
-        // By default we ignore coinbase outputs if coinbase shielding is required
-        // TODO: audit use of fAcceptCoinbase to ensure that in all cases when coinbase is not required to be shielded that this is skipped
-        bool isCoinbase = out.tx->IsCoinBase();
-        if (isCoinbase && fAcceptCoinbase==false) {
-            continue;
-        }
-
         CAmount nValue = out.tx->vout[out.i].nValue;
         
-        SendManyInputUTXO utxo(out.tx->GetHash(), out.i, nValue, isCoinbase, scriptPubKey);
+        SendManyInputUTXO utxo(out.tx->GetHash(), out.i, nValue, out.tx->IsCoinBase(), scriptPubKey);
         t_inputs_.push_back(utxo);
     }
 

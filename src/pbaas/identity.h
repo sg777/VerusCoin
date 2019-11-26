@@ -288,7 +288,7 @@ public:
     }
 
     CIdentity(const UniValue &uni);
-    CIdentity(const CTransaction &tx);
+    CIdentity(const CTransaction &tx, int *voutNum=nullptr);
     CIdentity(const CScript &scriptPubKey);
     CIdentity(const std::vector<unsigned char> &asVector)
     {

@@ -22,6 +22,7 @@
 #include <algorithm>
 
 extern uint160 VERUS_CHAINID;
+extern std::string VERUS_CHAINNAME;
 
 namespace
 {
@@ -494,17 +495,51 @@ uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
+std::string TrimLeading(const std::string &Name, unsigned char ch)
+{
+    std::string nameCopy = Name;
+    int removeSpaces;
+    for (removeSpaces = 0; removeSpaces < nameCopy.size(); removeSpaces++)
+    {
+        if (nameCopy[removeSpaces] != ch)
+        {
+            break;
+        }
+    }
+    if (removeSpaces)
+    {
+        nameCopy.erase(nameCopy.begin(), nameCopy.begin() + removeSpaces);
+    }
+    return nameCopy;
+}
+
+std::string TrimTrailing(const std::string &Name, unsigned char ch)
+{
+    std::string nameCopy = Name;
+    int removeSpaces;
+    for (removeSpaces = nameCopy.size() - 1; removeSpaces >= 0; removeSpaces--)
+    {
+        if (nameCopy[removeSpaces] != ch)
+        {
+            break;
+        }
+    }
+    nameCopy.resize(nameCopy.size() - ((nameCopy.size() - 1) - removeSpaces));
+    return nameCopy;
+}
+
 std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
 {
     std::string nameCopy = Name;
-    std::string invalidChars = "\\/:*?\"<>|";
+    std::set<unsigned char> invalidChars = {'\\', '/', ':', '*', '?', '\"', '<', '>', '|'};
     for (int i = 0; i < nameCopy.size(); i++)
     {
-        if (invalidChars.find(nameCopy[i]) != std::string::npos)
+        if (invalidChars.count(nameCopy[i]))
         {
-            nameCopy[i] = '_';
+            return std::vector<std::string>();
         }
     }
+
     std::vector<std::string> retNames;
     boost::split(retNames, nameCopy, boost::is_any_of("@"));
     if (!retNames.size() || retNames.size() > 2)
@@ -528,6 +563,11 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
         {
             retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
         }
+        // spaces are allowed, but no sub-name can have leading or trailing spaces
+        if (!retNames[i].size() || retNames[i] != TrimTrailing(TrimLeading(retNames[i], ' '), ' '))
+        {
+            return std::vector<std::string>();
+        }
     }
 
     // if no chain is specified, default to chain of the ID
@@ -536,7 +576,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
         if (retNames.size() == 1)
         {
             // by default, we assume the Verus chain for no suffix
-            ChainOut = "";
+            ChainOut = VERUS_CHAINNAME;
         }
         else
         {

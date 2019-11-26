@@ -269,17 +269,19 @@ uint256 CBlockHeader::GetVerusV2Hash() const
     {
         if (nVersion == VERUS_V2)
         {
+            int solutionVersion = CConstVerusSolutionVector::Version(nSolution);
+
             // in order for this to work, the PBaaS hash of the pre-header must match the header data
             // otherwise, it cannot clear the canonical data and hash in a chain-independent manner
             if (CConstVerusSolutionVector::IsPBaaS(nSolution) && CheckNonCanonicalData())
             {
                 CBlockHeader bh = CBlockHeader(*this);
                 bh.ClearNonCanonicalData();
-                return SerializeVerusHashV2b(bh);
+                return SerializeVerusHashV2b(bh, solutionVersion);
             }
             else
             {
-                return SerializeVerusHashV2b(*this);
+                return SerializeVerusHashV2b(*this, solutionVersion);
             }
         }
         else
