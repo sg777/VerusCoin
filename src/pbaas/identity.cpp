@@ -651,7 +651,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 
     CNameReservation nameRes;
     CIdentity identity;
-    COptCCParams p;
+    COptCCParams p, identityP;
 
     for (auto &output : tx.vout)
     {
@@ -671,6 +671,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
             {
                 return state.Error("Invalid multiple identity definitions on one transaction");
             }
+            identityP = p;
             validIdentity = true;
         }
     }
@@ -681,6 +682,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     }
 
     CIdentityID idID = identity.GetID();
+    p = identityP;
 
     // ensure that we have all required spend conditions for primary, revocation, and recovery
     // if there are additional spend conditions, their addition or removal is checked for validity

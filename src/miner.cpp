@@ -2294,9 +2294,9 @@ void static VerusStaker(CWallet *pwallet)
     }
 }
 
-typedef bool (*minefunction)(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint32_t solutionVersion, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count);
-bool mine_verus_v2(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint32_t solutionVersion, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count);
-bool mine_verus_v2_port(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint32_t solutionVersion, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count);
+typedef bool (*minefunction)(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count);
+bool mine_verus_v2(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count);
+bool mine_verus_v2_port(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count);
 
 void static BitcoinMiner_noeq(CWallet *pwallet)
 #else
@@ -2347,9 +2347,6 @@ void static BitcoinMiner_noeq()
 
     try {
         printf("Mining %s with %s\n", ASSETCHAINS_SYMBOL, ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]);
-
-        // v2 hash writer
-        CVerusHashV2bWriter ss2 = CVerusHashV2bWriter(SER_GETHASH, PROTOCOL_VERSION);
 
         while (true)
         {
@@ -2433,6 +2430,9 @@ void static BitcoinMiner_noeq()
             bool verusHashV2 = pblock->nVersion == CBlockHeader::VERUS_V2;
             bool verusSolutionGTEV3 = solutionVersion >= CActivationHeight::SOLUTION_VERUSV3;
             bool verusSolutionV4 = solutionVersion >= CActivationHeight::SOLUTION_VERUSV4;
+
+            // v2 hash writer with adjustments for the current height
+            CVerusHashV2bWriter ss2 = CVerusHashV2bWriter(SER_GETHASH, PROTOCOL_VERSION, solutionVersion);
 
             if ( ASSETCHAINS_SYMBOL[0] != 0 )
             {
@@ -2629,12 +2629,12 @@ void static BitcoinMiner_noeq()
                                 CPBaaSPreHeader savedHeader(*pblock);
 
                                 pblock->ClearNonCanonicalData();
-                                blockFound = (*mine_verus)(*pblock, ss2, solutionVersion, hashResult, uintTarget, start, &hashesToGo);
+                                blockFound = (*mine_verus)(*pblock, ss2, hashResult, uintTarget, start, &hashesToGo);
                                 savedHeader.SetBlockData(*pblock);
                             }
                             else
                             {
-                                blockFound = (*mine_verus)(*pblock, ss2, solutionVersion, hashResult, uintTarget, start, &hashesToGo);
+                                blockFound = (*mine_verus)(*pblock, ss2, hashResult, uintTarget, start, &hashesToGo);
                             }
 
                             arithHash = UintToArith256(hashResult);

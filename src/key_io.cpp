@@ -524,17 +524,20 @@ std::string TrimTrailing(const std::string &Name, unsigned char ch)
             break;
         }
     }
-    nameCopy.resize(nameCopy.size() - removeSpaces);
+    nameCopy.resize(nameCopy.size() - ((nameCopy.size() - 1) - removeSpaces));
     return nameCopy;
 }
 
 std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
 {
     std::string nameCopy = Name;
-    std::string invalidChars = "\\/:*?\"<>|";
+    std::set<unsigned char> invalidChars = {'\\', '/', ':', '*', '?', '\"', '<', '>', '|'};
     for (int i = 0; i < nameCopy.size(); i++)
     {
-        return std::vector<std::string>();
+        if (invalidChars.count(nameCopy[i]))
+        {
+            return std::vector<std::string>();
+        }
     }
 
     std::vector<std::string> retNames;
