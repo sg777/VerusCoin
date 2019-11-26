@@ -1413,6 +1413,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                             // we cannot check the fullfillment form
                             failToTrue = !CanValidateIDs();
                             ccValid = false;
+                            vCC.push_back(MakeCCcondOneSig(dest));
                         }
                         else
                         {
@@ -1473,71 +1474,86 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                     }
                 }
 
-                if (ccValid)
+                int thresh = oneP.m ? oneP.m : 1;
+                if (oneP.n && thresh > oneP.n)
                 {
-                    if (oneP.evalCode != EVAL_NONE)
-                    {
-                        ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, oneP.m ? oneP.m : 1));
-                    }
-                    else
-                    {
-                        ccs.push_back(MakeCCcondMofN(vCC, oneP.m));
-                    }
+                    thresh = oneP.n;
+                }
+
+                if (oneP.evalCode != EVAL_NONE)
+                {
+                    ccs.push_back(MakeCCcondMofN(oneP.evalCode, vCC, thresh));
                 }
                 else
                 {
-                    for (auto pCond : vCC)
-                    {
-                        cc_free(pCond);
-                    }
+                    ccs.push_back(MakeCCcondMofN(vCC, thresh));
                 }
             }
         }
 
         CC *outputCC = nullptr;
 
-        if (ccValid)
+        if (ccs.size() == 1)
         {
-            if (ccs.size() == 1)
+            if (master.evalCode)
             {
-                if (master.evalCode)
-                {
-                    outputCC = MakeCCcondMofN(master.evalCode, ccs, 1);
-                }
-                else
-                {
-                    outputCC = ccs[0];
-                }
+                outputCC = MakeCCcondMofN(master.evalCode, ccs, 1);
             }
             else
             {
-                if (master.evalCode)
-                {
-                    outputCC = MakeCCcondMofN(master.evalCode, ccs, master.m);
-                }
-                else
-                {
-                    outputCC = MakeCCcondMofN(ccs, master.m);
-                }
+                outputCC = ccs[0];
             }
         }
-        
+        else if (ccs.size() > 1)
+        {
+            if (master.evalCode)
+            {
+                outputCC = MakeCCcondMofN(master.evalCode, ccs, master.m);
+            }
+            else
+            {
+                outputCC = MakeCCcondMofN(ccs, master.m);
+            }
+        }
+
+        // in no case can an incorrect match on number of evals be valid
+        expectedEvals = outputCC ? cc_countEvals(outputCC) : 0;
+
         if (!ccValid || !outputCC)
         {
-            for (auto pCond : ccs)
+            if (outputCC)
             {
-                cc_free(pCond);
-            }            
+                cc_free(outputCC);
+            }
+            else if (ccs.size())
+            {
+                for (auto pCond : ccs)
+                {
+                    cc_free(pCond);
+                }            
+            }
+
             if (failToTrue)
             {
                 // this should never get here when running on a server with access to the blockchain
                 assert(!CanValidateIDs());
+
+                int error;
+                CC *cond;
+                if (p.IsValid() && p.version >= p.VERSION_V3)
+                {
+                    error = cc_readPartialFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
+                    if (error || cc_countEvals(cond) != expectedEvals)
+                    {
+                        return false;
+                    }
+                }
+
                 return true;
             }
         }
         else
         {
-            expectedEvals = cc_countEvals(outputCC);
             condBinary = CCPubKeyVec(outputCC);
             cc_free(outputCC);
         }

@@ -1738,14 +1738,15 @@ int32_t komodo_checkPOW(int32_t slowflag,CBlock *pblock,int32_t height)
     }
     else if (bhash <= bnTarget)
     {
-        // tolerate variable size solutions, but ensure that we have at least 8 bytes extra space to fit the clhash at the end
-        if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::SOLUTION_VERUSV3 || (GetSerializeSize(*(CBlockHeader *)pblock, SER_NETWORK, PROTOCOL_VERSION) % 32) >= sizeof(uint64_t))
+        // tolerate variable size solutions, but ensure that we have at least 16 bytes extra space to fit the clhash at the end
+        int modSpace = GetSerializeSize(*(CBlockHeader *)pblock, SER_NETWORK, PROTOCOL_VERSION) % 32;
+        if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::SOLUTION_VERUSV3 || (modSpace >= 1 && modSpace <= 16))
         {
             return 0;
         }
         else
         {
-            printf("Block header size modulo 32 must be 8 or greater for PoW blocks\n");
+            printf("Block header size modulo 32 must be > 1 and <= 16 for PoW blocks\n");
         }
     }
     else

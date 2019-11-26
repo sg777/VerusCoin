@@ -830,9 +830,8 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv3_port(__m128i *randomsour
 
                 do
                 {
-                    // note that due to compiler and CPUs, we expect this to do:
-                    // if (selector & ((0x10000000 << rounds) & 0xffffffff) if rounds != 3 else selector & 0xffffffff80000000):
-                    if (selector & (0x10000000 << rounds))
+                    // this is simplified over the original verus_clhash
+                    if (selector & (((uint64_t)0x10000000) << rounds))
                     {
                         onekey = _mm_load_si128_emu(rc++);
                         const __m128i temp2 = _mm_load_si128_emu(rounds & 1 ? pbuf : buftmp);

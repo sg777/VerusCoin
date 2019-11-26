@@ -771,7 +771,7 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv3(__m128i *randomsource, c
             }
             case 0x14:
             {
-                // we'll just call this one the monkins loop, inspired by Chris
+                // we'll just call this one the monkins loop, inspired by Chris - modified to cast to uint64_t on shift for more variability in the loop
                 const __m128i *buftmp = pbuf - (((selector & 1) << 1) - 1);
                 __m128i tmp; // used by MIX2
 
@@ -782,7 +782,7 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv3(__m128i *randomsource, c
 
                 do
                 {
-                    if (selector & (0x10000000 << rounds))
+                    if (selector & (((uint64_t)0x10000000) << rounds))
                     {
                         onekey = _mm_load_si128(rc++);
                         const __m128i temp2 = _mm_load_si128(rounds & 1 ? pbuf : buftmp);
