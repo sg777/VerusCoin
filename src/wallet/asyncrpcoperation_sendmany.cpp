@@ -222,7 +222,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     bool isPureTaddrOnlyTx = (isfromtaddr_ && z_outputs_.size() == 0);
     CAmount minersFee = fee_;
 
-    uint solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1);
+    uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1);
 
     // When spending coinbase utxos, you can only specify a single zaddr as the change must go somewhere
     // and if there are multiple zaddrs, we don't know where to send it.
