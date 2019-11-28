@@ -1864,7 +1864,7 @@ bool EvalCryptoConditionSig(
     if (pc != scriptSig.end())
         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
 
-    if (vchPushValue.size() > MAX_SCRIPT_CRYPTOCONDITION_FULFILLMENT_SIZE)
+    if (vchPushValue.size() > CScript::MAX_SCRIPT_ELEMENT_SIZE)
         return set_error(serror, SCRIPT_ERR_PUSH_SIZE);
 
     stack.push_back(vchPushValue);
