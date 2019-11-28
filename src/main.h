@@ -462,9 +462,6 @@ public:
 
     void SetIDMap(const std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> &map) { idMap = map; }
 
-    void AddIDAddresses(const uint160 &addr, const std::pair<int, std::vector<std::vector<unsigned char>>> &dests) { idMap[addr] = dests; }
-    void ClearIDAddresses() { idMap.clear(); }
-
     ScriptError GetScriptError() const { return error; }
 };
 

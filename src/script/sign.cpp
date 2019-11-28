@@ -21,7 +21,11 @@ using namespace std;
 
 typedef std::vector<unsigned char> valtype;
 
-TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn) : BaseSignatureCreator(keystoreIn), txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn) {}
+TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const CScript &scriptPubKey, uint32_t spendHeight, int nHashTypeIn) 
+    : BaseSignatureCreator(keystoreIn), txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn, &scriptPubKey, keystoreIn, spendHeight) {}
+
+TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn) 
+    : BaseSignatureCreator(keystoreIn), txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn) {}
 
 bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, const CKeyID& address, const CScript& scriptCode, uint32_t consensusBranchId, CKey *pprivKey, void *extraData) const
 {
@@ -42,9 +46,6 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, 
     {
         CC *cc = (CC *)extraData;
 
-        //CPubKey pubKey = key.GetPubKey();
-        //printf("signing with pubkey: %s, ID: %s\n\n", HexBytes(&(std::vector<unsigned char>(pubKey.begin(), pubKey.end())[0]), pubKey.size()).c_str(), pubKey.GetID().GetHex().c_str());
-
         if (!cc || cc_signTreeSecp256k1Msg32(cc, key.begin(), hash.begin()) == 0)
             return false;
 
@@ -55,11 +56,12 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, 
             printf("Freshly signed condition: %s\n", jsonCondStr);
             cJSON_free(jsonCondStr);
             uint8_t buf[2000];
-            int ccLen = cc_conditionBinary(cc, buf, 2000);
+            int ccLen = cc_partialFulfillmentBinary(cc, buf, 2000);
             if (ccLen)
             {
-                CC *transformedCC = cc_readConditionBinary(buf, ccLen);
-                if (transformedCC)
+                CC *transformedCC;
+                int err = cc_readPartialFulfillmentBinaryExt(buf, ccLen, &transformedCC);
+                if (!err && transformedCC)
                 {
                     jsonCondStr = cc_conditionToJSONString(transformedCC);
                     if (jsonCondStr)
@@ -67,6 +69,7 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, 
                         printf("Signed, transformed condition: %s\n", jsonCondStr);
                         cJSON_free(jsonCondStr);
                     }
+                    printf("isFulfilled reports: %s\n", cc_isFulfilled(transformedCC) ? "true" : "false");
                     cc_free(transformedCC);
                 }
             }
@@ -327,7 +330,6 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
             bool ccValid = master.IsValid();
             std::vector<CConditionObj<COptCCParams>> conditions;
             std::map<uint160, CTxDestination> destMap;  // all destinations
-            std::map<uint160, CIdentity> idMap;         // identities located by id
             std::map<uint160, CKey> privKeyMap;         // private keys located for each id
             std::vector<CC*> ccs;
 
@@ -393,7 +395,6 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                             }
                             else
                             {
-                                idMap[destId] = id;
                                 for (auto oneKey : id.primaryAddresses)
                                 {
                                     destMap[GetDestinationID(oneKey)] = oneKey;
@@ -421,9 +422,15 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     }
                     else
                     {
-                        ccs.push_back(MakeCCcondMofN(vCC, oneP.m));
+                        if (vCC.size() == 1)
+                        {
+                            ccs.push_back(vCC[0]);
+                        }
+                        else
+                        {
+                            ccs.push_back(MakeCCcondMofN(vCC, oneP.m));
+                        }
                     }
-                    
                 }
             }
 
@@ -481,6 +488,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
 
                 vector<unsigned char> vch = ret.size() ? ret[0] : vector<unsigned char>();
                 bool error = false;
+                CScript signScript = _CCPubKey(outputCC);
                 // loop and sign
                 for (auto privKey : privKeys)
                 {
@@ -501,8 +509,14 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                             cc_free(outputCC);
                             outputCC = signedCC;
                         }
+                        else if (signedCC)
+                        {
+                            cc_free(signedCC);
+                        }
                     }
-                    if (error || !(creator.CreateSig(vch, privKey.first, _CCPubKey(outputCC), consensusBranchId, &privKey.second, (void *)outputCC)))
+
+                    // if we have an error or can't sign and it isn't fulfilled, fail, if we have no error, can't sign again, and we have a fulfilled sig, it must be optimized and OK
+                    if (error || (!creator.CreateSig(vch, privKey.first, signScript, consensusBranchId, &privKey.second, (void *)outputCC) && !(cc_isFulfilled(outputCC) && vch.size())))
                     {
                         error = true;
                         //CPubKey errKey = privKey.second.GetPubKey();
@@ -512,6 +526,20 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
 
                 if (!error && vch.size())
                 {
+                    /*
+                    CC *signedCC = nullptr;
+                    error = cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &signedCC) || !signedCC;
+                    if (!error)
+                    {
+                        vch = CCSigVec(signedCC);
+                    }
+
+                    if (signedCC)
+                    {
+                        cc_free(signedCC);
+                    }
+                    */
+
                     ret.push_back(vch);
                 }
 

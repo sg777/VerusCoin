@@ -631,6 +631,31 @@ std::string CleanName(const std::string &Name, uint160 &Parent)
     return subNames[0];
 }
 
+CNameReservation::CNameReservation(const CTransaction &tx, int *pOutNum)
+{
+    for (int i = 0; i < tx.vout.size(); i++)
+    {
+        COptCCParams p;
+        if (IsPayToCryptoCondition(tx.vout[i].scriptPubKey, p))
+        {
+            if (p.evalCode == EVAL_IDENTITY_RESERVATION)
+            {
+                FromVector(p.vData[0], *this);
+                return;
+            }
+        }
+    }
+}
+
+CIdentity::CIdentity(const CScript &scriptPubKey)
+{
+    COptCCParams p;
+    if (IsPayToCryptoCondition(scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size())
+    {
+        *this = CIdentity(p.vData[0]);
+    }
+}
+
 CIdentityID CIdentity::GetID(const std::string &Name, uint160 &parent)
 {
     std::string cleanName = CleanName(Name, parent);

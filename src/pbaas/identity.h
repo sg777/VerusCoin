@@ -95,6 +95,9 @@ public:
             salt.SetNull(); // either valid destination, no destination, or invalid reservation
         }
     }
+
+    CNameReservation(const CTransaction &tx, int *pNumOut=nullptr);
+
     CNameReservation(std::vector<unsigned char> asVector)
     {
         ::FromVector(asVector, *this);

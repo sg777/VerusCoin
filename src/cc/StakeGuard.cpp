@@ -15,6 +15,9 @@
 #include "hash.h"
 #include "key_io.h"
 
+#include <vector>
+#include <map>
+
 #include "streams.h"
 
 extern int32_t VERUS_MIN_STAKEAGE;
@@ -166,10 +169,16 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
                     {
                         auto consensusBranchId = CurrentEpochBranchId(stakeParams.blkHeight, Params().GetConsensus());
 
+                        std::map<uint160, pair<int, std::vector<std::vector<unsigned char>>>> idAddressMap;
+                        if (validateSig)
+                        {
+                            idAddressMap = ServerTransactionSignatureChecker::ExtractIDMap(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, stakeParams.blkHeight);
+                        }
+
                         if (!validateSig || VerifyScript(stakeTx.vin[0].scriptSig, 
                                             srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, 
                                             MANDATORY_SCRIPT_VERIFY_FLAGS,
-                                            TransactionSignatureChecker(&stakeTx, (uint32_t)0, srcTx.vout[stakeTx.vin[0].prevout.n].nValue),
+                                            TransactionSignatureChecker(&stakeTx, (uint32_t)0, srcTx.vout[stakeTx.vin[0].prevout.n].nValue, &idAddressMap),
                                             consensusBranchId))
                         {
                             return true;

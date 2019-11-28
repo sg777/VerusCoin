@@ -1259,6 +1259,7 @@ bool ContextualCheckTransaction(
 
         librustzcash_sapling_verification_ctx_free(ctx);
     }
+
     // precheck all crypto conditions
     for (int i = 0; i < tx.vout.size(); i++)
     {
@@ -1654,11 +1655,19 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
     {
         return error("AcceptToMemoryPool: CheckTransaction failed");
     }
+
     // DoS level set to 10 to be more forgiving.
     // Check transaction contextually against the set of consensus rules which apply in the next block to be mined.
     if (!ContextualCheckTransaction(tx, state, chainParams, nextBlockHeight, (dosLevel == -1) ? 10 : dosLevel))
     {
         return error("AcceptToMemoryPool: ContextualCheckTransaction failed");
+    }
+
+    // if this is an identity that is already present in the mem pool, then we cannot duplicate it
+    std::list<CTransaction> conflicts;
+    if (pool.checkNameConflicts(tx, conflicts))
+    {
+        return error("AcceptToMemoryPool: Invalid identity redefinition");
     }
 
     // Coinbase is only valid in a block, not as a loose transaction. we will put it in the mem pool to enable
@@ -2797,47 +2806,7 @@ bool ContextualCheckInputs(const CTransaction& tx,
                 const CCoins* coins = inputs.AccessCoins(prevout.hash);
                 assert(coins);
 
-                // create an ID map here, which late binds to the IDs on the blockchain as of the spend height, 
-                // and substitute the correct addresses when checking signatures
-                COptCCParams p;
-                std::map<uint160, pair<int, std::vector<std::vector<unsigned char>>>> idAddresses;
-                if (coins->vout[prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.n >= 1 && p.vKeys.size() >= p.n && p.version >= p.VERSION_V3 && p.vData.size())
-                {
-                    // get mapping to any identities used that are available. if a signing identity is unavailable, a transaction may still be able to be spent
-                    COptCCParams master = COptCCParams(p.vData.back());
-                    bool ccValid = master.IsValid();
-
-                    // if we are sign-only, "p" will have no data object of its own, so we do not have to subtract 1
-                    int loopMax = p.evalCode ? p.vData.size() - 1 : p.vData.size();
-
-                    for (int i = 0; ccValid && i < loopMax; i++)
-                    {
-                        COptCCParams oneP(i ? p.vData[i] : p);
-                        ccValid = oneP.IsValid();
-
-                        if (ccValid)
-                        {
-                            for (auto dest : oneP.vKeys)
-                            {
-                                uint160 destId = GetDestinationID(dest);
-                                if (dest.which() == COptCCParams::ADDRTYPE_ID)
-                                {
-                                    // lookup identity
-                                    CIdentity id;
-                                    if ((id = CIdentity::LookupIdentity(destId, spendHeight)).IsValid())
-                                    {
-                                        std::vector<std::vector<unsigned char>> idAddrBytes;
-                                        for (auto &oneAddr : id.primaryAddresses)
-                                        {
-                                            idAddrBytes.push_back(GetDestinationBytes(oneAddr));
-                                        }
-                                        idAddresses[destId] = make_pair(id.minSigs, idAddrBytes);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                auto idAddresses = ServerTransactionSignatureChecker::ExtractIDMap(coins->vout[prevout.n].scriptPubKey, spendHeight);
 
                 // Verify signature
                 CScriptCheck check(*coins, tx, i, flags, cacheStore, consensusBranchId, &txdata);
@@ -3961,6 +3930,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     // END insightexplorer
 
+    if (CConstVerusSolutionVector::GetVersionByHeight(pindex->GetHeight() + 1) >= CActivationHeight::SOLUTION_VERUSV3)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3;
+    }
+
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
     
@@ -4322,6 +4296,7 @@ bool static ConnectTip(CValidationState& state, const CChainParams& chainparams,
     
     // Update chainActive & related variables.
     UpdateTip(pindexNew, chainparams);
+
     // Tell wallet about transactions that went from mempool
     // to conflicted:
     BOOST_FOREACH(const CTransaction &tx, txConflicted) {
@@ -4593,7 +4568,16 @@ bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams,
     if (!FlushStateToDisk(state, FLUSH_STATE_PERIODIC)) {
         return false;
     }
-    
+
+    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::SOLUTION_VERUSV3)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3;
+    }
+    else
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
+    }
+
     return true;
 }
 
@@ -5313,13 +5297,28 @@ bool ContextualCheckBlock(
         }
     }
 
-    // Check that all transactions are finalized
+    // Check that all transactions are finalized, reject stake transactions, and
+    // ensure no reservation ID duplicates
+    std::set<std::string> newIDs;
     for (uint32_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = block.vtx[i];
         
         // Check transaction contextually against consensus rules at block height
         if (!ContextualCheckTransaction(tx, state, chainparams, nHeight, 100)) {
             return false; // Failure reason has been set in validation state object
+        }
+
+        // this is the only place where a duplicate name definition of the same name is checked in a block
+        // all other cases are covered via mempool and pre-registered check, doing this would require a malicious
+        // client, so immediate ban score
+        CNameReservation nameRes(tx);
+        if (nameRes.IsValid())
+        {
+            if (newIDs.count(boost::algorithm::to_lower_copy(nameRes.name)))
+            {
+                return state.DoS(100, error("%s: attempt to submit block with duplicate identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+            }
+            newIDs.insert(boost::algorithm::to_lower_copy(nameRes.name));
         }
 
         // if this is a stake transaction with a stake opreturn, reject it if not staking a block. don't check coinbase or actual stake tx
@@ -5691,6 +5690,15 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
     // useful by then
     if ((height - 250) > 1)
         cheatList.Prune(height - 200);
+
+    if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::SOLUTION_VERUSV3)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3;
+    }
+    else
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
+    }
 
     return true;
 }
@@ -6111,7 +6119,16 @@ bool static LoadBlockIndexDB()
 	      progress);
     
     EnforceNodeDeprecation(chainActive.Height(), true);
-    
+
+    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::SOLUTION_VERUSV3)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3;
+    }
+    else
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
+    }
+
     return true;
 }
 
@@ -7938,13 +7955,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         
         // Nodes must NEVER send a data item bigger than the max size for a script data object,
         // and thus, the maximum size any matched object can have) in a filteradd message
-        int maxDataSize = MAX_SCRIPT_ELEMENT_SIZE_V2;
-        if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3 &&
-            pfrom->nVersion >= MIN_PBAAS_VERSION)
-        {
-            maxDataSize = MAX_SCRIPT_ELEMENT_SIZE_V3;
-        }
-        if (vData.size() > maxDataSize)
+        if (vData.size() > CScript::MAX_SCRIPT_ELEMENT_SIZE)
         {
             Misbehaving(pfrom->GetId(), 100);
         } else {

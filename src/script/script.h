@@ -28,12 +28,8 @@
 
 class CCurrencyState;
 
-static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V2 = 520;
-static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V3 = 1024;
-static unsigned int MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3; // bytes
-
-// Max size of pushdata in a CC sig in bytes
-static const unsigned int MAX_SCRIPT_CRYPTOCONDITION_FULFILLMENT_SIZE = 3072;
+static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V2 = 1024;
+static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V3 = 4097;    // fulfillment maximum size + 1
 
 // Maximum script length in bytes
 static const int MAX_SCRIPT_SIZE = 10000;
@@ -497,6 +493,8 @@ protected:
     }
     bool GetBalancedData(const_iterator& pc, std::vector<std::vector<unsigned char>>& vSolutions) const;
 public:
+    static unsigned int MAX_SCRIPT_ELEMENT_SIZE; // bytes
+
     CScript() { }
     CScript(const CScript& b) : CScriptBase(b.begin(), b.end()) { }
     CScript(const_iterator pbegin, const_iterator pend) : CScriptBase(pbegin, pend) { }

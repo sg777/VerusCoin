@@ -141,6 +141,14 @@ public:
         return false;
     }
 
+    static std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> ExtractIDMap(const CScript &scriptPubKeyIn, const CKeyStore &keystore, uint32_t spendHeight=INT32_MAX); // use wallet
+
+    virtual void SetIDMap(const std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> &map) {}
+    virtual std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> IDMap()
+    {
+        return std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>>();
+    }
+    virtual bool IsIDMapSet() const { return false; }
     virtual bool CanValidateIDs() const { return false; }
 
     virtual ~BaseSignatureChecker() {}
@@ -159,8 +167,10 @@ protected:
     virtual bool VerifySignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
 
 public:
-    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(NULL), idMapSet(false) {}
-    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(&txdataIn), idMapSet(false) {}
+    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> *pIdMap);
+    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn, const std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> *pIdMap);
+    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const CScript *pScriptPubKeyIn=nullptr, const CKeyStore *pKeyStore=nullptr, uint32_t spendHeight=INT32_MAX);
+    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn, const CScript *pScriptPubKeyIn=nullptr, const CKeyStore *pKeyStore=nullptr, uint32_t spendHeight=INT32_MAX);
     bool CheckSig(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, uint32_t consensusBranchId) const;
     bool CheckLockTime(const CScriptNum& nLockTime) const;
     void SetIDMap(const std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> &map)
@@ -168,17 +178,11 @@ public:
         idMapSet = true;
         idMap = map;
     }
+    std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> IDMap()
+    {
+        return idMap;
+    }
     bool IsIDMapSet() const { return idMapSet; }
-    void AddIDAddresses(const uint160 &addr, const std::pair<int, std::vector<std::vector<unsigned char>>> &dests)
-    {
-        idMapSet = true;
-        idMap[addr] = dests;
-    }
-    void ClearIDAddresses()
-    {
-        idMapSet = false;
-        idMap.clear();
-    }
     int CheckCryptoCondition(
         const std::vector<unsigned char>& condBin,
         const std::vector<unsigned char>& ffillBin,

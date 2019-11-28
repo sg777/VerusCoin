@@ -80,26 +80,22 @@ CC* CCNewEval(std::vector<unsigned char> code)
     return cond;
 }
 
-
-CScript CCPubKey(const CC *cond)
-{
-    unsigned char buf[2000];
-    size_t len = cc_conditionBinary(cond, buf, 2000);
-    return CScript() << std::vector<unsigned char>(buf, buf+len) << OP_CHECKCRYPTOCONDITION;
-}
-
 std::vector<unsigned char> CCPubKeyVec(const CC *cond)
 {
-    unsigned char buf[2000];
-    size_t len = cc_conditionBinary(cond, buf, 2000);
+    unsigned char buf[MAX_BINARY_CC_SIZE];
+    size_t len = cc_conditionBinary(cond, buf, MAX_BINARY_CC_SIZE);
     return std::vector<unsigned char>(buf, buf+len);
 }
 
+CScript CCPubKey(const CC *cond)
+{
+    return CScript() << CCPubKeyVec(cond) << OP_CHECKCRYPTOCONDITION;
+}
 
 CScript CCSig(const CC *cond)
 {
-    unsigned char buf[10000];
-    size_t len = cc_fulfillmentBinary(cond, buf, 10000);
+    unsigned char buf[MAX_BINARY_CC_SIZE];
+    size_t len = cc_fulfillmentBinary(cond, buf, MAX_BINARY_CC_SIZE);
     auto ffill = std::vector<unsigned char>(buf, buf+len);
     ffill.push_back(1);  // SIGHASH_ALL
     return CScript() << ffill;
@@ -107,8 +103,8 @@ CScript CCSig(const CC *cond)
 
 std::vector<unsigned char> CCSigVec(const CC *cond)
 {
-    unsigned char buf[10000];
-    size_t len = cc_fulfillmentBinary(cond, buf, 10000);
+    unsigned char buf[MAX_BINARY_CC_SIZE];
+    size_t len = cc_fulfillmentBinary(cond, buf, MAX_BINARY_CC_SIZE);
     auto ffill = std::vector<unsigned char>(buf, buf+len);
     ffill.push_back(1);  // SIGHASH_ALL
     return ffill;
@@ -116,8 +112,8 @@ std::vector<unsigned char> CCSigVec(const CC *cond)
 
 std::vector<unsigned char> CCPartialSigVec(const CC *cond)
 {
-    unsigned char buf[10000];
-    size_t len = cc_partialFulfillmentBinary(cond, buf, 10000);
+    unsigned char buf[MAX_BINARY_CC_SIZE];
+    size_t len = cc_partialFulfillmentBinary(cond, buf, MAX_BINARY_CC_SIZE);
     auto ffill = std::vector<unsigned char>(buf, buf+len);
     ffill.push_back(1);  // SIGHASH_ALL
     return ffill;
