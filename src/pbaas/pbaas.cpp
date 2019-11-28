@@ -427,18 +427,6 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const CTransaction &tx, bool valida
                 else
                 {
                     FromVector(p.vData[0], *this);
-
-                    // TODO - remove this after validation is finished, check now in case some larger strings got into the chain
-                    name = std::string(name, 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
-                    string invalidChars = "\\/:?\"<>|";
-                    for (int i = 0; i < name.size(); i++)
-                    {
-                        if (invalidChars.find(name[i]) != string::npos)
-                        {
-                            name[i] = '_';
-                        }
-                    }
-
                     definitionFound = true;
                 }
             }
@@ -1142,80 +1130,13 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
     }
 }
 
-bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScript>> minerOutputs, CTxDestination &firstDestinationOut)
+bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut)
 {
     LOCK(cs_mergemining);
+
+    if (!minerOutputs.size() || !ExtractDestination(minerOutputs[0].second, firstDestinationOut))
     {
-        txnouttype outType;
-        std::vector<std::vector<unsigned char>> vSolutions;
-
-        if (!minerOutputs.size() || !Solver(minerOutputs[0].second, outType, vSolutions))
-        {
-            return false;
-        }
-
-        if (outType == TX_PUBKEY)
-        {
-            CPubKey pubKey(vSolutions[0]);
-            if (!pubKey.IsValid())
-            {
-                return false;
-            }
-            firstDestinationOut = CTxDestination(pubKey);
-        }
-        else if (outType == TX_PUBKEYHASH)
-        {
-            firstDestinationOut = CTxDestination(CKeyID(uint160(vSolutions[0])));
-        }
-        else if (outType == TX_CRYPTOCONDITION)
-        {
-            if (vSolutions[0].size() == 33)
-            {
-                firstDestinationOut = CPubKey(vSolutions[0]);
-            }
-            else if (vSolutions[0].size() == 34 && vSolutions[0][0] == COptCCParams::ADDRTYPE_PK)
-            {
-                firstDestinationOut = CPubKey(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()));
-            }
-            else if (vSolutions[0].size() == 20)
-            {
-                CPubKey pkTmp;
-                pwalletMain->GetPubKey(CKeyID(uint160(vSolutions[0])), pkTmp);
-                if (pkTmp.IsValid())
-                {
-                    firstDestinationOut = pkTmp;
-                }
-            }
-            else if (vSolutions[0].size() == 21 && vSolutions[0][0] == COptCCParams::ADDRTYPE_ID)
-            {
-                // destination is an identity, see if we can get its public key
-                std::pair<CIdentityMapKey, CIdentityMapValue> identity;
-
-                if (pwalletMain->GetIdentity(CIdentityID(uint160(std::vector<unsigned char>(vSolutions[0].begin() + 1, vSolutions[0].end()))), identity) && 
-                    identity.second.IsValidUnrevoked() && 
-                    identity.second.primaryAddresses.size())
-                {
-                    CPubKey pkTmp = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), identity.second.primaryAddresses[0]);
-                    if (pkTmp.IsValid())
-                    {
-                        firstDestinationOut = pkTmp;
-                    }
-                    else
-                    {
-                        pkTmp = CPubKey();
-                        pwalletMain->GetPubKey(CKeyID(GetDestinationID(identity.second.primaryAddresses[0])), pkTmp);
-                        if (pkTmp.IsValid())
-                        {
-                            firstDestinationOut = pkTmp;
-                        }
-                    }
-                }
-            }
-        }
-        else
-        {
-            return false;
-        }
+        return false;
     }
     latestMiningOutputs = minerOutputs;
     latestDestination = firstDestinationOut;

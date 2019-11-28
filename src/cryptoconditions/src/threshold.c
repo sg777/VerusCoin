@@ -160,17 +160,44 @@ static CC *thresholdFromPartialFulfillment(const Fulfillment_t *ffill) {
     ThresholdFulfillment_t *t = ffill->choice.thresholdSha256;
     int size = t->subfulfillments.list.count;
     int threshold = size - t->subconditions.list.count;
+    int optimized = 0;
+
+    if (threshold <= 0)
+    {
+        // more subconditions means that size is subconditions and threshold is difference
+        size = t->subconditions.list.count;
+        threshold = t->subfulfillments.list.count;
+        optimized = 1;
+    }
 
     CC **subconditions = calloc(size, sizeof(CC*));
 
-    for (int i=0; i < size; i++)
+    if (optimized)
     {
-        subconditions[i] = partialFulfillmentToCC(t->subfulfillments.list.array[i]);
+        for (int i=0; i<size; i++)
+        {
+            subconditions[i] = (i < threshold) ?
+                partialFulfillmentToCC(t->subfulfillments.list.array[i]) :
+                mkAnon(t->subconditions.list.array[i]);
 
-        if (!subconditions[i]) {
-            for (int j=0; j<i; j++) free(subconditions[j]);
-            free(subconditions);
-            return 0;
+            if (!subconditions[i]) {
+                for (int j=0; j<i; j++) free(subconditions[j]);
+                free(subconditions);
+                return 0;
+            }
+        }
+    }
+    else
+    {
+        for (int i=0; i < size; i++)
+        {
+            subconditions[i] = partialFulfillmentToCC(t->subfulfillments.list.array[i]);
+
+            if (!subconditions[i]) {
+                for (int j=0; j<i; j++) free(subconditions[j]);
+                free(subconditions);
+                return 0;
+            }
         }
     }
 
@@ -210,6 +237,7 @@ static Fulfillment_t *thresholdToPartialFulfillment(const CC *cond) {
     int evalCount = cc_countEvals(cond);
     int canOptimize = 0;
 
+    /*
     // if any sub threshold requires more than one condition, we cannot optimize this, 0 is invalid
     if (maxSubThresholds == 1)
     {
@@ -238,17 +266,31 @@ static Fulfillment_t *thresholdToPartialFulfillment(const CC *cond) {
     {
         canOptimize = 0;
     }
+    */
 
     for (int i = 0; i < cond->size; i++)
     {
         sub = subconditions[i];
         int success = 1;
 
-        if (needed && cc_isFulfilled(sub))
+        if (needed)
         {
             fulfillment = asnPartialFulfillmentNew(sub);
             if (fulfillment)
             {
+                // optimized has more conditions and fewer partial fulfillments
+                if (canOptimize)
+                {
+                    Condition_t *condNew = asnConditionNew(sub);
+                    if (!condNew)
+                    {
+                        success = 0;
+                    }
+                    else
+                    {
+                        asn_set_add(&tf->subconditions, condNew);
+                    }
+                }
                 asn_set_add(&tf->subfulfillments, fulfillment);
                 needed--;
             }
@@ -260,42 +302,13 @@ static Fulfillment_t *thresholdToPartialFulfillment(const CC *cond) {
         else if (canOptimize)
         {
             Condition_t *condNew = asnConditionNew(sub);
-            if (condNew)
+            if (!condNew)
             {
-                CC *anonCC = mkAnon(condNew);
-                if (!anonCC)
-                {
-                    ASN_STRUCT_FREE(asn_DEF_Condition, condNew);
-                    success = 0;
-                }
-                else
-                {
-                    ASN_STRUCT_FREE(asn_DEF_Condition, condNew);
-                    fulfillment = (Fulfillment_t *)asnConditionNew(anonCC);
-                    condNew = asnConditionNew(anonCC);
-                    cc_free(anonCC);
-                    if (!condNew || !fulfillment)
-                    {
-                        if (fulfillment)
-                        {
-                            asn_set_add(&tf->subfulfillments, fulfillment); // put it here so it will be deleted
-                        }
-                        if (condNew)
-                        {
-                            asn_set_add(&tf->subconditions, condNew);
-                        }
-                        success = 0;
-                    }
-                    else
-                    {
-                        asn_set_add(&tf->subfulfillments, fulfillment);
-                        asn_set_add(&tf->subconditions, condNew);
-                    }
-                }
+                success = 0;
             }
             else
             {
-                success = 0;
+                asn_set_add(&tf->subconditions, condNew);
             }
         }
         else

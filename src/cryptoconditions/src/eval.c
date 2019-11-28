@@ -146,6 +146,14 @@ int evalCountVisits(CC *cond, CCVisitor visitor) {
     return 1;
 }
 
+int cc_countEvals(const CC *cond) {
+    int evalCount = 0;
+    // assume fulfilled if not modified
+    CCVisitor visitor = {&evalCountVisits, "", 0, &evalCount};
+    cc_visit(cond, visitor);
+    return evalCount;
+}
+
 int cc_isEvalVisitor(CCVisitor *visitor)
 {
     if (visitor->visit == &evalVisit)
@@ -160,14 +168,5 @@ int cc_verifyEval(const CC *cond, VerifyEval verify, void *context) {
     CCVisitor visitor = {&evalVisit, "1", 1, &evalData};
     return cc_visit(cond, visitor);
 }
-
-int cc_countEvals(const CC *cond) {
-    int evalCount = 0;
-    // assume fulfilled if not modified
-    CCVisitor visitor = {&evalCountVisits, "", 0, &evalCount};
-    cc_visit(cond, visitor);
-    return evalCount;
-}
-
 
 struct CCType CC_EvalType = { 15, "eval-sha-256", Condition_PR_evalSha256, 0, &evalFingerprint, &evalCost, &evalSubtypes, &evalFromJSON, &evalToJSON, &evalFromFulfillment, &evalToFulfillment, &evalFromFulfillment, &evalToFulfillment, &evalIsFulfilled, &evalFree };

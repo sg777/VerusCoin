@@ -625,7 +625,7 @@ public:
     uint32_t CombineBlocks(CBlockHeader &bh);
 
     // returns false if destinations are empty or first is not either pubkey or pubkeyhash
-    bool SetLatestMiningOutputs(const std::vector<std::pair<int, CScript>> minerOutputs, CTxDestination &firstDestinationOut);
+    bool SetLatestMiningOutputs(const std::vector<std::pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut);
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
 
     // send new imports from this chain to the specified chain, which generally will be the notary chain

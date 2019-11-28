@@ -317,6 +317,19 @@ int cc_readPartialFulfillmentBinaryExt(const unsigned char *ffill_bin, size_t ff
     }
     if (rc.encoded != ffill_bin_len || 0 != memcmp(ffill_bin, buf, rc.encoded)) {
         error = (rc.encoded == ffill_bin_len) ? -3 : -2;
+
+        printf("Re-encoded fulfillment does not match: \n");
+        for (int i = 0; i < rc.encoded; i++)
+        {
+            printf("%02X", *(buf + i));
+        }
+        printf("\n");
+        for (int i = 0; i < ffill_bin_len; i++)
+        {
+            printf("%02X", *(ffill_bin + i));
+        }
+        printf("\n");
+
         goto end;
     }
     

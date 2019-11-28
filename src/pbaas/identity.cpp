@@ -153,15 +153,6 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     }
 }
 
-CIdentity::CIdentity(const CScript &scriptPubKey)
-{
-    COptCCParams p;
-    if (IsPayToCryptoCondition(scriptPubKey, p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size())
-    {
-        *this = CIdentity(p.vData[0]);
-    }
-}
-
 UniValue CIdentity::ToUniValue() const
 {
     UniValue obj = ((CPrincipal *)this)->ToUniValue();
@@ -487,15 +478,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         }
     }
 
-    // CHECK #2 - the name is not used on the blockchain or in the mempool
-    // lookup name on both blockchain and in mempool. if it is already present in either, then this is not valid
-    std::list<CTransaction> conflicts;
-    if (mempool.checkNameConflicts(tx, conflicts))
-    {
-        return state.Error("Invalid identity redefinition");
-    }
-
-    // CHECK #3 - must be rooted in this chain
+    // CHECK #2 - must be rooted in this chain
     if (newIdentity.parent != ConnectedChains.ThisChain().GetChainID())
     {
         return state.Error("Identity parent of new identity must be current chain");
