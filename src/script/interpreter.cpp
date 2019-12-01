@@ -1474,6 +1474,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
 
     int expectedEvals = 1;
     CC *outputCC = nullptr;
+    int nHashType;
 
     if (p.IsValid() && p.version >= p.VERSION_V3 && p.vData.size())
     {
@@ -1654,15 +1655,6 @@ int TransactionSignatureChecker::CheckCryptoCondition(
         }
         else
         {
-
-            /*
-            char *jsonCondStr = cc_conditionToJSONString(outputCC);
-            if (jsonCondStr)
-            {
-                printf("Reconstructed condition: %s\n", jsonCondStr);
-                cJSON_free(jsonCondStr);
-            }
-            */
             condBinary = CCPubKeyVec(outputCC);
 
             CSmartTransactionSignatures signatures(std::vector<unsigned char>((unsigned char*)ffillBin.data(), (unsigned char*)ffillBin.data() + ffillBin.size()));
@@ -1674,8 +1666,10 @@ int TransactionSignatureChecker::CheckCryptoCondition(
             else
             {
                 // apply signatures to the condition to create the fulfillment
+                nHashType = signatures.sigHashType;
                 for (auto &sig : signatures.signatures)
                 {
+
                     if (sig.second.sigType != sig.second.SIGTYPE_SECP256K1 || !sig.second.signature.size() || !cc_ApplySecp256k1Signature(outputCC, sig.second.pubKeyData.data(), sig.first.begin(), sig.second.signature.data()))
                     {
                         success = false;
@@ -1684,6 +1678,15 @@ int TransactionSignatureChecker::CheckCryptoCondition(
             }
             if (!success || !condBinary.size())
             {
+                /*
+                char *jsonCondStr = cc_conditionToJSONString(outputCC);
+                if (jsonCondStr)
+                {
+                    printf("Signed condition: %s\n", jsonCondStr);
+                    cJSON_free(jsonCondStr);
+                }
+                */
+
                 cc_free(outputCC);
                 condBinary.clear();
             }
@@ -1709,11 +1712,13 @@ int TransactionSignatureChecker::CheckCryptoCondition(
     {
         cond = outputCC;
         signScript = scriptCode;
+        error = false;
     }
     else
     {
         signScript = CScript() << condBinary << OP_CHECKCRYPTOCONDITION;
         error = cc_readFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
+        nHashType = ffillBin.back();
     }
     
     if (error || !cond)
@@ -1771,7 +1776,6 @@ int TransactionSignatureChecker::CheckCryptoCondition(
     }
 
     uint256 sighash;
-    int nHashType = ffillBin.back();
     try {
         sighash = SignatureHash(signScript, *txTo, nIn, nHashType, amount, consensusBranchId, this->txdata);
     } catch (logic_error ex) {

@@ -287,16 +287,18 @@ static int secp256k1Apply(CC *cond, CCVisitor visitor) {
     if (cond->type->typeId != CC_Secp256k1) return 1;
     struct SecP256k1ApplyData *apply = (struct SecP256k1ApplyData *)visitor.context;
 
+    /*
     char *jsonCondStr = cc_conditionToJSONString(cond);
     if (jsonCondStr)
     {
         printf("Ready to apply sig: %s\n", jsonCondStr);
         cJSON_free(jsonCondStr);
     }
+    */
 
     // if we match, add or replace the signature, if the signature is null, remove the signature
     int isPKHash = 0;
-    if (!memcmp(cond->publicKey, apply->publicKey, SECP256K1_PK_SIZE) || ((isPKHash = cc_secp256k1IsPKHash(cond->publicKey)) && !memcmp(cond->publicKey, apply->publicKey, SECP256K1_PK_SIZE)))
+    if (!memcmp(cond->publicKey, apply->publicKey, SECP256K1_PK_SIZE) || ((isPKHash = cc_secp256k1IsPKHash(cond->publicKey)) && !memcmp(cond->publicKey, apply->pubkeyHash20, 20)))
     {
         if (cond->signature)
         {
@@ -320,6 +322,15 @@ static int secp256k1Apply(CC *cond, CCVisitor visitor) {
     {
         return 1;
     }
+
+    /*
+    jsonCondStr = cc_conditionToJSONString(cond);
+    if (jsonCondStr)
+    {
+        printf("After signature: %s\n", jsonCondStr);
+        cJSON_free(jsonCondStr);
+    }
+    */
 
     apply->applyCount++;
     return 1;

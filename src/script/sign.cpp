@@ -65,6 +65,20 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char> &vchSig, 
             free(onesig);
             signatures.AddSignature(signature);
             vchSig = signatures.AsVector();
+
+
+            /*
+            printf("signatures: %s\n", signatures.ToUniValue().write().c_str());
+            CC *cc = (CC *)extraData;
+            if (!cc || cc_signTreeSecp256k1Msg32(cc, key.begin(), hash.begin()) == 0)
+                return false;
+            char *jsonCondStr = cc_conditionToJSONString(cc);
+            if (jsonCondStr)
+            {
+                printf("Signed condition: %s\n", jsonCondStr);
+                cJSON_free(jsonCondStr);
+            }
+            */
         }
         else
         {
