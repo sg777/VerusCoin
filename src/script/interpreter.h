@@ -151,6 +151,7 @@ public:
         obj.push_back(Pair("signaturetype", (int)sigType));
         obj.push_back(Pair("publickeydata", HexBytes(&pubKeyData[0], pubKeyData.size())));
         obj.push_back(Pair("signature", HexBytes(&signature[0], signature.size())));
+        return obj;
     }
 
     bool IsValid()
