@@ -18,9 +18,8 @@
 #include <univalue.h>
 #include <sstream>
 #include "streams.h"
-#include "pubkey.h"
-#include "base58.h"
 #include "boost/algorithm/string.hpp"
+#include "key_io.h"
 
 static const int DEFAULT_RPC_TIMEOUT=900;
 static const uint32_t PBAAS_VERSION = 1;
@@ -115,8 +114,7 @@ public:
     CNodeData(std::string netAddr, std::string paymentAddr) :
         networkAddress(netAddr)
     {
-        CBitcoinAddress ba(paymentAddr);
-        ba.GetKeyID(paymentAddress);
+        paymentAddress = GetDestinationID(CTxDestination(paymentAddr));
     }
     
     ADD_SERIALIZE_METHODS;
@@ -216,8 +214,7 @@ public:
             Name.resize(KOMODO_ASSETCHAIN_MAXLEN - 1);
         }
         name = Name;
-        CBitcoinAddress ba(Address);
-        ba.GetKeyID(address);
+        address = GetDestinationID(CTxDestination(Address));
     }
 
     ADD_SERIALIZE_METHODS;

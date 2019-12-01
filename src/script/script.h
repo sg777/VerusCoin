@@ -386,12 +386,14 @@ public:
     CScriptID(const uint160& in) : uint160(in) {}
 };
 
+uint160 GetNameID(const std::string &Name, const uint160 &parent);
+
 /** A reference to a CScript: the Hash160 of its serialization (see script.h) */
 class CIdentityID : public uint160
 {
 public:
     CIdentityID() : uint160() {}
-    CIdentityID(const std::string& in, const uint160 &parent=uint160());
+    CIdentityID(const std::string& in, const uint160 &parent=uint160()) : uint160(GetNameID(in, parent)) {}
     CIdentityID(const uint160& in) : uint160(in) {}
 };
 

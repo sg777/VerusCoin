@@ -1473,6 +1473,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
         return false;
 
     int expectedEvals = 1;
+    CC *outputCC = nullptr;
 
     if (p.IsValid() && p.version >= p.VERSION_V3 && p.vData.size())
     {
@@ -1601,8 +1602,6 @@ int TransactionSignatureChecker::CheckCryptoCondition(
             }
         }
 
-        CC *outputCC = nullptr;
-
         if (ccs.size() == 1)
         {
             if (master.evalCode)
@@ -1626,9 +1625,6 @@ int TransactionSignatureChecker::CheckCryptoCondition(
             }
         }
 
-        // in no case can an incorrect match on number of evals be valid
-        expectedEvals = outputCC ? cc_countEvals(outputCC) : 0;
-
         if (!ccValid || !outputCC)
         {
             if (outputCC)
@@ -1646,21 +1642,14 @@ int TransactionSignatureChecker::CheckCryptoCondition(
             if (failToTrue)
             {
                 // this should never get here when running on a server with access to the blockchain
-                assert(!CanValidateIDs());
-
-                int error;
-                CC *cond;
-                if (p.IsValid() && p.version >= p.VERSION_V3)
+                if (CanValidateIDs())
                 {
-                    error = cc_readPartialFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
-                    
-                    if (error || cc_countEvals(cond) != expectedEvals)
-                    {
-                        return false;
-                    }
+                    return false;
                 }
-
-                return true;
+                else
+                {
+                    return true;
+                }
             }
         }
         else
@@ -1674,9 +1663,30 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                 cJSON_free(jsonCondStr);
             }
             */
-
             condBinary = CCPubKeyVec(outputCC);
-            cc_free(outputCC);
+
+            CSmartTransactionSignatures signatures(std::vector<unsigned char>((unsigned char*)ffillBin.data(), (unsigned char*)ffillBin.data() + ffillBin.size()));
+            bool success = true;
+            if (!signatures.IsValid())
+            {
+                success = false;
+            }
+            else
+            {
+                // apply signatures to the condition to create the fulfillment
+                for (auto &sig : signatures.signatures)
+                {
+                    if (sig.second.sigType != sig.second.SIGTYPE_SECP256K1 || !sig.second.signature.size() || !cc_ApplySecp256k1Signature(outputCC, sig.second.pubKeyData.data(), sig.first.begin(), sig.second.signature.data()))
+                    {
+                        success = false;
+                    }
+                }
+            }
+            if (!success || !condBinary.size())
+            {
+                cc_free(outputCC);
+                condBinary.clear();
+            }
         }
     }
     else
@@ -1693,24 +1703,16 @@ int TransactionSignatureChecker::CheckCryptoCondition(
 
     CC *cond = NULL;
     int error;
+
+    CScript signScript;
     if (p.IsValid() && p.version >= p.VERSION_V3)
     {
-        //error = cc_readFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond) || !cond;
-        //if (error || (!error && false))
-        error = cc_readPartialFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond) || !cond;
-        if (error || (!error && cc_countEvals(cond) != expectedEvals))
-        {
-            // if we don't have the expected number of evals, fail validation
-            // that would allow an attacker to skip validation by optimizing an eval away that
-            // might pass the crypto-condition signature check, since it would not be necessary
-            // for all M of Ns. the ensure that all code validation checks happen for any smart
-            // transaction, we fail if they are optimized away. normal signature checks can be
-            // optimized away
-            error = true;
-        }
+        cond = outputCC;
+        signScript = scriptCode;
     }
     else
     {
+        signScript = CScript() << condBinary << OP_CHECKCRYPTOCONDITION;
         error = cc_readFulfillmentBinaryExt((unsigned char*)ffillBin.data(), ffillBin.size()-1, &cond);
     }
     
@@ -1771,7 +1773,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
     uint256 sighash;
     int nHashType = ffillBin.back();
     try {
-        sighash = SignatureHash(CScript() << condBinary << OP_CHECKCRYPTOCONDITION, *txTo, nIn, nHashType, amount, consensusBranchId, this->txdata);
+        sighash = SignatureHash(signScript, *txTo, nIn, nHashType, amount, consensusBranchId, this->txdata);
     } catch (logic_error ex) {
         cc_free(cond);
         return 0;

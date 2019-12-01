@@ -188,6 +188,23 @@ typedef struct CCSecp256k1SigningData {
 
 
 /*
+ * sign a message with a private key
+ */
+int cc_MakeSecp256k1Signature(const unsigned char *msg32, const unsigned char *privateKey, unsigned char **signatureOut) {
+    secp256k1_ecdsa_signature sig;
+    lockSign();
+    int rc = secp256k1_ecdsa_sign(ec_ctx_sign, &sig, msg32, privateKey, NULL, NULL);
+    unlockSign();
+
+    if (rc != 1) return 0;
+
+    *signatureOut = calloc(1, SECP256K1_SIG_SIZE);
+    secp256k1_ecdsa_signature_serialize_compact(ec_ctx_verify, *signatureOut, &sig);
+    return 1;
+}
+
+
+/*
  * Visitor that signs an secp256k1 condition if it has a matching public key
  */
 static int secp256k1Sign(CC *cond, CCVisitor visitor) {
@@ -252,6 +269,71 @@ static int secp256k1Sign(CC *cond, CCVisitor visitor) {
 
     signing->nSigned++;
     return 1;
+}
+
+
+struct SecP256k1ApplyData {
+    const unsigned char *publicKey;
+    const unsigned char *pubkeyHash20;
+    const unsigned char *signature;
+    unsigned int applyCount;
+};
+
+
+/*
+ * put a copy of the signature on this node if it can accept it
+ */
+static int secp256k1Apply(CC *cond, CCVisitor visitor) {
+    if (cond->type->typeId != CC_Secp256k1) return 1;
+    struct SecP256k1ApplyData *apply = (struct SecP256k1ApplyData *)visitor.context;
+
+    char *jsonCondStr = cc_conditionToJSONString(cond);
+    if (jsonCondStr)
+    {
+        printf("Ready to apply sig: %s\n", jsonCondStr);
+        cJSON_free(jsonCondStr);
+    }
+
+    // if we match, add or replace the signature, if the signature is null, remove the signature
+    int isPKHash = 0;
+    if (!memcmp(cond->publicKey, apply->publicKey, SECP256K1_PK_SIZE) || ((isPKHash = cc_secp256k1IsPKHash(cond->publicKey)) && !memcmp(cond->publicKey, apply->publicKey, SECP256K1_PK_SIZE)))
+    {
+        if (cond->signature)
+        {
+            free(cond->signature);
+        }
+        if (apply->signature)
+        {
+            cond->signature = calloc(1, isPKHash ? (SECP256K1_SIG_SIZE + SECP256K1_PK_SIZE) : SECP256K1_SIG_SIZE);
+            memcpy(cond->signature, apply->signature, SECP256K1_SIG_SIZE);
+            if (isPKHash)
+            {
+                memcpy(cond->signature + SECP256K1_SIG_SIZE, apply->publicKey, SECP256K1_PK_SIZE);
+            }
+        }
+        else
+        {
+            cond->signature = NULL;
+        }
+    }
+    else
+    {
+        return 1;
+    }
+
+    apply->applyCount++;
+    return 1;
+}
+
+
+/*
+ * sign a message with a private key, return true if the signature was accepted by at least one node
+ */
+int cc_ApplySecp256k1Signature(const CC *cond, const unsigned char *publicKey, const unsigned char *pubkeyHash20, const unsigned char *signature) {
+    struct SecP256k1ApplyData ad = {publicKey, pubkeyHash20, signature, 0}; 
+    CCVisitor visitor = {&secp256k1Apply, "", 0, &ad};
+    cc_visit(cond, visitor);
+    return ad.applyCount != 0;
 }
 
 

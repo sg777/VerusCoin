@@ -72,7 +72,7 @@ static Fulfillment_t *preimageToFulfillment(const CC *cond) {
 
 
 int preimageIsFulfilled(const CC *cond) {
-    return 1;
+    return cond->preimage != 0;
 }
 
 

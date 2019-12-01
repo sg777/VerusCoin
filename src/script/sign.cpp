@@ -27,7 +27,7 @@ TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keysto
 TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn) 
     : BaseSignatureCreator(keystoreIn), txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn) {}
 
-bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, const CKeyID& address, const CScript& scriptCode, uint32_t consensusBranchId, CKey *pprivKey, void *extraData) const
+bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char> &vchSig, const CKeyID& address, const CScript& scriptCode, uint32_t consensusBranchId, CKey *pprivKey, void *extraData) const
 {
     CKey key;
     if (pprivKey)
@@ -42,41 +42,38 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, 
         return false;
     }
 
-    if (scriptCode.IsPayToCryptoCondition())
+    COptCCParams p;
+    if (scriptCode.IsPayToCryptoCondition(p))
     {
-        CC *cc = (CC *)extraData;
-
-        if (!cc || cc_signTreeSecp256k1Msg32(cc, key.begin(), hash.begin()) == 0)
-            return false;
-
-        /*
-        char *jsonCondStr = cc_conditionToJSONString(cc);
-        if (jsonCondStr)
+        if (p.IsValid() && p.version >= p.VERSION_V3)
         {
-            printf("Freshly signed condition: %s\n", jsonCondStr);
-            cJSON_free(jsonCondStr);
-            uint8_t buf[2000];
-            int ccLen = cc_partialFulfillmentBinary(cc, buf, 2000);
-            if (ccLen)
+            CSmartTransactionSignatures signatures(nHashType, std::map<uint160, CSmartTransactionSignature>());
+            if (vchSig.size())
             {
-                CC *transformedCC;
-                int err = cc_readPartialFulfillmentBinaryExt(buf, ccLen, &transformedCC);
-                if (!err && transformedCC)
+                signatures = CSmartTransactionSignatures(vchSig);
+                if (!signatures.IsValid())
                 {
-                    jsonCondStr = cc_conditionToJSONString(transformedCC);
-                    if (jsonCondStr)
-                    {
-                        printf("Signed, transformed condition: %s\n", jsonCondStr);
-                        cJSON_free(jsonCondStr);
-                    }
-                    printf("isFulfilled reports: %s\n", cc_isFulfilled(transformedCC) ? "true" : "false");
-                    cc_free(transformedCC);
+                    return false;
                 }
             }
+            unsigned char *onesig;
+            if (!cc_MakeSecp256k1Signature(hash.begin(), key.begin(), &onesig))
+            {
+                return false;
+            }
+            CSmartTransactionSignature signature(CSmartTransactionSignature::SIGTYPE_SECP256K1, key.GetPubKey(), std::vector<unsigned char>(onesig, onesig + CSmartTransactionSignature::SIGTYPE_SECP256K1_LEN));
+            free(onesig);
+            signatures.AddSignature(signature);
+            vchSig = signatures.AsVector();
         }
-        */
+        else
+        {
+            CC *cc = (CC *)extraData;
 
-        vchSig = CCPartialSigVec(cc);
+            if (!cc || cc_signTreeSecp256k1Msg32(cc, key.begin(), hash.begin()) == 0)
+                return false;
+            vchSig = CCSigVec(cc);
+        }
         return true;
     }
     else
@@ -492,31 +489,8 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                 // loop and sign
                 for (auto privKey : privKeys)
                 {
-                    if (vch.size())
-                    {
-                        CC *signedCC = nullptr;
-                        error = cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &signedCC) || !signedCC;
-
-                        // we must always retain all eval nodes... ensure that any partial signature does so to prevent circumventing any eval condition
-                        if (!error && cc_countEvals(signedCC) != cc_countEvals(outputCC))
-                        {
-                            error = true;
-                            cc_free(signedCC);
-                        }
-
-                        if (!error)
-                        {
-                            cc_free(outputCC);
-                            outputCC = signedCC;
-                        }
-                        else if (signedCC)
-                        {
-                            cc_free(signedCC);
-                        }
-                    }
-
                     // if we have an error or can't sign and it isn't fulfilled, fail, if we have no error, can't sign again, and we have a fulfilled sig, it must be optimized and OK
-                    if (error || (!creator.CreateSig(vch, privKey.first, signScript, consensusBranchId, &privKey.second, (void *)outputCC) && !(cc_isFulfilled(outputCC) && vch.size())))
+                    if (error || (!creator.CreateSig(vch, privKey.first, scriptPubKey, consensusBranchId, &privKey.second, (void *)outputCC)))
                     {
                         error = true;
                         //CPubKey errKey = privKey.second.GetPubKey();
@@ -526,20 +500,6 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
 
                 if (!error && vch.size())
                 {
-                    /*
-                    CC *signedCC = nullptr;
-                    error = cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &signedCC) || !signedCC;
-                    if (!error)
-                    {
-                        vch = CCSigVec(signedCC);
-                    }
-
-                    if (signedCC)
-                    {
-                        cc_free(signedCC);
-                    }
-                    */
-
                     ret.push_back(vch);
                 }
 
@@ -596,13 +556,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         vector<unsigned char> vch;
                         if (creator.CreateSig(vch, GetDestinationID(p.vKeys[0]), _CCPubKey(cc), consensusBranchId, &privKey, (void *)cc))
                         {
-                            // convert to old style CC sig
-                            cc_free(cc);
-                            cc = NULL;
-                            if (!cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &cc) && cc)
-                            {
-                                ret.push_back(CCSigVec(cc));
-                            }
+                            ret.push_back(vch);
                         }
                         else
                         {
@@ -648,13 +602,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         vector<unsigned char> vch;
                         if (creator.CreateSig(vch, GetDestinationID(p.vKeys[0]), _CCPubKey(cc), consensusBranchId, &privKey, (void *)cc))
                         {
-                            // convert to old style CC sig
-                            cc_free(cc);
-                            cc = NULL;
-                            if (!cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &cc) && cc)
-                            {
-                                ret.push_back(CCSigVec(cc));
-                            }
+                            ret.push_back(vch);
                         }
                         else
                         {
@@ -734,13 +682,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                         vector<unsigned char> vch;
                         if (creator.CreateSig(vch, keys[0].GetID(), _CCPubKey(cc), consensusBranchId, &privKey, (void *)cc))
                         {
-                            // convert to old style CC sig
-                            cc_free(cc);
-                            cc = NULL;
-                            if (!cc_readPartialFulfillmentBinaryExt(&vch[0], vch.size() - 1, &cc) && cc)
-                            {
-                                ret.push_back(CCSigVec(cc));
-                            }
+                            ret.push_back(vch);
                         }
                         else
                         {
