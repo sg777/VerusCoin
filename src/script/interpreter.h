@@ -250,12 +250,14 @@ public:
             if (oneSig.second.sigType == oneSig.second.SIGTYPE_SECP256K1)
             {
                 CPubKey pk(oneSig.second.pubKeyData);
+                uint160 pubKeyHash = pk.GetID();
+                //printf("pk.IsFullyValid(): %s, pk.GetID(): %s, oneSig.first: %s\n", pk.IsFullyValid() ? "true" : "false", pk.GetID().GetHex().c_str(), oneSig.first.GetHex().c_str());
                 if (!pk.IsFullyValid() || pk.GetID() != oneSig.first)
                 {
                     return false;
                 }
             }
-            else if (oneSig.second.sigType == oneSig.second.SIGTYPE_SECP256K1)
+            else if (oneSig.second.sigType == oneSig.second.SIGTYPE_FALCON)
             {
                 return false;
             }
@@ -264,6 +266,7 @@ public:
                 return false;
             }
         }
+        return true;
     }
 
     std::vector<unsigned char> AsVector()
