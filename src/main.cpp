@@ -828,7 +828,7 @@ bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
     {
         if ( txin.nSequence == 0xfffffffe && (((int64_t)tx.nLockTime >= LOCKTIME_THRESHOLD && (int64_t)tx.nLockTime > nBlockTime) || ((int64_t)tx.nLockTime < LOCKTIME_THRESHOLD && (int64_t)tx.nLockTime > nBlockHeight)) )
         {
-            if (!IsVerusActive() || nBlockHeight > 782000)
+            if (!IsVerusActive() || CConstVerusSolutionVector::GetVersionByHeight(nBlockHeight) >= CActivationHeight::SOLUTION_VERUSV3)
             {
                 return false;
             }
