@@ -4388,7 +4388,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     newID.recoveryAuthority = recoveryAuth.GetID();
 
     // create the identity definition transaction & reservation key output
-    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), newID.minSigs, &reservation);
+    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), 1, &reservation);
     CTxDestination resIndexDest = CKeyID(CCrossChainRPCData::GetConditionID(newID.GetID(), EVAL_IDENTITY_RESERVATION));
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
 
