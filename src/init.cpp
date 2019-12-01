@@ -1216,7 +1216,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         if (strcmp(ASSETCHAINS_SYMBOL,"VRSC") == 0)
         {
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 310000);
-            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 789070);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 800200);
         }
         else if (strcmp(ASSETCHAINS_SYMBOL,"VRSCTEST") == 0)
         {
