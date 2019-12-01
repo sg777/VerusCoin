@@ -13,6 +13,7 @@
 #include "standard.h"
 #include "pbaas/reserves.h"
 #include "key_io.h"
+#include "pbaas/identity.h"
 
 using namespace std;
 
@@ -834,5 +835,11 @@ std::vector<CTxDestination> CScript::GetDestinations() const
         }
     }
     return destinations;
+}
+
+uint160 GetNameID(const std::string &Name, const uint160 &parent)
+{
+    uint160 writeable = parent;
+    return CIdentity::GetID(Name, writeable);
 }
 
