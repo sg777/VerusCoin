@@ -1311,7 +1311,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             // create only contains transactions that are valid in new blocks.
             CValidationState state;
             PrecomputedTransactionData txdata(tx);
-            if (!ContextualCheckInputs(tx, state, view, true, MANDATORY_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId))
+            if (!ContextualCheckInputs(tx, state, view, nHeight, true, MANDATORY_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId))
             {
                 //fprintf(stderr,"context failure\n");
                 continue;

@@ -1945,7 +1945,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // Check against previous transactions
         // This is done last to help prevent CPU exhaustion denial-of-service attacks.
         PrecomputedTransactionData txdata(tx);
-        if (!ContextualCheckInputs(tx, state, view, true, STANDARD_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId))
+        if (!ContextualCheckInputs(tx, state, view, nextBlockHeight, true, STANDARD_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId))
         {
             //fprintf(stderr,"accept failure.9\n");
             return error("AcceptToMemoryPool: ConnectInputs failed (%s) %s", state.GetRejectReason(), hash.ToString());
@@ -1966,7 +1966,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             flag = 1;
             KOMODO_CONNECTING = (1<<30) + (int32_t)chainActive.LastTip()->GetHeight() + 1;
         }
-        if (!ContextualCheckInputs(tx, state, view, true, MANDATORY_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId))
+        if (!ContextualCheckInputs(tx, state, view, nextBlockHeight, true, MANDATORY_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId))
         {
             if ( flag != 0 )
                 KOMODO_CONNECTING = -1;
@@ -2775,6 +2775,7 @@ namespace Consensus {
 bool ContextualCheckInputs(const CTransaction& tx,
                            CValidationState &state,
                            const CCoinsViewCache &inputs,
+                           uint32_t spendHeight,
                            bool fScriptChecks,
                            unsigned int flags,
                            bool cacheStore,
@@ -2785,7 +2786,7 @@ bool ContextualCheckInputs(const CTransaction& tx,
 {
     if (!tx.IsMint())
     {
-        uint32_t spendHeight = GetSpendHeight(inputs);
+        //uint32_t spendHeight = GetSpendHeight(inputs);
         if (!Consensus::CheckTxInputs(tx, state, inputs, spendHeight, consensusParams)) {
             return false;
         }
@@ -3657,7 +3658,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             
             std::vector<CScriptCheck> vChecks;
             bool fCacheResults = fJustCheck; /* Don't cache results if we're actually connecting blocks (still consult the cache, though) */
-            if (!ContextualCheckInputs(tx, state, view, fExpensiveChecks, flags, fCacheResults, txdata[i], chainparams.GetConsensus(), consensusBranchId, nScriptCheckThreads ? &vChecks : NULL))
+            if (!ContextualCheckInputs(tx, state, view, nHeight, fExpensiveChecks, flags, fCacheResults, txdata[i], chainparams.GetConsensus(), consensusBranchId, nScriptCheckThreads ? &vChecks : NULL))
                 return false;
             control.Add(vChecks);
         }        
