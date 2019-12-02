@@ -1495,7 +1495,7 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
             bool validHash = (value != 0);
             bool enablePOSNonce = CPOSNonce::NewPOSActive(height);
             bool newPOSEnforcement = enablePOSNonce && (Params().GetConsensus().vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight <= height);
-            bool supportInstantSpend = !IsVerusActive() && CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::SOLUTION_VERUSV4;
+            bool supportInstantSpend = !IsVerusActive() && CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::ACTIVATE_PBAAS;
             uint256 rawHash;
             arith_uint256 posHash;
 
@@ -1740,7 +1740,8 @@ int32_t komodo_checkPOW(int32_t slowflag,CBlock *pblock,int32_t height)
     {
         // tolerate variable size solutions, but ensure that we have at least 16 bytes extra space to fit the clhash at the end
         int modSpace = GetSerializeSize(*(CBlockHeader *)pblock, SER_NETWORK, PROTOCOL_VERSION) % 32;
-        if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::SOLUTION_VERUSV3 || (modSpace >= 1 && modSpace <= 16))
+        int solutionVer = CConstVerusSolutionVector::GetVersionByHeight(height);
+        if (solutionVer < CActivationHeight::ACTIVATE_VERUSHASH2_1 || (modSpace >= 1 && modSpace <= 16))
         {
             return 0;
         }

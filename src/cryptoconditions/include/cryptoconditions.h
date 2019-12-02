@@ -14,7 +14,7 @@ extern "C" {
 struct CC;
 struct CCType;
 
-#define MAX_BINARY_CC_SIZE 4096
+#define MAX_BINARY_CC_SIZE 3072
 
 enum CCTypeId {
     CC_Anon = -1,

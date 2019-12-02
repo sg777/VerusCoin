@@ -589,13 +589,13 @@ uint64_t verusclhash(void * random, const unsigned char buf[64], uint64_t keyMas
 
 // hashes 64 bytes only by doing a carryless multiplication and reduction of the repeated 64 byte sequence 16 times, 
 // returning a 64 bit hash value
-uint64_t verusclhash_sv3(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch) {
-    __m128i acc = __verusclmulwithoutreduction64alignedrepeat_sv3((__m128i *)random, (const __m128i *)buf, keyMask, pMoveScratch);
+uint64_t verusclhash_sv2_1(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch) {
+    __m128i acc = __verusclmulwithoutreduction64alignedrepeat_sv2_1((__m128i *)random, (const __m128i *)buf, keyMask, pMoveScratch);
     acc = _mm_xor_si128(acc, lazyLengthHash(1024, 64));
     return precompReduction64(acc);
 }
 
-__m128i __verusclmulwithoutreduction64alignedrepeat_sv3(__m128i *randomsource, const __m128i buf[4], uint64_t keyMask, __m128i **pMoveScratch)
+__m128i __verusclmulwithoutreduction64alignedrepeat_sv2_1(__m128i *randomsource, const __m128i buf[4], uint64_t keyMask, __m128i **pMoveScratch)
 {
     const __m128i pbuf_copy[4] = {_mm_xor_si128(buf[0], buf[2]), _mm_xor_si128(buf[1], buf[3]), buf[2], buf[3]};
     const __m128i *pbuf; 

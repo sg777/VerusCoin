@@ -29,7 +29,7 @@
 class CCurrencyState;
 
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V2 = 1024;
-static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V3 = 4097;    // fulfillment maximum size + 1
+static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_IDENTITY = 3073;    // fulfillment maximum size + 1, MAKE SURE TO KEEP MAX_BINARY_CC_SIZE IN SYNC WITH THIS-1, BUF_SIZE in crypto conditions, should be >=
 
 // Maximum script length in bytes
 static const int MAX_SCRIPT_SIZE = 10000;

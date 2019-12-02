@@ -220,7 +220,7 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
     int32_t nHeight = pindexLast->GetHeight();
     int32_t maxConsecutivePos = VERUS_CONSECUTIVE_POS_THRESHOLD;
 
-    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight + 1) >= CActivationHeight::SOLUTION_VERUSV3)
+    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight + 1) >= CActivationHeight::SOLUTION_VERUSV4)
     {
         maxConsecutivePos = VERUS_V2_CONSECUTIVE_POS_THRESHOLD;
     }

@@ -17,16 +17,24 @@ class CPBaaSBlockHeader;
 class CActivationHeight
 {
     public:
-        static const int32_t MAX_HEIGHT = 0x7fffffff;
-        static const int32_t DEFAULT_UPGRADE_HEIGHT = MAX_HEIGHT;
-        static const int32_t NUM_VERSIONS = 3;
-        static const int32_t SOLUTION_VERUSV1 = 0;
-        static const int32_t SOLUTION_VERUSV2 = 1;
-        static const int32_t SOLUTION_VERUSV3 = 2;
-        static const int32_t SOLUTION_VERUSV4 = 3;
+        enum {
+            MAX_HEIGHT = INT_MAX,
+            DEFAULT_UPGRADE_HEIGHT = MAX_HEIGHT,
+            NUM_VERSIONS = 5,
+            SOLUTION_VERUSV1 = 0,
+            SOLUTION_VERUSV2 = 1,
+            SOLUTION_VERUSV3 = 2,
+            SOLUTION_VERUSV4 = 3,
+            SOLUTION_VERUSV5 = 4,
+            ACTIVATE_VERUSHASH2 = SOLUTION_VERUSV2,
+            ACTIVATE_EXTENDEDSOLUTION = SOLUTION_VERUSV3,
+            ACTIVATE_IDENTITY = SOLUTION_VERUSV4,
+            ACTIVATE_VERUSHASH2_1 = SOLUTION_VERUSV4,
+            ACTIVATE_PBAAS = SOLUTION_VERUSV5
+        };
         bool active;
         int32_t heights[NUM_VERSIONS];
-        CActivationHeight() : heights{0, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT}, active(true) {}
+        CActivationHeight() : heights{0, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT}, active(true) {}
 
         void SetActivationHeight(int32_t version, int32_t height)
         {
@@ -303,7 +311,7 @@ class CConstVerusSolutionVector
         // returns 0 if not PBaaS, 1 if PBaaS PoW, -1 if PBaaS PoS
         static int32_t IsPBaaS(const std::vector<unsigned char> &vch)
         {
-            if (Version(vch) == CActivationHeight::SOLUTION_VERUSV4)
+            if (Version(vch) == CActivationHeight::ACTIVATE_PBAAS)
             {
                 return  (DescriptorBits(vch) & SOLUTION_POW) ? 1 : -1;
             }
@@ -327,7 +335,7 @@ class CConstVerusSolutionVector
         {
             int len;
 
-            if (Version(vch) < CActivationHeight::SOLUTION_VERUSV4)
+            if (Version(vch) < CActivationHeight::ACTIVATE_PBAAS)
             {
                 len = 0;
             }
@@ -437,7 +445,7 @@ class CVerusSolutionVector
         {
             int len;
 
-            if (Version() < CActivationHeight::SOLUTION_VERUSV4)
+            if (Version() < CActivationHeight::ACTIVATE_PBAAS)
             {
                 len = 0;
             }
@@ -497,7 +505,7 @@ class CVerusSolutionVector
         // set the extra data with a pointer to bytes and length
         bool SetExtraData(const unsigned char *pbegin, uint32_t len)
         {
-            if (Version() < CActivationHeight::SOLUTION_VERUSV4 || len > ExtraDataLen())
+            if (Version() < CActivationHeight::ACTIVATE_PBAAS || len > ExtraDataLen())
             {
                 return false;
             }
