@@ -7686,9 +7686,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         
         CBlockIndex *pindexLast = NULL;
         BOOST_FOREACH(const CBlockHeader& header, headers) {
-            //printf("size.%i, solution size.%i\n", (int)sizeof(header), (int)header.nSolution.size());
-            //printf("hash.%s prevhash.%s nonce.%s\n", header.GetHash().ToString().c_str(), header.hashPrevBlock.ToString().c_str(), header.nNonce.ToString().c_str());
-
+            /*
             auto lastIndex = mapBlockIndex.find(header.hashPrevBlock);
             auto thisIndex = mapBlockIndex.find(header.GetHash());
 
@@ -7711,10 +7709,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                     }
                 }
             }
+            */
 
             CValidationState state;
             if (pindexLast != NULL && header.hashPrevBlock != pindexLast->GetBlockHash()) {
 
+                /*
                 if (lastIndex != mapBlockIndex.end())
                 {
                     CBlockIndex *pidx = lastIndex->second;
@@ -7736,6 +7736,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                         printf("thisIndex->GetBlockHash(): %s, thisIndex->GetBlockHeader().GetHash(): %s\n", pidx->GetBlockHash().GetHex().c_str(), pidx->GetBlockHeader().GetHash().GetHex().c_str());
                     }
                 }
+                */
 
                 Misbehaving(pfrom->GetId(), 20);
                 return error("non-continuous headers sequence");
