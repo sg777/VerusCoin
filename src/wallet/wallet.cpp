@@ -1513,7 +1513,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 int32_t txSize = GetSerializeSize(s, *(CTransaction *)txout.tx);
 
                 //printf("Serialized size of transaction %s is %lu\n", txout.tx->GetHash().GetHex().c_str(), txSize);
-                if (solutionVersion >= CActivationHeight::SOLUTION_VERUSV4 && txSize > MAX_TX_SIZE_FOR_STAKING)
+                if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && txSize > MAX_TX_SIZE_FOR_STAKING)
                 {
                     LogPrintf("Transaction %s is too large to stake. Serialized size == %lu\n", txout.tx->GetHash().GetHex().c_str(), txSize);
                 }
@@ -1542,7 +1542,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
-            if (solutionVersion >= CActivationHeight::SOLUTION_VERUSV4)
+            if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS)
             {
                 CDataStream txStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 
@@ -4389,7 +4389,7 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
  
             uint32_t coinHeight = nHeight - nDepth;
             // even if we should include coinbases, we may opt to exclude protected coinbases, which must only be included when shielding
-            if (isCoinbase && !fIncludeProtectedCoinbase && Params().GetConsensus().fCoinbaseMustBeProtected && (CConstVerusSolutionVector::GetVersionByHeight(coinHeight) < CActivationHeight::SOLUTION_VERUSV3))
+            if (isCoinbase && !fIncludeProtectedCoinbase && Params().GetConsensus().fCoinbaseMustBeProtected && (CConstVerusSolutionVector::GetVersionByHeight(coinHeight) < CActivationHeight::SOLUTION_VERUSV4))
                 continue;
 
             for (int i = 0; i < pcoin->vout.size(); i++)

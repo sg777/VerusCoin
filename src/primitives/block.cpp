@@ -206,7 +206,7 @@ int32_t CBlockHeader::AddPBaaSHeader(const CPBaaSBlockHeader &pbh)
 bool CBlockHeader::AddUpdatePBaaSHeader(const CPBaaSBlockHeader &pbh)
 {
     CPBaaSBlockHeader pbbh;
-    if (CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::SOLUTION_VERUSV4)
+    if (CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS)
     {
         if (int32_t idx = GetPBaaSHeader(pbbh, pbh.chainID) != -1)
         {
@@ -224,7 +224,7 @@ bool CBlockHeader::AddUpdatePBaaSHeader(const CPBaaSBlockHeader &pbh)
 // This is required to make a valid PoS or PoW block.
 bool CBlockHeader::AddUpdatePBaaSHeader(uint256 prevMMRRoot)
 {
-    if (CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::SOLUTION_VERUSV4)
+    if (CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS)
     {
         CPBaaSPreHeader pbph(hashPrevBlock, hashMerkleRoot, hashFinalSaplingRoot, nNonce, nBits);
         CPBaaSBlockHeader pbh(ASSETCHAINS_CHAINID, pbph, prevMMRRoot);

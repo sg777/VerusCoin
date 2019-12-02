@@ -828,7 +828,7 @@ bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
     {
         if ( txin.nSequence == 0xfffffffe && (((int64_t)tx.nLockTime >= LOCKTIME_THRESHOLD && (int64_t)tx.nLockTime > nBlockTime) || ((int64_t)tx.nLockTime < LOCKTIME_THRESHOLD && (int64_t)tx.nLockTime > nBlockHeight)) )
         {
-            if (!IsVerusActive() || CConstVerusSolutionVector::GetVersionByHeight(nBlockHeight) >= CActivationHeight::SOLUTION_VERUSV3)
+            if (!IsVerusActive() || CConstVerusSolutionVector::GetVersionByHeight(nBlockHeight) >= CActivationHeight::SOLUTION_VERUSV4)
             {
                 return false;
             }
@@ -2638,7 +2638,7 @@ int GetSpendHeight(const CCoinsViewCache& inputs)
 }
 
 namespace Consensus {
-    bool CheckTxInputs(const CTransaction& tx, CValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, const Consensus::Params& consensusParams)
+    bool CheckTxInputs(const CTransaction& tx, CValidationState& state, const CCoinsViewCache& inputs, uint32_t nSpendHeight, const Consensus::Params& consensusParams)
     {
         // This doesn't trigger the DoS code on purpose; if it did, it would make it easier
         // for an attacker to attempt to split the network.
@@ -2684,7 +2684,7 @@ namespace Consensus {
                 // After careful consideration, it seems that while there is no real privacy benefit to the
                 // coinbase protection beyond forcing the private address pool to be used at least a little by everyone, it does increase the size of the blockchain
                 // and often reduces privacy by mixing multiple coinbase payment addresses
-                if (CConstVerusSolutionVector::GetVersionByHeight(coins->nHeight) < CActivationHeight::SOLUTION_VERUSV3 &&
+                if (CConstVerusSolutionVector::GetVersionByHeight(coins->nHeight) < CActivationHeight::SOLUTION_VERUSV4 &&
                     fCoinbaseEnforcedProtectionEnabled &&
                     consensusParams.fCoinbaseMustBeProtected &&
                     !(tx.vout.size() == 0 || (tx.vout.size() == 1 && tx.vout[0].nValue == 0)) &&
@@ -3931,9 +3931,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     // END insightexplorer
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(pindex->GetHeight() + 1) >= CActivationHeight::SOLUTION_VERUSV3)
+    if (CConstVerusSolutionVector::GetVersionByHeight(pindex->GetHeight() + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
     {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3;
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
     }
 
     // add this block to the view's block chain
@@ -4570,9 +4570,9 @@ bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams,
         return false;
     }
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::SOLUTION_VERUSV3)
+    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
     {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3;
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
     }
     else
     {
@@ -5292,7 +5292,8 @@ bool ContextualCheckBlock(
     {
         std::vector<unsigned char> vch = block.nSolution;
         uint32_t ver = CVerusSolutionVector(vch).Version();
-        if (ver < CActivationHeight::SOLUTION_VERUSV2 || ver > CActivationHeight::SOLUTION_VERUSV4)
+        // we let some V3's slip by, so enforce correct version for all versions after V3
+        if (ver < CActivationHeight::SOLUTION_VERUSV2 || (ver > CActivationHeight::SOLUTION_VERUSV3 && ver != CConstVerusSolutionVector::GetVersionByHeight(nHeight)))
         {
             return state.DoS(10, error("%s: block header has incorrect version", __func__), REJECT_INVALID, "incorrect-block-version");
         }
@@ -5692,9 +5693,9 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
     if ((height - 250) > 1)
         cheatList.Prune(height - 200);
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::SOLUTION_VERUSV3)
+    if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
     {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3;
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
     }
     else
     {
@@ -6121,9 +6122,9 @@ bool static LoadBlockIndexDB()
     
     EnforceNodeDeprecation(chainActive.Height(), true);
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::SOLUTION_VERUSV3)
+    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
     {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V3;
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
     }
     else
     {
@@ -7101,7 +7102,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         if (nVersion == 10300)
             nVersion = 300;
 
-        if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV4 ? 
+        if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS ? 
                                                                                  nVersion < MIN_PBAAS_VERSION : 
                                                                                  nVersion < MIN_PEER_PROTO_VERSION)
         {
@@ -7175,7 +7176,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         
         // Change version
         pfrom->PushMessage("verack");
-        pfrom->ssSend.SetVersion(min(pfrom->nVersion, CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV4 ? 
+        pfrom->ssSend.SetVersion(min(pfrom->nVersion, CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS ? 
                                                                                  MIN_PBAAS_VERSION : 
                                                                                  MIN_PEER_PROTO_VERSION));
         
@@ -7245,7 +7246,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     
     else if (strCommand == "verack")
     {
-        pfrom->SetRecvVersion(min(pfrom->nVersion, CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV4 ? 
+        pfrom->SetRecvVersion(min(pfrom->nVersion, CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS ? 
                                                                                  MIN_PBAAS_VERSION : 
                                                                                  MIN_PEER_PROTO_VERSION));
         
@@ -7688,8 +7689,54 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             //printf("size.%i, solution size.%i\n", (int)sizeof(header), (int)header.nSolution.size());
             //printf("hash.%s prevhash.%s nonce.%s\n", header.GetHash().ToString().c_str(), header.hashPrevBlock.ToString().c_str(), header.nNonce.ToString().c_str());
 
+            auto lastIndex = mapBlockIndex.find(header.hashPrevBlock);
+            auto thisIndex = mapBlockIndex.find(header.GetHash());
+
+            if (pindexLast == NULL)
+            {
+                if (lastIndex != mapBlockIndex.end())
+                {
+                    CBlockIndex *pidx = lastIndex->second;
+                    if (pidx)
+                    {
+                        printf("lastIndex->GetBlockHash(): %s, header.hashPrevBlock: %s\n", pidx->GetBlockHash().GetHex().c_str(), header.hashPrevBlock.GetHex().c_str());
+                    }
+                }
+                if (thisIndex != mapBlockIndex.end())
+                {
+                    CBlockIndex *pidx = thisIndex->second;
+                    if (pidx)
+                    {
+                        printf("thisIndex->GetBlockHash(): %s, thisIndex->GetBlockHeader().GetHash(): %s\n", pidx->GetBlockHash().GetHex().c_str(), pidx->GetBlockHeader().GetHash().GetHex().c_str());
+                    }
+                }
+            }
+
             CValidationState state;
             if (pindexLast != NULL && header.hashPrevBlock != pindexLast->GetBlockHash()) {
+
+                if (lastIndex != mapBlockIndex.end())
+                {
+                    CBlockIndex *pidx = lastIndex->second;
+                    if (pidx)
+                    {
+                        printf("lastIndex->GetBlockHash(): %s, header.hashPrevBlock: %s\n", pidx->GetBlockHash().GetHex().c_str(), header.hashPrevBlock.GetHex().c_str());
+                    }
+                }
+                else
+                {
+                    printf("header.hashPrevBlock: %s\n", header.hashPrevBlock.GetHex().c_str());
+                }
+                
+                if (thisIndex != mapBlockIndex.end())
+                {
+                    CBlockIndex *pidx = thisIndex->second;
+                    if (pidx)
+                    {
+                        printf("thisIndex->GetBlockHash(): %s, thisIndex->GetBlockHeader().GetHash(): %s\n", pidx->GetBlockHash().GetHex().c_str(), pidx->GetBlockHeader().GetHash().GetHex().c_str());
+                    }
+                }
+
                 Misbehaving(pfrom->GetId(), 20);
                 return error("non-continuous headers sequence");
             }

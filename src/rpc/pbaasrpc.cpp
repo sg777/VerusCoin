@@ -541,7 +541,7 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 void CheckPBaaSAPIsValid()
 {
     if (!chainActive.LastTip() ||
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV4)
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
     {
         throw JSONRPCError(RPC_INVALID_REQUEST, "PBaaS not activated on blockchain.");
     }
@@ -550,7 +550,7 @@ void CheckPBaaSAPIsValid()
 void CheckIdentityAPIsValid()
 {
     if (!chainActive.LastTip() ||
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV3)
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.ACTIVATE_IDENTITY)
     {
         throw JSONRPCError(RPC_INVALID_REQUEST, "Identity APIs not activated on blockchain.");
     }
