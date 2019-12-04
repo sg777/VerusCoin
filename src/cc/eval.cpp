@@ -177,7 +177,7 @@ bool Eval::GetBlock(uint256 hash, CBlockIndex& blockIdx) const
         blockIdx = *r->second;
         return true;
     }
-    fprintf(stderr, "CC Eval Error: Can't get block from index\n");
+    LogPrintf("CC Eval Error: Can't get block from index\n");
     return false;
 }
 

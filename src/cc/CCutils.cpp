@@ -245,6 +245,7 @@ bool GetCCParams(Eval* eval, const CTransaction &tx, uint32_t nIn,
 
     if (myGetTransaction(tx.vin[nIn].prevout.hash, txOut, blockHash) && txOut.vout.size() > tx.vin[nIn].prevout.n)
     {
+        // must ensure that the block is valid and that this is a valid
         CBlockIndex index;
         if (eval->GetBlock(blockHash, index))
         {
