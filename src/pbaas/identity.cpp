@@ -508,6 +508,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                 return state.Error("Cannot access input");
             }
 
+            if (oneTxIn.prevout.n >= coins.vout.size())
+            {
+                return state.Error("Input index out of range");
+            }
+
             COptCCParams p;
             if (coins.vout[oneTxIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
             {
