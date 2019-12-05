@@ -377,6 +377,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
     unsigned int nBlockMaxSize = GetArg("-blockmaxsize", DEFAULT_BLOCK_MAX_SIZE);
     // Limit to betweeen 1K and MAX_BLOCK_SIZE-1K for sanity:
     nBlockMaxSize = std::max((unsigned int)1000, std::min((unsigned int)(MAX_BLOCK_SIZE-1000), nBlockMaxSize));
+
+    unsigned int nMaxIDSize = nBlockMaxSize / 2;
+    unsigned int nCurrentIDSize = 0;
     
     // How much of the block should be dedicated to high-priority transactions,
     // included regardless of the fees they pay
@@ -1133,6 +1136,14 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 {
                     nTotalIn += rtxd.nativeIn;
                     nTotalReserveIn += rtxd.reserveIn;
+                    if (rtxd.IsIdentity() && CNameReservation(tx).IsValid())
+                    {
+                        nCurrentIDSize += GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
+                        if (nCurrentIDSize > nMaxIDSize)
+                        {
+                            continue;
+                        }
+                    }
                 }
                 BOOST_FOREACH(const CTxIn& txin, tx.vin)
                 {
