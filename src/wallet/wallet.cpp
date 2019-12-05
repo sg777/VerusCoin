@@ -2101,7 +2101,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
     {
         AssertLockHeld(cs_wallet);
         uint256 txHash = tx.GetHash();
-        bool fExisted = mapWallet.count(tx.GetHash()) != 0;
+        bool fExisted = mapWallet.count(txHash) != 0;
         if (fExisted && !fUpdate) return false;
         auto sproutNoteData = FindMySproutNotes(tx);
         auto saplingNoteDataAndAddressesToAdd = FindMySaplingNotes(tx);
@@ -2163,9 +2163,21 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     std::pair<bool, bool> wasCanSignCanSpend({false, false});
                     std::pair<bool, bool> canSignCanSpend({false, false});
 
+                    // does identity already exist?
                     if (GetIdentity(idID, idHistory, nHeight ? nHeight : INT_MAX))
                     {
-                        if (idHistory.first.blockHeight == nHeight && idHistory.second.txid != identity.txid)
+                        // if this is the initial registration, delete all other instances of the ID and set wasCanSignCanSpend to true, true
+                        // to delete any dependent transactions.
+                        if (CNameReservation(tx).IsValid())
+                        {
+                            while (GetIdentity(idID, idHistory))
+                            {
+                                RemoveIdentity(idHistory.first, idHistory.second.txid);
+                            }
+                            idHistory = std::pair<CIdentityMapKey, CIdentityMapValue>();
+                            wasCanSignCanSpend = {true, true};
+                        }
+                        else if (nHeight && idHistory.first.blockHeight == nHeight && idHistory.second.txid != identity.txid)
                         {
                             std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> thisHeightIdentities;
                             CIdentityMapKey heightKey(idID, nHeight);
@@ -2261,7 +2273,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                 }
                             }
                         }
-                        else if (idHistory.first.blockHeight == nHeight)
+                        else if (nHeight && idHistory.first.blockHeight == nHeight)
                         {
                             // this has the same txid as an ID already present in the wallet, so it's either a deletion (only confirmed IDs are stored), or duplicate add that we can ignore
                             if (pblock)
@@ -2278,8 +2290,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                 wasCanSignCanSpend = CheckAuthority(identity);
                             }
                         }
-
-                        if (pblock)
+                        else if (pblock && idHistory.first.IsValid())
                         {
                             if (idHistory.first.flags & idHistory.first.CAN_SPEND)
                             {
@@ -2425,14 +2436,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     else
                                     {
                                         deleteSpentFrom = idMapKey.blockHeight;
-                                    }
-
-                                    std::pair<CIdentityMapKey, CIdentityMapValue> nextIdentity;
-
-                                    // in case we have another ID in front of us, limit those that we will remove from the wallet
-                                    if (GetFirstIdentity(idID, nextIdentity, idMapKey.blockHeight + 1))
-                                    {
-                                        deleteSpentTo = nextIdentity.first.blockHeight;
                                     }
 
                                     for (auto &txidAndWtx : mapWallet)
