@@ -113,23 +113,25 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "parent")))));
     name = CleanName(uni_get_str(find_value(uni, "name")), parent);
 
-    UniValue hashesUni = find_value(uni, "contenthashes");
-    if (hashesUni.isArray())
+    UniValue hashesUni = find_value(uni, "contentmap");
+    if (hashesUni.isObject())
     {
-        for (int i = 0; i < hashesUni.size(); i++)
+        std::vector<std::string> keys = hashesUni.getKeys();
+        std::vector<UniValue> values = hashesUni.getValues();
+        for (int i = 0; i < keys.size(); i++)
         {
             try
             {
-                contentHashes.push_back(uint256S(uni_get_str(hashesUni[i])));
-                if (contentHashes.back().IsNull())
+                uint160 key(ParseHex(keys[i]));
+                if (!key.IsNull() && i < values.size())
                 {
-                    contentHashes.pop_back();
+                    contentMap[key] = uint256S(uni_get_str(values[i]));
                 }
             }
             catch (const std::exception &e)
             {
-                printf("%s: hash is not valid %s\n", __func__, hashesUni[i].write().c_str());
-                LogPrintf("%s: hash is not valid %s\n", __func__, hashesUni[i].write().c_str());
+                printf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
+                LogPrintf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
                 nVersion = VERSION_INVALID;
             }
         }
@@ -161,12 +163,12 @@ UniValue CIdentity::ToUniValue() const
     obj.push_back(Pair("parent", EncodeDestination(CKeyID(parent))));
     obj.push_back(Pair("name", name));
 
-    UniValue hashes(UniValue::VARR);
-    for (int i = 0; i < contentHashes.size(); i++)
+    UniValue hashes(UniValue::VOBJ);
+    for (auto &entry : contentMap)
     {
-        hashes.push_back(contentHashes[i].GetHex());
+        hashes.push_back(Pair(entry.first.GetHex(), entry.second.GetHex()));
     }
-    obj.push_back(Pair("contenthashes", hashes));
+    obj.push_back(Pair("contentmap", hashes));
 
     obj.push_back(Pair("revocationauthority", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
     obj.push_back(Pair("recoveryauthority", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
