@@ -10,10 +10,11 @@
  * 
  */
 
+#include "pbaas/crosschainrpc.h"
 #include "pbaas/pbaas.h"
 #include "pbaas/notarization.h"
+#include "pbaas/identity.h"
 #include "rpc/pbaasrpc.h"
-#include "pbaas/crosschainrpc.h"
 #include "base58.h"
 #include "timedata.h"
 #include "main.h"
@@ -91,7 +92,7 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
 
 // used to export coins from one chain to another, if they are not native, they are represented on the other
 // chain as tokens
-bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -102,7 +103,7 @@ bool IsCrossChainExportInput(const CScript &scriptSig)
 
 // used to validate import of coins from one chain to another. if they are not native and are supported,
 // they are represented o the chain as tokens
-bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -111,7 +112,7 @@ bool IsCrossChainImportInput(const CScript &scriptSig)
 }
 
 // used to validate a specific service reward based on the spending transaction
-bool ValidateServiceReward(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateServiceReward(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     // for each type of service reward, we need to check and see if the spender is
     // correctly formatted to be a valid spend of the service reward. for notarization
@@ -124,7 +125,7 @@ bool IsServiceRewardInput(const CScript &scriptSig)
 }
 
 // used as a proxy token output for a reserve currency on its fractional reserve chain
-bool ValidateReserveOutput(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateReserveOutput(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -132,7 +133,7 @@ bool IsReserveOutputInput(const CScript &scriptSig)
 {
 }
 
-bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -140,7 +141,7 @@ bool IsReserveTransferInput(const CScript &scriptSig)
 {
 }
 
-bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -148,7 +149,7 @@ bool IsReserveDepositInput(const CScript &scriptSig)
 {
 }
 
-bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -157,7 +158,7 @@ bool IsCurrencyStateInput(const CScript &scriptSig)
 }
 
 // used to convert a fractional reserve currency into its reserve and back 
-bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
@@ -362,7 +363,7 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const UniValue &obj)
     nVersion = PBAAS_VERSION;
     name = std::string(uni_get_str(find_value(obj, "name")), 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
 
-    string invalidChars = "\\/:?\"<>|";
+    string invalidChars = "\\/:*?\"<>|";
     for (int i = 0; i < name.size(); i++)
     {
         if (invalidChars.find(name[i]) != string::npos)
@@ -388,7 +389,6 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const UniValue &obj)
     {
         vEras.resize(ASSETCHAINS_MAX_ERAS);
     }
-    eras = !vEras.size() ? 1 : vEras.size();
 
     for (auto era : vEras)
     {
@@ -427,18 +427,6 @@ CPBaaSChainDefinition::CPBaaSChainDefinition(const CTransaction &tx, bool valida
                 else
                 {
                     FromVector(p.vData[0], *this);
-
-                    // TODO - remove this after validation is finished, check now in case some larger strings got into the chain
-                    name = std::string(name, 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
-                    string invalidChars = "\\/:?\"<>|";
-                    for (int i = 0; i < name.size(); i++)
-                    {
-                        if (invalidChars.find(name[i]) != string::npos)
-                        {
-                            name[i] = '_';
-                        }
-                    }
-
                     definitionFound = true;
                 }
             }
@@ -493,9 +481,8 @@ CCrossChainExport::CCrossChainExport(const CTransaction &tx)
 
 uint160 CPBaaSChainDefinition::GetChainID(std::string name)
 {
-    const char *chainName = name.c_str();
-    uint256 chainHash = Hash(chainName, chainName + strlen(chainName));
-    return Hash160(chainHash.begin(), chainHash.end());
+    uint160 parent;
+    return CIdentity::GetID(name, parent);
 }
 
 uint160 CPBaaSChainDefinition::GetConditionID(int32_t condition) const
@@ -524,7 +511,7 @@ UniValue CPBaaSChainDefinition::ToUniValue() const
     obj.push_back(Pair("endblock", (int32_t)endBlock));
 
     UniValue eraArr(UniValue::VARR);
-    for (int i = 0; i < eras; i++)
+    for (int i = 0; i < rewards.size(); i++)
     {
         UniValue era(UniValue::VOBJ);
         era.push_back(Pair("reward", rewards.size() > i ? rewards[i] : (int64_t)0));
@@ -587,24 +574,22 @@ bool SetThisChain(UniValue &chainDefinition)
             // setup Verus test parameters
             notaryChainDef.name = "VRSCTEST";
             notaryChainDef.premine = 5000000000000000;
-            notaryChainDef.eras = 1;
             notaryChainDef.rewards = std::vector<int64_t>({2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
             notaryChainDef.halving = std::vector<int32_t>({225680});
             notaryChainDef.eraEnd = std::vector<int32_t>({0});
-            notaryChainDef.eraOptions = std::vector<int32_t>({0,0,0});
+            notaryChainDef.eraOptions = std::vector<int32_t>({notaryChainDef.OPTION_ID_REFERRALS});
         }
         else
         {
             // first setup Verus parameters
             notaryChainDef.name = "VRSC";
             notaryChainDef.premine = 0;
-            notaryChainDef.eras = 3;
             notaryChainDef.rewards = std::vector<int64_t>({0,38400000000,2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
             notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
             notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
-            notaryChainDef.eraOptions = std::vector<int32_t>({0,0,0});
+            notaryChainDef.eraOptions = std::vector<int32_t>({notaryChainDef.OPTION_ID_REFERRALS,0,0});
         }
     }
 
@@ -637,7 +622,7 @@ bool SetThisChain(UniValue &chainDefinition)
         ASSETCHAINS_TIMEUNLOCKFROM = 0;
         ASSETCHAINS_TIMEUNLOCKTO = 0;
 
-        auto numEras = ConnectedChains.ThisChain().eras;
+        auto numEras = ConnectedChains.ThisChain().rewards.size();
         ASSETCHAINS_LASTERA = numEras - 1;
         mapArgs["-ac_eras"] = to_string(numEras);
 
@@ -704,7 +689,7 @@ bool SetThisChain(UniValue &chainDefinition)
 
 // ensures that the chain definition is valid and that there are no other definitions of the same name
 // that have been confirmed.
-bool ValidateChainDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool ValidateChainDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     // the chain definition output can be spent when the chain is at the end of its life and only then
     // TODO
@@ -1122,7 +1107,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
     LOCK(cs_main);
     bool isVerusActive = IsVerusActive();
     if (!isVerusActive && 
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::SOLUTION_VERUSV3 &&
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::ACTIVATE_PBAAS &&
         height != 0 && 
         height <= chainActive.Height() && 
         chainActive[height] && 
@@ -1145,35 +1130,13 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
     }
 }
 
-bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScript>> minerOutputs, CTxDestination &firstDestinationOut)
+bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut)
 {
     LOCK(cs_mergemining);
+
+    if (!minerOutputs.size() || !ExtractDestination(minerOutputs[0].second, firstDestinationOut))
     {
-        txnouttype outType;
-        std::vector<std::vector<unsigned char>> vSolutions;
-
-        if (!minerOutputs.size() || !Solver(minerOutputs[0].second, outType, vSolutions))
-        {
-            return false;
-        }
-
-        if (outType == TX_PUBKEY)
-        {
-            CPubKey pubKey(vSolutions[0]);
-            if (!pubKey.IsValid())
-            {
-                return false;
-            }
-            firstDestinationOut = CTxDestination(pubKey);
-        }
-        else if (outType == TX_PUBKEYHASH)
-        {
-            firstDestinationOut = CTxDestination(CKeyID(uint160(vSolutions[0])));
-        }
-        else
-        {
-            return false;
-        }
+        return false;
     }
     latestMiningOutputs = minerOutputs;
     latestDestination = firstDestinationOut;

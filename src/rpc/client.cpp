@@ -6,6 +6,7 @@
 #include "rpc/client.h"
 #include "rpc/protocol.h"
 #include "pbaas/crosschainrpc.h"
+#include "pbaas/identity.h"
 #include "util.h"
 
 #include <set>
@@ -36,6 +37,18 @@ int32_t uni_get_int(UniValue uv, int32_t def)
     try
     {
         return uv.get_int();
+    }
+    catch(const std::exception& e)
+    {
+        return def;
+    }
+}
+
+bool uni_get_bool(UniValue uv, bool def)
+{
+    try
+    {
+        return uv.get_bool();
     }
     catch(const std::exception& e)
     {
@@ -77,6 +90,175 @@ std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def)
     {
         return def;
     }
+}
+
+uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
+{
+    uint160 parent;
+    uint160 cid = CIdentity::GetID(name, parent);
+
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
+{
+    std::string nameCopy = Name;
+    std::string invalidChars = "\\/:*?\"<>|";
+    for (int i = 0; i < nameCopy.size(); i++)
+    {
+        if (invalidChars.find(nameCopy[i]) != std::string::npos)
+        {
+            nameCopy[i] = '_';
+        }
+    }
+    std::vector<std::string> retNames;
+    boost::split(retNames, nameCopy, boost::is_any_of("@"));
+    if (!retNames.size() || retNames.size() > 2)
+    {
+        return std::vector<std::string>();
+    }
+
+    bool explicitChain = false;
+    if (retNames.size() == 2)
+    {
+        ChainOut = retNames[1];
+        explicitChain = true;
+    }    
+
+    nameCopy = retNames[0];
+    boost::split(retNames, nameCopy, boost::is_any_of("."));
+
+    for (int i = 0; i < retNames.size(); i++)
+    {
+        if (retNames[i].size() > KOMODO_ASSETCHAIN_MAXLEN - 1)
+        {
+            retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
+        }
+    }
+
+    // if no chain is specified, default to chain of the ID
+    if (!explicitChain && retNames.size())
+    {
+        if (retNames.size() == 1)
+        {
+            // by default, we assume the Verus chain for no suffix
+            ChainOut = "";
+        }
+        else
+        {
+            for (int i = 1; i < retNames.size(); i++)
+            {
+                if (ChainOut.size())
+                {
+                    ChainOut = ChainOut + ".";
+                }
+                ChainOut = ChainOut + retNames[i];
+            }
+        }
+    }
+
+    return retNames;
+}
+
+// takes a multipart name, either complete or partially processed with a Parent hash,
+// hash its parent names into a parent ID and return the parent hash and cleaned, single name
+std::string CleanName(const std::string &Name, uint160 &Parent)
+{
+    std::string chainName;
+    std::vector<std::string> subNames = ParseSubNames(Name, chainName);
+
+    if (!subNames.size())
+    {
+        return "";
+    }
+
+    for (int i = subNames.size() - 1; i > 0; i--)
+    {
+        const char *idName = boost::algorithm::to_lower_copy(subNames[i]).c_str();
+        uint256 idHash;
+
+        if (Parent.IsNull())
+        {
+            idHash = Hash(idName, idName + strlen(idName));
+        }
+        else
+        {
+            idHash = Hash(idName, idName + strlen(idName));
+            idHash = Hash(Parent.begin(), Parent.end(), idHash.begin(), idHash.end());
+
+        }
+        Parent = Hash160(idHash.begin(), idHash.end());
+    }
+    return subNames[0];
+}
+
+CIdentityID CIdentity::GetID(const std::string &Name, uint160 &parent)
+{
+    std::string cleanName = CleanName(Name, parent);
+
+    std::string subName = boost::algorithm::to_lower_copy(cleanName);
+    const char *idName = subName.c_str();
+    //printf("hashing: %s, %s\n", idName, parent.GetHex().c_str());
+
+    uint256 idHash;
+    if (parent.IsNull())
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+    }
+    else
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+        idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
+
+    }
+    return Hash160(idHash.begin(), idHash.end());
+}
+
+CIdentityID CIdentity::GetID(const std::string &Name) const
+{
+    uint160 parent;
+    std::string cleanName = CleanName(Name, parent);
+
+    std::string subName = boost::algorithm::to_lower_copy(cleanName);
+    const char *idName = subName.c_str();
+    //printf("hashing: %s, %s\n", idName, parent.GetHex().c_str());
+
+    uint256 idHash;
+    if (parent.IsNull())
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+    }
+    else
+    {
+        idHash = Hash(idName, idName + strlen(idName));
+        idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
+
+    }
+    return Hash160(idHash.begin(), idHash.end());
+}
+
+CIdentityID CIdentity::GetID() const
+{
+    return GetID(name);
+}
+
+uint160 CCrossChainRPCData::GetChainID(std::string name)
+{
+    uint160 parent;
+    return CIdentity::GetID(name,parent);
 }
 
 static const CRPCConvertParam vRPCConvertParams[] =
@@ -217,6 +399,10 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "definechain", 0},
     { "getdefinedchains", 0},
     { "sendreserve", 0},
+    { "registeridentity", 0},
+    { "updateidentity", 0},
+    { "recoveridentity", 0},
+    // Zcash addition
     { "z_setmigration", 0},
 };
 

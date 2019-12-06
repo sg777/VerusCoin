@@ -29,6 +29,7 @@
 #include "wallet/asyncrpcoperation_saplingmigration.h"
 #include "zcash/zip32.h"
 #include "cc/StakeGuard.h"
+#include "pbaas/identity.h"
 #include "pbaas/pbaas.h"
 
 #include <assert.h>
@@ -59,6 +60,7 @@ extern uint160 ASSETCHAINS_CHAINID;
 extern int32_t VERUS_MIN_STAKEAGE;
 CBlockIndex *komodo_chainactive(int32_t height);
 extern std::string DONATION_PUBKEY;
+extern BlockMap mapBlockIndex;
 
 /**
  * Fees smaller than this (in satoshi) are considered zero fee (for transaction creation)
@@ -451,11 +453,14 @@ bool CWallet::LoadSproutViewingKey(const libzcash::SproutViewingKey &vk)
 
 bool CWallet::AddCScript(const CScript& redeemScript)
 {
+    // if this is an identity, which we currently need to check, we
+    // store the ID as a script in the wallet script storage, but instead of using the
+    // hash of the script, we store it under the name ID
     if (!CCryptoKeyStore::AddCScript(redeemScript))
         return false;
     if (!fFileBacked)
         return true;
-    return CWalletDB(strWalletFile).WriteCScript(Hash160(redeemScript), redeemScript);
+    return CWalletDB(strWalletFile).WriteCScript(ScriptOrIdentityID(redeemScript), redeemScript);
 }
 
 bool CWallet::LoadCScript(const CScript& redeemScript)
@@ -463,15 +468,97 @@ bool CWallet::LoadCScript(const CScript& redeemScript)
     /* A sanity check was added in pull #3843 to avoid adding redeemScripts
      * that never can be redeemed. However, old wallets may still contain
      * these. Do not add them to the wallet and warn. */
-    if (redeemScript.size() > MAX_SCRIPT_ELEMENT_SIZE)
+    if (redeemScript.size() > CScript::MAX_SCRIPT_ELEMENT_SIZE)
     {
-        std::string strAddr = EncodeDestination(CScriptID(redeemScript));
+        std::string strAddr = EncodeDestination(ScriptOrIdentityID(redeemScript));
         LogPrintf("%s: Warning: This wallet contains a redeemScript of size %i which exceeds maximum size %i thus can never be redeemed. Do not use address %s.\n",
-            __func__, redeemScript.size(), MAX_SCRIPT_ELEMENT_SIZE, strAddr);
+            __func__, redeemScript.size(), CScript::MAX_SCRIPT_ELEMENT_SIZE, strAddr);
         return true;
     }
 
     return CCryptoKeyStore::AddCScript(redeemScript);
+}
+
+bool CWallet::AddIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity)
+{
+    // if this is an identity, which we currently need to check, we
+    // store the ID as a script in the wallet script storage, but instead of using the
+    // hash of the script, we store it under the name ID
+    if (!CCryptoKeyStore::AddIdentity(mapKey, identity))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteIdentity(mapKey, identity);
+}
+
+bool CWallet::UpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity)
+{
+    // if this is an identity, which we currently need to check, we
+    // store the ID as a script in the wallet script storage, but instead of using the
+    // hash of the script, we store it under the name ID
+    if (!CCryptoKeyStore::UpdateIdentity(mapKey, identity))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteIdentity(mapKey, identity);
+}
+
+bool CWallet::AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity)
+{
+    // if this is an identity, which we currently need to check, we
+    // store the ID as a script in the wallet script storage, but instead of using the
+    // hash of the script, we store it under the name ID
+    if (!CCryptoKeyStore::AddUpdateIdentity(mapKey, identity))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteIdentity(mapKey, identity);
+}
+
+bool CWallet::RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid)
+{
+    CIdentityMapKey localKey = mapKey;
+    std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> toErase;
+    if (localKey.blockHeight == 0)
+    {
+        localKey.blockHeight = 0x7fffffff;
+    }
+    if (!GetIdentity(mapKey, localKey, toErase))
+    {
+        return false;
+    }
+    if (!txid.IsNull())
+    {
+        std::pair<CIdentityMapKey, CIdentityMapValue> idEntry;
+        for (auto id : toErase)
+        {
+            if (id.second.txid == txid)
+            {
+                idEntry = id;
+            }
+        }
+        toErase.clear();
+        if (idEntry.first.IsValid() && idEntry.second.IsValid())
+        {
+            toErase.push_back(idEntry);
+        }
+    }
+    if (!CCryptoKeyStore::RemoveIdentity(mapKey, txid))
+        return false;
+    if (!fFileBacked)
+        return true;
+
+    bool error = false;
+    for (auto idPair : toErase)
+    {
+        error = CWalletDB(strWalletFile).EraseIdentity(idPair.first) ? error : true;
+    }    
+    return error;
+}
+
+bool CWallet::LoadIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity)
+{
+    return CCryptoKeyStore::AddUpdateIdentity(mapKey, identity);
 }
 
 bool CWallet::AddWatchOnly(const CScript &dest)
@@ -1409,13 +1496,14 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     auto consensusParams = Params().GetConsensus();
     CValidationState state;
 
-    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, !consensusParams.fCoinbaseMustBeProtected);
+    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
 
     if (pastBlockIndex = komodo_chainactive(nHeight - 100))
     {
         uint256 pastHash = pastBlockIndex->GetVerusEntropyHash();
         CPOSNonce curNonce;
         uint32_t srcIndex;
+        uint32_t solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
 
         BOOST_FOREACH(COutput &txout, vecOutputs)
         {
@@ -1425,7 +1513,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 int32_t txSize = GetSerializeSize(s, *(CTransaction *)txout.tx);
 
                 //printf("Serialized size of transaction %s is %lu\n", txout.tx->GetHash().GetHex().c_str(), txSize);
-                if (txSize > MAX_TX_SIZE_FOR_STAKING)
+                if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && txSize > MAX_TX_SIZE_FOR_STAKING)
                 {
                     LogPrintf("Transaction %s is too large to stake. Serialized size == %lu\n", txout.tx->GetHash().GetHex().c_str(), txSize);
                 }
@@ -1435,8 +1523,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 uint256 txHash = txout.tx->GetHash();
                 checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
 
-                if (txSize <= MAX_TX_SIZE_FOR_STAKING &&
-                    (!pwinner || UintToArith256(curNonce) > UintToArith256(pBlock->nNonce)) &&
+                if ((!pwinner || UintToArith256(curNonce) > UintToArith256(pBlock->nNonce)) &&
                     (Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH)) &&
                     !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100) &&
                     view.AccessCoins(txHash) &&
@@ -1455,7 +1542,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
-            if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) == CActivationHeight::SOLUTION_VERUSV3)
+            if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS)
             {
                 CDataStream txStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 
@@ -1625,7 +1712,7 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
 
     txNew.nLockTime = 0;
     CTransaction txNewConst(txNew);
-    signSuccess = ProduceSignature(TransactionSignatureCreator(&keystore, &txNewConst, 0, nValue, SIGHASH_ALL), stakeSource.vout[voutNum].scriptPubKey, sigdata, consensusBranchId);
+    signSuccess = ProduceSignature(TransactionSignatureCreator(&keystore, &txNewConst, 0, nValue, stakeSource.vout[voutNum].scriptPubKey), stakeSource.vout[voutNum].scriptPubKey, sigdata, consensusBranchId);
     if (!signSuccess)
         fprintf(stderr,"failed to create signature\n");
     else
@@ -1931,6 +2018,72 @@ bool CWallet::UpdatedNoteData(const CWalletTx& wtxIn, CWalletTx& wtx)
     return !unchangedSproutFlag || !unchangedSaplingFlag;
 }
 
+std::pair<bool, bool> CWallet::CheckAuthority(const CIdentity &identity)
+{
+    std::pair<bool, bool> canSignCanSpend({false, false});
+    if (!identity.IsValidUnrevoked())
+    {
+        return canSignCanSpend;
+    }
+    std::set<CIdentityID> keySet;
+
+    // determine our status of cansign or canspend for this new ID
+    for (auto key : identity.primaryAddresses)
+    {
+        CKeyID keyID = CKeyID(GetDestinationID(key));
+        if (HaveKey(keyID))
+        {
+            keySet.insert(keyID);
+        }
+    }
+
+    // if we have enough keys to fully authorize, it is ours
+    if (keySet.size() >= identity.minSigs)
+    {
+        canSignCanSpend.first = true;
+        canSignCanSpend.second = true;
+    }
+    else if (keySet.size())
+    {
+        canSignCanSpend.first = true;
+    }
+    return canSignCanSpend;
+}
+
+bool CWallet::MarkIdentityDirty(const CIdentityID &idID)
+{
+    bool found = false;
+    // if we already had signing authority, but not spending, enumerate wallet transactions sent to this ID and mark them dirty
+    // for proper balance calculation
+    for (auto &txidAndWtx : mapWallet)
+    {
+        bool dirty = false;
+        txnouttype txType;
+        std::vector<CTxDestination> addresses;
+        int minSigs;
+        for (auto txout : txidAndWtx.second.vout)
+        {
+            if (txout.scriptPubKey.IsPayToCryptoCondition() && ExtractDestinations(txout.scriptPubKey, txType, addresses, minSigs))
+            {
+                for (auto dest : addresses)
+                {
+                    if (GetDestinationID(dest) == idID)
+                    {
+                        dirty = true;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (dirty)
+        {
+            txidAndWtx.second.MarkDirty();
+        }
+    }
+    return found;
+}
+
 /**
  * Add a transaction to the wallet, or update it.
  * pblock is optional, but should be provided if the transaction is known to be in a block.
@@ -1947,7 +2100,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 {
     {
         AssertLockHeld(cs_wallet);
-        bool fExisted = mapWallet.count(tx.GetHash()) != 0;
+        uint256 txHash = tx.GetHash();
+        bool fExisted = mapWallet.count(txHash) != 0;
         if (fExisted && !fUpdate) return false;
         auto sproutNoteData = FindMySproutNotes(tx);
         auto saplingNoteDataAndAddressesToAdd = FindMySaplingNotes(tx);
@@ -1958,9 +2112,494 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                 return false;
             }
         }
-        if (fExisted || IsMine(tx) || IsFromMe(tx) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
+
+        bool canSign = false;
+        bool isMine = false;
+
+        for (auto output : tx.vout)
         {
-            CWalletTx wtx(this,tx);
+            bool canSpend = false;
+            COptCCParams p;
+
+            if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+            {
+                // assert and fix if we find any spot where this wouldn't be held, rather than
+                // creating a deadlock by attempting to take the cs out of order
+                AssertLockHeld(cs_main);
+
+                uint32_t nHeight = 0;
+                if (pblock)
+                {
+                    auto blkIndexIt = mapBlockIndex.find(pblock->GetHash());
+                    if (blkIndexIt != mapBlockIndex.end())
+                    {
+                        nHeight = blkIndexIt->second->GetHeight();
+                    }
+                    else
+                    {
+                        // doesn't seem like this should ever happen
+                        assert(false);
+                    }
+                }
+
+                CIdentityMapValue identity;
+
+                if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (*(CIdentity *)&identity = CIdentity(p.vData[0])).IsValid())
+                {
+                    identity.txid = tx.GetHash();
+                    CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
+                                                               nHeight, 
+                                                               1, 
+                                                               CIdentityMapKey::VALID);
+
+                    std::set<CKeyID> keySet;
+                    CIdentityID idID(identity.GetID());
+                    int blockOrder = 1;
+                    bool doneWithID = false;
+
+                    std::pair<CIdentityMapKey, CIdentityMapValue> idHistory;
+
+                    // if we are deleting, current identity is what it was, idHistory is what it will be, if adding, current is what it will be, idHistory is what it was
+                    std::pair<bool, bool> wasCanSignCanSpend({false, false});
+                    std::pair<bool, bool> canSignCanSpend({false, false});
+
+                    // does identity already exist?
+                    if (GetIdentity(idID, idHistory, nHeight ? nHeight : INT_MAX))
+                    {
+                        // if this is the initial registration, delete all other instances of the ID and set wasCanSignCanSpend to true, true
+                        // to delete any dependent transactions.
+                        if (CNameReservation(tx).IsValid())
+                        {
+                            while (GetIdentity(idID, idHistory))
+                            {
+                                RemoveIdentity(idHistory.first, idHistory.second.txid);
+                            }
+                            idHistory = std::pair<CIdentityMapKey, CIdentityMapValue>();
+                            wasCanSignCanSpend = {true, true};
+                        }
+                        else if (nHeight && idHistory.first.blockHeight == nHeight && idHistory.second.txid != identity.txid)
+                        {
+                            std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> thisHeightIdentities;
+                            CIdentityMapKey heightKey(idID, nHeight);
+                            GetIdentity(heightKey, heightKey, thisHeightIdentities);
+
+                            canSignCanSpend = CheckAuthority(identity);
+                            std::map<uint256, std::pair<CIdentityMapKey, CIdentityMapValue>> firstIDMap;
+                            for (auto &foundID : thisHeightIdentities)
+                            {
+                                firstIDMap[foundID.second.txid] = foundID;
+                            }
+
+                            if (firstIDMap.count(identity.txid))
+                            {
+                                blockOrder = firstIDMap[identity.txid].first.blockOrder;
+                                // no change, since we are already present
+                                wasCanSignCanSpend = CheckAuthority(identity);
+                            }
+                            else
+                            {
+                                blockOrder = thisHeightIdentities.size() + 1;
+                                firstIDMap.insert(make_pair(identity.txid, 
+                                                            make_pair(CIdentityMapKey(idID, 
+                                                                                        nHeight,
+                                                                                        blockOrder, 
+                                                                                        canSignCanSpend.first ? CIdentityMapKey::CAN_SIGN : 0 + canSignCanSpend.second ? CIdentityMapKey::CAN_SPEND : 0), 
+                                                                      identity)));
+                                if (pblock)
+                                {
+                                    wasCanSignCanSpend = CheckAuthority(idHistory.second);
+                                }
+                                else
+                                {
+                                    wasCanSignCanSpend = CheckAuthority(identity);
+                                }
+                            }
+
+                            // now we have all the entries of the specified height, including those from before and the new one in the firstIDMap
+                            // the #1 in the block is one that has none of its input txes in the map. the last is not present in any input tx
+                            // to sort, we make a new map, indexed by the one that it spends, then follow the chain
+                            std::map<uint256, std::pair<CIdentityMapKey, CIdentityMapValue>> indexedByPrior;
+                            std::pair<CIdentityMapKey, CIdentityMapValue> firstInBlock;
+
+                            for (auto &idEntry : firstIDMap)
+                            {
+                                uint256 spendsTxId;
+                                CTransaction entryTx;
+                                uint256 blkHash;
+                                if (!myGetTransaction(idEntry.first, entryTx, blkHash))
+                                {
+                                    LogPrint("%s - error: cannot retrieve transaction %s during sort of identity transactions in block, blockchain state may be corrupt and need resynchronization\n", __func__, idEntry.first.GetHex().c_str());
+                                }
+                                else
+                                {
+                                    bool isFirst = true;
+                                    for (auto &input : entryTx.vin)
+                                    {
+                                        auto idMapIt = firstIDMap.find(input.prevout.hash);
+                                        if (idMapIt != firstIDMap.end())
+                                        {
+                                            indexedByPrior[input.prevout.hash] = idEntry.second;
+                                            isFirst = false;
+                                        }
+                                    }
+                                    if (isFirst)
+                                    {
+                                        // this should first be added solo, so #1 should always be set
+                                        if (idEntry.second.first.blockOrder != 1)
+                                        {
+                                            LogPrint("%s - error: unexpected block order in %s\n", __func__, idEntry.first.GetHex().c_str());
+                                        }
+                                        firstInBlock = idEntry.second;
+                                    }
+                                }
+                            }
+
+                            if (!firstInBlock.first.IsValid())
+                            {
+                                LogPrint("%s - error: missing first in block\n", __func__);
+                            }
+                            else
+                            {
+                                // now validate that from 1st to last, we have order correct
+                                std::pair<CIdentityMapKey, CIdentityMapValue> *pCurID;
+                                int i = 1;
+                                for (pCurID = &firstInBlock; pCurID; i++)
+                                {
+                                    if (pCurID->first.blockOrder != i)
+                                    {
+                                        LogPrint("%s - error: incorrect block order in entry %s\n", __func__, pCurID->second.txid.GetHex().c_str());
+                                        printf("%s - error: incorrect block order in entry %s\n", __func__, pCurID->second.txid.GetHex().c_str());
+                                    }
+                                }
+                            }
+                        }
+                        else if (nHeight && idHistory.first.blockHeight == nHeight)
+                        {
+                            // this has the same txid as an ID already present in the wallet, so it's either a deletion (only confirmed IDs are stored), or duplicate add that we can ignore
+                            if (pblock)
+                            {
+                                doneWithID = true;
+                            }
+                            else
+                            {
+                                idMapKey = idHistory.first;
+                                RemoveIdentity(idHistory.first, idHistory.second.txid);
+                                idHistory = std::pair<CIdentityMapKey, CIdentityMapValue>();
+                                GetIdentity(idID, idHistory, idHistory.first.blockHeight);
+
+                                wasCanSignCanSpend = CheckAuthority(identity);
+                            }
+                        }
+                        else if (pblock && idHistory.first.IsValid())
+                        {
+                            if (idHistory.first.flags & idHistory.first.CAN_SPEND)
+                            {
+                                wasCanSignCanSpend.first = true;
+                                wasCanSignCanSpend.second = true;
+                            }
+                            else if ((idHistory.first.flags & idHistory.first.CAN_SIGN))
+                            {
+                                wasCanSignCanSpend.first = true;
+                            }
+                        }
+                    }
+                    else if (!pblock)
+                    {
+                        // not present, nothing to delete
+                        doneWithID = true;
+                    }
+
+                    if (!doneWithID)
+                    {
+                        if (pblock)
+                        {
+                            // if we are deleting, current identity is what it was, idHistory is what it will roll back to, if adding, current is what it will be, idHistory is what it is
+                            canSignCanSpend = CheckAuthority(identity);
+
+                            // if we don't already have this ID, but we can sign with it, store it
+                            if (!(idHistory.second.IsValid() && (idHistory.first.flags & idHistory.first.BLACKLIST)))
+                            {
+                                CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
+                                                                        nHeight, 
+                                                                        blockOrder, 
+                                                                        idHistory.first.VALID | 
+                                                                            ((idHistory.second.IsValid() ? idHistory.first.flags : 0) & idHistory.first.MANUAL_HOLD) | 
+                                                                            (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
+                                                                            (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
+                                AddUpdateIdentity(idMapKey, identity);
+                            }
+                        }
+                        else
+                        {
+                            canSignCanSpend = idHistory.first.IsValid() ? make_pair(bool(idHistory.first.flags & idHistory.first.CAN_SIGN), bool(idHistory.first.flags & idHistory.first.CAN_SPEND)) : canSignCanSpend;
+                        }
+
+                        // By default, we will not automatically add identity associated UTXOs unless the identity is accepted to the wallet manually, to prevent spam and DoS attacks
+                        // when identities are manually added to the wallet, UTXOs signable by that ID and spent transactions that were spent during the time that the ID was cansign
+                        // for this wallet are added to it as well. We may want to add a parameter to allow adding new IDs to be an automatic process, but we don't want someone adding or
+                        // removing an address from an identity they control to be able to affect the wallet of others in any meaningful way without action taken by the entity who owns
+                        // the address.
+                        // we assume that at the time we are set to manual hold, that the wallet is brought up to date with can sign or can spend changes at that time, so if manual hold is set
+                        // we are working on a wallet that should be in sync
+                        /*
+                        if ((!idHistory.second.IsValid() && idMapKey.flags & idMapKey.MANUAL_HOLD) || 
+                                (idHistory.second.IsValid() && idHistory.first.flags & idHistory.first.MANUAL_HOLD) && 
+                            (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second))
+                        */
+                        if (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second)
+                        {
+                            if (canSignCanSpend.first != wasCanSignCanSpend.first)
+                            {
+                                if (canSignCanSpend.first)
+                                {
+                                    // add all UTXOs that are sent to this address to this wallet
+                                    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
+                                    if (GetAddressUnspent(idID, CScript::P2ID, unspentOutputs))
+                                    {
+                                        COptCCParams newP;
+                                        auto consensus = Params().GetConsensus();
+                                        for (auto &newOut : unspentOutputs)
+                                        {
+                                            // must not be the current tx, not already present, and be a CC output to be correctly send to an identity
+                                            if (txHash != newOut.first.txhash && GetWalletTx(newOut.first.txhash) == nullptr && newOut.second.script.IsPayToCryptoCondition(newP))
+                                            {
+                                                txnouttype newTypeRet;
+                                                std::vector<CTxDestination> newAddressRet;
+                                                int newNRequired;
+                                                bool newCanSign, newCanSpend;
+                                                if (!ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend) && newCanSign)
+                                                {
+                                                    continue;
+                                                }
+                                                uint256 blkHash;
+                                                CTransaction newTx;
+                                                if (myGetTransaction(newOut.first.txhash, newTx, blkHash))
+                                                {
+                                                    auto sprNoteData = FindMySproutNotes(newTx);
+                                                    auto sapNoteDataAndAddressesToAdd = FindMySaplingNotes(newTx);
+                                                    auto sapNoteData = sapNoteDataAndAddressesToAdd.first;
+                                                    auto addrsToAdd = sapNoteDataAndAddressesToAdd.second;
+                                                    for (const auto &addressToAdd : addrsToAdd)
+                                                    {
+                                                        AddSaplingIncomingViewingKey(addressToAdd.second, addressToAdd.first);
+                                                    }
+
+                                                    CWalletTx wtx(this, newTx);
+
+                                                    if (sprNoteData.size() > 0) {
+                                                        wtx.SetSproutNoteData(sprNoteData);
+                                                    }
+
+                                                    if (sapNoteData.size() > 0) {
+                                                        wtx.SetSaplingNoteData(sapNoteData);
+                                                    }
+
+                                                    // Get merkle branch if transaction was found in a block
+                                                    CBlock block;
+                                                    auto blkIndexIt = mapBlockIndex.find(blkHash);
+                                                    if (!blkHash.IsNull() && blkIndexIt != mapBlockIndex.end() && chainActive.Contains(blkIndexIt->second))
+                                                    {
+                                                        // if it's supposed to be in a block, but can't be loaded, don't add without merkle
+                                                        if (!ReadBlockFromDisk(block, blkIndexIt->second, consensus))
+                                                        {
+                                                            continue;
+                                                        }
+                                                        wtx.SetMerkleBranch(block);
+                                                    }
+
+                                                    // Do not flush the wallet here for performance reasons
+                                                    // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
+                                                    CWalletDB walletdb(strWalletFile, "r+", false);
+
+                                                    AddToWallet(wtx, false, &walletdb);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    // we have gone from canSign to no control over this ID, either by deletion of tx or removal from signers. this will take effect retroactively on deletion and next block on addition
+                                    // 1. remove all transactions that have UTXOs sent to this ID and are no longer can sign or can spend for us from the wallet
+                                    // 2. if deletion, remove all transactions since the last idHistory that are in the wallet due to this ID
+                                    // 3. remove all IDs from the wallet that are found in those removed transactions, are neither canSpend nor canSign, and are neither on manual hold nor present on any remaining transactions
+
+                                    std::set<CIdentityID> idsToCheck = std::set<CIdentityID>({idID});
+
+                                    // first and last blocks to consider when deleting spent transactions from the wallet
+                                    uint32_t deleteSpentFrom, deleteSpentTo = 0;
+                                    
+                                    if (!pblock)
+                                    {
+                                        deleteSpentFrom = idHistory.first.blockHeight;
+                                    }
+                                    else
+                                    {
+                                        deleteSpentFrom = idMapKey.blockHeight;
+                                    }
+
+                                    for (auto &txidAndWtx : mapWallet)
+                                    {
+                                        txidAndWtx.second.MarkDirty();
+
+                                        // first check if it is within height range for deletion, and if not, continue
+                                        if (deleteSpentFrom || deleteSpentTo)
+                                        {
+                                            const CBlockIndex *pIndex;
+                                            if (txidAndWtx.second.GetDepthInMainChain(pIndex) == 1)
+                                            {
+                                                uint32_t wtxHeight = pIndex ? pIndex->GetHeight() : 0;
+                                                if (wtxHeight && (deleteSpentFrom && wtxHeight <= deleteSpentFrom || deleteSpentTo && wtxHeight > deleteSpentTo))
+                                                {
+                                                    continue;
+                                                }
+                                            }
+                                        }
+
+                                        // if the tx is from this wallet, we will not erase it
+                                        if (IsFromMe(txidAndWtx.second))
+                                        {
+                                            // recalculate
+                                            continue;
+                                        }
+
+                                        txnouttype txType;
+                                        std::vector<CTxDestination> addresses;
+                                        int minSigs;
+                                        bool eraseTx = true;
+                                        std::vector<CIdentityID> oneTxIDs;
+                                        int i = 0;
+                                        uint256 hashTx = txidAndWtx.second.GetHash();
+
+                                        // look for a reason not to delete this tx
+                                        for (auto txout : txidAndWtx.second.vout)
+                                        {
+                                            // we only want to remove UTXOs that are sent to this ID, used to be ours, and are no longer cansign
+                                            if (!txout.scriptPubKey.IsPayToCryptoCondition() || IsSpent(hashTx, i))
+                                            {
+                                                // if this is ours, we will not erase the tx, mark dirty
+                                                if (IsMine(txout))
+                                                {
+                                                    eraseTx = false;
+                                                    break;
+                                                }
+                                                continue;
+                                            }
+                                            bool canSignOut = false;
+                                            bool canSpendOut = false;
+
+                                            if (ExtractDestinations(txout.scriptPubKey, txType, addresses, minSigs, this, &canSignOut, &canSpendOut, deleteSpentTo ? deleteSpentTo : INT_MAX))
+                                            {
+                                                if (canSignOut || canSpendOut)
+                                                {
+                                                    // we should keep this transaction anyhow, check next
+                                                    eraseTx = false;
+                                                    break;
+                                                }
+                                                
+                                                for (auto &dest : addresses)
+                                                {
+                                                    if (dest.which() == COptCCParams::ADDRTYPE_ID)
+                                                    {
+                                                        oneTxIDs.push_back(GetDestinationID(dest));
+                                                    }
+                                                }
+                                            }
+
+                                            i++;
+                                        }
+                                        if (eraseTx)
+                                        {
+                                            EraseFromWallet(txidAndWtx.first);
+
+                                            for (auto &checkID : oneTxIDs)
+                                            {
+                                                idsToCheck.insert(checkID);
+                                            }
+                                        }
+                                    }
+
+                                    // now, we've deleted all transactions that were only in the wallet due to our ability to sign with the ID just removed
+                                    // loop through all transactions and remove all IDs found in the remaining transactions from our idsToCheck set after we 
+                                    // have gone through all wallet transactions, we can delete all IDs remaining in the idsToCheck set
+                                    // that are not on manual hold
+                                    for (auto &txidAndWtx : mapWallet)
+                                    {
+                                        for (auto txout : txidAndWtx.second.vout)
+                                        {
+                                            if (!txout.scriptPubKey.IsPayToCryptoCondition())
+                                            {
+                                                continue;
+                                            }
+                                            bool canSignOut = false;
+                                            bool canSpendOut = false;
+                                            txnouttype txType;
+                                            std::vector<CTxDestination> addresses;
+                                            int minSigs;
+                                            if (ExtractDestinations(txout.scriptPubKey, txType, addresses, minSigs, this, &canSignOut, &canSpendOut))
+                                            {
+                                                if (canSignOut || canSpendOut)
+                                                {
+                                                    for (auto &dest : addresses)
+                                                    {
+                                                        if (dest.which() == COptCCParams::ADDRTYPE_ID)
+                                                        {
+                                                            idsToCheck.erase(GetDestinationID(dest));
+                                                            if (!idsToCheck.size())
+                                                            {
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            if (!idsToCheck.size())
+                                            {
+                                                break;
+                                            }
+                                        }
+                                        if (!idsToCheck.size())
+                                        {
+                                            break;
+                                        }
+                                    }
+                                    // delete all remaining IDs that are not held for manual hold
+                                    for (auto &idToRemove : idsToCheck)
+                                    {
+                                        std::pair<CIdentityMapKey, CIdentityMapValue> identityToRemove;
+
+                                        // if not cansign or canspend, no transactions we care about relating to it and no manual hold, delete the ID from the wallet
+                                        if (GetIdentity(idToRemove, identityToRemove) && 
+                                            !((identityToRemove.first.flags & (identityToRemove.first.CAN_SIGN + identityToRemove.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
+                                        {
+                                            RemoveIdentity(CIdentityMapKey(idToRemove));
+                                        }
+                                    }
+                                }
+                            }
+                            else if (canSignCanSpend.second != wasCanSignCanSpend.second)
+                            {
+                                if (!canSignCanSpend.second)
+                                {
+                                    // mark all transactions dirty to recalculate numbers
+                                    for (auto &txidAndWtx : mapWallet)
+                                    {
+                                        // mark the whole wallet dirty. if this is an issue, we can optimize.
+                                        txidAndWtx.second.MarkDirty();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        isMine = IsMine(tx);
+
+        if (fExisted || isMine || IsFromMe(tx) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
+        {
+            CWalletTx wtx(this, tx);
 
             if (sproutNoteData.size() > 0) {
                 wtx.SetSproutNoteData(sproutNoteData);
@@ -2338,9 +2977,47 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
 {
     vector<valtype> vSolutions;
     txnouttype whichType;
-    const CScriptExt scriptPubKey = CScriptExt(tx.vout[voutNum].scriptPubKey);
+    CScript scriptPubKey = tx.vout[voutNum].scriptPubKey;
 
-    if (!Solver(scriptPubKey, whichType, vSolutions)) {
+    if (scriptPubKey.IsCheckLockTimeVerify())
+    {
+        uint8_t pushOp = scriptPubKey[0];
+        uint32_t scriptStart = pushOp + 3;
+
+        // continue with post CLTV script
+        scriptPubKey = CScript(scriptPubKey.size() > scriptStart ? scriptPubKey.begin() + scriptStart : scriptPubKey.end(), scriptPubKey.end());
+    }
+
+    COptCCParams p;
+    if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+    {
+        std::vector<CTxDestination> dests;
+        int minSigs;
+        bool canSign = false;
+        bool canSpend = false;
+
+        if (ExtractDestinations(scriptPubKey, whichType, dests, minSigs, this, &canSign, &canSpend))
+        {
+            if (canSpend)
+            {
+                return ISMINE_SPENDABLE;
+            }
+            else if (canSign)
+            {
+                return ISMINE_WATCH_ONLY;
+            }
+            else
+            {
+                return ISMINE_NO;
+            }
+        }
+        else
+        {
+            return ISMINE_NO;
+        }
+    }
+    else if (!Solver(scriptPubKey, whichType, vSolutions))
+    {
         if (this->HaveWatchOnly(scriptPubKey))
             return ISMINE_WATCH_ONLY;
         return ISMINE_NO;
@@ -3683,13 +4360,14 @@ CAmount CWallet::GetImmatureWatchOnlyReserveBalance() const
 uint64_t komodo_interestnew(int32_t txheight,uint64_t nValue,uint32_t nLockTime,uint32_t tiptime);
 uint64_t komodo_accrued_interest(int32_t *txheightp,uint32_t *locktimep,uint256 hash,int32_t n,int32_t checkheight,uint64_t checkvalue,int32_t tipheight);
 
-void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase) const
+void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase) const
 {
     uint64_t interest,*ptr;
     vCoins.clear();
 
     {
         LOCK2(cs_main, cs_wallet);
+        uint32_t nHeight = chainActive.Height() + 1;
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
         {
             const uint256& wtxid = it->first;
@@ -3701,16 +4379,22 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
             if (fOnlyConfirmed && !pcoin->IsTrusted())
                 continue;
 
-            if (pcoin->IsCoinBase() && !fIncludeCoinBase)
+            bool isCoinbase = pcoin->IsCoinBase();
+            if (isCoinbase && !fIncludeCoinBase)
                 continue;
-
-            if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0)
+            
+            if (isCoinbase && pcoin->GetBlocksToMaturity() > 0)
                 continue;
 
             int nDepth = pcoin->GetDepthInMainChain();
             if (nDepth < 0)
                 continue;
  
+            uint32_t coinHeight = nHeight - nDepth;
+            // even if we should include coinbases, we may opt to exclude protected coinbases, which must only be included when shielding
+            if (isCoinbase && !fIncludeProtectedCoinbase && Params().GetConsensus().fCoinbaseMustBeProtected && (CConstVerusSolutionVector::GetVersionByHeight(coinHeight) < CActivationHeight::SOLUTION_VERUSV4))
+                continue;
+
             for (int i = 0; i < pcoin->vout.size(); i++)
             {
                 isminetype mine = IsMine(pcoin->vout[i]);
@@ -3877,6 +4561,11 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
         if (!output.fSpendable)
             continue;
 
+        if (output.tx->vout[output.i].nValue == 0)
+        {
+            continue;
+        }
+
         const CWalletTx *pcoin = output.tx;
 
         if (output.nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? nConfMine : nConfTheirs))
@@ -3980,9 +4669,9 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
     return true;
 }
 
-bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet,  bool& fOnlyCoinbaseCoinsRet, bool& fNeedCoinbaseCoinsRet, const CCoinControl* coinControl) const
+bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet,  bool& fOnlyProtectedCoinbaseCoinsRet, bool& fNeedProtectedCoinbaseCoinsRet, const CCoinControl* coinControl) const
 {
-    // Output parameter fOnlyCoinbaseCoinsRet is set to true when the only available coins are coinbase utxos.
+    // Output parameter fOnlyProtectedCoinbaseCoinsRet is set to true when the only available coins are coinbase utxos.
     uint64_t tmp; int32_t retval;
     //if ( interestp == 0 )
     //{
@@ -3990,15 +4679,15 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*
     //    *interestp = 0;
     //}
     vector<COutput> vCoinsNoCoinbase, vCoinsWithCoinbase;
-    AvailableCoins(vCoinsNoCoinbase, true, coinControl, false, false);
-    AvailableCoins(vCoinsWithCoinbase, true, coinControl, false, true);
-    fOnlyCoinbaseCoinsRet = vCoinsNoCoinbase.size() == 0 && vCoinsWithCoinbase.size() > 0;
+    AvailableCoins(vCoinsNoCoinbase, true, coinControl, false, true, false);
+    AvailableCoins(vCoinsWithCoinbase, true, coinControl, false, true, true);
+    fOnlyProtectedCoinbaseCoinsRet = vCoinsNoCoinbase.size() == 0 && vCoinsWithCoinbase.size() > 0;
 
     // If coinbase utxos can only be sent to zaddrs, exclude any coinbase utxos from coin selection.
     bool fProtectCoinbase = Params().GetConsensus().fCoinbaseMustBeProtected;
     vector<COutput> vCoins = (fProtectCoinbase) ? vCoinsNoCoinbase : vCoinsWithCoinbase;
 
-    // Output parameter fNeedCoinbaseCoinsRet is set to true if coinbase utxos need to be spent to meet target amount
+    // Output parameter fNeedProtectedCoinbaseCoinsRet is set to true if coinbase utxos that must be shielded need to be spent to meet target amount
     if (fProtectCoinbase && vCoinsWithCoinbase.size() > vCoinsNoCoinbase.size()) {
         CAmount value = 0;
         for (const COutput& out : vCoinsNoCoinbase) {
@@ -4019,7 +4708,7 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*
                 if ( KOMODO_EXCHANGEWALLET == 0 )
                     valueWithCoinbase += out.tx->vout[out.i].interest;
             }
-            fNeedCoinbaseCoinsRet = (valueWithCoinbase >= nTargetValue);
+            fNeedProtectedCoinbaseCoinsRet = (valueWithCoinbase >= nTargetValue);
         }
     }
     // coin control -> return all selected outputs (we want all selected to go into the transaction for sure)
@@ -4430,7 +5119,9 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                         }
                     }
 
-                    if (txout.IsDust(::minRelayTxFee))
+                    COptCCParams p;
+
+                    if (txout.IsDust(::minRelayTxFee) && !(txout.nValue == 0 && txout.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode != EVAL_NONE))
                     {
                         if (recipient.fSubtractFeeFromAmount && nFeeRet > 0)
                         {
@@ -4449,15 +5140,15 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                 // Choose coins to use
                 set<pair<const CWalletTx*,unsigned int> > setCoins;
                 CAmount nValueIn = 0;
-                bool fOnlyCoinbaseCoins = false;
-                bool fNeedCoinbaseCoins = false;
+                bool fOnlyProtectedCoinbaseCoins = false;
+                bool fNeedProtectedCoinbaseCoins = false;
                 interest2 = 0;
-                if (!SelectCoins(nTotalValue, setCoins, nValueIn, fOnlyCoinbaseCoins, fNeedCoinbaseCoins, coinControl))
+                if (!SelectCoins(nTotalValue, setCoins, nValueIn, fOnlyProtectedCoinbaseCoins, fNeedProtectedCoinbaseCoins, coinControl))
                 {
-                    if (fOnlyCoinbaseCoins && Params().GetConsensus().fCoinbaseMustBeProtected) {
-                        strFailReason = _("Coinbase funds can only be sent to a zaddr");
-                    } else if (fNeedCoinbaseCoins) {
-                        strFailReason = _("Insufficient funds, coinbase funds can only be spent after they have been sent to a zaddr");
+                    if (fOnlyProtectedCoinbaseCoins) {
+                        strFailReason = _("Coinbase funds earned while shielding protection is active can only be sent to a zaddr");
+                    } else if (fNeedProtectedCoinbaseCoins) {
+                        strFailReason = _("Insufficient funds, protected coinbase funds can only be spent after they have been sent to a zaddr");
                     } else {
                         strFailReason = _("Insufficient funds");
                     }
@@ -4496,7 +5187,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                     interest2 = 0;
                 }
                 CAmount nChange = (nValueIn - nValue + interest2);
-//fprintf(stderr,"wallet change %.8f (%.8f - %.8f) interest2 %.8f total %.8f\n",(double)nChange/COIN,(double)nValueIn/COIN,(double)nValue/COIN,(double)interest2/COIN,(double)nTotalValue/COIN);
+                //fprintf(stderr,"wallet change %.8f (%.8f - %.8f) interest2 %.8f total %.8f\n",(double)nChange/COIN,(double)nValueIn/COIN,(double)nValue/COIN,(double)interest2/COIN,(double)nTotalValue/COIN);
                 if (nSubtractFeeFromAmount == 0)
                     nChange -= nFeeRet;
 
@@ -4563,7 +5254,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                     }
 
                     // Never create dust outputs; if we would, just
-                    // add the dust to the fee.
+                    // add the dust to the fee. Valid cryptoconditions with a valid eval function are allowed to create outputs of 0
                     if (newTxOut.IsDust(::minRelayTxFee))
                     {
                         nFeeRet += nChange;
@@ -4613,7 +5304,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                     const CScript& scriptPubKey = coin.first->vout[coin.second].scriptPubKey;
                     SignatureData sigdata;
                     if (sign)
-                        signSuccess = ProduceSignature(TransactionSignatureCreator(this, &txNewConst, nIn, coin.first->vout[coin.second].nValue, SIGHASH_ALL), scriptPubKey, sigdata, consensusBranchId);
+                        signSuccess = ProduceSignature(TransactionSignatureCreator(this, &txNewConst, nIn, coin.first->vout[coin.second].nValue, scriptPubKey), scriptPubKey, sigdata, consensusBranchId);
                     else
                         signSuccess = ProduceSignature(DummySignatureCreator(this), scriptPubKey, sigdata, consensusBranchId);
 
@@ -5141,7 +5832,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     const CScript& scriptPubKey = coin.first->vout[coin.second].scriptPubKey;
                     SignatureData sigdata;
                     if (sign)
-                        signSuccess = ProduceSignature(TransactionSignatureCreator(this, &txNewConst, nIn, coin.first->vout[coin.second].nValue, SIGHASH_ALL), scriptPubKey, sigdata, consensusBranchId);
+                        signSuccess = ProduceSignature(TransactionSignatureCreator(this, &txNewConst, nIn, coin.first->vout[coin.second].nValue, scriptPubKey), scriptPubKey, sigdata, consensusBranchId);
                     else
                         signSuccess = ProduceSignature(DummySignatureCreator(this), scriptPubKey, sigdata, consensusBranchId);
 
@@ -5918,6 +6609,17 @@ public:
         CScript script;
         if (keystore.GetCScript(scriptId, script))
             Process(script);
+    }
+
+    void operator()(const CIdentityID &idId) {
+        std::pair<CIdentityMapKey, CIdentityMapValue> identity;
+        if (keystore.GetIdentity(idId, identity))
+        {
+            for (auto dest : identity.second.primaryAddresses)
+            {
+                boost::apply_visitor(*this, dest);
+            }
+        }
     }
 
     void operator()(const CNoDestination &none) {}
