@@ -122,17 +122,26 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
         {
             try
             {
-                uint160 key(ParseHex(keys[i]));
-                if (!key.IsNull() && i < values.size())
+                std::vector<unsigned char> vch(ParseHex(keys[i]));
+                uint160 key;
+                if (vch.size() == 20 && !((key = uint160(vch)).IsNull() || i < values.size()))
                 {
                     contentMap[key] = uint256S(uni_get_str(values[i]));
+                }
+                else
+                {
+                    nVersion = VERSION_INVALID;
                 }
             }
             catch (const std::exception &e)
             {
+                nVersion = VERSION_INVALID;
+            }
+            if (nVersion == VERSION_INVALID)
+            {
                 printf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
                 LogPrintf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
-                nVersion = VERSION_INVALID;
+                break;
             }
         }
     }
