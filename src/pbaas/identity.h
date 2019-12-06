@@ -261,8 +261,8 @@ public:
     // 
     std::string name;
 
-    // content hashes
-    std::vector<uint256> contentHashes;
+    // content hashes, key value, where key is 20 byte ripemd160
+    std::map<uint160, uint256> contentMap;
 
     // revocation authority - can only invalidate identity or update revocation
     uint160 revocationAuthority;
@@ -281,18 +281,29 @@ public:
               int32_t minPrimarySigs,
               const uint160 &Parent,
               const std::string &Name,
-              const std::vector<uint256> &hashes,
+              const std::vector<std::pair<uint160, uint256>> &hashes,
               const uint160 &Revocation,
               const uint160 &Recovery,
               const std::vector<libzcash::SaplingPaymentAddress> &Inboxes = std::vector<libzcash::SaplingPaymentAddress>()) : 
               CPrincipal(Version, Flags, primary, minPrimarySigs),
               parent(Parent),
               name(Name),
-              contentHashes(hashes),
               revocationAuthority(Revocation),
               recoveryAuthority(Recovery),
               privateAddresses(Inboxes)
     {
+        for (auto &entry : hashes)
+        {
+            if (!entry.first.IsNull())
+            {
+                contentMap[entry.first] = entry.second;
+            }
+            else
+            {
+                // any recognizable error should make this invalid
+                nVersion = VERSION_INVALID;
+            }
+        }
     }
 
     CIdentity(const UniValue &uni);
@@ -310,7 +321,34 @@ public:
         READWRITE(*(CPrincipal *)this);
         READWRITE(parent);
         READWRITE(name);
-        READWRITE(contentHashes);
+
+        std::vector<std::pair<uint160, uint256>> kvContent;
+        if (ser_action.ForRead())
+        {
+            READWRITE(kvContent);
+            for (auto &entry : kvContent)
+            {
+                if (!entry.first.IsNull())
+                {
+                    contentMap[entry.first] = entry.second;
+                }
+                else
+                {
+                    // any recognizable error should make this invalid
+                    nVersion = VERSION_INVALID;
+                }
+            }
+        }
+        else
+        {
+            for (auto entry : contentMap)
+            {
+                kvContent.push_back(entry);
+            }
+            READWRITE(kvContent);
+        }
+
+        READWRITE(contentMap);
         READWRITE(revocationAuthority);
         READWRITE(recoveryAuthority);
         READWRITE(privateAddresses);
@@ -429,7 +467,7 @@ public:
     bool IsPrimaryMutation(const CIdentity &newIdentity) const
     {
         if (CPrincipal::IsPrimaryMutation(newIdentity) ||
-            contentHashes != newIdentity.contentHashes ||
+            contentMap != newIdentity.contentMap ||
             privateAddresses != newIdentity.privateAddresses)
         {
             return true;
