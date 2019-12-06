@@ -126,7 +126,7 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
                 uint160 key;
                 if (vch.size() == 20 && !((key = uint160(vch)).IsNull() || i < values.size()))
                 {
-                    contentMap[key] = uint256S(vch);
+                    contentMap[key] = uint256S(uni_get_str(values[i]));
                 }
                 else
                 {
