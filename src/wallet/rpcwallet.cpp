@@ -807,7 +807,7 @@ UniValue signmessage(const UniValue& params, bool fHelp)
     if (fHelp || params.size() != 2)
         throw runtime_error(
             "signmessage \"t-addr\" \"message\"\n"
-            "\nSign a message with the private key of a t-addr"
+            "\nSign a message with the private key of a t-addr or the authorities present in this wallet for an identity"
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"
             "1. \"t-addr\"  (string, required) The transparent address to use for the private key.\n"
@@ -834,8 +834,10 @@ UniValue signmessage(const UniValue& params, bool fHelp)
 
     CTxDestination dest = DecodeDestination(strAddress);
     if (!IsValidDestination(dest)) {
-        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address");
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address or identity");
     }
+
+
 
     const CKeyID *keyID = boost::get<CKeyID>(&dest);
     if (!keyID) {
