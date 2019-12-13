@@ -621,7 +621,7 @@ std::string CleanName(const std::string &Name, uint160 &Parent)
             idHash = Hash(Parent.begin(), Parent.end(), idHash.begin(), idHash.end());
         }
         Parent = Hash160(idHash.begin(), idHash.end());
-        printf("uint160 for parent %s: %s\n", parentName, Parent.GetHex().c_str());
+        //printf("uint160 for parent %s: %s\n", parentName, Parent.GetHex().c_str());
     }
     return subNames[0];
 }
@@ -703,7 +703,7 @@ CIdentityID CIdentity::GetID() const
 uint160 CCrossChainRPCData::GetChainID(std::string name)
 {
     uint160 parent;
-    printf("uint160 for name %s: %s\n", name.c_str(), CIdentity::GetID(name, parent).GetHex().c_str());
+    //printf("uint160 for name %s: %s\n", name.c_str(), CIdentity::GetID(name, parent).GetHex().c_str());
     return CIdentity::GetID(name, parent);
 }
 
