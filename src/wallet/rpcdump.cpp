@@ -456,6 +456,15 @@ UniValue dumpwallet(const UniValue& params, bool fHelp)
 	return dumpwallet_impl(params, fHelp, false);
 }
 
+// returns true IFF:
+//  the address once had transactions and now has no UTXOs
+bool IsAddressEmpty(const CKeyID &keyid)
+{
+
+    // TODO - current behavior is false -- finish
+    return false;
+}
+
 UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
 {
     LOCK2(cs_main, pwalletMain->cs_wallet);
@@ -471,6 +480,7 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
     if (exportdir.empty()) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Cannot export wallet until the verusd -exportdir option has been set");
     }
+
     std::string unclean = params[0].get_str();
     std::string clean = SanitizeFilename(unclean);
     if (clean.compare(unclean) != 0) {
@@ -486,6 +496,14 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
     file.open(exportfilepath.string().c_str());
     if (!file.is_open())
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot open wallet dump file");
+
+    // this will discard (not export) any addresses that have had UTXOs in the past and now have no UTXOs. new addresses that never had UTXOs are expected to be there for a reason
+    // and may have been given to someone for a future payment
+    bool discardEmptyAddresses = false;
+    if (params.size() > 1)
+    {
+        discardEmptyAddresses = uni_get_bool(params[1]);
+    }
 
     std::map<CKeyID, int64_t> mapKeyBirth;
     std::set<CKeyID> setKeyPool;
@@ -518,7 +536,7 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
         std::string strTime = EncodeDumpTime(it->first);
         std::string strAddr = EncodeDestination(keyid);
         CKey key;
-        if (pwalletMain->GetKey(keyid, key)) {
+        if (pwalletMain->GetKey(keyid, key) && !(discardEmptyAddresses && IsAddressEmpty(keyid))) {
             if (pwalletMain->mapAddressBook.count(keyid)) {
                 file << strprintf("%s %s label=%s # addr=%s\n", EncodeSecret(key), strTime, EncodeDumpString(pwalletMain->mapAddressBook[keyid].name), strAddr);
             } else if (setKeyPool.count(keyid)) {

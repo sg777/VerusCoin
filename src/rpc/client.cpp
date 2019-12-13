@@ -184,21 +184,20 @@ std::string CleanName(const std::string &Name, uint160 &Parent)
     {
         return "";
     }
-
     for (int i = subNames.size() - 1; i > 0; i--)
     {
-        const char *idName = boost::algorithm::to_lower_copy(subNames[i]).c_str();
+        std::string parentNameStr = boost::algorithm::to_lower_copy(subNames[i]);
+        const char *parentName = parentNameStr.c_str();
         uint256 idHash;
 
         if (Parent.IsNull())
         {
-            idHash = Hash(idName, idName + strlen(idName));
+            idHash = Hash(parentName, parentName + parentNameStr.size());
         }
         else
         {
-            idHash = Hash(idName, idName + strlen(idName));
+            idHash = Hash(parentName, parentName + parentNameStr.size());
             idHash = Hash(Parent.begin(), Parent.end(), idHash.begin(), idHash.end());
-
         }
         Parent = Hash160(idHash.begin(), idHash.end());
     }

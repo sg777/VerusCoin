@@ -600,33 +600,28 @@ std::string CleanName(const std::string &Name, uint160 &Parent)
 {
     std::string chainName;
     std::vector<std::string> subNames = ParseSubNames(Name, chainName);
-    uint160 newParent = Parent;
 
     if (!subNames.size())
     {
         return "";
     }
-
     for (int i = subNames.size() - 1; i > 0; i--)
     {
-        Parent = newParent;
-
-        std::string subName = boost::algorithm::to_lower_copy(subNames[i]);
-        const char *idName = subName.c_str();
-        //printf("hashing: %s, %s\n", idName, Parent.GetHex().c_str());
-
+        std::string parentNameStr = boost::algorithm::to_lower_copy(subNames[i]);
+        const char *parentName = parentNameStr.c_str();
         uint256 idHash;
+
         if (Parent.IsNull())
         {
-            idHash = Hash(idName, idName + strlen(idName));
+            idHash = Hash(parentName, parentName + parentNameStr.size());
         }
         else
         {
-            idHash = Hash(idName, idName + strlen(idName));
+            idHash = Hash(parentName, parentName + strlen(parentName));
             idHash = Hash(Parent.begin(), Parent.end(), idHash.begin(), idHash.end());
-
         }
-        newParent = Hash160(idHash.begin(), idHash.end());
+        Parent = Hash160(idHash.begin(), idHash.end());
+        //printf("uint160 for parent %s: %s\n", parentName, Parent.GetHex().c_str());
     }
     return subNames[0];
 }
@@ -708,6 +703,7 @@ CIdentityID CIdentity::GetID() const
 uint160 CCrossChainRPCData::GetChainID(std::string name)
 {
     uint160 parent;
+    //printf("uint160 for name %s: %s\n", name.c_str(), CIdentity::GetID(name, parent).GetHex().c_str());
     return CIdentity::GetID(name, parent);
 }
 
