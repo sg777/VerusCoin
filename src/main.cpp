@@ -5345,9 +5345,29 @@ bool ContextualCheckBlock(
     // section '6.8 Bitcoin Improvement Proposals').
     if (nHeight > 0)
     {
-        CScript expect = CScript() << nHeight;
-        if (block.vtx[0].vin[0].scriptSig.size() < expect.size() ||
-            !std::equal(expect.begin(), expect.end(), block.vtx[0].vin[0].scriptSig.begin())) {
+        auto it = block.vtx[0].vin[0].scriptSig.begin();
+        opcodetype opcode;
+        std::vector<unsigned char> vch;
+        if (!block.vtx[0].vin[0].scriptSig.GetOp2(it, opcode, &vch))
+        {
+            return state.DoS(100, error("%s: invalid coinbase input script", __func__), REJECT_INVALID, "bad-cb-input");
+        }
+
+        int heightmatches = false;
+
+        if (opcode >= OP_1 && opcode <= OP_16)
+        {
+            heightmatches = CScript::DecodeOP_N(opcode) == nHeight;
+        }
+        else
+        {
+            CScript expect = CScript() << nHeight;
+            heightmatches = std::equal(expect.begin(), expect.end(), block.vtx[0].vin[0].scriptSig.begin());
+        }
+        
+
+
+        if (block.vtx[0].vin[0].scriptSig.size() < expect.size() || !heightmatches) {
             return state.DoS(100, error("%s: block height mismatch in coinbase", __func__), REJECT_INVALID, "bad-cb-height");
         }
     }
