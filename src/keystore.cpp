@@ -278,6 +278,7 @@ bool CBasicKeyStore::GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdent
             notmine.push_back(make_pair(idKey, &identity.second));
         }
     }
+    return (mine.size() || imsigner.size() || notmine.size());
 }
 
 bool CBasicKeyStore::AddWatchOnly(const CScript &dest)
