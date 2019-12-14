@@ -113,17 +113,22 @@ uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
-std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
+std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter)
 {
     std::string nameCopy = Name;
     std::string invalidChars = "\\/:*?\"<>|";
+    if (displayfilter)
+    {
+        invalidChars += "\n\t\r\b\t\v\f\x1B";
+    }
     for (int i = 0; i < nameCopy.size(); i++)
     {
         if (invalidChars.find(nameCopy[i]) != std::string::npos)
         {
-            nameCopy[i] = '_';
+            return std::vector<std::string>();
         }
     }
+
     std::vector<std::string> retNames;
     boost::split(retNames, nameCopy, boost::is_any_of("@"));
     if (!retNames.size() || retNames.size() > 2)
@@ -147,6 +152,11 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
         {
             retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
         }
+        // spaces are allowed, but no sub-name can have leading or trailing spaces
+        if (!retNames[i].size() || retNames[i] != TrimTrailing(TrimLeading(retNames[i], ' '), ' '))
+        {
+            return std::vector<std::string>();
+        }
     }
 
     // if no chain is specified, default to chain of the ID
@@ -155,7 +165,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
         if (retNames.size() == 1)
         {
             // by default, we assume the Verus chain for no suffix
-            ChainOut = "";
+            ChainOut = VERUS_CHAINNAME;
         }
         else
         {
@@ -175,7 +185,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 
 // takes a multipart name, either complete or partially processed with a Parent hash,
 // hash its parent names into a parent ID and return the parent hash and cleaned, single name
-std::string CleanName(const std::string &Name, uint160 &Parent)
+std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter)
 {
     std::string chainName;
     std::vector<std::string> subNames = ParseSubNames(Name, chainName);
@@ -196,10 +206,11 @@ std::string CleanName(const std::string &Name, uint160 &Parent)
         }
         else
         {
-            idHash = Hash(parentName, parentName + parentNameStr.size());
+            idHash = Hash(parentName, parentName + strlen(parentName));
             idHash = Hash(Parent.begin(), Parent.end(), idHash.begin(), idHash.end());
         }
         Parent = Hash160(idHash.begin(), idHash.end());
+        //printf("uint160 for parent %s: %s\n", parentName, Parent.GetHex().c_str());
     }
     return subNames[0];
 }

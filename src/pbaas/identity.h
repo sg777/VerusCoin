@@ -32,7 +32,8 @@
 #include "primitives/transaction.h"
 #include "arith_uint256.h"
 
-std::string CleanName(const std::string &Name, uint160 &Parent);
+std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false);
+std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter=false);
 
 class CCommitmentHash
 {
