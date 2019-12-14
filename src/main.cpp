@@ -5362,12 +5362,10 @@ bool ContextualCheckBlock(
         else
         {
             CScript expect = CScript() << nHeight;
-            heightmatches = std::equal(expect.begin(), expect.end(), block.vtx[0].vin[0].scriptSig.begin());
+            heightmatches = block.vtx[0].vin[0].scriptSig.size() >= expect.size() && std::equal(expect.begin(), expect.end(), block.vtx[0].vin[0].scriptSig.begin());
         }
-        
 
-
-        if (block.vtx[0].vin[0].scriptSig.size() < expect.size() || !heightmatches) {
+        if (!heightmatches) {
             return state.DoS(100, error("%s: block height mismatch in coinbase", __func__), REJECT_INVALID, "bad-cb-height");
         }
     }
