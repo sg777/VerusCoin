@@ -5346,9 +5346,9 @@ bool ContextualCheckBlock(
     if (nHeight > 0)
     {
         auto it = block.vtx[0].vin[0].scriptSig.begin();
-        opcodetype opcode;
-        std::vector<unsigned char> vch;
-        if (!block.vtx[0].vin[0].scriptSig.GetOp2(it, opcode, &vch))
+        opcodetype opcode = (opcodetype)(block.vtx[0].vin[0].scriptSig.size() ? *it : OP_INVALIDOPCODE);
+
+        if (opcode == OP_INVALIDOPCODE)
         {
             return state.DoS(100, error("%s: invalid coinbase input script", __func__), REJECT_INVALID, "bad-cb-input");
         }
