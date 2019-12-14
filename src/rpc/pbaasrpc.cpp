@@ -4267,9 +4267,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             "        ...\n"
             "    }\n"
             "}\n"
-            "feeoffer                           (amount, optional) amount to offer miner/staker for the registration fee, if missing, uses standard price\n"
+            "feeoffer                           (amount, optional) amount to offer miner/staker for the registration fee, if missing, uses standard price\n\n"
 
             "\nResult:\n"
+            "   transactionid                   (hexstr)\n"
 
             "\nExamples:\n"
             + HelpExampleCli("registeridentity", "jsonidregistration")

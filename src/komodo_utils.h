@@ -1433,8 +1433,8 @@ void komodo_configfile(char *symbol,uint16_t rpcport)
                 {
                     if (PBAAS_TESTMODE)
                     {
-                        fprintf(fp,"addnode=%s\n", "185.25.48.72:16817");
-                        fprintf(fp,"addnode=%s\n", "185.64.105.111:16817");
+                        fprintf(fp,"addnode=%s\n", "185.25.48.72:17844");
+                        fprintf(fp,"addnode=%s\n", "185.64.105.111:17844");
                     }
                 }
                 else
@@ -1805,7 +1805,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_supply"] = "5000000000000000";
         mapArgs["-ac_eras"] = "1";
         mapArgs["-ac_reward"] = "2400000000";
-        mapArgs["-ac_halving"] = GetArg("-ac_halving", "225691");    // allow testing easily with different values here
+        mapArgs["-ac_halving"] = GetArg("-ac_halving", "225697");    // allow testing easily with different values here
         mapArgs["-ac_decay"] = "0";
         mapArgs["-ac_options"] = "8"; // OPTION_ID_REFERRALS
         mapArgs["-ac_end"] = "0";

@@ -1166,7 +1166,6 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
     result.push_back(Pair("received", received));
 
     return result;
-
 }
 
 UniValue komodo_snapshot(int top);
