@@ -4221,7 +4221,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     if (CIdentity::LookupIdentity(CIdentity::GetID(name, parent)).IsValid())
     {
-        throw JSONRPCError(RPC_VERIFY_ALREADY_IN_CHAIN, "Identity already exists.");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity already exists.");
     }
 
     CReserveKey reserveKey(pwalletMain);
@@ -4859,7 +4859,27 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     CTxIn idTxIn;
     uint32_t height;
 
-    CIdentity identity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(idID)), 0, &height, &idTxIn);
+    CIdentity identity;
+    bool canSign = false, canSpend = false, found = false;
+
+    if (pwalletMain)
+    {
+        LOCK(pwalletMain->cs_wallet);
+        uint256 txID;
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+        if (pwalletMain->GetIdentity(GetDestinationID(idID), keyAndIdentity))
+        {
+            found = true;
+            canSign = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SIGN;
+            canSpend = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SPEND;
+            identity = static_cast<CIdentity>(keyAndIdentity.second);
+        }
+    }
+
+    if (!found)
+    {
+        identity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(idID)), 0, &height, &idTxIn);
+    }
 
     UniValue ret(UniValue::VOBJ);
 
@@ -4867,6 +4887,9 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     if (identity.IsValid() && identity.name == CleanName(identity.name, parent, true))
     {
         ret.push_back(Pair("identity", identity.ToUniValue()));
+        ret.push_back(Pair("status", identity.IsRevoked() ? "revoked" : "active"));
+        ret.push_back(Pair("canspendfor", canSpend));
+        ret.push_back(Pair("cansignfor", canSign));
         ret.push_back(Pair("blockheight", (int64_t)height));
         ret.push_back(Pair("txid", idTxIn.prevout.hash.GetHex()));
         ret.push_back(Pair("vout", (int32_t)idTxIn.prevout.n));
