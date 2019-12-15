@@ -869,7 +869,6 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_1_port(__m128i *randomso
 
                 uint64_t rounds = selector >> 61; // loop randomly between 1 and 8 times
                 __m128i *rc = prand;
-                uint64_t aesroundoffset = 0;
                 __m128i onekey;
 
                 do

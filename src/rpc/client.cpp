@@ -15,6 +15,7 @@
 #include <univalue.h>
 
 using namespace std;
+extern std::string VERUS_CHAINNAME;
 
 class CRPCConvertParam
 {
@@ -111,6 +112,39 @@ uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
     hw << cid;
     uint256 chainHash = hw.GetHash();
     return Hash160(chainHash.begin(), chainHash.end());
+}
+
+std::string TrimLeading(const std::string &Name, unsigned char ch)
+{
+    std::string nameCopy = Name;
+    int removeSpaces;
+    for (removeSpaces = 0; removeSpaces < nameCopy.size(); removeSpaces++)
+    {
+        if (nameCopy[removeSpaces] != ch)
+        {
+            break;
+        }
+    }
+    if (removeSpaces)
+    {
+        nameCopy.erase(nameCopy.begin(), nameCopy.begin() + removeSpaces);
+    }
+    return nameCopy;
+}
+
+std::string TrimTrailing(const std::string &Name, unsigned char ch)
+{
+    std::string nameCopy = Name;
+    int removeSpaces;
+    for (removeSpaces = nameCopy.size() - 1; removeSpaces >= 0; removeSpaces--)
+    {
+        if (nameCopy[removeSpaces] != ch)
+        {
+            break;
+        }
+    }
+    nameCopy.resize(nameCopy.size() - ((nameCopy.size() - 1) - removeSpaces));
+    return nameCopy;
 }
 
 std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter)
