@@ -4178,10 +4178,10 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CheckIdentityAPIsValid();
 
     uint160 parent;
-    std::string name = CleanName(uni_get_str(params[0]), parent);
+    std::string name = CleanName(uni_get_str(params[0]), parent, true);
 
     // if either we have an invalid name or an implied parent, that is not valid
-    if (name == "" || !parent.IsNull())
+    if (name == "" || !parent.IsNull() || name != uni_get_str(params[0]))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid name for commitment. Names must not have leading or trailing spaces and must not include any of the following characters between parentheses (\\/:*?\"<>|@)");
     }
@@ -4221,7 +4221,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     if (CIdentity::LookupIdentity(CIdentity::GetID(name, parent)).IsValid())
     {
-        throw JSONRPCError(RPC_VERIFY_ALREADY_IN_CHAIN, "Identity already exists.");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity already exists.");
     }
 
     CReserveKey reserveKey(pwalletMain);
@@ -4859,13 +4859,37 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     CTxIn idTxIn;
     uint32_t height;
 
-    CIdentity identity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(idID)), 0, &height, &idTxIn);
+    CIdentity identity;
+    bool canSign = false, canSpend = false, found = false;
+
+    if (pwalletMain)
+    {
+        LOCK(pwalletMain->cs_wallet);
+        uint256 txID;
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+        if (pwalletMain->GetIdentity(GetDestinationID(idID), keyAndIdentity))
+        {
+            found = true;
+            canSign = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SIGN;
+            canSpend = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SPEND;
+            identity = static_cast<CIdentity>(keyAndIdentity.second);
+        }
+    }
+
+    if (!found)
+    {
+        identity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(idID)), 0, &height, &idTxIn);
+    }
 
     UniValue ret(UniValue::VOBJ);
 
-    if (identity.IsValid())
+    uint160 parent;
+    if (identity.IsValid() && identity.name == CleanName(identity.name, parent, true))
     {
         ret.push_back(Pair("identity", identity.ToUniValue()));
+        ret.push_back(Pair("status", identity.IsRevoked() ? "revoked" : "active"));
+        ret.push_back(Pair("canspendfor", canSpend));
+        ret.push_back(Pair("cansignfor", canSign));
         ret.push_back(Pair("blockheight", (int64_t)height));
         ret.push_back(Pair("txid", idTxIn.prevout.hash.GetHex()));
         ret.push_back(Pair("vout", (int32_t)idTxIn.prevout.n));
@@ -4938,21 +4962,33 @@ UniValue listidentities(const UniValue& params, bool fHelp)
         {
             for (auto identity : mine)
             {
-                ret.push_back(IdentityPairToUni(identity));
+                uint160 parent;
+                if (identity.second->IsValid() && identity.second->name == CleanName(identity.second->name, parent, true))
+                {
+                    ret.push_back(IdentityPairToUni(identity));
+                }
             }
         }
         if (includeCanSign)
         {
             for (auto identity : imsigner)
             {
-                ret.push_back(IdentityPairToUni(identity));
+                uint160 parent;
+                if (identity.second->IsValid() && identity.second->name == CleanName(identity.second->name, parent, true))
+                {
+                    ret.push_back(IdentityPairToUni(identity));
+                }
             }
         }
         if (includeWatchOnly)
         {
             for (auto identity : notmine)
             {
-                ret.push_back(IdentityPairToUni(identity));
+                uint160 parent;
+                if (identity.second->IsValid() && identity.second->name == CleanName(identity.second->name, parent, true))
+                {
+                    ret.push_back(IdentityPairToUni(identity));
+                }
             }
         }
         return ret;

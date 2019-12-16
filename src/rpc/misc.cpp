@@ -658,6 +658,79 @@ UniValue createmultisig(const UniValue& params, bool fHelp)
     return result;
 }
 
+UniValue hashmessage(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "hashmessage \"hexmessage\"\n"
+            "\nReturns the hash of the data in a hex message\n"
+            "\nArguments:\n"
+            "  \"hexmessage\"         (string, required) This message is converted from hex, the data is hashed, then returned\n"
+            "  \"hashtype\"           (string, optional) one of (\"sha256\", \"verushash2\", \"verushash2b\", \"verushash2.1\"), defaults to sha256\n"
+            "\nResult:\n"
+            "  \"hashresult\"         (hexstring) 32 byte has in hex of the data passed in using the hash of the specific blockheight\n"
+            "\nExamples:\n"
+            "\nUnlock the wallet for 30 seconds\n"
+            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
+            "\nCreate the signature\n"
+            + HelpExampleCli("signmessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"my message\"") +
+            "\nVerify the signature\n"
+            + HelpExampleCli("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"signature\" \"my message\"") +
+            "\nAs json rpc\n"
+            + HelpExampleRpc("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"my message\"")
+        );
+    
+    std::string hexMessage = uni_get_str(params[0]);
+    if (!hexMessage.size())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "No message to hash");
+    }
+
+    std::vector<unsigned char> vmsg;
+    try
+    {
+        vmsg = ParseHex(hexMessage);
+    }
+    catch(const std::exception& e)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Message to hash must be in hexadecimal format");
+    }
+    
+    std::string hashType = params.size() > 1 ? uni_get_str(params[1]) : "sha256";
+
+    uint256 result;
+
+    if (hashType == "sha256")
+    {
+        CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+        hw.write((const char *)vmsg.data(), vmsg.size());
+        result = hw.GetHash();
+    }
+    else if (hashType == "verushash2")
+    {
+        CVerusHashV2Writer hw(SER_GETHASH, PROTOCOL_VERSION);
+        hw.write((const char *)vmsg.data(), vmsg.size());
+        result = hw.GetHash();
+    }
+    else if (hashType == "verushash2b")
+    {
+        CVerusHashV2bWriter hw(SER_GETHASH, PROTOCOL_VERSION, CActivationHeight::ACTIVATE_VERUSHASH2);
+        hw.write((const char *)vmsg.data(), vmsg.size());
+        result = hw.GetHash();
+    }
+    else if (hashType == "verushash2.1")
+    {
+        CVerusHashV2bWriter hw(SER_GETHASH, PROTOCOL_VERSION, CActivationHeight::ACTIVATE_VERUSHASH2_1);
+        hw.write((const char *)vmsg.data(), vmsg.size());
+        result = hw.GetHash();
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Hash type " + hashType + " must be one of (\"sha256\", \"verushash2\", \"verushash2b\", \"verushash2.1\")");
+    }
+    return result.GetHex();
+}
+
 UniValue verifymessage(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 3)
@@ -1360,6 +1433,7 @@ static const CRPCCommand commands[] =
     { "util",               "z_validateaddress",      &z_validateaddress,      true  }, /* uses wallet if enabled */
     { "util",               "createmultisig",         &createmultisig,         true  },
     { "util",               "verifymessage",          &verifymessage,          true  },
+    { "util",               "hashmessage",            &hashmessage,            true  },
 
     // START insightexplorer
     /* Address index */

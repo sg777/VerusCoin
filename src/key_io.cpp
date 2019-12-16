@@ -528,13 +528,17 @@ std::string TrimTrailing(const std::string &Name, unsigned char ch)
     return nameCopy;
 }
 
-std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut)
+std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter)
 {
     std::string nameCopy = Name;
-    std::set<unsigned char> invalidChars = {'\\', '/', ':', '*', '?', '\"', '<', '>', '|'};
+    std::string invalidChars = "\\/:*?\"<>|";
+    if (displayfilter)
+    {
+        invalidChars += "\n\t\r\b\t\v\f\x1B";
+    }
     for (int i = 0; i < nameCopy.size(); i++)
     {
-        if (invalidChars.count(nameCopy[i]))
+        if (invalidChars.find(nameCopy[i]) != std::string::npos)
         {
             return std::vector<std::string>();
         }
@@ -596,7 +600,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 
 // takes a multipart name, either complete or partially processed with a Parent hash,
 // hash its parent names into a parent ID and return the parent hash and cleaned, single name
-std::string CleanName(const std::string &Name, uint160 &Parent)
+std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter)
 {
     std::string chainName;
     std::vector<std::string> subNames = ParseSubNames(Name, chainName);

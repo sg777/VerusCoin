@@ -5306,7 +5306,7 @@ bool ContextualCheckBlock(
         const CTransaction& tx = block.vtx[i];
         
         // Check transaction contextually against consensus rules at block height
-        if (!ContextualCheckTransaction(tx, state, chainparams, nHeight, 100)) {
+        if (!ContextualCheckTransaction(tx, state, chainparams, nHeight, 10)) {
             return false; // Failure reason has been set in validation state object
         }
 
@@ -5318,7 +5318,7 @@ bool ContextualCheckBlock(
         {
             if (newIDs.count(boost::algorithm::to_lower_copy(nameRes.name)))
             {
-                return state.DoS(100, error("%s: attempt to submit block with duplicate identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                return state.DoS(10, error("%s: attempt to submit block with duplicate identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
             }
             newIDs.insert(boost::algorithm::to_lower_copy(nameRes.name));
         }
