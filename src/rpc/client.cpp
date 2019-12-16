@@ -28,10 +28,12 @@ public:
 UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeout)
 {
     assert(false);
+    return NullUniValue;
 }
 
-bool SetThisChain(UniValue &chainDefinition)
-{}
+bool SetThisChain(UniValue &chainDefinition) {
+    return true; // (?) pbaas/pbaas.h
+}
 
 int32_t uni_get_int(UniValue uv, int32_t def)
 {
