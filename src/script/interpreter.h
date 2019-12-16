@@ -220,8 +220,10 @@ public:
             if (pk.IsFullyValid())
             {
                 signatures[pk.GetID()] = oneSig;
+		return true;
             }
         }
+	return false;
     }
 
     UniValue ToUniValue() const
