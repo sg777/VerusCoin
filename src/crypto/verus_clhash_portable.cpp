@@ -149,12 +149,12 @@ inline u128 _mm_cvtsi64_si128_emu(uint64_t lo)
 
 inline int64_t _mm_cvtsi128_si64_emu(const __m128i &a)
 {
-    return *(int64_t *)&a;
+    return *(const int64_t *)&a;
 }
 
 inline int32_t _mm_cvtsi128_si32_emu(const __m128i &a)
 {
-    return *(int32_t *)&a;
+    return *(const int32_t *)&a;
 }
 
 inline u128 _mm_cvtsi32_si128_emu(uint32_t lo)
@@ -869,7 +869,6 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_1_port(__m128i *randomso
 
                 uint64_t rounds = selector >> 61; // loop randomly between 1 and 8 times
                 __m128i *rc = prand;
-                uint64_t aesroundoffset = 0;
                 __m128i onekey;
 
                 do
