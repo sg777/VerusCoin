@@ -539,14 +539,13 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             }
         }
 
-        CBlockIndex priorBlkIdx = chainActive.
         if (idx = -1 || ch.hash.IsNull() || inputBlockHash.IsNull())
         {
             return state.Error("Invalid identity commitment");
         }
 
         auto priorIt = mapBlockIndex.find(inputBlockHash);
-        if (priorIt == mapBlockIndex.end() || !chainActive.contains(priorIt->second))
+        if (priorIt == mapBlockIndex.end() || !chainActive.Contains(priorIt->second))
         {
             return state.Error("Identity commitment not in current chain");
         }
