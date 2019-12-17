@@ -266,7 +266,7 @@ class CConstVerusSolutionVector
             return SetVersion(vch, activationHeight.ActiveVersion(height));
         }
 
-        static bool SetDescriptor(std::vector<unsigned char> &vch, CPBaaSSolutionDescriptor d)
+        static void SetDescriptor(std::vector<unsigned char> &vch, CPBaaSSolutionDescriptor d)
         {
             d.SetVectorBase(vch);
         }
@@ -384,7 +384,7 @@ class CVerusSolutionVector
 
         bool SetVersion(uint32_t v)
         {
-            solutionTools.SetVersion(vch, v);
+            return solutionTools.SetVersion(vch, v);
         }
 
         bool SetVersionByHeight(uint32_t height)
