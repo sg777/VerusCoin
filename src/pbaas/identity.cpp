@@ -498,7 +498,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     // CHECK #3a - if dupID is valid, we need to be spending it to recover. redefinition is invalid
     CTxIn idTxIn;
     uint32_t priorHeightOut;
-    CIdentity dupID = newIdentity.LookupIdentity(newIdentity.GetID(), height, &priorHeightOut, &idTxIn);
+    CIdentity dupID = newIdentity.LookupIdentity(newIdentity.GetID(), height - 1, &priorHeightOut, &idTxIn);
 
     CCoinsViewCache view(pcoinsTip);
     if (dupID.IsValid())
