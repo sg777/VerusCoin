@@ -1270,7 +1270,7 @@ bool ContextualCheckTransaction(
             {
                 if (!DefaultCCContextualPreCheck(tx, i, state, nHeight))
                 {
-                    return state.DoS(100, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
+                    return state.DoS(10, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
                 }
             }
             else
@@ -1283,7 +1283,7 @@ bool ContextualCheckTransaction(
                 }
                 if (!CC.contextualprecheck(tx, i, state, nHeight))
                 {
-                    return state.DoS(100, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
+                    return state.DoS(10, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
                 }
             }
         }
