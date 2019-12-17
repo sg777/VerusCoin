@@ -499,6 +499,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     CTxIn idTxIn;
     uint32_t priorHeightOut;
     CIdentity dupID = newIdentity.LookupIdentity(newIdentity.GetID(), height - 1, &priorHeightOut, &idTxIn);
+    uint256 inputBlockHash;
 
     CCoinsViewCache view(pcoinsTip);
     if (dupID.IsValid())
@@ -509,13 +510,13 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     else
     {
         CCommitmentHash ch;
+        int idx = -1;
+        CTransaction txInput;
 
         // from here, we must spend a matching name commitment
         for (auto &oneTxIn : tx.vin)
         {
-            CTransaction txInput;
-            uint256 blockHash;
-            if (!myGetTransaction(oneTxIn.prevout.hash, txInput, blockHash))
+            if (!myGetTransaction(oneTxIn.prevout.hash, txInput, inputBlockHash))
             {
                 return state.Error("Cannot access input");
             }
@@ -532,15 +533,25 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             COptCCParams p;
             if (txInput.vout[oneTxIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
             {
+                idx = oneTxIn.prevout.n;
                 ::FromVector(p.vData[0], ch);
                 break;
             }
         }
 
-        if (ch.hash.IsNull())
+        CBlockIndex priorBlkIdx = chainActive.
+        if (idx = -1 || ch.hash.IsNull() || inputBlockHash.IsNull())
         {
             return state.Error("Invalid identity commitment");
         }
+
+        auto priorIt = mapBlockIndex.find(inputBlockHash);
+        if (priorIt == mapBlockIndex.end() || !chainActive.contains(priorIt->second))
+        {
+            return state.Error("Identity commitment not in current chain");
+        }
+
+        priorHeightOut = priorIt->second->GetHeight();
 
         // are we spending a matching name commitment?
         if (ch.hash != newName.GetCommitment().hash)
@@ -548,7 +559,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             return state.Error("Mismatched identity commitment");
         }
 
-        if (!newName.referral.IsNull() && referrals && !(CIdentity::LookupIdentity(newName.referral, coins.nHeight - 1).IsValid()))
+        if (!newName.referral.IsNull() && referrals && !(CIdentity::LookupIdentity(newName.referral, priorHeightOut - 1).IsValid()))
         {
             // invalid referral identity
             return state.Error("Invalid referral identity specified");
