@@ -495,7 +495,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         return state.Error("Identity parent of new identity must be current chain");
     }
 
-    // CHECK #3a - if dupID is valid, we need to be spending it to recover. redefinition is invalid
+    // CHECK #3 - if dupID is valid, we need to be spending it to recover. redefinition is invalid
     CTxIn idTxIn;
     uint32_t priorHeightOut;
     CIdentity dupID = newIdentity.LookupIdentity(newIdentity.GetID(), height - 1, &priorHeightOut, &idTxIn);
@@ -505,21 +505,22 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     {
         return state.Error("Identity already exists");
     }
-    // CHECK #3b - if dupID is invalid, we need to spend matching name commitment
+    // CHECK #3a - if dupID is invalid, ensure we spend a matching name commitment
     else
     {
         CCommitmentHash ch;
-        CCoins coins;
 
         // from here, we must spend a matching name commitment
         for (auto &oneTxIn : tx.vin)
         {
-            if (!view.GetCoins(oneTxIn.prevout.hash, coins))
+            CTransaction txInput;
+            uint256 blockHash;
+            if (!myGetTransaction(oneTxIn.prevout.hash, txInput, blockHash))
             {
                 return state.Error("Cannot access input");
             }
 
-            if (oneTxIn.prevout.n >= coins.vout.size())
+            if (oneTxIn.prevout.n >= txInput.vout.size())
             {
                 //extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
                 //UniValue uniTx;
@@ -529,7 +530,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             }
 
             COptCCParams p;
-            if (coins.vout[oneTxIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
+            if (txInput.vout[oneTxIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
             {
                 ::FromVector(p.vData[0], ch);
                 break;
@@ -629,7 +630,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         }
     }
 
-    // CHECK #6 - ensure that the transaction pays a fee of 80% of the full price for an identity, minus the value of each referral output between identity and reservation
+    // CHECK #6 - ensure that the transaction pays the correct mining and refferal fees
     if (rtxd.NativeFees() < (newIdentity.ReferredRegistrationAmount() - (referrers.size() * newIdentity.ReferralAmount())))
     {
         return state.Error("Invalid identity registration - insufficient fee");
