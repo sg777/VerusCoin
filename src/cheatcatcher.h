@@ -41,6 +41,7 @@ class CTxHolder
             utxo = txh.utxo;
             height = txh.height;
             tx = txh.tx;
+	    return *this;
         }
 };
 
