@@ -541,7 +541,8 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
 
         if (idx = -1 || ch.hash.IsNull() || inputBlockHash.IsNull())
         {
-            return state.Error("Invalid identity commitment");
+            std::string specificMsg = "Invalid identity commitment in tx: " + tx.GetHash().GetHex();
+            return state.Error(specificMsg);
         }
 
         auto priorIt = mapBlockIndex.find(inputBlockHash);
