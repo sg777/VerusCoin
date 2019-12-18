@@ -5506,7 +5506,7 @@ static bool AcceptBlock(int32_t *futureblockp, const CBlock& block, CValidationS
                 pindex->nStatus |= BLOCK_FAILED_VALID;
                 setDirtyBlockIndex.insert(pindex);
             }
-            LogPrintf("AcceptBlock CheckBlock or ContextualCheckBlock error\n");
+            LogPrintf("AcceptBlock CheckBlock or ContextualCheckBlock error in block: %s\n", pindex->GetBlockHash().GetHex().c_str());
             return false;
         }
     }
