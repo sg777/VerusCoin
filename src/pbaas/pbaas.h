@@ -615,13 +615,13 @@ public:
     static void SubmissionThreadStub();
     std::vector<std::pair<std::string, UniValue>> SubmitQualifiedBlocks();
 
-    bool QueueNewBlockHeader(CBlockHeader &bh);
+    void QueueNewBlockHeader(CBlockHeader &bh);
     void QueueEarnedNotarization(CBlock &blk, int32_t txIndex, int32_t height);
 
     bool AddMergedBlock(CPBaaSMergeMinedChainData &blkData);
     bool RemoveMergedBlock(uint160 chainID);
     bool GetChainInfo(uint160 chainID, CRPCChainData &rpcChainData);
-    uint32_t PruneOldChains(uint32_t pruneBefore);
+    void PruneOldChains(uint32_t pruneBefore);
     uint32_t CombineBlocks(CBlockHeader &bh);
 
     // returns false if destinations are empty or first is not either pubkey or pubkeyhash

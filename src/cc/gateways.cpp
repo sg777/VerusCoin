@@ -132,12 +132,14 @@ string oracles
 */
 
 
-int32_t GatewaysAddQueue(std::string coin,uint256 txid,CScript scriptPubKey,int64_t nValue)
+/*
+int32_t GatewaysAddQueue(std::string coin,uint256 txid,CScript scriptPubKey,int64_t nValue) // commented, bcz unused
 {
     char destaddr[64],str[65];
     Getscriptaddress(destaddr,scriptPubKey);
     fprintf(stderr,"GatewaysAddQueue: %s %s %s %.8f\n",coin.c_str(),uint256_str(str,txid),destaddr,(double)nValue/COIN);
 }
+*/
 
 // start of consensus code
 
