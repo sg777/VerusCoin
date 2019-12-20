@@ -2439,6 +2439,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         deleteSpentFrom = idMapKey.blockHeight;
                                     }
 
+                                    std::vector<uint256> txesToErase;
+
                                     for (auto &txidAndWtx : mapWallet)
                                     {
                                         txidAndWtx.second.MarkDirty();
@@ -2511,13 +2513,18 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         }
                                         if (eraseTx)
                                         {
-                                            EraseFromWallet(txidAndWtx.first);
+                                            txesToErase.push_back(txidAndWtx.first);
 
                                             for (auto &checkID : oneTxIDs)
                                             {
                                                 idsToCheck.insert(checkID);
                                             }
                                         }
+                                    }
+
+                                    for (auto hash : txesToErase)
+                                    {
+                                        EraseFromWallet(hash);
                                     }
 
                                     // now, we've deleted all transactions that were only in the wallet due to our ability to sign with the ID just removed
