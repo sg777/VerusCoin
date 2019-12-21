@@ -1519,7 +1519,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 (txout.nDepth >= VERUS_MIN_STAKEAGE)  &&
                 (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, addressRet, nRequiredRet, this, &canSign, &canSpend) &&
                 canSpend &&
-                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH || whichType == TX_CRYPTOCONDITION)) &&
+                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH)) &&  // || whichType == TX_CRYPTOCONDITION
                 (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target))
             {
                 CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
