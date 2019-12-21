@@ -2350,6 +2350,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                         */
                         if (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second)
                         {
+                            MarkDirty();
                             if (canSignCanSpend.first != wasCanSignCanSpend.first)
                             {
                                 if (canSignCanSpend.first)
