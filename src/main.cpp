@@ -4138,6 +4138,18 @@ bool static DisconnectTip(CValidationState &state, const CChainParams& chainpara
     CBlock block;
     if (!ReadBlockFromDisk(block, pindexDelete, chainparams.GetConsensus(), 1))
         return AbortNode(state, "Failed to read block");
+
+    // do not disconnect a Komodo notarized tip
+    {
+        int32_t prevMoMheight; uint256 notarizedhash,txid;
+        komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+        if ( block.GetHash() == notarizedhash )
+        {
+            fprintf(stderr,"DisconnectTip trying to disconnect notarized block at ht.%d\n",(int32_t)pindexDelete->nHeight);
+            return(false);
+        }
+    }
+
     // Apply the block atomically to the chain state.
     uint256 sproutAnchorBeforeDisconnect = pcoinsTip->GetBestAnchor(SPROUT);
     uint256 saplingAnchorBeforeDisconnect = pcoinsTip->GetBestAnchor(SAPLING);
