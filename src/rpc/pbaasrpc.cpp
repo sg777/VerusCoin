@@ -2384,6 +2384,7 @@ UniValue listreservetransactions(const UniValue& params, bool fHelp)
         );
     }
     // lists all transactions in a wallet that are 
+    return NullUniValue;
 }
 
 CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t definitionHeight)
@@ -4876,10 +4877,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         }
     }
 
-    if (!found)
-    {
-        identity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(idID)), 0, &height, &idTxIn);
-    }
+    identity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(idID)), 0, &height, &idTxIn);
 
     UniValue ret(UniValue::VOBJ);
 
@@ -4897,7 +4895,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     }
     else
     {
-        return NullUniValue;
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Identity not found");
     }
 }
 

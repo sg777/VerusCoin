@@ -99,6 +99,7 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
 
 bool IsCrossChainExportInput(const CScript &scriptSig)
 {
+    return true;
 }
 
 // used to validate import of coins from one chain to another. if they are not native and are supported,
@@ -109,6 +110,7 @@ bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTra
 }
 bool IsCrossChainImportInput(const CScript &scriptSig)
 {
+    return true;
 }
 
 // used to validate a specific service reward based on the spending transaction
@@ -122,6 +124,7 @@ bool ValidateServiceReward(struct CCcontract_info *cp, Eval* eval, const CTransa
 }
 bool IsServiceRewardInput(const CScript &scriptSig)
 {
+    return true;
 }
 
 // used as a proxy token output for a reserve currency on its fractional reserve chain
@@ -131,6 +134,7 @@ bool ValidateReserveOutput(struct CCcontract_info *cp, Eval* eval, const CTransa
 }
 bool IsReserveOutputInput(const CScript &scriptSig)
 {
+    return true;
 }
 
 bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
@@ -139,6 +143,7 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
 }
 bool IsReserveTransferInput(const CScript &scriptSig)
 {
+    return true;
 }
 
 bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
@@ -147,6 +152,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 }
 bool IsReserveDepositInput(const CScript &scriptSig)
 {
+    return true;
 }
 
 bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
@@ -155,6 +161,7 @@ bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransa
 }
 bool IsCurrencyStateInput(const CScript &scriptSig)
 {
+    return true;
 }
 
 // used to convert a fractional reserve currency into its reserve and back 
@@ -164,6 +171,7 @@ bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTran
 }
 bool IsReserveExchangeInput(const CScript &scriptSig)
 {
+    return true;
 }
 
 
@@ -180,6 +188,7 @@ bool ValidateOpretProof(CScript &opRet, COpRetProof &orProof)
 {
     // enumerate through the objects and validate that they are objects of the expected type that hash
     // to the value expected. return true if so
+    return true;
 }
 
 int8_t ObjTypeCode(const CBlockHeader &obj)
@@ -786,7 +795,7 @@ bool CConnectedChains::RemoveMergedBlock(uint160 chainID)
 }
 
 // remove merge mined chains added and not updated since a specific time
-uint32_t CConnectedChains::PruneOldChains(uint32_t pruneBefore)
+void CConnectedChains::PruneOldChains(uint32_t pruneBefore)
 {
     vector<uint160> toRemove;
 
@@ -858,7 +867,7 @@ CPBaaSMergeMinedChainData *CConnectedChains::GetChainInfo(uint160 chainID)
     }
 }
 
-bool CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
+void CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
 {
     //printf("QueueNewBlockHeader %s\n", bh.GetHash().GetHex().c_str());
     {
