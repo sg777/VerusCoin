@@ -194,6 +194,7 @@ bool CBasicKeyStore::GetIdentity(const CIdentityID &idID, std::pair<CIdentityMap
     {
         return false;
     }
+
     itEnd--;
     CIdentityMapKey foundKey(itEnd->first);
     if (foundKey.idID != idID)
