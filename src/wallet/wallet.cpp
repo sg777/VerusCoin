@@ -2316,16 +2316,16 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     {
                         if (pblock)
                         {
-                            // if we can sign with this identity or we put it on a manual hold, and it's not invalid or blacklisted, store it
-                            if ((canSignCanSpend.first || (idHistory.first.flags & idHistory.first.MANUAL_HOLD)) && !(idHistory.first.flags & idHistory.first.BLACKLIST))
+                            // if we used to be able to sign with this identity, can now, or we put it on a manual hold, and it's not invalid or blacklisted, store it
+                            if ((wasCanSignCanSpend.first || canSignCanSpend.first || (idHistory.first.flags & idHistory.first.MANUAL_HOLD)) && !(idHistory.first.flags & idHistory.first.BLACKLIST))
                             {
-                                CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
-                                                                        nHeight, 
-                                                                        blockOrder, 
-                                                                        idHistory.first.VALID | 
-                                                                            ((idHistory.second.IsValid() ? idHistory.first.flags : 0) & idHistory.first.MANUAL_HOLD) | 
-                                                                            (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
-                                                                            (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
+                                idMapKey = CIdentityMapKey(identity.GetID(), 
+                                                            nHeight, 
+                                                            blockOrder, 
+                                                            idHistory.first.VALID | 
+                                                                ((idHistory.second.IsValid() ? idHistory.first.flags : 0) & idHistory.first.MANUAL_HOLD) | 
+                                                                (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
+                                                                (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
                                 AddUpdateIdentity(idMapKey, identity);
                             }
                         }
@@ -2350,7 +2350,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                         */
                         if (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second)
                         {
-                            MarkDirty();
                             if (canSignCanSpend.first != wasCanSignCanSpend.first)
                             {
                                 if (canSignCanSpend.first)
@@ -2429,15 +2428,15 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     std::set<CIdentityID> idsToCheck = std::set<CIdentityID>({idID});
 
                                     // first and last blocks to consider when deleting spent transactions from the wallet
-                                    uint32_t deleteSpentFrom, deleteSpentTo = 0;
+                                    uint32_t deleteSpentFrom;
                                     
                                     if (!pblock)
                                     {
-                                        deleteSpentFrom = idHistory.first.blockHeight;
+                                        deleteSpentFrom = idHistory.first.blockHeight + 1;
                                     }
                                     else
                                     {
-                                        deleteSpentFrom = idMapKey.blockHeight;
+                                        deleteSpentFrom = idMapKey.blockHeight + 1;
                                     }
 
                                     std::vector<uint256> txesToErase;
@@ -2446,24 +2445,15 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     {
                                         txidAndWtx.second.MarkDirty();
 
-                                        // first check if it is within height range for deletion, and if not, continue
-                                        if (deleteSpentFrom || deleteSpentTo)
+                                        const CBlockIndex *pIndex;
+                                        if (txidAndWtx.second.GetDepthInMainChain(pIndex) >= 1 && pIndex->GetHeight() <= deleteSpentFrom)
                                         {
-                                            const CBlockIndex *pIndex;
-                                            if (txidAndWtx.second.GetDepthInMainChain(pIndex) == 1)
-                                            {
-                                                uint32_t wtxHeight = pIndex ? pIndex->GetHeight() : 0;
-                                                if (wtxHeight && (deleteSpentFrom && wtxHeight <= deleteSpentFrom || deleteSpentTo && wtxHeight > deleteSpentTo))
-                                                {
-                                                    continue;
-                                                }
-                                            }
+                                            continue;
                                         }
 
                                         // if the tx is from this wallet, we will not erase it
                                         if (IsFromMe(txidAndWtx.second))
                                         {
-                                            // recalculate
                                             continue;
                                         }
 
@@ -2492,7 +2482,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             bool canSignOut = false;
                                             bool canSpendOut = false;
 
-                                            if (ExtractDestinations(txout.scriptPubKey, txType, addresses, minSigs, this, &canSignOut, &canSpendOut, deleteSpentTo ? deleteSpentTo : INT_MAX))
+                                            if (ExtractDestinations(txout.scriptPubKey, txType, addresses, minSigs, this, &canSignOut, &canSpendOut))
                                             {
                                                 if (canSignOut || canSpendOut)
                                                 {
@@ -2578,10 +2568,15 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         std::pair<CIdentityMapKey, CIdentityMapValue> identityToRemove;
 
                                         // if not cansign or canspend, no transactions we care about relating to it and no manual hold, delete the ID from the wallet
+                                        // also keep the first transition after one we will keep
                                         if (GetIdentity(idToRemove, identityToRemove) && 
                                             !((identityToRemove.first.flags & (identityToRemove.first.CAN_SIGN + identityToRemove.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
                                         {
-                                            RemoveIdentity(CIdentityMapKey(idToRemove));
+                                            if (!GetIdentity(idToRemove, identityToRemove, identityToRemove.first.blockHeight - 1) ||
+                                                !((identityToRemove.first.flags & (identityToRemove.first.CAN_SIGN + identityToRemove.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
+                                            {
+                                                RemoveIdentity(CIdentityMapKey(idToRemove));
+                                            }
                                         }
                                     }
                                 }
