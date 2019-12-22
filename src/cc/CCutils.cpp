@@ -112,6 +112,7 @@ CC* GetCryptoCondition(CScript const& scriptSig)
     std::vector<unsigned char> ffbin;
     if (scriptSig.GetOp(pc, opcode, ffbin))
         return cc_readFulfillmentBinary((uint8_t*)ffbin.data(), ffbin.size()-1);
+    return nullptr;
 }
 
 bool IsCCInput(CScript const& scriptSig)
