@@ -2384,6 +2384,7 @@ UniValue listreservetransactions(const UniValue& params, bool fHelp)
         );
     }
     // lists all transactions in a wallet that are 
+    return NullUniValue;
 }
 
 CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t definitionHeight)

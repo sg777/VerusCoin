@@ -220,7 +220,11 @@ public:
         {
             return nodes[idx >> CHUNK_SHIFT][idx & chunkMask()];
         }
-        return NODE_TYPE();
+        else
+        {
+            std::__throw_length_error("CChunkedLayer [] index out of range");
+            return NODE_TYPE();
+        }
     }
 
     void push_back(NODE_TYPE node)
@@ -300,6 +304,11 @@ public:
         if (idx < vSize)
         {
             return nodeSource->GetMMRNode(idx);
+        }
+        else
+        {
+            std::__throw_length_error("COverlayNodeLayer [] index out of range");
+            return NODE_TYPE();
         }
     }
 
