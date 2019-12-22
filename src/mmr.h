@@ -220,6 +220,7 @@ public:
         {
             return nodes[idx >> CHUNK_SHIFT][idx & chunkMask()];
         }
+        NODE_TYPE();
     }
 
     void push_back(NODE_TYPE node)
