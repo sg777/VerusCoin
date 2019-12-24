@@ -1509,16 +1509,13 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         CMutableTransaction checkStakeTx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
         std::vector<CTxDestination> addressRet;
         int nRequiredRet;
-        bool canSign = false;
-        bool canSpend = false;
 
         BOOST_FOREACH(COutput &txout, vecOutputs)
         {
             if (txout.tx->vout[txout.i].nValue > 0 &&
                 txout.fSpendable &&
                 (txout.nDepth >= VERUS_MIN_STAKEAGE)  &&
-                (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, addressRet, nRequiredRet, this, &canSign, &canSpend) &&
-                canSpend &&
+                (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, addressRet, nRequiredRet) &&
                 (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH)) &&  // || whichType == TX_CRYPTOCONDITION
                 (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target))
             {

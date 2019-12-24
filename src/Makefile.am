@@ -630,6 +630,11 @@ if ENABLE_PROTON
 verusd_LDADD += $(LIBBITCOIN_PROTON) $(PROTON_LIBS)
 endif
 
+# [+] Decker: use static linking for libstdc++.6.dylib, libgomp.1.dylib, libgcc_s.1.dylib
+if TARGET_DARWIN
+verusd_LDFLAGS += -static-libgcc
+endif
+
 # bitcoin-cli binary #
 verus_SOURCES = bitcoin-cli.cpp
 verus_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(EVENT_CFLAGS)
