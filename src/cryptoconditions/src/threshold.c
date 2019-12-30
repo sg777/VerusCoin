@@ -234,7 +234,7 @@ static Fulfillment_t *thresholdToPartialFulfillment(const CC *cond) {
     int maxSubThresholds = 1;   // maximum required in all nested thresholds, if it is 1, we know that one signature only is required, and we can optimize since waiting for another sig is unnecessary
     CCVisitor subThresholdVisitor = {&maxThreshholdCountVisit, "", 0, &maxSubThresholds};
     thresholdVisitChildren(cond, subThresholdVisitor);
-    int evalCount = cc_countEvals(cond);
+    //int evalCount = cc_countEvals(cond);
     int canOptimize = 0;
 
     /*
