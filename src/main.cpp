@@ -4280,10 +4280,10 @@ bool static ConnectTip(CValidationState& state, const CChainParams& chainparams,
     {
         CCoinsViewCache view(pcoinsTip);
         bool rv = ConnectBlock(*pblock, state, pindexNew, view, chainparams, false, true);
+        RemoveCoinbaseFromMemPool(*pblock);
         KOMODO_CONNECTING = -1;
         GetMainSignals().BlockChecked(*pblock, state);
         if (!rv) {
-            RemoveCoinbaseFromMemPool(*pblock);
             if (state.IsInvalid())
                 InvalidBlockFound(pindexNew, state, chainparams);
             return error("ConnectTip(): ConnectBlock %s failed", pindexNew->GetBlockHash().ToString());
@@ -5765,6 +5765,7 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
         CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
     }
 
+    RemoveCoinbaseFromMemPool(*pblock);
     return true;
 }
 
@@ -6288,6 +6289,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
                 RemoveCoinbaseFromMemPool(block);
                 return error("VerifyDB(): *** found unconnectable block at %d, hash=%s", pindex->GetHeight(), pindex->GetBlockHash().ToString());
             }
+            RemoveCoinbaseFromMemPool(block);
         }
     }
     
