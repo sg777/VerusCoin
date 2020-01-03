@@ -99,7 +99,7 @@ public:
 
     CNameReservation(const CTransaction &tx, int *pNumOut=nullptr);
 
-    CNameReservation(std::vector<unsigned char> asVector)
+    CNameReservation(std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);
         if (name.size() > MAX_NAME_SIZE)
@@ -160,7 +160,7 @@ public:
         {}
 
     CPrincipal(const UniValue &uni);
-    CPrincipal(std::vector<unsigned char> asVector)
+    CPrincipal(std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);
     }
@@ -589,6 +589,56 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CIdentity *)this);
         READWRITE(txid);
+    }
+};
+
+// an identity signature is a compound signature consisting of the block height of its creation, and one or more cryptographic 
+// signatures of the controlling addresses. validation can be performed based on the validity when signed, using the block height
+// stored in the signature instance, or based on the continued signature validity of the current identity, which may automatically
+// invalidate when the identity is updated.
+class CIdentitySignature
+{
+public:
+    uint32_t blockHeight;
+    std::map<uint160, std::vector<unsigned char>> signatures;
+
+    CIdentitySignature() : blockHeight(0) {}
+    CIdentitySignature(uint32_t height, std::pair<uint160, const std::vector<unsigned char>> &oneSig) : blockHeight(0), signatures({oneSig}) {}
+    CIdentitySignature(uint32_t height, const std::map<uint160, std::vector<unsigned char>> &sigs) : blockHeight(0), signatures(sigs) {}
+    CIdentitySignature(const std::vector<unsigned char> &asVector)
+    {
+        ::FromVector(asVector, *this);
+    }
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(blockHeight);
+        std::vector<std::pair<uint160, std::vector<unsigned char>>> sigs;
+        if (ser_action.ForRead())
+        {
+            READWRITE(sigs);
+
+            for (auto &oneSig : sigs)
+            {
+                signatures[oneSig.first] = oneSig.second;
+            }
+        }
+        else
+        {
+            for (auto &oneSig : signatures)
+            {
+                sigs.push_back(oneSig);
+            }
+
+            READWRITE(sigs);
+        }
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    void AddSignature(const uint160 &addrID, const std::vector<unsigned char> &signature)
+    {
+        signatures[addrID] = signature;
     }
 };
 

@@ -804,14 +804,15 @@ UniValue signmessage(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size() != 2)
+    if (fHelp || params.size() < 2 || params.size() > 3)
         throw runtime_error(
-            "signmessage \"t-addr\" \"message\"\n"
+            "signmessage \"t-addr or identity\" \"message\" \"cursig\"\n"
             "\nSign a message with the private key of a t-addr or the authorities present in this wallet for an identity"
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"
-            "1. \"t-addr\"  (string, required) The transparent address to use for the private key.\n"
+            "1. \"t-addr or identity\" (string, required) The transparent address or identity to use for signing.\n"
             "2. \"message\"         (string, required) The message to create a signature of.\n"
+            "2. \"cursig\"          (string) The current signature of the message encoded in base 64 if multisig ID\n"
             "\nResult:\n"
             "\"signature\"          (string) The signature of the message encoded in base 64\n"
             "\nExamples:\n"
@@ -837,7 +838,150 @@ UniValue signmessage(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address or identity");
     }
 
+    if (dest.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        string strSign = params[2].get_str();
+        bool fInvalid = false;
 
+        // lookup identity from the requested blockheight
+        bool checkLatest = params.size() == 4 && uni_get_bool(params[3]);
+
+        CIdentitySignature signature;
+
+        // get the signature, a hex string, which is deserialized into an instance of the ID signature class
+        std::vector<unsigned char> sigVec;
+        try
+        {
+            sigVec = DecodeBase64(strSign.c_str(), &fInvalid);
+            if (fInvalid)
+            {
+                sigVec.clear();
+            }
+
+            if (sigVec.size())
+            {
+                signature = CIdentitySignature(sigVec);
+            }
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+            sigVec.clear();
+        }
+
+        if (signature.signatures.size())
+        {
+            CHashWriter ss(SER_GETHASH, 0);
+            ss << verusIDMessageMagic;
+            ss << strMessage;
+
+            uint256 msgHash = ss.GetHash();
+
+            std::set<uint160> signatureKeyIDs;
+            for (auto &oneSig : signature.signatures)
+            {
+                CPubKey pubkey;
+                if (!pubkey.RecoverCompact(msgHash, oneSig.second))
+                {
+                    signatureKeyIDs.insert(pubkey.GetID());
+                }
+            }
+
+            CIdentity identity;
+            int numSigs = 0;
+            if (signatureKeyIDs.size() != 0)
+            {
+                identity = CIdentity::LookupIdentity(GetDestinationID(dest));
+                if (identity.IsValidUnrevoked())
+                {
+                    // remove all valid addresses and count
+                    for (auto &oneAddr : identity.primaryAddresses)
+                    {
+                        if (!(oneAddr.which() == COptCCParams::ADDRTYPE_PK || oneAddr.which() == COptCCParams::ADDRTYPE_PKH))
+                        {
+                            numSigs = 0;
+                            break;
+                        }
+                        uint160 addrID = GetDestinationID(oneAddr);
+                        if (signatureKeyIDs.count(addrID))
+                        {
+                            numSigs++;
+                            signatureKeyIDs.erase(addrID);
+                            if (!signatureKeyIDs.size())
+                            {
+                                break;
+                            }
+                        }
+                    }
+
+                    // all signatures must be from valid keys, and if there are enough, it is valid
+                    return signatureKeyIDs.size() == 0 && numSigs >= identity.minSigs;
+                }
+            }
+        }
+        return "";
+    }
+    else
+    {
+        const CKeyID *keyID = boost::get<CKeyID>(&dest);
+        if (!keyID) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
+        }
+
+        CKey key;
+        if (!pwalletMain->GetKey(*keyID, key)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available");
+        }
+
+        CHashWriter ss(SER_GETHASH, 0);
+        ss << kmdMessageMagic;
+        ss << strMessage;
+
+        vector<unsigned char> vchSig;
+        if (!key.SignCompact(ss.GetHash(), vchSig))
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Sign failed");
+
+        return EncodeBase64(&vchSig[0], vchSig.size());
+    }
+}
+
+UniValue signhexmessage(const UniValue& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return NullUniValue;
+
+    if (fHelp || params.size() != 2)
+        throw runtime_error(
+            "signmessage \"t-addr\" \"message\"\n"
+            "\nSign a message with the private key of a t-addr or the authorities present in this wallet for an identity"
+            + HelpRequiringPassphrase() + "\n"
+            "\nArguments:\n"
+            "1. \"t-addr\"  (string, required) The transparent address to use for the private key.\n"
+            "2. \"messagehash\"  (hexstring, required) The message to create a signature of.\n"
+            "\nResult:\n"
+            "\"signature\"          (string) The signature of the message encoded in base 64\n"
+            "\nExamples:\n"
+            "\nUnlock the wallet for 30 seconds\n"
+            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
+            "\nCreate the signature\n"
+            + HelpExampleCli("signmessage", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\" \"my message\"") +
+            "\nVerify the signature\n"
+            + HelpExampleCli("verifymessage", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\" \"signature\" \"my message\"") +
+            "\nAs json rpc\n"
+            + HelpExampleRpc("signmessage", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\", \"my message\"")
+        );
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    EnsureWalletIsUnlocked();
+
+    string strAddress = params[0].get_str();
+    string strMessage = params[1].get_str();
+
+    CTxDestination dest = DecodeDestination(strAddress);
+    if (!IsValidDestination(dest)) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address or identity");
+    }
 
     const CKeyID *keyID = boost::get<CKeyID>(&dest);
     if (!keyID) {
@@ -850,7 +994,7 @@ UniValue signmessage(const UniValue& params, bool fHelp)
     }
 
     CHashWriter ss(SER_GETHASH, 0);
-    ss << strMessageMagic;
+    ss << kmdMessageMagic;
     ss << strMessage;
 
     vector<unsigned char> vchSig;

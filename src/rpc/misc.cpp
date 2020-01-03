@@ -733,14 +733,16 @@ UniValue hashmessage(const UniValue& params, bool fHelp)
 
 UniValue verifymessage(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 3)
+    if (fHelp || params.size() < 3 || params.size() > 4)
         throw runtime_error(
-            "verifymessage \"komodoaddress\" \"signature\" \"message\"\n"
+            "verifymessage \"address or identity\" \"signature\" \"message\" \"checklatest\"\n"
             "\nVerify a signed message\n"
             "\nArguments:\n"
-            "1. \"komodoaddress\"    (string, required) The Komodo address to use for the signature.\n"
+            "1. \"address or identity\" (string, required) The Komodo address to use for the signature.\n"
             "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
             "3. \"message\"         (string, required) The message that was signed.\n"
+            "3. \"checklatest\"     (bool, optional)   If true, checks signature validity based on latest identity. defaults to false,\n"
+            "                                          which determines validity of signing height stored in signature.\n"
             "\nResult:\n"
             "true|false   (boolean) If the signature is verified or not.\n"
             "\nExamples:\n"
@@ -759,32 +761,115 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
     string strAddress  = params[0].get_str();
     string strSign     = params[1].get_str();
     string strMessage  = params[2].get_str();
+    bool fInvalid = false;
 
     CTxDestination destination = DecodeDestination(strAddress);
     if (!IsValidDestination(destination)) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address");
     }
 
-    const CKeyID *keyID = boost::get<CKeyID>(&destination);
-    if (!keyID) {
-        throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
-    }
+    if (destination.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        // lookup identity from the requested blockheight
+        bool checkLatest = params.size() == 4 && uni_get_bool(params[3]);
 
-    bool fInvalid = false;
-    vector<unsigned char> vchSig = DecodeBase64(strSign.c_str(), &fInvalid);
+        CIdentitySignature signature;
 
-    if (fInvalid)
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Malformed base64 encoding");
+        // get the signature, a hex string, which is deserialized into an instance of the ID signature class
+        std::vector<unsigned char> sigVec;
+        try
+        {
+            sigVec = DecodeBase64(strSign.c_str(), &fInvalid);
+            if (fInvalid)
+            {
+                sigVec.clear();
+            }
 
-    CHashWriter ss(SER_GETHASH, 0);
-    ss << strMessageMagic;
-    ss << strMessage;
+            if (sigVec.size())
+            {
+                signature = CIdentitySignature(sigVec);
+            }
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+            sigVec.clear();
+        }
 
-    CPubKey pubkey;
-    if (!pubkey.RecoverCompact(ss.GetHash(), vchSig))
+        if (signature.signatures.size())
+        {
+            CHashWriter ss(SER_GETHASH, 0);
+            ss << verusIDMessageMagic;
+            ss << strMessage;
+
+            uint256 msgHash = ss.GetHash();
+
+            std::set<uint160> signatureKeyIDs;
+            for (auto &oneSig : signature.signatures)
+            {
+                CPubKey pubkey;
+                if (!pubkey.RecoverCompact(msgHash, oneSig.second))
+                {
+                    signatureKeyIDs.insert(pubkey.GetID());
+                }
+            }
+
+            CIdentity identity;
+            int numSigs = 0;
+            if (signatureKeyIDs.size() != 0)
+            {
+                identity = CIdentity::LookupIdentity(GetDestinationID(destination), checkLatest ? 0 : signature.blockHeight);
+                if (identity.IsValidUnrevoked())
+                {
+                    // remove all valid addresses and count
+                    for (auto &oneAddr : identity.primaryAddresses)
+                    {
+                        if (!(oneAddr.which() == COptCCParams::ADDRTYPE_PK || oneAddr.which() == COptCCParams::ADDRTYPE_PKH))
+                        {
+                            numSigs = 0;
+                            break;
+                        }
+                        uint160 addrID = GetDestinationID(oneAddr);
+                        if (signatureKeyIDs.count(addrID))
+                        {
+                            numSigs++;
+                            signatureKeyIDs.erase(addrID);
+                            if (!signatureKeyIDs.size())
+                            {
+                                break;
+                            }
+                        }
+                    }
+
+                    // all signatures must be from valid keys, and if there are enough, it is valid
+                    return signatureKeyIDs.size() == 0 && numSigs >= identity.minSigs;
+                }
+            }
+        }
         return false;
+    }
+    else
+    {
+        const CKeyID *keyID = boost::get<CKeyID>(&destination);
+        if (!keyID) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
+        }
 
-    return (pubkey.GetID() == *keyID);
+        vector<unsigned char> vchSig = DecodeBase64(strSign.c_str(), &fInvalid);
+
+        if (fInvalid)
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Malformed base64 encoding");
+
+        CHashWriter ss(SER_GETHASH, 0);
+        ss << kmdMessageMagic;
+        ss << strMessage;
+
+        CPubKey pubkey;
+        if (!pubkey.RecoverCompact(ss.GetHash(), vchSig))
+            return false;
+
+        return (pubkey.GetID() == *keyID);
+    }
 }
 
 UniValue setmocktime(const UniValue& params, bool fHelp)
