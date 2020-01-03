@@ -75,7 +75,7 @@ sudo apt-get install build-essential pkg-config libc6-dev m4 g++-multilib autoco
 ARMv8 cross-compile
 ```shell
 #The following packages are needed:
-sudo apt-get install build-essential pkg-config libc6-dev m4 g++-multilib autoconf g++-aarch64-linux-gnu binutils-aarch64-linux-gnu libtool ncurses-dev unzip git python python-zmq zlib1g-dev wget bsdmainutils automake curl
+sudo apt-get install build-essential pkg-config linux-libc-dev-arm64-cross m4 g++-multilib autoconf g++-aarch64-linux-gnu binutils-aarch64-linux-gnu libtool ncurses-dev unzip git python python-zmq zlib1g-dev wget bsdmainutils automake curl
 ```
 Windows cross-compile
 ```shell
