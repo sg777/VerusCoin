@@ -28,6 +28,7 @@
 
 #include "zcash/Address.hpp"
 #include "pbaas/pbaas.h"
+#include <ostream>
 
 using namespace std;
 
@@ -793,7 +794,6 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
         catch(const std::exception& e)
         {
             std::cerr << e.what() << '\n';
-            sigVec.clear();
         }
 
         if (signature.signatures.size())
@@ -808,7 +808,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
             for (auto &oneSig : signature.signatures)
             {
                 CPubKey pubkey;
-                if (!pubkey.RecoverCompact(msgHash, oneSig.second))
+                if (pubkey.RecoverCompact(msgHash, oneSig.second))
                 {
                     signatureKeyIDs.insert(pubkey.GetID());
                 }
@@ -866,6 +866,190 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
 
         CPubKey pubkey;
         if (!pubkey.RecoverCompact(ss.GetHash(), vchSig))
+            return false;
+
+        return (pubkey.GetID() == *keyID);
+    }
+}
+
+UniValue verifyfile(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 3 || params.size() > 4)
+        throw runtime_error(
+            "verifymessage \"address or identity\" \"signature\" \"filename\" \"checklatest\"\n"
+            "\nVerify a signed message\n"
+            "\nArguments:\n"
+            "1. \"address or identity\" (string, required) The Komodo address to use for the signature.\n"
+            "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
+            "3. \"filename\"        (string, required) The file, which must be available locally to the daemon and that was signed.\n"
+            "3. \"checklatest\"     (bool, optional)   If true, checks signature validity based on latest identity. defaults to false,\n"
+            "                                          which determines validity of signing height stored in signature.\n"
+            "\nResult:\n"
+            "true|false   (boolean) If the signature is verified or not.\n"
+            "\nExamples:\n"
+            "\nUnlock the wallet for 30 seconds\n"
+            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
+            "\nCreate the signature\n"
+            + HelpExampleCli("signmessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"my message\"") +
+            "\nVerify the signature\n"
+            + HelpExampleCli("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"signature\" \"my message\"") +
+            "\nAs json rpc\n"
+            + HelpExampleRpc("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"my message\"")
+        );
+
+    LOCK(cs_main);
+
+    string strAddress  = params[0].get_str();
+    string strSign     = params[1].get_str();
+    string strFileName = params[2].get_str();
+    bool fInvalid = false;
+
+    CTxDestination destination = DecodeDestination(strAddress);
+    if (!IsValidDestination(destination)) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address");
+    }
+
+    if (destination.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        // lookup identity from the requested blockheight
+        bool checkLatest = params.size() == 4 && uni_get_bool(params[3]);
+
+        CIdentitySignature signature;
+
+        // get the signature, a hex string, which is deserialized into an instance of the ID signature class
+        std::vector<unsigned char> sigVec;
+        try
+        {
+            sigVec = DecodeBase64(strSign.c_str(), &fInvalid);
+            if (fInvalid)
+            {
+                sigVec.clear();
+            }
+
+            if (sigVec.size())
+            {
+                signature = CIdentitySignature(sigVec);
+            }
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+
+        if (signature.signatures.size())
+        {
+            uint256 msgHash;
+
+            CHashWriter ss(SER_GETHASH, 0);
+            ifstream ifs = ifstream(strFileName, std::ios::binary | std::ios::in);
+            if (ifs.is_open() && !ifs.eof())
+            {
+                ss << verusIDMessageMagic;
+                std::vector<char> vch(4096);
+                int readNum = 0;
+                do
+                {
+                    readNum = ifs.readsome(&vch[0], vch.size());
+                    if (readNum)
+                    {
+                        ss.write(&vch[0], readNum);
+                    }
+                } while (readNum == vch.size() && !ifs.eof());
+                
+                ifs.close();
+
+                msgHash = ss.GetHash();
+            }
+            else
+            {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot open file " + strFileName);
+            }
+
+            std::set<uint160> signatureKeyIDs;
+            for (auto &oneSig : signature.signatures)
+            {
+                CPubKey pubkey;
+                if (pubkey.RecoverCompact(msgHash, oneSig.second))
+                {
+                    signatureKeyIDs.insert(pubkey.GetID());
+                }
+            }
+
+            CIdentity identity;
+            int numSigs = 0;
+            if (signatureKeyIDs.size() != 0)
+            {
+                identity = CIdentity::LookupIdentity(GetDestinationID(destination), checkLatest ? 0 : signature.blockHeight);
+                if (identity.IsValidUnrevoked())
+                {
+                    // remove all valid addresses and count
+                    for (auto &oneAddr : identity.primaryAddresses)
+                    {
+                        if (!(oneAddr.which() == COptCCParams::ADDRTYPE_PK || oneAddr.which() == COptCCParams::ADDRTYPE_PKH))
+                        {
+                            numSigs = 0;
+                            break;
+                        }
+                        uint160 addrID = GetDestinationID(oneAddr);
+                        if (signatureKeyIDs.count(addrID))
+                        {
+                            numSigs++;
+                            signatureKeyIDs.erase(addrID);
+                            if (!signatureKeyIDs.size())
+                            {
+                                break;
+                            }
+                        }
+                    }
+
+                    // all signatures must be from valid keys, and if there are enough, it is valid
+                    return signatureKeyIDs.size() == 0 && numSigs >= identity.minSigs;
+                }
+            }
+        }
+        return false;
+    }
+    else
+    {
+        const CKeyID *keyID = boost::get<CKeyID>(&destination);
+        if (!keyID) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
+        }
+
+        vector<unsigned char> vchSig = DecodeBase64(strSign.c_str(), &fInvalid);
+
+        if (fInvalid)
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Malformed base64 encoding");
+
+       uint256 msgHash;
+
+        CHashWriter ss(SER_GETHASH, 0);
+        ifstream ifs = ifstream(strFileName, std::ios::binary | std::ios::in);
+        if (ifs.is_open() && !ifs.eof())
+        {
+            ss << verusIDMessageMagic;
+            std::vector<char> vch(4096);
+            int readNum = 0;
+            do
+            {
+                readNum = ifs.readsome(&vch[0], vch.size());
+                if (readNum)
+                {
+                    ss.write(&vch[0], readNum);
+                }
+            } while (readNum == vch.size() && !ifs.eof());
+            
+            ifs.close();
+
+            msgHash = ss.GetHash();
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot open file " + strFileName);
+        }
+
+        CPubKey pubkey;
+        if (!pubkey.RecoverCompact(msgHash, vchSig))
             return false;
 
         return (pubkey.GetID() == *keyID);
