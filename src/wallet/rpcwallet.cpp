@@ -968,6 +968,7 @@ UniValue signmessage(const UniValue& params, bool fHelp)
         {
             CHashWriter ss(SER_GETHASH, 0);
             ss << verusIDMessageMagic;
+            ss << (uint32_t)chainActive.Height();
             ss << strMessage;
 
             uint256 msgHash = ss.GetHash();
@@ -1062,6 +1063,7 @@ UniValue signfile(const UniValue& params, bool fHelp)
             if (ifs.is_open() && !ifs.eof())
             {
                 ss << verusIDMessageMagic;
+                ss << (uint32_t)chainActive.Height();
                 std::vector<char> vch(4096);
                 int readNum = 0;
                 do
@@ -7364,6 +7366,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "setaccount",               &setaccount,               true  },
     { "wallet",             "settxfee",                 &settxfee,                 true  },
     { "wallet",             "signmessage",              &signmessage,              true  },
+    { "wallet",             "signfile",                 &signfile,                 true  },
     { "wallet",             "walletlock",               &walletlock,               true  },
     { "wallet",             "walletpassphrasechange",   &walletpassphrasechange,   true  },
     { "wallet",             "walletpassphrase",         &walletpassphrase,         true  },

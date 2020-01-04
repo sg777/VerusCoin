@@ -800,6 +800,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
         {
             CHashWriter ss(SER_GETHASH, 0);
             ss << verusIDMessageMagic;
+            ss << signature.blockHeight;
             ss << strMessage;
 
             uint256 msgHash = ss.GetHash();
@@ -945,6 +946,7 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
             if (ifs.is_open() && !ifs.eof())
             {
                 ss << verusIDMessageMagic;
+                ss << signature.blockHeight;
                 std::vector<char> vch(4096);
                 int readNum = 0;
                 do
@@ -1702,6 +1704,7 @@ static const CRPCCommand commands[] =
     { "util",               "z_validateaddress",      &z_validateaddress,      true  }, /* uses wallet if enabled */
     { "util",               "createmultisig",         &createmultisig,         true  },
     { "util",               "verifymessage",          &verifymessage,          true  },
+    { "util",               "verifyfile",             &verifyfile,             true  },
     { "util",               "hashmessage",            &hashmessage,            true  },
 
     // START insightexplorer
