@@ -772,7 +772,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
     if (destination.which() == COptCCParams::ADDRTYPE_ID)
     {
         // lookup identity from the requested blockheight
-        bool checkLatest = params.size() == 4 && uni_get_bool(params[3]);
+        bool checkLatest = params.size() > 3 && uni_get_bool(params[3]);
 
         CIdentitySignature signature;
 
@@ -934,7 +934,8 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
         }
         catch(const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            LogPrintf("Exception decoding file signature %s\n", e.what());
+            signature = CIdentitySignature();
         }
 
         if (signature.signatures.size())

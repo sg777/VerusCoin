@@ -959,7 +959,7 @@ UniValue signmessage(const UniValue& params, bool fHelp)
 
     if (dest.which() == COptCCParams::ADDRTYPE_ID)
     {
-        string strSign = params[2].get_str();
+        std::string strSign = params.size() > 2 ? uni_get_str(params[2]) : "";
 
         CIdentity identity;
 
@@ -1051,7 +1051,7 @@ UniValue signfile(const UniValue& params, bool fHelp)
 
     if (dest.which() == COptCCParams::ADDRTYPE_ID)
     {
-        string strSign = params[2].get_str();
+        string strSign = params.size() > 2 ? uni_get_str(params[2]) : "";
 
         CIdentity identity;
 
