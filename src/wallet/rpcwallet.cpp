@@ -969,6 +969,7 @@ UniValue signmessage(const UniValue& params, bool fHelp)
             CHashWriter ss(SER_GETHASH, 0);
             ss << verusIDMessageMagic;
             ss << (uint32_t)chainActive.Height();
+            ss << identity.GetID();
             ss << strMessage;
 
             uint256 msgHash = ss.GetHash();
@@ -1064,6 +1065,7 @@ UniValue signfile(const UniValue& params, bool fHelp)
             {
                 ss << verusIDMessageMagic;
                 ss << (uint32_t)chainActive.Height();
+                ss << identity.GetID();
                 std::vector<char> vch(4096);
                 int readNum = 0;
                 do
@@ -1112,7 +1114,7 @@ UniValue signfile(const UniValue& params, bool fHelp)
         uint256 msgHash;
         if (ifs.is_open() && !ifs.eof())
         {
-            ss << verusIDMessageMagic;
+            ss << kmdMessageMagic;
             std::vector<char> vch(4096);
             int readNum = 0;
             do

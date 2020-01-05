@@ -801,6 +801,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
             CHashWriter ss(SER_GETHASH, 0);
             ss << verusIDMessageMagic;
             ss << signature.blockHeight;
+            ss << GetDestinationID(destination);
             ss << strMessage;
 
             uint256 msgHash = ss.GetHash();
@@ -948,6 +949,8 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
             {
                 ss << verusIDMessageMagic;
                 ss << signature.blockHeight;
+                ss << GetDestinationID(destination);
+
                 std::vector<char> vch(4096);
                 int readNum = 0;
                 do
@@ -1030,7 +1033,7 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
         ifstream ifs = ifstream(strFileName, std::ios::binary | std::ios::in);
         if (ifs.is_open() && !ifs.eof())
         {
-            ss << verusIDMessageMagic;
+            ss << kmdMessageMagic;
             std::vector<char> vch(4096);
             int readNum = 0;
             do
