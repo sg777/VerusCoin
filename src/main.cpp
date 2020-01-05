@@ -130,7 +130,7 @@ static void CheckBlockIndex(const Consensus::Params& consensusParams);
 CScript COINBASE_FLAGS;
 
 const string kmdMessageMagic = "Komodo Signed Message:\n";
-const string verusIDMessageMagic = "VerusID signed data:\n";
+const string verusIDDataSignaturePrefix = "VerusID signed data:\n";
 
 // Internal stuff
 namespace {

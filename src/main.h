@@ -143,7 +143,7 @@ extern BlockMap mapBlockIndex;
 extern uint64_t nLastBlockTx;
 extern uint64_t nLastBlockSize;
 extern const std::string kmdMessageMagic;
-extern const std::string verusIDMessageMagic;
+extern const std::string verusIDDataSignaturePrefix;
 extern CWaitableCriticalSection csBestBlock;
 extern CConditionVariable cvBlockChange;
 extern bool fExperimentalMode;

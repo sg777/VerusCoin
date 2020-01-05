@@ -799,7 +799,8 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
         if (signature.signatures.size())
         {
             CHashWriter ss(SER_GETHASH, 0);
-            ss << verusIDMessageMagic;
+            ss << verusIDDataSignaturePrefix;
+            ss << ConnectedChains.ThisChain().GetChainID();
             ss << signature.blockHeight;
             ss << GetDestinationID(destination);
             ss << strMessage;
@@ -810,7 +811,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
             for (auto &oneSig : signature.signatures)
             {
                 CPubKey pubkey;
-                if (pubkey.RecoverCompact(msgHash, oneSig.second))
+                if (pubkey.RecoverCompact(msgHash, oneSig))
                 {
                     signatureKeyIDs.insert(pubkey.GetID());
                 }
@@ -947,7 +948,8 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
             ifstream ifs = ifstream(strFileName, std::ios::binary | std::ios::in);
             if (ifs.is_open() && !ifs.eof())
             {
-                ss << verusIDMessageMagic;
+                ss << verusIDDataSignaturePrefix;
+                ss << ConnectedChains.ThisChain().GetChainID();
                 ss << signature.blockHeight;
                 ss << GetDestinationID(destination);
 
@@ -975,7 +977,7 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
             for (auto &oneSig : signature.signatures)
             {
                 CPubKey pubkey;
-                if (pubkey.RecoverCompact(msgHash, oneSig.second))
+                if (pubkey.RecoverCompact(msgHash, oneSig))
                 {
                     signatureKeyIDs.insert(pubkey.GetID());
                 }

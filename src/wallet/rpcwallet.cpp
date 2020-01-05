@@ -799,7 +799,7 @@ UniValue listaddressgroupings(const UniValue& params, bool fHelp)
     return jsonGroupings;
 }
 
-std::string SignMessageHash(const CIdentity &identity, const uint256 &msgHash, const std::string &signatureStr)
+std::string SignMessageHash(const CIdentity &identity, const uint256 &msgHash, const std::string &signatureStr, uint32_t blockHeight)
 {
     int numSigs = 0;
 
@@ -828,34 +828,20 @@ std::string SignMessageHash(const CIdentity &identity, const uint256 &msgHash, c
         signature = CIdentitySignature();
     }
 
-    {
-        LOCK(cs_main);
-        signature.blockHeight = chainActive.Height();
-    }
+    signature.blockHeight = blockHeight;
 
     std::set<uint160> signatureKeyIDs;
-    std::set<uint160> signatureInvalidIDs;
+    std::map<uint160, std::vector<unsigned char>> signatureMap;
     
     for (auto &oneSig : signature.signatures)
     {
         CPubKey pubkey;
-        if (pubkey.RecoverCompact(msgHash, oneSig.second))
+        if (pubkey.RecoverCompact(msgHash, oneSig))
         {
             uint160 pkID = pubkey.GetID();
-            if (oneSig.first == pkID)
-            {
-                signatureKeyIDs.insert(pkID);
-            }
-            else
-            {
-                signatureInvalidIDs.insert(oneSig.first);
-            }
+            signatureKeyIDs.insert(pkID);
+            signatureMap[pkID] = oneSig;
         }
-    }
-
-    if (signatureInvalidIDs.size())
-    {
-        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid, non-null signature");
     }
 
     std::set<CKeyID> keysToTry;
@@ -888,7 +874,7 @@ std::string SignMessageHash(const CIdentity &identity, const uint256 &msgHash, c
     // if there are obsolete signatures, remove them
     for (auto &oneSigID : signatureKeyIDs)
     {
-        signature.signatures.erase(oneSigID);
+        signatureMap.erase(oneSigID);
     }
 
     int numSigsAdded = 0;
@@ -901,7 +887,7 @@ std::string SignMessageHash(const CIdentity &identity, const uint256 &msgHash, c
             {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Signing failed");
             }
-            signature.signatures[oneKeyID] = vchSig;
+            signatureMap[oneKeyID] = vchSig;
             numSigsAdded++;
             numSigs++;
         }
@@ -910,6 +896,13 @@ std::string SignMessageHash(const CIdentity &identity, const uint256 &msgHash, c
     if (numSigs < identity.minSigs && !numSigsAdded)
     {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No private key available for additional signing");
+    }
+
+    // reset signatures from union of old and new in map
+    signature.signatures.clear();
+    for (auto &sigpair : signatureMap)
+    {
+        signature.signatures.insert(sigpair.second);
     }
 
     vector<unsigned char> vchSig = ::AsVector(signature);
@@ -966,15 +959,17 @@ UniValue signmessage(const UniValue& params, bool fHelp)
         identity = CIdentity::LookupIdentity(GetDestinationID(dest));
         if (identity.IsValidUnrevoked())
         {
+            uint32_t blockHeight = (uint32_t)chainActive.Height();
             CHashWriter ss(SER_GETHASH, 0);
-            ss << verusIDMessageMagic;
-            ss << (uint32_t)chainActive.Height();
+            ss << verusIDDataSignaturePrefix;
+            ss << ConnectedChains.ThisChain().GetChainID();
+            ss << blockHeight;
             ss << identity.GetID();
             ss << strMessage;
 
             uint256 msgHash = ss.GetHash();
 
-            return SignMessageHash(identity, msgHash, strSign);
+            return SignMessageHash(identity, msgHash, strSign, blockHeight);
         }
         else if (!identity.IsValid())
         {
@@ -1063,8 +1058,10 @@ UniValue signfile(const UniValue& params, bool fHelp)
             ifstream ifs = ifstream(strFileName, std::ios::binary | std::ios::in);
             if (ifs.is_open() && !ifs.eof())
             {
-                ss << verusIDMessageMagic;
-                ss << (uint32_t)chainActive.Height();
+                uint32_t blockHeight = (uint32_t)chainActive.Height();
+                ss << verusIDDataSignaturePrefix;
+                ss << ConnectedChains.ThisChain().GetChainID();
+                ss << blockHeight;
                 ss << identity.GetID();
                 std::vector<char> vch(4096);
                 int readNum = 0;
@@ -1081,7 +1078,7 @@ UniValue signfile(const UniValue& params, bool fHelp)
 
                 uint256 msgHash = ss.GetHash();
 
-                return SignMessageHash(identity, msgHash, strSign);
+                return SignMessageHash(identity, msgHash, strSign, blockHeight);
             }
             else
             {

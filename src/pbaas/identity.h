@@ -599,12 +599,19 @@ public:
 class CIdentitySignature
 {
 public:
+    enum {
+        VERSION_INVALID = 0,
+        VERSION_CURRENT = 1,
+        VERSION_FIRST = 1,
+        VERSION_LAST = 1
+    };
+    uint8_t version;
     uint32_t blockHeight;
-    std::map<uint160, std::vector<unsigned char>> signatures;
+    std::set<std::vector<unsigned char>> signatures;
 
-    CIdentitySignature() : blockHeight(0) {}
-    CIdentitySignature(uint32_t height, std::pair<uint160, const std::vector<unsigned char>> &oneSig) : blockHeight(0), signatures({oneSig}) {}
-    CIdentitySignature(uint32_t height, const std::map<uint160, std::vector<unsigned char>> &sigs) : blockHeight(0), signatures(sigs) {}
+    CIdentitySignature() : version(VERSION_CURRENT), blockHeight(0) {}
+    CIdentitySignature(uint32_t height, const std::vector<unsigned char> &oneSig) : version(VERSION_CURRENT), blockHeight(0), signatures({oneSig}) {}
+    CIdentitySignature(uint32_t height, const std::set<std::vector<unsigned char>> &sigs) : version(VERSION_CURRENT), blockHeight(0), signatures(sigs) {}
     CIdentitySignature(const std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);
@@ -612,33 +619,47 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(blockHeight);
-        std::vector<std::pair<uint160, std::vector<unsigned char>>> sigs;
-        if (ser_action.ForRead())
+        READWRITE(version);
+        if (version <= VERSION_LAST && version >= VERSION_FIRST)
         {
-            READWRITE(sigs);
-
-            for (auto &oneSig : sigs)
+            READWRITE(blockHeight);
+            std::vector<std::vector<unsigned char>> sigs;
+            if (ser_action.ForRead())
             {
-                signatures[oneSig.first] = oneSig.second;
-            }
-        }
-        else
-        {
-            for (auto &oneSig : signatures)
-            {
-                sigs.push_back(oneSig);
-            }
+                READWRITE(sigs);
 
-            READWRITE(sigs);
+                for (auto &oneSig : sigs)
+                {
+                    signatures.insert(oneSig);
+                }
+            }
+            else
+            {
+                for (auto &oneSig : signatures)
+                {
+                    sigs.push_back(oneSig);
+                }
+
+                READWRITE(sigs);
+            }
         }
     }
 
     ADD_SERIALIZE_METHODS;
 
-    void AddSignature(const uint160 &addrID, const std::vector<unsigned char> &signature)
+    void AddSignature(const std::vector<unsigned char> &signature)
     {
-        signatures[addrID] = signature;
+        signatures.insert(signature);
+    }
+    
+    uint32_t Version()
+    {
+        return version;
+    }
+
+    uint32_t IsValid()
+    {
+        return version <= VERSION_LAST && version >= VERSION_FIRST;
     }
 };
 
