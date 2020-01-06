@@ -772,4 +772,3 @@ CScript CIdentity::IdentityUpdateOutputScript() const
     return ret;
 }
 
-

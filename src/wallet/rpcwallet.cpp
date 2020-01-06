@@ -799,21 +799,134 @@ UniValue listaddressgroupings(const UniValue& params, bool fHelp)
     return jsonGroupings;
 }
 
+std::string SignMessageHash(const CIdentity &identity, const uint256 &msgHash, const std::string &signatureStr, uint32_t blockHeight)
+{
+    int numSigs = 0;
+
+    CIdentitySignature signature;
+    bool fInvalid = false;
+
+    // get the signature, a hex string, which is deserialized into an instance of the ID signature class
+    std::vector<unsigned char> sigVec;
+    try
+    {
+        sigVec = DecodeBase64(signatureStr.c_str(), &fInvalid);
+        if (fInvalid)
+        {
+            sigVec.clear();
+        }
+
+        if (sigVec.size())
+        {
+            signature = CIdentitySignature(sigVec);
+        }
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+        sigVec.clear();
+        signature = CIdentitySignature();
+    }
+
+    signature.blockHeight = blockHeight;
+
+    std::set<uint160> signatureKeyIDs;
+    std::map<uint160, std::vector<unsigned char>> signatureMap;
+    
+    for (auto &oneSig : signature.signatures)
+    {
+        CPubKey pubkey;
+        if (pubkey.RecoverCompact(msgHash, oneSig))
+        {
+            uint160 pkID = pubkey.GetID();
+            signatureKeyIDs.insert(pkID);
+            signatureMap[pkID] = oneSig;
+        }
+    }
+
+    std::set<CKeyID> keysToTry;
+
+    // remove all valid addresses and count
+    for (auto &oneAddr : identity.primaryAddresses)
+    {
+        if (!(oneAddr.which() == COptCCParams::ADDRTYPE_PK || oneAddr.which() == COptCCParams::ADDRTYPE_PKH))
+        {
+            numSigs = 0;
+            break;
+        }
+        uint160 addrID = GetDestinationID(oneAddr);
+
+        if (signatureKeyIDs.count(addrID))
+        {
+            numSigs++;
+            signatureKeyIDs.erase(addrID);
+            if (!signatureKeyIDs.size())
+            {
+                break;
+            }
+        }
+        else
+        {
+            keysToTry.insert(addrID);
+        }
+    }
+
+    // if there are obsolete signatures, remove them
+    for (auto &oneSigID : signatureKeyIDs)
+    {
+        signatureMap.erase(oneSigID);
+    }
+
+    int numSigsAdded = 0;
+    for (auto &oneKeyID : keysToTry)
+    {
+        CKey key;
+        if (pwalletMain->GetKey(oneKeyID, key)) {
+            vector<unsigned char> vchSig;
+            if (!key.SignCompact(msgHash, vchSig))
+            {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Signing failed");
+            }
+            signatureMap[oneKeyID] = vchSig;
+            numSigsAdded++;
+            numSigs++;
+        }
+    }
+
+    if (numSigs < identity.minSigs && !numSigsAdded)
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No private key available for additional signing");
+    }
+
+    // reset signatures from union of old and new in map
+    signature.signatures.clear();
+    for (auto &sigpair : signatureMap)
+    {
+        signature.signatures.insert(sigpair.second);
+    }
+
+    vector<unsigned char> vchSig = ::AsVector(signature);
+
+    // all signatures must be from valid keys, and if there are enough, it is valid
+    return EncodeBase64(&vchSig[0], vchSig.size());
+}
+
 UniValue signmessage(const UniValue& params, bool fHelp)
 {
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size() != 2)
+    if (fHelp || params.size() < 2 || params.size() > 3)
         throw runtime_error(
-            "signmessage \"t-addr\" \"message\"\n"
+            "signmessage \"address or identity\" \"message\" \"curentsig\"\n"
             "\nSign a message with the private key of a t-addr or the authorities present in this wallet for an identity"
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"
-            "1. \"t-addr\"  (string, required) The transparent address to use for the private key.\n"
+            "1. \"t-addr or identity\" (string, required) The transparent address or identity to use for signing.\n"
             "2. \"message\"         (string, required) The message to create a signature of.\n"
+            "2. \"cursig\"          (string) The current signature of the message encoded in base 64 if multisig ID\n"
             "\nResult:\n"
-            "\"signature\"          (string) The signature of the message encoded in base 64\n"
+            "\"signature\"          (string) The aggregate signature of the message encoded in base 64 if all or part signing was successful\n"
             "\nExamples:\n"
             "\nUnlock the wallet for 30 seconds\n"
             + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
@@ -837,27 +950,194 @@ UniValue signmessage(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address or identity");
     }
 
+    if (dest.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        std::string strSign = params.size() > 2 ? uni_get_str(params[2]) : "";
 
+        CIdentity identity;
 
-    const CKeyID *keyID = boost::get<CKeyID>(&dest);
-    if (!keyID) {
-        throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
+        identity = CIdentity::LookupIdentity(GetDestinationID(dest));
+        if (identity.IsValidUnrevoked())
+        {
+            uint32_t blockHeight = (uint32_t)chainActive.Height();
+            CHashWriter ss(SER_GETHASH, 0);
+            ss << verusIDDataSignaturePrefix;
+            ss << ConnectedChains.ThisChain().GetChainID();
+            ss << blockHeight;
+            ss << identity.GetID();
+            ss << strMessage;
+
+            uint256 msgHash = ss.GetHash();
+
+            return SignMessageHash(identity, msgHash, strSign, blockHeight);
+        }
+        else if (!identity.IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid identity");
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Identity is revoked and cannot sign");
+        }
+    }
+    else
+    {
+        const CKeyID *keyID = boost::get<CKeyID>(&dest);
+        if (!keyID) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
+        }
+
+        CKey key;
+        if (!pwalletMain->GetKey(*keyID, key)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available");
+        }
+
+        CHashWriter ss(SER_GETHASH, 0);
+        ss << kmdMessageMagic;
+        ss << strMessage;
+
+        vector<unsigned char> vchSig;
+        if (!key.SignCompact(ss.GetHash(), vchSig))
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Sign failed");
+
+        return EncodeBase64(&vchSig[0], vchSig.size());
+    }
+}
+
+UniValue signfile(const UniValue& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return NullUniValue;
+
+    if (fHelp || params.size() < 2 || params.size() > 3)
+        throw runtime_error(
+            "signfile \"address or identity\" \"filename\" \"curentsig\"\n"
+            "\nGenerates a SHA256D hash of the file, returns the hash, and signs the hash with the private key specified"
+            + HelpRequiringPassphrase() + "\n"
+            "\nArguments:\n"
+            "1. \"t-addr or identity\" (string, required) The transparent address or identity to use for signing.\n"
+            "2. \"filename\"        (string, required) Local file to sign\n"
+            "2. \"cursig\"          (string) The current signature of the message encoded in base 64 if multisig ID\n"
+            "\nResult:\n"
+            "{\n"
+            "   \"signature\":\"base64str\" (string) The aggregate signature of the message encoded in base 64 if all or part signing was successful\n"
+            "}\n"
+            "\nExamples:\n"
+            "\nUnlock the wallet for 30 seconds\n"
+            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
+            "\nCreate the signature\n"
+            + HelpExampleCli("signmessage", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\" \"my message\"") +
+            "\nVerify the signature\n"
+            + HelpExampleCli("verifymessage", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\" \"signature\" \"my message\"") +
+            "\nAs json rpc\n"
+            + HelpExampleRpc("signmessage", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\", \"my message\"")
+        );
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    EnsureWalletIsUnlocked();
+
+    string strAddress = params[0].get_str();
+    string strFileName = params[1].get_str();
+
+    CTxDestination dest = DecodeDestination(strAddress);
+    if (!IsValidDestination(dest)) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address or identity");
     }
 
-    CKey key;
-    if (!pwalletMain->GetKey(*keyID, key)) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available");
+    if (dest.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        string strSign = params.size() > 2 ? uni_get_str(params[2]) : "";
+
+        CIdentity identity;
+
+        identity = CIdentity::LookupIdentity(GetDestinationID(dest));
+        if (identity.IsValidUnrevoked())
+        {
+            CHashWriter ss(SER_GETHASH, 0);
+            ifstream ifs = ifstream(strFileName, std::ios::binary | std::ios::in);
+            if (ifs.is_open() && !ifs.eof())
+            {
+                uint32_t blockHeight = (uint32_t)chainActive.Height();
+                ss << verusIDDataSignaturePrefix;
+                ss << ConnectedChains.ThisChain().GetChainID();
+                ss << blockHeight;
+                ss << identity.GetID();
+                std::vector<char> vch(4096);
+                int readNum = 0;
+                do
+                {
+                    readNum = ifs.readsome(&vch[0], vch.size());
+                    if (readNum)
+                    {
+                        ss.write(&vch[0], readNum);
+                    }
+                } while (readNum == vch.size() && !ifs.eof());
+                
+                ifs.close();
+
+                uint256 msgHash = ss.GetHash();
+
+                return SignMessageHash(identity, msgHash, strSign, blockHeight);
+            }
+            else
+            {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot open file " + strFileName);
+            }
+        }
+        else if (!identity.IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid identity");
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Identity is revoked and cannot sign");
+        }
     }
+    else
+    {
+        const CKeyID *keyID = boost::get<CKeyID>(&dest);
+        if (!keyID) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
+        }
 
-    CHashWriter ss(SER_GETHASH, 0);
-    ss << strMessageMagic;
-    ss << strMessage;
+        CKey key;
+        if (!pwalletMain->GetKey(*keyID, key)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available");
+        }
 
-    vector<unsigned char> vchSig;
-    if (!key.SignCompact(ss.GetHash(), vchSig))
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Sign failed");
+        CHashWriter ss(SER_GETHASH, 0);
+        ifstream ifs = ifstream(strFileName, std::ios::binary | std::ios::in);
+        uint256 msgHash;
+        if (ifs.is_open() && !ifs.eof())
+        {
+            ss << kmdMessageMagic;
+            std::vector<char> vch(4096);
+            int readNum = 0;
+            do
+            {
+                readNum = ifs.readsome(&vch[0], vch.size());
+                if (readNum)
+                {
+                    ss.write(&vch[0], readNum);
+                }
+            } while (readNum == vch.size() && !ifs.eof());
+            
+            ifs.close();
 
-    return EncodeBase64(&vchSig[0], vchSig.size());
+            msgHash = ss.GetHash();
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot open file " + strFileName);
+        }
+
+        vector<unsigned char> vchSig;
+        if (!key.SignCompact(msgHash, vchSig))
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Sign failed");
+
+        return EncodeBase64(&vchSig[0], vchSig.size());
+    }
 }
 
 UniValue getreceivedbyaddress(const UniValue& params, bool fHelp)
@@ -7085,6 +7365,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "setaccount",               &setaccount,               true  },
     { "wallet",             "settxfee",                 &settxfee,                 true  },
     { "wallet",             "signmessage",              &signmessage,              true  },
+    { "wallet",             "signfile",                 &signfile,                 true  },
     { "wallet",             "walletlock",               &walletlock,               true  },
     { "wallet",             "walletpassphrasechange",   &walletpassphrasechange,   true  },
     { "wallet",             "walletpassphrase",         &walletpassphrase,         true  },
