@@ -1891,7 +1891,7 @@ static const CRPCCommand commands[] =
     { "util",               "verifymessage",          &verifymessage,          true  },
     { "util",               "verifyfile",             &verifyfile,             true  },
     { "util",               "verifyhash",             &verifyhash,             true  },
-    { "hidden",             "hashdata",               &hashdata,               true  }, // not visible in help
+    { "hashdata",           "hashdata",               &hashdata,               true  }, // not visible in help
 
     // START insightexplorer
     /* Address index */
