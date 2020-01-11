@@ -29,6 +29,7 @@
 #include "zcash/Address.hpp"
 #include "pbaas/pbaas.h"
 #include <ostream>
+#include <algorithm>
 
 using namespace std;
 
@@ -659,15 +660,42 @@ UniValue createmultisig(const UniValue& params, bool fHelp)
     return result;
 }
 
-UniValue hashmessage(const UniValue& params, bool fHelp)
+uint256 HashFile(std::string filepath)
+{
+    CHashWriterSHA256 ss(SER_GETHASH, 0);
+    ifstream ifs = ifstream(filepath, std::ios::binary | std::ios::in);
+    if (ifs.is_open() && !ifs.eof())
+    {
+        std::vector<char> vch(4096);
+        int readNum = 0;
+        do
+        {
+            readNum = ifs.readsome(&vch[0], vch.size());
+            if (readNum)
+            {
+                ss.write(&vch[0], readNum);
+            }
+        } while (readNum != 0 && !ifs.eof());
+        
+        ifs.close();
+
+        return ss.GetHash();
+    }
+    else
+    {
+        return uint256();
+    }
+}
+
+UniValue hashdata(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
-            "hashmessage \"hexmessage\"\n"
+            "hashdata \"hexmessage\"\n"
             "\nReturns the hash of the data in a hex message\n"
             "\nArguments:\n"
-            "  \"hexmessage\"         (string, required) This message is converted from hex, the data is hashed, then returned\n"
-            "  \"hashtype\"           (string, optional) one of (\"sha256\", \"verushash2\", \"verushash2b\", \"verushash2.1\"), defaults to sha256\n"
+            "  \"hexdata\"            (string, required) This message is converted from hex, the data is hashed, then returned\n"
+            "  \"hashtype\"           (string, optional) one of (\"sha256rev\", \"sha256D\", \"verushash2\", \"verushash2b\", \"verushash2.1\"), defaults to sha256\n"
             "\nResult:\n"
             "  \"hashresult\"         (hexstring) 32 byte has in hex of the data passed in using the hash of the specific blockheight\n"
             "\nExamples:\n"
@@ -703,6 +731,15 @@ UniValue hashmessage(const UniValue& params, bool fHelp)
 
     if (hashType == "sha256")
     {
+        CHashWriterSHA256 hw(SER_GETHASH, PROTOCOL_VERSION);
+        hw.write((const char *)vmsg.data(), vmsg.size());
+        uint256 result = hw.GetHash();
+        // to be compatible with data and file hashing tools when users compare the output, such as sha256sum,
+        // we reverse the normally little endian value
+        std::reverse(result.begin(), result.end());
+    }
+    else if (hashType == "sha256D")
+    {
         CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
         hw.write((const char *)vmsg.data(), vmsg.size());
         result = hw.GetHash();
@@ -727,9 +764,171 @@ UniValue hashmessage(const UniValue& params, bool fHelp)
     }
     else
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Hash type " + hashType + " must be one of (\"sha256\", \"verushash2\", \"verushash2b\", \"verushash2.1\")");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Hash type " + hashType + " must be one of (\"sha256\", \"sha256D\", \"verushash2\", \"verushash2b\", \"verushash2.1\")");
     }
     return result.GetHex();
+}
+
+UniValue verifyhash(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 3 || params.size() > 4)
+        throw runtime_error(
+            "verifyhash \"address or identity\" \"signature\" \"hexhash\" \"checklatest\"\n"
+            "\nVerify a signed message\n"
+            "\nArguments:\n"
+            "1. \"address or identity\" (string, required) The Komodo address to use for the signature.\n"
+            "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
+            "3. \"hexhash\"         (string, required) Hash of the message or file that was signed.\n"
+            "3. \"checklatest\"     (bool, optional)   If true, checks signature validity based on latest identity. defaults to false,\n"
+            "                                          which determines validity of signing height stored in signature.\n"
+            "\nResult:\n"
+            "true|false   (boolean) If the signature is verified or not.\n"
+            "\nExamples:\n"
+            "\nUnlock the wallet for 30 seconds\n"
+            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
+            "\nCreate the signature\n"
+            + HelpExampleCli("signmessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"my message\"") +
+            "\nVerify the signature\n"
+            + HelpExampleCli("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"signature\" \"my message\"") +
+            "\nAs json rpc\n"
+            + HelpExampleRpc("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"my message\"")
+        );
+
+    LOCK(cs_main);
+
+    string strAddress  = params[0].get_str();
+    string strSign     = params[1].get_str();
+    string strHash     = params[2].get_str();
+
+    bool fInvalid = false;
+    uint256 msgHash;
+
+    CTxDestination destination = DecodeDestination(strAddress);
+    if (!IsValidDestination(destination)) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid address");
+    }
+
+    if (!strHash.size())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "No hash to verify");
+    }
+
+    try
+    {
+        msgHash = uint256S(strHash.c_str());
+    }
+    catch(const std::exception& e)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "hexhash must be a valid hexadecimal hash value");
+    }
+
+    // we expect a hash to be passed in reversed, for compatibility with file and data hashing tools like sha256sum
+    std::reverse(msgHash.begin(), msgHash.end());
+
+    if (destination.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        // lookup identity from the requested blockheight
+        bool checkLatest = params.size() > 3 && uni_get_bool(params[3]);
+
+        CIdentitySignature signature;
+
+        // get the signature, a hex string, which is deserialized into an instance of the ID signature class
+        std::vector<unsigned char> sigVec;
+        try
+        {
+            sigVec = DecodeBase64(strSign.c_str(), &fInvalid);
+            if (fInvalid)
+            {
+                sigVec.clear();
+            }
+
+            if (sigVec.size())
+            {
+                signature = CIdentitySignature(sigVec);
+            }
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+
+        if (signature.signatures.size())
+        {
+            CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
+            ss << verusDataSignaturePrefix;
+            ss << ConnectedChains.ThisChain().GetChainID();
+            ss << signature.blockHeight;
+            ss << GetDestinationID(destination);
+            ss << msgHash;
+
+            msgHash = ss.GetHash();
+
+            std::set<uint160> signatureKeyIDs;
+            for (auto &oneSig : signature.signatures)
+            {
+                CPubKey pubkey;
+                if (pubkey.RecoverCompact(msgHash, oneSig))
+                {
+                    signatureKeyIDs.insert(pubkey.GetID());
+                }
+            }
+
+            CIdentity identity;
+            int numSigs = 0;
+            if (signatureKeyIDs.size() != 0)
+            {
+                identity = CIdentity::LookupIdentity(GetDestinationID(destination), checkLatest ? 0 : signature.blockHeight);
+                if (identity.IsValidUnrevoked())
+                {
+                    // remove all valid addresses and count
+                    for (auto &oneAddr : identity.primaryAddresses)
+                    {
+                        if (!(oneAddr.which() == COptCCParams::ADDRTYPE_PK || oneAddr.which() == COptCCParams::ADDRTYPE_PKH))
+                        {
+                            numSigs = 0;
+                            break;
+                        }
+                        uint160 addrID = GetDestinationID(oneAddr);
+                        if (signatureKeyIDs.count(addrID))
+                        {
+                            numSigs++;
+                            signatureKeyIDs.erase(addrID);
+                            if (!signatureKeyIDs.size())
+                            {
+                                break;
+                            }
+                        }
+                    }
+
+                    // all signatures must be from valid keys, and if there are enough, it is valid
+                    return signatureKeyIDs.size() == 0 && numSigs >= identity.minSigs;
+                }
+            }
+        }
+        return false;
+    }
+    else
+    {
+        const CKeyID *keyID = boost::get<CKeyID>(&destination);
+        if (!keyID) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
+        }
+
+        vector<unsigned char> vchSig = DecodeBase64(strSign.c_str(), &fInvalid);
+
+        if (fInvalid)
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Malformed base64 encoding");
+
+        CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
+        ss << verusDataSignaturePrefix;
+        ss << msgHash;
+
+        CPubKey pubkey;
+        if (!pubkey.RecoverCompact(ss.GetHash(), vchSig))
+            return false;
+
+        return (pubkey.GetID() == *keyID);
+    }
 }
 
 UniValue verifymessage(const UniValue& params, bool fHelp)
@@ -798,14 +997,18 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
 
         if (signature.signatures.size())
         {
-            CHashWriter ss(SER_GETHASH, 0);
-            ss << verusIDDataSignaturePrefix;
+            CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
+            ss << strMessage;
+            uint256 msgHash = ss.GetHash();
+
+            ss.Reset();
+            ss << verusDataSignaturePrefix;
             ss << ConnectedChains.ThisChain().GetChainID();
             ss << signature.blockHeight;
             ss << GetDestinationID(destination);
-            ss << strMessage;
+            ss << msgHash;
 
-            uint256 msgHash = ss.GetHash();
+            msgHash = ss.GetHash();
 
             std::set<uint160> signatureKeyIDs;
             for (auto &oneSig : signature.signatures)
@@ -863,9 +1066,12 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
         if (fInvalid)
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Malformed base64 encoding");
 
-        CHashWriter ss(SER_GETHASH, 0);
-        ss << kmdMessageMagic;
+        CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
         ss << strMessage;
+        uint256 msgHash = ss.GetHash();
+        ss.Reset();
+        ss << verusDataSignaturePrefix;
+        ss << msgHash;
 
         CPubKey pubkey;
         if (!pubkey.RecoverCompact(ss.GetHash(), vchSig))
@@ -942,35 +1148,21 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
 
         if (signature.signatures.size())
         {
-            uint256 msgHash;
+            uint256 msgHash = HashFile(strFileName);
 
-            CHashWriter ss(SER_GETHASH, 0);
-            ifstream ifs = ifstream(strFileName, std::ios::binary | std::ios::in);
-            if (ifs.is_open() && !ifs.eof())
+            if (msgHash.IsNull())
             {
-                ss << verusIDDataSignaturePrefix;
-                ss << ConnectedChains.ThisChain().GetChainID();
-                ss << signature.blockHeight;
-                ss << GetDestinationID(destination);
-
-                std::vector<char> vch(4096);
-                int readNum = 0;
-                do
-                {
-                    readNum = ifs.readsome(&vch[0], vch.size());
-                    if (readNum)
-                    {
-                        ss.write(&vch[0], readNum);
-                    }
-                } while (readNum == vch.size() && !ifs.eof());
-                
-                ifs.close();
-
-                msgHash = ss.GetHash();
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot open file " + strFileName);
             }
             else
             {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot open file " + strFileName);
+                CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
+                ss << verusDataSignaturePrefix;
+                ss << ConnectedChains.ThisChain().GetChainID();
+                ss << signature.blockHeight;
+                ss << GetDestinationID(destination);
+                ss << msgHash;
+                msgHash = ss.GetHash();
             }
 
             std::set<uint160> signatureKeyIDs;
@@ -1029,31 +1221,18 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
         if (fInvalid)
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Malformed base64 encoding");
 
-       uint256 msgHash;
+        uint256 msgHash = HashFile(strFileName);
 
-        CHashWriter ss(SER_GETHASH, 0);
-        ifstream ifs = ifstream(strFileName, std::ios::binary | std::ios::in);
-        if (ifs.is_open() && !ifs.eof())
+        if (msgHash.IsNull())
         {
-            ss << kmdMessageMagic;
-            std::vector<char> vch(4096);
-            int readNum = 0;
-            do
-            {
-                readNum = ifs.readsome(&vch[0], vch.size());
-                if (readNum)
-                {
-                    ss.write(&vch[0], readNum);
-                }
-            } while (readNum == vch.size() && !ifs.eof());
-            
-            ifs.close();
-
-            msgHash = ss.GetHash();
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot open file " + strFileName);
         }
         else
         {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot open file " + strFileName);
+            CHashWriterSHA256 ss(SER_GETHASH, 0);
+            ss << verusDataSignaturePrefix;
+            ss << msgHash;
+            msgHash = ss.GetHash();
         }
 
         CPubKey pubkey;
@@ -1711,7 +1890,8 @@ static const CRPCCommand commands[] =
     { "util",               "createmultisig",         &createmultisig,         true  },
     { "util",               "verifymessage",          &verifymessage,          true  },
     { "util",               "verifyfile",             &verifyfile,             true  },
-    { "util",               "hashmessage",            &hashmessage,            true  },
+    { "util",               "verifyhash",             &verifyhash,             true  },
+    { "hashdata",           "hashdata",               &hashdata,               true  }, // not visible in help
 
     // START insightexplorer
     /* Address index */
