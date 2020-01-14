@@ -4844,8 +4844,8 @@ UniValue getidentity(const UniValue& params, bool fHelp)
             "\nResult:\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("recoveridentity", "\'{\"name\" : \"myname\"}\'")
-            + HelpExampleRpc("recoveridentity", "\'{\"name\" : \"myname\"}\'")
+            + HelpExampleCli("getidentity", "\"name@\"")
+            + HelpExampleRpc("getidentity", "\"name@\"")
         );
     }
 

@@ -129,7 +129,7 @@ static void CheckBlockIndex(const Consensus::Params& consensusParams);
 /** Constant stuff for coinbase transactions we create: */
 CScript COINBASE_FLAGS;
 
-const string strMessageMagic = "Komodo Signed Message:\n";
+const string verusDataSignaturePrefix = "Verus signed data:\n";
 
 // Internal stuff
 namespace {
