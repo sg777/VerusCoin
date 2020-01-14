@@ -776,7 +776,7 @@ UniValue verifyhash(const UniValue& params, bool fHelp)
             "verifyhash \"address or identity\" \"signature\" \"hexhash\" \"checklatest\"\n"
             "\nVerify a signed message\n"
             "\nArguments:\n"
-            "1. \"address or identity\" (string, required) The Komodo address to use for the signature.\n"
+            "1. \"address or identity\" (string, required) The Verus address to use for the signature.\n"
             "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
             "3. \"hexhash\"         (string, required) Hash of the message or file that was signed.\n"
             "3. \"checklatest\"     (bool, optional)   If true, checks signature validity based on latest identity. defaults to false,\n"
@@ -938,7 +938,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
             "verifymessage \"address or identity\" \"signature\" \"message\" \"checklatest\"\n"
             "\nVerify a signed message\n"
             "\nArguments:\n"
-            "1. \"address or identity\" (string, required) The Komodo address to use for the signature.\n"
+            "1. \"address or identity\" (string, required) The Verus address to use for the signature.\n"
             "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
             "3. \"message\"         (string, required) The message that was signed.\n"
             "3. \"checklatest\"     (bool, optional)   If true, checks signature validity based on latest identity. defaults to false,\n"
@@ -1088,7 +1088,7 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
             "verifymessage \"address or identity\" \"signature\" \"filename\" \"checklatest\"\n"
             "\nVerify a signed message\n"
             "\nArguments:\n"
-            "1. \"address or identity\" (string, required) The Komodo address to use for the signature.\n"
+            "1. \"address or identity\" (string, required) The Verus address to use for the signature.\n"
             "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
             "3. \"filename\"        (string, required) The file, which must be available locally to the daemon and that was signed.\n"
             "3. \"checklatest\"     (bool, optional)   If true, checks signature validity based on latest identity. defaults to false,\n"
@@ -1101,9 +1101,9 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
             "\nCreate the signature\n"
             + HelpExampleCli("signmessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"my message\"") +
             "\nVerify the signature\n"
-            + HelpExampleCli("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"signature\" \"my message\"") +
+            + HelpExampleCli("verifyfile", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"signature\" \"my message\"") +
             "\nAs json rpc\n"
-            + HelpExampleRpc("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"my message\"")
+            + HelpExampleRpc("verifyfile", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"my message\"")
         );
 
     LOCK(cs_main);
