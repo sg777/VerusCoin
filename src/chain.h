@@ -270,8 +270,13 @@ public:
     //! pointer to the index of some further predecessor of this block
     CBlockIndex* pskip;
 
-    //! height of the entry in the chain. The genesis block has height 0
-    int64_t newcoins,zfunds; int8_t segid; // jl777 fields
+    int64_t newcoins;
+    int64_t zfunds;
+    int64_t immature;       // how much in this block is immature
+    uint32_t maturity;      // when do the immature funds in this block mature?
+
+    int8_t segid; // jl777 fields
+
     //! Which # file this block is stored in (blk?????.dat)
     int nFile;
 
@@ -341,6 +346,8 @@ public:
     {
         phashBlock = NULL;
         newcoins = zfunds = 0;
+        maturity = 0;
+        immature = 0;
         segid = -2;
         pprev = NULL;
         pskip = NULL;

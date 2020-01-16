@@ -989,11 +989,45 @@ unsigned int GetP2SHSigOpCount(const CTransaction& tx, const CCoinsViewCache& in
     return nSigOps;
 }
 
+bool IsCoinbaseTimeLocked(const CTransaction &tx, uint32_t &outUnlockHeight)
+{
+    CScriptID scriptHash;
+    bool timelocked = false;
+
+    // to be valid, it must be a P2SH transaction and have an op_return in vout[1] that 
+    // holds the full output script, which may include multisig, etc., but starts with 
+    // the time lock verify of the correct time lock for this block height
+    if (CScriptExt(tx.vout[0].scriptPubKey).IsPayToScriptHash(&scriptHash) &&
+        tx.vout.back().scriptPubKey.size() >= 7 && // minimum for any possible future to prevent out of bounds
+        tx.vout.back().scriptPubKey[0] == OP_RETURN)
+    {
+        opcodetype op;
+        std::vector<uint8_t> opretData = std::vector<uint8_t>();
+        CScript::const_iterator it = tx.vout.back().scriptPubKey.begin() + 1;
+        if (tx.vout.back().scriptPubKey.GetOp2(it, op, &opretData))
+        {
+            if (opretData.size() > 0 && opretData.data()[0] == OPRETTYPE_TIMELOCK)
+            {
+                int64_t unlocktime;
+                CScriptExt opretScript = CScriptExt(&opretData[1], &opretData[opretData.size()]);
+
+                if (CScriptID(opretScript) == scriptHash &&
+                    opretScript.IsCheckLockTimeVerify(&unlocktime))
+                {
+                    outUnlockHeight = unlocktime;
+                    timelocked = true;
+                }
+            }
+        }
+    }
+    return timelocked;
+}
+
 /**
  * Ensure that a coinbase transaction is structured according to the consensus rules of the
  * chain
  */
-bool ContextualCheckCoinbaseTransaction(const CTransaction& tx, const int nHeight)
+bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight)
 {
     bool valid = true, timelocked = false;
     CTxDestination firstDest;
