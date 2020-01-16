@@ -4199,6 +4199,8 @@ bool static DisconnectTip(CValidationState &state, const CChainParams& chainpara
     pindexDelete->segid = -2;
     pindexDelete->newcoins = 0;
     pindexDelete->zfunds = 0;
+    pindexDelete->maturity = 0;    
+    pindexDelete->immature = 0;    
 
     LogPrint("bench", "- Disconnect block: %.2fms\n", (GetTimeMicros() - nStart) * 0.001);
     uint256 sproutAnchorAfterDisconnect = pcoinsTip->GetBestAnchor(SPROUT);

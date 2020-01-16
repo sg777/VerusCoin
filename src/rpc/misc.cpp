@@ -334,15 +334,15 @@ UniValue coinsupply(const UniValue& params, bool fHelp)
             + HelpExampleRpc("coinsupply", "420")
         );
 
-    int32_t height = 0; 
+    uint32_t height = 0; 
     int64_t zfunds = 0, supply = 0, immature = 0; 
     UniValue result(UniValue::VOBJ);
 
     if ( params.size() == 0 )
         height = chainActive.Height();
-    else height = uni_get_int(params[0]);
+    else height = atoi(uni_get_str(params[0]));
 
-    if (height >= 0 && height <= chainActive.Height()) {
+    if (height > 0 && height <= chainActive.Height()) {
         if (GetCoinSupply(supply, &zfunds, &immature, height))
         {
             result.push_back(Pair("result", "success"));
