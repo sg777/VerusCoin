@@ -58,7 +58,7 @@ extern uint64_t KOMODO_INTERESTSUM,KOMODO_WALLETBALANCE;
 extern int32_t KOMODO_LASTMINED,JUMBLR_PAUSE,KOMODO_LONGESTCHAIN;
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 uint32_t komodo_segid32(char *coinaddr);
-int64_t komodo_coinsupply(int64_t *zfundsp,int32_t height);
+bool GetCoinSupply(int64_t &transparentSupply, int64_t *pzsupply, int64_t *pimmaturesupply, uint32_t height);
 int32_t notarizedtxid_height(char *dest,char *txidstr,int32_t *kmdnotarized_heightp);
 
 extern uint16_t ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT;
@@ -315,7 +315,6 @@ public:
 
 UniValue coinsupply(const UniValue& params, bool fHelp)
 {
-    int32_t height = 0; int32_t currentHeight; int64_t zfunds,supply = 0; UniValue result(UniValue::VOBJ);
     if (fHelp || params.size() > 1)
         throw runtime_error("coinsupply <height>\n"
             "\nReturn coin supply information at a given block height. If no height is given, the current height is used.\n"
@@ -324,8 +323,8 @@ UniValue coinsupply(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "{\n"
             "  \"result\" : \"success\",         (string) If the request was successful.\n"
-            "  \"coin\" : \"KMD\",               (string) The currency symbol of the coin for asset chains, otherwise KMD.\n"
-            "  \"height\" : 420,               (integer) The height of this coin supply data\n"
+            "  \"coin\" : \"VRSC\",              (string) The currency symbol of the native coin of this blockchain.\n"
+            "  \"height\" : 420,                 (integer) The height of this coin supply data\n"
             "  \"supply\" : \"777.0\",           (float) The transparent coin supply\n"
             "  \"zfunds\" : \"0.777\",           (float) The shielded coin supply (in zaddrs)\n"
             "  \"total\" :  \"777.777\",         (float) The total coin supply, i.e. sum of supply + zfunds\n"
@@ -334,18 +333,23 @@ UniValue coinsupply(const UniValue& params, bool fHelp)
             + HelpExampleCli("coinsupply", "420")
             + HelpExampleRpc("coinsupply", "420")
         );
+
+    uint32_t height = 0; 
+    int64_t zfunds = 0, supply = 0, immature = 0; 
+    UniValue result(UniValue::VOBJ);
+
     if ( params.size() == 0 )
         height = chainActive.Height();
-    else height = atoi(params[0].get_str());
-    currentHeight = chainActive.Height();
+    else height = atoi(uni_get_str(params[0]));
 
-    if (height >= 0 && height <= currentHeight) {
-        if ( (supply= komodo_coinsupply(&zfunds,height)) > 0 )
+    if (height > 0 && height <= chainActive.Height()) {
+        if (GetCoinSupply(supply, &zfunds, &immature, height))
         {
             result.push_back(Pair("result", "success"));
             result.push_back(Pair("coin", ASSETCHAINS_SYMBOL[0] == 0 ? "KMD" : ASSETCHAINS_SYMBOL));
             result.push_back(Pair("height", (int)height));
             result.push_back(Pair("supply", ValueFromAmount(supply)));
+            result.push_back(Pair("immature", ValueFromAmount(immature)));
             result.push_back(Pair("zfunds", ValueFromAmount(zfunds)));
             result.push_back(Pair("total", ValueFromAmount(zfunds + supply)));
         } else result.push_back(Pair("error", "couldnt calculate supply"));
