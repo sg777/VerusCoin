@@ -1758,13 +1758,95 @@ int32_t komodo_checkPOW(int32_t slowflag,CBlock *pblock,int32_t height)
     return -1;
 }
 
+bool IsCoinbaseTimeLocked(const CTransaction &tx, uint32_t &outUnlockHeight);
+
+void GetImmatureCoins(std::map<uint32_t, int64_t> *pimmatureBlockAmounts, CBlock &block, uint32_t &maturity, int64_t &amount, uint32_t height)
+{
+    std::map<uint32_t, int64_t> _unlockBlockAmounts;
+    std::map<uint32_t, int64_t> &unlockBlockAmounts = pimmatureBlockAmounts ? *pimmatureBlockAmounts : _unlockBlockAmounts;
+    amount = 0;
+
+    if (block.vtx.size())
+    {
+        const CTransaction &tx = block.vtx[0];
+        uint32_t unlockHeight = 0;
+        if (IsCoinbaseTimeLocked(tx, unlockHeight) && unlockHeight > (height + COINBASE_MATURITY))
+        {
+            maturity = unlockHeight;
+        }
+        else
+        {
+            maturity = height + COINBASE_MATURITY;
+        }
+        for (auto &out : tx.vout)
+        {
+            if (!out.scriptPubKey.IsInstantSpend())
+            {
+                amount += out.nValue;
+            }
+        }
+        unlockBlockAmounts[maturity] += amount;
+    }
+}
+
+bool GetNewCoins(int64_t &newCoins, int64_t *pzsupplydelta, std::map<uint32_t, int64_t> *pimmatureBlockAmounts, CBlock &block, uint32_t &maturity, int64_t &amount, uint32_t height)
+{
+    int64_t _zfunds;
+    int64_t &zfunds = pzsupplydelta ? *pzsupplydelta : _zfunds;
+    std::map<uint32_t, int64_t> _unlockBlockAmounts;
+    std::map<uint32_t, int64_t> &unlockBlockAmounts = pimmatureBlockAmounts ? *pimmatureBlockAmounts : _unlockBlockAmounts;
+
+    for (auto &tx : block.vtx)
+    {
+        if (tx.IsCoinBase())
+        {
+            for (auto &out : tx.vout)
+            {
+                newCoins += out.nValue;
+            }
+            GetImmatureCoins(&unlockBlockAmounts, block, maturity, amount, height);
+        }
+        else
+        {
+            int64_t vinSum = 0, voutSum = 0;
+            CTransaction vinTx;
+            uint256 blockHash;
+
+            for (auto &in : tx.vin)
+            {
+                if ( !GetTransaction(in.prevout.hash, vinTx, blockHash, false) || in.prevout.n >= vinTx.vout.size() )
+                {
+                    fprintf(stderr,"ERROR: %s/v%d cant find\n", in.prevout.hash.ToString().c_str(), in.prevout.n);
+                    return false;
+                }
+                vinSum += vinTx.vout[in.prevout.n].nValue;
+            }
+            for (auto &out : tx.vout)
+            {
+                if ( !out.scriptPubKey.IsOpReturn() )
+                {
+                    voutSum += out.nValue;
+                }
+            }
+            // this should be a negative number due to fees, which will mature when the coinbase does
+            // all normal blocks should have negative coin emission due to maturity only
+            // resolving the pmatureBlockAmounts map is required for an accurate mature and immature supply
+            newCoins += voutSum - vinSum;
+        }
+    }
+
+    zfunds += (chainActive[height]->nSproutValue ? chainActive[height]->nSproutValue.get() : 0) + chainActive[height]->nSaplingValue;
+
+    return true;
+}
+
 int64_t komodo_newcoins(int64_t *zfundsp,int32_t nHeight,CBlock *pblock)
 {
     CTxDestination address; int32_t i,j,m,n,vout; uint8_t *script; uint256 txid,hashBlock; int64_t zfunds=0,vinsum=0,voutsum=0;
     n = pblock->vtx.size();
     for (i=0; i<n; i++)
     {
-        CTransaction vintx,&tx = pblock->vtx[i];
+        CTransaction vintx, &tx = pblock->vtx[i];
         zfunds += (tx.GetShieldedValueOut() - tx.GetShieldedValueIn());
         if ( (m= tx.vin.size()) > 0 )
         {
@@ -1833,4 +1915,63 @@ int64_t komodo_coinsupply(int64_t *zfundsp,int32_t height)
     }
     *zfundsp = zfunds;
     return(supply);
+}
+
+bool GetCoinSupply(int64_t &transparentSupply, int64_t *pzsupply, int64_t *pimmaturesupply, uint32_t height)
+{
+    int64_t _immature = 0, _zsupply = 0;
+    int64_t &immature = pimmaturesupply ? *pimmaturesupply : _immature;
+    int64_t &zfunds = pzsupply ? *pzsupply : _zsupply;
+
+    // keep a running map of immature coin amounts and block maturity as we move forward on the block chain
+    std::map<uint32_t, int64_t> immatureBlockAmounts;
+
+    if (height > chainActive.Height())
+    {
+        height = chainActive.Height();
+    }
+
+    for (int curHeight = 1; curHeight <= height; curHeight++)
+    {
+        CBlockIndex *pIndex;
+        CBlock block;
+        if ( (pIndex = komodo_chainactive(curHeight)) != 0 )
+        {
+            if ( pIndex->newcoins == 0 && pIndex->zfunds == 0 )
+            {
+                if ( !komodo_blockload(block, pIndex) == 0 || !GetNewCoins(pIndex->newcoins, &pIndex->zfunds, &immatureBlockAmounts, block, pIndex->maturity, pIndex->immature, curHeight) )
+                {
+                    fprintf(stderr,"error loading block.%d\n", pIndex->GetHeight());
+                    return false;
+                }
+            }
+            else
+            {
+                if (pIndex->maturity)
+                {
+                    if (immatureBlockAmounts.count(pIndex->maturity))
+                    {
+                        immatureBlockAmounts[pIndex->maturity] += pIndex->immature;
+                    }
+                    else
+                    {
+                        immatureBlockAmounts[pIndex->maturity] = pIndex->immature;
+                    }
+                }
+            }
+            
+            transparentSupply += pIndex->newcoins;
+            zfunds += pIndex->zfunds;
+        }
+    }
+
+    // remove coins that matured this block from the map to prevent double counting
+    auto lastIt = immatureBlockAmounts.upper_bound(height);
+    immatureBlockAmounts.erase(immatureBlockAmounts.begin(), lastIt);
+    for (auto &lockedAmount : immatureBlockAmounts)
+    {
+        immature += lockedAmount.second;
+    }
+
+    return true;
 }
