@@ -284,21 +284,42 @@ bool CBasicKeyStore::GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdent
 
     for (auto &idID : identitySet)
     {
-        std::pair<CIdentityMapKey, CIdentityMapValue> idpair;
-        if (GetIdentity(idID, idpair))
+        std::pair<CIdentityMapKey, CIdentityMapValue> primaryIdentity;
+        if (GetIdentity(idID, primaryIdentity))
         {
-            CIdentityMapKey idKey(idpair.first);
+            std::pair<CIdentityMapKey, CIdentityMapValue> revocationAuthority;
+            std::pair<CIdentityMapKey, CIdentityMapValue> recoveryAuthority;
+
+            CIdentityMapKey idKey(primaryIdentity.first);
+
+            // consider our canspend and cansign on revocation and recovery
+            if (primaryIdentity.second.revocationAuthority != idID)
+            {
+                if (GetIdentity(primaryIdentity.second.revocationAuthority, revocationAuthority))
+                {
+                    idKey.flags |= (CIdentityMapKey(revocationAuthority.first).flags & (idKey.CAN_SPEND | idKey.CAN_SIGN));
+                }
+            }
+
+            if (primaryIdentity.second.recoveryAuthority != idID)
+            {
+                if (GetIdentity(primaryIdentity.second.recoveryAuthority, recoveryAuthority))
+                {
+                    idKey.flags |= (CIdentityMapKey(recoveryAuthority.first).flags & (idKey.CAN_SPEND | idKey.CAN_SIGN));
+                }
+            }
+
             if (idKey.flags & idKey.CAN_SPEND)
             {
-                mine.push_back(make_pair(idKey, idpair.second));
+                mine.push_back(make_pair(idKey, primaryIdentity.second));
             }
             else if (idKey.flags & idKey.CAN_SIGN)
             {
-                imsigner.push_back(make_pair(idKey, idpair.second));
+                imsigner.push_back(make_pair(idKey, primaryIdentity.second));
             }
             else
             {
-                notmine.push_back(make_pair(idKey, idpair.second));
+                notmine.push_back(make_pair(idKey, primaryIdentity.second));
             }
         }
     }
