@@ -4899,20 +4899,20 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     }
 }
 
-UniValue IdentityPairToUni(const std::pair<CIdentityMapKey, CIdentityMapValue *> &identity)
+UniValue IdentityPairToUni(const std::pair<CIdentityMapKey, CIdentityMapValue> &identity)
 {
     UniValue oneID(UniValue::VOBJ);
 
-    if (identity.first.IsValid() && identity.second->IsValid())
+    if (identity.first.IsValid() && identity.second.IsValid())
     {
-        oneID.push_back(Pair("identity", identity.second->ToUniValue()));
+        oneID.push_back(Pair("identity", identity.second.ToUniValue()));
         oneID.push_back(Pair("blockheight", (int64_t)identity.first.blockHeight));
-        oneID.push_back(Pair("txid", identity.second->txid.GetHex()));
-        if (identity.second->IsRevoked())
+        oneID.push_back(Pair("txid", identity.second.txid.GetHex()));
+        if (identity.second.IsRevoked())
         {
             oneID.push_back(Pair("status", "revoked"));
-            oneID.push_back(Pair("canspendfor", 0));
-            oneID.push_back(Pair("cansignfor", 0));
+            oneID.push_back(Pair("canspendfor", bool(0)));
+            oneID.push_back(Pair("cansignfor", bool(0)));
         }
         else
         {
@@ -4947,7 +4947,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
 
     CheckIdentityAPIsValid();
 
-    std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> mine, imsigner, notmine;
+    std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> mine, imsigner, notmine;
 
     bool includeCanSpend = params.size() > 0 ? uni_get_bool(params[0], true) : true;
     bool includeCanSign = params.size() > 1 ? uni_get_bool(params[1], true) : true;
@@ -4961,7 +4961,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
             for (auto identity : mine)
             {
                 uint160 parent;
-                if (identity.second->IsValid() && identity.second->name == CleanName(identity.second->name, parent, true))
+                if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent, true))
                 {
                     ret.push_back(IdentityPairToUni(identity));
                 }
@@ -4972,7 +4972,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
             for (auto identity : imsigner)
             {
                 uint160 parent;
-                if (identity.second->IsValid() && identity.second->name == CleanName(identity.second->name, parent, true))
+                if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent, true))
                 {
                     ret.push_back(IdentityPairToUni(identity));
                 }
@@ -4983,7 +4983,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
             for (auto identity : notmine)
             {
                 uint160 parent;
-                if (identity.second->IsValid() && identity.second->name == CleanName(identity.second->name, parent, true))
+                if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent, true))
                 {
                     ret.push_back(IdentityPairToUni(identity));
                 }

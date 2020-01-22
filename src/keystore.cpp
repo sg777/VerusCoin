@@ -259,24 +259,47 @@ bool CBasicKeyStore::GetFirstIdentity(const CIdentityID &idID, std::pair<CIdenti
     return true;
 }
 
-bool CBasicKeyStore::GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> &mine, 
-                                   std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> &imsigner, 
-                                   std::vector<std::pair<CIdentityMapKey, CIdentityMapValue *>> &notmine)
+// return the first identity not less than a specific key
+bool CBasicKeyStore::GetPriorIdentity(const CIdentityMapKey &idMapKey, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity) const
 {
+    auto it = mapIdentities.lower_bound(idMapKey.MapKey());
+    if (it == mapIdentities.end() || it == mapIdentities.begin() || CIdentityMapKey((--it)->first).idID != idMapKey.idID)
+    {
+        return false;
+    }
+    keyAndIdentity = make_pair(CIdentityMapKey(it->first), it->second);
+    return true;
+}
+
+bool CBasicKeyStore::GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &mine, 
+                                   std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &imsigner, 
+                                   std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &notmine)
+{
+    std::set<CIdentityID> identitySet;
+
     for (auto &identity : mapIdentities)
     {
-        CIdentityMapKey idKey(identity.first);
-        if (idKey.flags & idKey.CAN_SPEND)
+        identitySet.insert(identity.second.GetID());
+    }
+
+    for (auto &idID : identitySet)
+    {
+        std::pair<CIdentityMapKey, CIdentityMapValue> idpair;
+        if (GetIdentity(idID, idpair))
         {
-            mine.push_back(make_pair(idKey, &identity.second));
-        }
-        else if (idKey.flags & idKey.CAN_SIGN)
-        {
-            imsigner.push_back(make_pair(idKey, &identity.second));
-        }
-        else
-        {
-            notmine.push_back(make_pair(idKey, &identity.second));
+            CIdentityMapKey idKey(idpair.first);
+            if (idKey.flags & idKey.CAN_SPEND)
+            {
+                mine.push_back(make_pair(idKey, idpair.second));
+            }
+            else if (idKey.flags & idKey.CAN_SIGN)
+            {
+                imsigner.push_back(make_pair(idKey, idpair.second));
+            }
+            else
+            {
+                notmine.push_back(make_pair(idKey, idpair.second));
+            }
         }
     }
     return (mine.size() || imsigner.size() || notmine.size());

@@ -522,6 +522,7 @@ public:
     static const uint16_t CAN_SIGN = 0x4000;
     static const uint16_t MANUAL_HOLD = 0x2000; // we were CAN_SIGN in the past, so keep a last state updated after we are removed, keep it updated so its useful when signing related txes
     static const uint16_t BLACKLIST = 0x1000;   // do not track identities that are blacklisted
+    static const uint32_t MAX_BLOCKHEIGHT = INT32_MAX;
 
     // these elements are used as a sort key for the identity map
     // with most significant member first. flags have no effect on sort order, since elements will be unique already
