@@ -2333,18 +2333,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             wasCanSignCanSpend = swapBools;
                         }
 
-                        // By default, we will not automatically add identity associated UTXOs unless the identity is accepted to the wallet manually, to prevent spam and DoS attacks
-                        // when identities are manually added to the wallet, UTXOs signable by that ID and spent transactions that were spent during the time that the ID was cansign
-                        // for this wallet are added to it as well. We may want to add a parameter to allow adding new IDs to be an automatic process, but we don't want someone adding or
-                        // removing an address from an identity they control to be able to affect the wallet of others in any meaningful way without action taken by the entity who owns
-                        // the address.
-                        // we assume that at the time we are set to manual hold, that the wallet is brought up to date with can sign or can spend changes at that time, so if manual hold is set
-                        // we are working on a wallet that should be in sync
-                        /*
-                        if ((!idHistory.second.IsValid() && idMapKey.flags & idMapKey.MANUAL_HOLD) || 
-                                (idHistory.second.IsValid() && idHistory.first.flags & idHistory.first.MANUAL_HOLD) && 
-                            (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second))
-                        */
+                        // store transitions as needed in the wallet
                         if (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second)
                         {
                             if (canSignCanSpend.first != wasCanSignCanSpend.first)
@@ -2362,14 +2351,14 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
                                             CWalletDB walletdb(strWalletFile, "r+", false);
 
-                                            // must not be the current tx, not already present, and be a CC output to be correctly send to an identity
+                                            // must not be the current tx, not already present, and be a CC output to be correctly sent to an identity
                                             if (txHash != newOut.first.txhash && GetWalletTx(newOut.first.txhash) == nullptr && newOut.second.script.IsPayToCryptoCondition())
                                             {
                                                 txnouttype newTypeRet;
                                                 std::vector<CTxDestination> newAddressRet;
                                                 int newNRequired;
                                                 bool newCanSign, newCanSpend;
-                                                if (!ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend) && newCanSign)
+                                                if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend) && newCanSign))
                                                 {
                                                     continue;
                                                 }
@@ -2440,10 +2429,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                                     for (auto &txidAndWtx : mapWallet)
                                     {
-                                        txidAndWtx.second.MarkDirty();
-
                                         const CBlockIndex *pIndex;
-                                        if (txidAndWtx.second.GetDepthInMainChain(pIndex) >= 1 && pIndex->GetHeight() <= deleteSpentFrom)
+                                        if (txidAndWtx.second.GetDepthInMainChain(pIndex) > 0 && pIndex->GetHeight() <= deleteSpentFrom)
                                         {
                                             continue;
                                         }
@@ -2515,12 +2502,22 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         EraseFromWallet(hash);
                                     }
 
-                                    // now, we've deleted all transactions that were only in the wallet due to our ability to sign with the ID just removed
+                                    if (pblock && idsToCheck.count(idID))
+                                    {
+                                        // do not remove the current identity that was just added to take away our authority
+                                        // that is an important record to keep
+                                        idsToCheck.erase(idID);
+                                    }
+
+                                    // now, we've deleted all transactions that were only in the wallet due to our ability to sign with the ID we just lost
                                     // loop through all transactions and remove all IDs found in the remaining transactions from our idsToCheck set after we 
                                     // have gone through all wallet transactions, we can delete all IDs remaining in the idsToCheck set
                                     // that are not on manual hold
                                     for (auto &txidAndWtx : mapWallet)
                                     {
+                                        // mark all txes dirty as well, to force recalculation of amounts
+                                        txidAndWtx.second.MarkDirty();
+
                                         for (auto txout : txidAndWtx.second.vout)
                                         {
                                             if (!txout.scriptPubKey.IsPayToCryptoCondition())
@@ -2559,18 +2556,20 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             break;
                                         }
                                     }
+
                                     // delete all remaining IDs that are not held for manual hold
                                     for (auto &idToRemove : idsToCheck)
                                     {
                                         std::pair<CIdentityMapKey, CIdentityMapValue> identityToRemove;
+                                        std::pair<CIdentityMapKey, CIdentityMapValue> priorIdentity;
 
                                         // if not cansign or canspend, no transactions we care about relating to it and no manual hold, delete the ID from the wallet
                                         // also keep the first transition after one we will keep
                                         if (GetIdentity(idToRemove, identityToRemove) && 
                                             !((identityToRemove.first.flags & (identityToRemove.first.CAN_SIGN + identityToRemove.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
                                         {
-                                            if (!GetIdentity(idToRemove, identityToRemove, identityToRemove.first.blockHeight - 1) ||
-                                                !((identityToRemove.first.flags & (identityToRemove.first.CAN_SIGN + identityToRemove.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
+                                            if (!GetPriorIdentity(identityToRemove.first, priorIdentity) ||
+                                                !((priorIdentity.first.flags & (priorIdentity.first.CAN_SIGN + priorIdentity.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
                                             {
                                                 RemoveIdentity(CIdentityMapKey(idToRemove));
                                             }
@@ -3945,8 +3944,6 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
         if (!pwallet->IsSpent(hashTx, i))
         {
             nCredit += pwallet->GetCredit(*this, i, ISMINE_SPENDABLE);
-            if (!MoneyRange(nCredit))
-                throw std::runtime_error("CWalletTx::GetAvailableCredit() : value out of range");
         }
     }
 

@@ -1935,6 +1935,7 @@ bool GetCoinSupply(int64_t &transparentSupply, int64_t *pzsupply, int64_t *pimma
     {
         CBlockIndex *pIndex;
         CBlock block;
+        LOCK(cs_main);
         if ( (pIndex = komodo_chainactive(curHeight)) != 0 )
         {
             if ( pIndex->newcoins == 0 && pIndex->zfunds == 0 )
