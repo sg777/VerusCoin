@@ -417,7 +417,7 @@ UniValue z_exportwallet(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
             "z_exportwallet \"filename\"\n"
             "\nExports all wallet keys, for taddr and zaddr, in a human-readable format.  Overwriting an existing file is not permitted.\n"
@@ -438,7 +438,7 @@ UniValue dumpwallet(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
             "dumpwallet \"filename\"\n"
             "\nDumps taddr wallet keys in a human-readable format.  Overwriting an existing file is not permitted.\n"
@@ -454,12 +454,18 @@ UniValue dumpwallet(const UniValue& params, bool fHelp)
 	return dumpwallet_impl(params, fHelp, false);
 }
 
-// returns true IFF:
-//  the address once had transactions and now has no UTXOs
+// returns true if the address has no UTXOs, but it still may be
+// a controlling address of an ID
 bool IsAddressEmpty(const CKeyID &keyid)
 {
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
-    // TODO - current behavior is false -- finish
+    LOCK2(cs_main, mempool.cs);
+
+    if (!GetAddressUnspent(keyid, 1, unspentOutputs))
+    {
+        return true;
+    }
     return false;
 }
 
@@ -497,10 +503,10 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
 
     // this will discard (not export) any addresses that have had UTXOs in the past and now have no UTXOs. new addresses that never had UTXOs are expected to be there for a reason
     // and may have been given to someone for a future payment
-    bool discardEmptyAddresses = false;
+    bool markEmptyAddresses = false;
     if (params.size() > 1)
     {
-        discardEmptyAddresses = uni_get_bool(params[1]);
+        markEmptyAddresses = uni_get_bool(params[1]);
     }
 
     std::map<CKeyID, int64_t> mapKeyBirth;
@@ -534,7 +540,11 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
         std::string strTime = EncodeDumpTime(it->first);
         std::string strAddr = EncodeDestination(keyid);
         CKey key;
-        if (pwalletMain->GetKey(keyid, key) && !(discardEmptyAddresses && IsAddressEmpty(keyid))) {
+        if (pwalletMain->GetKey(keyid, key)) {
+            if (markEmptyAddresses && IsAddressEmpty(keyid))
+            {
+                strAddr = strAddr + ", NO UTXOs - may control identities";
+            }
             if (pwalletMain->mapAddressBook.count(keyid)) {
                 file << strprintf("%s %s label=%s # addr=%s\n", EncodeSecret(key), strTime, EncodeDumpString(pwalletMain->mapAddressBook[keyid].name), strAddr);
             } else if (setKeyPool.count(keyid)) {

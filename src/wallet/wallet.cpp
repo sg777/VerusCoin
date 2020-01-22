@@ -2178,6 +2178,18 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     std::pair<bool, bool> wasCanSignCanSpend({false, false});
                     std::pair<bool, bool> canSignCanSpend(CheckAuthority(identity));
 
+                    // if it is revoked, consider the recovery authority in the can sign/can spend decision
+                    if (identity.IsRevoked())
+                    {
+                        // if it's revoked, default will be no authority, and we will only have authority if
+                        // we have recovery identity in this wallet
+                        std::pair<CIdentityMapKey, CIdentityMapValue> recoveryAuthority;
+                        if (GetIdentity(identity.recoveryAuthority, recoveryAuthority, nHeight ? nHeight : INT_MAX))
+                        {
+                            canSignCanSpend = CheckAuthority(recoveryAuthority.second);
+                        }
+                    }
+
                     // does identity already exist in this wallet?
                     if (GetIdentity(idID, idHistory, nHeight ? nHeight : INT_MAX))
                     {
@@ -2218,7 +2230,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                             make_pair(CIdentityMapKey(idID, 
                                                                                         nHeight,
                                                                                         blockOrder, 
-                                                                                        canSignCanSpend.first ? CIdentityMapKey::CAN_SIGN : 0 + canSignCanSpend.second ? CIdentityMapKey::CAN_SPEND : 0), 
+                                                                                        (canSignCanSpend.first ? CIdentityMapKey::CAN_SIGN : 0) + canSignCanSpend.second ? CIdentityMapKey::CAN_SPEND : 0), 
                                                                       identity)));
 
                                 // now we have all the entries of the specified height, including those from before and the new one in the firstIDMap
@@ -2561,17 +2573,23 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     for (auto &idToRemove : idsToCheck)
                                     {
                                         std::pair<CIdentityMapKey, CIdentityMapValue> identityToRemove;
-                                        std::pair<CIdentityMapKey, CIdentityMapValue> priorIdentity;
 
                                         // if not cansign or canspend, no transactions we care about relating to it and no manual hold, delete the ID from the wallet
                                         // also keep the first transition after one we will keep
                                         if (GetIdentity(idToRemove, identityToRemove) && 
                                             !((identityToRemove.first.flags & (identityToRemove.first.CAN_SIGN + identityToRemove.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
                                         {
+                                            std::pair<CIdentityMapKey, CIdentityMapValue> priorIdentity;
+
                                             if (!GetPriorIdentity(identityToRemove.first, priorIdentity) ||
                                                 !((priorIdentity.first.flags & (priorIdentity.first.CAN_SIGN + priorIdentity.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
                                             {
-                                                RemoveIdentity(CIdentityMapKey(idToRemove));
+                                                // if we don't have recovery on a revoked ID in our wallet, then remove it
+                                                std::pair<CIdentityMapKey, CIdentityMapValue> recoveryIdentity;
+                                                if (!identityToRemove.second.IsRevoked() || !GetIdentity(identityToRemove.second.recoveryAuthority, recoveryIdentity) || !(recoveryIdentity.first.flags & recoveryIdentity.first.CAN_SIGN))
+                                                {
+                                                    RemoveIdentity(CIdentityMapKey(idToRemove));
+                                                }
                                             }
                                         }
                                     }
