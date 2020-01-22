@@ -22,7 +22,6 @@ $(package)_config_opts+=no-comp
 $(package)_config_opts+=no-crypto-mdebug
 $(package)_config_opts+=no-crypto-mdebug-backtrace
 $(package)_config_opts+=no-ct
-$(package)_config_opts+=no-des
 $(package)_config_opts+=no-dgram
 $(package)_config_opts+=no-dsa
 $(package)_config_opts+=no-dso
@@ -58,15 +57,12 @@ $(package)_config_opts+=no-scrypt
 $(package)_config_opts+=no-sctp
 $(package)_config_opts+=no-seed
 $(package)_config_opts+=no-shared
-$(package)_config_opts+=no-sock
 $(package)_config_opts+=no-srp
 $(package)_config_opts+=no-srtp
-$(package)_config_opts+=no-ssl
 $(package)_config_opts+=no-ssl3
 $(package)_config_opts+=no-ssl3-method
 $(package)_config_opts+=no-ssl-trace
 $(package)_config_opts+=no-stdio
-$(package)_config_opts+=no-tls
 $(package)_config_opts+=no-tls1
 $(package)_config_opts+=no-tls1-method
 $(package)_config_opts+=no-ts
@@ -92,7 +88,7 @@ $(package)_config_opts_i686_mingw32=mingw
 endef
 
 define $(package)_preprocess_cmds
-  sed -i.old 's/built on: $$$$date/built on: date not available/' util/mkbuildinf.pl && \
+  sed -i.old 's/built on: $$$$date/built on: not available/' util/mkbuildinf.pl && \
   sed -i.old "s|\"engines\", \"apps\", \"test\"|\"engines\"|" Configure
 endef
 

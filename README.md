@@ -125,7 +125,7 @@ cd VerusCoin
 #you might want to: git checkout <branch>; git pull
 ./zcutil/fetch-params.sh
 # -j8 = using 8 threads for the compilation - replace 8 with number of threads you want to use
-STATIC_LIBCURL=1 HOST= aarch64-linux-gnu ./zcutil/build.sh -j8
+HOST= aarch64-linux-gnu ./zcutil/build.sh -j8
 #This can take some time.
 ```
 **The VerusCoin project and protocol is experimental and a work-in-progress.** Use this source code and software at your own risk.
