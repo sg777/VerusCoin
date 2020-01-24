@@ -462,7 +462,7 @@ bool IsAddressEmpty(const CKeyID &keyid)
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressUnspent(keyid, 1, unspentOutputs))
+    if (!GetAddressUnspent(keyid, 1, unspentOutputs) || !unspentOutputs.size())
     {
         return true;
     }
@@ -535,15 +535,27 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
         file << "\n";
     }
     file << "\n";
+    std::set<CKeyID> idAddresses;
+    if (markEmptyAddresses)
+    {
+        idAddresses = pwalletMain->GetIdentityKeyIDs();
+    }
     for (std::vector<std::pair<int64_t, CKeyID> >::const_iterator it = vKeyBirth.begin(); it != vKeyBirth.end(); it++) {
         const CKeyID &keyid = it->second;
         std::string strTime = EncodeDumpTime(it->first);
         std::string strAddr = EncodeDestination(keyid);
         CKey key;
         if (pwalletMain->GetKey(keyid, key)) {
-            if (markEmptyAddresses && IsAddressEmpty(keyid))
+            if (markEmptyAddresses)
             {
-                strAddr = strAddr + ", NO UTXOs - may control identities";
+                if (IsAddressEmpty(keyid))
+                {
+                    strAddr = strAddr + ", NO UTXOs";
+                }
+            }
+            if (idAddresses.count(keyid))
+            {
+                strAddr = strAddr + ", controls one or more identities";
             }
             if (pwalletMain->mapAddressBook.count(keyid)) {
                 file << strprintf("%s %s label=%s # addr=%s\n", EncodeSecret(key), strTime, EncodeDumpString(pwalletMain->mapAddressBook[keyid].name), strAddr);

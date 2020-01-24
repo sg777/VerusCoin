@@ -204,6 +204,7 @@ public:
     virtual bool GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &mine, 
                                std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &imsigner, 
                                std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &notmine);
+    virtual std::set<CKeyID> GetIdentityKeyIDs();
 
     virtual bool AddWatchOnly(const CScript &dest);
     virtual bool RemoveWatchOnly(const CScript &dest);
