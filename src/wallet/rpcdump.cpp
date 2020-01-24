@@ -419,10 +419,11 @@ UniValue z_exportwallet(const UniValue& params, bool fHelp)
 
     if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
-            "z_exportwallet \"filename\"\n"
+            "z_exportwallet \"filename\" (omitemptytaddresses)\n"
             "\nExports all wallet keys, for taddr and zaddr, in a human-readable format.  Overwriting an existing file is not permitted.\n"
             "\nArguments:\n"
-            "1. \"filename\"    (string, required) The filename, saved in folder set by verusd -exportdir option\n"
+            "1. \"filename\"            (string, required) The filename, saved in folder set by verusd -exportdir option\n"
+            "1. \"omitemptytaddresses\" (boolean, optional) Defaults to false. If true, do not export addresses with no UTXOs that control no IDs in the wallet\n"
             "\nResult:\n"
             "\"path\"           (string) The full path of the destination file\n"
             "\nExamples:\n"
@@ -440,10 +441,11 @@ UniValue dumpwallet(const UniValue& params, bool fHelp)
 
     if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
-            "dumpwallet \"filename\"\n"
+            "dumpwallet \"filename\" (omitemptytaddresses)\n"
             "\nDumps taddr wallet keys in a human-readable format.  Overwriting an existing file is not permitted.\n"
             "\nArguments:\n"
             "1. \"filename\"    (string, required) The filename, saved in folder set by verusd -exportdir option\n"
+            "1. \"omitemptytaddresses\" (boolean, optional) Defaults to false. If true, do not export addresses with no UTXOs that control no IDs in the wallet\n"
             "\nResult:\n"
             "\"path\"           (string) The full path of the destination file\n"
             "\nExamples:\n"
