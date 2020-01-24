@@ -326,6 +326,42 @@ bool CBasicKeyStore::GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdent
     return (mine.size() || imsigner.size() || notmine.size());
 }
 
+// returns a set of key IDs that have private keys in this wallet and control the identities in this wallet
+std::set<CKeyID> CBasicKeyStore::GetIdentityKeyIDs()
+{
+    std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> mine;
+    std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> imsigner;
+    std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> notmine;
+
+    std::set<CKeyID> ret;
+    if (GetIdentities(mine, imsigner, notmine))
+    {
+        for (auto &idpair : mine)
+        {
+            for (auto &dest : idpair.second.primaryAddresses)
+            {
+                CKeyID keyid = GetDestinationID(dest);
+                if (HaveKey(keyid))
+                {
+                    ret.insert(keyid);
+                }
+            }
+        }
+        for (auto &idpair : imsigner)
+        {
+            for (auto &dest : idpair.second.primaryAddresses)
+            {
+                CKeyID keyid = GetDestinationID(dest);
+                if (HaveKey(keyid))
+                {
+                    ret.insert(keyid);
+                }
+            }
+        }
+    }
+    return ret;
+}
+
 bool CBasicKeyStore::AddWatchOnly(const CScript &dest)
 {
     LOCK(cs_KeyStore);

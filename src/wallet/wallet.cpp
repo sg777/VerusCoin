@@ -1484,8 +1484,9 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 {
     arith_uint256 target;
     arith_uint256 curHash;
-    vector<COutput> vecOutputs;
     COutput *pwinner = NULL;
+    CWalletTx winnerWtx;
+
     CBlockIndex *pastBlockIndex;
     txnouttype whichType;
     std:vector<std::vector<unsigned char>> vSolutions;
@@ -1496,7 +1497,41 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     auto consensusParams = Params().GetConsensus();
     CValidationState state;
 
-    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
+    vector<COutput> vecOutputs;
+    vector<CWalletTx> vwtx;
+    CAmount totalStakingAmount = 0;
+
+    {
+        vector<COutput> _vecOutputs;
+        LOCK2(cs_main, cs_wallet);
+        pwalletMain->AvailableCoins(_vecOutputs, true, NULL, false, true, false);
+
+        for (auto &txout : vecOutputs)
+        {
+            if (txout.tx &&
+                txout.i > txout.tx->vout.size() &&
+                txout.tx->vout[txout.i].nValue > 0 &&
+                txout.fSpendable &&
+                (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
+                !txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition())
+            {
+                totalStakingAmount += txout.tx->vout[txout.i].nValue;
+                vecOutputs.push_back(txout);
+                vwtx.push_back(*txout.tx);
+                vecOutputs.back().tx = &vwtx.back();
+            }
+        }
+    }
+
+    if (totalStakingAmount)
+    {
+        LogPrintf("Staking with %s eligible VRSC\n", ValueFromAmount(totalStakingAmount).write().c_str());
+    }
+    else
+    {
+        LogPrintf("No VRSC eligible for staking\n");
+        return false;
+    }
 
     if (pastBlockIndex = komodo_chainactive(nHeight - 100))
     {
@@ -1512,27 +1547,26 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
         BOOST_FOREACH(COutput &txout, vecOutputs)
         {
-            if (txout.tx->vout[txout.i].nValue > 0 &&
-                txout.fSpendable &&
-                (txout.nDepth >= VERUS_MIN_STAKEAGE)  &&
-                (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, addressRet, nRequiredRet) &&
-                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH)) &&  // || whichType == TX_CRYPTOCONDITION
-                (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target))
+            if (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target &&
+                Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
+                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))
             {
                 CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
 
                 //printf("Serialized size of transaction %s is %lu\n", txout.tx->GetHash().GetHex().c_str(), txSize);
-                if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && GetSerializeSize(s, *(CTransaction *)txout.tx) > MAX_TX_SIZE_FOR_STAKING)
+                if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && GetSerializeSize(s, static_cast<CTransaction>(*txout.tx)) > MAX_TX_SIZE_FOR_STAKING)
                 {
-                    LogPrintf("Transaction %s is too large to stake. Serialized size == %lu\n", txout.tx->GetHash().GetHex().c_str(), GetSerializeSize(s, *(CTransaction *)txout.tx));
+                    LogPrintf("Transaction %s is too large to stake. Serialized size == %lu\n", txout.tx->GetHash().GetHex().c_str(), GetSerializeSize(s, static_cast<CTransaction>(*txout.tx)));
                 }
 
                 uint256 txHash = txout.tx->GetHash();
                 checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
 
+                LOCK(cs_wallet);
+
                 if ((!pwinner || UintToArith256(curNonce) > UintToArith256(pBlock->nNonce)) &&
                     !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100) &&
-                    view.AccessCoins(txHash) &&
+                    view.HaveCoins(txHash) &&
                     Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
                 {
                     //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
@@ -1546,7 +1580,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         }
         if (pwinner)
         {
-            stakeSource = *(pwinner->tx);
+            stakeSource = static_cast<CTransaction>(*pwinner->tx);
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
@@ -1565,22 +1599,22 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 // all that data includes enough information to verify
                 // prior MMR, blockhash, transaction, entropy hash, and block indexes match
                 // also checks root match & block power
-                auto view = chainActive.GetMMV();
-                pBlock->AddUpdatePBaaSHeader(view.GetRoot());
+                auto mmrView = chainActive.GetMMV();
+                pBlock->AddUpdatePBaaSHeader(mmrView.GetRoot());
 
-                txStream << *(CTransaction *)pwinner->tx;
+                txStream << stakeSource;
 
                 // start with the tx proof
-                CMerkleBranch branch(pwinner->tx->nIndex, pwinner->tx->vMerkleBranch);
+                CMerkleBranch branch(winnerWtx.nIndex, winnerWtx.vMerkleBranch);
 
                 // add the Merkle proof bridge to the MMR
                 chainActive[srcIndex]->AddMerkleProofBridge(branch);
 
                 // use the block that we got entropy hash from as the validating block
                 // which immediately provides all but unspent proof for PoS block
-                view.resize(pastBlockIndex->GetHeight());
+                mmrView.resize(pastBlockIndex->GetHeight());
 
-                view.GetProof(branch, srcIndex);
+                mmrView.GetProof(branch, srcIndex);
 
                 // store block height of MMR root, block index of entry, and full blockchain proof of transaction with that root
                 txStream << pastBlockIndex->GetHeight();
@@ -1594,7 +1628,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 // it must hash to the same value with a different path, providing both a consistency check and
                 // an asserted MMR root for the n - 100 block if matched
                 pastBlockIndex->AddBlockProofBridge(branch);
-                view.GetProof(branch, pastBlockIndex->GetHeight());
+                mmrView.GetProof(branch, pastBlockIndex->GetHeight());
 
                 // block proof of the same block using the MMR of that block height, so we don't need to add additional data
                 // beyond the block hash.
@@ -1635,7 +1669,7 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
     if (!VerusSelectStakeOutput(pBlock, hashResult, stakeSource, voutNum, stakeHeight, bnTarget) ||
         !Solver(stakeSource.vout[voutNum].scriptPubKey, whichType, vSolutions))
     {
-        LogPrintf("Searched for eligible staking transactions, no winners found\n");
+        //LogPrintf("Searched for eligible staking transactions, no winners found\n");
         return 0;
     }
 
@@ -1969,8 +2003,11 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn, bool fFromLoadWallet, CWalletD
             }
         }
 
-        //// debug print
-        LogPrintf("AddToWallet %s  %s%s\n", wtxIn.GetHash().ToString(), (fInsertedNew ? "new" : ""), (fUpdated ? "update" : ""));
+        //// debug log out
+        if (fDebug)
+        {
+            LogPrintf("AddToWallet %s  %s%s\n", wtxIn.GetHash().ToString(), (fInsertedNew ? "new" : ""), (fUpdated ? "update" : ""));
+        }
 
         // Write to disk
         if (fInsertedNew || fUpdated)
