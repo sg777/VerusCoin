@@ -1506,7 +1506,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         LOCK2(cs_main, cs_wallet);
         pwalletMain->AvailableCoins(_vecOutputs, true, NULL, false, true, false);
 
-        for (auto &txout : vecOutputs)
+        for (auto &txout : _vecOutputs)
         {
             if (txout.tx &&
                 txout.i > txout.tx->vout.size() &&
