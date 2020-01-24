@@ -356,11 +356,11 @@ deploy:
     - build:mac
     - build:linux:arm64
   script:
-    - mkdir Windows && mkdir Linux && mkdir MacOS &&
-      cp ${VERUS_CLI_WINDOWS} Windows &&
-      cp ${VERUS_CLI_LINUX_AMD64} Linux &&
-      cp ${VERUS_CLI_LINUX_ARM64} Linux &&
-      cp ${VERUS_CLI_MACOS} MacOS
+    - mkdir Windows && mkdir Linux && mkdir MacOS
+    - cp ${VERUS_CLI_WINDOWS} Windows
+    - cp ${VERUS_CLI_LINUX_AMD64} Linux
+    - cp ${VERUS_CLI_LINUX_ARM64} Linux
+    - cp ${VERUS_CLI_MACOS} MacOS
     - echo "$AUTH_KEY" > AUTH_KEY.json &&
       gcloud auth activate-service-account
       --key-file AUTH_KEY.json
