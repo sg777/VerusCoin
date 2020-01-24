@@ -503,10 +503,10 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
 
     // this will discard (not export) any addresses that have had UTXOs in the past and now have no UTXOs. new addresses that never had UTXOs are expected to be there for a reason
     // and may have been given to someone for a future payment
-    bool markEmptyAddresses = false;
+    bool omitEmptyAddresses = false;
     if (params.size() > 1)
     {
-        markEmptyAddresses = uni_get_bool(params[1]);
+        omitEmptyAddresses = uni_get_bool(params[1]);
     }
 
     std::map<CKeyID, int64_t> mapKeyBirth;
@@ -536,33 +536,37 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
     }
     file << "\n";
     std::set<CKeyID> idAddresses;
-    if (markEmptyAddresses)
-    {
-        idAddresses = pwalletMain->GetIdentityKeyIDs();
-    }
+
+    idAddresses = pwalletMain->GetIdentityKeyIDs();
+
     for (std::vector<std::pair<int64_t, CKeyID> >::const_iterator it = vKeyBirth.begin(); it != vKeyBirth.end(); it++) {
         const CKeyID &keyid = it->second;
         std::string strTime = EncodeDumpTime(it->first);
         std::string strAddr = EncodeDestination(keyid);
+        bool emptyAddr = true;
         CKey key;
         if (pwalletMain->GetKey(keyid, key)) {
-            if (markEmptyAddresses)
+            if (!IsAddressEmpty(keyid))
             {
-                if (IsAddressEmpty(keyid))
-                {
-                    strAddr = strAddr + ", NO UTXOs";
-                }
+                strAddr = strAddr + ", +UTXO(s)";
+                emptyAddr = false;
             }
+
             if (idAddresses.count(keyid))
             {
-                strAddr = strAddr + ", controls one or more identities";
+                strAddr = strAddr + ", +ID(s)";
+                emptyAddr = false;
             }
-            if (pwalletMain->mapAddressBook.count(keyid)) {
-                file << strprintf("%s %s label=%s # addr=%s\n", EncodeSecret(key), strTime, EncodeDumpString(pwalletMain->mapAddressBook[keyid].name), strAddr);
-            } else if (setKeyPool.count(keyid)) {
-                file << strprintf("%s %s reserve=1 # addr=%s\n", EncodeSecret(key), strTime, strAddr);
-            } else {
-                file << strprintf("%s %s change=1 # addr=%s\n", EncodeSecret(key), strTime, strAddr);
+
+            if (!omitEmptyAddresses || !emptyAddr)
+            {
+                if (pwalletMain->mapAddressBook.count(keyid)) {
+                    file << strprintf("%s %s label=%s # addr=%s\n", EncodeSecret(key), strTime, EncodeDumpString(pwalletMain->mapAddressBook[keyid].name), strAddr);
+                } else if (setKeyPool.count(keyid)) {
+                    file << strprintf("%s %s reserve=1 # addr=%s\n", EncodeSecret(key), strTime, strAddr);
+                } else {
+                    file << strprintf("%s %s change=1 # addr=%s\n", EncodeSecret(key), strTime, strAddr);
+                }
             }
         }
     }
