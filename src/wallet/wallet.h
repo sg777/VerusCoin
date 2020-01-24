@@ -645,9 +645,6 @@ public:
     std::set<uint256> GetConflicts() const;
 };
 
-
-
-
 class COutput
 {
 public:
@@ -656,6 +653,8 @@ public:
     int nDepth;
     bool fSpendable;
 
+    COutput() : tx(nullptr), i(0), nDepth(0), fSpendable(false) {}
+
     COutput(const CWalletTx *txIn, int iIn, int nDepthIn, bool fSpendableIn)
     {
         tx = txIn; i = iIn; nDepth = nDepthIn; fSpendable = fSpendableIn;
@@ -663,9 +662,6 @@ public:
 
     std::string ToString() const;
 };
-
-
-
 
 /** Private key that includes an expiration date in case it never gets used. */
 class CWalletKey
