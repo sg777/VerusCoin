@@ -1509,7 +1509,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         for (auto &txout : _vecOutputs)
         {
             if (txout.tx &&
-                txout.i > txout.tx->vout.size() &&
+                txout.i < txout.tx->vout.size() &&
                 txout.tx->vout[txout.i].nValue > 0 &&
                 txout.fSpendable &&
                 (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
