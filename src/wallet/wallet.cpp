@@ -1502,23 +1502,41 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     CAmount totalStakingAmount = 0;
 
     {
-        vector<COutput> _vecOutputs;
         LOCK2(cs_main, cs_wallet);
-        pwalletMain->AvailableCoins(_vecOutputs, true, NULL, false, true, false);
+        pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
 
-        for (auto &txout : _vecOutputs)
+        int newSize = 0;
+
+        for (int i = 0; i < vecOutputs.size(); i++)
         {
+            auto &txout = vecOutputs[i];
+
             if (txout.tx &&
-                txout.i > txout.tx->vout.size() &&
+                txout.i < txout.tx->vout.size() &&
                 txout.tx->vout[txout.i].nValue > 0 &&
                 txout.fSpendable &&
                 (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
                 !txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition())
             {
                 totalStakingAmount += txout.tx->vout[txout.i].nValue;
-                vecOutputs.push_back(txout);
-                vwtx.push_back(*txout.tx);
-                vecOutputs.back().tx = &vwtx.back();
+                // if all are valid, no change, else compress
+                if (newSize != i)
+                {
+                    vecOutputs[newSize] = txout;
+                }
+                newSize++;
+            }
+        }
+
+        if (newSize)
+        {
+            // no reallocations to move objects. do all at once, so we can release the wallet lock
+            vecOutputs.resize(newSize);
+            vwtx.resize(newSize);
+            for (int i = 0; i < vecOutputs.size(); i++)
+            {
+                vwtx[i] = *vecOutputs[i].tx;
+                vecOutputs[i].tx = &vwtx[i];
             }
         }
     }
