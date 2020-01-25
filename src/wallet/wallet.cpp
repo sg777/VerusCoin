@@ -1497,8 +1497,8 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     auto consensusParams = Params().GetConsensus();
     CValidationState state;
 
-    vector<COutput> vecOutputs;
-    vector<CWalletTx> vwtx;
+    std::vector<COutput> vecOutputs;
+    std::vector<CWalletTx> vwtx;
     CAmount totalStakingAmount = 0;
 
     {
