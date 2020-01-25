@@ -468,7 +468,7 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
 
         if (posCount > 5)
         {
-            totalChainStake = totalChainStake / arith_uint256(height - first);
+            totalChainStake = totalChainStake / arith_uint256(posCount * 2);
         }
 
         if (totalChainStake > arith_uint256(INT64_MAX))

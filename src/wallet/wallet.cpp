@@ -1583,14 +1583,20 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 LOCK(cs_wallet);
 
                 if ((!pwinner || UintToArith256(curNonce) > UintToArith256(pBlock->nNonce)) &&
-                    !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100) &&
-                    view.HaveCoins(txHash) &&
-                    Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
+                    !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100))
                 {
-                    //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
-                    pwinner = &txout;
-                    curNonce = pBlock->nNonce;
-                    srcIndex = (nHeight - txout.nDepth) - 1;
+                    if (view.HaveCoins(txHash) && Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
+                    {
+                        //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
+                        pwinner = &txout;
+                        curNonce = pBlock->nNonce;
+                        srcIndex = (nHeight - txout.nDepth) - 1;
+                    }
+                    else
+                    {
+                        LogPrintf("Transaction %s failed to stake due to %s\n", txout.tx->GetHash().GetHex().c_str(), 
+                                                                                view.HaveCoins(txHash) ? "bad inputs" : "unavailable coins");
+                    }
                 }
 
                 checkStakeTx.vin.pop_back();
