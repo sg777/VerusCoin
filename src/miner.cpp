@@ -2372,6 +2372,7 @@ void static BitcoinMiner_noeq()
     static CBlockIndex *lastChainTipPrinted;
     static int32_t lastMiningHeight = 0;
 
+    miningTimer.clear();
     miningTimer.start();
 
     try {
@@ -2447,6 +2448,7 @@ void static BitcoinMiner_noeq()
                     // Should never reach here, because -mineraddress validity is checked in init.cpp
                     LogPrintf("Error in %s miner: Invalid %s -mineraddress\n", ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO], ASSETCHAINS_SYMBOL);
                 }
+                miningTimer.stop();
                 return;
             }
             CBlock *pblock = &pblocktemplate->block;
@@ -2695,8 +2697,7 @@ void static BitcoinMiner_noeq()
                             {
                                 // if we'll not drop through, update hashcount
                                 {
-                                    LOCK(cs_metrics);
-                                    nHashCount += totalDone;
+                                    miningTimer += totalDone;
                                     totalDone = 0;
                                 }
                             }
@@ -2754,8 +2755,7 @@ void static BitcoinMiner_noeq()
                     }
 
                     {
-                        LOCK(cs_metrics);
-                        nHashCount += totalDone;
+                        miningTimer += totalDone;
                     }
                 }
                 
