@@ -398,6 +398,7 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
             "  \"blocks\": nnn,             (numeric) The current block\n"
             "  \"currentblocksize\": nnn,   (numeric) The last block size\n"
             "  \"currentblocktx\": nnn,     (numeric) The last block transaction\n"
+            "  \"averageblockfees\": xxx.xxxxx (numeric) The average block fees, in addition to block reward, over the past 100 blocks\n"
             "  \"difficulty\": xxx.xxxxx    (numeric) The current difficulty\n"
             "  \"stakingsupply\": xxx.xxxxx (numeric) The current estimated total staking supply\n"
             "  \"errors\": \"...\"          (string) Current errors\n"
@@ -424,19 +425,17 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
 
     LOCK(cs_main);
 
+    auto consensus = Params().GetConsensus();
     uint32_t height = chainActive.Height();
-
-    UniValue obj(UniValue::VOBJ);
-    obj.push_back(Pair("blocks",           (int)height));
-    obj.push_back(Pair("currentblocksize", (uint64_t)nLastBlockSize));
-    obj.push_back(Pair("currentblocktx",   (uint64_t)nLastBlockTx));
-    obj.push_back(Pair("difficulty",       (double)GetNetworkDifficulty()));
-
     CAmount estimatedStakingSupply = 0;
+    CAmount avgBlockFees = 0;
+    bool avgBlockFeesValid = true;
+
     if (height > 200)
     {
         int first = height - 100;
 
+        arith_uint256 bigTotalFees(0);
         arith_uint256 totalChainStake(0);
         arith_uint256 bnStakeTarget;
         int posCount = 0;
@@ -444,6 +443,18 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
         for (int i = first; i < height; i++)
         {
             CBlockIndex &index = *chainActive[i];
+            CBlock block;
+
+            if (avgBlockFeesValid && komodo_blockload(block, &index))
+            {
+                avgBlockFeesValid = false;
+                LogPrintf("%s: failed to estimate average block fees\n", __func__);
+            }
+            else
+            {
+                // subtract block reward from total output of coinbase and add the rest for an average
+                bigTotalFees = bigTotalFees + arith_uint256(block.vtx[0].GetValueOut() - GetBlockSubsidy(index.GetHeight(), consensus));
+            }
 
             // if POS block, add stake
             uint256 posWinVal;
@@ -453,6 +464,8 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
 
                 if (bnStakeTarget == 0)
                 {
+                    totalChainStake = 0;
+                    avgBlockFees = false;
                     LogPrintf("%s: failed to estimate staking supply\n", __func__);
                     break;
                 }
@@ -465,6 +478,8 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
                 posCount++;
             }
         }
+
+        avgBlockFees = avgBlockFeesValid ? (bigTotalFees / arith_uint256(height - first)).GetLow64() : 0;
 
         if (posCount > 5)
         {
@@ -480,7 +495,14 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
             estimatedStakingSupply = totalChainStake.GetLow64();
         }
     }
-    obj.push_back(Pair("stakingsupply", ValueFromAmount(estimatedStakingSupply)));
+
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("blocks",           (int)height));
+    obj.push_back(Pair("currentblocksize", (uint64_t)nLastBlockSize));
+    obj.push_back(Pair("currentblocktx",   (uint64_t)nLastBlockTx));
+    obj.push_back(Pair("averageblockfees", ValueFromAmount(avgBlockFees)));
+    obj.push_back(Pair("difficulty",       (double)GetNetworkDifficulty()));
+    obj.push_back(Pair("stakingsupply",    ValueFromAmount(estimatedStakingSupply)));
     obj.push_back(Pair("errors",           GetWarnings("statusbar")));
     obj.push_back(Pair("genproclimit",     (int)GetArg("-genproclimit", -1)));
     if (ASSETCHAINS_ALGO == ASSETCHAINS_EQUIHASH)
