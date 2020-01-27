@@ -3284,13 +3284,15 @@ void static BitcoinMiner(CWallet *pwallet)
         c.disconnect();
     }
 
-
 #ifdef ENABLE_WALLET
     void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads)
 #else
     void GenerateBitcoins(bool fGenerate, int nThreads)
 #endif
     {
+        static CCriticalSection cs_startmining;
+
+        LOCK(cs_startmining);
         if (!AreParamsInitialized())
         {
             return;
@@ -3337,7 +3339,7 @@ void static BitcoinMiner(CWallet *pwallet)
 
         if (nThreads < 0)
             nThreads = GetNumCores();
-        
+
         if (minerThreads != NULL)
         {
             minerThreads->interrupt_all();
