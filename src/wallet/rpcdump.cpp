@@ -423,7 +423,8 @@ UniValue z_exportwallet(const UniValue& params, bool fHelp)
             "\nExports all wallet keys, for taddr and zaddr, in a human-readable format.  Overwriting an existing file is not permitted.\n"
             "\nArguments:\n"
             "1. \"filename\"            (string, required) The filename, saved in folder set by verusd -exportdir option\n"
-            "1. \"omitemptytaddresses\" (boolean, optional) Defaults to false. If true, do not export addresses with no UTXOs that control no IDs in the wallet\n"
+            "2. \"omitemptytaddresses\" (boolean, optional) Defaults to false. If true, export only addresses with indexed UTXOs or that control IDs in the wallet\n"
+            "                                               (do not use this option without being sure that all addresses of interest are included)\n"
             "\nResult:\n"
             "\"path\"           (string) The full path of the destination file\n"
             "\nExamples:\n"
@@ -445,7 +446,8 @@ UniValue dumpwallet(const UniValue& params, bool fHelp)
             "\nDumps taddr wallet keys in a human-readable format.  Overwriting an existing file is not permitted.\n"
             "\nArguments:\n"
             "1. \"filename\"    (string, required) The filename, saved in folder set by verusd -exportdir option\n"
-            "1. \"omitemptytaddresses\" (boolean, optional) Defaults to false. If true, do not export addresses with no UTXOs that control no IDs in the wallet\n"
+            "2. \"omitemptytaddresses\" (boolean, optional) Defaults to false. If true, export only addresses with indexed UTXOs or that control IDs in the wallet\n"
+            "                                               (do not use this option without being sure that all addresses of interest are included)\n"
             "\nResult:\n"
             "\"path\"           (string) The full path of the destination file\n"
             "\nExamples:\n"
@@ -454,21 +456,6 @@ UniValue dumpwallet(const UniValue& params, bool fHelp)
         );
 
 	return dumpwallet_impl(params, fHelp, false);
-}
-
-// returns true if the address has no UTXOs, but it still may be
-// a controlling address of an ID
-bool IsAddressEmpty(const CKeyID &keyid)
-{
-    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
-
-    LOCK2(cs_main, mempool.cs);
-
-    if (!GetAddressUnspent(keyid, 1, unspentOutputs) || !unspentOutputs.size())
-    {
-        return true;
-    }
-    return false;
 }
 
 UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
@@ -537,9 +524,12 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
         file << "\n";
     }
     file << "\n";
+
     std::set<CKeyID> idAddresses;
+    std::set<CKeyID> utxoAddresses;
 
     idAddresses = pwalletMain->GetIdentityKeyIDs();
+    utxoAddresses = pwalletMain->GetTransactionDestinationIDs();
 
     for (std::vector<std::pair<int64_t, CKeyID> >::const_iterator it = vKeyBirth.begin(); it != vKeyBirth.end(); it++) {
         const CKeyID &keyid = it->second;
@@ -548,7 +538,7 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
         bool emptyAddr = true;
         CKey key;
         if (pwalletMain->GetKey(keyid, key)) {
-            if (!IsAddressEmpty(keyid))
+            if (utxoAddresses.count(keyid))
             {
                 strAddr = strAddr + ", +UTXO(s)";
                 emptyAddr = false;

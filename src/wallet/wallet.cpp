@@ -561,6 +561,35 @@ bool CWallet::LoadIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValu
     return CCryptoKeyStore::AddUpdateIdentity(mapKey, identity);
 }
 
+// returns all key IDs that are destinations for UTXOs in the wallet
+std::set<CKeyID> CWallet::GetTransactionDestinationIDs()
+{
+    std::vector<COutput> vecOutputs;
+    std::set<CKeyID> setKeyIDs;
+
+    AvailableCoins(vecOutputs, false, NULL, true, true, true);
+
+    for (int i = 0; i < vecOutputs.size(); i++)
+    {
+        auto &txout = vecOutputs[i];
+        txnouttype outType;
+        std::vector<CTxDestination> dests;
+        int nRequiredSigs;
+
+        if (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, outType, dests, nRequiredSigs))
+        {
+            for (auto &dest : dests)
+            {
+                if (dest.which() == COptCCParams::ADDRTYPE_PK || dest.which() == COptCCParams::ADDRTYPE_PKH)
+                {
+                    setKeyIDs.insert(GetDestinationID(dest));
+                }
+            }
+        }
+    }
+    return setKeyIDs;
+}
+
 bool CWallet::AddWatchOnly(const CScript &dest)
 {
     if (!CCryptoKeyStore::AddWatchOnly(dest))

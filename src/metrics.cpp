@@ -116,7 +116,7 @@ void PerfCounterTimer::clear()
     if (!threads)
     {
         counter = 0;
-        start_time = 0;
+        start_time = GetTime();
         total_time = 0;
     }
 }
