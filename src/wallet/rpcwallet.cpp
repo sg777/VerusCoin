@@ -3076,7 +3076,6 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     std::vector<COutput> vecOutputs;
     CAmount totalStakingAmount = 0;
 
-    LOCK(pwalletMain->cs_wallet);
     pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
 
     for (int i = 0; i < vecOutputs.size(); i++)
@@ -4365,7 +4364,7 @@ UniValue z_gettotalbalance(const UniValue& params, bool fHelp)
     CAmount nTotalBalance = nBalance + nPrivateBalance;
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("transparent", FormatMoney(nBalance)));
-    result.push_back(Pair("interest", FormatMoney(interest)));
+    //result.push_back(Pair("interest", FormatMoney(interest)));
     result.push_back(Pair("private", FormatMoney(nPrivateBalance)));
     result.push_back(Pair("total", FormatMoney(nTotalBalance)));
     return result;

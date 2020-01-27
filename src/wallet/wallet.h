@@ -1086,6 +1086,8 @@ public:
     bool RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid=uint256());
     bool LoadIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
 
+    virtual std::set<CKeyID> GetTransactionDestinationIDs();
+
     //! Adds a destination data tuple to the store, and saves it to disk
     bool AddDestData(const CTxDestination &dest, const std::string &key, const std::string &value);
     //! Erases a destination data tuple in the store and on disk
