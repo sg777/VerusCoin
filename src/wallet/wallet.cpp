@@ -567,7 +567,7 @@ std::set<CKeyID> CWallet::GetTransactionDestinationIDs()
     std::vector<COutput> vecOutputs;
     std::set<CKeyID> setKeyIDs;
 
-    AvailableCoins(vecOutputs, false, NULL, true, true, true);
+    AvailableCoins(vecOutputs, false, NULL, true, true, true, true);
 
     for (int i = 0; i < vecOutputs.size(); i++)
     {
@@ -4466,7 +4466,7 @@ CAmount CWallet::GetImmatureWatchOnlyReserveBalance() const
 uint64_t komodo_interestnew(int32_t txheight,uint64_t nValue,uint32_t nLockTime,uint32_t tiptime);
 uint64_t komodo_accrued_interest(int32_t *txheightp,uint32_t *locktimep,uint256 hash,int32_t n,int32_t checkheight,uint64_t checkvalue,int32_t tipheight);
 
-void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase) const
+void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase, bool fIncludeImmatureCoins) const
 {
     uint64_t interest,*ptr;
     vCoins.clear();
@@ -4489,7 +4489,7 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
             if (isCoinbase && !fIncludeCoinBase)
                 continue;
             
-            if (isCoinbase && pcoin->GetBlocksToMaturity() > 0)
+            if (isCoinbase && !fIncludeImmatureCoins && pcoin->GetBlocksToMaturity() > 0)
                 continue;
 
             int nDepth = pcoin->GetDepthInMainChain();
