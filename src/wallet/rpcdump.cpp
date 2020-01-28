@@ -417,12 +417,14 @@ UniValue z_exportwallet(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
-            "z_exportwallet \"filename\"\n"
+            "z_exportwallet \"filename\" (omitemptytaddresses)\n"
             "\nExports all wallet keys, for taddr and zaddr, in a human-readable format.  Overwriting an existing file is not permitted.\n"
             "\nArguments:\n"
-            "1. \"filename\"    (string, required) The filename, saved in folder set by verusd -exportdir option\n"
+            "1. \"filename\"            (string, required) The filename, saved in folder set by verusd -exportdir option\n"
+            "2. \"omitemptytaddresses\" (boolean, optional) Defaults to false. If true, export only addresses with indexed UTXOs or that control IDs in the wallet\n"
+            "                                               (do not use this option without being sure that all addresses of interest are included)\n"
             "\nResult:\n"
             "\"path\"           (string) The full path of the destination file\n"
             "\nExamples:\n"
@@ -438,12 +440,14 @@ UniValue dumpwallet(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
-            "dumpwallet \"filename\"\n"
+            "dumpwallet \"filename\" (omitemptytaddresses)\n"
             "\nDumps taddr wallet keys in a human-readable format.  Overwriting an existing file is not permitted.\n"
             "\nArguments:\n"
             "1. \"filename\"    (string, required) The filename, saved in folder set by verusd -exportdir option\n"
+            "2. \"omitemptytaddresses\" (boolean, optional) Defaults to false. If true, export only addresses with indexed UTXOs or that control IDs in the wallet\n"
+            "                                               (do not use this option without being sure that all addresses of interest are included)\n"
             "\nResult:\n"
             "\"path\"           (string) The full path of the destination file\n"
             "\nExamples:\n"
@@ -452,15 +456,6 @@ UniValue dumpwallet(const UniValue& params, bool fHelp)
         );
 
 	return dumpwallet_impl(params, fHelp, false);
-}
-
-// returns true IFF:
-//  the address once had transactions and now has no UTXOs
-bool IsAddressEmpty(const CKeyID &keyid)
-{
-
-    // TODO - current behavior is false -- finish
-    return false;
 }
 
 UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
@@ -497,10 +492,10 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
 
     // this will discard (not export) any addresses that have had UTXOs in the past and now have no UTXOs. new addresses that never had UTXOs are expected to be there for a reason
     // and may have been given to someone for a future payment
-    bool discardEmptyAddresses = false;
+    bool omitEmptyAddresses = false;
     if (params.size() > 1)
     {
-        discardEmptyAddresses = uni_get_bool(params[1]);
+        omitEmptyAddresses = uni_get_bool(params[1]);
     }
 
     std::map<CKeyID, int64_t> mapKeyBirth;
@@ -529,18 +524,41 @@ UniValue dumpwallet_impl(const UniValue& params, bool fHelp, bool fDumpZKeys)
         file << "\n";
     }
     file << "\n";
+
+    std::set<CKeyID> idAddresses;
+    std::set<CKeyID> utxoAddresses;
+
+    idAddresses = pwalletMain->GetIdentityKeyIDs();
+    utxoAddresses = pwalletMain->GetTransactionDestinationIDs();
+
     for (std::vector<std::pair<int64_t, CKeyID> >::const_iterator it = vKeyBirth.begin(); it != vKeyBirth.end(); it++) {
         const CKeyID &keyid = it->second;
         std::string strTime = EncodeDumpTime(it->first);
         std::string strAddr = EncodeDestination(keyid);
+        bool emptyAddr = true;
         CKey key;
-        if (pwalletMain->GetKey(keyid, key) && !(discardEmptyAddresses && IsAddressEmpty(keyid))) {
-            if (pwalletMain->mapAddressBook.count(keyid)) {
-                file << strprintf("%s %s label=%s # addr=%s\n", EncodeSecret(key), strTime, EncodeDumpString(pwalletMain->mapAddressBook[keyid].name), strAddr);
-            } else if (setKeyPool.count(keyid)) {
-                file << strprintf("%s %s reserve=1 # addr=%s\n", EncodeSecret(key), strTime, strAddr);
-            } else {
-                file << strprintf("%s %s change=1 # addr=%s\n", EncodeSecret(key), strTime, strAddr);
+        if (pwalletMain->GetKey(keyid, key)) {
+            if (utxoAddresses.count(keyid))
+            {
+                strAddr = strAddr + ", +UTXO(s)";
+                emptyAddr = false;
+            }
+
+            if (idAddresses.count(keyid))
+            {
+                strAddr = strAddr + ", +ID(s)";
+                emptyAddr = false;
+            }
+
+            if (!omitEmptyAddresses || !emptyAddr)
+            {
+                if (pwalletMain->mapAddressBook.count(keyid)) {
+                    file << strprintf("%s %s label=%s # addr=%s\n", EncodeSecret(key), strTime, EncodeDumpString(pwalletMain->mapAddressBook[keyid].name), strAddr);
+                } else if (setKeyPool.count(keyid)) {
+                    file << strprintf("%s %s reserve=1 # addr=%s\n", EncodeSecret(key), strTime, strAddr);
+                } else {
+                    file << strprintf("%s %s change=1 # addr=%s\n", EncodeSecret(key), strTime, strAddr);
+                }
             }
         }
     }

@@ -51,7 +51,23 @@ bool uni_get_bool(UniValue uv, bool def)
 {
     try
     {
-        return uv.get_bool();
+        if (uv.isStr())
+        {
+            std::string boolStr;
+            if ((boolStr = uni_get_str(uv, def ? "true" : "false")) == "true" || boolStr == "1")
+            {
+                return true;
+            }
+            else if (boolStr == "false" || boolStr == "0")
+            {
+                return false;
+            }
+            return def;
+        }
+        else
+        {
+            return uv.get_bool();
+        }
     }
     catch(const std::exception& e)
     {

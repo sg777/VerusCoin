@@ -561,6 +561,35 @@ bool CWallet::LoadIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValu
     return CCryptoKeyStore::AddUpdateIdentity(mapKey, identity);
 }
 
+// returns all key IDs that are destinations for UTXOs in the wallet
+std::set<CKeyID> CWallet::GetTransactionDestinationIDs()
+{
+    std::vector<COutput> vecOutputs;
+    std::set<CKeyID> setKeyIDs;
+
+    AvailableCoins(vecOutputs, false, NULL, true, true, true, true);
+
+    for (int i = 0; i < vecOutputs.size(); i++)
+    {
+        auto &txout = vecOutputs[i];
+        txnouttype outType;
+        std::vector<CTxDestination> dests;
+        int nRequiredSigs;
+
+        if (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, outType, dests, nRequiredSigs))
+        {
+            for (auto &dest : dests)
+            {
+                if (dest.which() == COptCCParams::ADDRTYPE_PK || dest.which() == COptCCParams::ADDRTYPE_PKH)
+                {
+                    setKeyIDs.insert(GetDestinationID(dest));
+                }
+            }
+        }
+    }
+    return setKeyIDs;
+}
+
 bool CWallet::AddWatchOnly(const CScript &dest)
 {
     if (!CCryptoKeyStore::AddWatchOnly(dest))
@@ -1484,8 +1513,9 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 {
     arith_uint256 target;
     arith_uint256 curHash;
-    vector<COutput> vecOutputs;
     COutput *pwinner = NULL;
+    CWalletTx winnerWtx;
+
     CBlockIndex *pastBlockIndex;
     txnouttype whichType;
     std:vector<std::vector<unsigned char>> vSolutions;
@@ -1496,7 +1526,59 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     auto consensusParams = Params().GetConsensus();
     CValidationState state;
 
-    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
+    std::vector<COutput> vecOutputs;
+    std::vector<CWalletTx> vwtx;
+    CAmount totalStakingAmount = 0;
+
+    {
+        LOCK2(cs_main, cs_wallet);
+        pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
+
+        int newSize = 0;
+
+        for (int i = 0; i < vecOutputs.size(); i++)
+        {
+            auto &txout = vecOutputs[i];
+
+            if (txout.tx &&
+                txout.i < txout.tx->vout.size() &&
+                txout.tx->vout[txout.i].nValue > 0 &&
+                txout.fSpendable &&
+                (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
+                !txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition())
+            {
+                totalStakingAmount += txout.tx->vout[txout.i].nValue;
+                // if all are valid, no change, else compress
+                if (newSize != i)
+                {
+                    vecOutputs[newSize] = txout;
+                }
+                newSize++;
+            }
+        }
+
+        if (newSize)
+        {
+            // no reallocations to move objects. do all at once, so we can release the wallet lock
+            vecOutputs.resize(newSize);
+            vwtx.resize(newSize);
+            for (int i = 0; i < vecOutputs.size(); i++)
+            {
+                vwtx[i] = *vecOutputs[i].tx;
+                vecOutputs[i].tx = &vwtx[i];
+            }
+        }
+    }
+
+    if (totalStakingAmount)
+    {
+        LogPrintf("Staking with %s eligible VRSC\n", ValueFromAmount(totalStakingAmount).write().c_str());
+    }
+    else
+    {
+        LogPrintf("No VRSC eligible for staking\n");
+        return false;
+    }
 
     if (pastBlockIndex = komodo_chainactive(nHeight - 100))
     {
@@ -1512,33 +1594,38 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
         BOOST_FOREACH(COutput &txout, vecOutputs)
         {
-            if (txout.tx->vout[txout.i].nValue > 0 &&
-                txout.fSpendable &&
-                (txout.nDepth >= VERUS_MIN_STAKEAGE)  &&
-                (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, addressRet, nRequiredRet) &&
-                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH)) &&  // || whichType == TX_CRYPTOCONDITION
-                (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target))
+            if (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target &&
+                Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
+                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))
             {
                 CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
 
                 //printf("Serialized size of transaction %s is %lu\n", txout.tx->GetHash().GetHex().c_str(), txSize);
-                if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && GetSerializeSize(s, *(CTransaction *)txout.tx) > MAX_TX_SIZE_FOR_STAKING)
+                if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && GetSerializeSize(s, static_cast<CTransaction>(*txout.tx)) > MAX_TX_SIZE_FOR_STAKING)
                 {
-                    LogPrintf("Transaction %s is too large to stake. Serialized size == %lu\n", txout.tx->GetHash().GetHex().c_str(), GetSerializeSize(s, *(CTransaction *)txout.tx));
+                    LogPrintf("Transaction %s is too large to stake. Serialized size == %lu\n", txout.tx->GetHash().GetHex().c_str(), GetSerializeSize(s, static_cast<CTransaction>(*txout.tx)));
                 }
 
                 uint256 txHash = txout.tx->GetHash();
                 checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
 
+                LOCK(cs_wallet);
+
                 if ((!pwinner || UintToArith256(curNonce) > UintToArith256(pBlock->nNonce)) &&
-                    !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100) &&
-                    view.AccessCoins(txHash) &&
-                    Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
+                    !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100))
                 {
-                    //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
-                    pwinner = &txout;
-                    curNonce = pBlock->nNonce;
-                    srcIndex = (nHeight - txout.nDepth) - 1;
+                    if (view.HaveCoins(txHash) && Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
+                    {
+                        //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
+                        pwinner = &txout;
+                        curNonce = pBlock->nNonce;
+                        srcIndex = (nHeight - txout.nDepth) - 1;
+                    }
+                    else
+                    {
+                        LogPrintf("Transaction %s failed to stake due to %s\n", txout.tx->GetHash().GetHex().c_str(), 
+                                                                                view.HaveCoins(txHash) ? "bad inputs" : "unavailable coins");
+                    }
                 }
 
                 checkStakeTx.vin.pop_back();
@@ -1546,7 +1633,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         }
         if (pwinner)
         {
-            stakeSource = *(pwinner->tx);
+            stakeSource = static_cast<CTransaction>(*pwinner->tx);
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
@@ -1565,22 +1652,22 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 // all that data includes enough information to verify
                 // prior MMR, blockhash, transaction, entropy hash, and block indexes match
                 // also checks root match & block power
-                auto view = chainActive.GetMMV();
-                pBlock->AddUpdatePBaaSHeader(view.GetRoot());
+                auto mmrView = chainActive.GetMMV();
+                pBlock->AddUpdatePBaaSHeader(mmrView.GetRoot());
 
-                txStream << *(CTransaction *)pwinner->tx;
+                txStream << stakeSource;
 
                 // start with the tx proof
-                CMerkleBranch branch(pwinner->tx->nIndex, pwinner->tx->vMerkleBranch);
+                CMerkleBranch branch(winnerWtx.nIndex, winnerWtx.vMerkleBranch);
 
                 // add the Merkle proof bridge to the MMR
                 chainActive[srcIndex]->AddMerkleProofBridge(branch);
 
                 // use the block that we got entropy hash from as the validating block
                 // which immediately provides all but unspent proof for PoS block
-                view.resize(pastBlockIndex->GetHeight());
+                mmrView.resize(pastBlockIndex->GetHeight());
 
-                view.GetProof(branch, srcIndex);
+                mmrView.GetProof(branch, srcIndex);
 
                 // store block height of MMR root, block index of entry, and full blockchain proof of transaction with that root
                 txStream << pastBlockIndex->GetHeight();
@@ -1594,7 +1681,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 // it must hash to the same value with a different path, providing both a consistency check and
                 // an asserted MMR root for the n - 100 block if matched
                 pastBlockIndex->AddBlockProofBridge(branch);
-                view.GetProof(branch, pastBlockIndex->GetHeight());
+                mmrView.GetProof(branch, pastBlockIndex->GetHeight());
 
                 // block proof of the same block using the MMR of that block height, so we don't need to add additional data
                 // beyond the block hash.
@@ -1635,7 +1722,7 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
     if (!VerusSelectStakeOutput(pBlock, hashResult, stakeSource, voutNum, stakeHeight, bnTarget) ||
         !Solver(stakeSource.vout[voutNum].scriptPubKey, whichType, vSolutions))
     {
-        LogPrintf("Searched for eligible staking transactions, no winners found\n");
+        //LogPrintf("Searched for eligible staking transactions, no winners found\n");
         return 0;
     }
 
@@ -1969,8 +2056,11 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn, bool fFromLoadWallet, CWalletD
             }
         }
 
-        //// debug print
-        LogPrintf("AddToWallet %s  %s%s\n", wtxIn.GetHash().ToString(), (fInsertedNew ? "new" : ""), (fUpdated ? "update" : ""));
+        //// debug log out
+        if (fDebug)
+        {
+            LogPrintf("AddToWallet %s  %s%s\n", wtxIn.GetHash().ToString(), (fInsertedNew ? "new" : ""), (fUpdated ? "update" : ""));
+        }
 
         // Write to disk
         if (fInsertedNew || fUpdated)
@@ -2178,6 +2268,18 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     std::pair<bool, bool> wasCanSignCanSpend({false, false});
                     std::pair<bool, bool> canSignCanSpend(CheckAuthority(identity));
 
+                    // if it is revoked, consider the recovery authority in the can sign/can spend decision
+                    if (identity.IsRevoked())
+                    {
+                        // if it's revoked, default will be no authority, and we will only have authority if
+                        // we have recovery identity in this wallet
+                        std::pair<CIdentityMapKey, CIdentityMapValue> recoveryAuthority;
+                        if (GetIdentity(identity.recoveryAuthority, recoveryAuthority, nHeight ? nHeight : INT_MAX))
+                        {
+                            canSignCanSpend = CheckAuthority(recoveryAuthority.second);
+                        }
+                    }
+
                     // does identity already exist in this wallet?
                     if (GetIdentity(idID, idHistory, nHeight ? nHeight : INT_MAX))
                     {
@@ -2218,7 +2320,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                             make_pair(CIdentityMapKey(idID, 
                                                                                         nHeight,
                                                                                         blockOrder, 
-                                                                                        canSignCanSpend.first ? CIdentityMapKey::CAN_SIGN : 0 + canSignCanSpend.second ? CIdentityMapKey::CAN_SPEND : 0), 
+                                                                                        (canSignCanSpend.first ? CIdentityMapKey::CAN_SIGN : 0) + canSignCanSpend.second ? CIdentityMapKey::CAN_SPEND : 0), 
                                                                       identity)));
 
                                 // now we have all the entries of the specified height, including those from before and the new one in the firstIDMap
@@ -2333,18 +2435,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             wasCanSignCanSpend = swapBools;
                         }
 
-                        // By default, we will not automatically add identity associated UTXOs unless the identity is accepted to the wallet manually, to prevent spam and DoS attacks
-                        // when identities are manually added to the wallet, UTXOs signable by that ID and spent transactions that were spent during the time that the ID was cansign
-                        // for this wallet are added to it as well. We may want to add a parameter to allow adding new IDs to be an automatic process, but we don't want someone adding or
-                        // removing an address from an identity they control to be able to affect the wallet of others in any meaningful way without action taken by the entity who owns
-                        // the address.
-                        // we assume that at the time we are set to manual hold, that the wallet is brought up to date with can sign or can spend changes at that time, so if manual hold is set
-                        // we are working on a wallet that should be in sync
-                        /*
-                        if ((!idHistory.second.IsValid() && idMapKey.flags & idMapKey.MANUAL_HOLD) || 
-                                (idHistory.second.IsValid() && idHistory.first.flags & idHistory.first.MANUAL_HOLD) && 
-                            (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second))
-                        */
+                        // store transitions as needed in the wallet
                         if (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second)
                         {
                             if (canSignCanSpend.first != wasCanSignCanSpend.first)
@@ -2362,14 +2453,14 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
                                             CWalletDB walletdb(strWalletFile, "r+", false);
 
-                                            // must not be the current tx, not already present, and be a CC output to be correctly send to an identity
+                                            // must not be the current tx, not already present, and be a CC output to be correctly sent to an identity
                                             if (txHash != newOut.first.txhash && GetWalletTx(newOut.first.txhash) == nullptr && newOut.second.script.IsPayToCryptoCondition())
                                             {
                                                 txnouttype newTypeRet;
                                                 std::vector<CTxDestination> newAddressRet;
                                                 int newNRequired;
                                                 bool newCanSign, newCanSpend;
-                                                if (!ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend) && newCanSign)
+                                                if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend) && newCanSign))
                                                 {
                                                     continue;
                                                 }
@@ -2440,10 +2531,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                                     for (auto &txidAndWtx : mapWallet)
                                     {
-                                        txidAndWtx.second.MarkDirty();
-
                                         const CBlockIndex *pIndex;
-                                        if (txidAndWtx.second.GetDepthInMainChain(pIndex) >= 1 && pIndex->GetHeight() <= deleteSpentFrom)
+                                        if (txidAndWtx.second.GetDepthInMainChain(pIndex) > 0 && pIndex->GetHeight() <= deleteSpentFrom)
                                         {
                                             continue;
                                         }
@@ -2515,12 +2604,22 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         EraseFromWallet(hash);
                                     }
 
-                                    // now, we've deleted all transactions that were only in the wallet due to our ability to sign with the ID just removed
+                                    if (pblock && idsToCheck.count(idID))
+                                    {
+                                        // do not remove the current identity that was just added to take away our authority
+                                        // that is an important record to keep
+                                        idsToCheck.erase(idID);
+                                    }
+
+                                    // now, we've deleted all transactions that were only in the wallet due to our ability to sign with the ID we just lost
                                     // loop through all transactions and remove all IDs found in the remaining transactions from our idsToCheck set after we 
                                     // have gone through all wallet transactions, we can delete all IDs remaining in the idsToCheck set
                                     // that are not on manual hold
                                     for (auto &txidAndWtx : mapWallet)
                                     {
+                                        // mark all txes dirty as well, to force recalculation of amounts
+                                        txidAndWtx.second.MarkDirty();
+
                                         for (auto txout : txidAndWtx.second.vout)
                                         {
                                             if (!txout.scriptPubKey.IsPayToCryptoCondition())
@@ -2559,6 +2658,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             break;
                                         }
                                     }
+
                                     // delete all remaining IDs that are not held for manual hold
                                     for (auto &idToRemove : idsToCheck)
                                     {
@@ -2569,10 +2669,17 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         if (GetIdentity(idToRemove, identityToRemove) && 
                                             !((identityToRemove.first.flags & (identityToRemove.first.CAN_SIGN + identityToRemove.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
                                         {
-                                            if (!GetIdentity(idToRemove, identityToRemove, identityToRemove.first.blockHeight - 1) ||
-                                                !((identityToRemove.first.flags & (identityToRemove.first.CAN_SIGN + identityToRemove.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
+                                            std::pair<CIdentityMapKey, CIdentityMapValue> priorIdentity;
+
+                                            if (!GetPriorIdentity(identityToRemove.first, priorIdentity) ||
+                                                !((priorIdentity.first.flags & (priorIdentity.first.CAN_SIGN + priorIdentity.first.CAN_SPEND)) || identityToRemove.first.flags & identityToRemove.first.MANUAL_HOLD))
                                             {
-                                                RemoveIdentity(CIdentityMapKey(idToRemove));
+                                                // if we don't have recovery on a revoked ID in our wallet, then remove it
+                                                std::pair<CIdentityMapKey, CIdentityMapValue> recoveryIdentity;
+                                                if (!identityToRemove.second.IsRevoked() || !GetIdentity(identityToRemove.second.recoveryAuthority, recoveryIdentity) || !(recoveryIdentity.first.flags & recoveryIdentity.first.CAN_SIGN))
+                                                {
+                                                    RemoveIdentity(CIdentityMapKey(idToRemove));
+                                                }
                                             }
                                         }
                                     }
@@ -3945,8 +4052,6 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
         if (!pwallet->IsSpent(hashTx, i))
         {
             nCredit += pwallet->GetCredit(*this, i, ISMINE_SPENDABLE);
-            if (!MoneyRange(nCredit))
-                throw std::runtime_error("CWalletTx::GetAvailableCredit() : value out of range");
         }
     }
 
@@ -4361,7 +4466,7 @@ CAmount CWallet::GetImmatureWatchOnlyReserveBalance() const
 uint64_t komodo_interestnew(int32_t txheight,uint64_t nValue,uint32_t nLockTime,uint32_t tiptime);
 uint64_t komodo_accrued_interest(int32_t *txheightp,uint32_t *locktimep,uint256 hash,int32_t n,int32_t checkheight,uint64_t checkvalue,int32_t tipheight);
 
-void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase) const
+void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase, bool fIncludeImmatureCoins) const
 {
     uint64_t interest,*ptr;
     vCoins.clear();
@@ -4384,7 +4489,7 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
             if (isCoinbase && !fIncludeCoinBase)
                 continue;
             
-            if (isCoinbase && pcoin->GetBlocksToMaturity() > 0)
+            if (isCoinbase && !fIncludeImmatureCoins && pcoin->GetBlocksToMaturity() > 0)
                 continue;
 
             int nDepth = pcoin->GetDepthInMainChain();

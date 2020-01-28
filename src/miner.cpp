@@ -2340,6 +2340,8 @@ void static BitcoinMiner_noeq()
     CReserveKey reservekey(pwallet);
 #endif
 
+    miningTimer.clear();
+
     const CChainParams& chainparams = Params();
     // Each thread has its own counter
     unsigned int nExtraNonce = 0;
@@ -2447,6 +2449,8 @@ void static BitcoinMiner_noeq()
                     // Should never reach here, because -mineraddress validity is checked in init.cpp
                     LogPrintf("Error in %s miner: Invalid %s -mineraddress\n", ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO], ASSETCHAINS_SYMBOL);
                 }
+                miningTimer.stop();
+                miningTimer.clear();
                 return;
             }
             CBlock *pblock = &pblocktemplate->block;
@@ -2695,8 +2699,7 @@ void static BitcoinMiner_noeq()
                             {
                                 // if we'll not drop through, update hashcount
                                 {
-                                    LOCK(cs_metrics);
-                                    nHashCount += totalDone;
+                                    miningTimer += totalDone;
                                     totalDone = 0;
                                 }
                             }
@@ -2754,8 +2757,7 @@ void static BitcoinMiner_noeq()
                     }
 
                     {
-                        LOCK(cs_metrics);
-                        nHashCount += totalDone;
+                        miningTimer += totalDone;
                     }
                 }
                 
@@ -2806,16 +2808,19 @@ void static BitcoinMiner_noeq()
     catch (const boost::thread_interrupted&)
     {
         miningTimer.stop();
+        miningTimer.clear();
         LogPrintf("%s miner terminated\n", ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]);
         throw;
     }
     catch (const std::runtime_error &e)
     {
         miningTimer.stop();
+        miningTimer.clear();
         LogPrintf("%s miner runtime error: %s\n", ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO], e.what());
         return;
     }
     miningTimer.stop();
+    miningTimer.clear();
 }
 
 void static BitcoinMiner(CWallet *pwallet)
@@ -3279,13 +3284,15 @@ void static BitcoinMiner(CWallet *pwallet)
         c.disconnect();
     }
 
-
 #ifdef ENABLE_WALLET
     void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads)
 #else
     void GenerateBitcoins(bool fGenerate, int nThreads)
 #endif
     {
+        static CCriticalSection cs_startmining;
+
+        LOCK(cs_startmining);
         if (!AreParamsInitialized())
         {
             return;
@@ -3332,7 +3339,7 @@ void static BitcoinMiner(CWallet *pwallet)
 
         if (nThreads < 0)
             nThreads = GetNumCores();
-        
+
         if (minerThreads != NULL)
         {
             minerThreads->interrupt_all();

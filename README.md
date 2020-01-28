@@ -1,4 +1,4 @@
-## VerusCoin version 0.6.2-1
+## VerusCoin version 0.6.3
 
 Arguably the world's most advanced technology, zero knowledge privacy-centric blockchain, Verus Coin brings Sapling performance and zero knowledge features to an intelligent system with interchain smart contracts and a completely original, combined proof of stake/proof of work consensus algorithm that solves the nothing at stake problem. With this and its approach towards CPU mining and ASICs, Verus Coin strives to be one of the most naturally decentralizing and attack resistant blockchains in existence.
 
@@ -125,7 +125,7 @@ cd VerusCoin
 #you might want to: git checkout <branch>; git pull
 ./zcutil/fetch-params.sh
 # -j8 = using 8 threads for the compilation - replace 8 with number of threads you want to use
-STATIC_LIBCURL=1 HOST= aarch64-linux-gnu ./zcutil/build.sh -j8
+HOST= aarch64-linux-gnu ./zcutil/build.sh -j8
 #This can take some time.
 ```
 **The VerusCoin project and protocol is experimental and a work-in-progress.** Use this source code and software at your own risk.

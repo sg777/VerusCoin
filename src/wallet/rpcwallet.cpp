@@ -47,6 +47,7 @@ using namespace std;
 using namespace libzcash;
 
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
+extern int32_t VERUS_MIN_STAKEAGE;
 const std::string ADDR_TYPE_SPROUT = "sprout";
 const std::string ADDR_TYPE_SAPLING = "sapling";
 
@@ -1448,6 +1449,7 @@ UniValue getbalance(const UniValue& params, bool fHelp)
         // (GetBalance() sums up all unspent TxOuts)
         // getbalance and "getbalance * 1 true" should return the same number
         CAmount nBalance = 0;
+        //CAmount altBalance = 0;
         for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
         {
             const CWalletTx& wtx = (*it).second;
@@ -1461,6 +1463,7 @@ UniValue getbalance(const UniValue& params, bool fHelp)
             wtx.GetAmounts(listReceived, listSent, allFee, strSentAccount, filter);
             if (wtx.GetDepthInMainChain() >= nMinDepth)
             {
+                //altBalance += wtx.GetAvailableCredit();
                 BOOST_FOREACH(const COutputEntry& r, listReceived)
                     nBalance += r.amount;
             }
@@ -1468,7 +1471,8 @@ UniValue getbalance(const UniValue& params, bool fHelp)
                 nBalance -= s.amount;
             nBalance -= allFee;
         }
-        return  ValueFromAmount(nBalance);
+        //printf("alternate wallet balance: %s\n", ValueFromAmount(nBalance).write().c_str());
+        return ValueFromAmount(nBalance);
     }
 
     string strAccount = AccountFromValue(params[0]);
@@ -3039,6 +3043,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
             "  \"unconfirmed_reserve_balance\": xxx, (numeric) total unconfirmed reserve balance of the wallet in " + strprintf("%s",komodo_chainname()) + "\n"
             "  \"immature_balance\": xxxxxx, (numeric) the total immature balance of the wallet in " + strprintf("%s",komodo_chainname()) + "\n"
             "  \"immature_reserve_balance\": xxxxxx, (numeric) total immature reserve balance of the wallet in " + strprintf("%s",komodo_chainname()) + "\n"
+            "  \"eligible_staking_balance\": xxxxxx, (numeric) eligible staking balance in " + strprintf("%s",komodo_chainname()) + "\n"
             "  \"txcount\": xxxxxxx,         (numeric) the total number of transactions in the wallet\n"
             "  \"keypoololdest\": xxxxxx,    (numeric) the timestamp (seconds since GMT epoch) of the oldest pre-generated key in the key pool\n"
             "  \"keypoolsize\": xxxx,        (numeric) how many new keys are pre-generated\n"
@@ -3067,6 +3072,29 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
         uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
         obj.push_back(Pair("price_in_reserve", ValueFromAmount(ConnectedChains.GetCurrencyState(height).PriceInReserve())));
     }
+
+    std::vector<COutput> vecOutputs;
+    CAmount totalStakingAmount = 0;
+
+    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
+
+    for (int i = 0; i < vecOutputs.size(); i++)
+    {
+        auto &txout = vecOutputs[i];
+
+        if (txout.tx &&
+            txout.i < txout.tx->vout.size() &&
+            txout.tx->vout[txout.i].nValue > 0 &&
+            txout.fSpendable &&
+            (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
+            !txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition())
+        {
+            totalStakingAmount += txout.tx->vout[txout.i].nValue;
+        }
+    }
+
+    obj.push_back(Pair("eligible_staking_balance", ValueFromAmount(totalStakingAmount)));
+
     obj.push_back(Pair("txcount",       (int)pwalletMain->mapWallet.size()));
     obj.push_back(Pair("keypoololdest", pwalletMain->GetOldestKeyPoolTime()));
     obj.push_back(Pair("keypoolsize",   (int)pwalletMain->GetKeyPoolSize()));
@@ -4336,7 +4364,7 @@ UniValue z_gettotalbalance(const UniValue& params, bool fHelp)
     CAmount nTotalBalance = nBalance + nPrivateBalance;
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("transparent", FormatMoney(nBalance)));
-    result.push_back(Pair("interest", FormatMoney(interest)));
+    //result.push_back(Pair("interest", FormatMoney(interest)));
     result.push_back(Pair("private", FormatMoney(nPrivateBalance)));
     result.push_back(Pair("total", FormatMoney(nTotalBalance)));
     return result;

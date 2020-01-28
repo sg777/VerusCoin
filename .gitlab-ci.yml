@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.2-1
+  VERSION: 0.6.3
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
@@ -31,7 +31,6 @@ build:linux:
   image: asherd/verus-builders:verus-centos
   variables:
     DOCKER_DRIVER: overlay2
-    STATIC_LIBCURL: 1
     CONFIGURE_FLAGS: --with-gcc-arch=x86-64
   stage: build
   cache:
@@ -68,13 +67,12 @@ build:linux:
       - ${VERUS_CLI_LINUX_AMD64}.sha256
     expire_in: 1 week
 
-.build:linux:arm64:
+build:linux:arm64:
   image: asherd/verus-builders:cross-arm
   variables:
     DOCKER_DRIVER: overlay2
     HOST: aarch64-linux-gnu
     STRIP: /usr/aarch64-linux-gnu/bin/strip
-    STATIC_LIBCURL: 1
   stage: build
   cache:
     key: "${CI_JOB_NAME}${CI_COMMIT_REF_NAME}"
@@ -356,12 +354,13 @@ deploy:
     - build:linux
     - build:windows
     - build:mac
-  #  - build:linux:arm64
+    - build:linux:arm64
   script:
-    - mkdir Windows && mkdir Linux && mkdir MacOS &&
-      cp ${VERUS_CLI_WINDOWS} Windows &&
-      cp ${VERUS_CLI_LINUX_AMD64} Linux &&
-      cp ${VERUS_CLI_MACOS} MacOS
+    - mkdir Windows && mkdir Linux && mkdir MacOS
+    - cp ${VERUS_CLI_WINDOWS} Windows
+    - cp ${VERUS_CLI_LINUX_AMD64} Linux
+    - cp ${VERUS_CLI_ARM64_LINUX} Linux
+    - cp ${VERUS_CLI_MACOS} MacOS
     - echo "$AUTH_KEY" > AUTH_KEY.json &&
       gcloud auth activate-service-account
       --key-file AUTH_KEY.json
@@ -394,8 +393,8 @@ deploy:
       - ${VERUS_CLI_WINDOWS}.sha256
       - ${VERUS_CLI_MACOS}
       - ${VERUS_CLI_MACOS}.sha256
-      # - ${VERUS_CLI_ARM64_LINUX}
-      # - ${VERUS_CLI_ARM64_LINUX}.sha256
+      - ${VERUS_CLI_ARM64_LINUX}
+      - ${VERUS_CLI_ARM64_LINUX}.sha256
     expire_in: 1 week
 ########################################################################################################################
 ####END####                                           Deploy                                                 ####END####
