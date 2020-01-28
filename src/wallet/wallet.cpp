@@ -578,11 +578,18 @@ std::set<CKeyID> CWallet::GetTransactionDestinationIDs()
 
         if (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, outType, dests, nRequiredSigs))
         {
-            for (auto &dest : dests)
+            CScript scriptPubKey;
+            if (outType != TX_SCRIPTHASH ||
+                (dests.size() &&
+                 GetCScript(GetDestinationID(dests[0]), scriptPubKey) &&
+                 ExtractDestinations(scriptPubKey, outType, dests, nRequiredSigs)))
             {
-                if (dest.which() == COptCCParams::ADDRTYPE_PK || dest.which() == COptCCParams::ADDRTYPE_PKH)
+                for (auto &dest : dests)
                 {
-                    setKeyIDs.insert(GetDestinationID(dest));
+                    if (dest.which() == COptCCParams::ADDRTYPE_PK || dest.which() == COptCCParams::ADDRTYPE_PKH)
+                    {
+                        setKeyIDs.insert(GetDestinationID(dest));
+                    }
                 }
             }
         }
@@ -4486,10 +4493,10 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
                 continue;
 
             bool isCoinbase = pcoin->IsCoinBase();
-            if (isCoinbase && !fIncludeCoinBase)
+            if (!fIncludeCoinBase && isCoinbase)
                 continue;
             
-            if (isCoinbase && !fIncludeImmatureCoins && pcoin->GetBlocksToMaturity() > 0)
+            if (!fIncludeImmatureCoins && isCoinbase && pcoin->GetBlocksToMaturity() > 0)
                 continue;
 
             int nDepth = pcoin->GetDepthInMainChain();
