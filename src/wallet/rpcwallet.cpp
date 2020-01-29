@@ -1147,6 +1147,26 @@ UniValue signmessage(const UniValue& params, bool fHelp)
 
 uint256 HashFile(std::string filepath);
 
+bool printoutAPI = false;
+UniValue printapis(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "printapis trueorfalse\n"
+            "\nPrints the name of all APIs if parameter is true"
+
+            "\nResult:\n"
+            ""
+            "\nExamples:\n"
+            + HelpExampleCli("signfile", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\" \"filepath/filename\"") +
+            "\nVerify the signature\n"
+            + HelpExampleCli("verifyfile", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\" \"signature\" \"filepath/filename\"") +
+            "\nAs json rpc\n"
+            + HelpExampleRpc("signfile", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\", \"filepath/filename\"")
+        );
+    printoutAPI = uni_get_bool(params[0]);
+}
+
 UniValue signfile(const UniValue& params, bool fHelp)
 {
     if (!EnsureWalletIsAvailable(fHelp))
@@ -7513,6 +7533,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "settxfee",                 &settxfee,                 true  },
     { "wallet",             "signmessage",              &signmessage,              true  },
     { "wallet",             "signfile",                 &signfile,                 true  },
+    { "hidden",             "printapis",                &printapis,                true  },
     // { "hidden",             "signhash",                 &signhash,                 true  }, // disable due to risk of signing something that doesn't contain the content
     { "wallet",             "walletlock",               &walletlock,               true  },
     { "wallet",             "walletpassphrasechange",   &walletpassphrasechange,   true  },
