@@ -1165,6 +1165,7 @@ UniValue printapis(const UniValue& params, bool fHelp)
             + HelpExampleRpc("signfile", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\", \"filepath/filename\"")
         );
     printoutAPI = uni_get_bool(params[0]);
+    return NullUniValue;
 }
 
 UniValue signfile(const UniValue& params, bool fHelp)
