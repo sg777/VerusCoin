@@ -23,8 +23,8 @@ int cc_MakeFalcon512Signature(const unsigned char *msg32, const unsigned char *p
     shake256_context rng;
     shake256_init_prng_from_system(&rng);
 
-    void *pubkey, *sig, *sigct;
-    size_t pubkey_len, privkey_len, sig_len, sigct_len, expkey_len;
+    void *pubkey, *sig;
+    size_t pubkey_len, privkey_len, sig_len;
     size_t  tmpsd_len, tmpmp_len, tmpvv_len;
     uint8_t *tmpsd, *tmpmp, *tmpvv;
 
@@ -32,8 +32,7 @@ int cc_MakeFalcon512Signature(const unsigned char *msg32, const unsigned char *p
     pubkey_len = FALCON_PUBKEY_SIZE(logn); // not sure if we are using these lengths?
 	privkey_len = FALCON_PRIVKEY_SIZE(logn);
 	sig_len = FALCON_SIG_VARTIME_MAXSIZE(logn);
-	sigct_len = FALCON_SIG_CT_SIZE(logn);
-	expkey_len = FALCON_EXPANDEDKEY_SIZE(logn);
+	
     tmpsd_len = FALCON_TMPSIZE_SIGNDYN(logn);
    	tmpmp_len = FALCON_TMPSIZE_MAKEPUB(logn);
     tmpvv_len = FALCON_TMPSIZE_VERIFY(logn);
@@ -46,9 +45,9 @@ int cc_MakeFalcon512Signature(const unsigned char *msg32, const unsigned char *p
 
     memset(sig, 0, sig_len);
     int error;
-    error = falcon_make_public(pubkey2, pubkey_len,
+    error = falcon_make_public(pubkey, pubkey_len,
 			privateKey, privkey_len, tmpmp, tmpmp_len);
-		if (r != 0) {
+		if (error != 0) {
 			fprintf(stderr, "Falcon512 makepub failed: %d\n", r);
             return 0;
 		}
@@ -62,7 +61,7 @@ int cc_MakeFalcon512Signature(const unsigned char *msg32, const unsigned char *p
 
     error = falcon_verify(sig, sig_len,
 			pubkey, pubkey_len, (const void*)msg32, sizeof(msg32), tmpvv, tmpvv_len);
-		if (r != 0) {
+		if (error != 0) {
 			fprintf(stderr, "Falcon512 verify failed: %d\n", r);
             return 0;
 		}
