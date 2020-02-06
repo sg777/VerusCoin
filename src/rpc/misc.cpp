@@ -703,8 +703,6 @@ UniValue hashdata(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "  \"hashresult\"         (hexstring) 32 byte has in hex of the data passed in using the hash of the specific blockheight\n"
             "\nExamples:\n"
-            "\nUnlock the wallet for 30 seconds\n"
-            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
             "\nCreate the signature\n"
             + HelpExampleCli("signmessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"my message\"") +
             "\nVerify the signature\n"
@@ -780,22 +778,22 @@ UniValue verifyhash(const UniValue& params, bool fHelp)
             "verifyhash \"address or identity\" \"signature\" \"hexhash\" \"checklatest\"\n"
             "\nVerify a signed message\n"
             "\nArguments:\n"
-            "1. \"address or identity\" (string, required) The Verus address to use for the signature.\n"
-            "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
+            "1. \"t-addr or identity\" (string, required) The transparent address or identity that signed the data.\n"
+            "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage/signfile).\n"
             "3. \"hexhash\"         (string, required) Hash of the message or file that was signed.\n"
             "3. \"checklatest\"     (bool, optional)   If true, checks signature validity based on latest identity. defaults to false,\n"
             "                                          which determines validity of signing height stored in signature.\n"
             "\nResult:\n"
             "true|false   (boolean) If the signature is verified or not.\n"
             "\nExamples:\n"
-            "\nUnlock the wallet for 30 seconds\n"
-            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
             "\nCreate the signature\n"
+            + HelpExampleCli("signfile", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"filepath/filename\"") +
+            "or\n"
             + HelpExampleCli("signmessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"my message\"") +
             "\nVerify the signature\n"
-            + HelpExampleCli("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"signature\" \"my message\"") +
+            + HelpExampleCli("verifyhash", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"signature\" \"hexhash\"") +
             "\nAs json rpc\n"
-            + HelpExampleRpc("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"my message\"")
+            + HelpExampleRpc("verifyhash", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"hexhash\"")
         );
 
     LOCK(cs_main);
@@ -942,7 +940,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
             "verifymessage \"address or identity\" \"signature\" \"message\" \"checklatest\"\n"
             "\nVerify a signed message\n"
             "\nArguments:\n"
-            "1. \"address or identity\" (string, required) The Verus address to use for the signature.\n"
+            "1. \"t-addr or identity\" (string, required) The transparent address or identity that signed the message.\n"
             "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
             "3. \"message\"         (string, required) The message that was signed.\n"
             "3. \"checklatest\"     (bool, optional)   If true, checks signature validity based on latest identity. defaults to false,\n"
@@ -950,8 +948,6 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "true|false   (boolean) If the signature is verified or not.\n"
             "\nExamples:\n"
-            "\nUnlock the wallet for 30 seconds\n"
-            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
             "\nCreate the signature\n"
             + HelpExampleCli("signmessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"my message\"") +
             "\nVerify the signature\n"
@@ -1089,25 +1085,23 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 3 || params.size() > 4)
         throw runtime_error(
-            "verifymessage \"address or identity\" \"signature\" \"filename\" \"checklatest\"\n"
-            "\nVerify a signed message\n"
+            "verifyfile \"address or identity\" \"signature\" \"filepath/filename\" \"checklatest\"\n"
+            "\nVerify a signed file\n"
             "\nArguments:\n"
-            "1. \"address or identity\" (string, required) The Verus address to use for the signature.\n"
-            "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
+            "1. \"t-addr or identity\" (string, required) The transparent address or identity that signed the file.\n"
+            "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signfile).\n"
             "3. \"filename\"        (string, required) The file, which must be available locally to the daemon and that was signed.\n"
             "3. \"checklatest\"     (bool, optional)   If true, checks signature validity based on latest identity. defaults to false,\n"
             "                                          which determines validity of signing height stored in signature.\n"
             "\nResult:\n"
             "true|false   (boolean) If the signature is verified or not.\n"
             "\nExamples:\n"
-            "\nUnlock the wallet for 30 seconds\n"
-            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
             "\nCreate the signature\n"
-            + HelpExampleCli("signmessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"my message\"") +
+            + HelpExampleCli("signfile", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"filepath/filename\"") +
             "\nVerify the signature\n"
-            + HelpExampleCli("verifyfile", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"signature\" \"my message\"") +
+            + HelpExampleCli("verifyfile", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"signature\" \"filepath/filename\"") +
             "\nAs json rpc\n"
-            + HelpExampleRpc("verifyfile", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"my message\"")
+            + HelpExampleRpc("verifyfile", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"filepath/filename\"")
         );
 
     LOCK(cs_main);

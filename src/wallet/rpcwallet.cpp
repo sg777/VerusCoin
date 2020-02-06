@@ -1175,7 +1175,7 @@ UniValue signfile(const UniValue& params, bool fHelp)
 
     if (fHelp || params.size() < 2 || params.size() > 3)
         throw runtime_error(
-            "signfile \"address or identity\" \"filename\" \"curentsig\"\n"
+            "signfile \"address or identity\" \"filepath/filename\" \"curentsig\"\n"
             "\nGenerates a SHA256D hash of the file, returns the hash, and signs the hash with the private key specified"
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"
@@ -1188,8 +1188,6 @@ UniValue signfile(const UniValue& params, bool fHelp)
             "  \"signature\":\"base64sig\"  (string) The aggregate signature of the message encoded in base 64 if all or partial signing successful\n"
             "}\n"
             "\nExamples:\n"
-            "\nUnlock the wallet for 30 seconds\n"
-            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
             "\nCreate the signature\n"
             + HelpExampleCli("signfile", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\" \"filepath/filename\"") +
             "\nVerify the signature\n"
