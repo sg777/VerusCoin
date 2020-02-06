@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.3
+  VERSION: 0.6.3-rc1
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
@@ -127,7 +127,6 @@ build:windows:
       src/verusd.exe
       doc/man/verus-cli/windows/README.txt
       zcutil/fetch-params.bat
-      zcutil/wget64.exe
       verus-cli
     - if [ "${STRIP_BINARIES}" = "true" ]; then strip --strip-unneeded verus-cli/verusd.exe && strip --strip-unneeded verus-cli/verus.exe; fi
     - zip -r ${VERUS_CLI_WINDOWS} verus-cli
