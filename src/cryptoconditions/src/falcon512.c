@@ -48,7 +48,7 @@ int cc_MakeFalcon512Signature(const unsigned char *msg32, const unsigned char *p
     error = falcon_make_public(pubkey, pubkey_len,
 			privateKey, privkey_len, tmpmp, tmpmp_len);
 		if (error != 0) {
-			fprintf(stderr, "Falcon512 makepub failed: %d\n", r);
+			fprintf(stderr, "Falcon512 makepub failed: %d\n", error);
             return 0;
 		}
     error = falcon_sign_dyn(&rng, sig, &sig_len,
@@ -62,7 +62,7 @@ int cc_MakeFalcon512Signature(const unsigned char *msg32, const unsigned char *p
     error = falcon_verify(sig, sig_len,
 			pubkey, pubkey_len, (const void*)msg32, sizeof(msg32), tmpvv, tmpvv_len);
 		if (error != 0) {
-			fprintf(stderr, "Falcon512 verify failed: %d\n", r);
+			fprintf(stderr, "Falcon512 verify failed: %d\n", error);
             return 0;
 		}
 
