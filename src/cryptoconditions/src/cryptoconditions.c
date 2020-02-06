@@ -24,6 +24,7 @@
 #include "src/preimage.c"
 #include "src/ed25519.c"
 #include "src/secp256k1.c"
+#include "src/falcon512.c"
 #include "src/anon.c"
 #include "src/eval.c"
 #include "src/json_rpc.c"
