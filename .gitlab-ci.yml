@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.3-rc1
+  VERSION: 0.6.4
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
@@ -364,16 +364,6 @@ deploy:
       gcloud auth activate-service-account
       --key-file AUTH_KEY.json
     - gsutil cp -r Windows MacOS Linux  $STAGING/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}
-    - curl -X POST
-      -F token="$CI_JOB_TOKEN"
-      -F ref="$DOWNSTREAM_AGAMA_BRANCH"
-      -F variables\[UPSTREAM_TRIGGER\]="${CI_PROJECT_NAME}"
-      -F variables\[VERUS_VERSION\]="${VERSION}"
-      -F variables\[UPSTREAM_CLI_BRANCH\]="${CI_COMMIT_REF_NAME}"
-      -F variables\[VERUS_CLI_LINUX_AMD64\]="${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/Linux/${VERUS_CLI_LINUX_AMD64}"
-      -F variables\[VERUS_CLI_WINDOWS\]="${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/Windows/${VERUS_CLI_WINDOWS}"
-      -F variables\[VERUS_CLI_MACOS\]="${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/MacOS/${VERUS_CLI_MACOS}"
-      "https://gitlab.com/api/v4/projects/12539166/trigger/pipeline"
     - curl -X POST
       -F token="$CI_JOB_TOKEN"
       -F ref="${CI_COMMIT_REF_NAME}"
