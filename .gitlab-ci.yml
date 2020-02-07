@@ -128,6 +128,10 @@ build:windows:
       doc/man/verus-cli/windows/README.txt
       zcutil/fetch-params.bat
       verus-cli
+    - mkdir -p verus-cli/compat
+    - wget https://curl.haxx.se/windows/dl-7.68.0/curl-7.68.0-win64-mingw.zip
+    - unzip -qq curl-7.68.0-win64-mingw.zip -d verus-cli/compat
+    - rm curl-7.68.0-win64-mingw.zip
     - if [ "${STRIP_BINARIES}" = "true" ]; then strip --strip-unneeded verus-cli/verusd.exe && strip --strip-unneeded verus-cli/verus.exe; fi
     - zip -r ${VERUS_CLI_WINDOWS} verus-cli
     - sha256sum ${VERUS_CLI_WINDOWS} > ${VERUS_CLI_WINDOWS}.sha256

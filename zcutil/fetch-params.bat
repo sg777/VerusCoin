@@ -4,14 +4,12 @@ cd %THIS_DIR%
 IF NOT EXIST "%APPDATA%"\ZcashParams (
 MKDIR "%APPDATA%"\ZcashParams
 )
-
 FOR %%F IN (sprout-proving.key, sprout-verifying.key, sapling-spend.params, sapling-output.params, sprout-groth16.params) DO (
     IF NOT EXIST "%APPDATA%"\ZcashParams\%%F  (
         ECHO Downloading Zcash trusted setup %%F, this may take a while ...
-	        curl --output "%APPDATA%"\ZcashParams\%%F -# -L -C - https://z.cash/downloads/%%F
+	        compat\curl-7.68.0-win64-mingw\bin\curl.exe --output "%APPDATA%"\ZcashParams\%%F -# -L -C - https://z.cash/downloads/%%F
     )
 )
-
 goto :EOF
 :GET_CURRENT_DIR
 pushd %~dp0
