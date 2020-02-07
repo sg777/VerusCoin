@@ -1,4 +1,4 @@
-## VerusCoin version 0.6.3
+## VerusCoin version 0.6.4
 
 Arguably the world's most advanced technology, zero knowledge privacy-centric blockchain, Verus Coin brings Sapling performance and zero knowledge features to an intelligent system with interchain smart contracts and a completely original, combined proof of stake/proof of work consensus algorithm that solves the nothing at stake problem. With this and its approach towards CPU mining and ASICs, Verus Coin strives to be one of the most naturally decentralizing and attack resistant blockchains in existence.
 
@@ -69,7 +69,7 @@ Many VRSC innovations are now also available back in the Komodo fork:
 
 ```shell
 #The following packages are needed:
-sudo apt-get install build-essential pkg-config libc6-dev m4 g++-multilib autoconf libcurl4-openssl-dev libtool ncurses-dev unzip git python python-zmq zlib1g-dev wget bsdmainutils automake curl
+sudo apt-get install build-essential pkg-config libc6-dev m4 g++-multilib autoconf libtool ncurses-dev unzip git python python-zmq zlib1g-dev wget bsdmainutils automake curl
 ```
 
 ARMv8 cross-compile

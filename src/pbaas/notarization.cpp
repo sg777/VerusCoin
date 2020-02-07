@@ -367,6 +367,7 @@ vector<CInputDescriptor> AddSpendsAndFinalizations(CChainNotarizationData &cnd,
             if (!pcoinsTip->GetCoins(cnd.vtx[nidx].first, coins))
             {
                 // if this fails, we can't follow consensus and must fail
+                LogPrintf("%s: Cannot get coins to spend from finalized tx %s\n", __func__, cnd.vtx[nidx].first.GetHex().c_str());
                 return vector<CInputDescriptor>();
             }
             int k;
