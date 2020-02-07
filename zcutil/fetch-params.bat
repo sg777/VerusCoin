@@ -7,10 +7,8 @@ MKDIR "%APPDATA%"\ZcashParams
 
 FOR %%F IN (sprout-proving.key, sprout-verifying.key, sapling-spend.params, sapling-output.params, sprout-groth16.params) DO (
     IF NOT EXIST "%APPDATA%"\ZcashParams\%%F  (
-        ECHO Downloading Zcash trusted setup sprout-verifying.key, this may take a while ...
-	        curl --output "%APPDATA%"\ZcashParams \
-            -# -L -C - \
-            https://z.cash/downloads/%%F
+        ECHO Downloading Zcash trusted setup %%F, this may take a while ...
+	        curl --output "%APPDATA%"\ZcashParams\%%F -# -L -C - https://z.cash/downloads/%%F
     )
 )
 
