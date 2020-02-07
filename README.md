@@ -69,7 +69,7 @@ Many VRSC innovations are now also available back in the Komodo fork:
 
 ```shell
 #The following packages are needed:
-sudo apt-get install build-essential pkg-config libc6-dev m4 g++-multilib autoconf libcurl4-openssl-dev libtool ncurses-dev unzip git python python-zmq zlib1g-dev wget bsdmainutils automake curl
+sudo apt-get install build-essential pkg-config libc6-dev m4 g++-multilib autoconf libtool ncurses-dev unzip git python python-zmq zlib1g-dev wget bsdmainutils automake curl
 ```
 
 ARMv8 cross-compile
