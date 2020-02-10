@@ -80,3 +80,21 @@ int cc_MakeFalcon512Signature(const unsigned char *msg32, const unsigned char *p
     
     return 1;
 }
+
+int cc_MakeFalcon512KeyPair(unsigned char *privateKey, unsigned char *publicKey)
+{
+    shake256_context rng; uint8_t *tmpkg;
+    unsigned logn = 9; // 9 is falcon 512
+    shake256_init_prng_from_system(&rng);
+    tmpkg = xmalloc(FALCON_TMPSIZE_KEYGEN(logn));
+
+    int success = falcon_keygen_make(rng, logn, privateKey, FALCON_PRIVKEY_SIZE(logn),
+			publicKey, FALCON_PUBKEY_SIZE(logn), tmpkg, FALCON_TMPSIZE_KEYGEN(logn));
+
+    if (success != 0) {
+			fprintf(stderr, "keygen failed: %d\n", success);
+			return 0;
+		}
+
+    return 1;    
+}
