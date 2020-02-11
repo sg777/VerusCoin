@@ -88,6 +88,7 @@ int cc_MakeFalcon512KeyPair(unsigned char *privateKey, unsigned char *publicKey)
     shake256_init_prng_from_system(&rng);
     tmpkg = xmalloc(FALCON_TMPSIZE_KEYGEN(logn));
 
+    //privateKey and publicKey need memory allocated to them before falcone_keygen_make can run
     int success = falcon_keygen_make(rng, logn, privateKey, FALCON_PRIVKEY_SIZE(logn),
 			publicKey, FALCON_PUBKEY_SIZE(logn), tmpkg, FALCON_TMPSIZE_KEYGEN(logn));
 
@@ -97,4 +98,30 @@ int cc_MakeFalcon512KeyPair(unsigned char *privateKey, unsigned char *publicKey)
 		}
 
     return 1;    
+}
+
+int cc_VerifyFalcon512Key(const unsigned char *msg32, const unsigned char *publicKey, unsigned char *signature){  
+    
+    shake256_context rng;
+    shake256_init_prng_from_system(&rng);
+
+    size_t pubkey_len, sig_len;
+    size_t tmpmp_len, tmpvv_len;
+    uint8_t *tmpvv;
+
+    unsigned logn = 9; // 9 is falcon 512
+    pubkey_len = FALCON_PUBKEY_SIZE(logn); // not sure if we are using these lengths?
+
+	sig_len = FALCON_SIG_VARTIME_MAXSIZE(logn);
+   	tmpmp_len = FALCON_TMPSIZE_MAKEPUB(logn);
+    tmpvv_len = FALCON_TMPSIZE_VERIFY(logn);
+
+    tmpvv = malloc(tmpvv_len);
+
+   int  error = falcon_verify(signature, sig_len,
+			publicKey, pubkey_len, (const void*)msg32, sizeof(msg32), tmpvv, tmpvv_len);
+		if (error != 0) {
+			fprintf(stderr, "Falcon512 verify failed: %d\n", error);
+            return 0;
+		}
 }
