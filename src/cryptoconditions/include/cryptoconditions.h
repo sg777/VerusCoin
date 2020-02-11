@@ -94,6 +94,7 @@ struct CC*      cc_readFulfillmentBinary(const uint8_t *ffill_bin, size_t ffill_
 int             cc_MakeSecp256k1Signature(const unsigned char *msg32, const unsigned char *privateKey, unsigned char **signatureOut);
 int             cc_MakeFalcon512Signature(const unsigned char *msg32, const unsigned char *privateKey, unsigned char **signatureOut);
 int             cc_MakeFalcon512KeyPair(unsigned char *privateKey, unsigned char *publicKey);
+int             cc_VerifyFalcon512Key(const unsigned char *msg32, const unsigned char *publicKey, unsigned char *signature);
 int             cc_ApplySecp256k1Signature(const CC *cond, const unsigned char *publicKey, const unsigned char *pubkeyHash20, const unsigned char *signature);
 int             cc_readFulfillmentBinaryExt(const unsigned char *ffill_bin, size_t ffill_bin_len, CC **ppcc);
 int             cc_readPartialFulfillmentBinaryExt(const unsigned char *ffill_bin, size_t ffill_bin_len, CC **ppcc);
