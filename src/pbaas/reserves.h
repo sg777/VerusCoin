@@ -17,13 +17,14 @@
 #include <boost/multiprecision/cpp_dec_float.hpp>
 #include "librustzcash.h"
 #include "pubkey.h"
+#include <map>
 
 using boost::multiprecision::cpp_dec_float_50;
 class CCoinsViewCache;
 class CInputDescriptor;
 class CBaseChainObject;
 
-// reserve output is a special kind of token output that does not carry it's identifier, as it
+// reserve output is a special kind of token output that does not have to carry it's identifier, as it
 // is always assumed to be the reserve currency of the current chain.
 class CReserveOutput
 {
@@ -31,9 +32,11 @@ public:
     static const uint32_t CURRENCY_MASK = 0xffff;
     static const uint32_t VALID = 0x10000;
     static const uint32_t NATIVE = 0x8000;
+    static const uint32_t TOKEN = 0x4000;
 
     uint32_t flags;                 // information about this currency
     CAmount nValue;                 // amount of input reserve coins this UTXO represents before any conversion
+    uint160 currencyID;             // currency ID
 
     CReserveOutput(const std::vector<unsigned char> &asVector)
     {
@@ -44,7 +47,17 @@ public:
 
     CReserveOutput() : flags(0), nValue(0) { }
 
-    CReserveOutput(uint32_t Flags, CAmount value) : flags(Flags), nValue(value) { }
+    CReserveOutput(uint32_t Flags, CAmount value, const uint160 &curID=uint160()) : flags(Flags), nValue(value), currencyID(curID) { }
+
+    int CurrencyIndex() const
+    {
+        return (flags & CURRENCY_MASK);
+    }
+
+    bool IsToken() const
+    {
+        return (flags & VALID) && (CurrencyIndex() & TOKEN);
+    }
 
     ADD_SERIALIZE_METHODS;
 
@@ -52,6 +65,13 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(flags);
         READWRITE(VARINT(nValue));
+
+        // if reading or writing a token, the currency ID is important. otherwise, it
+        // is based on the reserve index
+        if (IsToken())
+        {
+            READWRITE(currencyID);
+        }
     }
 
     std::vector<unsigned char> AsVector()
@@ -64,11 +84,6 @@ public:
     bool IsNative() const
     {
         return (flags & CURRENCY_MASK) == NATIVE;
-    }
-
-    int CurrencyIndex() const
-    {
-        return (flags & CURRENCY_MASK);
     }
 
     bool IsValid() const
@@ -401,6 +416,206 @@ public:
     UniValue ToUniValue() const;
 };
 
+/*
+ * Definition of a currency that may exist as either a token, a blockchain native currency, or both.
+ * When used on its own blockchain, it will be the native currency. When used as either a token or blockchain, it goes by
+ * the same name as the identity that launched it.
+ * 
+ */
+class CCurrencyDefinition
+{
+public:
+    enum {
+        VALID = 1,
+        PBAAS = 2,
+        CUSTODIAL = 4,
+        ETHBRIDGE = 8
+    };
+    uint32_t flags;                     // determines whether it is custodial or proof-based import/export, etc.
+    uint160 currencyID;                 // currency ID
+
+    // for custodial chains, import and export requires
+    // signatures by one or more identities to complete
+    std::vector<CIdentityID> notaries;  // if this is a chain controlled by notaries vs. protocol, these are their IDs
+    int32_t minNotaries;                // number of notaries required sign off and consider a currency state update notarized
+};
+
+class CCurrencyStateNew
+{
+public:
+    static const uint32_t VALID = 1;
+    static const uint32_t ISRESERVE = 2;
+    static const int32_t MIN_RESERVE_RATIO = 1000000;       // we will not start a chain with this reserve ratio
+    static const int32_t SHUTDOWN_RESERVE_RATIO = 500000;   // if we hit this reserve ratio through selling and emission, initiate chain shutdown
+    static const int32_t CONVERSION_TX_SIZE_MIN = 1024;
+
+    uint32_t flags;         // currency flags (valid, reserve currency, etc.)
+
+    // all these vectors represent a multi-reserve fractional reserve
+    std::vector<uint160> currencies;
+    std::vector<int32_t> weights;
+    std::vector<int64_t> reserves;
+
+    int32_t initialRatio;   // starting point total reserve percent for initial currency and emission, over SATOSHIs
+    int64_t initialSupply;  // initial supply as premine + pre-converted coins, this is used to establish the value at the initial ratio as well
+    int64_t emitted;        // unlike other supply variations, emitted coins reduce the reserve ratio and are used to calculate current ratio
+    CAmount supply;         // current supply - total of initial and all emitted coins
+
+    //std::vector<CAmount> Reserves; // reserve currencies amounts controlled by this fractional chain - only present for reserve currencies, currency IDs are in chain definition
+
+    CCurrencyStateNew() : flags(0), initialRatio(), initialSupply(0), emitted(0), supply(0) {}
+
+    CCurrencyStateNew(int32_t InitialRatio, CAmount Supply, CAmount InitialSupply, CAmount Emitted, std::vector<int32_t> Weights, std::vector<int64_t> Reserves, uint32_t Flags=VALID) : 
+        flags(Flags), supply(Supply), initialSupply(InitialSupply), emitted(Emitted), weights(Weights), reserves(Reserves)
+    {
+        if (initialRatio > CReserveExchange::SATOSHIDEN)
+        {
+            initialRatio = CReserveExchange::SATOSHIDEN;
+        }
+        else if (initialRatio < MIN_RESERVE_RATIO)
+        {
+            initialRatio = MIN_RESERVE_RATIO;
+        }
+        InitialRatio = initialRatio;
+    }
+
+    CCurrencyStateNew(const std::vector<unsigned char> &asVector)
+    {
+        FromVector(asVector, *this);
+    }
+
+    CCurrencyStateNew(const UniValue &uni);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(flags);
+        READWRITE(currencies);        
+        READWRITE(weights);        
+        READWRITE(reserves);        
+        READWRITE(VARINT(initialRatio));
+        READWRITE(VARINT(initialSupply));
+        READWRITE(VARINT(emitted));
+        READWRITE(VARINT(supply));
+    }
+
+    std::vector<unsigned char> AsVector() const
+    {
+        return ::AsVector(*this);
+    }
+
+    // this should be done no more than once to prepare a currency state to be moved to the next state
+    // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
+    CCurrencyStateNew &UpdateWithEmission(CAmount emitted);
+
+    cpp_dec_float_50 GetReserveRatio() const
+    {
+        return cpp_dec_float_50(std::to_string(initialRatio)) / cpp_dec_float_50("100000000");
+    }
+
+    template<typename cpp_dec_float_type>
+    static bool to_int64(const cpp_dec_float_type &input, int64_t &outval)
+    {
+        std::stringstream ss(input.str(0));
+        try
+        {
+            ss >> outval;
+            return true;
+        }
+        catch(const std::exception& e)
+        {
+            return false;
+        }
+    }
+
+    CAmount PriceInReserve(int32_t reserveIndex=0) const
+    {
+        if (reserveIndex >= reserves.size())
+        {
+            return 0;
+        }
+        if (supply == 0 || initialRatio == 0)
+        {
+            return initialRatio;
+        }
+        arith_uint256 Supply(supply);
+
+        arith_uint256 Reserve(reserves[reserveIndex]);
+
+        arith_uint256 Ratio(initialRatio);
+
+        arith_uint256 BigSatoshi(CReserveExchange::SATOSHIDEN);
+
+        // we need to scale the ratio by the weight of the particular reserve currency
+        arith_uint256 Scale(0);
+        for (auto weight : weights)
+        {
+            Scale = Scale + arith_uint256(weight);
+        }
+        Ratio = (weights[reserveIndex] * Ratio) / Scale;
+
+        return ((Reserve * arith_uint256(CReserveExchange::SATOSHIDEN) * arith_uint256(CReserveExchange::SATOSHIDEN)) / (Supply * Ratio)).GetLow64();
+    }
+
+    // return the current price of the fractional reserve in the reserve currency in Satoshis
+    cpp_dec_float_50 GetPriceInReserve(int32_t reserveIndex=0) const
+    {
+        return cpp_dec_float_50(PriceInReserve(reserveIndex));
+    }
+
+    // This considers either one currency at a time or all currencies aggregated as one
+    CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyStateNew &newState, int32_t reserveIndex=0) const;
+
+    // convert amounts for multi-reserve fractional reserve currencies
+    // one entry in the vector for each currency in and one fractional input for each
+    // currency expected as output
+    std::vector<CAmount> ConvertAmounts(const std::vector<CAmount> &inputReserve, const std::vector<CAmount> &inputFractional, CCurrencyStateNew &newState) const;
+
+    CAmount CalculateConversionFee(CAmount inputAmount, bool convertToNative = false, int32_t reserveIndex=0) const;
+    CAmount ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount, int32_t reserveIndex=0) const;
+
+    CAmount ReserveToNative(CAmount reserveAmount, int32_t reserveIndex=0) const;
+    static CAmount ReserveToNativeRaw(CAmount reserveAmount, CAmount exchangeRate);
+
+    CAmount NativeToReserve(CAmount nativeAmount, int32_t reserveIndex=0) const
+    {
+        static arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
+        arith_uint256 bigAmount(nativeAmount);
+        arith_uint256 price = arith_uint256(PriceInReserve());
+        return ((bigAmount * arith_uint256(price)) / bigSatoshi).GetLow64();
+    }
+
+    static CAmount NativeToReserveRaw(CAmount nativeAmount, CAmount exchangeRate)
+    {
+        static arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
+        arith_uint256 bigAmount(nativeAmount);
+        return ((bigAmount * arith_uint256(exchangeRate)) / bigSatoshi).GetLow64();
+    }
+
+    UniValue ToUniValue() const;
+
+    bool IsValid() const
+    {
+        return flags & CCurrencyStateNew::VALID;
+    }
+
+    bool IsReserve() const
+    {
+        return flags & CCurrencyStateNew::ISRESERVE;
+    }
+
+    std::map<uint160, int32_t> GetReserveMap() const
+    {
+        std::map<uint160, int32_t> retVal;
+        for (int i = 0; i < currencies.size(); i++)
+        {
+            retVal[currencies[i]] = i;
+        }
+        return retVal;
+    }
+};
+
 class CCurrencyState
 {
 public:
@@ -409,7 +624,6 @@ public:
     static const int32_t MIN_RESERVE_RATIO = 1000000;       // we will not start a chain with this reserve ratio
     static const int32_t SHUTDOWN_RESERVE_RATIO = 500000;   // if we hit this reserve ratio through selling and emission, initiate chain shutdown
     static const int32_t CONVERSION_TX_SIZE_MIN = 1024;
-    static const int32_t CONVERSION_TX_SIZE_PEROUTPUT = 200;
 
     uint32_t flags;         // currency flags (valid, reserve currency, etc.)
 

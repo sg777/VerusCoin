@@ -225,6 +225,370 @@ UniValue CCoinbaseCurrencyState::ToUniValue() const
     return ret;
 }
 
+CAmount CalculateFractionalOut(CAmount NormalizedReserveIn, CAmount Supply, CAmount NormalizedReserve, int32_t reserveRation)
+{
+    cpp_dec_float_50 reservein(std::to_string(NormalizedReserveIn));
+    cpp_dec_float_50 supply(std::to_string((Supply)));
+    cpp_dec_float_50 reserve(std::to_string(NormalizedReserve));
+    cpp_dec_float_50 ratio(std::to_string(reserveRation));
+    cpp_dec_float_50 one("1");
+
+    int64_t fractionalOut = 0;
+
+    // first check if anything to buy
+    if (NormalizedReserveIn)
+    {
+        cpp_dec_float_50 supplyout = (supply * (pow((reservein / reserve) + one, ratio) - one));
+
+        if (!CCurrencyState::to_int64(supplyout, fractionalOut))
+        {
+            assert(false);
+        }
+    }
+    return fractionalOut;
+}
+
+CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount NormalizedReserve, int32_t reserveRation)
+{
+    cpp_dec_float_50 fractionalin(std::to_string(FractionalIn));
+    cpp_dec_float_50 supply(std::to_string((Supply)));
+    cpp_dec_float_50 reserve(std::to_string(NormalizedReserve));
+    cpp_dec_float_50 ratio(std::to_string(reserveRation));
+    cpp_dec_float_50 one("1");
+
+    int64_t reserveOut = 0;
+
+    // first check if anything to buy
+    if (FractionalIn)
+    {
+        cpp_dec_float_50 reserveout = reserve * (one - pow(one - (fractionalin / supply), (one / ratio)));
+        if (!CCurrencyState::to_int64(reserveout, reserveOut))
+        {
+            assert(false);
+        }
+    }
+    return reserveOut;
+}
+
+// This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it 
+// takes both input amounts of the reserve and the fractional currency to merge the conversion into one calculation
+// with the same price for all transactions in the block. It returns the newly calculated conversion price of the fractional 
+// reserve in the reserve currency.
+std::vector<CAmount> CCurrencyStateNew::ConvertAmounts(const std::vector<CAmount> &inputReserves, const std::vector<CAmount> &inputFractional, CCurrencyStateNew &newState) const
+{
+    // we use indexes because transactions use indexes to refer to fractional currency, which means once
+    // a spot is used in a blockchain, it cannot be changed
+    assert(inputReserves.size() == inputFractional.size() && inputReserves.size() == currencies.size());
+
+    newState = *this;
+    std::vector<CAmount> rates;
+
+    // aggregate amounts of ins and outs across all currencies expressed in fractional values in both directions first buy/sell, then sell/buy
+    std::map<uint160, std::pair<CAmount, CAmount>> fractionalInMap, fractionalOutMap;
+
+    // Create corresponding fractions of the supply for each currency to be used as starting calculation of that currency's value
+    // Determine the equivalent amount of input and output based on current values. Balance each such that each currency has only
+    // input or output, denominated in supply at the starting value.
+    //
+    // For each currency in either direction, sell to reserve or buy aggregate, we convert to a contribution of amount at the reserve
+    // percent value. For example, consider 4 currencies, r1...r4, which are all 25% reserves of currency fr1. For simplicity of example,
+    // assume 1000 reserve of each reserve currency, where all currencies are equal in value to each other at the outset, and a supply of
+    // 4000, where each fr1 is equal in value to 1 of each component reserve. 
+    // Now, consider the following cases:
+    //
+    // 1. purchase fr1 with 100 r1
+    //      This is treated as a single 25% fractional purchase with respect to amount purchased, ending price, and supply change
+    // 2. purchase fr1 with 100 r1, 100 r2, 100 r3, 100 r4
+    //      This is treated as a common layer of purchase across 4 x 25% currencies, resulting in 100% fractional purchase divided 4 ways
+    // 3. purchase fr1 with 100 r1, 50 r2, 25 r3
+    //      This is treated as 3 separate purchases in order:
+    //          a. one of 25 units across 3 currencies (3 x 25%), making a 75% fractional purchase of 75 units divided equally across 3 currencies
+    //          b. one of 25 units across 2 currencies (2 x 25%), making a 50% fractional purchase of 50 units divided equally between r1 and r2
+    //          c. one purchase of 50 units in r1 at 25% fractional purchase
+    // 4. purchase fr1 with 100 r1, sell 100 fr1 to r2
+    //          a. one fractional purchase of 100 units at 25%
+    //          b. one fractional sell of 100 units at 25%
+    //          c. do each in forward and reverse order and set conversion at mean between each
+    // 5. purchase fr1 with 100 r1, 50 r2, sell 100 fr1 to r3, 50 to r4
+    //          This consists of one composite (multi-layer) buy and one composite sell
+    //          a. Compose one two layer purchase of 50 r1 + 50 r2 at 50% and 50 r1 at 25%
+    //          b. Compose one two layer sell of 50 r3 + 50 r4 at 50% and 50 r3 at 25%
+    //          c. execute each operation of a and b in forward and reverse order and set conversion at mean between results
+    //
+
+    std::multimap<CAmount, std::pair<CAmount, uint160>> fractionalIn, fractionalOut;
+
+    arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
+    arith_uint256 bigSupply(supply);
+
+    int32_t maxReserveRatio = 0;
+    for (auto weight : weights)
+    {
+        maxReserveRatio = weight > maxReserveRatio ? weight : maxReserveRatio;
+    }
+
+    if (!maxReserveRatio)
+    {
+        LogPrintf("%s: attempting to convert amounts on non-reserve currency\n", __func__);
+        return rates;
+    }
+
+    arith_uint256 bigMaxReserveRatio = arith_uint256(maxReserveRatio);
+    arith_uint256 bigNormalizedReserve = bigMaxReserveRatio * bigSupply;
+
+    // reduce each currency change to a net inflow or outflow of fractional currency and
+    // store both negative and positive in structures sorted by the net amount
+    for (int64_t i = 0; i < currencies.size(); i++)
+    {
+        CAmount netFractional = inputFractional[i] - ReserveToNative(inputReserves[i], i);
+        int64_t deltaRatio;
+        if (netFractional > 0)
+        {
+            deltaRatio = ((arith_uint256(netFractional) * arith_uint256(weights[i])) / bigMaxReserveRatio).GetLow64();
+            fractionalIn.insert(std::make_pair(deltaRatio, std::make_pair(netFractional, currencies[i])));
+        }
+        else if (netFractional < 0)
+        {
+            netFractional = -netFractional;
+            deltaRatio = ((arith_uint256(netFractional) * arith_uint256(weights[i])) / bigMaxReserveRatio).GetLow64();
+            fractionalOut.insert(std::make_pair(deltaRatio, std::make_pair(netFractional, currencies[i])));
+        }
+    }
+
+    // create "layers" of equivalent value at different fractional percentages
+    // across currencies going in or out at the same time, enabling their effect on the aggregate
+    // to be represented by a larger fractional percent impact of "normalized reserve" on the currency, 
+    // which results in accurate pricing impact simulating a basket of currencies.
+    //
+    // since we have all values sorted, the lowest value determines the first common layer, then next lowest, the next, etc.
+    std::vector<std::pair<int32_t, std::pair<CAmount, std::vector<uint160>>>> fractionalLayersIn, fractionalLayersOut;
+    auto reserveMap = GetReserveMap();
+
+    CAmount layerAmount = 0;
+    CAmount layerStart;
+
+    for (auto inFIT = fractionalIn.upper_bound(layerAmount); inFIT != fractionalIn.end(); inFIT = fractionalIn.upper_bound(layerAmount))
+    {
+        // make a common layer out of all entries from here until the end
+        int frIdx = fractionalLayersIn.size();
+        layerStart = layerAmount;
+        layerAmount = inFIT->first;
+        CAmount layerHeight = layerAmount - layerStart;
+        fractionalLayersIn.emplace_back(std::make_pair(0, std::make_pair(0, std::vector<uint160>())));
+        for (auto it = inFIT; it != fractionalIn.end(); it++)
+        {
+            // reverse the calculation from layer height to amount for this currency, based on currency weight
+            int32_t weight = weights[reserveMap[it->second.second]];
+            CAmount curAmt = ((arith_uint256(layerHeight) * bigMaxReserveRatio / arith_uint256(weight))).GetLow64();
+            it->second.first -= curAmt;
+            assert(it->second.first >= 0);
+
+            fractionalLayersIn[frIdx].first += weight;
+            fractionalLayersIn[frIdx].second.first += curAmt;
+            fractionalLayersIn[frIdx].second.second.push_back(it->second.second);
+        }
+    }    
+
+    layerAmount = 0;
+    for (auto outFIT = fractionalOut.upper_bound(layerAmount); outFIT != fractionalOut.end(); outFIT = fractionalOut.upper_bound(layerAmount))
+    {
+        // make a common layer out of all entries from here until the end
+        int frIdx = fractionalLayersOut.size();
+        layerStart = layerAmount;
+        layerAmount = outFIT->first;
+        CAmount layerHeight = layerAmount - layerStart;
+        fractionalLayersOut.emplace_back(std::make_pair(0, std::make_pair(0, std::vector<uint160>())));
+        for (auto it = outFIT; it != fractionalOut.end(); it++)
+        {
+            // reverse the calculation from layer height to amount for this currency, based on currency weight
+            int32_t weight = weights[reserveMap[it->second.second]];
+            CAmount curAmt = ((arith_uint256(layerHeight) * bigMaxReserveRatio / arith_uint256(weight))).GetLow64();
+            it->second.first -= curAmt;
+            assert(it->second.first >= 0);
+
+            fractionalLayersOut[frIdx].first += weight;
+            fractionalLayersOut[frIdx].second.first += curAmt;
+            fractionalLayersOut[frIdx].second.second.push_back(it->second.second);
+        }
+    }    
+
+    int64_t supplyAfterBuy = 0, supplyAfterBuySell = 0, supplyAfterSell = 0, supplyAfterSellBuy = 0;
+    int64_t reserveAfterBuy = 0, reserveAfterBuySell = 0, reserveAfterSell = 0, reserveAfterSellBuy = 0;
+
+    // first, loop through all buys layer by layer. calculate and divide the proceeds between currencies
+    // in each participating layer, in accordance with each currency's relative percentage
+    CAmount addSupply = 0;
+    CAmount addNormalizedReserves = 0;
+    for (auto &layer : fractionalLayersOut)
+    {
+        // each layer has a fractional percentage/weight and a total amount, determined by the total of all weights for that layer
+        // and net amounts across all currencies in that layer. each layer also includes a list of all currencies.
+        //
+        // calculate a fractional buy at the total layer ratio for the amount specified
+        // and divide the value according to the relative weight of each currency, adding to each entry of fractionalOutMap
+        arith_uint256 bigLayerWeight = arith_uint256(layer.first);
+        CAmount totalLayerReserves = ((bigSupply * bigLayerWeight) / bigSatoshi).GetLow64() + addNormalizedReserves;
+        addNormalizedReserves += layer.second.first;
+        CAmount newSupply = CalculateFractionalOut(layer.second.first, supply + addSupply, totalLayerReserves, layer.first);
+        arith_uint256 bigNewSupply(newSupply);
+        addSupply += newSupply;
+        for (auto &id : layer.second.second)
+        {
+            auto idIT = fractionalOutMap.find(id);
+            CAmount newSupplyForCurrency = ((bigNewSupply * weights[reserveMap[id]]) / bigLayerWeight).GetLow64();
+
+            // initialize or add to the new supply for this currency
+            if (idIT == fractionalOutMap.end())
+            {
+                fractionalOutMap[id] = std::make_pair(newSupplyForCurrency, int64_t(0));
+            }
+            else
+            {
+                idIT->second.first += newSupplyForCurrency;
+            }
+        }
+    }
+
+    supplyAfterBuy = supply + addSupply;
+    assert(supplyAfterSell >= 0);
+
+    reserveAfterBuy = bigNormalizedReserve.GetLow64() + addNormalizedReserves;
+    assert(reserveAfterBuy >= 0);
+
+    addSupply = 0;
+    addNormalizedReserves = 0;
+    CAmount addNormalizedReservesBB = 0, addNormalizedReservesAB = 0;
+
+    // calculate sell both before and after buy through this loop
+    for (auto &layer : fractionalLayersIn)
+    {
+        // first calculate sell before-buy, then after-buy
+        arith_uint256 bigLayerWeight(layer.first);
+
+        // before-buy starting point
+        CAmount totalLayerReservesBB = ((bigSupply * bigLayerWeight) / bigSatoshi).GetLow64() + addNormalizedReserves;
+        CAmount totalLayerReservesAB = ((arith_uint256(supplyAfterBuy) * bigLayerWeight) / bigSatoshi).GetLow64() + addNormalizedReserves;
+
+        CAmount newNormalizedReserveBB = CalculateReserveOut(layer.second.first, supply + addSupply, totalLayerReservesBB + addNormalizedReservesBB, layer.first);
+        CAmount newNormalizedReserveAB = CalculateReserveOut(layer.second.first, supplyAfterBuy + addSupply, totalLayerReservesAB + addNormalizedReservesAB, layer.first);
+
+        // input fractional is burned and output reserves are removed from reserves
+        addSupply -= layer.second.first;
+        addNormalizedReservesBB -= newNormalizedReserveBB;
+        addNormalizedReservesAB -= newNormalizedReserveAB;
+
+        for (auto &id : layer.second.second)
+        {
+            auto idIT = fractionalInMap.find(id);
+            CAmount newReservesForCurrencyBB = ((newNormalizedReserveBB * weights[reserveMap[id]]) / bigLayerWeight).GetLow64();
+            CAmount newReservesForCurrencyAB = ((newNormalizedReserveAB * weights[reserveMap[id]]) / bigLayerWeight).GetLow64();
+
+            // initialize or add to the new supply for this currency
+            if (idIT == fractionalInMap.end())
+            {
+                fractionalInMap[id] = std::make_pair(newReservesForCurrencyBB, newReservesForCurrencyAB);
+            }
+            else
+            {
+                idIT->second.first += newReservesForCurrencyBB;
+                idIT->second.second += newReservesForCurrencyAB;
+            }
+        }
+    }
+
+    supplyAfterSell = supply + addSupply;
+    assert(supplyAfterSell >= 0);
+
+    supplyAfterBuySell = supplyAfterBuy + addSupply;
+    assert(supplyAfterBuySell >= 0);
+
+    reserveAfterSell = bigNormalizedReserve.GetLow64() + addNormalizedReservesBB;
+    assert(reserveAfterSell >= 0);
+
+    reserveAfterBuySell = bigNormalizedReserve.GetLow64() + addNormalizedReservesAB;
+    assert(reserveAfterBuySell >= 0);
+
+    addSupply = 0;
+    addNormalizedReserves = 0;
+
+    // now calculate buy after sell
+    for (auto &layer : fractionalLayersOut)
+    {
+        arith_uint256 bigLayerWeight = arith_uint256(layer.first);
+        CAmount totalLayerReserves = ((arith_uint256(supplyAfterSell) * bigLayerWeight) / bigSatoshi).GetLow64() + addNormalizedReserves;
+        addNormalizedReserves += layer.second.first;
+        CAmount newSupply = CalculateFractionalOut(layer.second.first, supplyAfterSell + addSupply, totalLayerReserves, layer.first);
+        arith_uint256 bigNewSupply(newSupply);
+        addSupply += newSupply;
+        for (auto &id : layer.second.second)
+        {
+            auto idIT = fractionalOutMap.find(id);
+
+            assert(idIT != fractionalOutMap.end());
+
+            idIT->second.second += ((bigNewSupply * weights[reserveMap[id]]) / bigLayerWeight).GetLow64();
+        }
+    }
+
+    // now loop through all currencies, calculate conversion rates for each based on mean of all prices that we calculate for
+    // buy before sell and sell before buy
+    rates.resize(currencies.size());
+    for (int i = 0; i < currencies.size(); i++)
+    {
+        // each coin has an amount of reserve in, an amount of fractional in, and potentially two delta amounts in one of the
+        // fractionalInMap or fractionalOutMap maps, one for buy before sell and one for sell before buy.
+        // add the mean of the delta amounts to the appropriate side of the equation and calculate a price for each
+        // currency.
+        auto fractionalOutIT = fractionalOutMap.find(currencies[i]);
+        auto fractionalInIT = fractionalInMap.find(currencies[i]);
+
+        auto inputReserve = inputReserves[i];
+        auto inputFraction = inputFractional[i];
+
+        CAmount fractionDelta = 0, reserveDelta = 0;
+
+        if (fractionalOutIT != fractionalOutMap.end())
+        {
+            arith_uint256 bigFractionDelta(fractionalOutIT->second.first);
+            fractionDelta = ((bigFractionDelta + arith_uint256(fractionalOutIT->second.second)) >> 1).GetLow64();
+            assert(inputFraction + fractionDelta > 0);
+            rates[i] = ((arith_uint256(inputReserve) * bigSatoshi) / arith_uint256(inputFraction + fractionDelta)).GetLow64();
+
+            // add the new reserve and supply to the currency
+            newState.supply += fractionDelta;
+
+            // all reserves have been calculated using a substituted value, which was 1:1 for native initially
+            newState.reserves[i] += NativeToReserve(((arith_uint256(fractionDelta) * rates[i]) / bigSatoshi).GetLow64(), (int32_t)i);
+        }
+        else if (fractionalInIT != fractionalInMap.end())
+        {
+            arith_uint256 bigReserveDelta(fractionalOutIT->second.first);
+            reserveDelta = ((bigReserveDelta + arith_uint256(fractionalOutIT->second.second)) >> 1).GetLow64();
+            assert(inputFraction > 0);
+            rates[i] = ((arith_uint256(inputReserve + reserveDelta) * bigSatoshi) / arith_uint256(inputFraction)).GetLow64();
+
+            // subtract the fractional and reserve that has left the currency
+            newState.supply -= ((arith_uint256(reserveDelta) * bigSatoshi) / rates[i]).GetLow64();
+            newState.reserves[i] -= NativeToReserve(reserveDelta, (int32_t)i);
+        }
+        else
+        {
+            rates[i] = PriceInReserve(i);
+        }
+    }
+
+    return rates;
+}
+
+// only works for single currency fractional reserves
+CAmount CCurrencyStateNew::ConvertAmounts(CAmount inputReserve, CAmount inputFraction, CCurrencyStateNew &newState, int32_t reserveIndex) const
+{
+    std::vector<CAmount> inputReserves({inputReserve});
+    std::vector<CAmount> inputFractional({inputFraction});
+    std::vector<CAmount> retVal = ConvertAmounts(inputReserves, inputFractional, newState);
+    return retVal.size() ? retVal[0] : 0;
+}
+
 // This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it 
 // takes both input amounts of the reserve and the fractional currency to merge the conversion into one calculation
 // with the same price for all transactions in the block. It returns the newly calculated conversion price of the fractional 
@@ -1680,6 +2044,17 @@ CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount, CAmount exchangeR
     arith_uint256 bigAmount(reserveAmount);
 
     bigAmount = exchangeRate ? (bigAmount * bigSatoshi) / arith_uint256(exchangeRate) : 0;
+    return bigAmount.GetLow64();
+}
+
+CAmount CCurrencyStateNew::ReserveToNative(CAmount reserveAmount, int32_t reserveIndex) const
+{
+    static arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
+    arith_uint256 bigAmount(reserveAmount);
+
+    int64_t price = PriceInReserve(reserveIndex);
+    bigAmount = price ? (bigAmount * bigSatoshi) / arith_uint256(price) : 0;
+
     return bigAmount.GetLow64();
 }
 
