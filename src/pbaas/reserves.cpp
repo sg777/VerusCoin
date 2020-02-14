@@ -271,9 +271,9 @@ CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount Normal
 }
 
 // This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it 
-// takes both input amounts of the reserve and the fractional currency to merge the conversion into one calculation
-// with the same price for all transactions in the block. It returns the newly calculated conversion price of the fractional 
-// reserve in the reserve currency.
+// takes both input amounts of any number of reserves and the fractional currencies targeting those reserves to merge the conversion into one 
+// merged calculation with the same price across currencies for all transactions in the block. It returns the newly calculated 
+// conversion prices of the fractional reserve in the reserve currency.
 std::vector<CAmount> CCurrencyStateNew::ConvertAmounts(const std::vector<CAmount> &inputReserves, const std::vector<CAmount> &inputFractional, CCurrencyStateNew &newState) const
 {
     // we use indexes because transactions use indexes to refer to fractional currency, which means once
@@ -321,10 +321,13 @@ std::vector<CAmount> CCurrencyStateNew::ConvertAmounts(const std::vector<CAmount
     arith_uint256 bigSatoshi(CReserveExchange::SATOSHIDEN);
     arith_uint256 bigSupply(supply);
 
+    int32_t totalReserveWeight = 0;
     int32_t maxReserveRatio = 0;
+
     for (auto weight : weights)
     {
         maxReserveRatio = weight > maxReserveRatio ? weight : maxReserveRatio;
+        totalReserveWeight += weight;
     }
 
     if (!maxReserveRatio)
@@ -334,7 +337,7 @@ std::vector<CAmount> CCurrencyStateNew::ConvertAmounts(const std::vector<CAmount
     }
 
     arith_uint256 bigMaxReserveRatio = arith_uint256(maxReserveRatio);
-    arith_uint256 bigNormalizedReserve = bigMaxReserveRatio * bigSupply;
+    arith_uint256 bigNormalizedReserve = arith_uint256(totalReserveWeight) * arith_uint256(bigSupply) / bigSatoshi;
 
     // reduce each currency change to a net inflow or outflow of fractional currency and
     // store both negative and positive in structures sorted by the net amount
@@ -392,7 +395,6 @@ std::vector<CAmount> CCurrencyStateNew::ConvertAmounts(const std::vector<CAmount
     layerAmount = 0;
     for (auto outFIT = fractionalOut.upper_bound(layerAmount); outFIT != fractionalOut.end(); outFIT = fractionalOut.upper_bound(layerAmount))
     {
-        // make a common layer out of all entries from here until the end
         int frIdx = fractionalLayersOut.size();
         layerStart = layerAmount;
         layerAmount = outFIT->first;
@@ -400,7 +402,6 @@ std::vector<CAmount> CCurrencyStateNew::ConvertAmounts(const std::vector<CAmount
         fractionalLayersOut.emplace_back(std::make_pair(0, std::make_pair(0, std::vector<uint160>())));
         for (auto it = outFIT; it != fractionalOut.end(); it++)
         {
-            // reverse the calculation from layer height to amount for this currency, based on currency weight
             int32_t weight = weights[reserveMap[it->second.second]];
             CAmount curAmt = ((arith_uint256(layerHeight) * bigMaxReserveRatio / arith_uint256(weight))).GetLow64();
             it->second.first -= curAmt;

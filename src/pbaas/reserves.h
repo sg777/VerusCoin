@@ -416,30 +416,6 @@ public:
     UniValue ToUniValue() const;
 };
 
-/*
- * Definition of a currency that may exist as either a token, a blockchain native currency, or both.
- * When used on its own blockchain, it will be the native currency. When used as either a token or blockchain, it goes by
- * the same name as the identity that launched it.
- * 
- */
-class CCurrencyDefinition
-{
-public:
-    enum {
-        VALID = 1,
-        PBAAS = 2,
-        CUSTODIAL = 4,
-        ETHBRIDGE = 8
-    };
-    uint32_t flags;                     // determines whether it is custodial or proof-based import/export, etc.
-    uint160 currencyID;                 // currency ID
-
-    // for custodial chains, import and export requires
-    // signatures by one or more identities to complete
-    std::vector<CIdentityID> notaries;  // if this is a chain controlled by notaries vs. protocol, these are their IDs
-    int32_t minNotaries;                // number of notaries required sign off and consider a currency state update notarized
-};
-
 class CCurrencyStateNew
 {
 public:
