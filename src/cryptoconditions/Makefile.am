@@ -73,6 +73,7 @@ libcryptoconditions_core_la_SOURCES = \
 	src/asn/EvalFulfillment.c \
 	src/asn/Secp256k1FingerprintContents.c \
 	src/asn/Secp256k1Fulfillment.c \
+	src/asn/Falcon512FingerprintContents.c \
 	src/asn/INTEGER.c \
 	src/asn/NativeEnumerated.c \
 	src/asn/NativeInteger.c \

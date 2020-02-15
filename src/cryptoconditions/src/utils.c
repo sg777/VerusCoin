@@ -24,6 +24,7 @@
 #include "asn/asn_application.h"
 #include "cryptoconditions.h"
 #include "internal.h"
+#include "include/falcon/falcon.h"
 
 
 static unsigned char encoding_table[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
@@ -223,6 +224,25 @@ unsigned char *hashFingerprintContents(asn_TYPE_descriptor_t *asnType, void *fp)
     return hash;
 }
 
+unsigned char *Falcon512hashFingerprintContents(asn_TYPE_descriptor_t *asnType, void *fp) {
+    unsigned char buf[BUF_SIZE];
+    asn_enc_rval_t rc = der_encode_to_buffer(asnType, fp, buf, BUF_SIZE);
+    ASN_STRUCT_FREE(*asnType, fp);
+    if (rc.encoded < 1) {
+        fprintf(stderr, "Encoding fingerprint failed\n");
+        return 0;
+    }
+    unsigned char *hash = calloc(1,32);
+    shake256_context rng;
+    shake256_init_prng_from_system(&rng);
+    shake256_init(&rng);
+    shake256_inject(&rng, buf, rc.encoded); //?!?! not sure of size
+    shake256_flip(&rng);
+    shake256_extract(&rng, hash, 32); // 32??!?! not sure
+
+  //  sha256(buf, rc.encoded, hash);
+    return hash;
+}
 
 char* cc_hex_encode(const uint8_t *bin, size_t len)
 {
