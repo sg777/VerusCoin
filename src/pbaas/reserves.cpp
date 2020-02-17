@@ -337,7 +337,7 @@ std::vector<CAmount> CCurrencyStateNew::ConvertAmounts(const std::vector<CAmount
     }
 
     arith_uint256 bigMaxReserveRatio = arith_uint256(maxReserveRatio);
-    arith_uint256 bigNormalizedReserve = arith_uint256(totalReserveWeight) * arith_uint256(bigSupply) / bigSatoshi;
+    arith_uint256 bigNormalizedReserve = (arith_uint256(totalReserveWeight) * arith_uint256(bigSupply)) / bigSatoshi;
 
     // reduce each currency change to a net inflow or outflow of fractional currency and
     // store both negative and positive in structures sorted by the net amount
