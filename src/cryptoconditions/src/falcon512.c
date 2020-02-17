@@ -132,7 +132,7 @@ int cc_VerifyFalcon512Key(const unsigned char *msg32, const unsigned char *publi
 static unsigned char *falcon512Fingerprint(const CC *cond) {
     Falcon512FingerprintContents_t *fp = calloc(1, sizeof(Falcon512FingerprintContents_t));
     OCTET_STRING_fromBuf(&fp->publicKey, cond->publicKey, FALCON_PUBKEY_SIZE(9));
-    return Falcon512hashFingerprintContents(&asn_DEF_Falcon512FingerprintContents, fp);
+    return hashFingerprintContents(&asn_DEF_Falcon512FingerprintContents, fp);
 }
 
 static unsigned long falcon512Cost(const CC *cond) {
