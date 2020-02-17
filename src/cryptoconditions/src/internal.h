@@ -82,7 +82,6 @@ struct CCType *getTypeByAsnEnum(Condition_PR present);
 unsigned char *base64_encode(const unsigned char *data, size_t input_length);
 unsigned char *base64_decode(const unsigned char *data_, size_t *output_length);
 unsigned char *hashFingerprintContents(asn_TYPE_descriptor_t *asnType, void *fp);
-unsigned char *Falcon512hashFingerprintContents(asn_TYPE_descriptor_t *asnType, void *fp);
 void dumpStr(unsigned char *str, size_t len);
 int checkString(const cJSON *value, char *key, char *err);
 int checkDecodeBase64(const cJSON *value, char *key, char *err, unsigned char **data, size_t *size);
