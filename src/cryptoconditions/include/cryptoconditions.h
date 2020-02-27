@@ -24,7 +24,7 @@ enum CCTypeId {
     CC_Ed25519 = 4,
     CC_Secp256k1 = 5,
     CC_Eval = 15,
-    CC_Falcon512 = 31
+    CC_Falcon512 = 6
 };
 
 

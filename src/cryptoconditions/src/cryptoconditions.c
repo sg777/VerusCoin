@@ -40,7 +40,7 @@ struct CCType *CCTypeRegistry[] = {
     NULL, /* &CC_rsaType */
     &CC_Ed25519Type,
     &CC_Secp256k1Type,
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, /* 6-14 unused */
+    &CC_Falcon512Type, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, /* 6-14 unused */
     &CC_EvalType
 };
 

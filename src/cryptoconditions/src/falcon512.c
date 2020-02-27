@@ -316,4 +316,4 @@ static uint32_t falcon512Subtypes(const CC *cond) {
     return 0;
 }
 
-struct CCType CC_Falcon512Type = { 5, "falcon512-sha-256", Condition_PR_falcon512, 0, &falcon512Fingerprint, &falcon512Cost, &falcon512Subtypes, &falcon512FromJSON, &falcon512ToJSON, &falcon512FromFulfillment, &falcon512ToFulfillment, &falcon512FromPartialFulfillment, &falcon512ToPartialFulfillment, &falcon512IsFulfilled, &falcon512Free };
+struct CCType CC_Falcon512Type = { 6, "falcon512-sha-256", Condition_PR_falcon512, 0, &falcon512Fingerprint, &falcon512Cost, &falcon512Subtypes, &falcon512FromJSON, &falcon512ToJSON, &falcon512FromFulfillment, &falcon512ToFulfillment, &falcon512FromPartialFulfillment, &falcon512ToPartialFulfillment, &falcon512IsFulfilled, &falcon512Free };
