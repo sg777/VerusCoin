@@ -22,6 +22,7 @@
 #include "script/script_error.h"
 #include "script/sign.h"
 #include "script/standard.h"
+#include "wallet.h"
 
 #include <stdint.h>
 
@@ -269,13 +270,33 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
     if (block.IsVerusPOSBlock())
     {
         result.push_back(Pair("validationtype", "stake"));
-        CPOSNonce scratchNonce(block.nNonce);
-        result.push_back(Pair("poshash", block.vtx.back().GetVerusPOSHash(&scratchNonce, block.vtx.back().vin[0].prevout.n, height, block.GetVerusEntropyHash(height - 100)).GetHex()));
         uint256 rawPOSHash;
         block.GetRawVerusPOSHash(rawPOSHash, height);
         result.push_back(Pair("poshashfromraw", ArithToUint256(UintToArith256(rawPOSHash) / block.vtx.back().vout[0].nValue).GetHex()));
-        result.push_back(Pair("possourcetxid", block.vtx.back().vin[0].prevout.hash.GetHex()));
-        result.push_back(Pair("possourcevoutnum", block.vtx.back().vin[0].prevout.hash.GetHex()));
+        CPOSNonce scratchNonce(block.nNonce);
+        CTransaction posSourceTx;
+        uint256 posSrcBlkHash;
+        if (GetTransaction(block.vtx.back().vin[0].prevout.hash, posSourceTx, posSrcBlkHash, true))
+        {
+            result.push_back(Pair("poshash", posSourceTx.GetVerusPOSHash(&scratchNonce, block.vtx.back().vin[0].prevout.n, height, block.GetVerusEntropyHash(height - 100)).GetHex()));
+            result.push_back(Pair("possourcetxid", block.vtx.back().vin[0].prevout.hash.GetHex()));
+            result.push_back(Pair("possourcevoutnum", (int)block.vtx.back().vin[0].prevout.n));
+            COptCCParams p;
+            if (block.vtx[0].vout[0].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+            {
+                CTxDestination posRewardDest;
+                ExtractDestination(block.vtx[0].vout[0].scriptPubKey, posRewardDest, true);
+                result.push_back(Pair("posrewarddest", EncodeDestination(posRewardDest)));
+                CPubKey pk = boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), posRewardDest);
+                if (pk.IsValid())
+                {
+                    result.push_back(Pair("posrewardpk", HexBytes(std::vector<unsigned char>(pk.begin(), pk.end()).data(), pk.end() - pk.begin())));
+                }
+                CTxDestination posTxDest;
+                ExtractDestination(block.vtx.back().vout[0].scriptPubKey, posTxDest);
+                result.push_back(Pair("postxddest", EncodeDestination(posTxDest)));
+            }
+        }
     }
     else
     {
