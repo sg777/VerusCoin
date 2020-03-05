@@ -270,15 +270,22 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
     if (block.IsVerusPOSBlock())
     {
         result.push_back(Pair("validationtype", "stake"));
+        arith_uint256 posTarget;
+        posTarget.SetCompact(block.GetVerusPOSTarget());
+        result.push_back(Pair("postarget", ArithToUint256(posTarget).GetHex()));
         uint256 rawPOSHash;
         block.GetRawVerusPOSHash(rawPOSHash, height);
-        result.push_back(Pair("poshashfromraw", ArithToUint256(UintToArith256(rawPOSHash) / block.vtx.back().vout[0].nValue).GetHex()));
+        result.push_back(Pair("poshash", ArithToUint256(UintToArith256(rawPOSHash) / block.vtx.back().vout[0].nValue).GetHex()));
         CPOSNonce scratchNonce(block.nNonce);
         CTransaction posSourceTx;
         uint256 posSrcBlkHash;
-        if (GetTransaction(block.vtx.back().vin[0].prevout.hash, posSourceTx, posSrcBlkHash, true))
+        LOCK(cs_main);
+        if (GetTransaction(block.vtx.back().vin[0].prevout.hash, posSourceTx, posSrcBlkHash, true) && chainActive.Height() > 100)
         {
-            result.push_back(Pair("poshash", posSourceTx.GetVerusPOSHash(&scratchNonce, block.vtx.back().vin[0].prevout.n, height, block.GetVerusEntropyHash(height - 100)).GetHex()));
+            CBlockHeader bh = chainActive[height - 100]->GetBlockHeader();
+            uint256 pastHash = bh.GetVerusEntropyHash(height - 100);
+
+            result.push_back(Pair("poshashfromtx", posSourceTx.GetVerusPOSHash(&scratchNonce, block.vtx.back().vin[0].prevout.n, height, pastHash).GetHex()));
             result.push_back(Pair("possourcetxid", block.vtx.back().vin[0].prevout.hash.GetHex()));
             result.push_back(Pair("possourcevoutnum", (int)block.vtx.back().vin[0].prevout.n));
             COptCCParams p;
