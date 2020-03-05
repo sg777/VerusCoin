@@ -264,7 +264,24 @@ UniValue blockToDeltasJSON(const CBlock& block, const CBlockIndex* blockindex)
 UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool txDetails = false)
 {
     UniValue result(UniValue::VOBJ);
+    int32_t height = blockindex->GetHeight();
     result.push_back(Pair("hash", block.GetHash().GetHex()));
+    if (block.IsVerusPOSBlock())
+    {
+        result.push_back(Pair("validationtype", "stake"));
+        CPOSNonce scratchNonce(block.nNonce);
+        result.push_back(Pair("poshash", block.vtx.back().GetVerusPOSHash(&scratchNonce, block.vtx.back().vin[0].prevout.n, height, block.GetVerusEntropyHash(height - 100)).GetHex()));
+        uint256 rawPOSHash;
+        block.GetRawVerusPOSHash(rawPOSHash, height);
+        result.push_back(Pair("poshashfromraw", ArithToUint256(UintToArith256(rawPOSHash) / block.vtx.back().vout[0].nValue).GetHex()));
+        result.push_back(Pair("possourcetxid", block.vtx.back().vin[0].prevout.hash.GetHex()));
+        result.push_back(Pair("possourcevoutnum", block.vtx.back().vin[0].prevout.hash.GetHex()));
+    }
+    else
+    {
+        result.push_back(Pair("validationtype", "work"));
+    }
+    
     int confirmations = -1;
     // Only report confirmations if the block is on the main chain
     if (chainActive.Contains(blockindex))
