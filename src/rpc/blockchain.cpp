@@ -275,7 +275,7 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
         result.push_back(Pair("postarget", ArithToUint256(posTarget).GetHex()));
         uint256 rawPOSHash;
         block.GetRawVerusPOSHash(rawPOSHash, height);
-        result.push_back(Pair("poshash", ArithToUint256(UintToArith256(rawPOSHash) / block.vtx.back().vout[0].nValue).GetHex()));
+        result.push_back(Pair("poshashbh", ArithToUint256(UintToArith256(rawPOSHash) / block.vtx.back().vout[0].nValue).GetHex()));
         CPOSNonce scratchNonce(block.nNonce);
         CTransaction posSourceTx;
         uint256 posSrcBlkHash;
@@ -285,7 +285,7 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
             CBlockHeader bh = chainActive[height - 100]->GetBlockHeader();
             uint256 pastHash = bh.GetVerusEntropyHash(height - 100);
 
-            result.push_back(Pair("poshashfromtx", posSourceTx.GetVerusPOSHash(&scratchNonce, block.vtx.back().vin[0].prevout.n, height, pastHash).GetHex()));
+            result.push_back(Pair("poshashtx", posSourceTx.GetVerusPOSHash(&scratchNonce, block.vtx.back().vin[0].prevout.n, height, pastHash).GetHex()));
             result.push_back(Pair("possourcetxid", block.vtx.back().vin[0].prevout.hash.GetHex()));
             result.push_back(Pair("possourcevoutnum", (int)block.vtx.back().vin[0].prevout.n));
             COptCCParams p;
