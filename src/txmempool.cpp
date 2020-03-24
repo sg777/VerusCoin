@@ -53,7 +53,7 @@ double
 CTxMemPoolEntry::GetPriority(unsigned int currentHeight) const
 {
     CAmount nValueIn = tx.GetValueOut()+nFee;
-    CCurrencyState currencyState;
+    CCurrencyStateNew currencyState;
     unsigned int lastHeight = currentHeight < 1 ? 0 : currentHeight - 1;
     if (hasReserve && (currencyState = ConnectedChains.GetCurrencyState(currentHeight - 1)).IsValid())
     {
@@ -879,7 +879,7 @@ void CTxMemPool::ClearPrioritisation(const uint256 hash)
     mapReserveTransactions.erase(hash);
 }
 
-bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyState &currencyState)
+bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyStateNew &currencyState)
 {
     LOCK(cs);
     uint256 hash = txDesc.ptx->GetHash();
@@ -887,7 +887,7 @@ bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescripto
     if (txDesc.IsValid())
     {
         mapReserveTransactions[hash] = txDesc;
-        CAmount feeDelta = currencyState.ReserveToNative(txDesc.ReserveFees() + txDesc.reserveConversionFees) + txDesc.nativeConversionFees;
+        CAmount feeDelta = txDesc.AllFeesAsNative(currencyState);
         PrioritiseTransaction(hash, hash.GetHex().c_str(), (double)feeDelta * 100.0, feeDelta);
         return true;
     }

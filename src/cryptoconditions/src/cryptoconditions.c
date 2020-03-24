@@ -17,7 +17,7 @@
 #include "asn/Condition.h"
 #include "asn/Fulfillment.h"
 #include "asn/OCTET_STRING.h"
-#include "cryptoconditions.h"
+#include "include/cryptoconditions.h"
 #include "src/internal.h"
 #include "src/threshold.c"
 #include "src/prefix.c"

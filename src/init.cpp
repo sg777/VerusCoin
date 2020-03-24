@@ -20,9 +20,7 @@
 #include "httprpc.h"
 #include "key.h"
 #include "notarisationdb.h"
-#ifdef ENABLE_MINING
 #include "key_io.h"
-#endif
 #include "main.h"
 #include "metrics.h"
 #include "miner.h"
@@ -1234,6 +1232,9 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 1);
         }
     }
+
+    auto defaultIDDest = DecodeDestination(GetArg("-defaultid", ""));
+    VERUS_DEFAULTID = defaultIDDest.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(defaultIDDest)) : CIdentityID();
 
     // Sanity check
     if (!InitSanityCheck())

@@ -282,7 +282,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                 static std::set<int> VALID_EVAL_CODES({
                     EVAL_NONE,
                     EVAL_STAKEGUARD,
-                    EVAL_PBAASDEFINITION,
+                    EVAL_CURRENCY_DEFINITION,
                     EVAL_SERVICEREWARD,
                     EVAL_EARNEDNOTARIZATION,
                     EVAL_ACCEPTEDNOTARIZATION,
@@ -298,7 +298,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     EVAL_IDENTITY_REVOKE,
                     EVAL_IDENTITY_RECOVER,
                     EVAL_IDENTITY_COMMITMENT,
-                    EVAL_IDENTITY_RESERVATION
+                    EVAL_IDENTITY_RESERVATION,
+                    EVAL_IDENTITY_EXPORT
                 });
                 if (VALID_EVAL_CODES.count(cp.evalCode))
                 {
@@ -821,6 +822,11 @@ public:
         return false;
     }
 
+    bool operator()(const CQuantumID &dest) const {
+        script->clear();
+        return false;
+    }
+
     bool operator()(const CPubKey &key) const {
         script->clear();
         *script << ToByteVector(key) << OP_CHECKSIG;
@@ -894,14 +900,6 @@ CScript::ScriptType AddressTypeFromDest(const CTxDestination &dest)
 {
     switch (dest.which()) {
 
-
-        static const uint8_t ADDRTYPE_INVALID = 0;
-        static const uint8_t ADDRTYPE_PK = 1;
-        static const uint8_t ADDRTYPE_PKH = 2;
-        static const uint8_t ADDRTYPE_SH = 3;
-        static const uint8_t ADDRTYPE_ID = 4;
-        static const uint8_t ADDRTYPE_LAST = 3;
-
     case COptCCParams::ADDRTYPE_PK:
     case COptCCParams::ADDRTYPE_PKH:
         return CScript::P2PKH;
@@ -909,6 +907,8 @@ CScript::ScriptType AddressTypeFromDest(const CTxDestination &dest)
         return CScript::P2SH;
     case COptCCParams::ADDRTYPE_ID:
         return CScript::P2ID;
+    case COptCCParams::ADDRTYPE_QUANTUM:
+        return CScript::P2QRK;
     default:
         // This probably won't ever happen, because it would mean that
         // the addressindex contains a type (say, 3) that we (currently)

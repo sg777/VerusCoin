@@ -282,8 +282,7 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
         LOCK(cs_main);
         if (GetTransaction(block.vtx.back().vin[0].prevout.hash, posSourceTx, posSrcBlkHash, true) && chainActive.Height() > 100)
         {
-            CBlockHeader bh = chainActive[height - 100]->GetBlockHeader();
-            uint256 pastHash = bh.GetVerusEntropyHash(height - 100);
+            uint256 pastHash = chainActive.GetVerusEntropyHash(height);
 
             result.push_back(Pair("poshashtx", posSourceTx.GetVerusPOSHash(&scratchNonce, block.vtx.back().vin[0].prevout.n, height, pastHash).GetHex()));
             result.push_back(Pair("possourcetxid", block.vtx.back().vin[0].prevout.hash.GetHex()));

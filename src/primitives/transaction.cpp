@@ -9,6 +9,7 @@
 #include "tinyformat.h"
 #include "utilstrencodings.h"
 #include "pbaas/reserves.h"
+#include "mmr.h"
 
 #include "librustzcash.h"
 
@@ -273,6 +274,27 @@ CTransaction& CTransaction::operator=(const CTransaction &tx) {
     return *this;
 }
 
+
+uint256 CTransaction::GetMMRRoot() const
+{
+    CTransactionMap txMap(*this);
+    return TransactionMMView(txMap.transactionMMR, txMap.transactionMMR.size()).GetRoot();
+}
+
+
+TransactionMMRNode CTransaction::GetTransactionMMRNode() const
+{
+    return TransactionMMRNode(GetMMRRoot());
+}
+
+
+TransactionMMRange CTransaction::GetTransactionMMR() const
+{
+    CTransactionMap txMap(*this);
+    return txMap.transactionMMR;
+}
+
+
 CAmount CTransaction::GetValueOut() const
 {
     CAmount nValueOut = 0;
@@ -303,25 +325,33 @@ CAmount CTransaction::GetValueOut() const
     return nValueOut;
 }
 
-CAmount CTransaction::GetReserveValueOut() const
+CCurrencyValueMap CTransaction::GetReserveValueOut() const
 {
-    CAmount nReserveValueOut = 0;
-    CAmount isNativeReserve = _IsVerusActive();
+    CCurrencyValueMap retVal;
     for (std::vector<CTxOut>::const_iterator it(vout.begin()); it != vout.end(); ++it)
     {
-        CAmount oneOut = it->scriptPubKey.ReserveOutValue();
-        if (isNativeReserve && oneOut == 0)
+        CCurrencyValueMap oneOut = it->scriptPubKey.ReserveOutValue();
+
+        for (auto &oneCur : oneOut.valueMap)
         {
-            oneOut = it->nValue;
+            auto it = retVal.valueMap.find(oneCur.first);
+            if (it == retVal.valueMap.end())
+            {
+                retVal.valueMap[oneCur.first] = oneCur.second;
+            }
+            else
+            {
+                it->second += oneCur.second;
+                if (it->second < 0)
+                {
+                    printf("CTransaction::GetReserveValueOut(): value overflow\n");
+                    LogPrintf("CTransaction::GetReserveValueOut(): value overflow\n");
+                    return std::map<uint160, CAmount>();
+                }
+            }
         }
-        if (nReserveValueOut < 0 || oneOut < 0 || (nReserveValueOut = nReserveValueOut + oneOut) < 0)
-            throw std::runtime_error("CTransaction::GetReserveValueOut(): value overflow");
-        // except for zero, which is remedied above, native and reserve outputs should be equal on
-        // the Verus chain
-        if (isNativeReserve && oneOut != it->nValue)
-            throw std::runtime_error("CTransaction::GetReserveValueOut(): native output is different from reserve output on native reserve chain");
     }
-    return nReserveValueOut;
+    return retVal;
 }
 
 CAmount CTransaction::GetShieldedValueOut() const

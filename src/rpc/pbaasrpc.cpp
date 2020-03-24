@@ -40,7 +40,8 @@
 
 using namespace std;
 
-extern int32_t ASSETCHAINS_ALGO, ASSETCHAINS_EQUIHASH, ASSETCHAINS_LWMAPOS;
+extern uint32_t ASSETCHAINS_ALGO;
+extern int32_t ASSETCHAINS_EQUIHASH, ASSETCHAINS_LWMAPOS;
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 extern uint64_t ASSETCHAINS_STAKED;
 extern int32_t KOMODO_MININGTHREADS;
@@ -52,9 +53,18 @@ extern std::string VERUS_CHAINNAME;
 extern int32_t USE_EXTERNAL_PUBKEY;
 extern std::string NOTARY_PUBKEY;
 
+#define _ASSETCHAINS_TIMELOCKOFF 0xffffffffffffffff
+extern uint64_t ASSETCHAINS_TIMELOCKGTE, ASSETCHAINS_TIMEUNLOCKFROM, ASSETCHAINS_TIMEUNLOCKTO;
+extern int64_t ASSETCHAINS_SUPPLY;
+extern uint64_t ASSETCHAINS_REWARD[3], ASSETCHAINS_DECAY[3], ASSETCHAINS_HALVING[3], ASSETCHAINS_ENDSUBSIDY[3], ASSETCHAINS_ERAOPTIONS[3];
+extern int32_t PBAAS_STARTBLOCK, PBAAS_ENDBLOCK, ASSETCHAINS_LWMAPOS;
+extern uint32_t ASSETCHAINS_ALGO, ASSETCHAINS_VERUSHASH, ASSETCHAINS_LASTERA;
+extern std::string VERUS_CHAINNAME;
+
+
 arith_uint256 komodo_PoWtarget(int32_t *percPoSp,arith_uint256 target,int32_t height,int32_t goalperc);
 
-std::set<uint160> ClosedPBaaSChains({CCrossChainRPCData::GetChainID("RESERVEWITHPREMINE"), CCrossChainRPCData::GetChainID("FAILCHAIN"), CCrossChainRPCData::GetChainID("SLC"), CCrossChainRPCData::GetChainID("RNPM"), CCrossChainRPCData::GetChainID("RNPNMR"), CCrossChainRPCData::GetChainID("MONKINS")});
+std::set<uint160> ClosedPBaaSChains({});
 
 // NOTE: Assumes a conclusive result; if result is inconclusive, it must be handled by caller
 static UniValue BIP22ValidationResult(const CValidationState& state)
@@ -93,10 +103,10 @@ protected:
     };
 };
 
-bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_t *pDefHeight)
+bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight)
 {
     LOCK(cs_main);
-    if (chainID == ConnectedChains.ThisChain().GetChainID())
+    if (chainID == ConnectedChains.ThisChain().GetID())
     {
         chainDef = ConnectedChains.ThisChain();
         if (pDefHeight)
@@ -108,7 +118,7 @@ bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_
 
     if (!IsVerusActive())
     {
-        if (ConnectedChains.NotaryChain().IsValid() && (chainID == ConnectedChains.NotaryChain().chainDefinition.GetChainID()))
+        if (ConnectedChains.NotaryChain().IsValid() && (chainID == ConnectedChains.NotaryChain().chainDefinition.GetID()))
         {
             chainDef = ConnectedChains.NotaryChain().chainDefinition;
             if (pDefHeight)
@@ -122,7 +132,7 @@ bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
     bool found = false;
 
-    if (!ClosedPBaaSChains.count(chainID)  && GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, addressIndex))
+    if (!ClosedPBaaSChains.count(chainID)  && GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CURRENCY_DEFINITION)), 1, addressIndex))
     {
         for (auto txidx : addressIndex)
         {
@@ -130,8 +140,8 @@ bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_
             uint256 blkHash;
             if (GetTransaction(txidx.first.txhash, tx, blkHash))
             {
-                chainDef = CPBaaSChainDefinition(tx);
-                if (found = chainDef.IsValid() && chainDef.GetChainID() == chainID)
+                chainDef = CCurrencyDefinition(tx);
+                if (found = chainDef.IsValid() && chainDef.GetID() == chainID)
                 {
                     // TODO: if we need to calculate the total contribution, do so
                     // we can get it from either a total of all exports, or the block 1 notarization if there is one
@@ -148,19 +158,167 @@ bool GetChainDefinition(uint160 chainID, CPBaaSChainDefinition &chainDef, int32_
     return found;
 }
 
-bool GetChainDefinition(string &name, CPBaaSChainDefinition &chainDef)
+bool GetCurrencyDefinition(string &name, CCurrencyDefinition &chainDef)
 {
-    return GetChainDefinition(CCrossChainRPCData::GetChainID(name), chainDef);
+    return GetCurrencyDefinition(CCrossChainRPCData::GetID(name), chainDef);
 }
 
-void GetDefinedChains(vector<CPBaaSChainDefinition> &chains, bool includeExpired)
+// set default peer nodes in the current connected chains
+bool SetPeerNodes(const UniValue &nodes)
+{
+    if (!nodes.isArray() || nodes.size() == 0)
+    {
+        return false;
+    }
+
+    LOCK(ConnectedChains.cs_mergemining);
+    ConnectedChains.defaultPeerNodes.clear();
+
+    for (int i = 0; i < nodes.size(); i++)
+    {
+        CNodeData oneNode(nodes[i]);
+        if (oneNode.networkAddress != "")
+        {
+            ConnectedChains.defaultPeerNodes.push_back(oneNode);
+        }
+    }
+    // set all command line parameters into mapArgs from chain definition
+    vector<string> nodeStrs;
+    for (auto node : ConnectedChains.defaultPeerNodes)
+    {
+        nodeStrs.push_back(node.networkAddress);
+    }
+    if (nodeStrs.size())
+    {
+        mapMultiArgs["-seednode"] = nodeStrs;
+    }
+    if (int port = ConnectedChains.GetThisChainPort())
+    {
+        mapArgs["-port"] = to_string(port);
+    }
+}
+
+// adds the chain definition for this chain and nodes as well
+// this also sets up the notarization chain, if there is one
+uint256 CurrencyDefHash()
+{
+    return ::GetHash(ConnectedChains.ThisChain());
+}
+
+// adds the chain definition for this chain and nodes as well
+// this also sets up the notarization chain, if there is one
+bool SetThisChain(const UniValue &chainDefinition)
+{
+    ConnectedChains.ThisChain() = CCurrencyDefinition(chainDefinition);
+    if (!ConnectedChains.ThisChain().IsValid())
+    {
+        return false;
+    }
+    SetPeerNodes(find_value(chainDefinition, "nodes"));
+
+    if (!IsVerusActive())
+    {
+        CCurrencyDefinition &notaryChainDef = ConnectedChains.notaryChain.chainDefinition;
+        // we set the notary chain to either Verus or VerusTest
+        notaryChainDef.nVersion = PBAAS_VERSION;
+        if (PBAAS_TESTMODE)
+        {
+            // setup Verus test parameters
+            notaryChainDef.name = "VRSCTEST";
+
+            notaryChainDef.preAllocation = {std::make_pair(uint160(), 5000000000000000)};
+            notaryChainDef.rewards = std::vector<int64_t>({2400000000});
+            notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
+            Split(GetArg("-ac_halving",""),  ASSETCHAINS_HALVING, 0);
+            notaryChainDef.halving = std::vector<int32_t>({(int32_t)(ASSETCHAINS_HALVING[0])});
+            notaryChainDef.eraEnd = std::vector<int32_t>({0});
+            notaryChainDef.options = notaryChainDef.OPTION_ID_REFERRALS;
+        }
+        else
+        {
+            // first setup Verus parameters
+            notaryChainDef.name = "VRSC";
+            notaryChainDef.rewards = std::vector<int64_t>({0,38400000000,2400000000});
+            notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
+            notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
+            notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
+            notaryChainDef.options = notaryChainDef.OPTION_ID_REFERRALS;
+        }
+        ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
+        ASSETCHAINS_TIMEUNLOCKFROM = 0;
+        ASSETCHAINS_TIMEUNLOCKTO = 0;
+    }
+
+    memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
+    assert(ConnectedChains.ThisChain().name.size() < sizeof(ASSETCHAINS_SYMBOL));
+    strcpy(ASSETCHAINS_SYMBOL, ConnectedChains.ThisChain().name.c_str());
+
+    auto numEras = ConnectedChains.ThisChain().rewards.size();
+    ASSETCHAINS_LASTERA = numEras - 1;
+    mapArgs["-ac_eras"] = to_string(numEras);
+
+    mapArgs["-ac_end"] = "";
+    mapArgs["-ac_reward"] = "";
+    mapArgs["-ac_halving"] = "";
+    mapArgs["-ac_decay"] = "";
+    mapArgs["-ac_options"] = "";
+
+    for (int j = 0; j < ASSETCHAINS_MAX_ERAS; j++)
+    {
+        if (j > ASSETCHAINS_LASTERA)
+        {
+            ASSETCHAINS_REWARD[j] = ASSETCHAINS_REWARD[j-1];
+            ASSETCHAINS_DECAY[j] = ASSETCHAINS_DECAY[j-1];
+            ASSETCHAINS_HALVING[j] = ASSETCHAINS_HALVING[j-1];
+            ASSETCHAINS_ENDSUBSIDY[j] = 0;
+            ASSETCHAINS_ERAOPTIONS[j] = 0;
+        }
+        else
+        {
+            ASSETCHAINS_REWARD[j] = ConnectedChains.ThisChain().rewards[j];
+            ASSETCHAINS_DECAY[j] = ConnectedChains.ThisChain().rewardsDecay[j];
+            ASSETCHAINS_HALVING[j] = ConnectedChains.ThisChain().halving[j];
+            ASSETCHAINS_ENDSUBSIDY[j] = ConnectedChains.ThisChain().eraEnd[j];
+            ASSETCHAINS_ERAOPTIONS[j] = ConnectedChains.ThisChain().options;
+            if (j == 0)
+            {
+                mapArgs["-ac_reward"] = to_string(ASSETCHAINS_REWARD[j]);
+                mapArgs["-ac_decay"] = to_string(ASSETCHAINS_DECAY[j]);
+                mapArgs["-ac_halving"] = to_string(ASSETCHAINS_HALVING[j]);
+                mapArgs["-ac_end"] = to_string(ASSETCHAINS_ENDSUBSIDY[j]);
+                mapArgs["-ac_options"] = to_string(ASSETCHAINS_ERAOPTIONS[j]);
+            }
+            else
+            {
+                mapArgs["-ac_reward"] += "," + to_string(ASSETCHAINS_REWARD[j]);
+                mapArgs["-ac_decay"] += "," + to_string(ASSETCHAINS_DECAY[j]);
+                mapArgs["-ac_halving"] += "," + to_string(ASSETCHAINS_HALVING[j]);
+                mapArgs["-ac_end"] += "," + to_string(ASSETCHAINS_ENDSUBSIDY[j]);
+                mapArgs["-ac_options"] += "," + to_string(ASSETCHAINS_ERAOPTIONS[j]);
+            }
+        }
+    }
+
+    PBAAS_STARTBLOCK = ConnectedChains.ThisChain().startBlock;
+    mapArgs["-startblock"] = to_string(PBAAS_STARTBLOCK);
+    PBAAS_ENDBLOCK = ConnectedChains.ThisChain().endBlock;
+    mapArgs["-endblock"] = to_string(PBAAS_ENDBLOCK);
+
+    CCurrencyStateNew currencyState = ConnectedChains.GetCurrencyState(0);
+
+    ASSETCHAINS_SUPPLY = currencyState.supply;
+    mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
+    return true;
+}
+
+void GetDefinedChains(vector<CCurrencyDefinition> &chains, bool includeExpired)
 {
     CCcontract_info CC;
     CCcontract_info *cp;
 
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
-    if (GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, addressIndex))
+    if (GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CURRENCY_DEFINITION)), 1, addressIndex))
     {
         for (auto txidx : addressIndex)
         {
@@ -168,7 +326,7 @@ void GetDefinedChains(vector<CPBaaSChainDefinition> &chains, bool includeExpired
             uint256 blkHash;
             if (GetTransaction(txidx.first.txhash, tx, blkHash))
             {
-                chains.push_back(CPBaaSChainDefinition(tx));
+                chains.push_back(CCurrencyDefinition(tx));
 
                 UniValue valStr(UniValue::VSTR);
 
@@ -179,7 +337,7 @@ void GetDefinedChains(vector<CPBaaSChainDefinition> &chains, bool includeExpired
                 }
 
                 // remove after to use less storage
-                if (!valStr.read(chains.back().ToUniValue().write()) || ClosedPBaaSChains.count(chains.back().GetChainID()) || (!includeExpired && chains.back().endBlock != 0 && chains.back().endBlock < chainActive.Height()))
+                if (!valStr.read(chains.back().ToUniValue().write()) || ClosedPBaaSChains.count(chains.back().GetID()) || (!includeExpired && chains.back().endBlock != 0 && chains.back().endBlock < chainActive.Height()))
                 {
                     chains.pop_back();
                 }
@@ -188,20 +346,60 @@ void GetDefinedChains(vector<CPBaaSChainDefinition> &chains, bool includeExpired
     }
 }
 
-bool CConnectedChains::GetLastImport(const uint160 &chainID, 
+bool CConnectedChains::LoadReserveCurrencies()
+{
+    // we need to get the currency definition for all convertible currencies in addition to Verus
+    // and store them in ConnectedChains. then, add currency definition outputs for each
+    // currency to the coinbase
+    for (auto &curID : thisChain.currencies)
+    {
+        // get the total amount pre-converted
+        CCurrencyDefinition oneDef;
+        UniValue params(UniValue::VARR);
+        params.push_back(EncodeDestination(CIdentityID(curID)));
+
+        UniValue result;
+        try
+        {
+            result = find_value(RPCCallRoot("getcurrencydefinition", params), "result");
+        } catch (exception e)
+        {
+            result = NullUniValue;
+        }
+
+        if (!result.isNull())
+        {
+            oneDef = CCurrencyDefinition(result);
+        }
+
+        if (result.isNull() || !oneDef.IsValid())
+        {
+            // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
+            LogPrintf("Unable to get currency definition for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+            printf("Unable to get currency definition for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+            return false;
+        }
+
+        {
+            LOCK(cs_mergemining);
+            reserveCurrencies[curID] = oneDef;
+        }
+    }
+    return true;
+}
+
+bool CConnectedChains::GetLastImport(const uint160 &systemID, 
                                      CTransaction &lastImport, 
-                                     CTransaction &crossChainExport, 
+                                     CPartialTransactionProof &crossChainExport, 
                                      CCrossChainImport &ccImport, 
                                      CCrossChainExport &ccCrossExport)
 {
-    CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT);
-
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
     LOCK2(cs_main, mempool.cs);
 
     // get last import from the specified chain
-    if (!GetAddressUnspent(keyID, 1, unspentOutputs))
+    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(systemID, EVAL_CROSSCHAIN_IMPORT), 1, unspentOutputs))
     {
         return false;
     }
@@ -227,35 +425,49 @@ bool CConnectedChains::GetLastImport(const uint160 &chainID,
         return false;
     }
     ccImport = CCrossChainImport(p.vData[0]);
+    CCrossChainProof *pMultiProof;
     auto opRetArr = RetrieveOpRetArray(lastImport.vout.back().scriptPubKey);
-    if (!opRetArr.size() || opRetArr[0]->objectType != CHAINOBJ_TRANSACTION)
+    if (!opRetArr.size() != 1 || 
+        opRetArr[0]->objectType != CHAINOBJ_CROSSCHAINPROOF || 
+        (pMultiProof = &(((CChainObject<CCrossChainProof> *)(opRetArr[0]))->object))->chainObjects.size() < 2 ||
+        pMultiProof->chainObjects[0]->objectType != CHAINOBJ_TRANSACTION_PROOF ||
+        pMultiProof->chainObjects[1]->objectType != CHAINOBJ_PROOF_ROOT)
     {
         DeleteOpRetObjects(opRetArr);
+        return false;
     }
     else
     {
-        crossChainExport = ((CChainObject<CTransaction> *)opRetArr[0])->object;
+        crossChainExport = ((CChainObject<CPartialTransactionProof> *)opRetArr[0])->object;
         DeleteOpRetObjects(opRetArr);
-        if (!(ccCrossExport = CCrossChainExport(crossChainExport)).IsValid())
+        CTransaction tx;
+        if (crossChainExport.CheckPartialTransaction(tx).IsNull())
         {
             return false;
+        }
+        else
+        {
+            ccCrossExport = CCrossChainExport(tx);
         }
     }
     return true;
 }
 
-// returns newly created import transactions to the specified chain from exports on this chain specified chain
+// returns newly created import transactions to the specified chain/system from exports on this chain specified chain
 // nHeight is the height for which we have an MMR that the chainID chain considers confirmed for this chain. it will
 // accept proofs of any transactions with that MMR and height.
 // Parameters shuold be validated before this call.
-bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef, 
+bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef, 
                                            const CTransaction &lastCrossChainImport, 
                                            const CTransaction &importTxTemplate,
                                            const CTransaction &lastConfirmedNotarization,
-                                           CAmount totalAvailableInput,
+                                           const CCurrencyValueMap &AvailableTokenInput,
+                                           CAmount TotalNativeInput,
                                            std::vector<CTransaction> &newImports)
 {
-    uint160 chainID = chainDef.GetChainID();
+    uint160 systemID = systemDef.GetID();
+    uint160 thisChainID = thisChain.GetID();
+    CCurrencyValueMap totalAvailableInput(AvailableTokenInput);
 
     CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
     if (!lastConfirmed.IsValid() || (chainActive.LastTip() == NULL) || lastConfirmed.notarizationHeight > chainActive.LastTip()->GetHeight())
@@ -274,13 +486,13 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
     }
 
     std::vector<CBaseChainObject *> chainObjs;
+
     // either a fully valid import with an export or the first import either in block 1 or the chain definition
     // on the Verus chain
     if (!(lastCrossChainImport.vout.back().scriptPubKey.IsOpReturn() &&
-          (chainObjs = RetrieveOpRetArray(lastCrossChainImport.vout.back().scriptPubKey)).size() >= 2 &&
-          chainObjs[0]->objectType == CHAINOBJ_TRANSACTION &&
-          chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF) &&
-        !(chainObjs.size() == 0 && CPBaaSChainDefinition(lastCrossChainImport).IsValid()))
+          (chainObjs = RetrieveOpRetArray(lastCrossChainImport.vout.back().scriptPubKey)).size() == 1 &&
+          chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF) &&
+        !(chainObjs.size() == 0 && CCurrencyDefinition(lastCrossChainImport).IsValid()))
     {
         DeleteOpRetObjects(chainObjs);
         LogPrintf("%s: Invalid last import tx\n", __func__);
@@ -293,20 +505,26 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
     LOCK2(cs_main, mempool.cs);
 
     uint256 lastExportHash;
+    CCrossChainProof exportProof;
     CTransaction lastExportTx;
-    CTransaction tx;
     uint256 blkHash;
     uint32_t blkHeight = 0;
     bool found = false;
     if (chainObjs.size())
     {
-        lastExportTx = ((CChainObject<CTransaction> *)chainObjs[0])->object;
-        lastExportHash = lastExportTx.GetHash();
+        exportProof = ((CChainObject<CCrossChainProof> *)chainObjs[0])->object;
+        if (exportProof.chainObjects.size() == 2 && exportProof.chainObjects[0]->objectType == CHAINOBJ_TRANSACTION_PROOF)
+        {
+            lastExportHash = ((CChainObject<CPartialTransactionProof> *)chainObjs[0])->object.GetPartialTransaction(lastExportTx);
+        }
+
         BlockMap::iterator blkMapIt;
         DeleteOpRetObjects(chainObjs);
-        if (myGetTransaction(lastExportHash, tx, blkHash) &&
-            (blkMapIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() && 
-            blkMapIt->second)
+        if (!lastExportHash.IsNull() &&
+            myGetTransaction(lastExportHash, lastExportTx, blkHash) &&
+            (blkMapIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() &&
+            blkMapIt->second &&
+            chainActive.Contains(blkMapIt->second))
         {
             found = true;
             blkHeight = blkMapIt->second->GetHeight();
@@ -318,20 +536,21 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
         // we cannot get export to a chain that has shut down
         // if the chain definition is spent, a chain is inactive
-        if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, unspentOutputs) && unspentOutputs.size())
+        if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(thisChainID, EVAL_CURRENCY_DEFINITION)), 1, unspentOutputs) && unspentOutputs.size())
         {
-            CPBaaSChainDefinition localChainDef;
+            CCurrencyDefinition localChainDef;
+            CTransaction tx;
 
             for (auto txidx : unspentOutputs)
             {
                 COptCCParams p;
                 if (txidx.second.script.IsPayToCryptoCondition(p) && 
                     p.IsValid() && 
-                    p.evalCode == EVAL_PBAASDEFINITION && 
+                    p.evalCode == EVAL_CURRENCY_DEFINITION && 
                     p.vData[0].size() && 
-                    (localChainDef = CPBaaSChainDefinition(p.vData[0])).IsValid() &&
-                    ((isVerusActive && localChainDef.GetChainID() == chainID) || 
-                         (!isVerusActive && localChainDef.GetChainID() == thisChain.GetChainID() && chainID == notaryChain.GetChainID())))
+                    (localChainDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
+                    ((isVerusActive && localChainDef.systemID == systemID) || 
+                         (!isVerusActive && localChainDef.GetID() == thisChainID && systemID == notaryChain.GetID())))
                 {
                     if (myGetTransaction(txidx.first.txhash, tx, blkHash))
                     {
@@ -339,9 +558,9 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                         if (ccx.IsValid() && (isVerusActive || tx.IsCoinBase()))
                         {
                             found = true;
-                            lastExportTx = tx;
                             lastExportHash = txidx.first.txhash;
                             blkHeight = txidx.second.blockHeight;
+                            break;
                         }
                     }
                 }
@@ -355,20 +574,18 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
         return false;
     }
 
-    bool importToReserveChain = !isVerusActive && chainID != thisChain.GetChainID() && chainID == notaryChain.GetChainID();
+    bool importToNotaryChain = !isVerusActive && systemID != thisChainID && systemID == notaryChain.GetID();
 
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
-    // look for new exports
-    CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
-
     CBlockIndex *pIndex;
 
     // get all export transactions including and since this one up to the confirmed height
-    if (blkHeight <= lastConfirmed.notarizationHeight && GetAddressIndex(keyID, 1, addressIndex, blkHeight, lastConfirmed.notarizationHeight))
+    if (blkHeight <= lastConfirmed.notarizationHeight && 
+        GetAddressIndex(CCrossChainRPCData::GetConditionID(systemID, EVAL_CROSSCHAIN_EXPORT), 1, addressIndex, blkHeight, lastConfirmed.notarizationHeight))
     {
-        // find this export, then check the next one that spends it and use it if still valid
+        // find this export, then check the next one that spends it and use it if also valid
         bool found = false;
         uint256 lastHash = lastExportHash;
 
@@ -419,7 +636,9 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             // aixIt has an input from the export thread of last transaction, an optional deposit to the reserve, and an opret of all outputs + 1 fee
             assert(aixIt->second.second.vout.back().scriptPubKey.IsOpReturn());
 
-            CCrossChainExport ccx(aixIt->second.second);
+            int ccxOutputNum = 0;
+            CCrossChainExport ccx(aixIt->second.second, &ccxOutputNum);
+            
             lastCCI = CCrossChainImport(lastImport);
             if (!lastCCI.IsValid() || !ccx.IsValid())
             {
@@ -442,16 +661,16 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
             CCcontract_info *cp;
             CPubKey pk;
 
-            CAmount availableReserveFees = ccx.totalFees;
-            CAmount exportFees = ccx.CalculateExportFee();
-            CAmount importFees = ccx.CalculateImportFee();
+            CCurrencyValueMap availableReserveFees = ccx.totalFees;
+            CCurrencyValueMap exportFees = ccx.CalculateExportFee();
+            CCurrencyValueMap importFees = ccx.CalculateImportFee();
             CAmount feesOut = 0;
 
             CReserveTransactionDescriptor rtxd;
 
             std::vector<CBaseChainObject *> exportOutputs = RetrieveOpRetArray(aixIt->second.second.vout.back().scriptPubKey);
 
-            if (!rtxd.AddReserveTransferImportOutputs(chainDef, exportOutputs, newImportTx.vout))
+            if (!rtxd.AddReserveTransferImportOutputs(thisChainID, systemDef, exportOutputs, newImportTx.vout))
             {
                 LogPrintf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                 printf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
@@ -465,32 +684,52 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
 
             // emit a crosschain import output as summary
             cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
-
             pk = CPubKey(ParseHex(CC.CChexstr));
 
             if (rtxd.ReserveFees() != (ccx.totalFees - exportFees))
             {
-                LogPrintf("%s: ERROR - import does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
-                printf("%s: ERROR - import does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
-            }
-
-            std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_CROSSCHAIN_IMPORT)))});
-            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetChainID(), ccx.totalAmount + ccx.totalFees);
-
-            totalAvailableInput -= (importToReserveChain ? rtxd.reserveIn : rtxd.nativeIn);
-            newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, totalAvailableInput, pk, dests, cci);
-
-            if (totalAvailableInput < 0)
-            {
-                LogPrintf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, chainDef.name.c_str());
-                printf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, chainDef.name.c_str());
+                LogPrintf("%s: ERROR - import fees do not match\n", __func__);
+                printf("%s: ERROR - import fees do not match\n", __func__);
                 return false;
             }
 
-            // add the opret, which is the export transaction this imports
-            std::vector<CBaseChainObject *> chainObjects;
-            CChainObject<CTransaction> exportTx(CHAINOBJ_TRANSACTION, aixIt->second.second);
-            chainObjects.push_back(&exportTx);
+            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CROSSCHAIN_IMPORT)))});
+            std::vector<CTxDestination> dests;
+
+            if (ConnectedChains.ThisChain().proofProtocol == CCurrencyDefinition::PROOF_PBAASMMR)
+            {
+                dests = std::vector<CTxDestination>({pk});
+            }
+            else if (ConnectedChains.ThisChain().proofProtocol == CCurrencyDefinition::PROOF_CHAINID)
+            {
+                dests = std::vector<CTxDestination>({CIdentityID(thisChainID)});
+            }
+            else
+            {
+                LogPrintf("%s: ERROR - invalid proof protocol\n", __func__);
+                printf("%s: ERROR - invalid proof protocol\n", __func__);
+                return false;
+            }
+
+            totalAvailableInput -= rtxd.ReserveInputMap();
+            TotalNativeInput -= rtxd.nativeIn;
+            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetID(), ccx.totalAmounts + ccx.totalFees, totalAvailableInput);
+            newImportTx.vout[0] = CTxOut(TotalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)));
+
+            if (TotalNativeInput < 0)
+            {
+                LogPrintf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, systemDef.name.c_str());
+                printf("%s: ERROR - importing more native currency than available on import thread for %s\n", __func__, systemDef.name.c_str());
+                return false;
+            }
+            if (totalAvailableInput.HasNegative())
+            {
+                LogPrintf("%s: ERROR - importing more currency than available on import thread for %s\n", __func__, systemDef.name.c_str());
+                printf("%s: ERROR - importing more currency than available on import thread for %s\n", __func__, systemDef.name.c_str());
+                return false;
+            }
+
+            CCrossChainProof exportTransactionProof;
 
             // add a proof of the export transaction at the notarization height
             CBlock block;
@@ -501,30 +740,23 @@ bool CConnectedChains::CreateLatestImports(const CPBaaSChainDefinition &chainDef
                 return false;
             }
 
-            CMerkleBranch exportProof(aixIt->second.first.index, block.GetMerkleBranch(aixIt->second.first.index));
-            auto mmrView = chainActive.GetMMV();
-            mmrView.resize(lastConfirmed.notarizationHeight);
+            // prove ccx input 0, export output, and opret
+            std::vector<std::pair<int16_t, int16_t>> parts({{CTransactionHeader::TX_PREVOUTSEQ, (int16_t)0},
+                                                            {CTransactionHeader::TX_OUTPUT, ccxOutputNum},
+                                                            {CTransactionHeader::TX_OUTPUT, (int16_t)(aixIt->second.second.vout.size() - 1)}});
 
-            if (mmrView.GetRoot() != lastConfirmed.mmrRoot)
-            {
-                LogPrintf("%s: notarization mmrRoot, %s, does not match the mmrRoot of the chain, %s\n", __func__, lastConfirmed.mmrRoot.GetHex().c_str(), mmrView.GetRoot().GetHex().c_str());
-                printf("%s: notarization mmrRoot, %s, does not match the mmrRoot of the chain, %s\n", __func__, lastConfirmed.mmrRoot.GetHex().c_str(), mmrView.GetRoot().GetHex().c_str());
-                return false;
-            }
-            else
-            {
-                printf("%s: created import %s for export %s\n", __func__, cci.ToUniValue().write().c_str(), aixIt->second.second.GetHash().GetHex().c_str());
-            }
+            // prove our transaction up to the MMR root of the last transaction
+            auto exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.index, parts);
+            exportProof.txProof << block.MMRProofBridge();
+            ChainMerkleMountainView(chainActive.GetMMR(), lastConfirmed.notarizationHeight).GetProof(exportProof.txProof, aixIt->second.first.blockHeight);
 
+            // add it to the export transaction proof, now proven up to the MMR root of the last confirmed transaction
+            exportTransactionProof << exportProof;
 
-            chainActive[aixIt->second.first.blockHeight]->AddMerkleProofBridge(exportProof);
-            mmrView.GetProof(exportProof, aixIt->second.first.blockHeight);
-
-            CChainObject<CCrossChainProof> exportXProof(CHAINOBJ_CROSSCHAINPROOF, CCrossChainProof(lastConfirmedNotarization.GetHash(), exportProof));
-            chainObjects.push_back(&exportXProof);
+            CChainObject<CCrossChainProof> exportXProof(CHAINOBJ_CROSSCHAINPROOF, exportTransactionProof);
 
             // add the opret with the transaction and its proof that references the notarization with the correct MMR
-            newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(chainObjects)));
+            newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(std::vector<CBaseChainObject *>({&exportXProof}))));
 
             // we now have an Import transaction for the chainID chain, it is the latest, and the export we used is now the latest as well
             // work our way forward
@@ -556,45 +788,52 @@ void CheckIdentityAPIsValid()
     }
 }
 
-uint160 GetChainIDFromParam(const UniValue &param)
+uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurrencyDef=NULL)
 {
-    uint160 chainID;
-    std::string name;
-
-    if (param.isStr())
+    std::string extraName;
+    uint160 retVal;
+    currencyStr = TrimSpaces(currencyStr);
+    if (!currencyStr.size())
     {
-        try
+        return retVal;
+    }
+    ParseSubNames(currencyStr, extraName, true);
+    if (currencyStr.back() == '@' || extraName != "")
+    {
+        return retVal;
+    }
+    CTxDestination currencyDest = DecodeDestination(currencyStr);
+    if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
+    {
+        currencyDest = DecodeDestination(currencyStr + "@");
+    }
+    if (currencyDest.which() != COptCCParams::ADDRTYPE_INVALID)
+    {
+        // make sure there is such a currency defined on this chain
+        CCurrencyDefinition currencyDef;
+        if (!pCurrencyDef)
         {
-            name = param.get_str();
-            if (name.size() > KOMODO_ASSETCHAIN_MAXLEN - 1)
-            {
-                return chainID;
-            }
-
-            // if it's a 40 byte hex number, consider it a chainID, not a name, names should not be 40 byte hex numbers
-            if (name.size() == 40)
-            {
-                chainID.SetHex(param.get_str());
-            }
+            pCurrencyDef = &currencyDef;
         }
-        catch(const std::exception& e)
+        if (!GetCurrencyDefinition(GetDestinationID(currencyDest), *pCurrencyDef))
         {
-        }
-
-        if (chainID.IsNull())
-        {
-            chainID = CCrossChainRPCData::GetChainID(param.get_str());
+            retVal = pCurrencyDef->GetID();
         }
     }
-    return chainID;
+    return retVal;
 }
 
-UniValue getchaindefinition(const UniValue& params, bool fHelp)
+uint160 GetChainIDFromParam(const UniValue &param, CCurrencyDefinition *pCurrencyDef=NULL)
+{
+    return ValidateCurrencyName(uni_get_str(param), pCurrencyDef);
+}
+
+UniValue getcurrencydefinition(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "getchaindefinition \"chainname\"\n"
+            "getcurrencydefinition \"chainname\"\n"
             "\nReturns a complete definition for any given chain if it is registered on the blockchain. If the chain requested\n"
             "\nis NULL, chain definition of the current chain is returned.\n"
 
@@ -603,30 +842,28 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
 
             "\nResult:\n"
             "  {\n"
-            "     \"chaindefinition\" : {\n"
-            "        \"version\" : \"n\",             (int) version of this chain definition\n"
-            "        \"name\" : \"string\",           (string) name or symbol of the chain, same as passed\n"
-            "        \"address\" : \"string\",        (string) cryptocurrency address to send fee and non-converted premine\n"
-            "        \"chainid\" : \"hex-string\",    (string) 40 char string that represents the chain ID, calculated from the name\n"
-            "        \"premine\" : \"n\",             (int) amount of currency paid out to the premine address in block #1, may be smart distribution\n"
-            "        \"convertible\" : \"xxxx\"       (bool) if this currency is a fractional reserve currency of Verus\n"
-            "        \"launchfee\" : \"n\",           (int) (launchfee * total converted) / 100000000 sent directly to premine address\n"
-            "        \"startblock\" : \"n\",          (int) block # on this chain, which must be notarized into block one of the chain\n"
-            "        \"endblock\" : \"n\",            (int) block # after which, this chain's useful life is considered to be over\n"
-            "        \"eras\" : \"[obj, ...]\",       (objarray) different chain phases of rewards and convertibility\n"
-            "        {\n"
-            "          \"reward\" : \"[n, ...]\",     (int) reward start for each era in native coin\n"
-            "          \"decay\" : \"[n, ...]\",      (int) exponential or linear decay of rewards during each era\n"
-            "          \"halving\" : \"[n, ...]\",    (int) blocks between halvings during each era\n"
-            "          \"eraend\" : \"[n, ...]\",     (int) block marking the end of each era\n"
-            "          \"eraoptions\" : \"[n, ...]\", (int) options for each era (reserved)\n"
-            "        }\n"
-            "        \"nodes\"      : \"[obj, ..]\",  (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
-            "          [{\n"
-            "             \"nodeaddress\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
-            "             \"paymentaddress\" : \"n\", (int,     optional) rewards payment address\n"
-            "           }, .. ]\n"
-            "      }\n"
+            "    \"version\" : \"n\",             (int) version of this chain definition\n"
+            "    \"name\" : \"string\",           (string) name or symbol of the chain, same as passed\n"
+            "    \"address\" : \"string\",        (string) cryptocurrency address to send fee and non-converted premine\n"
+            "    \"chainid\" : \"hex-string\",    (string) 40 char string that represents the chain ID, calculated from the name\n"
+            "    \"premine\" : \"n\",             (int) amount of currency paid out to the premine address in block #1, may be smart distribution\n"
+            "    \"convertible\" : \"xxxx\"       (bool) if this currency is a fractional reserve currency of Verus\n"
+            "    \"launchfee\" : \"n\",           (int) (launchfee * total converted) / 100000000 sent directly to premine address\n"
+            "    \"startblock\" : \"n\",          (int) block # on this chain, which must be notarized into block one of the chain\n"
+            "    \"endblock\" : \"n\",            (int) block # after which, this chain's useful life is considered to be over\n"
+            "    \"eras\" : \"[obj, ...]\",       (objarray) different chain phases of rewards and convertibility\n"
+            "    {\n"
+            "      \"reward\" : \"[n, ...]\",     (int) reward start for each era in native coin\n"
+            "      \"decay\" : \"[n, ...]\",      (int) exponential or linear decay of rewards during each era\n"
+            "      \"halving\" : \"[n, ...]\",    (int) blocks between halvings during each era\n"
+            "      \"eraend\" : \"[n, ...]\",     (int) block marking the end of each era\n"
+            "      \"eraoptions\" : \"[n, ...]\", (int) options (reserved)\n"
+            "    }\n"
+            "    \"nodes\"      : \"[obj, ..]\",  (objectarray, optional) up to 8 nodes that can be used to connect to the blockchain"
+            "      [{\n"
+            "         \"nodeidentity\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
+            "         \"paymentaddress\" : \"n\", (int,     optional) rewards payment address\n"
+            "       }, .. ]\n"
             "    \"bestnotarization\" : {\n"
             "     }\n"
             "    \"besttxid\" : \"txid\"\n"
@@ -637,8 +874,8 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
             "  }\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getchaindefinition", "\"chainname\"")
-            + HelpExampleRpc("getchaindefinition", "\"chainname\"")
+            + HelpExampleCli("getcurrencydefinition", "\"chainname\"")
+            + HelpExampleRpc("getcurrencydefinition", "\"chainname\"")
         );
     }
 
@@ -646,26 +883,54 @@ UniValue getchaindefinition(const UniValue& params, bool fHelp)
 
     UniValue ret(UniValue::VOBJ);
 
-    uint160 chainID = GetChainIDFromParam(params[0]);
+    LOCK(cs_main);
+
+    CCurrencyDefinition chainDef;
+    uint160 chainID = GetChainIDFromParam(params[0], &chainDef);
 
     if (chainID.IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
 
-    CPBaaSChainDefinition chainDef;
-
-    LOCK(cs_main);
-
-    if (GetChainDefinition(chainID, chainDef))
+    if (chainDef.IsValid())
     {
         CChainNotarizationData cnd;
         GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
         ret = chainDef.ToUniValue();
 
+        // get all nodes from notarizations of the best chain into a vector
+        std::vector<CNodeData> vNNodes;
+        for (auto &oneNot : cnd.forks[cnd.bestChain])
+        {
+            vNNodes.insert(vNNodes.end(), cnd.vtx[oneNot].second.nodes.begin(), cnd.vtx[oneNot].second.nodes.end());
+        }
+
         int32_t confirmedHeight = -1, bestHeight = -1;
         confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
         bestHeight = cnd.vtx.size() && cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : -1;
+
+        // shuffle and take 8 nodes,
+        // up to two of which will be from the last confirmed notarization if present
+        std::random_shuffle(vNNodes.begin(), vNNodes.end());
+        int numConfirmedNodes = cnd.lastConfirmed == -1 ? 0 : cnd.vtx[cnd.lastConfirmed].second.nodes.size();
+        if (vNNodes.size() > (8 - numConfirmedNodes))
+        {
+            vNNodes.resize(8);
+        }
+        if (numConfirmedNodes)
+        {
+            vNNodes.insert(vNNodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.end());
+        }
+        if (vNNodes.size())
+        {
+            UniValue nodeArr(UniValue::VARR);
+            for (auto &oneNode : vNNodes)
+            {
+                nodeArr.push_back(oneNode.ToUniValue());
+            }
+            ret.push_back(Pair("nodes", nodeArr));
+        }
 
         ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
         if (confirmedHeight != -1)
@@ -717,12 +982,12 @@ UniValue getpendingchaintransfers(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
 
-    CPBaaSChainDefinition chainDef;
+    CCurrencyDefinition chainDef;
     int32_t defHeight;
 
     LOCK(cs_main);
 
-    if ((IsVerusActive() && GetChainDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetChainID() == chainID)
+    if ((IsVerusActive() && GetCurrencyDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetID() == chainID)
     {
         // look for new exports
         multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
@@ -733,18 +998,14 @@ UniValue getpendingchaintransfers(const UniValue& params, bool fHelp)
 
             for (auto &desc : inputDescriptors)
             {
-                COptCCParams p;
-                if (desc.second.first.scriptPubKey.IsPayToCryptoCondition(p))
-                {
-                    UniValue oneExport(UniValue::VOBJ);
+                UniValue oneExport(UniValue::VOBJ);
 
-                    oneExport.push_back(Pair("chainid", desc.first.GetHex()));
-                    oneExport.push_back(Pair("txid", desc.second.first.txIn.prevout.hash.GetHex()));
-                    oneExport.push_back(Pair("n", (int32_t)desc.second.first.txIn.prevout.n));
-                    oneExport.push_back(Pair("valueout", desc.second.first.nValue));
-                    oneExport.push_back(Pair("reservetransfer", desc.second.second.ToUniValue()));
-                    ret.push_back(oneExport);
-                }
+                oneExport.push_back(Pair("chainid", desc.first.GetHex()));
+                oneExport.push_back(Pair("txid", desc.second.first.txIn.prevout.hash.GetHex()));
+                oneExport.push_back(Pair("n", (int32_t)desc.second.first.txIn.prevout.n));
+                oneExport.push_back(Pair("valueout", desc.second.first.nValue));
+                oneExport.push_back(Pair("reservetransfer", desc.second.second.ToUniValue()));
+                ret.push_back(oneExport);
             }
             if (ret.size())
             {
@@ -790,24 +1051,22 @@ UniValue getchainexports(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
 
-    CPBaaSChainDefinition chainDef;
+    CCurrencyDefinition chainDef;
     int32_t defHeight;
 
     LOCK(cs_main);
 
-    if ((IsVerusActive() && GetChainDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetChainID() == chainID)
+    if (GetCurrencyDefinition(chainID, chainDef, &defHeight))
     {
         // which transaction are we in this block?
         std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-
-        // look for new exports
-        CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
 
         CChainNotarizationData cnd;
         if (GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd))
         {
             // get all export transactions including and since this one up to the confirmed height
-            if (GetAddressIndex(keyID, 1, addressIndex, cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.crossHeight : defHeight))
+            if (GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT), 
+                                1, addressIndex, cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.crossHeight : defHeight))
             {
                 UniValue ret(UniValue::VARR);
 
@@ -885,24 +1144,21 @@ UniValue getchainimports(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
 
-    CPBaaSChainDefinition chainDef;
+    CCurrencyDefinition chainDef;
     int32_t defHeight;
 
     LOCK(cs_main);
 
-    if ((IsVerusActive() && GetChainDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetChainID() == chainID)
+    if ((IsVerusActive() && GetCurrencyDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetID() == chainID)
     {
         // which transaction are we in this block?
         std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-
-        // look for new exports
-        CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT);
 
         CBlockIndex *pIndex;
 
         CChainNotarizationData cnd;
         // get all export transactions including and since this one up to the confirmed height
-        if (GetAddressIndex(keyID, 1, addressIndex))
+        if (GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT), 1, addressIndex))
         {
             UniValue ret(UniValue::VARR);
 
@@ -922,8 +1178,9 @@ UniValue getchainimports(const UniValue& params, bool fHelp)
                         opretImports = RetrieveOpRetArray(importTx.vout.back().scriptPubKey);
 
                         if (opretImports.size() >= 2 && 
-                            opretImports[0]->objectType == CHAINOBJ_TRANSACTION && 
-                            (ccx = CCrossChainExport(exportTx = ((CChainObject<CTransaction> *)opretImports[0])->object)).IsValid() && 
+                            opretImports[0]->objectType == CHAINOBJ_TRANSACTION_PROOF && 
+                            !((CChainObject<CPartialTransactionProof> *)opretImports[0])->object.CheckPartialTransaction(exportTx).IsNull() &&
+                            (ccx = CCrossChainExport(exportTx)).IsValid() && 
                             ccx.numInputs &&
                             exportTx.vout.size() && 
                             exportTx.vout.back().scriptPubKey.IsOpReturn())
@@ -994,7 +1251,7 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
             "      \"decay\" : \"[n, ...]\",      (int) exponential or linear decay of rewards during each era\n"
             "      \"halving\" : \"[n, ...]\",    (int) blocks between halvings during each era\n"
             "      \"eraend\" : \"[n, ...]\",     (int) block marking the end of each era\n"
-            "      \"eraoptions\" : \"[n, ...]\", (int) options for each era (reserved)\n"
+            "      \"eraoptions\" : \"[n, ...]\", (int) options (reserved)\n"
             "    }\n"
             "    \"nodes\"      : \"[obj, ..]\",  (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
             "      [{\n"
@@ -1016,7 +1273,7 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
 
     bool includeExpired = params[0].isBool() ? params[0].get_bool() : false;
 
-    vector<CPBaaSChainDefinition> chains;
+    vector<CCurrencyDefinition> chains;
     GetDefinedChains(chains, includeExpired);
 
     for (auto def : chains)
@@ -1025,7 +1282,7 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
         oneChain.push_back(Pair("chaindefinition", def.ToUniValue()));
 
         CChainNotarizationData cnd;
-        GetNotarizationData(def.GetChainID(), IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
+        GetNotarizationData(def.GetID(), IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
 
         int32_t confirmedHeight = -1, bestHeight = -1;
         confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
@@ -1049,7 +1306,7 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
 }
 
 // returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
-// NULL, only transfers to that chain are returned
+// NULL, only transfers to that system are returned
 bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, int start, int end, uint32_t flags)
 {
     if (!flags)
@@ -1057,10 +1314,6 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
         flags = CReserveTransfer::VALID;
     }
     bool nofilter = chainFilter.IsNull();
-    CKeyID keyID;
-
-    // look for unspent chain transfer outputs for all chains
-    keyID = CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_RESERVE_TRANSFER);
 
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
@@ -1068,7 +1321,7 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressIndex(keyID, 1, addressIndex, start, end))
+    if (!GetAddressIndex(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_RESERVE_TRANSFER), 1, addressIndex, start, end))
     {
         return false;
     }
@@ -1121,16 +1374,12 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
 bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter)
 {
     bool nofilter = chainFilter.IsNull();
-    CKeyID keyID;
-
-    // look for unspent chain transfer outputs for all chains
-    keyID = CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_RESERVE_TRANSFER);
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressUnspent(keyID, 1, unspentOutputs))
+    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_RESERVE_TRANSFER), 1, unspentOutputs))
     {
         return false;
     }
@@ -1176,14 +1425,11 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
 // NULL, only transfers to that chain are returned
 bool GetUnspentChainExports(uint160 chainID, multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs)
 {
-    // look for unspent notarization finalization outputs for the requested chain
-    CKeyID keyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT));
-
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressUnspent(keyID, 1, unspentOutputs))
+    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT), 1, unspentOutputs))
     {
         return false;
     }
@@ -1207,7 +1453,7 @@ bool GetUnspentChainExports(uint160 chainID, multimap<uint160, pair<int, CInputD
                         if (::IsPayToCryptoCondition(coins.vout[i].scriptPubKey, p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
                             p.vData.size() && (cx = CCrossChainExport(p.vData[0])).IsValid())
                         {
-                            exportOutputs.insert(make_pair(cx.chainID,
+                            exportOutputs.insert(make_pair(cx.systemID,
                                                      make_pair(coins.nHeight, CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))))));
                         }
                     }
@@ -1227,17 +1473,14 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
 {
     notarizationData.version = PBAAS_VERSION;
 
-    // look for unspent notarization finalization outputs for the requested chain
-    CKeyID keyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZENOTARIZATION));
-
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
-    CPBaaSChainDefinition chainDef;
+    CCurrencyDefinition chainDef;
 
     bool isEarned = ecode == EVAL_EARNEDNOTARIZATION;
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressUnspent(keyID, 1, unspentOutputs))
+    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZENOTARIZATION), 1, unspentOutputs))
     {
         return false;
     }
@@ -1261,7 +1504,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
                 if (!chainDef.IsValid())
                 {
                     // try to make a chain definition out of each transaction, and keep the first one that is valid
-                    chainDef = CPBaaSChainDefinition(ntx);
+                    chainDef = CCurrencyDefinition(ntx);
                 }
                 CPBaaSNotarization notarization = CPBaaSNotarization(ntx);
                 if (notarization.IsValid())
@@ -1489,10 +1732,10 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
 
 // get inputs for all of the unspent reward outputs sent to a specific reward type for the range specified
 // returns the total input amount
-CAmount GetUnspentRewardInputs(const CPBaaSChainDefinition &chainDef, vector<CInputDescriptor> &inputs, int32_t serviceCode, int32_t height)
+CAmount GetUnspentRewardInputs(const CCurrencyDefinition &chainDef, vector<CInputDescriptor> &inputs, int32_t serviceCode, int32_t height)
 {
     CAmount retval = 0;
-    uint160 chainID = chainDef.GetChainID();
+    uint160 chainID = chainDef.GetID();
 
     // look for unspent outputs that match the addressout hashed with service code
     CKeyID keyID(CCrossChainRPCData::GetConditionID(CCrossChainRPCData::GetConditionID(chainID, serviceCode), EVAL_SERVICEREWARD));
@@ -1542,7 +1785,7 @@ CAmount GetUnspentRewardInputs(const CPBaaSChainDefinition &chainDef, vector<CIn
 
 // this adds any new notarization rewards that have been sent to the notarization reward pool for this
 // billing period since last accepted notarization, up to a maximum number of inputs
-CAmount AddNewNotarizationRewards(CPBaaSChainDefinition &chainDef, vector<CInputDescriptor> &inputs, CMutableTransaction mnewTx, int32_t height)
+CAmount AddNewNotarizationRewards(CCurrencyDefinition &chainDef, vector<CInputDescriptor> &inputs, CMutableTransaction mnewTx, int32_t height)
 {
     // get current chain info
     CAmount newIn = 0;
@@ -1591,9 +1834,9 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid notarization transaction");
     }
 
-    CPBaaSChainDefinition chainDef;
+    CCurrencyDefinition chainDef;
     int32_t chainDefHeight;
-    if (!GetChainDefinition(pbn.chainID, chainDef, &chainDefHeight))
+    if (!GetCurrencyDefinition(pbn.systemID, chainDef, &chainDefHeight))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain notarization");
     }
@@ -1609,7 +1852,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     
     {
         LOCK(cs_main);
-        success = GetNotarizationData(pbn.chainID, EVAL_ACCEPTEDNOTARIZATION, nData, &txesBlkHashes);
+        success = GetNotarizationData(pbn.systemID, EVAL_ACCEPTEDNOTARIZATION, nData, &txesBlkHashes);
     }
 
     // get notarization data and check all transactions
@@ -1711,17 +1954,23 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
 
             // use public key of cc
             CPubKey pk(ParseHex(CC.CChexstr));
-            CKeyID id = CCrossChainRPCData::GetConditionID(pbn.chainID, EVAL_FINALIZENOTARIZATION);
-            std::vector<CTxDestination> dests({id});
+            std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(pbn.systemID, EVAL_FINALIZENOTARIZATION))});
 
-            // insert a finalization as second to last vout
-            cp = CCinit(&CC, EVAL_FINALIZENOTARIZATION);
-            pk = CPubKey(ParseHex(CC.CChexstr));
-            dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(pbn.chainID, EVAL_FINALIZENOTARIZATION))});
+            std::vector<CTxDestination> dests;
+            if (chainDef.notarizationProtocol == chainDef.NOTARIZATION_NOTARY_CHAINID)
+            {
+                dests = std::vector<CTxDestination>({CIdentityID(chainDef.GetID())});
+            }
+            else
+            {
+                dests = std::vector<CTxDestination>({pk});
+            }
 
             CNotarizationFinalization nf(confirmedInput);
 
-            mnewTx.vout.insert(mnewTx.vout.begin() + (mnewTx.vout.size() - 1), MakeCC1of1Vout(EVAL_FINALIZENOTARIZATION, CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE, pk, dests, nf));
+            mnewTx.vout.insert(mnewTx.vout.begin() + (mnewTx.vout.size() - 1), 
+                                CTxOut(CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
+                                       MakeMofNCCScript(CConditionObj<CNotarizationFinalization>(EVAL_FINALIZENOTARIZATION, dests, 1, &nf), &indexDests)));
         }
 
         if (notarizationInputs.size() && GetNotarizationAndFinalization(EVAL_ACCEPTEDNOTARIZATION, mnewTx, dummy, &notarizationIdx, &finalizationIdx))
@@ -1788,7 +2037,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                     (confirmedPBN = CPBaaSNotarization(confirmedTx)).IsValid() &&
                     ExtractDestination(confirmedBlock.vtx[0].vout[0].scriptPubKey, minerRecipient, false))
                 {
-                    notaryRecipient = CTxDestination(CKeyID(confirmedPBN.notaryKeyID));
+                    notaryRecipient = confirmedPBN.notaryDest;
                 }
                 else
                 {
@@ -1801,20 +2050,20 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             CAmount valueOut = 0;
             CAmount notaryValueOut;
 
-            if (valueIn > (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1))
+            if (valueIn > (CCurrencyDefinition::DEFAULT_OUTPUT_VALUE << 1))
             {
                 if (confirmedInput != -1)
                 {
-                    if (valueIn < (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1)))
+                    if (valueIn < (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (CCurrencyDefinition::DEFAULT_OUTPUT_VALUE << 1)))
                     {
-                        valueOut = valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1);
+                        valueOut = valueIn - (CCurrencyDefinition::DEFAULT_OUTPUT_VALUE << 1);
                     }
                     else
                     {
-                        valueOut = (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (valueIn - (CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1))) / blocksLeft;
+                        valueOut = (CPBaaSNotarization::MIN_BLOCKS_BETWEEN_ACCEPTED * (valueIn - (CCurrencyDefinition::DEFAULT_OUTPUT_VALUE << 1))) / blocksLeft;
                     }
                 }
-                notaryValueOut = valueIn - ((CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE << 1) + valueOut);
+                notaryValueOut = valueIn - ((CCurrencyDefinition::DEFAULT_OUTPUT_VALUE << 1) + valueOut);
             }
             else
             {
@@ -1849,7 +2098,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 valueOut = 0;
             }
             
-            if ((notaryValueOut + valueOut + CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE) > valueIn)
+            if ((notaryValueOut + valueOut + CCurrencyDefinition::DEFAULT_OUTPUT_VALUE) > valueIn)
             {
                 notaryValueOut = valueIn;
                 printf("Not enough funds to notarize %s\n", chainDef.name.c_str());
@@ -1861,13 +2110,20 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
 
             // make the output for the other chain's notarization
             cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
-
-            // use public key of cc
             CPubKey pk(ParseHex(CC.CChexstr));
-            CKeyID id = CCrossChainRPCData::GetConditionID(pbn.chainID, EVAL_ACCEPTEDNOTARIZATION);
-            std::vector<CTxDestination> dests({id});
+            std::vector<CTxDestination> dests;
 
-            mnewTx.vout[notarizationIdx] = MakeCC1of1Vout(EVAL_ACCEPTEDNOTARIZATION, notaryValueOut, pk, dests, pbn);
+            std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(pbn.systemID, EVAL_ACCEPTEDNOTARIZATION))});
+            if (chainDef.notarizationProtocol == chainDef.NOTARIZATION_NOTARY_CHAINID)
+            {
+                dests = std::vector<CTxDestination>({CIdentityID(chainDef.GetID())});
+            }
+            else
+            {
+                dests = std::vector<CTxDestination>({pk});
+            }
+            
+            mnewTx.vout[notarizationIdx] = CTxOut(notaryValueOut, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn), &indexDests));
 
             CTransaction ntx(mnewTx);
 
@@ -1931,7 +2187,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             return newTx.GetHash().GetHex();
         }
     }
-    throw JSONRPCError(RPC_VERIFY_REJECTED, "Failed to get notarizaton data for chainID: " + pbn.chainID.GetHex());
+    throw JSONRPCError(RPC_VERIFY_REJECTED, "Failed to get notarizaton data for chainID: " + pbn.systemID.GetHex());
 }
 
 UniValue getcrossnotarization(const UniValue& params, bool fHelp)
@@ -1939,11 +2195,12 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 2 || params.size() > 3)
     {
         throw runtime_error(
-            "getcrossnotarization \"chainid\" '[\"notarizationtxid1\", \"notarizationtxid2\", ...]'\n"
-            "\nReturns the latest PBaaS notarization transaction found in the list of transaction IDs or nothing if not found\n"
+            "getcrossnotarization \"systemid\" '[\"notarizationtxid1\", \"notarizationtxid2\", ...]'\n"
+            "\nCreates and returns a cross notarization of this chain back to the system id caller,\n"
+            "assuming that a prior notarization for that system is found.\n"
 
             "\nArguments\n"
-            "1. \"chainid\"                     (string, required) the hex-encoded chainid to search for notarizations on\n"
+            "1. \"systemid\"                    (string, required) the currency system id to search for notarizations on\n"
             "2. \"txidlist\"                    (stringarray, optional) list of transaction ids to check in preferred order, first found is returned\n"
             "3. \"accepted\"                    (bool, optional) accepted, not earned notarizations, default: true if on\n"
             "                                                    VRSC or VRSCTEST, false otherwise\n"
@@ -1957,8 +2214,8 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getcrossnotarization", "\"chainid\" '[\"notarizationtxid1\", \"notarizationtxid2\", ...]'")
-            + HelpExampleRpc("getcrossnotarization", "\"chainid\" '[\"notarizationtxid1\", \"notarizationtxid2\", ...]'")
+            + HelpExampleCli("getcrossnotarization", "\"systemid\" '[\"notarizationtxid1\", \"notarizationtxid2\", ...]'")
+            + HelpExampleRpc("getcrossnotarization", "\"systemid\" '[\"notarizationtxid1\", \"notarizationtxid2\", ...]'")
         );
     }
 
@@ -2030,6 +2287,12 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
 
     LOCK(cs_main);
 
+    CCurrencyDefinition chainDef;
+    if (!GetCurrencyDefinition(chainID, chainDef))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain ID: " + EncodeDestination(CIdentityID(chainID)));
+    }
+
     vector<pair<CTransaction, uint256>> nTxes;
 
     // get notarization data and check all transactions
@@ -2077,9 +2340,6 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             uint256 mmrRoot = mmv.GetRoot();
             uint256 preHash = mmv.mmr.GetNode(proofheight).hash;
 
-            CMerkleBranch blockProof;
-            chainActive.GetBlockProof(mmv, blockProof, proofheight);
-
             // prove the last notarization txid with new MMR, which also provides its blockhash and power as part of proof
             CBlock block;
             CBlockIndex *pnindex = mapBlockIndex.find(blkHash)->second;
@@ -2092,10 +2352,9 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             int32_t prevHeight = pnindex->GetHeight();
 
             // which transaction are we in this block?
-            CKeyID keyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZENOTARIZATION));
             std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
-            if (!GetAddressIndex(keyID, 1, addressIndex, prevHeight, prevHeight))
+            if (!GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZENOTARIZATION), 1, addressIndex, prevHeight, prevHeight))
             {
                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Address index read error - possible corruption in address index");
             }
@@ -2120,44 +2379,54 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
                 txIndex = addressIndex[txIndex].first.index;
             }
 
-            // if bock headers are merge mined, keep header refs, not headers
+            CMMRProof blockProof;
+            chainActive.GetBlockProof(mmv, blockProof, proofheight);
 
             // create and store the notarization proof of chain
             vector<CBaseChainObject *> chainObjects;
             COpRetProof orp;
 
-            // first, provide the latest block header in the opret...
-            CBlockHeader bh = chainActive[proofheight]->GetBlockHeader();
-            CChainObject<CBlockHeader> latestHeaderObj(CHAINOBJ_HEADER, bh);
+            // if bock headers are merge mined, keep header refs, not headers
+            CBlockHeaderAndProof bhp(blockProof, chainActive[proofheight]->GetBlockHeader());
+            CChainObject<CBlockHeaderAndProof> latestHeaderObj(CHAINOBJ_HEADER, bhp);
+
             chainObjects.push_back(&latestHeaderObj);
-            orp.AddObject(CHAINOBJ_HEADER, chainActive[proofheight]->GetBlockHash());
+            orp.AddObject(CHAINOBJ_HEADER, bhp.BlockHash());
 
-            // prove it with the latest MMR root
-            CChainObject<CMerkleBranch> latestHeaderProof(CHAINOBJ_PROOF, blockProof);
-            chainObjects.push_back(&latestHeaderProof);
-            orp.AddObject(bh, chainActive[proofheight]->GetBlockHash());
-
-            // include the last notarization tx, minus its opret in the new notarization's opret
-            CMutableTransaction mtx(tx);
-            if (mtx.vout[mtx.vout.size() - 1].scriptPubKey.IsOpReturn())
+            // prove the important last notarization components in the tx.
+            // we care about the following components:
+            //  input 0 - can be used to determine if the tx is a coinbase and is the spending thread for notarization
+            //  notarization output - the notarization state being attested to
+            //  currency definition output matching notarization output - signifies first notarization
+            std::vector<std::pair<int16_t, int16_t>> txComponents({{(int16_t)CTransactionHeader::TX_PREVOUTSEQ, (int16_t)0}});
+            for (int i = 0; i < tx.vout.size(); i++)
             {
-                mtx.vout.pop_back();
+                COptCCParams p;
+                if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+                {
+                    if (p.evalCode == ecode)
+                    {
+                        txComponents.push_back({CTransactionHeader::TX_OUTPUT, i});
+                    }
+                    else if (p.evalCode == EVAL_CURRENCY_DEFINITION && 
+                             p.vData.size())
+                    {
+                        CCurrencyDefinition definedCurrency(p.vData[0]);
+                        if (definedCurrency.IsValid() &&
+                            definedCurrency.GetID() == chainID)
+                        {
+                            txComponents.push_back({CTransactionHeader::TX_OUTPUT, i});
+                        }
+                    }
+                }
             }
-            CTransaction strippedTx(mtx);
-
-            // get a proof of the prior notarizaton from the MMR root of this notarization
-            CMerkleBranch txProof(txIndex, block.GetMerkleBranch(txIndex));
-            chainActive.GetMerkleProof(mmv, txProof, prevHeight);
+            CPartialTransactionProof txProof = block.GetPartialTransactionProof(tx, txIndex, txComponents);
 
             // add the cross transaction from this chain to return
-            CChainObject<CTransaction> strippedTxObj(CHAINOBJ_TRANSACTION, strippedTx);
-            chainObjects.push_back(&strippedTxObj);
-            orp.AddObject(CHAINOBJ_TRANSACTION, tx.GetHash());
+            CChainObject<CPartialTransactionProof> strippedTxObj(CHAINOBJ_TRANSACTION_PROOF, txProof);
 
-            // add proof of the transaction
-            CChainObject<CMerkleBranch> txProofObj(CHAINOBJ_PROOF, txProof);
-            chainObjects.push_back(&txProofObj);
-            orp.AddObject(CHAINOBJ_PROOF, txHash);
+            chainObjects.push_back(&strippedTxObj);
+            orp.AddObject(CHAINOBJ_TRANSACTION_PROOF, tx.GetHash());
 
             // add the MMR block nodes between the last notarization and this one, containing root that combines merkle, block, and compact power hashes
             CPriorBlocksCommitment priorBlocks;
@@ -2191,8 +2460,8 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
                         vNodes[i]->copyStats(stats);
                         if (vNodes[i]->fSuccessfullyConnected && !vNodes[i]->fInbound)
                         {
-                            CBitcoinAddress bca(CKeyID(vNodes[i]->hashPaymentAddress));
-                            nodes.push_back(CNodeData(vNodes[i]->addr.ToString(), bca.ToString()));
+                            CIdentityID idID(vNodes[i]->hashPaymentAddress);
+                            nodes.push_back(CNodeData(vNodes[i]->addr.ToString(), EncodeDestination(CTxDestination(idID))));
                         }
                     }
                 }
@@ -2205,13 +2474,17 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
                 nodes.erase(nodes.begin() + toErase);
             }
 
-            CKeyID pkID;
-            if (USE_EXTERNAL_PUBKEY)
+            CTxDestination notaryDest;
+            if (!VERUS_DEFAULTID.IsNull())
+            {
+                notaryDest = VERUS_DEFAULTID;
+            }
+            else if (USE_EXTERNAL_PUBKEY)
             {
                 CPubKey pubKey = CPubKey(ParseHex(NOTARY_PUBKEY));
                 if (pubKey.IsFullyValid())
                 {
-                    pkID = pubKey.GetID();
+                    notaryDest = pubKey;
                 }
             }
             else
@@ -2226,30 +2499,12 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             }
 
             CBlockIndex *nzIndex = chainActive[proofheight];
-            CCurrencyState currencyState = ConnectedChains.GetCurrencyState(proofheight);
-
-            // TODO: get currency state as of proofHeight
-            if (ConnectedChains.ThisChain().ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE)
-            {
-                CBlock block;
-                if (!ReadBlockFromDisk(block, nzIndex, Params().GetConsensus(), false))
-                {
-                    printf("Cannot read block from disk at height %d\n", nzIndex->GetHeight());
-                    LogPrintf("Cannot read block from disk at height %d\n", nzIndex->GetHeight());
-                }
-            }
-            else
-            {
-                if (proofheight != 1)
-                {
-                    // get 
-                }
-            }
+            CCurrencyStateNew currencyState = ConnectedChains.GetCurrencyState(proofheight);
 
             // get the current block's MMR root and proof height
             CPBaaSNotarization notarization = CPBaaSNotarization(CPBaaSNotarization::CURRENT_VERSION, 
                                                                  ASSETCHAINS_CHAINID,
-                                                                 pkID,
+                                                                 notaryDest,
                                                                  proofheight,
                                                                  mmrRoot,
                                                                  preHash,
@@ -2269,20 +2524,31 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
 
             // make the output for the other chain's notarization
             cp = CCinit(&CC, crosscode);
-            // use public key of cc
-            CPubKey pk(ParseHex(CC.CChexstr));
-            CKeyID id = CCrossChainRPCData::GetConditionID(chainID, crosscode);
-            std::vector<CTxDestination> dests({id});
 
-            newNotarization.vout.push_back(MakeCC1of1Vout(crosscode, CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE, pk, dests, notarization));
+            std::vector<CTxDestination> dests;
+            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, crosscode))});
+            if (chainDef.notarizationProtocol == chainDef.NOTARIZATION_NOTARY_CHAINID)
+            {
+                dests = std::vector<CTxDestination>({CIdentityID(chainDef.GetID())});
+            }
+            else
+            {
+                dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+            }
+            newNotarization.vout.push_back(CTxOut(CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
+                                                  MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(crosscode, dests, 1, &notarization), &indexDests)));
 
             // make the unspent finalization output
             cp = CCinit(&CC, EVAL_FINALIZENOTARIZATION);
-            pk = CPubKey(ParseHex(CC.CChexstr));
-            dests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZENOTARIZATION))});
+            if (chainDef.notarizationProtocol != chainDef.NOTARIZATION_NOTARY_CHAINID)
+            {
+                dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+            }
+            indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZENOTARIZATION))});
 
             CNotarizationFinalization nf;
-            newNotarization.vout.push_back(MakeCC1of1Vout(EVAL_FINALIZENOTARIZATION, DEFAULT_TRANSACTION_FEE, pk, dests, nf));
+            newNotarization.vout.push_back(CTxOut(DEFAULT_TRANSACTION_FEE, 
+                                                  MakeMofNCCScript(CConditionObj<CNotarizationFinalization>(EVAL_FINALIZENOTARIZATION, dests, 1, &nf), &indexDests)));
 
             newNotarization.vout.push_back(CTxOut(0, StoreOpRetArray(chainObjects)));
 
@@ -2387,31 +2653,77 @@ UniValue listreservetransactions(const UniValue& params, bool fHelp)
     return NullUniValue;
 }
 
-CCoinbaseCurrencyState GetInitialCurrencyState(CPBaaSChainDefinition &chainDef, int32_t definitionHeight)
+CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, int32_t definitionHeight)
 {
-    std::multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferInputs;
-    CAmount preconvertedAmount = 0, fees = 0;
-    bool isReserve = chainDef.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE;
-
-    if (GetChainTransfers(transferInputs, chainDef.GetChainID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
+    // if we are getting information on the current chain, we assume that preconverted amounts have been
+    // pre-calculated. otherwise, we will calculate them.
+    CCurrencyValueMap retVal;
+    if (chainDef.GetID() != ConnectedChains.ThisChain().GetID())
     {
-        for (auto transfer : transferInputs)
+        std::multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferInputs;
+        CCurrencyValueMap preconvertedAmounts;
+        CCurrencyValueMap fees;
+        bool isReserve = chainDef.ChainOptions() & CCurrencyDefinition::OPTION_FRACTIONAL;
+
+        if (GetChainTransfers(transferInputs, chainDef.GetID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
         {
-            // total amount will be transferred to the chain, with fee split between aggregator and miner in
-            // Verus reserve
-            preconvertedAmount += transfer.second.second.nValue;
-            fees += transfer.second.second.nFees;
+            for (auto transfer : transferInputs)
+            {
+                preconvertedAmounts.valueMap[transfer.second.second.currencyID] += transfer.second.second.nValue;
+                fees.valueMap[transfer.second.second.currencyID] += transfer.second.second.nFees;
+            }
         }
     }
+    else
+    {
+        retVal = CCurrencyValueMap(chainDef.currencies, chainDef.preconverted);
+    }
+    
+    return retVal;
+}
 
-    uint32_t Flags = isReserve ? CCurrencyState::VALID + CCurrencyState::ISRESERVE : CCurrencyState::VALID;
-    CCurrencyState currencyState(chainDef.conversion, 0, 0, 0, preconvertedAmount, Flags);
+// this must be called after all initial contributions are updated in the currency definition.
+CCoinbaseCurrencyState GetInitialCurrencyState(CCurrencyDefinition &chainDef)
+{
+    bool isReserve = chainDef.IsReserve();
+    CCurrencyStateNew cState;
 
-    CAmount preconvertedNative = currencyState.ReserveToNative(preconvertedAmount, chainDef.conversion);
-    currencyState.InitialSupply = preconvertedNative;
-    currencyState.Supply += preconvertedNative;
+    // calculate contributions and conversions
+    const std::vector<CAmount> reserveFees(chainDef.currencies.size());
 
-    return CCoinbaseCurrencyState(currencyState, preconvertedAmount, 0, CReserveOutput(CReserveOutput::VALID, fees), chainDef.conversion, fees, fees);
+    CAmount nativeFees = 0;
+    if (isReserve)
+    {
+        cState = CCurrencyStateNew(chainDef.currencies,
+                                   chainDef.weights,
+                                   std::vector<int64_t>(chainDef.currencies.size()), 0, 0, 0, CCurrencyStateNew::VALID + CCurrencyStateNew::ISRESERVE);
+        CCurrencyStateNew tmpState;
+        chainDef.conversions = cState.ConvertAmounts(chainDef.preconverted, std::vector<int64_t>(chainDef.currencies.size()), tmpState);
+        cState = tmpState;
+    }
+    else
+    {
+        CAmount PreconvertedNative = cState.ReserveToNativeRaw(CCurrencyValueMap(chainDef.currencies, chainDef.preconverted), chainDef.conversions);
+        CCurrencyStateNew cState(std::vector<uint160>(0), 
+                                 std::vector<int32_t>(0), 
+                                 std::vector<int64_t>(0), 
+                                 0, 
+                                 PreconvertedNative, 
+                                 PreconvertedNative, 
+                                 CCurrencyStateNew::VALID);
+    }
+
+    cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
+
+    return CCoinbaseCurrencyState(cState, 
+                                  0, 
+                                  0, 
+                                  chainDef.preconverted, 
+                                  std::vector<int64_t>(chainDef.currencies.size()), 
+                                  std::vector<int64_t>(chainDef.currencies.size()), 
+                                  chainDef.conversions,
+                                  reserveFees,
+                                  reserveFees);
 }
 
 UniValue reserveexchange(const UniValue& params, bool fHelp)
@@ -2443,529 +2755,344 @@ UniValue reserveexchange(const UniValue& params, bool fHelp)
     }
 
     CheckPBaaSAPIsValid();
-    throw JSONRPCError(RPC_METHOD_NOT_FOUND, "Not yet implemented. Use sendreserve in this release.");
+    throw JSONRPCError(RPC_METHOD_NOT_FOUND, "Not yet implemented. Use sendcurrency in this release.");
 }
 
-UniValue sendreserve(const UniValue& params, bool fHelp)
+UniValue sendcurrency(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 2 || params.size() > 3)
     {
         throw runtime_error(
-            "sendreserve '{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0, \"convert\": 1}' (returntx)\n"
-            "\nThis sends a Verus output as a JSON object or lists of Verus outputs as a list of objects to an address on the same or another chain.\n"
-            "\nFunds are sourced automatically from the current wallet, which must be present, as in sendtoaddress.\n"
+            "sendcurrency \"fromaddress\" '[{\"address\":... ,\"amount\":...},...]' (returntx)\n"
+            "\nThis sends one or many Verus outputs to one or many addresses on the same or another chain.\n"
+            "Funds are sourced automatically from the current wallet, which must be present, as in sendtoaddress.\n"
+            "If \"fromaddress\" is specified, all funds will be taken from that address, otherwise funds may come\n"
+            "from any source set of UTXOs controlled by the wallet.\n"
 
             "\nArguments\n"
-            "       {\n"
-            "           \"name\"           : \"xxxx\",  (string, optional) Verus ecosystem-wide name/symbol of chain to send to, if absent, current chain is assumed\n"
-            "           \"paymentaddress\" : \"Rxxx\",  (string, required) transaction recipient address\n"
-            "           \"refundaddress\"  : \"Rxxx\",  (string, optional) if a pre-convert is not mined in time, funds can be spent by the owner of this address\n"
-            "           \"amount\"         : \"n.n\",   (value,  required) coins that will be moved and sent to address on PBaaS chain, network and conversion fees additional\n"
-            "           \"tonative\"       : \"false\", (bool,   optional) auto-convert from Verus to PBaaS currency at market price\n"
-            "           \"toreserve\"      : \"false\", (bool,   optional) auto-convert from PBaaS to Verus reserve currency at market price\n"
-            "           \"preconvert\"     : \"false\", (bool,   optional) auto-convert to PBaaS currency at market price, this only works if the order is mined before block start of the chain\n"
-            "           \"subtractfee\"    : \"bool\",  (bool,   optional) if true, reduce amount to destination by the transfer and conversion fee amount. normal network fees are never subtracted"
-            "       }\n"
-            "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
+            "1. \"fromaddress\"             (string, required) The VerusID or address to send the funds from. \"*\" means all addresses\n"
+            "2. \"outputs\"                 (array, required) An array of json objects representing currencies, amounts, and destinations to send.\n"
+            "    [{\n"
+            "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
+            "      \"amount\":amount        (numeric, required) The numeric amount of currency, denominated in source currency\n"
+            "      \"converto\":\"name\",   (string, optional) Valid currency to convert to, either a reserve of a native source, or fractional of reserve\n"
+            "      \"destination\":\"dest\" (string, required) The address and optionally chain/system after the \"@\" as a system specific destination\n"
+            "      \"refundto\":\"dest\"    (string, optional) For pre-conversions, this is where refunds will go, defaults to fromaddress\n"
+            "      \"memo\":memo            (string, optional) If destination is a zaddr (not supported on testnet), a string message (not hexadecimal) to include.\n"
+            "      \"preconvert\":\"false\", (bool,   optional) auto-convert to PBaaS currency at market price, this only works if the order is mined before block start of the chain\n"
+            "      \"subtractfee\":\"bool\", (bool,   optional) if true, output must be of native or convertible reserve currency, and output will be reduced by share of fee\n"
+            "    }, ... ]\n"
+            "3. \"returntx\"                (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed and returned\n"
 
             "\nResult:\n"
-            "       \"txid\" : \"transactionid\" (string) The transaction id.\n"
+            "   \"txid\" : \"transactionid\" (string) The transaction id if (returntx) is false\n"
+            "   \"hextx\" : \"hex\"         (string) The hexadecimal, serialized transaction if (returntx) is true\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("sendreserve", "'{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}'")
-            + HelpExampleRpc("sendreserve", "'{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}'")
+            + HelpExampleCli("sendcurrency", "\"*\" '[{\"destination\":\"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\" ,\"amount\":500.0},...]'")
+            + HelpExampleRpc("sendcurrency", "\"bob@\" '[{\"currency\":\"btc\", \"destination\":\"alice@quad\", \"amount\":500.0},...]'")
         );
     }
 
     CheckPBaaSAPIsValid();
 
-    // each object represents a send, and all sends are aggregated into one transaction to improve potential for scaling when moving funds between
-    // and across multiple chains.
-    //
-    // each output will require an additional standard cross-chain fee that will be divided evenly in two ways,
-    // between the transaction aggregator -- the miner or staker who creates the aggregating export, 
-    // and the transaction importer on the alternate chain who posts each exported bundle.
-    //
-    vector<CRecipient> outputs;
-    vector<bool> vConvert;
+    std::string sourceAddress = uni_get_str(params[0]);
+    CTxDestination sourceDest;
 
-    if ((!params[0].isObject()))
+    if (!(sourceAddress == "*" || (sourceDest = DecodeDestination(sourceAddress)).which() != COptCCParams::ADDRTYPE_INVALID))
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. Must provide a single object that represents valid outputs. see help.");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be source address/identity or \"*\". See help.");
+    }
+
+    if (!params[1].isArray() || !params[1].size())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. Second parameter must be array of outputs. See help.");
+    }
+
+    bool returnTx = false;
+    if (params.size() > 2)
+    {
+        returnTx = uni_get_bool(params[2]);
     }
 
     bool isVerusActive = IsVerusActive();
-    uint160 thisChainID = ConnectedChains.ThisChain().GetChainID();
+    uint160 thisChainID = ConnectedChains.ThisChain().GetID();
 
-    CWalletTx wtx;
+    std::vector<CRecipient> outputs;
 
-    // default double fee for miner of chain definition tx
-    // one output for definition, one for finalization
-    string name = uni_get_str(find_value(params[0], "name"), "");
-    string paymentAddr = uni_get_str(find_value(params[0], "paymentaddress"), "");
-    string refundAddr = uni_get_str(find_value(params[0], "refundaddress"), paymentAddr);
-    CAmount amount = AmountFromValue(find_value(params[0], "amount"));
+    const UniValue &uniOutputs = params[1];
 
-    bool tonative = uni_get_int(find_value(params[0], "tonative"), false);
-    bool toreserve = uni_get_int(find_value(params[0], "toreserve"), false);
-    bool preconvert = uni_get_int(find_value(params[0], "preconvert"), false);
+    LOCK(cs_main);
+    uint32_t height = chainActive.Height();
 
-    bool subtractFee = uni_get_int(find_value(params[0], "subtractfee"), false);
-    uint32_t flags = CReserveOutput::VALID;
-
-    bool sameChain = false;
-    if (name == "")
+    try
     {
-        name = ASSETCHAINS_SYMBOL;
-        sameChain = true;
-    }
+        for (int i = 0; i < uniOutputs.size(); i++)
+        {        
+            auto currencyStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "currency")));
+            CAmount sourceAmount = AmountFromValue(find_value(uniOutputs[i], "amount"));
+            auto convertToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "converto")));
+            auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "destination")));
+            auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
+            auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
+            bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
+            bool subtractFee = uni_get_bool(find_value(uniOutputs[i], "subtractfee"));
 
-    if (name == "" || paymentAddr == "" || amount < 0)
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters");
-    }
-
-    CBitcoinAddress ba(DecodeDestination(paymentAddr));
-    CKeyID kID;
-
-    if (!ba.IsValid() || !ba.GetKeyID(kID))
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid payment address");
-    }
-
-    CTxDestination refundDest = DecodeDestination(refundAddr);
-    CBitcoinAddress refunda(refundDest);
-    CKeyID refundID;
-
-    if (!refunda.IsValid() || !refunda.GetKeyID(refundID))
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid refund address");
-    }
-
-    uint160 chainID = CCrossChainRPCData::GetChainID(name);
-
-    CPBaaSChainDefinition chainDef;
-    int32_t definitionHeight;
-
-    // validate that the target chain is still running
-    if (!GetChainDefinition(chainID, chainDef, &definitionHeight) || !chainDef.IsValid())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified is not a valid chain");
-    }
-
-    bool isReserve = chainDef.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE;
-
-    // non-reserve conversions only work before the chain launches, then they determine the premine allocation
-    // premine claim transactions are basically export transactions of a pre-converted amount of native coin with a neutral
-    // impact on the already accounted for supply based on conversion conditions and contributions to the blockchain before
-    // the start block
-    int32_t height = chainActive.Height();
-    bool beforeStart = chainDef.startBlock > height;
-    CCoinbaseCurrencyState currencyState;
-
-    UniValue ret = NullUniValue;
-
-    if (isVerusActive)
-    {
-        if (chainID == thisChainID)
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send reserve or convert, except on a PBaaS fractional reserve chain. Use sendtoaddress or z_sendmany.");
-        }
-        else // ensure the PBaaS chain is a fractional reserve or that it's convertible and this is a conversion
-        {
-            if (tonative || preconvert)
+            CCurrencyDefinition sourceCurrencyDef;
+            uint160 sourceCurrencyID;
+            if (currencyStr != "")
             {
-                // if chain hasn't started yet, we use the conversion as a ratio over satoshis to participate in the pre-mine
-                // up to a maximum
-                if (beforeStart)
+                sourceCurrencyID = ValidateCurrencyName(currencyStr, &sourceCurrencyDef);
+                if (sourceCurrencyID.IsNull())
                 {
-                    if (chainDef.conversion <= 0)
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If source currency is specified, it must be valid.");
+                }
+            }
+            else
+            {
+                sourceCurrencyDef = ConnectedChains.ThisChain();
+                sourceCurrencyID = sourceCurrencyDef.GetID();
+            }
+            
+            CCurrencyDefinition convertToCurrencyDef;
+            uint160 convertToCurrencyID;
+            if (convertToStr != "")
+            {
+                convertToCurrencyID = ValidateCurrencyName(convertToStr, &convertToCurrencyDef);
+                if (convertToCurrencyID.IsNull())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency conversion is requested, destination currency must be valid.");
+                }
+            }
+
+            std::string systemDestStr;
+            uint160 destSystemID;
+            CCurrencyDefinition destSystemDef;
+            std::vector<std::string> subNames = ParseSubNames(destStr, systemDestStr, true);
+            if (systemDestStr != "")
+            {
+                destSystemID = ValidateCurrencyName(systemDestStr, &destSystemDef);
+                if (destSystemID.IsNull() || destSystemDef.IsToken() || destSystemDef.controllerID != destSystemDef.GetID())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If destination system is specified, destination system or chain must be valid.");
+                }
+            }
+
+            CTxDestination destination = DecodeDestination(destStr);
+            CTransferDestination transferDestination;
+            if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
+            {
+                if (destSystemID.IsNull())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
+                }
+                else if (destSystemDef.options & destSystemDef.OPTION_GATEWAY)
+                {
+                    std::vector<unsigned char> rawDestBytes;
+                    for (int i = 0; i < subNames.size(); i++)
                     {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " is not convertible to " + chainDef.name + ".");
+                        if (i)
+                        {
+                            rawDestBytes.push_back('.');
+                        }
+                        rawDestBytes.insert(rawDestBytes.end(), subNames[i].begin(), subNames[i].end());
+                    }
+                    transferDestination = CTransferDestination(CTransferDestination::DEST_RAW, rawDestBytes);
+                }
+            }
+
+            CTxDestination refundDestination = DecodeDestination(refundToStr);
+            if (refundDestination.which() == COptCCParams::ADDRTYPE_INVALID)
+            {
+                refundDestination = destination;
+            }
+
+            if (memoStr.size() > 512)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Memo, if specified, must be under 512 characters.");
+            }
+
+            // make one output
+            CRecipient oneOutput;
+
+            // are we a system/chain transfer with or without conversion?
+            if (!destSystemID.IsNull() && destSystemID != thisChainID)
+            {
+                if (preConvert)
+                {
+                    if (convertToCurrencyID.IsNull())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot preconvert to unspecified or invalid currency.");
+                    }
+                    CCurrencyValueMap validConversionCurrencies = CCurrencyValueMap(convertToCurrencyDef.currencies, 
+                                                                                    std::vector<CAmount>(convertToCurrencyDef.currencies.size()));
+                    if (!validConversionCurrencies.valueMap.count(sourceCurrencyID))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ".");
+                    }
+                    if (convertToCurrencyDef.startBlock <= (height + 1))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Too late to convert " + sourceCurrencyDef.name + " to " + convertToStr + ", as pre-launch is over.");
                     }
 
-                    currencyState = GetInitialCurrencyState(chainDef, definitionHeight);
+                    // send a reserve transfer preconvert
+                    CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT, 
+                                                            sourceCurrencyID, 
+                                                            sourceAmount,
+                                                            (CReserveTransfer::DEFAULT_PER_STEP_FEE << 2),
+                                                            destSystemID,
+                                                            DestinationToTransferDestination(destination));
 
-                    if (tonative)
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Until " + chainDef.name + " launches, you must use \"preconvert\" rather than \"tonative\" for conversion.");
-                    }
+                    CCcontract_info CC;
+                    CCcontract_info *cp;
+                    cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+                    CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                    flags |= CReserveTransfer::PRECONVERT;
-                } else if (!isReserve || preconvert)
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(destSystemDef.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(destSystemID)});
+
+                    oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
+                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                }
+            }
+            // a currency conversion without transfer?
+            else if (!convertToCurrencyID.IsNull())
+            {
+                // if pre-converting to a token, it must be a non-reserve preconvert.
+                // if we pre-convert for a new chain launch, which is required for a reserve, it will not be as a token
+                if (convertToCurrencyDef.IsToken())
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot preconvert " + std::string(ASSETCHAINS_SYMBOL) + " after chain launch");
+                    if (preConvert)
+                    {
+                        if (convertToCurrencyDef.startBlock <= (height + 1))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Too late to convert " + sourceCurrencyDef.name + " to " + convertToStr + ", as pre-launch is over.");
+                        }
+
+                        CCurrencyValueMap validConversionCurrencies = CCurrencyValueMap(convertToCurrencyDef.currencies, 
+                                                                                        std::vector<CAmount>(convertToCurrencyDef.currencies.size()));
+                        if (!validConversionCurrencies.valueMap.count(sourceCurrencyID))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 1");
+                        }
+
+                        CCcontract_info CC;
+                        CCcontract_info *cp;
+                        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+                        CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(convertToCurrencyDef.GetConditionID(EVAL_RESERVE_TRANSFER)), 
+                                                                                              CKeyID(thisChainID)});
+
+                        CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT, 
+                                                               sourceCurrencyID, 
+                                                               sourceAmount,
+                                                               (CReserveTransfer::DEFAULT_PER_STEP_FEE << 2),
+                                                               thisChainID,
+                                                               DestinationToTransferDestination(destination));
+
+                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                    }
+                    else
+                    {
+                        // we must be converting from native to a reserve of native, or it is invalid
+                        auto reserveMap = ConnectedChains.GetCurrencyState(height).GetReserveMap();
+                        if (!reserveMap.count(convertToCurrencyID))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 2");
+                        }
+                        CReserveExchange re(CReserveExchange::TO_RESERVE + CReserveExchange::VALID, convertToCurrencyID, sourceAmount);
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({destination});
+                        oneOutput.nAmount = sourceAmount;
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_EXCHANGE, dests, 1, &re));
+                    }
+                }
+                else if (convertToCurrencyDef.IsReserve())
+                {
+                    // native currency must be the currency we are converting to, and the source must be a reserve
+                    auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
+                    if (!reserveMap.count(sourceCurrencyID))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 3");
+                    }
+                    // converting from reserve to a fractional of that reserve
+                    CReserveExchange re(CReserveExchange::VALID, convertToCurrencyID, sourceAmount);
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({destination});
+                    oneOutput.nAmount = 0;
+                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_EXCHANGE, dests, 1, &re));
                 }
                 else
                 {
-                    flags |= CReserveTransfer::CONVERT;
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 4");
                 }
             }
-            else if (!isReserve)
+            // or a normal native or reserve output?
+            else
             {
-                // only reserve currencies can have reserve sent to them
-                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " is not a reserve for " + chainDef.name + " and cannot be sent to its chain.");
-            }
-        }
-
-        CCcontract_info CC;
-        CCcontract_info *cp;
-        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
-
-        CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
-        // send the entire amount to a reserve transfer output bound to this chain
-        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
-
-        // start with default fee for this send
-        CAmount transferFee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
-
-        if (flags & CReserveTransfer::PRECONVERT)
-        {
-            arith_uint256 bigAmount(amount);
-            static const arith_uint256 bigsatoshi(CReserveExchange::SATOSHIDEN);
-            arith_uint256 feeRate(chainDef.launchFee);
-
-            if (chainDef.launchFee)
-            {
-                CAmount launchFee;
-
-                if (!subtractFee)
+                if (sourceCurrencyID == thisChainID)
                 {
-                    amount = (bigAmount = ((bigAmount * bigsatoshi) / (bigsatoshi - feeRate))).GetLow64();
+                    oneOutput.nAmount = sourceAmount;
+                    oneOutput.scriptPubKey = GetScriptForDestination(destination);
                 }
-                launchFee = ((bigAmount * feeRate) / bigsatoshi).GetLow64();
+                else
+                {
+                    oneOutput.nAmount = 0;
 
-                amount -= launchFee;
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({destination});
+                    CTokenOutput to(sourceCurrencyID, sourceAmount);
 
-                // add the output to this transaction
-                CTxDestination feeOutAddr(chainDef.address);
-                outputs.push_back(CRecipient({GetScriptForDestination(feeOutAddr), launchFee, false}));
+                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
+                }
             }
-
-            if (!subtractFee)
+            if (!oneOutput.scriptPubKey.size())
             {
-                // add the fee amount that will make the conversion correct after subtracting it again
-                amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Failure to make currency output");
             }
-
-            if (currencyState.ReserveIn + amount > chainDef.maxpreconvert)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(ASSETCHAINS_SYMBOL) + " contribution maximum does not allow this conversion. Maximum participation remaining is " + ValueFromAmount(chainDef.maxpreconvert - currencyState.ReserveIn).write());
-            }
+            oneOutput.fSubtractFeeFromAmount = subtractFee;
+            outputs.push_back(oneOutput);
         }
-        else if (flags & CReserveTransfer::CONVERT && !subtractFee)
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters.");
+    }
+
+    // now figure out if we are pulling from a single address or all addresses
+    // make, sign, and send or return the transaction
+    CTxDestination *pSourceDest = (sourceDest.which() == COptCCParams::ADDRTYPE_INVALID) ? nullptr : &sourceDest;
+
+    CWalletTx wtx;
+    CReserveKey reserveKey(pwalletMain);
+    CAmount nFeesRet;
+    int nChangePosRet, nChangeOutputs;
+    std::string failReason;
+
+    UniValue ret;
+    if (pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, nFeesRet, nChangePosRet, nChangeOutputs, failReason, NULL, pSourceDest, true))
+    {
+        // now, we either return or commit the transaction
+        if (returnTx)
         {
-            // add the fee amount that will make the conversion correct after subtracting it again
-            amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
+            // keep the change key
+            reserveKey.KeepKey();
+            ret = UniValue(EncodeHexTx(wtx));
         }
-
-        if (!subtractFee)
+        else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
         {
-            amount += transferFee;
-        }
-
-        if (amount <= (transferFee << 1))
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must send more than twice the cost of the fee. Fee for this transaction is " + ValueFromAmount(transferFee).write());
-        }
-
-        transferFee = CReserveTransfer::CalculateFee(flags, amount, chainDef);
-        amount -= transferFee;
-
-        // create the transfer object
-        CReserveTransfer rt(flags, amount, transferFee, kID);
-
-        CTxOut ccOut;
-
-        // if preconversion and we have a minpreconvert, prepare for refund output
-        if (flags & CReserveTransfer::PRECONVERT && chainDef.minpreconvert)
-        {
-            LOCK2(cs_main, pwalletMain->cs_wallet);
-            CPubKey pk2(GetDestinationBytes(refundDest));
-            if (!pk2.IsFullyValid() && !pwalletMain->GetPubKey(refundID, pk2))
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot retrieve public key for refund address. Refund address must either be public key or address that is accessible from the current wallet.");
-            }
-            dests.push_back(pk2);
-            ccOut = MakeCC1of2Vout(EVAL_RESERVE_TRANSFER, amount + transferFee, pk, pk2, dests, (CReserveTransfer)rt);
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit reserve transaction " + wtx.GetHash().GetHex());
         }
         else
         {
-            // cast object to most derived class to ensure template works on all compilers
-            ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, amount + transferFee, pk, dests, (CReserveTransfer)rt);
+            ret = UniValue(wtx.GetHash().GetHex());
         }
-
-        outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + transferFee, false}));
-
-        // create the transaction with native coin as input
-        LOCK2(cs_main, pwalletMain->cs_wallet);
-
-        CReserveKey reserveKey(pwalletMain);
-        CAmount fee;
-        int nChangePos;
-        string failReason;
-
-        if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
-        {
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
-        }
-        if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-        {
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
-        }
-        ret = UniValue(wtx.GetHash().GetHex());
     }
     else
     {
-        if (chainID == thisChainID)
-        {
-            CCcontract_info CC;
-            CCcontract_info *cp;
-
-            // if we are on a fractional reserve chain, a conversion will convert FROM the fractional reserve currency TO
-            // the reserve. this will basically turn into a reserveexchange transaction
-            if (toreserve)
-            {
-                if (!isReserve)
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + ConnectedChains.ThisChain().name + " into " + ConnectedChains.NotaryChain().chainDefinition.name + ".");
-                }
-
-                CCoinsViewCache view(pcoinsTip);
-
-                // we will send using a reserve output, fee will be paid by converting from reserve
-                cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
-                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID, CTxDestination(pk)});
-
-                if (!subtractFee)
-                {
-                    amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
-                }
-
-                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE, amount);
-
-                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, amount, dests, rex, pk);
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, false}));
-
-                // create a transaction with native coin as input
-                {
-                    LOCK2(cs_main, pwalletMain->cs_wallet);
-
-                    CReserveKey reserveKey(pwalletMain);
-                    CAmount fee;
-                    int nChangePos;
-                    string failReason;
-
-                    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
-                    }
-                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
-                    }
-                    ret = UniValue(wtx.GetHash().GetHex());
-                }
-            }
-            else if (tonative)
-            {
-                // convert from reserve to native (buy)
-                cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
-                CPubKey pk(ParseHex(CC.CChexstr));
-
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(kID), CTxDestination(pk)});
-
-                if (!subtractFee)
-                {
-                    amount += CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
-                }
-
-                CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, amount);
-
-                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, 0, dests, rex, pk);
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, 0, false}));
-
-                // create a transaction with reserve coin as input
-                {
-                    LOCK2(cs_main, pwalletMain->cs_wallet);
-
-                    CReserveKey reserveKey(pwalletMain);
-                    CAmount fee;
-                    int nChangePos;
-                    string failReason;
-
-                    if (!pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
-                    }
-                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit reserve transaction " + wtx.GetHash().GetHex());
-                    }
-                    ret = UniValue(wtx.GetHash().GetHex());
-                }
-            }
-            else
-            {
-                // we will send using a reserve output, fee will be paid by converting from reserve
-                cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
-
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
-
-                // create the transfer object
-                CReserveOutput ro(flags, amount);
-
-                // native amount in the output is 0
-                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro);
-
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount, subtractFee}));
-
-                // create a transaction with reserve coin as input
-                {
-                    LOCK2(cs_main, pwalletMain->cs_wallet);
-
-                    CReserveKey reserveKey(pwalletMain);
-                    CAmount fee;
-                    int nChangePos;
-                    string failReason;
-
-                    if (!pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
-                    }
-                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
-                    }
-                    ret = UniValue(wtx.GetHash().GetHex());
-                }
-            }
-        }
-        else if (chainID == ConnectedChains.NotaryChain().GetChainID())
-        {
-            // send Verus from this PBaaS chain to the Verus chain, if converted, the inputs will be the PBaaS native coin, and we will convert to
-            // Verus for the send
-            if (tonative)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert to native and send. Can only send " + chainDef.name + " reserve to the chain.");
-            }
-
-            if (toreserve)
-            {
-                if (!isReserve)
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + ConnectedChains.ThisChain().name + " into " + ConnectedChains.NotaryChain().chainDefinition.name + ".");
-                }
-
-                CAmount conversionFee;
-                if (subtractFee)
-                {
-                    conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(amount);
-                    amount -= conversionFee;
-                }
-                else
-                {
-                    conversionFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(amount);
-                }
-
-                CCoinsViewCache view(pcoinsTip);
-                CReserveExchange rex(flags + CReserveExchange::TO_RESERVE + CReserveExchange::SEND_OUTPUT, amount + conversionFee);
-
-                // we will send using a reserve output, fee will be paid by converting from reserve
-                CCcontract_info CC;
-                CCcontract_info *cp;
-                cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
-                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({kID});
-
-                // native amount in output is 0
-                CTxOut ccOut = MakeCC1ofAnyVout(EVAL_RESERVE_EXCHANGE, amount + conversionFee, dests, rex, pk);
-
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, amount + conversionFee, false}));
-
-                // create a transaction with native coin as input
-                {
-                    LOCK2(cs_main, pwalletMain->cs_wallet);
-
-                    CReserveKey reserveKey(pwalletMain);
-                    CAmount fee;
-                    int nChangePos;
-                    string failReason;
-
-                    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
-                    }
-                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
-                    }
-                    ret = UniValue(wtx.GetHash().GetHex());
-                }
-            }
-            else
-            {
-                // we will send using from reserve input without conversion
-                // output will be a reserve transfer
-                CCcontract_info CC;
-                CCcontract_info *cp;
-                cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
-
-                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
-                // send the entire amount to a reserve transfer output of the specific chain
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(chainID)});
-
-                CAmount transferFee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
-                if (subtractFee)
-                {
-                    amount -= transferFee;
-                }
-
-                // create the transfer object
-                CReserveTransfer rt(flags, amount, CReserveTransfer::DEFAULT_PER_STEP_FEE << 1, kID);
-
-                CTxOut ccOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, 0, pk, dests, (CReserveTransfer)rt);
-                outputs.push_back(CRecipient({ccOut.scriptPubKey, 0, subtractFee}));
-
-                // create a transaction with reserve coin as input
-                {
-                    LOCK2(cs_main, pwalletMain->cs_wallet);
-
-                    CReserveKey reserveKey(pwalletMain);
-                    CAmount fee;
-                    int nChangePos;
-                    string failReason;
-
-                    if (!pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, chainDef.name + ": " + failReason);
-                    }
-                    /*
-                    printf("newTx outputs:\n");
-                    for (auto outp : wtx.vout)
-                    {
-                        UniValue scrOut(UniValue::VOBJ);
-                        ScriptPubKeyToJSON(outp.scriptPubKey, scrOut, false);
-                        printf("%s\n", scrOut.write(1, 2).c_str());
-                    }
-                    */
-                    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-                    {
-                        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
-                    }
-                    ret = UniValue(wtx.GetHash().GetHex());
-                }
-            }
-        }
-        else
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain specified is not the current chain or this chain's reserve");
-        }
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, failReason);
     }
     return ret;
 }
@@ -3010,7 +3137,7 @@ bool GetLastImportIn(uint160 chainID, CTransaction &lastImportTx)
                     {
                         // if this is the Verus chain, then we need to either be part of a chain definition transaction
                         // or spend a valid import output
-                        if (CPBaaSChainDefinition(lastTx).IsValid())
+                        if (CCurrencyDefinition(lastTx).IsValid())
                         {
                             lastImportTx = lastTx;
                             return true;
@@ -3049,7 +3176,8 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
             "       \"lastimporttransaction\": \"hex\"      Hex encoded serialized import transaction\n"
             "       \"lastconfirmednotarization\" : \"hex\" Hex encoded last confirmed notarization transaction\n"
             "       \"importtxtemplate\": \"hex\"           Hex encoded import template for new import transactions\n"
-            "       \"totalimportavailable\": \"amount\"    Total amount if native import currency available to import as native\n"
+            "       \"nativeimportavailable\": \"amount\"   Total amount of native import currency available to import as native\n"
+            "       \"tokenimportavailable\": \"array\"     ([{\"currencyid\":amount},..], required) tokens available to import, if controlled by this chain\n"
             "   }\n"
 
             "\nExamples:\n"
@@ -3110,7 +3238,7 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
             // import thread
             if (IsVerusActive())
             {
-                std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > reserveDeposits;
+                std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> reserveDeposits;
 
                 LOCK2(cs_main, mempool.cs);
 
@@ -3130,11 +3258,13 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
             CCoinsViewCache view(pcoinsTip);
             int64_t dummyInterest;
             CAmount totalImportAvailable = view.GetValueIn(cnd.vtx[cnd.lastConfirmed].second.notarizationHeight, &dummyInterest, txTemplate);
+            CCurrencyValueMap reserveImportAvailable = view.GetReserveValueIn(cnd.vtx[cnd.lastConfirmed].second.notarizationHeight, txTemplate);
 
             ret.push_back(Pair("lastimporttransaction", EncodeHexTx(lastImportTx)));
             ret.push_back(Pair("lastconfirmednotarization", EncodeHexTx(lastConfirmedTx)));
             ret.push_back(Pair("importtxtemplate", EncodeHexTx(txTemplate)));
-            ret.push_back(Pair("totalimportavailable", totalImportAvailable));
+            ret.push_back(Pair("nativeimportavailable", totalImportAvailable));
+            ret.push_back(Pair("tokenimportavailable", reserveImportAvailable.ToUniValue()));
         }
     }
     return ret;
@@ -3154,7 +3284,8 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
             "   \"lastimporttransaction\" : \"hex\"     (hex,    required) the last import transaction to follow, return list starts with import that spends this\n"
             "   \"lastconfirmednotarization\" : \"hex\" (hex,    required) the last confirmed notarization transaction\n"
             "   \"importtxtemplate\" : \"hex\"          (hex,    required) template transaction to use, so we create a transaction compatible with the other chain\n"
-            "   \"totalimportavailable\": \"amount\"    (number,  required) Total amount if native import currency available to import as native\n"
+            "   \"nativeimportavailable\": \"amount\"   (number, required) Total amount of native import currency available to import as native\n"
+            "   \"tokenimportavailable\": \"array\"     ([{\"currencyid\":amount},..], required) tokens available to import, if controlled by this chain\n"
             "}\n"
 
             "\nResult:\n"
@@ -3181,9 +3312,9 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
 
     // starting from that last transaction id, see if we have any newer to export for the indicated chain, and if so, return them as
     // import transactions using the importtxtemplate as a template
-    CPBaaSChainDefinition chainDef;
+    CCurrencyDefinition chainDef;
 
-    if (!GetChainDefinition(chainID, chainDef))
+    if (!GetCurrencyDefinition(chainID, chainDef))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain definition not found");
     }
@@ -3197,18 +3328,18 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     std::string lastConfirmedTxHex = uni_get_str(find_value(params[0], "lastconfirmednotarization"));
     CTransaction lastConfirmedNotarization;
 
-    CAmount totalImportAvailable = uni_get_int64(find_value(params[0], "totalimportavailable"));
+    CAmount nativeImportAvailable = uni_get_int64(find_value(params[0], "nativeimportavailable"));
+    CCurrencyValueMap tokenImportAvailable(find_value(params[0], "tokenimportavailable"));
 
     std::vector<CBaseChainObject *> chainObjs;
     if (!(DecodeHexTx(lastImportTx, lastImportHex) && 
           DecodeHexTx(templateTx, templateTxHex) &&
           DecodeHexTx(lastConfirmedNotarization, lastConfirmedTxHex) &&
           CCrossChainImport(lastImportTx).IsValid() &&
-          (CPBaaSChainDefinition(lastImportTx).IsValid() ||
+          (CCurrencyDefinition(lastImportTx).IsValid() ||
           (lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
-          (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() >= 2 &&
-          chainObjs[0]->objectType == CHAINOBJ_TRANSACTION &&
-          chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF))))
+          (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() == 1 &&
+          chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF))))
     {
         DeleteOpRetObjects(chainObjs);
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid last import tx");
@@ -3217,7 +3348,7 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     DeleteOpRetObjects(chainObjs);
 
     std::vector<CTransaction> newImports;
-    if (!ConnectedChains.CreateLatestImports(chainDef, lastImportTx, templateTx, lastConfirmedNotarization, totalImportAvailable, newImports))
+    if (!ConnectedChains.CreateLatestImports(chainDef, lastImportTx, templateTx, lastConfirmedNotarization, tokenImportAvailable, nativeImportAvailable, newImports))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Failure creating new imports");
     }
@@ -3232,93 +3363,65 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
 
 // refunds a failed launch if it is eligible and not already refunded. if it fails to refund, it returns false
 // and a string with the reason for failure
-bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector<CTransaction> &newRefunds, std::string &errorReason)
+bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vector<CTransaction> &newRefunds, std::string &errorReason)
 {
     int32_t defHeight = 0;
-    CPBaaSChainDefinition chainDef;
+    CCurrencyDefinition chainDef;
     CTransaction chainDefTx;
-    uint160 thisChainID = ConnectedChains.ThisChain().GetChainID();
-
-    if (!GetChainDefinition(chainID, chainDef, &defHeight) || chainID == thisChainID)
-    {
-        errorReason = "chain-not-found-or-ineligible";
-        return false;
-    }
-
-    bool valid = false;
+    uint160 thisChainID = ConnectedChains.ThisChain().GetID();
 
     LOCK(cs_main);
 
-    // validate refund eligibility and that the chain is even active for refunds
-    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
-    if (GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, addressIndex, defHeight, defHeight) && addressIndex.size())
-    //if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION)), 1, unspentOutputs) && unspentOutputs.size())
+    if (!GetCurrencyDefinition(currencyID, chainDef, &defHeight) || currencyID == thisChainID)
     {
-        uint256 blkHash;
-
-        for (auto txidx : addressIndex)
-        {
-            COptCCParams p;
-            if (!myGetTransaction(txidx.first.txhash, chainDefTx, blkHash))
-            {
-                errorReason = "chain-transaction-not-found";
-                return false;
-            }
-            if (chainDefTx.vout[txidx.first.index].scriptPubKey.IsPayToCryptoCondition(p) && 
-                p.IsValid() && 
-                p.evalCode == EVAL_PBAASDEFINITION && 
-                p.vData[0].size() && 
-                (chainDef = CPBaaSChainDefinition(p.vData[0])).IsValid() &&
-                chainDef.GetChainID() == chainID)
-            {
-                valid = true;
-                break;
-            }
-        }
-    }
-
-    if (!valid)
-    {
-        errorReason = "valid-chain-not-found";
+        errorReason = "currency-not-found-or-ineligible";
         return false;
     }
 
-    if (!GetLastImportIn(chainID, lastImportTx))
+    if (!GetLastImportIn(currencyID, lastImportTx))
     {
         errorReason = "no-import-thread-found";
         return false;
     }
 
     std::vector<CBaseChainObject *> chainObjs;
+    CCrossChainProof ccp;
+
     // either a fully valid import with an export or the first import either in block 1 or the chain definition
     // on the Verus chain
     if (!(lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
-          (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() >= 2 &&
-          chainObjs[0]->objectType == CHAINOBJ_TRANSACTION &&
-          chainObjs[1]->objectType == CHAINOBJ_CROSSCHAINPROOF) &&
-        !(chainObjs.size() == 0 && CPBaaSChainDefinition(lastImportTx).IsValid()))
+          (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() == 1 &&
+          chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF &&
+          !(ccp = ((CChainObject<CCrossChainProof> *)(chainObjs[0]))->object).Empty()) &&
+        !(chainObjs.size() == 0 && CCurrencyDefinition(lastImportTx).IsValid()))
     {
         DeleteOpRetObjects(chainObjs);
         errorReason = "invalid-import-thread-found";
         return false;
     }
 
+    DeleteOpRetObjects(chainObjs);
+
     bool isVerusActive = IsVerusActive();
 
     uint256 lastExportHash;
+    CPartialTransactionProof lastExportTxProof;
     CTransaction lastExportTx;
 
     uint32_t blkHeight = defHeight;
     bool found = false;
-    if (chainObjs.size())
+
+    if (!ccp.Empty())
     {
+        if (ccp.chainObjects[0]->objectType != CHAINOBJ_TRANSACTION_PROOF)
+        {
+            errorReason = "invalid-import-transaction-proof";
+            return false;
+        }
+        lastExportHash = (lastExportTxProof = ((CChainObject<CPartialTransactionProof> *)(ccp.chainObjects[0]))->object).CheckPartialTransaction(lastExportTx);
         CTransaction tx;
         uint256 blkHash;
-        lastExportTx = ((CChainObject<CTransaction> *)chainObjs[0])->object;
-        lastExportHash = lastExportTx.GetHash();
         BlockMap::iterator blkMapIt;
-        DeleteOpRetObjects(chainObjs);
         if (myGetTransaction(lastExportHash, tx, blkHash) &&
             (blkMapIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() && 
             blkMapIt->second)
@@ -3346,21 +3449,25 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
         return false;
     }
 
-    // we need to get the last import transaction and handle refunds like exports, so we can make incremental progress if necessary and
-    // know when there are none left
+    // we need to get the last import transaction and handle refunds like exports without conversion or
+    // launch fees, so we can make incremental progress if necessary and know when there are none left
     int32_t nHeight = chainActive.Height();
 
     // make sure the chain is qualified for a refund
-    if (!(chainDef.minpreconvert && chainDef.startBlock < nHeight && GetInitialCurrencyState(chainDef, defHeight).Reserve < chainDef.minpreconvert))
+    CCurrencyValueMap minPreMap, preConvertedMap;
+    if (!(chainDef.minPreconvert.size() &&
+        (minPreMap = CCurrencyValueMap(chainDef.currencies, chainDef.minPreconvert)) > preConvertedMap &&
+        chainDef.startBlock < nHeight && 
+        (preConvertedMap = CCurrencyValueMap(chainDef.currencies, GetInitialCurrencyState(chainDef).reserveIn)) < minPreMap))
     {
         errorReason = "chain-ineligible";
         return false;
     }
     else
     {
-        // convert exports intended for the failed chain into imports back to this chain that spend from the import thread
+        // convert exports & conversions intended for the failed currency into imports back to this chain that spend from the import thread
         // all reservetransfers are refunded and charged 1/2 of an export fee
-        uint160 chainID = chainDef.GetChainID();
+        uint160 chainID = chainDef.GetID();
 
         std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
@@ -3438,7 +3545,8 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
                     }
                 }
 
-                CCrossChainExport ccx(aixIt->second.second);
+                int32_t ccxOutputNum = 0;
+                CCrossChainExport ccx(aixIt->second.second, &ccxOutputNum);
                 if (!lastCCI.IsValid() || !ccx.IsValid())
                 {
                     LogPrintf("%s: POSSIBLE CORRUPTION bad import/export data in transaction %s (import) or %s (export)\n", __func__, lastImport.GetHash().GetHex().c_str(), aixIt->first.GetHex().c_str());
@@ -3461,33 +3569,54 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
 
                 // loop through and recalculate every transfer to charge a normal transfer fee and be a normal output
                 // recalculate the fee output amount to be based on the new export fee calculation after canceling conversions
+                ccx.totalFees = CCurrencyValueMap();
 
-                ccx.totalFees = (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * ccx.numInputs;
-                for (auto objPtr : exportOutputs)
+                CCurrencyValueMap feeMap;
+
+                for (auto &objPtr : exportOutputs)
                 {
                     if (objPtr->objectType == CHAINOBJ_RESERVETRANSFER)
                     {
                         CReserveTransfer &rt = ((CChainObject<CReserveTransfer> *)objPtr)->object;
 
-                        // turn it into a normal transfer, which will create a regular native output
+                        // convert full ID destinations to normal ID outputs, full ID is on this chain already
+                        if (rt.destination.type == CTransferDestination::DEST_FULLID)
+                        {
+                            CIdentity(rt.destination.destination);
+                            rt.destination = CTransferDestination(CTransferDestination::DEST_ID, rt.destination.destination);
+                        }
+
+                        // turn it into a normal transfer, which will create an unconverted output
                         rt.flags &= ~(CReserveTransfer::SEND_BACK | CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT);
 
+                        // once we get to fees, we should have processed all non-fee outputs and be able to accurately calculate fees
                         if (rt.flags & CReserveTransfer::FEE_OUTPUT)
                         {
                             // will be recalculated
                             rt.nFees = 0;
-                            rt.nValue = ccx.CalculateExportFee();
+                            rt.nValue = ccx.CalculateExportFee().valueMap[rt.currencyID];
                             continue;
                         }
                         else
                         {
-                            rt.nValue = (rt.nValue + rt.nFees) - (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1);
-                            rt.nFees = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
+                            CCurrencyValueMap fees = rt.CalculateFee(rt.flags, ASSETCHAINS_CHAINID, rt.nValue + rt.nFees);
+                            if (fees.valueMap.size() == 1)
+                            {
+                                ccx.totalFees.valueMap[rt.currencyID] += rt.nFees;
+                            }
+                            else
+                            {
+                                fees.valueMap.erase(rt.currencyID);
+                                ccx.totalFees.valueMap[fees.valueMap.begin()->first] += fees.valueMap.begin()->second;
+                            }
                         }
                     }
                 }
 
-                if (!rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), exportOutputs, newImportTx.vout))
+                if (!rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(),
+                                                          ConnectedChains.ThisChain(), 
+                                                          exportOutputs, 
+                                                          newImportTx.vout))
                 {
                     LogPrintf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                     printf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
@@ -3499,84 +3628,47 @@ bool RefundFailedLaunch(uint160 chainID, CTransaction &lastImportTx, std::vector
                 // free the memory
                 DeleteOpRetObjects(exportOutputs);
 
-                // now add any unspent reserve deposit that came from this export to return it back
-                std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > reserveDeposits;
-                CAmount totalInput = lastImport.vout[lastImportPrevoutN].nValue;
-                if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_DEPOSIT)), 1, reserveDeposits))
+                // now add unspent reserve deposit that came from this export as input to return it back to senders, less transfer fees
+                // based on consensus rules, this should provide the necessary funds by definition
+                uint256 depositTxId = aixIt->second.second.GetHash();
+                for (int i = 0; i < aixIt->second.second.vout.size(); i++)
                 {
-                    for (auto deposit : reserveDeposits)
+                    COptCCParams p;
+                    if (aixIt->second.second.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_RESERVE_DEPOSIT)
                     {
-                        COptCCParams p;
-                        if (deposit.second.script.IsPayToCryptoCondition(p) && p.evalCode == EVAL_RESERVE_DEPOSIT)
+                        newImportTx.vin.push_back(CTxIn(depositTxId, i, CScript()));
+                        for (auto &oneCur : aixIt->second.second.vout[i].ReserveOutValue().valueMap)
                         {
-                            newImportTx.vin.push_back(CTxIn(deposit.first.txhash, deposit.first.index, CScript()));
-                            totalInput += deposit.second.satoshis;
+                            rtxd.AddReserveInput(oneCur.first, oneCur.second);
                         }
                     }
                 }
 
-                CAmount totalAvailableInput = totalInput;
-                CAmount availableReserveFees = ccx.totalFees;
-                CAmount exportFees = ccx.CalculateExportFee();
-                CAmount importFees = ccx.CalculateImportFee();
-                CAmount feesOut = 0;
-
-                CCcontract_info CC;
-                CCcontract_info *cp;
-                CPubKey pk;
-
-                // emit a crosschain import output as summary
-                cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
-
-                pk = CPubKey(ParseHex(CC.CChexstr));
-
-                if (rtxd.ReserveFees() != (ccx.totalFees - exportFees))
-                {
-                    LogPrintf("%s: ERROR - refund does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
-                    printf("%s: ERROR - refund does not match amount, rtxd.ReserveFees()=%lu, totalImport=%lu, importFees=%lu, exportFees=%lu, ccx.totalAmount=%lu, ccx.totalFees=%lu\n", __func__, rtxd.ReserveFees(), ccx.totalAmount + ccx.totalFees, importFees, exportFees, ccx.totalAmount, ccx.totalFees);
-                }
-
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT)))});
-                CCrossChainImport cci = CCrossChainImport(chainID, ccx.totalAmount + ccx.totalFees);
-
-                totalAvailableInput -= rtxd.reserveIn;
-                newImportTx.vout[0] = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, totalAvailableInput, pk, dests, cci);
-
-                if (totalAvailableInput < 0)
-                {
-                    LogPrintf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
-                    printf("%s: ERROR - importing more native currency than available on import thread\n", __func__);
-                    return false;
-                }
-
-                // add the opret, which is the export transaction this imports
-                std::vector<CBaseChainObject *> chainObjects;
-                CChainObject<CTransaction> exportTx(CHAINOBJ_TRANSACTION, aixIt->second.second);
-                chainObjects.push_back(&exportTx);
-
-                // add a proof of the export transaction at the notarization height
+                // prove the export tx only to the block header
                 CBlock block;
-                if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus(), false))
+                if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus()))
                 {
-                    LogPrintf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
-                    printf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
+                    LogPrintf("%s: POSSIBLE CORRUPTION cannot read block from disk at height %d\n", __func__, aixIt->second.first.blockHeight);
+                    printf("%s: POSSIBLE CORRUPTION cannot read block from disk at height %d\n", __func__, aixIt->second.first.blockHeight);
                     return false;
                 }
 
-                CMerkleBranch exportProof(aixIt->second.first.index, block.GetMerkleBranch(aixIt->second.first.index));
-                auto mmrView = chainActive.GetMMV();
-                mmrView.resize(aixIt->second.first.blockHeight);
+                // prove ccx input 0, export output, and opret
+                std::vector<std::pair<int16_t, int16_t>> parts({{CTransactionHeader::TX_PREVOUTSEQ, (int16_t)0},
+                                                                {CTransactionHeader::TX_OUTPUT, ccxOutputNum},
+                                                                {CTransactionHeader::TX_OUTPUT, (int16_t)(aixIt->second.second.vout.size() - 1)}});
 
-                printf("%s: created refund %s for export %s\n", __func__, cci.ToUniValue().write().c_str(), aixIt->second.second.GetHash().GetHex().c_str());
+                // prove our transaction up to the block MMR root only, since this is not cross chain
+                auto exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.index, parts);
 
-                chainActive[aixIt->second.first.blockHeight]->AddMerkleProofBridge(exportProof);
-                mmrView.GetProof(exportProof, aixIt->second.first.blockHeight);
+                // add it to the export transaction proof, now proven up to the MMR root of the last confirmed transaction
+                CCrossChainProof exportTransactionProof;
+                exportTransactionProof << exportProof;
 
-                CChainObject<CCrossChainProof> exportXProof(CHAINOBJ_CROSSCHAINPROOF, CCrossChainProof(uint256(), exportProof));
-                chainObjects.push_back(&exportXProof);
+                CChainObject<CCrossChainProof> exportXProof(CHAINOBJ_CROSSCHAINPROOF, exportTransactionProof);
 
                 // add the opret with the transaction and its proof that references the notarization with the correct MMR
-                newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(chainObjects)));
+                newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(std::vector<CBaseChainObject *>({&exportXProof}))));
 
                 // we now have an Import transaction for the chainID chain, it is the latest, and the export we used is now the latest as well
                 // work our way forward
@@ -3618,7 +3710,7 @@ UniValue refundfailedlaunch(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid PBaaS name or chainid");
     }
 
-    if (chainID == ConnectedChains.ThisChain().GetChainID() || chainID == ConnectedChains.NotaryChain().chainDefinition.GetChainID())
+    if (chainID == ConnectedChains.ThisChain().GetID() || chainID == ConnectedChains.NotaryChain().chainDefinition.GetID())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot refund the specified chain");
     }
@@ -3723,7 +3815,8 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
     {
         throw runtime_error(
             "getinitialcurrencystate \"name\"\n"
-            "\nReturns the total amount of preconversions that have been confirmed on the blockchain for the specified chain.\n"
+            "\nReturns the total amount of preconversions that have been confirmed on the blockchain for the specified PBaaS chain.\n"
+            "This should be used to get information about chains that are not this chain, but are being launched by it.\n"
 
             "\nArguments\n"
             "   \"name\"                    (string, required) name or chain ID of the chain to get the export transactions for\n"
@@ -3755,14 +3848,18 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
 
-    CPBaaSChainDefinition chainDef;
+    LOCK(cs_main);
+
+    CCurrencyDefinition chainDef;
     int32_t definitionHeight;
-    if (!GetChainDefinition(chainID, chainDef, &definitionHeight))
+    if (!GetCurrencyDefinition(chainID, chainDef, &definitionHeight))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain " + params[0].get_str() + " not found");
     }
 
-    return GetInitialCurrencyState(chainDef, definitionHeight).ToUniValue();
+    // get accurate preconversions
+    chainDef.preconverted = CalculatePreconversions(chainDef, definitionHeight).AsCurrencyVector(chainDef.currencies);
+    return GetInitialCurrencyState(chainDef).ToUniValue();
 }
 
 UniValue getcurrencystate(const UniValue& params, bool fHelp)
@@ -3858,37 +3955,59 @@ UniValue getcurrencystate(const UniValue& params, bool fHelp)
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
-UniValue definechain(const UniValue& params, bool fHelp)
+UniValue definecurrency(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "definechain '{\"name\": \"BAAS\", ... }'\n"
-            "\nThis defines a PBaaS chain, provides it with initial notarization fees to support its launch, and prepares it to begin running.\n"
-
+            "definecurrency '{\"name\": \"BAAS\", ..., \"nodes\":[{\"networkaddress\":\"identity\"},..]}'\n"
+            "\nThis defines a blockchain currency, either as an independent blockchain, or as a token on this blockchain. It also spends\n"
+            "the identity after which this currency is named and sets a bit indicating that it has a currently active blockchain in its name.\n"
+            "\nTo create a currency of any kind, the identity it is named after must be minted on the blockchain on which the currency is created.\n"
+            "Once a currency is activated for an identity name, the same symbol may not be reused for another currency or blockchain, even\n"
+            "if the identity is transferred, revoked or recovered, unless there is an endblock specified and the currency or blockchain has\n"
+            "deactivated as of that end block.\n"
+            "\nAll funds to start the currency and for initial conversion amounts must be available to spend from the identity with the same\n"
+            "name and ID as the currency being defined.\n"
             "\nArguments\n"
             "      {\n"
-            "         \"name\"       : \"xxxx\",    (string, required) unique Verus ecosystem-wide name/symbol of this PBaaS chain\n"
-            "         \"paymentaddress\" : \"Rxxx\", (string, optional) premine and launch fee recipient\n"
-            "         \"premine\"    : \"n\",       (int,    optional) amount of coins that will be premined and distributed to premine address\n"
-            "         \"initialcontribution\" : \"n\", (int, optional) amount of coins as initial contribution\n"
-            "         \"conversion\" : \"n\",       (int,    optional) amount of coins that may be converted from Verus, price determined by total contribution\n"
-            "         \"launchfee\"  : \"n\",       (int,    optional) VRSC fee for conversion at startup, multiplied by amount, divided by 100000000\n"
-            "         \"startblock\" : \"n\",       (int,    optional) VRSC block must be notarized into block 1 of PBaaS chain, default curheight + 100\n"
-            "         \"eras\"       : \"objarray\", (array, optional) data specific to each era, maximum 3\n"
+            "         \"options\" : \"n\",             (int,    optional) bits:\n"
+            "                                                             1 = FRACTIONAL, 2 = IDRESTRICTED, 4 = IDSTAKING, 8 = IDREFERRALS\n"
+            "                                                             0x10 = IDREFERRALSREQUIRED, 0x20 = TOKEN, 0x40 = CANBERESERVE\n"
+            "         \"identityname\" : \"xxxx\",     (string, required) existing identity with no active or pending blockchain as the name\n"
+            "         \"idregistrationprice\" : \"xx.xx\", (value, required) price of an identity in native currency\n"
+            "         \"idreferrallevels\" : \"n\",    (int, required) how many levels ID referrals go back in reward\n"
+
+            "         \"notaries\" : \"[identity,..]\", (list, optional) list of identities that are assigned as chain notaries\n"
+            "         \"minnotariesconfirm\" : \"n\",  (int, optional) unique notary signatures required to confirm an auto-notarization\n"
+            "         \"notarizationreward\" : \"xx.xx\", (value,  required) default VRSC notarization reward total for first billing period\n"
+            "         \"billingperiod\" : \"n\",       (int,    optional) number of blocks in each billing period\n"
+
+            "         \"startblock\"   : \"n\",        (int,    optional) VRSC block must be notarized into block 1 of PBaaS chain, default curheight + 100\n"
+            "         \"endblock\"     : \"n\",        (int,    optional) chain is considered inactive after this block height, and a new one may be started\n"
+
+            "         \"reserveratio\" : \"n\",        (value, optional) total reserve ratio, divided among currencies\n"
+            "         \"currencies\" : \"[\"VRSC\",..]\", (list, optional) reserve currencies backing this chain in equal amounts\n"
+            "         \"conversions\" : \"[\"xx.xx\",..]\", (list, optional) if present, must be same size as currencies. pre-launch conversion ratio overrides\n"
+            "         \"minpreconvert\" : \"[\"xx.xx\",..]\", (list, optional) must be same size as currencies. minimum in each currency to launch\n"
+            "         \"maxpreconvert\" : \"[\"xx.xx\",..]\", (list, optional) maximum in each currency allowed\n"
+
+            "         \"launchfee\"    : \"xx.xx\",    (value,  optional) % fee for conversion at pre-launch\n"
+            "         \"preallocationratio\" : \"xx.xx\", (value, optional) if non-0, pre-allocation is a percentage after initial supply is determined\n"
+            "         \"preallocation\" : \"[{\"identity\":xx.xx}..]\", (list, optional) amount or % of from pre-allocation, depending on preallocationratio\n"
+            "         \"initialcontribution\" : \"[\"xx.xx\",..]\", (list, optional) initial contribution in each currency\n"
+    
+            "         \"eras\"         : \"objarray\", (array, optional) data specific to each era, maximum 3\n"
             "         {\n"
-            "            \"reward\"      : \"n\",   (int64,  optional) native initial block rewards in each period\n"
-            "            \"decay\" : \"n\",         (int64,  optional) reward decay for each era\n"
-            "            \"halving\"      : \"n\",  (int,    optional) halving period for each era\n"
-            "            \"eraend\"       : \"n\",  (int,    optional) ending block of each era\n"
-            "            \"eraoptions\"   : \"n\",  (int,    optional) options for each era\n"
+            "            \"reward\"    : \"n\",       (int64,  optional) native initial block rewards in each period\n"
+            "            \"decay\" : \"n\",           (int64,  optional) reward decay for each era\n"
+            "            \"halving\"   : \"n\",       (int,    optional) halving period for each era\n"
+            "            \"eraend\"    : \"n\",       (int,    optional) ending block of each era\n"
             "         }\n"
-            "         \"notarizationreward\" : \"n\", (int,  required) default VRSC notarization reward total for first billing period\n"
-            "         \"billingperiod\" : \"n\",    (int,    optional) number of blocks in each billing period\n"
             "         \"nodes\"      : \"[obj, ..]\", (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
             "         [{\n"
             "            \"networkaddress\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
-            "            \"paymentaddress\" : \"n\", (int,     optional) rewards payment address\n"
+            "            \"nodeidentity\" : \"name@\",  (string, optional) rewards payment and identity\n"
             "          }, .. ]\n"
             "      }\n"
 
@@ -3900,12 +4019,15 @@ UniValue definechain(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("definechain", "jsondefinition")
-            + HelpExampleRpc("definechain", "jsondefinition")
+            + HelpExampleCli("definecurrency", "jsondefinition")
+            + HelpExampleRpc("definecurrency", "jsondefinition")
         );
     }
 
     CheckPBaaSAPIsValid();
+    bool isVerusActive = IsVerusActive();
+
+    uint160 thisChainID = ConnectedChains.ThisChain().GetID();
 
     if (!params[0].isObject())
     {
@@ -3922,189 +4044,369 @@ UniValue definechain(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid characters in blockchain definition");
     }
 
-    CPBaaSChainDefinition newChain(params[0]);
+    CCurrencyDefinition newChain(params[0]);
 
     if (!newChain.IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain definition. see help.");
     }
 
-    CPBaaSChainDefinition checkDef;
-    if (GetChainDefinition(newChain.name, checkDef))
+    CCurrencyDefinition checkDef;
+    if (GetCurrencyDefinition(newChain.name, checkDef))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, newChain.name + " chain already defined. see help.");
     }
 
-    if (!newChain.startBlock || newChain.startBlock < (chainActive.Height() + PBAAS_MINSTARTBLOCKDELTA))
+    // a new blockchain can only be defined with the current chain as parent
+    if (newChain.parent.IsNull())
     {
-        newChain.startBlock = chainActive.Height() + PBAAS_MINSTARTBLOCKDELTA;
+        throw JSONRPCError(RPC_INVALID_PARAMETER, params[0].write() + " invalid chain name.");
     }
 
-    if (newChain.billingPeriod < CPBaaSChainDefinition::MIN_BILLING_PERIOD || (newChain.notarizationReward / newChain.billingPeriod) < CPBaaSChainDefinition::MIN_PER_BLOCK_NOTARIZATION)
+    if (newChain.parent != thisChainID)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMS, "Billing period of at least " + 
-                                               to_string(CPBaaSChainDefinition::MIN_BILLING_PERIOD) + 
-                                               " blocks and per-block notary rewards of >= 1000000 are required to define a chain\n");
+        // parent chain must be current chain
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to define a chain relative to a parent that is not the current chain.");
     }
 
-    for (int i = 0; i < newChain.rewards.size(); i++)
+    std::vector<CNodeData> vNodes;
+    UniValue nodeArr = find_value(params[0], "nodes");
+    if (nodeArr.isArray() && nodeArr.size())
     {
-        arith_uint256 reward(newChain.rewards[i]), decay(newChain.rewardsDecay[i]), limit(0x7fffffffffffffff);
-        if (reward * decay > limit)
+        for (int i = 0; i < nodeArr.size(); i++)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMS, "reward * decay exceeds 64 bit integer limit of 9,223,372,036,854,775,807\n");
+            CNodeData nd(nodeArr[i]);
+            if (nd.IsValid())
+            {
+                vNodes.push_back(nd);
+                if (vNodes.size() == 2)
+                {
+                    break;
+                }
+            }
         }
     }
 
-    vector<CRecipient> outputs;
+    // a new currency definition must spend an ID that currently has no active currency, which sets a semaphore that "blocks"
+    // that ID from having more than one at once. Before submitting the transaction, it must be properly signed by the primary authority. 
+    // This also has the effect of piggybacking on the ID protocol's deconfliction between mined blocks to avoid name conflicts, 
+    // as the ID can only have its bit set or unset by one transaction at any time and only as part of a transaction that changes the
+    // the state of a potentially active currency.
+    LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    // default double fee for miner of chain definition tx
-    // one output for definition, one for finalization
-    CAmount nReward = newChain.notarizationReward + (DEFAULT_TRANSACTION_FEE * 4);
+    CIdentity launchIdentity;
+    uint32_t idHeight = 0;
+    CTxIn idTxIn;
+    bool canSign = false, canSpend = false;
 
-    CCcontract_info CC;
-    CCcontract_info *cp;
-
-    // make the chain definition output
-    cp = CCinit(&CC, EVAL_PBAASDEFINITION);
-    // need to be able to send this to EVAL_PBAASDEFINITION address as a destination, locked by the default pubkey
-    CPubKey pk(ParseHex(CC.CChexstr));
-
-    std::vector<CTxDestination> dests({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetChainID(), EVAL_PBAASDEFINITION))});
-    CTxOut defOut = MakeCC1of1Vout(EVAL_PBAASDEFINITION, DEFAULT_TRANSACTION_FEE, pk, dests, newChain);
-    outputs.push_back(CRecipient({defOut.scriptPubKey, CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE, false}));
-
-    // make the first chain notarization output
-    cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
-
-    // we need to make a notarization, notarize this information and block 0, since we know that will be in the new
-    // chain, our authorization will be that we are the chain definition
-    uint256 mmvRoot, nodePreHash;
+    std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+    if (pwalletMain->GetIdentity(newChain.GetID(), keyAndIdentity))
     {
-        LOCK(cs_main);
-        auto mmr = chainActive.GetMMR();
-        auto mmv = CMerkleMountainView<CMMRPowerNode, CChunkedLayer<CMMRPowerNode>, COverlayNodeLayer<CMMRPowerNode, CChain>>(mmr, mmr.size());
-        mmv.resize(1);
-        mmvRoot = mmv.GetRoot();
-        nodePreHash = mmr.GetNode(0).hash;
+        canSign = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SIGN;
+        canSpend = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SPEND;
+        launchIdentity = static_cast<CIdentity>(keyAndIdentity.second);
     }
 
-    CKeyID pkID;
+    if (!(launchIdentity = CIdentity::LookupIdentity(newChain.GetID(), 0, &idHeight, &idTxIn)).IsValidUnrevoked() || launchIdentity.HasActiveCurrency())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "ID " + newChain.name + " not found, is revoked, or already has an active currency defined");
+    }
+
+    if (launchIdentity.parent != thisChainID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency can only be defined using an ID issued by " + VERUS_CHAINNAME);
+    }
+
+    // refunding a currency after its launch is aborted, or shutting it down after the endblock has passed must be completed
+    // to fully decommission a blockchain and clear the active blockchain bit from an ID
+
+    if (!newChain.startBlock || newChain.startBlock < (chainActive.Height() + PBAAS_MINSTARTBLOCKDELTA))
+    {
+        newChain.startBlock = chainActive.Height() + (PBAAS_MINSTARTBLOCKDELTA + 5);    // give a little time to send the tx
+    }
+
+    if (newChain.endBlock && newChain.endBlock < (newChain.startBlock + CCurrencyDefinition::MIN_CURRENCY_LIFE))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "If endblock (" + to_string(newChain.endBlock) + 
+                                               ") is specified, it must be at least " + to_string(CCurrencyDefinition::MIN_CURRENCY_LIFE) + 
+                                               " blocks after startblock (" + to_string(newChain.startBlock) + ")\n");
+    }
+
+    if (newChain.billingPeriod < CCurrencyDefinition::MIN_BILLING_PERIOD || (newChain.notarizationReward / newChain.billingPeriod) < CCurrencyDefinition::MIN_PER_BLOCK_NOTARIZATION)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "Billing period of at least " + 
+                                               to_string(CCurrencyDefinition::MIN_BILLING_PERIOD) + 
+                                               " blocks and per-block notary rewards of >= " + to_string(CCurrencyDefinition::MIN_PER_BLOCK_NOTARIZATION) + 
+                                               " are required to define an active currency\n");
+    }
+
+    // TODO: check to see if rewards obviously lead to an unstable currency
+    //for (int i = 0; i < newChain.rewards.size(); i++)
+    //{
+    //}
+
+    // if we have no emission parameters, this is not a PBaaS blockchain, it is a controlled or bridged token.
+    // controlled tokens can be centrally or algorithmically controlled.
+    if (newChain.rewards.empty() && !newChain.IsToken())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "A currency must either be based on a token protocol or must specify blockchain rewards, even if 0\n");
+    }
+
+    if ((newChain.rewards.empty() || newChain.currencies.empty()) && newChain.IsReserve())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "Fractional reserve currencies must specify blockchain rewards, even if 0 and at least one reserve currency\n");
+    }
+
+    // if this is a fractional reserve currency, ensure that all reserves are currently active 
+    // with at least as long of a life as this currency and that at least one of the currencies
+    // is VRSC or VRSCTEST.
+    std::vector<CCurrencyDefinition> reserveCurrencies;
+    bool hasCoreReserve = false;
+    if (newChain.IsReserve())
+    {
+        for (auto &currency : newChain.currencies)
+        {
+            reserveCurrencies.emplace_back();
+            if (!GetCurrencyDefinition(currency, reserveCurrencies.back()))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot find reserve currency " + EncodeDestination(CKeyID(currency)));
+            }
+
+            if (reserveCurrencies.back().endBlock && (!newChain.endBlock || reserveCurrencies.back().endBlock < newChain.endBlock))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Reserve currency " + EncodeDestination(CKeyID(currency)) + " ends its life before the fractional currency's endblock");
+            }
+
+            if (!reserveCurrencies.back().CanBeReserve())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + EncodeDestination(CKeyID(currency)) + " may not be used as a reserve");
+            }
+
+            if (currency == VERUS_CHAINID)
+            {
+                hasCoreReserve = true;
+            }
+        }
+    }
+
+    if (!hasCoreReserve)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Fractional currency requires a reserve of " + VERUS_CHAINNAME + " in addition to any other reserves");
+    }
+
+    // now, create the outputs:
+    // 1. Updated identity with active currency
+    // 2. Currency definition
+    // 3. Notarization thread
+    // 4. Import thread
+    // 5. Export thread
+    // 6. Initial contribution exports
+    // 7. Critical identity exports (chain identity, notaries, pre-allocation recipients)
+    //
+    // ensure that the appropriate identity is an input to the transaction,
+    // and fund the transaction
+    std::vector<CTxIn> vInputs({idTxIn});
+    std::vector<CRecipient> vOutputs;
+
+    // first, we need the identity output with currency activated
+    launchIdentity.ActivateCurrency();
+    vOutputs.push_back({launchIdentity.IdentityUpdateOutputScript(), 0, false});
+
+    // now, create the currency definition output
+    CCcontract_info CC;
+    CCcontract_info *cp;
+    cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
+    CPubKey pk(ParseHex(CC.CChexstr));
+
+    std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION)),
+                                            CKeyID(newChain.GetConditionID(EVAL_CURRENCY_DEFINITION))});
+    std::vector<CTxDestination> dests({pk});
+
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newChain), &indexDests), 
+                                         CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
+                                         false});
+
+    // get initial currency state
+    CCoinbaseCurrencyState newCurrencyState = GetInitialCurrencyState(newChain);
+
+    // we need to make a notarization, notarize this information and block 0, which is the same as out block 0
+    // our authorization will be that we are the chain definition
+    uint256 mmvRoot, nodePreHash;
+
+    auto mmr = chainActive.GetMMR();
+    auto mmv = ChainMerkleMountainView(mmr);
+    mmv.resize(1);
+    mmvRoot = mmv.GetRoot();
+    nodePreHash = mmr.GetNode(0).hash;
+
+    CTxDestination notaryDest;
     extern int32_t USE_EXTERNAL_PUBKEY; extern std::string NOTARY_PUBKEY;
-    if (USE_EXTERNAL_PUBKEY)
+    // use default ID as notary ID if there is one
+    if (!VERUS_DEFAULTID.IsNull())
+    {
+        notaryDest = VERUS_DEFAULTID;
+    }
+    // use pub key if there is one
+    else if (USE_EXTERNAL_PUBKEY)
     {
         CPubKey pubKey = CPubKey(ParseHex(NOTARY_PUBKEY));
         if (pubKey.IsFullyValid())
         {
-            pkID = pubKey.GetID();
+            notaryDest = pubKey.GetID();
         }
     }
 
-    CAmount initialToConvert = 0;
-    CAmount initialConversion = 0;
-    CAmount initialReserve = 0;
-    CAmount initialFee = 0;
-    CAmount conversionFee = 0;
+    CKeyID newChainID(newChain.GetID());
 
-    // add initial conversion payment if present for reserve to reserve
-    // any initial contribution must be at least 1 coin
-    if (newChain.initialcontribution > COIN)
+    CPBaaSNotarization pbn = CPBaaSNotarization(newChain.notarizationProtocol, 
+                                                newChainID, 
+                                                notaryDest, 
+                                                0, 
+                                                mmvRoot, 
+                                                nodePreHash, 
+                                                mmr.GetNode(0).power,
+                                                static_cast<CCurrencyStateNew>(newCurrencyState),
+                                                uint256(),
+                                                0,
+                                                uint256(),
+                                                0,
+                                                COpRetProof(),
+                                                vNodes);
+
+    // make the first chain notarization output
+    cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
+    CTxDestination notarizationDest;
+
+    if (newChain.notarizationProtocol == newChain.NOTARIZATION_AUTO || newChain.notarizationProtocol == newChain.NOTARIZATION_NOTARY_CONFIRM)
     {
-        arith_uint256 bigConvert(newChain.initialcontribution);
-        static const arith_uint256 bigsatoshi(CReserveExchange::SATOSHIDEN);
-        initialFee = ((bigConvert * arith_uint256(newChain.launchFee)) / bigsatoshi).GetLow64();
-        initialToConvert = newChain.initialcontribution - initialFee;
-        bigConvert = arith_uint256(initialToConvert);
-        initialConversion = ((bigConvert * arith_uint256(newChain.conversion)) / bigsatoshi).GetLow64();
-        // if a reserve chain, converted amount goes to reserves
-        if (!(newChain.ChainOptions() & CPBaaSChainDefinition::OPTION_RESERVE))
-        {
-            initialReserve = initialToConvert;
-        }
+        notarizationDest = CPubKey(ParseHex(CC.CChexstr));
+    }
+    else if (newChain.notarizationProtocol == newChain.NOTARIZATION_NOTARY_CHAINID)
+    {
+        notarizationDest = CIdentityID(newChainID);
     }
     else
     {
-        newChain.initialcontribution = 0;
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
     }
-    
-    CCurrencyState currencyState(newChain.conversion, newChain.premine + initialConversion, initialConversion, 0, initialReserve);
 
-    CPBaaSNotarization pbn = CPBaaSNotarization(CPBaaSNotarization::CURRENT_VERSION,
-                                                newChain.GetChainID(),
-                                                pkID,
-                                                0, mmvRoot,
-                                                nodePreHash,
-                                                ArithToUint256(GetCompactPower(chainActive.Genesis()->nNonce, chainActive.Genesis()->nBits, chainActive.Genesis()->nVersion)),
-                                                currencyState,
-                                                uint256(), 0,
-                                                uint256(), 0,
-                                                COpRetProof(),
-                                                newChain.nodes);
+    indexDests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_ACCEPTEDNOTARIZATION))});
+    dests = std::vector<CTxDestination>({notarizationDest});
 
-    pk = CPubKey(ParseHex(CC.CChexstr));
-    dests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_ACCEPTEDNOTARIZATION))});
-    CTxOut notarizationOut = MakeCC1of1Vout(EVAL_ACCEPTEDNOTARIZATION, nReward, pk, dests, pbn);
-    outputs.push_back(CRecipient({notarizationOut.scriptPubKey, newChain.notarizationReward, false}));
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn), &indexDests), 
+                                         newChain.notarizationReward, 
+                                         false});
 
     // make the finalization output
     cp = CCinit(&CC, EVAL_FINALIZENOTARIZATION);
     pk = CPubKey(ParseHex(CC.CChexstr));
-    dests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_FINALIZENOTARIZATION))});
+
+    indexDests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_FINALIZENOTARIZATION))});
+    dests = std::vector<CTxDestination>({pk});
 
     CNotarizationFinalization nf;
-    CTxOut finalizationOut = MakeCC1of1Vout(EVAL_FINALIZENOTARIZATION, DEFAULT_TRANSACTION_FEE, pk, dests, nf);
-    outputs.push_back(CRecipient({finalizationOut.scriptPubKey, CPBaaSChainDefinition::DEFAULT_OUTPUT_VALUE, false}));
 
-    // create import and export threads
-    // import - only spendable for reserve currency or currency with preconversion to allow import of conversions, this output will include
-    // all pre-converted coins
-    // chain definition - always
-    // make the chain definition output
-    dests.clear();
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CNotarizationFinalization>(EVAL_FINALIZENOTARIZATION, dests, 1, &nf), &indexDests), 
+                                         CNotarizationFinalization::DEFAULT_OUTPUT_VALUE, 
+                                         false});
+
+    // create import and export outputs
     cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
-
     pk = CPubKey(ParseHex(CC.CChexstr));
 
-    CKeyID newChainID(newChain.GetChainID());
+    CTxDestination proofDest;
+
+    if (newChain.proofProtocol == newChain.PROOF_PBAASMMR)
+    {
+        proofDest = CPubKey(ParseHex(CC.CChexstr));
+    }
+    else if (newChain.proofProtocol == newChain.PROOF_CHAINID)
+    {
+        proofDest = CIdentityID(newChainID);
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
+    }
 
     // import thread is specific to the chain importing from
-    dests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_IMPORT)));
+    dests = std::vector<CTxDestination>({proofDest});
+    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_IMPORT))});
+    CCrossChainImport cci(newChainID, CCurrencyValueMap());
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests), 0, false});
 
-    CTxOut importThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_IMPORT, DEFAULT_TRANSACTION_FEE, pk, dests, CCrossChainImport(newChainID, 0));
-    outputs.push_back(CRecipient({importThreadOut.scriptPubKey, DEFAULT_TRANSACTION_FEE, false}));
-
-    // export - currently only spendable for reserve currency, but added for future capabilities
-    dests.clear();
+    // export thread
     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
+    dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_EXPORT))});
+    CCrossChainExport ccx = CCrossChainExport(newChainID, 0, CCurrencyValueMap(), CCurrencyValueMap());
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &ccx), &indexDests), 0, false});
 
-    pk = CPubKey(ParseHex(CC.CChexstr));
-    dests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_EXPORT)));
-
-    CTxOut exportThreadOut = MakeCC1of1Vout(EVAL_CROSSCHAIN_EXPORT, DEFAULT_TRANSACTION_FEE, pk, dests, CCrossChainExport(newChainID, 0, 0, 0));
-    outputs.push_back(CRecipient({exportThreadOut.scriptPubKey, DEFAULT_TRANSACTION_FEE, false}));
-
-    // make the reserve transfer and fee outputs if there is an initial contribution
-    if (newChain.initialcontribution)
+    if (!newChain.IsToken())
     {
-        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
-        pk = CPubKey(ParseHex(CC.CChexstr));
-        assert(pk.IsFullyValid());
-
-        dests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(newChainID)});
-
-        CAmount fee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(initialToConvert);
-        CAmount contribution = (initialToConvert + fee) - CReserveTransactionDescriptor::CalculateConversionFee(initialToConvert + fee);
-        fee += CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
-
-        CReserveTransfer rt = CReserveTransfer(CReserveTransfer::PRECONVERT + CReserveTransfer::VALID, contribution, fee, newChain.address);
-        CTxOut reserveTransferOut = MakeCC1of1Vout(EVAL_RESERVE_TRANSFER, initialToConvert + fee, pk, dests, (CReserveTransfer)rt);
-        outputs.push_back(CRecipient({reserveTransferOut.scriptPubKey, initialToConvert + fee, false}));
-
-        // if there is a fee output, send it to the payment address
-        if (initialFee)
+        // create identity exports for launch identity, notaries, and preallocation recipients
+        std::set<CIdentityID> idExportSet = {newChainID};
+        for (auto &notary : newChain.notaries)
         {
-            CTxDestination feeOutAddr(newChain.address);
-            outputs.push_back(CRecipient({GetScriptForDestination(feeOutAddr), initialFee, false}));
+            idExportSet.insert(notary);
+        }
+        for (auto &oneAlloc : newChain.preAllocation)
+        {
+            idExportSet.insert(oneAlloc.first);
+        }
+
+        // now, look them all up and create the exports
+        for (auto &oneID : idExportSet)
+        {
+            CIdentity oneIdentity = (oneID == newChainID) ? launchIdentity : CIdentity::LookupIdentity(oneID);
+            if (!oneIdentity.IsValid())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid specified identity: " + EncodeDestination(CIdentityID(oneID)));
+            }
+            CIdentityExport cie = CIdentityExport(oneID, ::GetHash(oneIdentity), thisChainID, CIdentityExport::DEFAULT_EXPORT_FEE, newChainID);
+
+            cp = CCinit(&CC, EVAL_IDENTITY_EXPORT);
+            CPubKey pk(ParseHex(CC.CChexstr));
+
+            indexDests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_IDENTITY_EXPORT))});
+            dests = std::vector<CTxDestination>({pk});
+
+            vOutputs.push_back({MakeMofNCCScript(CConditionObj<CIdentityExport>(EVAL_IDENTITY_EXPORT, dests, 1, &cie), &indexDests), 
+                                                 CIdentityExport::DEFAULT_EXPORT_FEE, 
+                                                 false});
+        }
+    }
+
+    // make the outputs for initial contributions
+    if (newChain.contributions.size() && newChain.contributions.size() == newChain.currencies.size())
+    {
+        for (int i = 0; i < newChain.currencies.size(); i++)
+        {
+            if (newChain.contributions[i] > 0)
+            {
+
+                CAmount fee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(newChain.contributions[i]);
+                CAmount contribution = (newChain.contributions[i] + fee) - 
+                                        CReserveTransactionDescriptor::CalculateConversionFee(newChain.contributions[i] + fee);
+                fee += CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
+
+                CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT,
+                                                       newChain.currencies[i],
+                                                       contribution,
+                                                       fee,
+                                                       newChain.systemID,
+                                                       DestinationToTransferDestination(CIdentityID(newChain.GetID())));
+
+                cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+                CPubKey pk(ParseHex(CC.CChexstr));
+
+                indexDests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_RESERVE_TRANSFER))});
+                dests = std::vector<CTxDestination>({pk});
+
+                vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 
+                                                     newChain.currencies[i] == thisChainID ? newChain.contributions[i] + fee : 0, 
+                                                     false});
+            }
         }
     }
 
@@ -4116,16 +4418,26 @@ UniValue definechain(const UniValue& params, bool fHelp)
         CReserveKey reserveKey(pwalletMain);
         CAmount fee;
         int nChangePos;
+        int nChangeOutput;
         string failReason;
 
-        if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
+        CTxDestination chainDefSource = CIdentityID(thisChainID);
+        if (!pwalletMain->CreateReserveTransaction(vOutputs, 
+                                                   wtx, 
+                                                   reserveKey, 
+                                                   fee, 
+                                                   nChangePos, 
+                                                   nChangeOutput, 
+                                                   failReason, 
+                                                   NULL, 
+                                                   &chainDefSource))
         {
             throw JSONRPCError(RPC_TRANSACTION_ERROR, newChain.name + ": " + failReason);
         }
     }
 
     UniValue uvret(UniValue::VOBJ);
-    uvret.push_back(Pair("chaindefinition", CPBaaSChainDefinition(wtx).ToUniValue()));
+    uvret.push_back(Pair("chaindefinition", CCurrencyDefinition(wtx).ToUniValue()));
 
     uvret.push_back(Pair("basenotarization", CPBaaSNotarization(wtx).ToUniValue()));
 
@@ -4187,7 +4499,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid name for commitment. Names must not have leading or trailing spaces and must not include any of the following characters between parentheses (\\/:*?\"<>|@)");
     }
 
-    parent = ConnectedChains.ThisChain().GetChainID();
+    parent = ConnectedChains.ThisChain().GetID();
 
     CTxDestination dest = DecodeDestination(uni_get_str(params[1]));
     if (dest.which() == COptCCParams::ADDRTYPE_INVALID)
@@ -4282,7 +4594,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     CheckIdentityAPIsValid();
 
     // all names have a parent of the current chain
-    uint160 parent = ConnectedChains.ThisChain().GetChainID();
+    uint160 parent = ConnectedChains.ThisChain().GetID();
 
     uint256 txid = uint256S(uni_get_str(find_value(params[0], "txid")));
     CNameReservation reservation(find_value(params[0], "namereservation"));
@@ -4294,7 +4606,9 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
 
     CAmount feeOffer;
-    CAmount minFeeOffer = reservation.referral.IsNull() ? CIdentity::FullRegistrationAmount() : CIdentity::ReferredRegistrationAmount();
+    CAmount minFeeOffer = reservation.referral.IsNull() ? 
+                          ConnectedChains.ThisChain().IDFullRegistrationAmount() : 
+                          ConnectedChains.ThisChain().IDReferredRegistrationAmount();
 
     if (params.size() > 1)
     {
@@ -4307,7 +4621,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     if (feeOffer < minFeeOffer)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee offer must be at least " + ValueFromAmount(CIdentity::MinRegistrationAmount()).write());
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee offer must be at least " + ValueFromAmount(minFeeOffer).write());
     }
 
     uint160 impliedParent;
@@ -4409,10 +4723,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             }
 
             // create outputs for this referral and up to n identities back in the referral chain
-            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), CIdentity::ReferralAmount(), false});
-            feeOffer -= CIdentity::ReferralAmount();
+            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), ConnectedChains.ThisChain().IDReferralAmount(), false});
+            feeOffer -= ConnectedChains.ThisChain().IDReferralAmount();
             int afterId = referralTxIn.prevout.n + 1;
-            for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < (CIdentity::REFERRAL_LEVELS - 1); i++)
+            for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < (ConnectedChains.ThisChain().idReferralLevels - 1); i++)
             {
                 CTxDestination nextID;
                 COptCCParams p, master;
@@ -4427,8 +4741,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                     (master = COptCCParams(p.vData[1])).IsValid() &&
                     master.evalCode == EVAL_NONE)))
                 {
-                    outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), CIdentity::ReferralAmount(), false});
-                    feeOffer -= CIdentity::ReferralAmount();
+                    outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), ConnectedChains.ThisChain().IDReferralAmount(), false});
+                    feeOffer -= ConnectedChains.ThisChain().IDReferralAmount();
                 }
                 else
                 {
@@ -4861,7 +5175,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     uint32_t height;
 
     CIdentity identity;
-    bool canSign = false, canSpend = false, found = false;
+    bool canSign = false, canSpend = false;
 
     if (pwalletMain)
     {
@@ -4870,7 +5184,6 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
         if (pwalletMain->GetIdentity(GetDestinationID(idID), keyAndIdentity))
         {
-            found = true;
             canSign = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SIGN;
             canSpend = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SPEND;
             identity = static_cast<CIdentity>(keyAndIdentity.second);
@@ -5042,17 +5355,17 @@ UniValue addmergedblock(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "must provide valid RPC connection parameters to merge mine");
     }
 
-    uint160 chainID = CCrossChainRPCData::GetChainID(name);
+    uint160 chainID = CCrossChainRPCData::GetID(name);
 
     // confirm data from blockchain
     CRPCChainData chainData;
-    CPBaaSChainDefinition chainDef;
+    CCurrencyDefinition chainDef;
     if (ConnectedChains.GetChainInfo(chainID, chainData))
     {
         chainDef = chainData.chainDefinition;
     }
 
-    if (!chainDef.IsValid() && !GetChainDefinition(name, chainDef))
+    if (!chainDef.IsValid() && !GetCurrencyDefinition(name, chainDef))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "chain not found");
     }
@@ -5483,16 +5796,16 @@ static const CRPCCommand commands[] =
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
-    { "multichain",   "definechain",                  &definechain,            true  },
+    { "multichain",   "definecurrency",                  &definecurrency,            true  },
     { "multichain",   "getdefinedchains",             &getdefinedchains,       true  },
-    { "multichain",   "getchaindefinition",           &getchaindefinition,     true  },
+    { "multichain",   "getcurrencydefinition",           &getcurrencydefinition,     true  },
     { "multichain",   "getnotarizationdata",          &getnotarizationdata,    true  },
     { "multichain",   "getcrossnotarization",         &getcrossnotarization,   true  },
     { "multichain",   "submitacceptednotarization",   &submitacceptednotarization, true },
     { "multichain",   "paynotarizationrewards",       &paynotarizationrewards, true  },
     { "multichain",   "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "multichain",   "getcurrencystate",             &getcurrencystate,       true  },
-    { "multichain",   "sendreserve",                  &sendreserve,            true  },
+    { "multichain",   "sendcurrency",                  &sendcurrency,            true  },
     { "multichain",   "getpendingchaintransfers",     &getpendingchaintransfers, true  },
     { "multichain",   "getchainexports",              &getchainexports,        true  },
     { "multichain",   "getchainimports",              &getchainimports,        true  },

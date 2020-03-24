@@ -59,11 +59,11 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
     {
         switch(p.evalCode)
         {
-            case EVAL_PBAASDEFINITION:
+            case EVAL_CURRENCY_DEFINITION:
             {
-                CPBaaSChainDefinition definition;
+                CCurrencyDefinition definition;
 
-                if (p.vData.size() && (definition = CPBaaSChainDefinition(p.vData[0])).IsValid())
+                if (p.vData.size() && (definition = CCurrencyDefinition(p.vData[0])).IsValid())
                 {
                     out.push_back(Pair("pbaasChainDefinition", definition.ToUniValue()));
                 }
@@ -149,9 +149,9 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
             case EVAL_RESERVE_OUTPUT:
             {
-                CReserveOutput ro;
+                CTokenOutput ro;
 
-                if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
+                if (p.vData.size() && (ro = CTokenOutput(p.vData[0])).IsValid())
                 {
                     out.push_back(Pair("reserveoutput", ro.ToUniValue()));
                 }
@@ -179,9 +179,9 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
             case EVAL_RESERVE_DEPOSIT:
             {
-                CReserveOutput ro;
+                CTokenOutput ro;
 
-                if (p.vData.size() && (ro = CReserveOutput(p.vData[0])).IsValid())
+                if (p.vData.size() && (ro = CTokenOutput(p.vData[0])).IsValid())
                 {
                     out.push_back(Pair("reservedeposit", ro.ToUniValue()));
                 }
@@ -256,6 +256,21 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
             case EVAL_STAKEGUARD:
                 out.push_back(Pair("stakeguard", ""));
                 break;
+
+            case EVAL_IDENTITY_EXPORT:
+            {
+                CIdentityExport identityExport;
+
+                if (p.vData.size() && (identityExport = CIdentityExport(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("identityexport", identityExport.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("identityexport", "invalid"));
+                }
+                break;
+            }
 
             default:
                 out.push_back(Pair("unknown", ""));

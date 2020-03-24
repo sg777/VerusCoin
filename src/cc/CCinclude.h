@@ -199,6 +199,25 @@ CScript MakeMofNCCScript(const CConditionObj<TOBJ> &conditionObj, const CTxDesti
     return scriptRet;
 }
 
+// TOBJ is CConditionObj of a CC output type
+template <typename TOBJ>
+CScript MakeMofNCCScript(const CConditionObj<TOBJ> &conditionObj, const std::vector<CTxDestination> *indexDests)
+{
+    // indexDest is always added, but we need to index on all can-sign identities as well
+    std::vector<CTxDestination> indexIDs = indexDests ? *indexDests : conditionObj.evalCode == EVAL_NONE ? std::vector<CTxDestination>() : std::vector<CTxDestination>({conditionObj.dests[0]});
+    int idxSize = indexIDs.size();
+
+    COptCCParams masterParams = COptCCParams(COptCCParams::VERSION_V3, 0, idxSize, idxSize, indexIDs, std::vector<std::vector<unsigned char>>());
+    CScript scriptRet = CScript() << masterParams.AsVector() << OP_CHECKCRYPTOCONDITION;
+
+    std::vector<std::vector<unsigned char>> vvch = conditionObj.HaveObject() ? std::vector<std::vector<unsigned char>>({::AsVector(conditionObj.obj)}) : std::vector<std::vector<unsigned char>>();
+    COptCCParams vParams = COptCCParams(COptCCParams::VERSION_V3, conditionObj.evalCode, conditionObj.m, (uint8_t)(conditionObj.dests.size()), conditionObj.dests, vvch);
+
+    // add the object to the end of the script
+    scriptRet << vParams.AsVector() << OP_DROP;
+    return scriptRet;
+}
+
 template <typename TOBJ1, typename TOBJ2>
 CScript MakeMofNCCScript(int M, TOBJ1 &condition1, TOBJ2 &condition2, const std::vector<CTxDestination> *indexDests=nullptr)
 {

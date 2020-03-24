@@ -182,6 +182,88 @@ uint160 GetConditionID(uint160 cid, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
+CTxDestination TransferDestinationToDestination(const CTransferDestination &transferDest)
+{
+    CTxDestination retDest;
+    switch (transferDest.type)
+    {
+    case CTransferDestination::DEST_PKH:
+        retDest = CKeyID(uint160(transferDest.destination));
+        break;
+
+    case CTransferDestination::DEST_PK:
+        {
+            CPubKey pk;
+            pk.Set(transferDest.destination.begin(), transferDest.destination.end());
+            retDest = pk;
+            break;
+        }
+
+    case CTransferDestination::DEST_SH:
+        retDest = CScriptID(uint160(transferDest.destination));
+        break;
+
+    case CTransferDestination::DEST_ID:
+        retDest = CIdentityID(uint160(transferDest.destination));
+        break;
+
+    case CTransferDestination::DEST_FULLID:
+        retDest = CIdentityID(CIdentity(transferDest.destination).GetID());
+        break;
+
+    case CTransferDestination::DEST_QUANTUM:
+        retDest = CQuantumID(uint160(transferDest.destination));
+        break;
+    }
+    return retDest;
+}
+
+CTransferDestination DestinationToTransferDestination(const CTxDestination &dest)
+{
+    CTransferDestination retDest;
+    switch (dest.which())
+    {
+    case CTransferDestination::DEST_PKH:
+    case CTransferDestination::DEST_PK:
+    case CTransferDestination::DEST_SH:
+    case CTransferDestination::DEST_ID:
+    case CTransferDestination::DEST_QUANTUM:
+        retDest = CTransferDestination(dest.which(), GetDestinationBytes(dest));
+        break;
+    }
+    return retDest;
+}
+
+std::vector<CTxDestination> TransferDestinationsToDestinations(const std::vector<CTransferDestination> &transferDests)
+{
+    std::vector<CTxDestination> retDests;
+    for (auto &dest : transferDests)
+    {
+        retDests.push_back(TransferDestinationToDestination(dest));
+    }
+    return retDests;
+}
+
+std::vector<CTransferDestination> DestinationsToTransferDestinations(const std::vector<CTxDestination> &dests)
+{
+    std::vector<CTransferDestination> retDests;
+    for (auto &dest : dests)
+    {
+        retDests.push_back(DestinationToTransferDestination(dest));
+    }
+    return retDests;
+}
+
+CStakeInfo::CStakeInfo(std::vector<unsigned char> vch)
+{
+    ::FromVector(vch, *this);
+}
+
+std::vector<unsigned char> CStakeInfo::AsVector() const
+{
+    return ::AsVector(*this);
+}
+
 unsigned int CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
 
 unsigned int CScript::GetSigOpCount(bool fAccurate) const
@@ -481,33 +563,37 @@ CScript &CScript::ReplaceCCParams(const COptCCParams &params)
     return *this;
 }
 
-int64_t CScript::ReserveOutValue(COptCCParams &p) const
+CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p) const
 {
-    CAmount newVal = 0;
-
-    // reserve out value must be the same as native on a Verus chain
+    CCurrencyValueMap retVal;
 
     // already validated above
-    if (::IsPayToCryptoCondition(*this, p) && p.IsValid())
+    if (IsPayToCryptoCondition(p) && p.IsValid())
     {
         switch (p.evalCode)
         {
             case EVAL_RESERVE_OUTPUT:
             {
-                CReserveOutput ro(p.vData[0]);
-                return ro.nValue;
+                CTokenOutput ro(p.vData[0]);
+                retVal.valueMap[ro.currencyID] = ro.nValue;
                 break;
             }
             case EVAL_CURRENCYSTATE:
             {
                 CCoinbaseCurrencyState cbcs(p.vData[0]);
-                return cbcs.ReserveOut.nValue;
+                for (int i = 0; i < cbcs.currencies.size(); i++)
+                {
+                    if (cbcs.reserveOut[i])
+                    {
+                        retVal.valueMap[cbcs.currencies[i]] = cbcs.reserveOut[i];
+                    }
+                }
                 break;
             }
             case EVAL_RESERVE_TRANSFER:
             {
                 CReserveTransfer rt(p.vData[0]);
-                return rt.nValue + rt.nFees;
+                retVal.valueMap[rt.currencyID] = rt.nValue + rt.nFees;
                 break;
             }
             case EVAL_RESERVE_EXCHANGE:
@@ -515,21 +601,24 @@ int64_t CScript::ReserveOutValue(COptCCParams &p) const
                 CReserveExchange re(p.vData[0]);
                 // reserve out amount when converting to reserve is 0, since the amount cannot be calculated in isolation as an input
                 // if reserve in, we can consider the output the same reserve value as the input
-                return (re.flags & re.TO_RESERVE) ? 0 : re.nValue;
+                if (!(re.flags & re.TO_RESERVE))
+                {
+                    retVal.valueMap[re.currencyID] = re.nValue;
+                }
                 break;
             }
         }
     }
-    return 0;
+    return retVal;
 }
 
-int64_t CScript::ReserveOutValue() const
+CCurrencyValueMap CScript::ReserveOutValue() const
 {
     COptCCParams p;
     return ReserveOutValue(p);
 }
 
-bool CScript::SetReserveOutValue(int64_t newValue)
+bool CScript::SetReserveOutValue(const CCurrencyValueMap &newValues)
 {
     COptCCParams p;
     CAmount newVal = 0;
@@ -541,28 +630,44 @@ bool CScript::SetReserveOutValue(int64_t newValue)
         {
             case EVAL_RESERVE_OUTPUT:
             {
-                CReserveOutput ro(p.vData[0]);
+                if (newValues.valueMap.size() != 1)
+                {
+                    return false;
+                }
+                CTokenOutput ro(p.vData[0]);
+                ro.currencyID = newValues.valueMap.begin()->first;
+                ro.nValue = newValues.valueMap.begin()->second;
                 p.vData[0] = ro.AsVector();
                 break;
             }
             case EVAL_RESERVE_TRANSFER:
             {
+                if (newValues.valueMap.size() != 1)
+                {
+                    return false;
+                }
                 CReserveTransfer rt(p.vData[0]);
-                rt.nValue = newValue;
+                rt.currencyID = newValues.valueMap.begin()->first;
+                rt.nValue = newValues.valueMap.begin()->second;
                 p.vData[0] = rt.AsVector();
                 break;
             }
             case EVAL_RESERVE_EXCHANGE:
             {
+                if (newValues.valueMap.size() != 1)
+                {
+                    return false;
+                }
                 CReserveExchange re(p.vData[0]);
-                re.nValue = newValue;
+                re.currencyID = newValues.valueMap.begin()->first;
+                re.nValue = newValues.valueMap.begin()->second;
                 p.vData[0] = re.AsVector();
                 break;
             }
             case EVAL_CROSSCHAIN_IMPORT:
             {
                 CCrossChainImport cci(p.vData[0]);
-                cci.nValue = newValue;
+                cci.importValue = newValues;
                 p.vData[0] = cci.AsVector();
                 break;
             }
@@ -570,7 +675,14 @@ bool CScript::SetReserveOutValue(int64_t newValue)
             case EVAL_CURRENCYSTATE:
             {
                 CCoinbaseCurrencyState cbcs(p.vData[0]);
-                cbcs.ReserveOut.nValue = newValue;
+                for (int i = 0; i < cbcs.currencies.size(); i++)
+                {
+                    auto it = newValues.valueMap.find(cbcs.currencies[i]);
+                    if (it != newValues.valueMap.end())
+                    {
+                        cbcs.reserveOut[i] = it->second;
+                    }
+                }
                 p.vData[0] = cbcs.AsVector();
                 break;
             }

@@ -24,6 +24,8 @@
 extern uint160 VERUS_CHAINID;
 extern std::string VERUS_CHAINNAME;
 
+CIdentityID VERUS_DEFAULTID;
+
 namespace
 {
 class DestinationEncoder : public boost::static_visitor<std::string>
@@ -63,6 +65,13 @@ public:
         return EncodeBase58Check(data);
     }
 
+    std::string operator()(const CQuantumID& id) const
+    {
+        std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::QUANTUM_ADDRESS);
+        data.insert(data.end(), id.begin(), id.end());
+        return EncodeBase58Check(data);
+    }
+
     std::string operator()(const CNoDestination& no) const { return {}; }
 };
 
@@ -87,6 +96,11 @@ public:
     }
 
     std::vector<unsigned char> operator()(const CIdentityID& id) const
+    {
+        return std::vector<unsigned char>(id.begin(), id.end());
+    }
+
+    std::vector<unsigned char> operator()(const CQuantumID& id) const
     {
         return std::vector<unsigned char>(id.begin(), id.end());
     }
@@ -119,6 +133,11 @@ public:
         return (uint160)id;
     }
 
+    uint160 operator()(const CQuantumID& id) const
+    {
+        return (uint160)id;
+    }
+
     uint160 operator()(const CNoDestination& no) const { return CKeyID(); }
 };
 
@@ -147,20 +166,19 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
             std::copy(data.begin() + identity_prefix.size(), data.end(), hash.begin());
             return CIdentityID(hash);
         }
+
+        const std::vector<unsigned char>& quantum_prefix = params.Base58Prefix(CChainParams::QUANTUM_ADDRESS);
+        if (data.size() == hash.size() + quantum_prefix.size() && std::equal(quantum_prefix.begin(), quantum_prefix.end(), data.begin())) {
+            std::copy(data.begin() + quantum_prefix.size(), data.end(), hash.begin());
+            return CQuantumID(hash);
+        }
     }
     else if (std::count(str.begin(), str.end(), '@') == 1)
     {
-        if (std::count(str.begin(), str.end(), '.') == 0)
-        {
-            return CIdentityID(CIdentity::GetID(str, VERUS_CHAINID));
-        }
-        else
-        {
-            uint160 parent;
-            return CIdentityID(CIdentity::GetID(str, parent));
-        }
+        uint160 parent;
+        return CIdentityID(CIdentity::GetID(str, parent));
     }
-    
+
     return CNoDestination();
 }
 
@@ -555,7 +573,14 @@ std::string TrimTrailing(const std::string &Name, unsigned char ch)
     return nameCopy;
 }
 
-std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter)
+std::string TrimSpaces(const std::string &Name)
+{
+    return TrimTrailing(TrimLeading(Name, ' '), ' ');
+}
+
+// this will add the current Verus chain name to subnames if it is not present
+// on both id and chain names
+std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter, bool addVerus)
 {
     std::string nameCopy = Name;
     std::string invalidChars = "\\/:*?\"<>|";
@@ -588,6 +613,25 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
     nameCopy = retNames[0];
     boost::split(retNames, nameCopy, boost::is_any_of("."));
 
+    int numRetNames = retNames.size();
+
+    if (addVerus)
+    {
+        if (explicitChain)
+        {
+            std::vector<std::string> chainOutNames;
+            boost::split(chainOutNames, ChainOut, boost::is_any_of("."));
+            if (boost::to_lower_copy(chainOutNames.back()) != boost::to_lower_copy(VERUS_CHAINNAME))
+            {
+                chainOutNames.push_back(VERUS_CHAINNAME);
+            }
+        }
+        if (boost::to_lower_copy(retNames.back()) != boost::to_lower_copy(VERUS_CHAINNAME))
+        {
+            retNames.push_back(VERUS_CHAINNAME);
+        }
+    }
+
     for (int i = 0; i < retNames.size(); i++)
     {
         if (retNames[i].size() > KOMODO_ASSETCHAIN_MAXLEN - 1)
@@ -601,24 +645,16 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
         }
     }
 
-    // if no chain is specified, default to chain of the ID
+    // if no explicit chain is specified, default to chain of the ID
     if (!explicitChain && retNames.size())
     {
-        if (retNames.size() == 1)
+        for (int i = 1; i < retNames.size(); i++)
         {
-            // by default, we assume the Verus chain for no suffix
-            ChainOut = VERUS_CHAINNAME;
-        }
-        else
-        {
-            for (int i = 1; i < retNames.size(); i++)
+            if (ChainOut.size())
             {
-                if (ChainOut.size())
-                {
-                    ChainOut = ChainOut + ".";
-                }
-                ChainOut = ChainOut + retNames[i];
+                ChainOut = ChainOut + ".";
             }
+            ChainOut = ChainOut + retNames[i];
         }
     }
 
@@ -705,8 +741,8 @@ CIdentityID CIdentity::GetID(const std::string &Name, uint160 &parent)
 
 CIdentityID CIdentity::GetID(const std::string &Name) const
 {
-    uint160 newLevel = parent;
-    std::string cleanName = CleanName(Name, newLevel);
+    uint160 parent;
+    std::string cleanName = CleanName(Name, parent);
 
     std::string subName = boost::algorithm::to_lower_copy(cleanName);
     const char *idName = subName.c_str();
@@ -731,7 +767,7 @@ CIdentityID CIdentity::GetID() const
     return GetID(name);
 }
 
-uint160 CCrossChainRPCData::GetChainID(std::string name)
+uint160 CCrossChainRPCData::GetID(std::string name)
 {
     uint160 parent;
     //printf("uint160 for name %s: %s\n", name.c_str(), CIdentity::GetID(name, parent).GetHex().c_str());

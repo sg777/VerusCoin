@@ -3,6 +3,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
+#include <univalue.h>
 #include "clientversion.h"
 #include "init.h"
 #include "key_io.h"
@@ -23,8 +24,6 @@
 #include <stdint.h>
 
 #include <boost/assign/list_of.hpp>
-
-#include <univalue.h>
 
 #include "zcash/Address.hpp"
 #include "pbaas/pbaas.h"
@@ -193,7 +192,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
                     acHalving = std::to_string(ASSETCHAINS_HALVING[i]);
                     acDecay = std::to_string(ASSETCHAINS_DECAY[i]);
                     acEndSubsidy = std::to_string(ASSETCHAINS_ENDSUBSIDY[i]);
-                    if (ASSETCHAINS_ERAOPTIONS[i] & CPBaaSChainDefinition::OPTION_RESERVE)
+                    if (ASSETCHAINS_ERAOPTIONS[i] & CCurrencyDefinition::OPTION_FRACTIONAL)
                     {
                         isReserve = true;
                     }
@@ -308,6 +307,14 @@ public:
                 obj.push_back(Pair("sigsrequired", id.minSigs));
             }
         }
+        return obj;
+    }
+
+    UniValue operator()(const CQuantumID &qID) const {
+        UniValue obj(UniValue::VOBJ);
+        CScript subscript;
+        obj.push_back(Pair("isscript", false));
+        obj.push_back(Pair("isquantumkey", true));
         return obj;
     }
 };
@@ -858,7 +865,7 @@ UniValue verifyhash(const UniValue& params, bool fHelp)
         {
             CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
             ss << verusDataSignaturePrefix;
-            ss << ConnectedChains.ThisChain().GetChainID();
+            ss << ConnectedChains.ThisChain().GetID();
             ss << signature.blockHeight;
             ss << GetDestinationID(destination);
             ss << msgHash;
@@ -1003,7 +1010,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
 
             ss.Reset();
             ss << verusDataSignaturePrefix;
-            ss << ConnectedChains.ThisChain().GetChainID();
+            ss << ConnectedChains.ThisChain().GetID();
             ss << signature.blockHeight;
             ss << GetDestinationID(destination);
             ss << msgHash;
@@ -1156,7 +1163,7 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
             {
                 CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
                 ss << verusDataSignaturePrefix;
-                ss << ConnectedChains.ThisChain().GetChainID();
+                ss << ConnectedChains.ThisChain().GetID();
                 ss << signature.blockHeight;
                 ss << GetDestinationID(destination);
                 ss << msgHash;
@@ -1281,6 +1288,8 @@ bool getAddressFromIndex(
         address = EncodeDestination(CScriptID(hash));
     } else if (type == CScript::P2PKH) {
         address = EncodeDestination(CKeyID(hash));
+    } else if (type == CScript::P2PKH) {
+        address = EncodeDestination(CQuantumID(hash));
     } else {
         return false;
     }

@@ -16,7 +16,6 @@
  * is to more effectively equalize FPGAs over GPUs and CPUs.
  *
  **/
-
 #include "hash.h"
 #include "primitives/block.h"
 

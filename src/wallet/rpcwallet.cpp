@@ -807,7 +807,7 @@ std::string SignMessageHash(const CIdentity &identity, const uint256 &_msgHash, 
     CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
 
     ss << verusDataSignaturePrefix;
-    ss << ConnectedChains.ThisChain().GetChainID();
+    ss << ConnectedChains.ThisChain().GetID();
     ss << blockHeight;
     ss << identity.GetID();
     ss << _msgHash;
@@ -2084,11 +2084,11 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
             }
         }
         ret.push_back(Pair("nativefees", rtxd.NativeFees()));
-        ret.push_back(Pair("reservefees", rtxd.ReserveFees()));
-        if (rtxd.nativeConversionFees || rtxd.reserveConversionFees)
+        ret.push_back(Pair("reservefees", rtxd.ReserveFees().ToUniValue()));
+        if (rtxd.nativeConversionFees || (rtxd.ReserveConversionFeesMap() > CCurrencyValueMap()))
         {
             ret.push_back(Pair("nativeconversionfees", rtxd.nativeConversionFees));
-            ret.push_back(Pair("reserveconversionfees", rtxd.reserveConversionFees));
+            ret.push_back(Pair("reserveconversionfees", rtxd.ReserveConversionFeesMap().ToUniValue()));
         }
     }
     else
@@ -2172,7 +2172,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
                 if (rtxd.IsReserve())
                 {
-                    entry.push_back(Pair("reserveamount", ValueFromAmount(wtx.vout[r.vout].scriptPubKey.ReserveOutValue())));
+                    entry.push_back(Pair("reserveamount", wtx.vout[r.vout].scriptPubKey.ReserveOutValue().ToUniValue()));
                 }
                 entry.push_back(Pair("vout", r.vout));
                 if (fLong)
@@ -3084,12 +3084,12 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance())));
     obj.push_back(Pair("unconfirmed_balance", ValueFromAmount(pwalletMain->GetUnconfirmedBalance())));
     obj.push_back(Pair("immature_balance", ValueFromAmount(pwalletMain->GetImmatureBalance())));
-    CPBaaSChainDefinition &chainDef = ConnectedChains.ThisChain();
-    if (chainDef.ChainOptions() & chainDef.OPTION_RESERVE)
+    CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
+    if (chainDef.ChainOptions() & chainDef.OPTION_FRACTIONAL)
     {
-        obj.push_back(Pair("reserve_balance", ValueFromAmount(pwalletMain->GetReserveBalance())));
-        obj.push_back(Pair("unconfirmed_reserve_balance", ValueFromAmount(pwalletMain->GetUnconfirmedReserveBalance())));
-        obj.push_back(Pair("immature_reserve_balance", ValueFromAmount(pwalletMain->GetImmatureReserveBalance())));
+        obj.push_back(Pair("reserve_balance", pwalletMain->GetReserveBalance().ToUniValue()));
+        obj.push_back(Pair("unconfirmed_reserve_balance", pwalletMain->GetUnconfirmedReserveBalance().ToUniValue()));
+        obj.push_back(Pair("immature_reserve_balance", pwalletMain->GetImmatureReserveBalance().ToUniValue()));
         uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
         obj.push_back(Pair("price_in_reserve", ValueFromAmount(ConnectedChains.GetCurrencyState(height).PriceInReserve())));
     }
@@ -3259,10 +3259,10 @@ UniValue listunspent(const UniValue& params, bool fHelp)
         CAmount nValue = out.tx->vout[out.i].nValue;
         entry.push_back(Pair("amount", ValueFromAmount(out.tx->vout[out.i].nValue)));
 
-        CAmount reserveOut;
-        if (ConnectedChains.ThisChain().IsReserve() && (reserveOut = out.tx->vout[out.i].scriptPubKey.ReserveOutValue()))
+        CCurrencyValueMap reserveOut;
+        if (ConnectedChains.ThisChain().IsReserve() && (reserveOut = out.tx->vout[out.i].scriptPubKey.ReserveOutValue()).valueMap.size())
         {
-            entry.push_back(Pair("reserveAmount", ValueFromAmount(reserveOut)));
+            entry.push_back(Pair("reserveAmount", reserveOut.ToUniValue()));
         }
         if ( out.tx->nLockTime != 0 )
         {
@@ -4415,7 +4415,7 @@ UniValue z_viewtransaction(const UniValue& params, bool fHelp)
             "      \"jsPrev\" : n,                   (numeric, sprout) the index of the JSDescription within vJoinSplit\n"
             "      \"jsOutputPrev\" : n,             (numeric, sprout) the index of the output within the JSDescription\n"
             "      \"outputPrev\" : n,               (numeric, sapling) the index of the output within the vShieldedOutput\n"
-            "      \"address\" : \"zcashaddress\",     (string) The Zcash address involved in the transaction\n"
+            "      \"address\" : \"zaddress\",       (string) The z address involved in the transaction\n"
             "      \"value\" : x.xxx                 (numeric) The amount in " + CURRENCY_UNIT + "\n"
             "      \"valueZat\" : xxxx               (numeric) The amount in zatoshis\n"
             "    }\n"
@@ -4427,7 +4427,7 @@ UniValue z_viewtransaction(const UniValue& params, bool fHelp)
             "      \"js\" : n,                       (numeric, sprout) the index of the JSDescription within vJoinSplit\n"
             "      \"jsOutput\" : n,                 (numeric, sprout) the index of the output within the JSDescription\n"
             "      \"output\" : n,                   (numeric, sapling) the index of the output within the vShieldedOutput\n"
-            "      \"address\" : \"zcashaddress\",     (string) The Zcash address involved in the transaction\n"
+            "      \"address\" : \"address\",        (string) The Verus private address involved in the transaction\n"
             "      \"recovered\" : true|false        (boolean, sapling) True if the output is not for an address in the wallet\n"
             "      \"value\" : x.xxx                 (numeric) The amount in " + CURRENCY_UNIT + "\n"
             "      \"valueZat\" : xxxx               (numeric) The amount in zatoshis\n"
@@ -4440,7 +4440,6 @@ UniValue z_viewtransaction(const UniValue& params, bool fHelp)
 
             "\nExamples:\n"
             + HelpExampleCli("z_viewtransaction", "\"1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d\"")
-            + HelpExampleCli("z_viewtransaction", "\"1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d\" true")
             + HelpExampleRpc("z_viewtransaction", "\"1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d\"")
         );
 
@@ -6387,7 +6386,7 @@ UniValue diceaddress(const UniValue& params, bool fHelp)
 UniValue faucetaddress(const UniValue& params, bool fHelp)
 {
     struct CCcontract_info *cp,C; std::vector<unsigned char> pubkey;
-    int errno;
+    int32_t errno;
     cp = CCinit(&C,EVAL_FAUCET);
     if ( fHelp || params.size() > 1 )
         throw runtime_error("faucetaddress [pubkey]\n");
@@ -7775,6 +7774,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "z_importviewingkey",       &z_importviewingkey,       true  },
     { "wallet",             "z_exportwallet",           &z_exportwallet,           true  },
     { "wallet",             "z_importwallet",           &z_importwallet,           true  },
+    { "wallet",             "z_viewtransaction",        &z_viewtransaction,        true  },
     // TODO: rearrange into another category
     { "disclosure",         "z_getpaymentdisclosure",   &z_getpaymentdisclosure,   true  },
     { "disclosure",         "z_validatepaymentdisclosure", &z_validatepaymentdisclosure, true }
