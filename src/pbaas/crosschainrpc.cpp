@@ -375,7 +375,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
 
         options = (uint32_t)uni_get_int64(find_value(obj, "options"));
 
-        idRegistrationAmount = AmountFromValue(find_value(obj, "idregistrationprice"));
+        idRegistrationAmount = AmountFromValueNoErr(find_value(obj, "idregistrationprice"));
         idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"));
 
         UniValue notaryArr = find_value(obj, "notaries");
@@ -399,12 +399,12 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
             minNotariesConfirm = uni_get_int(find_value(obj, "minnotariesconfirm"));
         }
         billingPeriod = uni_get_int(find_value(obj, "billingperiod"));
-        notarizationReward = AmountFromValue(find_value(obj, "notarizationreward"));
+        notarizationReward = AmountFromValueNoErr(find_value(obj, "notarizationreward"));
 
         startBlock = uni_get_int(find_value(obj, "startblock"));
         endBlock = uni_get_int(find_value(obj, "endblock"));
 
-        int32_t totalReserveWeight = AmountFromValue(find_value(obj, "reserveratio"));
+        int32_t totalReserveWeight = AmountFromValueNoErr(find_value(obj, "reserveratio"));
         UniValue currencyArr = find_value(obj, "currencies");
         UniValue weightArr = find_value(obj, "weights");
         UniValue conversionArr = find_value(obj, "conversions");
@@ -429,7 +429,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                 {
                     for (int i = 0; i < currencyArr.size(); i++)
                     {
-                        int32_t weight = (int32_t)AmountFromValue(weightArr[i]);
+                        int32_t weight = (int32_t)AmountFromValueNoErr(weightArr[i]);
                         if (weight <= 0)
                         {
                             nVersion = PBAAS_VERSION_INVALID;
@@ -542,7 +542,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
 
                 if (isInitialContributions)
                 {
-                    int64_t contrib = AmountFromValue(initialContributionArr[i]);
+                    int64_t contrib = AmountFromValueNoErr(initialContributionArr[i]);
                     if (IsReserve() && contrib < MIN_RESERVE_CONTRIBUTION)
                     {
                         LogPrintf("%s: all fractional reserve currencies must start with %s minimum initial contribution in each currency\n", __func__, ValueFromAmount(MIN_RESERVE_CONTRIBUTION).write().c_str());
@@ -555,14 +555,14 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
 
                 if (havePreConversions && i < preConversionsArr.size())
                 {
-                    int64_t contrib = AmountFromValue(preConversionsArr[i]);
+                    int64_t contrib = AmountFromValueNoErr(preConversionsArr[i]);
                     preconverted.push_back(contrib);
                 }
 
                 int64_t minPre = 0;
                 if (isPreconvertMin)
                 {
-                    minPre = AmountFromValue(minPreconvertArr[i]);
+                    minPre = AmountFromValueNoErr(minPreconvertArr[i]);
                     if (minPre < 0)
                     {
                         LogPrintf("%s: minimum preconversions for any currency may not be less than 0\n", __func__);
@@ -573,7 +573,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                 }
                 if (isPreconvertMax)
                 {
-                    int64_t maxPre = AmountFromValue(maxPreconvertArr[i]);
+                    int64_t maxPre = AmountFromValueNoErr(maxPreconvertArr[i]);
                     if (maxPre < 0 || maxPre < minPre)
                     {
                         LogPrintf("%s: maximum preconversions for any currency may not be less than 0 or minimum\n", __func__);
@@ -584,7 +584,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                 }
                 if (explicitConversions)
                 {
-                    int64_t conversion = AmountFromValue(conversionArr[i]);
+                    int64_t conversion = AmountFromValueNoErr(conversionArr[i]);
                     if (conversion < 0)
                     {
                         LogPrintf("%s: conversions for any currency must be greater than 0\n", __func__);
@@ -596,8 +596,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
             }
         }
 
-        launchFee = AmountFromValue(find_value(obj, "launchfee"));
-        preAllocationRatio = AmountFromValue(find_value(obj, "preallocationratio"));
+        launchFee = AmountFromValueNoErr(find_value(obj, "launchfee"));
+        preAllocationRatio = AmountFromValueNoErr(find_value(obj, "preallocationratio"));
 
         UniValue preallocationArr = find_value(obj, "preallocation");
         if (preallocationArr.isArray())
@@ -621,7 +621,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                     break;
                 }
 
-                CAmount preAllocAmount = AmountFromValue(preallocationValue[0]);
+                CAmount preAllocAmount = AmountFromValueNoErr(preallocationValue[0]);
                 if (preAllocAmount < 0)
                 {
                     LogPrintf("%s: preallocation must be greater than zero\n", __func__);

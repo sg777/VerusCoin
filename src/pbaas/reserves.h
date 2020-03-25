@@ -557,9 +557,8 @@ public:
                 nativeOut += ReserveToNative(it->second, i);
             }
         }
+        return nativeOut;
     }
-
-
 
     CAmount ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, const std::vector<CAmount> &exchangeRates) const;
     static CAmount ReserveToNativeRaw(CAmount reserveAmount, CAmount exchangeRate);

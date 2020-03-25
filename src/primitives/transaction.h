@@ -1017,6 +1017,7 @@ public:
         for (unsigned int n = 0; n < nShieldedOutputs; n++) {
             retVal[std::make_pair((int16_t)CTransactionHeader::TX_SHIELDEDOUTPUT, (int16_t)n)] = idx++;
         }
+        return retVal;
     }
 };
 

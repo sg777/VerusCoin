@@ -474,6 +474,7 @@ public:
 };
 
 extern int64_t AmountFromValue(const UniValue& value);
+extern int64_t AmountFromValueNoErr(const UniValue& value);
 extern UniValue ValueFromAmount(const int64_t& amount);
 
 #endif

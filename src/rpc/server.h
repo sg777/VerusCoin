@@ -171,6 +171,7 @@ extern std::vector<unsigned char> ParseHexO(const UniValue& o, std::string strKe
 
 extern int64_t nWalletUnlockTime;
 extern CAmount AmountFromValue(const UniValue& value);
+extern CAmount AmountFromValueNoErr(const UniValue& value);
 extern UniValue ValueFromAmount(const CAmount& amount);
 extern double GetDifficulty(const CBlockIndex* blockindex = NULL);
 extern double GetNetworkDifficulty(const CBlockIndex* blockindex = NULL);
