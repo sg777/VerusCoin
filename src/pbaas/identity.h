@@ -621,6 +621,7 @@ public:
     {
         UniValue retVal(UniValue::VOBJ);
         retVal.push_back(std::make_pair("exportingidentity", EncodeDestination(idID)));
+        return retVal;
     }
 
     ADD_SERIALIZE_METHODS;
