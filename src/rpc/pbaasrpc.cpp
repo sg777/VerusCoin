@@ -4495,7 +4495,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     std::string name = CleanName(uni_get_str(params[0]), parent, true);
 
     // if either we have an invalid name or an implied parent, that is not valid
-    if (name == "" || !parent.IsNull() || name != uni_get_str(params[0]))
+    if (name == "" || !(parent == ASSETCHAINS_CHAINID) || name != uni_get_str(params[0]))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid name for commitment. Names must not have leading or trailing spaces and must not include any of the following characters between parentheses (\\/:*?\"<>|@)");
     }
