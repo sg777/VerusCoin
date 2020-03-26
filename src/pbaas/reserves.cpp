@@ -2963,6 +2963,7 @@ CAmount CCurrencyStateNew::ReserveToNativeRaw(const CCurrencyValueMap &reserveAm
             nativeOut += ReserveToNativeRaw(it->second, exchangeRates[i]);
         }
     }
+    return nativeOut;
 }
 
 CAmount CCurrencyStateNew::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, 
@@ -2978,6 +2979,7 @@ CAmount CCurrencyStateNew::ReserveToNativeRaw(const CCurrencyValueMap &reserveAm
             nativeOut += ReserveToNativeRaw(it->second, exchangeRates[i]);
         }
     }
+    return nativeOut;
 }
 
 CAmount CCurrencyStateNew::NativeToReserveRaw(CAmount nativeAmount, CAmount exchangeRate)

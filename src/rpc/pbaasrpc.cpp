@@ -196,6 +196,7 @@ bool SetPeerNodes(const UniValue &nodes)
     {
         mapArgs["-port"] = to_string(port);
     }
+    return true;
 }
 
 // adds the chain definition for this chain and nodes as well
