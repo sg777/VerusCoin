@@ -1657,6 +1657,15 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         if (pwinner)
         {
             stakeSource = static_cast<CTransaction>(*pwinner->tx);
+
+            // arith_uint256 post;
+            // post.SetCompact(pBlock->GetVerusPOSTarget());
+            // printf("Found stake transaction\n");
+            // printf("POS hash: %s  \ntarget:   %s\n\n", 
+            //         stakeSource.GetVerusPOSHash(&(pBlock->nNonce), pwinner->i, nHeight, pastHash).GetHex().c_str(), 
+            //         ArithToUint256(post).GetHex().c_str());
+
+
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
@@ -1876,6 +1885,8 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
             
             txOut1.scriptPubKey << OP_RETURN 
                 << CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, tipindex->GetBlockHash(), dest).AsVector();
+
+            auto vchVec = CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, tipindex->GetBlockHash(), dest).AsVector();
         }
         else
         {

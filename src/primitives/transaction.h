@@ -740,6 +740,13 @@ public:
     // verus hash will be the same for a given txid, output number, block height, and blockhash of 100 blocks past
     static uint256 _GetVerusPOSHash(CPOSNonce *pNonce, const uint256 &txid, int32_t voutNum, int32_t height, const uint256 &pastHash, int64_t value)
     {
+        //printf("Nonce:%s\n txid:%s\nnvout:%d\nheight:%d\npastHash:%s\nvalue:%lu\n", 
+        //       pNonce->GetHex().c_str(),
+        //       txid.GetHex().c_str(),
+        //       voutNum,
+        //       height,
+        //       pastHash.GetHex().c_str(),
+        //       value);
         if (CVerusSolutionVector::GetVersionByHeight(height) > 0)
         {
             pNonce->SetPOSEntropy(pastHash, txid, voutNum, CPOSNonce::VERUS_V2);

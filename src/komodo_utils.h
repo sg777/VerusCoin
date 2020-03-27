@@ -2146,9 +2146,11 @@ void komodo_args(char *argv0)
             // this will get replaced from either block 1 of our chain, or a connection to VRSC
             if (ASSETCHAINS_SUPPLY)
             {
-                UniValue preAllocArr(UniValue::VARR);
-                preAllocArr.push_back(Pair("DestinationPending", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
-                obj.push_back(Pair("preallocations", preAllocArr));
+                UniValue preallocArr(UniValue::VARR);
+                UniValue preallocObj(UniValue::VOBJ);
+                preallocObj.push_back(Pair("DestinationPending", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
+                preallocArr.push_back(preallocObj);
+                obj.push_back(Pair("preallocation", preallocArr));
             }
             SetThisChain(obj);
             paramsLoaded = true;

@@ -119,6 +119,7 @@ class CStakeParams
             {
                 scr << OPRETTYPE_STAKEPARAMS2;
                 scr << ::AsVector(*this);
+                ret = std::vector<unsigned char>(scr.begin(), scr.end());
             }
             else
             {

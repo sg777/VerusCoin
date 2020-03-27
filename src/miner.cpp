@@ -140,7 +140,7 @@ extern std::string NOTARY_PUBKEY,ASSETCHAINS_OVERRIDE_PUBKEY;
 void vcalc_sha256(char deprecated[(256 >> 3) * 2 + 1],uint8_t hash[256 >> 3],uint8_t *src,int32_t len);
 
 extern uint8_t NOTARY_PUBKEY33[33],ASSETCHAINS_OVERRIDE_PUBKEY33[33];
-uint32_t Mining_start,Mining_height;
+uint32_t Mining_start, Mining_height;
 int32_t My_notaryid = -1;
 int32_t komodo_chosennotary(int32_t *notaryidp,int32_t height,uint8_t *pubkey33,uint32_t timestamp);
 int32_t komodo_pax_opreturn(int32_t height,uint8_t *opret,int32_t maxsize);
@@ -682,6 +682,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
 
         int64_t pbaasTransparentIn = 0;
         int64_t pbaasTransparentOut = 0;
+        //extern int64_t ASSETCHAINS_SUPPLY;
+        //printf("%lu premine\n", ASSETCHAINS_SUPPLY);
         int64_t blockSubsidy = GetBlockSubsidy(nHeight, consensusParams);
 
         uint160 thisChainID = ConnectedChains.ThisChain().GetID();
@@ -1119,6 +1121,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         }
         else
         {
+            CAmount blockOnePremine = thisChain.GetTotalPreallocation();
+            SetBlockOnePremine(blockOnePremine);
+            totalEmission = GetBlockSubsidy(nHeight, consensusParams);
+            blockSubsidy = totalEmission;
             currencyState.UpdateWithEmission(totalEmission);
         }
 
@@ -2252,18 +2258,22 @@ void static VerusStaker(CWallet *pwallet)
 
             // try to stake a block
             CBlockTemplate *ptr = NULL;
-            if (Mining_height > VERUS_MIN_STAKEAGE)
-                ptr = CreateNewBlockWithKey(reservekey, Mining_height, 0, true);
+
+            // get height locally for consistent reporting
+            int32_t newHeight = Mining_height;
+
+            if (newHeight > VERUS_MIN_STAKEAGE)
+                ptr = CreateNewBlockWithKey(reservekey, newHeight, 0, true);
 
             // TODO - putting this output here tends to help mitigate announcing a staking height earlier than
             // announcing the last block win when we start staking before a block's acceptance has been
             // acknowledged by the mining thread - a better solution may be to put the output on the submission
             // thread.
-            if ( ptr == 0 && Mining_height != lastStakingHeight )
+            if ( ptr == 0 && newHeight != lastStakingHeight )
             {
-                printf("Staking height %d for %s\n", Mining_height, ASSETCHAINS_SYMBOL);
+                printf("Staking height %d for %s\n", newHeight, ASSETCHAINS_SYMBOL);
             }
-            lastStakingHeight = Mining_height;
+            lastStakingHeight = newHeight;
 
             if ( ptr == 0 )
             {
@@ -2328,15 +2338,21 @@ void static VerusStaker(CWallet *pwallet)
             {
                 LogPrintf("Using %s algorithm:\n", ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]);
                 LogPrintf("Staked block found  \n  hash: %s  \ntarget: %s\n", pblock->GetHash().GetHex(), hashTarget.GetHex());
-                printf("Found block %d \n", Mining_height );
+                printf("Found block %d \n", newHeight);
                 printf("staking reward %.8f %s!\n", (double)subsidy / (double)COIN, ASSETCHAINS_SYMBOL);
                 arith_uint256 post;
                 post.SetCompact(pblock->GetVerusPOSTarget());
-                pindexPrev = get_chainactive(Mining_height - 100);
+
                 CTransaction &sTx = pblock->vtx[pblock->vtx.size()-1];
                 printf("POS hash: %s  \ntarget:   %s\n", 
-                    CTransaction::_GetVerusPOSHash(&(pblock->nNonce), sTx.vin[0].prevout.hash, sTx.vin[0].prevout.n, Mining_height, chainActive.GetVerusEntropyHash(Mining_height - 100), sTx.vout[0].nValue).GetHex().c_str(), ArithToUint256(post).GetHex().c_str());
-                if (unlockTime > Mining_height && subsidy >= ASSETCHAINS_TIMELOCKGTE)
+                    CTransaction::_GetVerusPOSHash(&(pblock->nNonce), 
+                                                     sTx.vin[0].prevout.hash, 
+                                                     sTx.vin[0].prevout.n, 
+                                                     newHeight, 
+                                                     chainActive.GetVerusEntropyHash(Mining_height), 
+                                                     sTx.vout[0].nValue).GetHex().c_str(), 
+                                                     ArithToUint256(post).GetHex().c_str());
+                if (unlockTime > newHeight && subsidy >= ASSETCHAINS_TIMELOCKGTE)
                     printf("- timelocked until block %i\n", unlockTime);
                 else
                     printf("\n");

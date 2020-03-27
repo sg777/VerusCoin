@@ -614,7 +614,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                 }
 
                 CTxDestination preallocDest = DecodeDestination(preallocationKey[0]);
-                if (preallocDest.which() != COptCCParams::ADDRTYPE_ID)
+
+                if (preallocDest.which() != COptCCParams::ADDRTYPE_INVALID && preallocDest.which() != COptCCParams::ADDRTYPE_ID)
                 {
                     LogPrintf("%s: preallocation must be allocated to IDs\n", __func__);
                     nVersion = PBAAS_VERSION_INVALID;
