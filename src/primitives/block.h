@@ -396,8 +396,9 @@ class CNetworkBlockHeader : public CBlockHeader
 
 // for the MMRs for each block
 class CBlock;
-typedef CMerkleMountainRange<TransactionMMRNode, CChunkedLayer<TransactionMMRNode, 2>, COverlayNodeLayer<TransactionMMRNode, CBlock>> BlockMMRange;
-typedef CMerkleMountainView<TransactionMMRNode, CChunkedLayer<TransactionMMRNode, 2>, COverlayNodeLayer<TransactionMMRNode, CBlock>> BlockMMView;
+typedef COverlayNodeLayer<TransactionMMRNode, CBlock> BlockMMRNodeLayer;
+typedef CMerkleMountainRange<TransactionMMRNode, CChunkedLayer<TransactionMMRNode, 2>, BlockMMRNodeLayer> BlockMMRange;
+typedef CMerkleMountainView<TransactionMMRNode, CChunkedLayer<TransactionMMRNode, 2>, BlockMMRNodeLayer> BlockMMView;
 
 class CBlock : public CBlockHeader
 {
@@ -453,8 +454,8 @@ public:
     // tree (a duplication of transactions in the block leading to an identical
     // merkle root).
     uint256 BuildMerkleTree(bool* mutated = NULL) const;
-    void BuildBlockMMRTree(BlockMMRange &mmRange) const;
-    void GetBlockMMRTree(BlockMMRange &mmRange) const;
+    BlockMMRange BuildBlockMMRTree() const;
+    BlockMMRange GetBlockMMRTree() const;
 
     // get transaction node from the block
     TransactionMMRNode GetMMRNode(int index) const;

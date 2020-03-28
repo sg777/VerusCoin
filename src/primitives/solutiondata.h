@@ -20,7 +20,7 @@ class CActivationHeight
         enum {
             MAX_HEIGHT = INT_MAX,
             DEFAULT_UPGRADE_HEIGHT = MAX_HEIGHT,
-            NUM_VERSIONS = 5,
+            NUM_VERSIONS = 6,
             SOLUTION_VERUSV1 = 0,
             SOLUTION_VERUSV2 = 1,
             SOLUTION_VERUSV3 = 2,
@@ -32,7 +32,7 @@ class CActivationHeight
             ACTIVATE_IDENTITY = SOLUTION_VERUSV4,
             ACTIVATE_VERUSHASH2_1 = SOLUTION_VERUSV4,
             ACTIVATE_EXTENDEDSTAKE = SOLUTION_VERUSV5,
-            ACTIVATE_PBAAS = SOLUTION_VERUSV6
+            ACTIVATE_PBAAS = SOLUTION_VERUSV5
         };
         bool active;
         int32_t heights[NUM_VERSIONS];

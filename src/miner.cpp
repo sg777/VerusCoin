@@ -176,8 +176,7 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
         if (buildMerkle)
         {
             pblock->hashMerkleRoot = pblock->BuildMerkleTree();
-            BlockMMRange mmRange;
-            pblock->BuildBlockMMRTree(mmRange);
+            BlockMMRange mmRange(pblock->BuildBlockMMRTree());
             BlockMMView mmView(mmRange);
             pblock->SetBlockMMRRoot(mmView.GetRoot());
             pblock->AddUpdatePBaaSHeader();

@@ -1721,8 +1721,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                     return false;
                 }
 
-                BlockMMRange blockMMR;
-                block.GetBlockMMRTree(blockMMR);
+                BlockMMRange blockMMR(block.GetBlockMMRTree());
                 BlockMMView blockView(blockMMR);
 
                 // prove the tx up to the MMR root, which also contains the block hash

@@ -773,6 +773,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef,
 
 void CheckPBaaSAPIsValid()
 {
+    printf("Solution version running: %d\n\n", CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()));
     if (!chainActive.LastTip() ||
         CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
     {

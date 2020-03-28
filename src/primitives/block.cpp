@@ -486,7 +486,7 @@ TransactionMMRNode CBlock::GetMMRNode(int index) const
 // This creates the MMR tree for the block, which replaces the merkle tree used today
 // while enabling a proof of the transaction hash as well as parts of the transaction
 // such as inputs, outputs, shielded spends and outputs, transaction header info, etc.
-void CBlock::BuildBlockMMRTree(BlockMMRange &mmRange) const
+BlockMMRange CBlock::BuildBlockMMRTree() const
 {
     // build a tree of transactions, each having both the transaction ID and root of the transaction
     // map's MMR. that enables any part of a transaction in the blockchain to be proven outside the
@@ -494,18 +494,19 @@ void CBlock::BuildBlockMMRTree(BlockMMRange &mmRange) const
     // for now, we will duplicate the merkle tree and enable proof of an element within a transaction using the MMR.
     // at some point, we should replace the txid with a fully hashed transaction tree and deprecate standard
     // txids altogether.
-    mmRange = BlockMMRange(COverlayNodeLayer<TransactionMMRNode, CBlock>(*this));
+    BlockMMRange mmRange(BlockMMRNodeLayer(*this));
     for (auto &tx : vtx)
     {
         mmRange.Add(tx.GetTransactionMMRNode());
     }
+    return mmRange;
 }
 
 
-void CBlock::GetBlockMMRTree(BlockMMRange &mmRange) const
+BlockMMRange CBlock::GetBlockMMRTree() const
 {
     // no caching yet, the anticipation of which is why this is separate from build
-    BuildBlockMMRTree(mmRange);
+    return BuildBlockMMRTree();
 }
 
 
@@ -516,8 +517,7 @@ CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &
     if (IsPBaaS())
     {
         // make a partial transaction proof for the export opret only
-        BlockMMRange blockMMR;
-        BuildBlockMMRTree(blockMMR);
+        BlockMMRange blockMMR(BuildBlockMMRTree());
         BlockMMView blockMMV(blockMMR);
         CMMRProof txProof;
 
