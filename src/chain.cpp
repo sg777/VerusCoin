@@ -124,7 +124,8 @@ uint256 CChain::GetVerusEntropyHash(int forHeight, int *pPOSheight, int *pPOWhei
         return vChain[height]->GetVerusEntropyHashComponent();
     }
 
-    for (int i = 0; i < 10; i++)
+    int i;
+    for (i = 0; i < 10; i++)
     {
         if (posh == -1 && vChain[height - i]->IsVerusPOSBlock())
         {
@@ -134,6 +135,11 @@ uint256 CChain::GetVerusEntropyHash(int forHeight, int *pPOSheight, int *pPOWhei
         {
             powh = height - i;
         }
+    }
+    // only pow, set alt
+    if (i == 10)
+    {
+        alth = height - i;
     }
 
     CVerusHashV2Writer hashWriter = CVerusHashV2Writer(SER_GETHASH, 0);

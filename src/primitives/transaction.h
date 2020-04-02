@@ -517,9 +517,8 @@ static_assert(SAPLING_VERSION_GROUP_ID != 0, "version group id must be non-zero 
 
 struct CMutableTransaction;
 
-typedef CMMRNode<CBLAKE2bWriter> TransactionMMRNode;
-typedef CMerkleMountainRange<TransactionMMRNode, CChunkedLayer<TransactionMMRNode, 3>> TransactionMMRange;
-typedef CMerkleMountainView<TransactionMMRNode, CChunkedLayer<TransactionMMRNode, 3>> TransactionMMView;
+typedef CMerkleMountainRange<CDefaultMMRNode, CChunkedLayer<CDefaultMMRNode, 2>> TransactionMMRange;
+typedef CMerkleMountainView<CDefaultMMRNode, CChunkedLayer<CDefaultMMRNode, 2>> TransactionMMView;
 
 /** The basic transaction that is broadcasted on the network and contained in
  * blocks.  A transaction can contain multiple inputs and outputs.
@@ -674,7 +673,7 @@ public:
 
     // returns an MMR node for the block merkle mountain range
     TransactionMMRange GetTransactionMMR() const;
-    TransactionMMRNode GetTransactionMMRNode() const;
+    CDefaultMMRNode GetDefaultMMRNode() const;
     uint256 GetMMRRoot() const;
 
     /*
@@ -1034,57 +1033,7 @@ public:
     TransactionMMRange transactionMMR;              // this enables us to generate a proof of any sub-element in the transaction that associates with the txid
     std::map<std::pair<int16_t, int16_t>, int32_t> elementHashMap;  // <type,index> for idx num lookup from the element type and sub-index to global index
 
-    CTransactionMap(const CTransaction &tx)
-    {
-        // hash header information and put in MMR and map, followed by all elements in order
-        int32_t idx = 0;
-        CTransactionHeader txHeader(tx);
-
-        auto hw = TransactionMMRNode::GetHashWriter();
-        hw << txHeader;
-        transactionMMR.Add(TransactionMMRNode(hw.GetHash()));
-        elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_HEADER, (int16_t)0)] = idx++;
-
-        for (unsigned int n = 0; n < txHeader.nVins; n++) {
-            hw = TransactionMMRNode::GetHashWriter();
-            hw << tx.vin[n].prevout;
-            hw << tx.vin[n].nSequence;
-            transactionMMR.Add(TransactionMMRNode(hw.GetHash()));
-            elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_PREVOUTSEQ, (int16_t)n)] = idx++;
-        }
-
-        for (unsigned int n = 0; n < txHeader.nVins; n++) {
-            hw = TransactionMMRNode::GetHashWriter();
-            hw << tx.vin[n];
-            transactionMMR.Add(TransactionMMRNode(hw.GetHash()));
-            elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_SIGNATURE, (int16_t)n)] = idx++;
-        }
-
-        for (unsigned int n = 0; n < txHeader.nVouts; n++) {
-            hw = TransactionMMRNode::GetHashWriter();
-            hw << tx.vout[n];
-            transactionMMR.Add(TransactionMMRNode(hw.GetHash()));
-            elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_OUTPUT, (int16_t)n)] = idx++;
-        }
-
-        for (unsigned int n = 0; n < txHeader.nShieldedSpends; n++) {
-            hw = TransactionMMRNode::GetHashWriter();
-            hw << tx.vShieldedSpend[n].cv;
-            hw << tx.vShieldedSpend[n].anchor;
-            hw << tx.vShieldedSpend[n].nullifier;
-            hw << tx.vShieldedSpend[n].rk;
-            hw << tx.vShieldedSpend[n].zkproof;
-            transactionMMR.Add(TransactionMMRNode(hw.GetHash()));
-            elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_SHIELDEDSPEND, (int16_t)n)] = idx++;
-        }
-
-        for (unsigned int n = 0; n < txHeader.nShieldedOutputs; n++) {
-            hw = TransactionMMRNode::GetHashWriter();
-            hw << tx.vShieldedOutput[n];
-            transactionMMR.Add(TransactionMMRNode(hw.GetHash()));
-            elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_SHIELDEDOUTPUT, (int16_t)n)] = idx++;
-        }
-    }
+    CTransactionMap(const CTransaction &tx);
 
     // returns -1 if element is not found
     int32_t GetElementIndex(int16_t elementType, int16_t indexInType)
@@ -1128,14 +1077,14 @@ public:
         {
             case CTransactionHeader::TX_FULL:
             {
-                elVchObj == ::AsVector(tx);
+                elVchObj = ::AsVector(tx);
                 break;
             }
             case CTransactionHeader::TX_HEADER:
             {
                 if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
                 {
-                    elVchObj == ::AsVector(CTransactionHeader(tx));
+                    elVchObj = ::AsVector(CTransactionHeader(tx));
                 }
                 break;
             }
@@ -1145,7 +1094,7 @@ public:
                 {
                     CTxIn prevOutSeqOnly = tx.vin[subIndex];
                     prevOutSeqOnly.scriptSig = CScript();
-                    elVchObj == ::AsVector(prevOutSeqOnly);
+                    elVchObj = ::AsVector(prevOutSeqOnly);
                 }
                 break;
             }
@@ -1153,7 +1102,7 @@ public:
             {
                 if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
                 {
-                    elVchObj == ::AsVector(tx.vin[subIndex]);
+                    elVchObj = ::AsVector(tx.vin[subIndex]);
                 }
                 break;
             }
@@ -1161,7 +1110,7 @@ public:
             {
                 if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
                 {
-                    elVchObj == ::AsVector(tx.vout[subIndex]);
+                    elVchObj = ::AsVector(tx.vout[subIndex]);
                 }
                 break;
             }
@@ -1169,7 +1118,7 @@ public:
             {
                 if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
                 {
-                    elVchObj == ::AsVector(tx.vShieldedSpend[subIndex]);
+                    elVchObj = ::AsVector(tx.vShieldedSpend[subIndex]);
                 }
                 break;
             }
@@ -1177,7 +1126,7 @@ public:
             {
                 if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
                 {
-                    elVchObj == ::AsVector(tx.vShieldedOutput[subIndex]);
+                    elVchObj = ::AsVector(tx.vShieldedOutput[subIndex]);
                 }
                 break;
             }
@@ -1214,7 +1163,7 @@ public:
         uint256 hash;
         if (Rehydrate(txPart))
         {
-            auto hw = TransactionMMRNode::GetHashWriter();
+            auto hw = CDefaultMMRNode::GetHashWriter();
             hw << txPart;
             hash = elProof.CheckProof(hw.GetHash());
         }
@@ -1252,7 +1201,7 @@ public:
                 CTxIn txPart;
                 if (Rehydrate(txPart))
                 {
-                    auto hw = TransactionMMRNode::GetHashWriter();
+                    auto hw = CDefaultMMRNode::GetHashWriter();
                     hw << txPart.prevout;
                     hw << txPart.nSequence;
                     return elProof.CheckProof(hw.GetHash());
@@ -1276,7 +1225,7 @@ public:
                 SpendDescription txPart;
                 if (Rehydrate(txPart))
                 {
-                    auto hw = TransactionMMRNode::GetHashWriter();
+                    auto hw = CDefaultMMRNode::GetHashWriter();
                     hw << txPart.cv;
                     hw << txPart.anchor;
                     hw << txPart.nullifier;

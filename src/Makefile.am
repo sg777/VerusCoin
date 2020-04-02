@@ -530,6 +530,7 @@ libbitcoin_common_a_SOURCES = \
   keystore.cpp \
   netbase.cpp \
   metrics.cpp \
+  mmr.cpp \
   primitives/block.cpp \
   primitives/transaction.cpp \
   primitives/nonce.cpp \

@@ -2759,6 +2759,7 @@ namespace Consensus {
                 // coinbase protection beyond forcing the private address pool to be used at least a little by everyone, it does increase the size of the blockchain
                 // and often reduces privacy by mixing multiple coinbase payment addresses
                 if (CConstVerusSolutionVector::GetVersionByHeight(coins->nHeight) < CActivationHeight::SOLUTION_VERUSV4 &&
+                    CConstVerusSolutionVector::GetVersionByHeight(nSpendHeight) < CActivationHeight::SOLUTION_VERUSV5 &&
                     fCoinbaseEnforcedProtectionEnabled &&
                     consensusParams.fCoinbaseMustBeProtected &&
                     !(tx.vout.size() == 0 || (tx.vout.size() == 1 && tx.vout[0].nValue == 0)) &&

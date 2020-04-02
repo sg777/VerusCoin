@@ -335,7 +335,7 @@ class CConstVerusSolutionVector
         // returns 0 if not PBaaS, 1 if PBaaS PoW, -1 if PBaaS PoS
         static int32_t IsPBaaS(const std::vector<unsigned char> &vch)
         {
-            if (Version(vch) == CActivationHeight::ACTIVATE_PBAAS)
+            if (Version(vch) >= CActivationHeight::ACTIVATE_PBAAS)
             {
                 return  (DescriptorBits(vch) & SOLUTION_POW) ? 1 : -1;
             }

@@ -216,6 +216,76 @@ uint256 CMutableTransaction::GetHash() const
     return SerializeHash(*this);
 }
 
+CTransactionMap::CTransactionMap(const CTransaction &tx)
+{
+    // hash header information and put in MMR and map, followed by all elements in order
+    int32_t idx = 0;
+    CTransactionHeader txHeader(tx);
+
+    {
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        hw << txHeader;
+        transactionMMR.Add(CDefaultMMRNode(hw.GetHash()));
+        elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_HEADER, (int16_t)0)] = idx++;
+    }
+
+    int testSize = elementHashMap.size();
+    if (!testSize)
+    {
+        printf("testing mode on %d\n", testSize);
+
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        hw << txHeader;
+        transactionMMR.Add(CDefaultMMRNode(hw.GetHash()));
+        elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_HEADER, (int16_t)1)] = idx++;
+
+        hw = CDefaultMMRNode::GetHashWriter();
+        hw << txHeader;
+        transactionMMR.Add(CDefaultMMRNode(hw.GetHash()));
+        elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_HEADER, (int16_t)2)] = idx++;
+    }
+
+    for (unsigned int n = 0; n < txHeader.nVins; n++) {
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        hw << tx.vin[n].prevout;
+        hw << tx.vin[n].nSequence;
+        transactionMMR.Add(CDefaultMMRNode(hw.GetHash()));
+        elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_PREVOUTSEQ, (int16_t)n)] = idx++;
+    }
+
+    for (unsigned int n = 0; n < txHeader.nVins; n++) {
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        hw << tx.vin[n];
+        transactionMMR.Add(CDefaultMMRNode(hw.GetHash()));
+        elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_SIGNATURE, (int16_t)n)] = idx++;
+    }
+
+    for (unsigned int n = 0; n < txHeader.nVouts; n++) {
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        hw << tx.vout[n];
+        transactionMMR.Add(CDefaultMMRNode(hw.GetHash()));
+        elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_OUTPUT, (int16_t)n)] = idx++;
+    }
+
+    for (unsigned int n = 0; n < txHeader.nShieldedSpends; n++) {
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        hw << tx.vShieldedSpend[n].cv;
+        hw << tx.vShieldedSpend[n].anchor;
+        hw << tx.vShieldedSpend[n].nullifier;
+        hw << tx.vShieldedSpend[n].rk;
+        hw << tx.vShieldedSpend[n].zkproof;
+        transactionMMR.Add(CDefaultMMRNode(hw.GetHash()));
+        elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_SHIELDEDSPEND, (int16_t)n)] = idx++;
+    }
+
+    for (unsigned int n = 0; n < txHeader.nShieldedOutputs; n++) {
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        hw << tx.vShieldedOutput[n];
+        transactionMMR.Add(CDefaultMMRNode(hw.GetHash()));
+        elementHashMap[std::make_pair((int16_t)CTransactionHeader::TX_SHIELDEDOUTPUT, (int16_t)n)] = idx++;
+    }
+}
+
 void CTransaction::UpdateHash() const
 {
     *const_cast<uint256*>(&hash) = SerializeHash(*this);
@@ -282,9 +352,9 @@ uint256 CTransaction::GetMMRRoot() const
 }
 
 
-TransactionMMRNode CTransaction::GetTransactionMMRNode() const
+CDefaultMMRNode CTransaction::GetDefaultMMRNode() const
 {
-    return TransactionMMRNode(GetMMRRoot());
+    return CDefaultMMRNode(GetMMRRoot());
 }
 
 

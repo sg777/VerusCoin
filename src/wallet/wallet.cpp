@@ -1596,18 +1596,31 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         return false;
     }
 
-    if (pastBlockIndex = komodo_chainactive(nHeight - 100))
+    uint32_t solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
+
+    // TODO: remove this unnecessary code to test creating a root at this stage
+    if (pwinner)
     {
-        // we get these sources of entropy to prove all sources in the header
-        int posHeight = -1, powHeight = -1, altHeight = -1;
-        uint256 pastHash;
-        {
-            LOCK(cs_main);
-            pastHash = chainActive.GetVerusEntropyHash(nHeight, &posHeight, &powHeight, &altHeight);
-        }
+        uint256 txRootTmp = pwinner->tx->GetMMRRoot();
+        printf("%s\n", txRootTmp.GetHex().c_str());
+    }
+    // END REMOVE
+
+    // we get these sources of entropy to prove all sources in the header
+    int posHeight = -1, powHeight = -1, altHeight = -1;
+    uint256 pastHash;
+    {
+        LOCK(cs_main);
+        pastHash = chainActive.GetVerusEntropyHash(nHeight, &posHeight, &powHeight, &altHeight);
+    }
+
+    int secondBlockHeight = altHeight != -1 ? altHeight : (posHeight > powHeight ? powHeight : posHeight);
+    int proveBlockHeight = posHeight > secondBlockHeight ? posHeight : powHeight;
+
+    if (proveBlockHeight != -1)
+    {
         CPOSNonce curNonce;
         uint32_t srcIndex;
-        uint32_t solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
 
         CCoinsViewCache view(pcoinsTip);
         CMutableTransaction checkStakeTx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
@@ -1642,7 +1655,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                         //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
                         pwinner = &txout;
                         curNonce = pBlock->nNonce;
-                        srcIndex = (nHeight - txout.nDepth) - 1;
+                        srcIndex = nHeight - txout.nDepth;
                     }
                     else
                     {
@@ -1691,25 +1704,13 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 // get map and MMR for stake source transaction
                 CTransactionMap txMap(stakeSource);
                 TransactionMMView txView(txMap.transactionMMR);
+                uint256 txRoot = txView.GetRoot();
+                std::vector<CTransactionComponentProof> txProofVec;
 
-                // store the header, which lets us reconstruct the transaction element hash map and calculate indexes for proof verification
-                headerStream << CTransactionHeader(stakeSource);
-                CMMRProof headerProof;
-                if (!txView.GetProof(headerProof, txMap.elementHashMap[make_pair(CTransactionHeader::TX_HEADER, 0)]))
-                {
-                    LogPrintf("%s: ERROR: could not create transaction header MMR proof\n", __func__);
-                    return false;
-                }
-                headerStream << headerProof;
+                CMMRProof txRootProof;
 
-                headerStream << stakeSource.vout[pwinner->i];
-                CMMRProof stakeOutputProof;
-                if (!txView.GetProof(stakeOutputProof, txMap.elementHashMap[make_pair(CTransactionHeader::TX_OUTPUT, pwinner->i)]))
-                {
-                    LogPrintf("%s: ERROR: could not create transaction output MMR proof\n", __func__);
-                    return false;
-                }
-                headerStream << stakeOutputProof;
+                txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_HEADER, 0));
+                txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_OUTPUT, pwinner->i));
 
                 // now, both the header and stake output are dependent on the transaction MMR root being provable up
                 // through the block MMR, and since we don't cache the new MMR proof for transactions yet, we need the block to create the proof.
@@ -1717,54 +1718,60 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 CBlock block;
                 if (!ReadBlockFromDisk(block, chainActive[srcIndex], Params().GetConsensus(), false))
                 {
-                    LogPrintf("%s: ERROR: could not read block number %d from disk\n", __func__, srcIndex);
+                    LogPrintf("%s: ERROR: could not read block number  %u from disk\n", __func__, srcIndex);
                     return false;
                 }
 
                 BlockMMRange blockMMR(block.GetBlockMMRTree());
                 BlockMMView blockView(blockMMR);
 
+                int txIndexPos;
+                for (txIndexPos = 0; txIndexPos < blockMMR.size(); txIndexPos++)
+                {
+                    uint256 txRootHashFromMMR = blockMMR[txIndexPos].hash;
+                    if (txRootHashFromMMR == txRoot)
+                    {
+                        //printf("tx with root %s found in block\n", txRootHashFromMMR.GetHex().c_str());
+                        break;
+                    }
+                }
+                if (txIndexPos == blockMMR.size())
+                {
+                    LogPrintf("%s: ERROR: could not find source transaction root in block %u\n", __func__, srcIndex);
+                    return false;
+                }
+
                 // prove the tx up to the MMR root, which also contains the block hash
-                CMMRProof txProof;
-                if (!blockView.GetProof(txProof, winnerWtx.nIndex))
+                if (!blockView.GetProof(txRootProof, txIndexPos))
                 {
-                    LogPrintf("%s: ERROR: could not create proof of source transaction in block\n", __func__, srcIndex);
+                    LogPrintf("%s: ERROR: could not create proof of source transaction in block %u\n", __func__, srcIndex);
                     return false;
                 }
 
-                // add the Merkle proof bridge to the MMR
-                txProof << chainActive[srcIndex]->MMRProofBridge();
+                mmrView.resize(proveBlockHeight + 1);
+                chainActive.GetMerkleProof(mmrView, txRootProof, srcIndex);
 
-                // use the block that we got entropy hash from as the validating MMR height
-                // which immediately provides all but unspent proof for PoS block
-                mmrView.resize(srcIndex);
-                if (!mmrView.GetProof(txProof, srcIndex))
+                headerStream << CPartialTransactionProof(txRootProof, txProofVec);
+
+                CMMRProof blockHeaderProof1;
+                if (!chainActive.GetBlockProof(mmrView, blockHeaderProof1, proveBlockHeight))
                 {
-                    LogPrintf("%s: ERROR: could not create proof of the source transaction's block\n", __func__, srcIndex);
+                    LogPrintf("%s: ERROR: could not create block proof for block %u\n", __func__, srcIndex);
                     return false;
                 }
+                headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[proveBlockHeight]->GetBlockHeader());
 
-                // store full MMR proof of transaction header and output up to chain MMR at height of source index
-                headerStream << txProof;
-
-                // prove the block hash from 100 blocks ago with its coincident MMR
-                // it must hash to the same value with a different path, providing both a consistency check and
-                // an asserted MMR root for the n - 100 block if matched
-                mmrView.resize(srcIndex);
-                CMMRProof blockProof;
-                if (!chainActive.GetBlockProof(mmrView, blockProof, pastBlockIndex->GetHeight()))
+                CMMRProof blockHeaderProof2;
+                if (!chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight))
                 {
-                    LogPrintf("%s: ERROR: could not create proof entropy source block\n", __func__, srcIndex);
+                    LogPrintf("%s: ERROR: could not create block proof for second entropy source block %u\n", __func__, srcIndex);
                     return false;
                 }
-
-                // proof of the block hash from block we used for entropy, this must prove the MMR from block height - 100
-                headerStream << pastBlockIndex->GetBlockHash();
-                headerStream << blockProof;
+                headerStream << CBlockHeaderProof(blockHeaderProof2, chainActive[secondBlockHeight]->GetBlockHeader());
 
                 std::vector<unsigned char> stx(headerStream.begin(), headerStream.end());
 
-                printf("\nFound Stake transaction... all proof serialized size == %lu\n", stx.size());
+                // printf("\nFound Stake transaction... all proof serialized size == %lu\n", stx.size());
 
                 CVerusSolutionVector(pBlock->nSolution).ResizeExtraData(stx.size());
 
@@ -4656,7 +4663,11 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
  
             uint32_t coinHeight = nHeight - nDepth;
             // even if we should include coinbases, we may opt to exclude protected coinbases, which must only be included when shielding
-            if (isCoinbase && !fIncludeProtectedCoinbase && Params().GetConsensus().fCoinbaseMustBeProtected && (CConstVerusSolutionVector::GetVersionByHeight(coinHeight) < CActivationHeight::SOLUTION_VERUSV4))
+            if (isCoinbase && 
+                !fIncludeProtectedCoinbase && 
+                Params().GetConsensus().fCoinbaseMustBeProtected && 
+                CConstVerusSolutionVector::GetVersionByHeight(coinHeight) < CActivationHeight::SOLUTION_VERUSV4 &&
+                CConstVerusSolutionVector::GetVersionByHeight(nHeight) < CActivationHeight::SOLUTION_VERUSV5)
                 continue;
 
             for (int i = 0; i < pcoin->vout.size(); i++)

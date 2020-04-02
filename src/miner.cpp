@@ -176,6 +176,7 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
         if (buildMerkle)
         {
             pblock->hashMerkleRoot = pblock->BuildMerkleTree();
+            pblock->SetPrevMMRRoot(ChainMerkleMountainView(chainActive.GetMMR(), pindexPrev->GetHeight()).GetRoot());
             BlockMMRange mmRange(pblock->BuildBlockMMRTree());
             BlockMMView mmView(mmRange);
             pblock->SetBlockMMRRoot(mmView.GetRoot());
@@ -2067,7 +2068,7 @@ static bool ProcessBlockFound(CBlock* pblock)
     int32_t height = chainActive.LastTip()->GetHeight()+1;
     LogPrintf("%s\n", pblock->ToString());
     LogPrintf("generated %s height.%d\n", FormatMoney(pblock->vtx[0].vout[0].nValue), height);
-    
+
     // Found a solution
     {
         if (pblock->hashPrevBlock != chainActive.LastTip()->GetBlockHash())
@@ -2607,15 +2608,6 @@ void static BitcoinMiner_noeq()
                 }
                 MilliSleep(100);
                 continue;
-            }
-
-            if ( ASSETCHAINS_STAKED != 0 )
-            {
-                int32_t percPoS,z;
-                hashTarget = komodo_PoWtarget(&percPoS,hashTarget,Mining_height,ASSETCHAINS_STAKED);
-                for (z=31; z>=0; z--)
-                    fprintf(stderr,"%02x",((uint8_t *)&hashTarget)[z]);
-                fprintf(stderr," PoW for staked coin PoS %d%% vs target %d%%\n",percPoS,(int32_t)ASSETCHAINS_STAKED);
             }
 
             uint64_t count;

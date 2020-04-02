@@ -321,135 +321,7 @@ public:
     }
 
     // return the index that would be generated for an mmv of the indicated size at the specified position
-    static uint64_t GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int extrahashes)
-    {
-        uint64_t retIndex = 0;
-        int bitPos = 0;
-        std::vector<uint64_t> Sizes;
-        std::vector<unsigned char> PeakIndexes;
-        std::vector<uint64_t> MerkleSizes;
-
-        // printf("%s: pos: %lu, mmvSize: %lu\n", __func__, pos, mmvSize);
-
-        // find a path from the indicated position to the root in the current view
-        if (pos < mmvSize)
-        {
-            Sizes.push_back(mmvSize);
-            mmvSize >>= 1;
-
-            while (mmvSize)
-            {
-                Sizes.push_back(mmvSize);
-                mmvSize >>= 1;
-            }
-
-            for (uint32_t ht = 0; ht < Sizes.size(); ht++)
-            {
-                // if we're at the top or the layer above us is smaller than 1/2 the size of this layer, rounded up, we are a peak
-                if (ht == ((uint32_t)Sizes.size() - 1) || (Sizes[ht] & 1))
-                {
-                    PeakIndexes.insert(PeakIndexes.begin(), ht);
-                }
-            }
-
-            uint64_t layerNum = 0, layerSize = PeakIndexes.size();
-            // with an odd number of elements below, the edge passes through
-            for (bool passThrough = (layerSize & 1); layerNum == 0 || layerSize > 1; passThrough = (layerSize & 1), layerNum++)
-            {
-                layerSize = (layerSize >> 1) + passThrough;
-                if (layerSize)
-                {
-                    MerkleSizes.push_back(layerSize);
-                }
-            }
-
-            // add extra hashes for a node on the right
-            for (int i = 0; i < extrahashes; i++)
-            {
-                // move to the next position
-                bitPos++;
-            }
-
-            uint64_t p = pos;
-            for (int l = 0; l < Sizes.size(); l++)
-            {
-                // printf("GetProofBits - Bits.size: %lu\n", Bits.size());
-
-                if (p & 1)
-                {
-                    retIndex |= ((uint64_t)1) << bitPos;
-                    p >>= 1;
-
-                    for (int i = 0; i < extrahashes; i++)
-                    {
-                        bitPos++;
-                    }
-                }
-                else
-                {
-                    // make sure there is one after us to hash with or we are a peak and should be hashed with the rest of the peaks
-                    if (Sizes[l] > (p + 1))
-                    {
-                        bitPos++;
-                        p >>= 1;
-
-                        for (int i = 0; i < extrahashes; i++)
-                        {
-                            bitPos++;
-                        }
-                    }
-                    else
-                    {
-                        for (p = 0; p < PeakIndexes.size(); p++)
-                        {
-                            if (PeakIndexes[p] == l)
-                            {
-                                break;
-                            }
-                        }
-
-                        // p is the position in the merkle tree of peaks
-                        assert(p < PeakIndexes.size());
-
-                        // move up to the top, which is always a peak of size 1
-                        uint64_t layerNum;
-                        uint64_t layerSize;
-                        for (layerNum = -1, layerSize = PeakIndexes.size(); layerNum == -1 || layerSize > 1; layerSize = MerkleSizes[++layerNum])
-                        {
-                            // printf("GetProofBits - Bits.size: %lu\n", Bits.size());
-                            if (p < (layerSize - 1) || (p & 1))
-                            {
-                                if (p & 1)
-                                {
-                                    // hash with the one before us
-                                    retIndex |= ((uint64_t)1) << bitPos;
-
-                                    for (int i = 0; i < extrahashes; i++)
-                                    {
-                                        bitPos++;
-                                    }
-                                }
-                                else
-                                {
-                                    // hash with the one in front of us
-                                    bitPos++;
-
-                                    for (int i = 0; i < extrahashes; i++)
-                                    {
-                                        bitPos++;
-                                    }
-                                }
-                            }
-                            p >>= 1;
-                        }
-                        // finished
-                        break;
-                    }
-                }
-            }
-        }
-        return retIndex;
-    }
+    static uint64_t GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int extrahashes);
 };
 
 // by default, this is compatible with normal merkle proofs with the existing
@@ -464,8 +336,8 @@ public:
     std::vector<uint256> branch;    // variable size branch, depending on the position in the range
 
     CMMRBranch() : nIndex(0) {}
-    CMMRBranch(BRANCH_TYPE type) : CMerkleBranchBase(type), nIndex(0) {}
-    CMMRBranch(BRANCH_TYPE type, int i, const std::vector<uint256> &b) : CMerkleBranchBase(type), nIndex(i), branch(b) {}
+    CMMRBranch(BRANCH_TYPE type) : CMerkleBranchBase(type), nIndex(0), nSize(0) {}
+    CMMRBranch(BRANCH_TYPE type, int size, int i, const std::vector<uint256> &b) : CMerkleBranchBase(type), nSize(size), nIndex(i), branch(b) {}
 
     // MMR branches cannot append position, so the position stays fixed
     CMMRBranch& operator<<(CMMRBranch append)
@@ -498,20 +370,24 @@ public:
     // extraHashes are the count of additional elements, such as work or power, to also incorporate into the hash tree
     uint256 SafeCheck(uint256 hash) const
     {
-        HASHALGOWRITER hw(SER_GETHASH, 0);
         int64_t index = GetMMRProofIndex(nIndex, nSize, NODETYPE::GetExtraHashCount());
 
         if (index == -1)
+        {
+            printf("returning null 1\n");
             return uint256();
+        }
 
         // printf("start SafeCheck branch.size(): %lu, index: %lu, hash: %s\n", branch.size(), index, HashAbbrev(hash).c_str());
         for (auto it(branch.begin()); it != branch.end(); ++it)
         {
+            HASHALGOWRITER hw(SER_GETHASH, 0);
             if (index & 1) 
             {
                 if (*it == hash) 
                 {
                     // non canonical. hash may be equal to node but never on the right.
+                    printf("returning null 2\n");
                     return uint256();
                 }
                 hw << *it;
@@ -525,7 +401,7 @@ public:
             hash = hw.GetHash();
             index >>= 1;
         }
-        // printf("end SafeCheck\n");
+        printf("end SafeCheck %s\n", hash.GetHex().c_str());
         return hash;
     }
 };
@@ -614,39 +490,19 @@ public:
 
     CMMRProof() {}
     CMMRProof(std::vector<CMerkleBranchBase *> ProofSequence) : proofSequence(ProofSequence) {}
+    CMMRProof(const CMMRProof &oldProof)
+    {
+        CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+        s << oldProof;
+        s >> *this;
+    }
+
     ~CMMRProof()
     {
         DeleteProofSequence();
     }
 
-    void DeleteProofSequence()
-    {
-        // delete any objects that may be present
-        for (auto pProof : proofSequence)
-        {
-            switch(pProof->branchType)
-            {
-                case CMerkleBranchBase::BRANCH_BTC:
-                {
-                    delete (CBTCMerkleBranch *)pProof;
-                    break;
-                }
-                case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
-                {
-                    delete (CMMRNodeBranch *)pProof;
-                    break;
-                }
-                case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
-                {
-                    delete (CMMRPowerNodeBranch *)pProof;
-                    break;
-                }
-                default:
-                    delete pProof;
-            }
-        }
-        proofSequence.clear();
-    }
+    void DeleteProofSequence();
 
     ADD_SERIALIZE_METHODS;
     
@@ -751,62 +607,16 @@ public:
         }
     }
 
-    const CMMRProof &operator<<(const CBTCMerkleBranch &append)
-    {
-        CMerkleBranchBase *pNewProof = static_cast<CMerkleBranchBase *>(new CBTCMerkleBranch(static_cast<const CBTCMerkleBranch &>(append)));
-        pNewProof->branchType = CMerkleBranchBase::BRANCH_BTC;
-        proofSequence.push_back(pNewProof);
-        return *this;
-    }
-
-    const CMMRProof &operator<<(const CMMRNodeBranch &append)
-    {
-        CMerkleBranchBase *pNewProof = static_cast<CMerkleBranchBase *>(new CMMRNodeBranch(static_cast<const CMMRNodeBranch &>(append)));
-        pNewProof->branchType = CMerkleBranchBase::BRANCH_MMRBLAKE_NODE;
-        proofSequence.push_back(pNewProof);
-        return *this;
-    }
-
-    const CMMRProof &operator<<(const CMMRPowerNodeBranch &append)
-    {
-        CMerkleBranchBase *pNewProof = static_cast<CMerkleBranchBase *>(new CMMRPowerNodeBranch(static_cast<const CMMRPowerNodeBranch &>(append)));
-        pNewProof->branchType = CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE;
-        proofSequence.push_back(pNewProof);
-        return *this;
-    }
-
-    uint256 CheckProof(const uint256 &checkHash) const
-    {
-        uint256 hash = checkHash;
-        for (auto &pProof : proofSequence)
-        {
-            switch(pProof->branchType)
-            {
-                case CMerkleBranchBase::BRANCH_BTC:
-                {
-                    hash = ((CBTCMerkleBranch *)pProof)->SafeCheck(hash);
-                    break;
-                }
-                case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
-                {
-                    hash = ((CMMRNodeBranch *)pProof)->SafeCheck(hash);
-                    break;
-                }
-                case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
-                {
-                    hash = ((CMMRPowerNodeBranch *)pProof)->SafeCheck(hash);
-                    break;
-                }
-            }
-        }
-        return hash;
-    }
+    const CMMRProof &operator<<(const CBTCMerkleBranch &append);
+    const CMMRProof &operator<<(const CMMRNodeBranch &append);
+    const CMMRProof &operator<<(const CMMRPowerNodeBranch &append);
+    uint256 CheckProof(uint256 checkHash) const;
 };
 
 // an in memory MMR is represented by a vector of vectors of hashes, each being a layer of nodes of the binary tree, with the lowest layer
 // being the leaf nodes, and the layers above representing full layers in a mountain or when less than half the length of the layer below,
 // representing a peak.
-template <typename NODE_TYPE=CMMRNode<>, typename LAYER_TYPE=CChunkedLayer<NODE_TYPE>, typename LAYER0_TYPE=LAYER_TYPE>
+template <typename NODE_TYPE=CDefaultMMRNode, typename LAYER_TYPE=CChunkedLayer<NODE_TYPE>, typename LAYER0_TYPE=LAYER_TYPE>
 class CMerkleMountainRange
 {
 public:
@@ -885,7 +695,8 @@ public:
     {
         if (pos >= size())
         {
-            return NULL;
+            std::__throw_length_error("CMerkleMountainRange [] index out of range");
+            return NODE_TYPE();
         }
         return layer0[pos];
     }
@@ -1243,6 +1054,7 @@ public:
                     }
                 }
             }
+            retBranch.nSize = size();
             retBranch.nIndex = pos;
             retProof << retBranch;
             return true;
@@ -1263,7 +1075,7 @@ public:
         // printf("GetProofBits - pos: %lu, mmvSize: %lu\n", pos, mmvSize);
 
         // find a path from the indicated position to the root in the current view
-        if (pos < mmvSize)
+        if (pos > 0 && pos < mmvSize)
         {
             int extrahashes = NODE_TYPE::GetExtraHashCount();
 
@@ -1285,7 +1097,7 @@ public:
                 }
             }
 
-            uint64_t layerNum = 0, layerSize = PeakIndexes.size();
+            uint64_t layerNum = 0, layerSize = Sizes[0];
             // with an odd number of elements below, the edge passes through
             for (bool passThrough = (layerSize & 1); layerNum == 0 || layerSize > 1; passThrough = (layerSize & 1), layerNum++)
             {

@@ -396,9 +396,9 @@ class CNetworkBlockHeader : public CBlockHeader
 
 // for the MMRs for each block
 class CBlock;
-typedef COverlayNodeLayer<TransactionMMRNode, CBlock> BlockMMRNodeLayer;
-typedef CMerkleMountainRange<TransactionMMRNode, CChunkedLayer<TransactionMMRNode, 2>, BlockMMRNodeLayer> BlockMMRange;
-typedef CMerkleMountainView<TransactionMMRNode, CChunkedLayer<TransactionMMRNode, 2>, BlockMMRNodeLayer> BlockMMView;
+typedef COverlayNodeLayer<CDefaultMMRNode, CBlock> BlockMMRNodeLayer;
+typedef CMerkleMountainRange<CDefaultMMRNode, CChunkedLayer<CDefaultMMRNode, 2>, BlockMMRNodeLayer> BlockMMRange;
+typedef CMerkleMountainView<CDefaultMMRNode, CChunkedLayer<CDefaultMMRNode, 2>, BlockMMRNodeLayer> BlockMMView;
 
 class CBlock : public CBlockHeader
 {
@@ -458,7 +458,7 @@ public:
     BlockMMRange GetBlockMMRTree() const;
 
     // get transaction node from the block
-    TransactionMMRNode GetMMRNode(int index) const;
+    CDefaultMMRNode GetMMRNode(int index) const;
 
     CPartialTransactionProof GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes) const;
 

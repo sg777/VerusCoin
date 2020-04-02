@@ -473,13 +473,13 @@ uint256 CBlock::BuildMerkleTree(bool* fMutated) const
 }
 
 
-TransactionMMRNode CBlock::GetMMRNode(int index) const
+CDefaultMMRNode CBlock::GetMMRNode(int index) const
 {
     if (index >= vtx.size())
     {
-        return TransactionMMRNode(uint256());
+        return CDefaultMMRNode(uint256());
     }
-    return vtx[index].GetTransactionMMRNode();
+    return vtx[index].GetDefaultMMRNode();
 }
 
 
@@ -497,7 +497,7 @@ BlockMMRange CBlock::BuildBlockMMRTree() const
     BlockMMRange mmRange(BlockMMRNodeLayer(*this));
     for (auto &tx : vtx)
     {
-        mmRange.Add(tx.GetTransactionMMRNode());
+        mmRange.Add(tx.GetDefaultMMRNode());
     }
     return mmRange;
 }
