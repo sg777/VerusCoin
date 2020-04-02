@@ -1634,14 +1634,6 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
                 ((extendedStake && whichType == TX_CRYPTOCONDITION) || whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))
             {
-                CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
-
-                //printf("Serialized size of transaction %s is %lu\n", txout.tx->GetHash().GetHex().c_str(), txSize);
-                if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && GetSerializeSize(s, static_cast<CTransaction>(*txout.tx)) > MAX_TX_SIZE_FOR_STAKING)
-                {
-                    LogPrintf("Transaction %s is too large to stake. Serialized size == %lu\n", txout.tx->GetHash().GetHex().c_str(), GetSerializeSize(s, static_cast<CTransaction>(*txout.tx)));
-                }
-
                 uint256 txHash = txout.tx->GetHash();
                 checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
 
@@ -1678,7 +1670,6 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
             //         stakeSource.GetVerusPOSHash(&(pBlock->nNonce), pwinner->i, nHeight, pastHash).GetHex().c_str(), 
             //         ArithToUint256(post).GetHex().c_str());
 
-
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
@@ -1705,10 +1696,8 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 CTransactionMap txMap(stakeSource);
                 TransactionMMView txView(txMap.transactionMMR);
                 uint256 txRoot = txView.GetRoot();
+
                 std::vector<CTransactionComponentProof> txProofVec;
-
-                CMMRProof txRootProof;
-
                 txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_HEADER, 0));
                 txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_OUTPUT, pwinner->i));
 
@@ -1735,6 +1724,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                         break;
                     }
                 }
+
                 if (txIndexPos == blockMMR.size())
                 {
                     LogPrintf("%s: ERROR: could not find source transaction root in block %u\n", __func__, srcIndex);
@@ -1742,6 +1732,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 }
 
                 // prove the tx up to the MMR root, which also contains the block hash
+                CMMRProof txRootProof;
                 if (!blockView.GetProof(txRootProof, txIndexPos))
                 {
                     LogPrintf("%s: ERROR: could not create proof of source transaction in block %u\n", __func__, srcIndex);
@@ -1776,6 +1767,10 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 CVerusSolutionVector(pBlock->nSolution).ResizeExtraData(stx.size());
 
                 pBlock->SetExtraData(stx.data(), stx.size());
+
+                //CBlockHeader blkHeader(*pBlock);
+                //CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+                //printf("Staking block header size %ld\n", GetSerializeSize(s, blkHeader));
             }
             return true;
         }
