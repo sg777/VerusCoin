@@ -672,6 +672,13 @@ std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilt
     {
         return "";
     }
+
+    if (!Parent.IsNull() &&
+        boost::to_lower_copy(subNames.back()) == boost::to_lower_copy(VERUS_CHAINNAME))
+    {
+        subNames.pop_back();
+    }
+
     for (int i = subNames.size() - 1; i > 0; i--)
     {
         std::string parentNameStr = boost::algorithm::to_lower_copy(subNames[i]);
@@ -764,7 +771,8 @@ CIdentityID CIdentity::GetID(const std::string &Name) const
 
 CIdentityID CIdentity::GetID() const
 {
-    return GetID(name);
+    uint160 Parent = parent;
+    return GetID(name, Parent);
 }
 
 uint160 CCrossChainRPCData::GetID(std::string name)

@@ -4626,8 +4626,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee offer must be at least " + ValueFromAmount(minFeeOffer).write());
     }
 
-    uint160 impliedParent;
-    if (txid.IsNull() || CleanName(reservation.name, impliedParent) != CleanName(newID.name, impliedParent) || !impliedParent.IsNull())
+    uint160 impliedParent, resParent;
+    if (txid.IsNull() || 
+        CleanName(reservation.name, resParent) != CleanName(newID.name, impliedParent) || 
+        resParent != impliedParent ||
+        impliedParent != ASSETCHAINS_CHAINID)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched reservation.");
     }
@@ -4679,9 +4682,9 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
 
     // when creating an ID, the parent is always the current chains, and it is invalid to specify a parent
-    if (!newID.parent.IsNull())
+    if (newID.parent != parent)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid to specify parent or qualified name when creating an identity. Parent is determined by the current blockchain.");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid to specify alternate parent when creating an identity. Parent is determined by the current blockchain.");
     }
 
     newID.parent = parent;

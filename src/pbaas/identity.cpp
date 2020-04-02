@@ -774,6 +774,9 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
+    extern uint160 VERUS_CHAINID;
+    extern std::string VERUS_CHAINNAME;
+
     // compare commitment without regard to case or other textual transformations that are irrelevant to matching
     uint160 parentChain = ConnectedChains.ThisChain().GetID();
     if (validReservation && identity.GetID(nameRes.name, parentChain) == identity.GetID())
