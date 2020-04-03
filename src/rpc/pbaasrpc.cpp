@@ -773,7 +773,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef,
 
 void CheckPBaaSAPIsValid()
 {
-    printf("Solution version running: %d\n\n", CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()));
+    //printf("Solution version running: %d\n\n", CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()));
     if (!chainActive.LastTip() ||
         CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
     {
@@ -813,13 +813,13 @@ uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurr
     {
         // make sure there is such a currency defined on this chain
         CCurrencyDefinition currencyDef;
-        if (!pCurrencyDef)
+        if (GetCurrencyDefinition(GetDestinationID(currencyDest), currencyDef))
         {
-            pCurrencyDef = &currencyDef;
+            retVal = currencyDef.GetID();
         }
-        if (!GetCurrencyDefinition(GetDestinationID(currencyDest), *pCurrencyDef))
+        if (pCurrencyDef)
         {
-            retVal = pCurrencyDef->GetID();
+            *pCurrencyDef = currencyDef;
         }
     }
     return retVal;
@@ -901,37 +901,41 @@ UniValue getcurrencydefinition(const UniValue& params, bool fHelp)
         GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
         ret = chainDef.ToUniValue();
 
-        // get all nodes from notarizations of the best chain into a vector
         std::vector<CNodeData> vNNodes;
-        for (auto &oneNot : cnd.forks[cnd.bestChain])
-        {
-            vNNodes.insert(vNNodes.end(), cnd.vtx[oneNot].second.nodes.begin(), cnd.vtx[oneNot].second.nodes.end());
-        }
-
         int32_t confirmedHeight = -1, bestHeight = -1;
-        confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
-        bestHeight = cnd.vtx.size() && cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : -1;
 
-        // shuffle and take 8 nodes,
-        // up to two of which will be from the last confirmed notarization if present
-        std::random_shuffle(vNNodes.begin(), vNNodes.end());
-        int numConfirmedNodes = cnd.lastConfirmed == -1 ? 0 : cnd.vtx[cnd.lastConfirmed].second.nodes.size();
-        if (vNNodes.size() > (8 - numConfirmedNodes))
+        if (cnd.forks.size())
         {
-            vNNodes.resize(8);
-        }
-        if (numConfirmedNodes)
-        {
-            vNNodes.insert(vNNodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.end());
-        }
-        if (vNNodes.size())
-        {
-            UniValue nodeArr(UniValue::VARR);
-            for (auto &oneNode : vNNodes)
+            // get all nodes from notarizations of the best chain into a vector
+            for (auto &oneNot : cnd.forks[cnd.bestChain])
             {
-                nodeArr.push_back(oneNode.ToUniValue());
+                vNNodes.insert(vNNodes.end(), cnd.vtx[oneNot].second.nodes.begin(), cnd.vtx[oneNot].second.nodes.end());
             }
-            ret.push_back(Pair("nodes", nodeArr));
+
+            confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
+            bestHeight = cnd.vtx.size() && cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : -1;
+
+            // shuffle and take 8 nodes,
+            // up to two of which will be from the last confirmed notarization if present
+            std::random_shuffle(vNNodes.begin(), vNNodes.end());
+            int numConfirmedNodes = cnd.lastConfirmed == -1 ? 0 : cnd.vtx[cnd.lastConfirmed].second.nodes.size();
+            if (vNNodes.size() > (8 - numConfirmedNodes))
+            {
+                vNNodes.resize(8);
+            }
+            if (numConfirmedNodes)
+            {
+                vNNodes.insert(vNNodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.end());
+            }
+            if (vNNodes.size())
+            {
+                UniValue nodeArr(UniValue::VARR);
+                for (auto &oneNode : vNNodes)
+                {
+                    nodeArr.push_back(oneNode.ToUniValue());
+                }
+                ret.push_back(Pair("nodes", nodeArr));
+            }
         }
 
         ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
@@ -5195,7 +5199,25 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         }
     }
 
+    LOCK(cs_main);
+
     identity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(idID)), 0, &height, &idTxIn);
+
+    if (!identity.IsValid() && ConnectedChains.ThisChain().GetID() == VERUS_CHAINID)
+    {
+        std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
+        std::vector<std::pair<uint160, uint256>> contentmap;
+        identity = CIdentity(CIdentity::VERSION_PBAAS, 
+                             CIdentity::FLAG_ACTIVECURRENCY,
+                             primary, 
+                             1, 
+                             ConnectedChains.ThisChain().parent,
+                             VERUS_CHAINNAME,
+                             contentmap,
+                             ConnectedChains.ThisChain().GetID(),
+                             ConnectedChains.ThisChain().GetID(),
+                             std::vector<libzcash::SaplingPaymentAddress>());
+    }
 
     UniValue ret(UniValue::VOBJ);
 

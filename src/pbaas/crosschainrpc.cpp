@@ -379,6 +379,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
         idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"));
 
         UniValue notaryArr = find_value(obj, "notaries");
+        minNotariesConfirm = 0;
         if (notaryArr.isArray())
         {
             for (int i = 0; i < notaryArr.size(); i++)
@@ -403,6 +404,20 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
 
         startBlock = uni_get_int(find_value(obj, "startblock"));
         endBlock = uni_get_int(find_value(obj, "endblock"));
+
+        proofProtocol = (EProofProtocol)uni_get_int(find_value(obj, "proofprotocol"));
+        notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"));
+        if (proofProtocol == PROOF_INVALID)
+        {
+            // default to standard PBaaS for a blockchain and ID for a token
+            proofProtocol = options & OPTION_TOKEN ? PROOF_CHAINID : PROOF_PBAASMMR;
+        }
+
+        if (notarizationProtocol == NOTARIZATION_INVALID)
+        {
+            // default to standard PBaaS for a blockchain and ID for a token
+            notarizationProtocol = options & OPTION_TOKEN ? NOTARIZATION_NOTARY_CHAINID : NOTARIZATION_AUTO;
+        }
 
         int32_t totalReserveWeight = AmountFromValueNoErr(find_value(obj, "reserveratio"));
         UniValue currencyArr = find_value(obj, "currencies");
