@@ -754,7 +754,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
     obj.push_back(Pair("name", name));
     obj.push_back(Pair("version", (int64_t)nVersion));
-    obj.push_back(Pair("options", (boost::format("%x") % options).str()));
+    obj.push_back(Pair("options", (int64_t)options));
     obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
     obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
     obj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(GetID()))));

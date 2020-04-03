@@ -5201,9 +5201,10 @@ UniValue getidentity(const UniValue& params, bool fHelp)
 
     LOCK(cs_main);
 
-    identity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(idID)), 0, &height, &idTxIn);
+    uint160 identityID = GetDestinationID(idID);
+    identity = CIdentity::LookupIdentity(CIdentityID(identityID), 0, &height, &idTxIn);
 
-    if (!identity.IsValid() && ConnectedChains.ThisChain().GetID() == VERUS_CHAINID)
+    if (!identity.IsValid() && identityID == VERUS_CHAINID)
     {
         std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
         std::vector<std::pair<uint160, uint256>> contentmap;
