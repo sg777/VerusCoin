@@ -516,20 +516,26 @@ public:
 
     uint256 BlockMMRRoot() const
     {
-        CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor((nSolution));
-        if (descr.version >= CActivationHeight::ACTIVATE_PBAAS)
+        if (nVersion == CBlockHeader::VERUS_V2)
         {
-            return descr.hashBlockMMRRoot;
+            CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor((nSolution));
+            if (descr.version >= CActivationHeight::ACTIVATE_PBAAS)
+            {
+                return descr.hashBlockMMRRoot;
+            }
         }
         return hashMerkleRoot;
     }
 
     uint256 PrevMMRRoot()
     {
-        CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-        if (descr.version >= CActivationHeight::ACTIVATE_PBAAS)
+        if (nVersion == CBlockHeader::VERUS_V2)
         {
-            return descr.hashPrevMMRRoot;
+            CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
+            if (descr.version >= CActivationHeight::ACTIVATE_PBAAS)
+            {
+                return descr.hashPrevMMRRoot;
+            }
         }
         return uint256();
     }
