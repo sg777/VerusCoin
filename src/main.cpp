@@ -727,6 +727,16 @@ bool IsBlockBoundTransaction(const CTransaction &tx, const uint256 &cbHash)
     return bindingFound;
 }
 
+void InitializePremineSupply()
+{
+    LOCK(cs_main);
+    if (chainActive.Height() > 0)
+    {
+        extern uint64_t ASSETCHAINS_SUPPLY;
+        ASSETCHAINS_SUPPLY = ConnectedChains.ThisChain().GetTotalPreallocation();
+    }
+}
+
 bool IsStandardTx(const CTransaction& tx, string& reason, const CChainParams& chainparams, const int nHeight)
 {
     bool overwinterActive = chainparams.GetConsensus().NetworkUpgradeActive(nHeight,  Consensus::UPGRADE_OVERWINTER);
@@ -3445,6 +3455,13 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         return(false);
     //fprintf(stderr,"connectblock ht.%d\n",(int32_t)pindex->GetHeight());
     AssertLockHeld(cs_main);
+
+    // either set at activate best chain or when we connect block 1
+    if (pindex->GetHeight() == 1)
+    {
+        InitializePremineSupply();
+    }
+
     bool fExpensiveChecks = true;
     if (fCheckpointsEnabled) {
         CBlockIndex *pindexLastCheckpoint = Checkpoints::GetLastCheckpoint(chainparams.Checkpoints());

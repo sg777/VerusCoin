@@ -1003,9 +1003,22 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                 // if this is a currency without its own chain that starts at a height greater than this one,
                 // skip this tranfer for now. all transfers posted should be able to be imported when the system starts.
-                if (destDef.systemID == ASSETCHAINS_CHAINID && destDef.startBlock > nHeight)
+                if (destDef.systemID == ASSETCHAINS_CHAINID)
                 {
-                    continue;
+                    if (destDef.startBlock > nHeight)
+                    {
+                        continue;
+                    }
+
+                    // if the chain has failed to launch, we are done
+                    CCurrencyValueMap minPreMap, preConvertedMap;
+                    if (destDef.minPreconvert.size() &&
+                        (minPreMap = CCurrencyValueMap(destDef.currencies, destDef.minPreconvert)) > preConvertedMap &&
+                        (preConvertedMap = CCurrencyValueMap(destDef.currencies, GetInitialCurrencyState(destDef).reserveIn)) < minPreMap)
+                    {
+                        // this chain should get refunded, nothing more should get aggregated
+                        continue;
+                    }
                 }
 
                 it = currencyDefCache.find(output.second.second.systemID);

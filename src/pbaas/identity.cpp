@@ -163,7 +163,7 @@ UniValue CIdentity::ToUniValue() const
     UniValue obj = ((CPrincipal *)this)->ToUniValue();
 
     obj.push_back(Pair("identityaddress", EncodeDestination(CIdentityID(GetID()))));
-    obj.push_back(Pair("parent", EncodeDestination(CKeyID(parent))));
+    obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
     obj.push_back(Pair("name", name));
 
     UniValue hashes(UniValue::VOBJ);

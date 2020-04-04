@@ -1961,6 +1961,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         if ( !ActivateBestChain(state, Params()))
             strErrors << "Failed to connect best block";
     }
+    InitializePremineSupply();
     std::vector<boost::filesystem::path> vImportFiles;
     if (mapArgs.count("-loadblock"))
     {

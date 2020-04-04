@@ -311,6 +311,134 @@ CPubKey GetScriptPublicKey(const CScript &scriptPubKey)
     return CPubKey();
 }
 
+void ProcessNewImports(const uint160 &sourceChainID, const CTransaction &lastConfirmed, int32_t nHeight)
+{
+    uint32_t consensusBranchId = CurrentEpochBranchId(nHeight, Params().GetConsensus());
+
+    // get any pending imports from the source chain. if the source chain is this chain, we don't need notarization
+    CCurrencyDefinition thisChain = ConnectedChains.ThisChain();
+
+    CTransaction lastImportTx;
+
+    // we need to find the last unspent import transaction
+    std::vector<CAddressUnspentDbEntry> unspentOutputs;
+
+    bool found = false;
+
+    // we cannot get export to a chain that has shut down
+    // if the chain definition is spent, a chain is inactive
+    if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
+    {
+        // if one spends the prior one, get the one that is not spent
+        for (auto txidx : unspentOutputs)
+        {
+            uint256 blkHash;
+            CTransaction itx;
+            if (myGetTransaction(txidx.first.txhash, lastImportTx, blkHash) &&
+                CCrossChainImport(lastImportTx).IsValid() &&
+                (lastImportTx.IsCoinBase() ||
+                (myGetTransaction(lastImportTx.vin[0].prevout.hash, itx, blkHash) &&
+                CCrossChainImport(itx).IsValid())))
+            {
+                found = true;
+                break;
+            }
+        }
+    }
+
+    if (found && pwalletMain)
+    {
+        UniValue params(UniValue::VARR);
+        UniValue param(UniValue::VOBJ);
+
+        CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
+        int i;
+        for (i = 0; i < lastImportTx.vout.size(); i++)
+        {
+            COptCCParams p;
+            if (lastImportTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+            {
+                txTemplate.vin.push_back(CTxIn(lastImportTx.GetHash(), (uint32_t)i));
+                break;
+            }
+        }
+
+        UniValue result = NullUniValue;
+        if (i < lastImportTx.vout.size())
+        {
+            param.push_back(Pair("name", EncodeDestination(CIdentityID(thisChain.GetID()))));
+            param.push_back(Pair("lastimporttx", EncodeHexTx(lastImportTx)));
+            param.push_back(Pair("lastconfirmednotarization", EncodeHexTx(lastConfirmed)));
+            param.push_back(Pair("importtxtemplate", EncodeHexTx(txTemplate)));
+            param.push_back(Pair("totalimportavailable", lastImportTx.vout[txTemplate.vin[0].prevout.n].nValue));
+            params.push_back(param);
+
+            try
+            {
+                if (sourceChainID == thisChain.GetID())
+                {
+                    UniValue getlatestimportsout(const UniValue& params, bool fHelp);
+                    result = getlatestimportsout(params, false);
+                }
+                else
+                {
+                    result = find_value(RPCCallRoot("getlatestimportsout", params), "result");
+                }
+            } catch (exception e)
+            {
+                printf("Could not get latest imports from notary chain\n");
+            }
+        }
+
+        if (result.isArray() && result.size())
+        {
+            LOCK(pwalletMain->cs_wallet);
+
+            uint256 lastImportHash = lastImportTx.GetHash();
+            for (int i = 0; i < result.size(); i++)
+            {
+                CTransaction itx;
+                if (result[i].isStr() && DecodeHexTx(itx, result[i].get_str()) && itx.vin.size() && itx.vin[0].prevout.hash == lastImportHash)
+                {
+                    // sign the transaction spending the last import and add to mempool
+                    CMutableTransaction mtx(itx);
+                    CCrossChainImport cci(lastImportTx);
+
+                    bool signSuccess;
+                    SignatureData sigdata;
+                    CAmount value;
+                    const CScript *pScriptPubKey;
+
+                    signSuccess = ProduceSignature(
+                        TransactionSignatureCreator(pwalletMain, &itx, 0, lastImportTx.vout[itx.vin[0].prevout.n].nValue, SIGHASH_ALL), lastImportTx.vout[itx.vin[0].prevout.n].scriptPubKey, sigdata, consensusBranchId);
+
+                    if (!signSuccess)
+                    {
+                        break;
+                    }
+
+                    UpdateTransaction(mtx, 0, sigdata);
+                    itx = CTransaction(mtx);
+
+                    // commit to mempool and remove any conflicts
+                    std::list<CTransaction> removed;
+                    mempool.removeConflicts(itx, removed);
+                    CValidationState state;
+                    if (!myAddtomempool(itx, &state))
+                    {
+                        LogPrintf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason().c_str());
+                        printf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason().c_str());
+                        break;  // if we failed to add one, the others will fail to spend it
+                    }
+
+                    lastImportTx = itx;
+                    lastImportHash = itx.GetHash();
+                }
+            }
+        }
+    }
+}
+
 CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _scriptPubKeyIn, int32_t gpucount, bool isStake)
 {
     CScript scriptPubKeyIn(_scriptPubKeyIn);
@@ -875,12 +1003,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.notaryChain.GetID(), EVAL_CROSSCHAIN_IMPORT))});
                 dests = std::vector<CTxDestination>({pkCC});
 
-                CCurrencyValueMap cvm;
-                for (auto &inPair : ConnectedChains.ThisChain().preAllocation)
-                {
-                    cvm.valueMap[inPair.first] = inPair.second;
-                }
-                CCrossChainImport cci = CCrossChainImport(ConnectedChains.notaryChain.GetID(), cvm);
+                CCrossChainImport cci = CCrossChainImport(ConnectedChains.notaryChain.GetID(), CCurrencyValueMap());
                 coinbaseTx.vout.push_back(CTxOut(currencyState.ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted), thisChain.conversions),
                                                  MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests)));
 
@@ -1007,126 +1130,66 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 // if we have a last confirmed notarization, then check for new imports from the notary chain
                 if (lastConfirmed.vout.size())
                 {
-                    // we need to find the last unspent import transaction
-                    std::vector<CAddressUnspentDbEntry> unspentOutputs;
-
-                    bool found = false;
-
-                    // we cannot get export to a chain that has shut down
-                    // if the chain definition is spent, a chain is inactive
-                    if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.NotaryChain().GetID(), EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
-                    {
-                        // if one spends the prior one, get the one that is not spent
-                        for (auto txidx : unspentOutputs)
-                        {
-                            uint256 blkHash;
-                            CTransaction itx;
-                            if (myGetTransaction(txidx.first.txhash, lastImportTx, blkHash) &&
-                                CCrossChainImport(lastImportTx).IsValid() &&
-                                (lastImportTx.IsCoinBase() ||
-                                (myGetTransaction(lastImportTx.vin[0].prevout.hash, itx, blkHash) &&
-                                CCrossChainImport(itx).IsValid())))
-                            {
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (found && pwalletMain)
-                    {
-                        UniValue params(UniValue::VARR);
-                        UniValue param(UniValue::VOBJ);
-
-                        CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
-                        int i;
-                        for (i = 0; i < lastImportTx.vout.size(); i++)
-                        {
-                            COptCCParams p;
-                            if (lastImportTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
-                            {
-                                txTemplate.vin.push_back(CTxIn(lastImportTx.GetHash(), (uint32_t)i));
-                                break;
-                            }
-                        }
-
-                        UniValue result = NullUniValue;
-                        if (i < lastImportTx.vout.size())
-                        {
-                            param.push_back(Pair("name", thisChain.name));
-                            param.push_back(Pair("lastimporttx", EncodeHexTx(lastImportTx)));
-                            param.push_back(Pair("lastconfirmednotarization", EncodeHexTx(lastConfirmed)));
-                            param.push_back(Pair("importtxtemplate", EncodeHexTx(txTemplate)));
-                            param.push_back(Pair("totalimportavailable", lastImportTx.vout[txTemplate.vin[0].prevout.n].nValue));
-                            params.push_back(param);
-
-                            try
-                            {
-                                result = find_value(RPCCallRoot("getlatestimportsout", params), "result");
-                            } catch (exception e)
-                            {
-                                printf("Could not get latest imports from notary chain\n");
-                            }
-                        }
-
-                        if (result.isArray() && result.size())
-                        {
-                            LOCK(pwalletMain->cs_wallet);
-
-                            uint256 lastImportHash = lastImportTx.GetHash();
-                            for (int i = 0; i < result.size(); i++)
-                            {
-                                CTransaction itx;
-                                if (result[i].isStr() && DecodeHexTx(itx, result[i].get_str()) && itx.vin.size() && itx.vin[0].prevout.hash == lastImportHash)
-                                {
-                                    // sign the transaction spending the last import and add to mempool
-                                    CMutableTransaction mtx(itx);
-                                    CCrossChainImport cci(lastImportTx);
-
-                                    bool signSuccess;
-                                    SignatureData sigdata;
-                                    CAmount value;
-                                    const CScript *pScriptPubKey;
-
-                                    signSuccess = ProduceSignature(
-                                        TransactionSignatureCreator(pwalletMain, &itx, 0, lastImportTx.vout[itx.vin[0].prevout.n].nValue, SIGHASH_ALL), lastImportTx.vout[itx.vin[0].prevout.n].scriptPubKey, sigdata, consensusBranchId);
-
-                                    if (!signSuccess)
-                                    {
-                                        break;
-                                    }
-
-                                    UpdateTransaction(mtx, 0, sigdata);
-                                    itx = CTransaction(mtx);
-
-                                    // commit to mempool and remove any conflicts
-                                    std::list<CTransaction> removed;
-                                    mempool.removeConflicts(itx, removed);
-                                    CValidationState state;
-                                    if (!myAddtomempool(itx, &state))
-                                    {
-                                        LogPrintf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason().c_str());
-                                        printf("Failed to add import transactions to the mempool due to: %s\n", state.GetRejectReason().c_str());
-                                        break;  // if we failed to add one, the others will fail to spend it
-                                    }
-
-                                    lastImportTx = itx;
-                                    lastImportHash = itx.GetHash();
-                                }
-                            }
-                        }
-                    }
+                    ProcessNewImports(ConnectedChains.NotaryChain().GetID(), lastConfirmed, nHeight);
                 }
             }
         }
         else
         {
-            CAmount blockOnePremine = thisChain.GetTotalPreallocation();
-            SetBlockOnePremine(blockOnePremine);
+            if (nHeight == 1)
+            {
+                SetBlockOnePremine(thisChain.GetTotalPreallocation());
+            }
             totalEmission = GetBlockSubsidy(nHeight, consensusParams);
             blockSubsidy = totalEmission;
             currencyState.UpdateWithEmission(totalEmission);
+
+            if (CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight))
+            {
+                // at activation height for PBaaS on VRSC or VRSCTEST, add currency definition, import, and export outputs to the coinbase
+                // create a currency definition output for this currency, the notary currency, and all reserves
+                CCcontract_info CC;
+                CCcontract_info *cp;
+                cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
+                pkCC = CPubKey(ParseHex(CC.CChexstr));
+
+                std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION))});
+                std::vector<CTxDestination> dests({pkCC});
+
+                coinbaseTx.vout.push_back(CTxOut(0,
+                                            MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, 
+                                                             &ConnectedChains.ThisChain()),
+                                            &indexDests)));
+            }
         }
+
+        // on all chains, we add an export and import to ourselves at PBaaS activation height (1 for PBaaS chains)
+        if (CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight))
+        {
+            // create the import thread output
+            cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
+            pkCC = CPubKey(ParseHex(CC.CChexstr));
+
+            // import thread from self
+            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CROSSCHAIN_IMPORT))});
+            std::vector<CTxDestination> dests = std::vector<CTxDestination>({pkCC});
+
+            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetID(), CCurrencyValueMap());
+            coinbaseTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests)));
+
+            // export thread to self
+            cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
+            pkCC = CPubKey(ParseHex(CC.CChexstr));
+            indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CROSSCHAIN_EXPORT))});
+            dests = std::vector<CTxDestination>({pkCC});
+
+            CCrossChainExport ccx(ConnectedChains.ThisChain().GetID(), 0, CCurrencyValueMap(), CCurrencyValueMap());
+            coinbaseTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx), &indexDests)));
+        }
+
+        // process any imports from the current chain to itself, to suport token launches, etc.
+        // TODO: should also add refund checking here
+        ProcessNewImports(ConnectedChains.ThisChain().GetID(), CTransaction(), nHeight);
 
         // coinbase should have all necessary outputs (TODO: timelock is not supported yet)
         uint32_t nCoinbaseSize = GetSerializeSize(coinbaseTx, SER_NETWORK, PROTOCOL_VERSION);

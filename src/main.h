@@ -576,4 +576,9 @@ CMutableTransaction CreateNewContextualCMutableTransaction(const Consensus::Para
  */
 bool IsBlockBoundTransaction(const CTransaction &tx, const uint256 &cbHash);
 
+/**
+ * Sets the premine from chain definition
+ */
+void InitializePremineSupply();
+
 #endif // BITCOIN_MAIN_H

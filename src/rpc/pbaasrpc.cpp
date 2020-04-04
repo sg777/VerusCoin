@@ -468,10 +468,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef,
 {
     uint160 systemID = systemDef.GetID();
     uint160 thisChainID = thisChain.GetID();
+    bool isTokenImport = systemID == thisChainID;
     CCurrencyValueMap totalAvailableInput(AvailableTokenInput);
 
     CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
-    if (!lastConfirmed.IsValid() || (chainActive.LastTip() == NULL) || lastConfirmed.notarizationHeight > chainActive.LastTip()->GetHeight())
+    if (!isTokenImport && (!lastConfirmed.IsValid() || (chainActive.LastTip() == NULL) || lastConfirmed.notarizationHeight > chainActive.LastTip()->GetHeight()))
     {
         LogPrintf("%s: Invalid lastConfirmedNotarization transaction\n", __func__);
         printf("%s: Invalid lastConfirmedNotarization transaction\n", __func__);
@@ -504,6 +505,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef,
     bool isVerusActive = IsVerusActive();
 
     LOCK2(cs_main, mempool.cs);
+
+    // confirmation of tokens are simultaneous to blocks
+    if (isTokenImport)
+    {
+        lastConfirmed.notarizationHeight = chainActive.Height();
+    }
 
     uint256 lastExportHash;
     CCrossChainProof exportProof;
@@ -574,8 +581,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef,
         printf("%s: No export thread found\n", __func__);
         return false;
     }
-
-    bool importToNotaryChain = !isVerusActive && systemID != thisChainID && systemID == notaryChain.GetID();
 
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
@@ -736,8 +741,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef,
             CBlock block;
             if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus(), false))
             {
-                LogPrintf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[lastConfirmed.notarizationHeight]->GetBlockHash().GetHex().c_str());
-                printf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[lastConfirmed.notarizationHeight]->GetBlockHash().GetHex().c_str());
+                LogPrintf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
+                printf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
                 return false;
             }
 
@@ -749,6 +754,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef,
             // prove our transaction up to the MMR root of the last transaction
             auto exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.index, parts);
             exportProof.txProof << block.MMRProofBridge();
+
+            // don't include chain MMR proof for exports from the same chain
             ChainMerkleMountainView(chainActive.GetMMR(), lastConfirmed.notarizationHeight).GetProof(exportProof.txProof, aixIt->second.first.blockHeight);
 
             // add it to the export transaction proof, now proven up to the MMR root of the last confirmed transaction
@@ -756,7 +763,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef,
 
             CChainObject<CCrossChainProof> exportXProof(CHAINOBJ_CROSSCHAINPROOF, exportTransactionProof);
 
-            // add the opret with the transaction and its proof that references the notarization with the correct MMR
+            // add the opret with the transaction and proof
             newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(std::vector<CBaseChainObject *>({&exportXProof}))));
 
             // we now have an Import transaction for the chainID chain, it is the latest, and the export we used is now the latest as well
@@ -4381,7 +4388,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                  CIdentityExport::DEFAULT_EXPORT_FEE, 
                                                  false});
         }
-    }
+    }    
 
     // make the outputs for initial contributions
     if (newChain.contributions.size() && newChain.contributions.size() == newChain.currencies.size())
