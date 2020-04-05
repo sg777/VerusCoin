@@ -163,6 +163,8 @@ public:
         MIN_BILLING_PERIOD = 960,           // 16 hour minimum billing period for notarization, typically expect days/weeks/months
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
         DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
+        DEFAULT_ID_REGISTRATION_AMOUNT = 10000000000,
+        DEFAULT_ID_REFERRAL_LEVELS = 3
     };
 
     enum ECurrencyOptions
