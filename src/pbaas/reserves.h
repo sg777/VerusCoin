@@ -176,7 +176,7 @@ public:
 
     uint32_t flags;                         // type of transfer and options
     CAmount nFees;                          // cross-chain network fees only, separated out to enable market conversions, conversion fees are additional
-    uint160 systemID;                       // system to export to, which may represent a PBaaS chain or external bridge
+    uint160 destCurrencyID;                       // system to export to, which may represent a PBaaS chain or external bridge
     CTransferDestination destination;       // system specific address to send funds to on the target chain
 
     CReserveTransfer(const std::vector<unsigned char> &asVector)
@@ -186,8 +186,8 @@ public:
 
     CReserveTransfer() : CTokenOutput(), flags(0), nFees(0) { }
 
-    CReserveTransfer(uint32_t Flags, const uint160 &cID, CAmount value, CAmount fees, const uint160 &SystemID, const CTransferDestination &dest) : 
-        CTokenOutput(cID, value), flags(Flags), nFees(fees), systemID(SystemID), destination(dest) { }
+    CReserveTransfer(uint32_t Flags, const uint160 &cID, CAmount value, CAmount fees, const uint160 &destCurID, const CTransferDestination &dest) : 
+        CTokenOutput(cID, value), flags(Flags), nFees(fees), destCurrencyID(destCurID), destination(dest) { }
 
     ADD_SERIALIZE_METHODS;
 
@@ -196,6 +196,7 @@ public:
         READWRITE(*(CTokenOutput *)this);
         READWRITE(VARINT(flags));
         READWRITE(VARINT(nFees));
+        READWRITE(destCurrencyID);
         READWRITE(destination);
     }
 

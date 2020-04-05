@@ -202,7 +202,6 @@ public:
     std::string name;                       // currency name matching name of identity in namespace
 
     // the interface to the currency controller. systemID refers to the controlling blockchain or currency that serves as a gateway
-    uint160 controllerID;                   // controller of a/the supply, for BTC.VRSC: VRSC, for VQUAD.VRSC: VRSC, for QUAD.VRSC: QUAD.VRSC
     uint160 systemID;                       // native system of currency home, for BTC.VRSC: BTC, for VQUAD.VRSC: QUAD.VRSC, for QUAD.VRSC, QUAD.VRSC
     CTransferDestination nativeCurrencyID;  // ID of the currency in its native system
     ENotarizationProtocol notarizationProtocol; // method of notarization

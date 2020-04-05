@@ -397,7 +397,7 @@ UniValue CReserveTransfer::ToUniValue() const
     ret.push_back(Pair("feeoutput", (bool)(flags & FEE_OUTPUT)));
     ret.push_back(Pair("sendback", (bool)(flags & SEND_BACK)));
     ret.push_back(Pair("fees", ValueFromAmount(nFees)));
-    ret.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
     std::string destStr;
     switch (destination.type)
     {
@@ -1860,7 +1860,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         return false;
                     }
 
-                    feeOutputs.valueMap[curTransfer.currencyID] += curTransfer.nValue;
+                    feeOutputs.valueMap[curTransfer.currencyID] = curTransfer.nValue;
                     if (feeOutputs > transferFees)
                     {
                         // invalid
@@ -1993,7 +1993,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                                            curTransfer.currencyID, 
                                                            curTransfer.nValue - fees, 
                                                            fees, 
-                                                           currencySourceID,
+                                                           curTransfer.currencyID,
                                                            DestinationToTransferDestination(sendBackAddr));
 
                     CTxDestination indexDest(CKeyID(currencyDest.GetConditionID(EVAL_RESERVE_TRANSFER)));
@@ -2178,7 +2178,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
                                     indexRex.second.currencyID,
                                     amount - (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1),
                                     CReserveTransfer::DEFAULT_PER_STEP_FEE << 1,
-                                    reserveCurrencyIt->second.controllerID,
+                                    reserveCurrencyIt->second.systemID,
                                     CTransferDestination(p.vKeys[0].which(), GetDestinationBytes(p.vKeys[0])));
 
                 // cast object to the most derived class to avoid template errors to a least derived class

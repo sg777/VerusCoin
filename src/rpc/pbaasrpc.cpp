@@ -457,7 +457,7 @@ bool CConnectedChains::GetLastImport(const uint160 &systemID,
 // returns newly created import transactions to the specified chain/system from exports on this chain specified chain
 // nHeight is the height for which we have an MMR that the chainID chain considers confirmed for this chain. it will
 // accept proofs of any transactions with that MMR and height.
-// Parameters shuold be validated before this call.
+// Parameters should be validated before this call.
 bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef, 
                                            const CTransaction &lastCrossChainImport, 
                                            const CTransaction &importTxTemplate,
@@ -2879,13 +2879,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             }
 
             std::string systemDestStr;
-            uint160 destSystemID;
-            CCurrencyDefinition destSystemDef;
+            uint160 destSystemID = thisChainID;
+            CCurrencyDefinition destSystemDef = ConnectedChains.ThisChain();
             std::vector<std::string> subNames = ParseSubNames(destStr, systemDestStr, true);
             if (systemDestStr != "")
             {
                 destSystemID = ValidateCurrencyName(systemDestStr, &destSystemDef);
-                if (destSystemID.IsNull() || destSystemDef.IsToken() || destSystemDef.controllerID != destSystemDef.GetID())
+                if (destSystemID.IsNull() || destSystemDef.IsToken() || destSystemDef.systemID != destSystemDef.GetID())
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "If destination system is specified, destination system or chain must be valid.");
                 }
@@ -2895,11 +2895,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             CTransferDestination transferDestination;
             if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
             {
-                if (destSystemID.IsNull())
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
-                }
-                else if (destSystemDef.options & destSystemDef.OPTION_GATEWAY)
+                if (destSystemDef.options & destSystemDef.OPTION_GATEWAY)
                 {
                     std::vector<unsigned char> rawDestBytes;
                     for (int i = 0; i < subNames.size(); i++)
@@ -2911,6 +2907,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         rawDestBytes.insert(rawDestBytes.end(), subNames[i].begin(), subNames[i].end());
                     }
                     transferDestination = CTransferDestination(CTransferDestination::DEST_RAW, rawDestBytes);
+                }
+                else
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
                 }
             }
 
@@ -2929,7 +2929,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             CRecipient oneOutput;
 
             // are we a system/chain transfer with or without conversion?
-            if (!destSystemID.IsNull() && destSystemID != thisChainID)
+            if (destSystemID != thisChainID)
             {
                 if (preConvert)
                 {
@@ -3002,7 +3002,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                sourceCurrencyID, 
                                                                sourceAmount,
                                                                (CReserveTransfer::DEFAULT_PER_STEP_FEE << 2),
-                                                               thisChainID,
+                                                               convertToCurrencyID,
                                                                DestinationToTransferDestination(destination));
 
                         oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
@@ -3011,8 +3011,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     else
                     {
                         // we must be converting from native to a reserve of native, or it is invalid
-                        auto reserveMap = ConnectedChains.GetCurrencyState(height).GetReserveMap();
-                        if (!reserveMap.count(convertToCurrencyID))
+                        CCoinbaseCurrencyState thisCurrency = ConnectedChains.GetCurrencyState(height);
+                        auto reserveMap = thisCurrency.GetReserveMap();
+                        if (!thisCurrency.IsReserve() || !reserveMap.count(convertToCurrencyID))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 2");
                         }
@@ -3391,7 +3392,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
         return false;
     }
 
-    if (!GetLastImportIn(currencyID, lastImportTx))
+    if (!GetLastImportIn(chainDef.systemID, lastImportTx))
     {
         errorReason = "no-import-thread-found";
         return false;
@@ -3400,13 +3401,13 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
     std::vector<CBaseChainObject *> chainObjs;
     CCrossChainProof ccp;
 
-    // either a fully valid import with an export or the first import either in block 1 or the chain definition
+    // either a fully valid import with an export or the first import either in block 1 or chain definition
     // on the Verus chain
     if (!(lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
           (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() == 1 &&
           chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF &&
           !(ccp = ((CChainObject<CCrossChainProof> *)(chainObjs[0]))->object).Empty()) &&
-        !(chainObjs.size() == 0 && CCurrencyDefinition(lastImportTx).IsValid()))
+          !(chainObjs.size() == 0 && CCurrencyDefinition(lastImportTx).IsValid()))
     {
         DeleteOpRetObjects(chainObjs);
         errorReason = "invalid-import-thread-found";
@@ -3445,7 +3446,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
     }
     else
     {
-        // if we haven't processed any refunds yet, setup to payout from the first export and continue
+        // if we haven't processed any imports/refunds yet, setup to payout from the first export and continue
         CCrossChainExport ccx(lastImportTx);
         if (ccx.IsValid())
         {
@@ -3480,7 +3481,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
     {
         // convert exports & conversions intended for the failed currency into imports back to this chain that spend from the import thread
         // all reservetransfers are refunded and charged 1/2 of an export fee
-        uint160 chainID = chainDef.GetID();
+        uint160 chainID = chainDef.systemID;
 
         std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
@@ -4106,6 +4107,25 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // as the ID can only have its bit set or unset by one transaction at any time and only as part of a transaction that changes the
     // the state of a potentially active currency.
     LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    if (newChain.IsToken())
+    {
+        if (newChain.IsReserve())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specified as a fractional currency.");
+        }
+        if (newChain.rewards.size())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specify a mining and staking rewards schedule.");
+        }
+        // if this is a token definition, the systemID is this chain
+        newChain.systemID = ConnectedChains.ThisChain().GetID();
+    }
+    else
+    {
+        // it is a PBaaS chain, and it is its own system, responsible for its own communication and currency control
+        newChain.systemID = newChain.GetID();
+    }
 
     CIdentity launchIdentity;
     uint32_t idHeight = 0;
