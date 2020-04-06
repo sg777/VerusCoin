@@ -232,9 +232,6 @@ bool SetThisChain(const UniValue &chainDefinition)
             Split(GetArg("-ac_halving",""),  ASSETCHAINS_HALVING, 0);
             notaryChainDef.halving = std::vector<int32_t>({(int32_t)(ASSETCHAINS_HALVING[0])});
             notaryChainDef.eraEnd = std::vector<int32_t>({0});
-            notaryChainDef.options = notaryChainDef.OPTION_ID_REFERRALS;
-            notaryChainDef.idRegistrationAmount = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
-            notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;        
         }
         else
         {
@@ -244,10 +241,12 @@ bool SetThisChain(const UniValue &chainDefinition)
             notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
             notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
             notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
-            notaryChainDef.options = notaryChainDef.OPTION_ID_REFERRALS;
-            notaryChainDef.idRegistrationAmount = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
-            notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;        
         }
+        notaryChainDef.options = notaryChainDef.OPTION_ID_REFERRALS;
+        notaryChainDef.idRegistrationAmount = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
+        notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
+        notaryChainDef.systemID = notaryChainDef.GetID();
+
         ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
         ASSETCHAINS_TIMEUNLOCKFROM = 0;
         ASSETCHAINS_TIMEUNLOCKTO = 0;
@@ -256,9 +255,9 @@ bool SetThisChain(const UniValue &chainDefinition)
     {
         ConnectedChains.ThisChain().options = CCurrencyDefinition::OPTION_ID_REFERRALS;
         ConnectedChains.ThisChain().idRegistrationAmount = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
-        ConnectedChains.ThisChain().idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;        
+        ConnectedChains.ThisChain().idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
+        ConnectedChains.ThisChain().systemID = ConnectedChains.ThisChain().GetID();   
     }
-    
 
     memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
     assert(ConnectedChains.ThisChain().name.size() < sizeof(ASSETCHAINS_SYMBOL));
