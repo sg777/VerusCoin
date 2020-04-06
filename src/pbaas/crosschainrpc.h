@@ -173,7 +173,7 @@ public:
         OPTION_ID_ISSUANCE = 2,             // clear is permissionless, if set, IDs may only be created by controlling ID
         OPTION_ID_STAKING = 4,              // all IDs on chain stake equally, rather than value-based staking
         OPTION_ID_REFERRALS = 8,            // if set, this chain supports referrals
-        OPTION_ID_REFERRALREQUIRED = 0x10,  // if set, this chain supports referrals
+        OPTION_ID_REFERRALREQUIRED = 0x10,  // if set, this chain requires referrals
         OPTION_TOKEN = 0x20,                // if set, notarizations and import/export are for an external currency bridge or token
         OPTION_CANBERESERVE = 0x40,         // if set, this currency can be used as a reserve for a liquid currency
         OPTION_FEESASRESERVE = 0x80,         // if set, this currency can be used as a reserve for a liquid currency
@@ -429,7 +429,7 @@ public:
 
     int IDReferralLevels() const
     {
-        if (IDReferralRequired())
+        if (IDReferrals() || IDReferralRequired())
         {
             return idReferralLevels;
         }
