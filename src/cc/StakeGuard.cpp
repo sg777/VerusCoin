@@ -264,8 +264,8 @@ bool MakeGuardedOutput(CAmount value, CPubKey &dest, CTransaction &stakeTx, CTxO
 }
 
 // validates if a stake transaction is both valid and cheating, defined by:
-// the same exact utxo source, a target block height of later than that of this tx that is also targeting a fork
-// of the chain. we know the transaction is a coinbase
+// the same exact utxo source, a target block height of later than that of the provided coinbase tx that is also targeting a fork
+// of the chain. the source transaction must be a coinbase
 bool ValidateMatchingStake(const CTransaction &ccTx, uint32_t voutNum, const CTransaction &stakeTx, bool &cheating)
 {
     // an invalid or non-matching stake transaction cannot cheat
@@ -439,63 +439,86 @@ bool StakeGuardValidate(struct CCcontract_info *cp, Eval* eval, const CTransacti
 
     CC *cc = GetCryptoCondition(tx.vin[nIn].scriptSig);
 
-    if (cc)
+    // tx is the spending tx, the cc transaction comes back in txOut
+    bool validCCParams = GetCCParams(eval, tx, nIn, txOut, preConditions, params);
+    COptCCParams ccp;
+    if (preConditions.size() > 0)
     {
-        COptCCParams ccp;
+        ccp = COptCCParams(preConditions[0]);
+    }
+
+    if (validCCParams && ccp.IsValid() && ((cc && ccp.version < COptCCParams::VERSION_V3) || (!cc && ccp.version >= COptCCParams::VERSION_V3)))
+    {
         signedByFirstKey = false;
         validCheat = false;
 
-        // tx is the spending tx, the cc transaction comes back in txOut
-        if (GetCCParams(eval, tx, nIn, txOut, preConditions, params))
+        if (ccp.m == 1 && ccp.n == 2 && ccp.vKeys.size() == 2)
         {
-            if (preConditions.size() > 0)
+            std::vector<uint32_t> vc = {0, 0};
+            std::vector<CPubKey> keys;
+
+            for (auto pk : ccp.vKeys)
             {
-                ccp = COptCCParams(preConditions[0]);
+                uint160 keyID = GetDestinationID(pk);
+                std::vector<unsigned char> vkch = GetDestinationBytes(pk);
+                if (vkch.size() == 33)
+                {
+                    keys.push_back(CPubKey(vkch));
+                }
             }
 
-            if (ccp.IsValid() && ccp.m == 1 && ccp.n == 2 && ccp.vKeys.size() == 2)
+            if (keys.size() == 2)
             {
-                std::vector<uint32_t> vc = {0, 0};
-
-                std::vector<CPubKey> keys;
-                for (auto pk : ccp.vKeys)
+                if (cc && ccp.version < COptCCParams::VERSION_V3)
                 {
-                    uint160 keyID = GetDestinationID(pk);
-                    std::vector<unsigned char> vkch = GetDestinationBytes(pk);
-                    if (vkch.size() == 33)
+                    ccFulfillmentCheck fc = {keys, vc};
+                    signedByFirstKey = (IsCCFulfilled(cc, &fc) != 0);
+                }
+                else if (ccp.version >= COptCCParams::VERSION_V3)
+                {
+                    CSmartTransactionSignatures smartSigs;
+                    if (!cc)
                     {
-                        keys.push_back(CPubKey(vkch));
+                        std::vector<unsigned char> ffVec = GetFulfillmentVector(tx.vin[nIn].scriptSig);
+                        smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()));
+                        uint160 checkHash = GetDestinationID(keys[0]);
+                        for (auto &keySig : smartSigs.signatures)
+                        {
+                            CPubKey thisKey;
+                            thisKey.Set(keySig.second.pubKeyData.begin(), keySig.second.pubKeyData.end());
+                            if (thisKey.GetID() == checkHash)
+                            {
+                                signedByFirstKey = true;
+                                break;
+                            }
+                        }
                     }
                 }
 
-                if (keys.size() == 2)
+                if ((!signedByFirstKey && ccp.evalCode == EVAL_STAKEGUARD && ccp.vKeys.size() == 2 && ccp.version == COptCCParams::VERSION_V1) &&
+                    params.size() == 2 && params[0].size() > 0 && params[0][0] == OPRETTYPE_STAKECHEAT)
                 {
-                    ccFulfillmentCheck fc = {keys, vc};
-
-                    signedByFirstKey = (IsCCFulfilled(cc, &fc) != 0);
-
-                    if ((!signedByFirstKey && ccp.evalCode == EVAL_STAKEGUARD && ccp.vKeys.size() == 2 && ccp.version == COptCCParams::VERSION_V1) &&
-                        params.size() == 2 && params[0].size() > 0 && params[0][0] == OPRETTYPE_STAKECHEAT)
+                    CDataStream s = CDataStream(std::vector<unsigned char>(params[1].begin(), params[1].end()), SER_DISK, PROTOCOL_VERSION);
+                    bool checkOK = false;
+                    CTransaction cheatTx;
+                    try
                     {
-                        CDataStream s = CDataStream(std::vector<unsigned char>(params[1].begin(), params[1].end()), SER_DISK, PROTOCOL_VERSION);
-                        bool checkOK = false;
-                        CTransaction cheatTx;
-                        try
-                        {
-                            cheatTx.Unserialize(s);
-                            checkOK = true;
-                        }
-                        catch (...)
-                        {
-                        }
-                        if (checkOK && !ValidateMatchingStake(txOut, tx.vin[0].prevout.n, cheatTx, validCheat))
-                        {
-                            validCheat = false;
-                        }
+                        cheatTx.Unserialize(s);
+                        checkOK = true;
+                    }
+                    catch (...)
+                    {
+                    }
+                    if (checkOK && !ValidateMatchingStake(txOut, tx.vin[0].prevout.n, cheatTx, validCheat))
+                    {
+                        validCheat = false;
                     }
                 }
             }
         }
+    }
+    if (cc)
+    {
         cc_free(cc);
     }
     if (!(signedByFirstKey || validCheat))
