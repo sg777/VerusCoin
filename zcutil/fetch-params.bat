@@ -85,8 +85,3 @@ FOR /f "skip=1 tokens=* delims=" %%# IN ('certutil -hashfile !file! SHA256') DO 
 )
 SET "%~2=!sha256sum!"
 GOTO :EOF
-
-:CLOSE_DUPLICATE_PROCESS
-ECHO fetch-params is already running.
-EXIT 1
-ENDLOCAL
