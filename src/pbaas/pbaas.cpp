@@ -412,10 +412,10 @@ CCurrencyDefinition::CCurrencyDefinition(const CTransaction &tx)
 {
     bool definitionFound = false;
     nVersion = PBAAS_VERSION_INVALID;
-    for (auto out : tx.vout)
+    for (auto &out : tx.vout)
     {
         COptCCParams p;
-        if (IsPayToCryptoCondition(out.scriptPubKey, p))
+        if (out.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
         {
             if (p.evalCode == EVAL_CURRENCY_DEFINITION)
             {

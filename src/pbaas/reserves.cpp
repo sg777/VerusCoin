@@ -384,7 +384,7 @@ UniValue CTokenOutput::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("version", (int64_t)nVersion));
-    ret.push_back(Pair("currencyid", EncodeDestination(CKeyID(currencyID))));
+    ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
     ret.push_back(Pair("value", ValueFromAmount(nValue)));
     return ret;
 }
@@ -425,9 +425,7 @@ UniValue CReserveTransfer::ToUniValue() const
     return ret;
 }
 
-CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, 
-                                                 const uint160 &nativeSource, 
-                                                 CAmount transferTotal) const
+CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transferTotal) const
 {
     CCurrencyValueMap feeMap;
 
@@ -437,7 +435,7 @@ CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags,
         return feeMap;
     }
 
-    feeMap.valueMap[nativeSource] = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 +
+    feeMap.valueMap[currencyID] = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 +
                                     ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
 
     // add conversion fees in source currency for preconvert
@@ -449,6 +447,12 @@ CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags,
     return feeMap;
 }
 
+CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination)
+{
+    return CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 +
+                ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
+}
+
 CAmount CReserveTransfer::CalculateTransferFee() const
 {
     // determine fee for this send
@@ -456,9 +460,7 @@ CAmount CReserveTransfer::CalculateTransferFee() const
     {
         return 0;
     }
-
-    return CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 +
-                ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
+    return CalculateTransferFee(destination);
 }
 
 CReserveExchange::CReserveExchange(const UniValue &uni) : CTokenOutput(uni)
@@ -1542,6 +1544,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
     CNameReservation nameReservation;
     CIdentity identity;
+    CCurrencyDefinition newCurrencyDef;
 
     flags |= IS_VALID;
 
@@ -1676,7 +1679,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     // either a fully valid import with an export or the first import either in block 1 or the chain definition
                     // on the Verus chain
                     if ((nHeight == 1 && tx.IsCoinBase() && !IsVerusActive()) ||
-                        (CCurrencyDefinition(tx).IsValid() && IsVerusActive()) ||
+                        ((newCurrencyDef = CCurrencyDefinition(tx)).IsValid() && IsVerusActive()) ||
                         (tx.vout.back().scriptPubKey.IsOpReturn() &&
                         (chainObjs = RetrieveOpRetArray(tx.vout.back().scriptPubKey)).size() == 1 &&
                         chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF))
@@ -1715,6 +1718,17 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 flags |= IS_REJECT;
                             }
                         }
+                        // if this is a new currency definition, the currency def is the source of the pre-allocated output
+                        // that will be "transferred" to the chain and materialize when the chain starts, assuming it met any
+                        // minimums, etc.
+                        if (newCurrencyDef.IsValid() && newCurrencyDef.IsToken() && newCurrencyDef.preAllocation.size())
+                        {
+                            // if we have pre-allocation, consider the output of pre-allocation the source of input to this transaction
+                            for (auto &onePreAlloc : newCurrencyDef.preAllocation)
+                            {
+                                AddReserveInput(newCurrencyDef.GetID(), onePreAlloc.second);
+                            }
+                        }
                     }
                     else
                     {
@@ -1744,6 +1758,12 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         return;
                     }
                     flags |= IS_EXPORT;
+                }
+                break;
+
+                case EVAL_CURRENCY_DEFINITION:
+                {
+
                 }
                 break;
             }
@@ -1877,8 +1897,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 }
 
                 // includes all conversion fees of other currencies as well
-                CCurrencyValueMap thisExpectedFees = curTransfer.CalculateFee(curTransfer.flags, currencySourceID, curTransfer.nValue);
-                if (curTransfer.nFees < thisExpectedFees.valueMap[currencySourceID])
+                CCurrencyValueMap thisExpectedFees = curTransfer.CalculateFee(curTransfer.flags, curTransfer.nValue);
+                if (curTransfer.nFees < thisExpectedFees.valueMap[curTransfer.currencyID])
                 {
                     printf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                     LogPrintf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
@@ -1987,7 +2007,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // naturally compress a full ID to an ID destination, since it is going back where it came from
                     CTxDestination sendBackAddr = TransferDestinationToDestination(curTransfer.destination);
 
-                    CAmount fees = curTransfer.CalculateFee(curTransfer.flags, currencySourceID, curTransfer.nValue).valueMap.begin()->second;
+                    CAmount fees = curTransfer.CalculateFee(curTransfer.flags, curTransfer.nValue).valueMap.begin()->second;
 
                     CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, 
                                                            curTransfer.currencyID, 

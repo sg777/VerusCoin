@@ -234,6 +234,25 @@ CTransferDestination DestinationToTransferDestination(const CTxDestination &dest
     return retDest;
 }
 
+CTransferDestination IdentityToTransferDestination(const CIdentity &identity)
+{
+    return CTransferDestination(CTransferDestination::DEST_FULLID, ::AsVector(identity));
+}
+
+CIdentity TransferDestinationToIdentity(const CTransferDestination &dest)
+{
+    CIdentity retIdentity;
+    switch (dest.type)
+    {
+        case CTransferDestination::DEST_FULLID:
+        {
+            ::FromVector(dest.destination, retIdentity);
+            break;
+        }        
+    }
+    return retIdentity;
+}
+
 std::vector<CTxDestination> TransferDestinationsToDestinations(const std::vector<CTransferDestination> &transferDests)
 {
     std::vector<CTxDestination> retDests;

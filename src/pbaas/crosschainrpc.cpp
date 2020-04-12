@@ -348,6 +348,31 @@ UniValue CNodeData::ToUniValue() const
     return obj;
 }
 
+uint160 CurrencyNameToChainID(std::string currencyStr)
+{
+    std::string extraName;
+    uint160 retVal;
+    currencyStr = TrimSpaces(currencyStr);
+    if (!currencyStr.size())
+    {
+        return retVal;
+    }
+    ParseSubNames(currencyStr, extraName, true);
+    if (currencyStr.back() == '@' || extraName != "")
+    {
+        return retVal;
+    }
+    CTxDestination currencyDest = DecodeDestination(currencyStr);
+    if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
+    {
+        currencyDest = DecodeDestination(currencyStr + "@");
+    }
+    if (currencyDest.which() != COptCCParams::ADDRTYPE_INVALID)
+    {
+        retVal = GetDestinationID(currencyDest);
+    }
+    return retVal;
+}
 
 CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
 {
@@ -355,14 +380,9 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
     {
         nVersion = PBAAS_VERSION;
         name = std::string(uni_get_str(find_value(obj, "name")), 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
-        name = CleanName(name, parent);
 
         std::string parentStr = uni_get_str(find_value(obj, "parent"));
-        if (parentStr == "")
-        {
-            parent = parent;
-        }
-        else
+        if (parentStr != "")
         {
             CTxDestination parentDest = DecodeDestination(parentStr);
             parent = GetDestinationID(parentDest);
@@ -372,6 +392,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                 nVersion = PBAAS_VERSION_INVALID;
             }
         }
+
+        name = CleanName(name, parent);
 
         options = (uint32_t)uni_get_int64(find_value(obj, "options"));
 
@@ -405,20 +427,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
         startBlock = uni_get_int(find_value(obj, "startblock"));
         endBlock = uni_get_int(find_value(obj, "endblock"));
 
-        proofProtocol = (EProofProtocol)uni_get_int(find_value(obj, "proofprotocol"));
-        notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"));
-        if (proofProtocol == PROOF_INVALID)
-        {
-            // default to standard PBaaS for a blockchain and ID for a token
-            proofProtocol = options & OPTION_TOKEN ? PROOF_CHAINID : PROOF_PBAASMMR;
-        }
-
-        if (notarizationProtocol == NOTARIZATION_INVALID)
-        {
-            // default to standard PBaaS for a blockchain and ID for a token
-            notarizationProtocol = options & OPTION_TOKEN ? NOTARIZATION_NOTARY_CHAINID : NOTARIZATION_AUTO;
-        }
-
+        proofProtocol = (EProofProtocol)uni_get_int(find_value(obj, "proofprotocol"), (int32_t)PROOF_PBAASMMR);
+        notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_AUTO);
         int32_t totalReserveWeight = AmountFromValueNoErr(find_value(obj, "reserveratio"));
         UniValue currencyArr = find_value(obj, "currencies");
         UniValue weightArr = find_value(obj, "weights");
@@ -542,8 +552,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
 
             for (int i = 0; nVersion != PBAAS_VERSION_INVALID && i < currencyArr.size(); i++)
             {
-                uint160 currencyID;
-                currencyID = GetDestinationID(DecodeDestination(uni_get_str(currencyArr[i])));
+                uint160 currencyID = CurrencyNameToChainID(uni_get_str(currencyArr[i]));
                 // if we have a destination, but it is invalid, the json for this definition cannot be valid
                 if (currencyID.IsNull())
                 {
@@ -611,7 +620,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
             }
         }
 
-        launchFee = AmountFromValueNoErr(find_value(obj, "launchfee"));
         preAllocationRatio = AmountFromValueNoErr(find_value(obj, "preallocationratio"));
 
         UniValue preallocationArr = find_value(obj, "preallocation");
@@ -624,23 +632,24 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                 if (preallocationKey.size() != 1 || preallocationValue.size() != 1)
                 {
                     LogPrintf("%s: each preallocation entry must contain one destination identity and one amount\n", __func__);
+                    printf("%s: each preallocation entry must contain one destination identity and one amount\n", __func__);
                     nVersion = PBAAS_VERSION_INVALID;
                     break;
                 }
 
                 CTxDestination preallocDest = DecodeDestination(preallocationKey[0]);
 
-                if (preallocDest.which() != COptCCParams::ADDRTYPE_INVALID && preallocDest.which() != COptCCParams::ADDRTYPE_ID)
+                if (preallocDest.which() != COptCCParams::ADDRTYPE_ID && preallocDest.which() != COptCCParams::ADDRTYPE_INVALID)
                 {
-                    LogPrintf("%s: preallocation must be allocated to IDs\n", __func__);
+                    LogPrintf("%s: preallocation destination must be an identity\n", __func__);
                     nVersion = PBAAS_VERSION_INVALID;
                     break;
                 }
 
                 CAmount preAllocAmount = AmountFromValueNoErr(preallocationValue[0]);
-                if (preAllocAmount < 0)
+                if (preAllocAmount <= 0)
                 {
-                    LogPrintf("%s: preallocation must be greater than zero\n", __func__);
+                    LogPrintf("%s: preallocation values must be greater than zero\n", __func__);
                     nVersion = PBAAS_VERSION_INVALID;
                     break;
                 }
@@ -834,8 +843,6 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("maxpreconversion", maxPreconvertArr));
     }
 
-    obj.push_back(Pair("launchfee", launchFee));
-
     if (preAllocationRatio)
     {
         obj.push_back(Pair("preallocationratio", ValueFromAmount(preAllocationRatio)));
@@ -850,7 +857,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
             onePreAlloc.push_back(Pair(EncodeDestination(CIdentityID(onePreAllocation.first)), ValueFromAmount(onePreAllocation.second)));
             preAllocationArr.push_back(onePreAlloc);
         }
-        obj.push_back(Pair("preallocations", preAllocationArr));
+        obj.push_back(Pair("preallocation", preAllocationArr));
     }
 
     if (contributions.size())

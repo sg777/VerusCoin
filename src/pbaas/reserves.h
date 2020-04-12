@@ -176,7 +176,7 @@ public:
 
     uint32_t flags;                         // type of transfer and options
     CAmount nFees;                          // cross-chain network fees only, separated out to enable market conversions, conversion fees are additional
-    uint160 destCurrencyID;                       // system to export to, which may represent a PBaaS chain or external bridge
+    uint160 destCurrencyID;                 // system to export to, which may represent a PBaaS chain or external bridge
     CTransferDestination destination;       // system specific address to send funds to on the target chain
 
     CReserveTransfer(const std::vector<unsigned char> &asVector)
@@ -207,9 +207,9 @@ public:
 
     UniValue ToUniValue() const;
 
-    CCurrencyValueMap CalculateFee(uint32_t flags, 
-                                   const uint160 &nativeSource, 
-                                   CAmount transferTotal) const;
+    CCurrencyValueMap CalculateFee(uint32_t flags, CAmount transferTotal) const;
+
+    static CAmount CalculateTransferFee(const CTransferDestination &destination);
 
     CAmount CalculateTransferFee() const;
 
@@ -336,7 +336,7 @@ public:
 
     bool IsValid() const
     {
-        return nVersion > VERSION_INVALID && nVersion <= VERSION_LAST && !systemID.IsNull() && importValue.valueMap.size() != 0;
+        return nVersion > VERSION_INVALID && nVersion <= VERSION_LAST && !systemID.IsNull();
     }
 
     UniValue ToUniValue() const;
@@ -391,7 +391,6 @@ public:
         return nVersion > VERSION_INVALID && 
                nVersion <= VERSION_LAST && 
                !systemID.IsNull() && 
-               totalAmounts.valueMap.size() && 
                totalAmounts.valueMap.size() == totalFees.valueMap.size();
     }
 

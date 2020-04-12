@@ -4750,7 +4750,8 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
             for (int i = 0; i < pcoin->vout.size(); i++)
             {
                 isminetype mine = IsMine(pcoin->vout[i]);
-                if (!(IsSpent(wtxid, i)) && mine != ISMINE_NO &&
+                if (!(IsSpent(wtxid, i)) &&
+                    mine != ISMINE_NO &&
                     !IsLockedCoin((*it).first, i) &&
                     (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*it).first, i)))
                 {
@@ -4787,7 +4788,8 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                     // don't return zero valued outputs
                     if (rOut.valueMap.size() || pcoin->vout[i].nValue)
                     {
-                        if ((pOnlyTheseCurrencies && pOnlyTheseCurrencies->Intersects(rOut)) || (fIncludeNative && pcoin->vout[i].nValue))
+                        if ((rOut.valueMap.size() && (!pOnlyTheseCurrencies || (pOnlyTheseCurrencies && pOnlyTheseCurrencies->Intersects(rOut)))) || 
+                            (fIncludeNative && pcoin->vout[i].nValue))
                         {
                             vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
                         }
@@ -5359,7 +5361,8 @@ bool CWallet::SelectReserveCoins(const CCurrencyValueMap& targetReserveValues,
             ++it;
     }
     retval = false;
-    if ( targetReserveValues <= targetReserveValues.IntersectingValues(valueFromPresetInputs) && targetNativeValue <= nativeValueFromPresets )
+    if ( targetNativeValue <= nativeRet &&
+         targetReserveValues <= targetReserveValues.IntersectingValues(valueFromPresetInputs) && targetNativeValue <= nativeValueFromPresets )
         retval = true;
     else if ( SelectReserveCoinsMinConf(targetReserveValues, targetNativeValue, 1, 6, vCoins, setCoinsRet, valueRet, nativeRet) != 0 )
         retval = true;
@@ -5792,12 +5795,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
     // fees can only be deducted from fractional reserve outputs on fractional currency blockchains, otherwise,
     // Verus/Verustest must be used to cover fees.
     bool isVerusActive = IsVerusActive();
-    if (IsVerusActive())
-    {
-        strFailReason = _("Transactions that accept reserve currency input can only be created on PBaaS blockchains");
-        return false;
-    }
-    else
+    if (!isVerusActive)
     {
         if (ConnectedChains.ReserveCurrencies().size())
         {
@@ -5815,9 +5813,21 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
         return false;
     }
 
+    CCurrencyDefinition newCurrency;
+
     // make sure that there are recipients, all recipients expect reserve inputs, and amounts are all non-negative
     BOOST_FOREACH (const CRecipient& recipient, vecSend)
     {
+        COptCCParams p;
+        if (recipient.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CURRENCY_DEFINITION && p.vData.size() >= 1)
+        {
+            if (newCurrency.IsValid())
+            {
+                strFailReason = _("A normal transaction cannot define define multiple currencies");
+                return false;
+            }
+            newCurrency = CCurrencyDefinition(p.vData[0]);
+        }
         CCurrencyValueMap values = recipient.scriptPubKey.ReserveOutValue();
         CCurrencyValueMap zeroes = values - values; // zero values of the same currencies
 
@@ -5831,6 +5841,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
             strFailReason = _("Transaction output amounts must not be negative");
             return false;
         }
+
         totalNativeOutput += recipient.nAmount;
         totalReserveOutput += values;
 
@@ -5851,6 +5862,11 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
             strFailReason = _("Transaction amounts must not be negative");
             return false;
         }
+    }
+
+    if (newCurrency.IsValid())
+    {
+        totalReserveOutput.valueMap.erase(newCurrency.GetID());
     }
 
     wtxNew.fTimeReceivedIsTxTime = true;
@@ -5990,7 +6006,6 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                             p.evalCode == EVAL_RESERVE_OUTPUT || 
                             p.evalCode == EVAL_RESERVE_DEPOSIT || 
                             p.evalCode == EVAL_RESERVE_EXCHANGE || 
-                            p.evalCode == EVAL_RESERVE_TRANSFER ||
                             p.evalCode == EVAL_NONE)
                         {
                             // add all values to a native equivalent

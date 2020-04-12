@@ -313,6 +313,11 @@ CPubKey GetScriptPublicKey(const CScript &scriptPubKey)
 
 void ProcessNewImports(const uint160 &sourceChainID, const CTransaction &lastConfirmed, int32_t nHeight)
 {
+    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight) < CActivationHeight::ACTIVATE_PBAAS || 
+        CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight))
+    {
+        return;
+    }
     uint32_t consensusBranchId = CurrentEpochBranchId(nHeight, Params().GetConsensus());
 
     // get any pending imports from the source chain. if the source chain is this chain, we don't need notarization

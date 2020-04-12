@@ -156,6 +156,8 @@ public:
 class CCurrencyDefinition
 {
 public:
+    static const int64_t DEFAULT_ID_REGISTRATION_AMOUNT = 10000000000;
+
     enum ELimitsDefaults
     {
         MIN_PER_BLOCK_NOTARIZATION = 1000000, // 0.01 VRSC per block notarization minimum
@@ -163,7 +165,6 @@ public:
         MIN_BILLING_PERIOD = 960,           // 16 hour minimum billing period for notarization, typically expect days/weeks/months
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
         DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
-        DEFAULT_ID_REGISTRATION_AMOUNT = 10000000000,
         DEFAULT_ID_REFERRAL_LEVELS = 3
     };
 
@@ -206,8 +207,8 @@ public:
     // the interface to the currency controller. systemID refers to the controlling blockchain or currency that serves as a gateway
     uint160 systemID;                       // native system of currency home, for BTC.VRSC: BTC, for VQUAD.VRSC: QUAD.VRSC, for QUAD.VRSC, QUAD.VRSC
     CTransferDestination nativeCurrencyID;  // ID of the currency in its native system
-    ENotarizationProtocol notarizationProtocol; // method of notarization
-    EProofProtocol proofProtocol;           // method of proving imports and other elements
+    int32_t notarizationProtocol;           // method of notarization
+    int32_t proofProtocol;                  // method of proving imports and other elements
 
     int64_t idRegistrationAmount;           // normal cost of ID registration
     int32_t idReferralLevels;               // number of referral levels to divide among
@@ -231,7 +232,6 @@ public:
     std::vector<int64_t> minPreconvert;     // can be used for Kickstarter-like launch and return all non-network fees upon failure to meet minimum
     std::vector<int64_t> maxPreconvert;     // maximum amount of each reserve that can be pre-converted
 
-    int32_t launchFee;                      // fee in ratio deducted from purchase before conversion. always 100000000 (100%) for non-reserve currencies
     int32_t preAllocationRatio;             // if non-zero, a ratio of the initial supply instead of a fixed number is used to calculate total preallocation
     std::vector<std::pair<uint160, int64_t>> preAllocation; // pre-allocation recipients, from pre-allocation/premine, emitted after reserve weights are set
     std::vector<int64_t> contributions;     // initial contributions
@@ -259,7 +259,7 @@ public:
                         ENotarizationProtocol NotarizationProtocol, EProofProtocol ProofProtocol, int64_t IDRegistrationAmount, int32_t IDReferralLevels,
                         const std::vector<uint160> &Notaries, int32_t MinNotariesConfirm, int32_t BillingPeriod, int64_t NotaryReward,
                         int32_t StartBlock, int32_t EndBlock, std::vector<uint160> Currencies, std::vector<int32_t> Weights, 
-                        std::vector<int64_t> Conversions, std::vector<int64_t> MinPreconvert, std::vector<int64_t> MaxPreconvert, int32_t LaunchFee,
+                        std::vector<int64_t> Conversions, std::vector<int64_t> MinPreconvert, std::vector<int64_t> MaxPreconvert,
                         int32_t PreAllocationRatio, std::vector<std::pair<uint160, int64_t>> PreAllocation, std::vector<int64_t> Contributions,
                         std::vector<int64_t> Preconverted, const std::vector<int64_t> &chainRewards, const std::vector<int64_t> &chainRewardsDecay,
                         const std::vector<int32_t> &chainHalving, const std::vector<int32_t> &chainEraEnd) :
@@ -284,7 +284,6 @@ public:
                         conversions(Conversions),
                         minPreconvert(MinPreconvert),
                         maxPreconvert(MaxPreconvert),
-                        launchFee(LaunchFee),
                         preAllocationRatio(PreAllocationRatio),
                         preAllocation(PreAllocation),
                         contributions(Contributions),
@@ -305,12 +304,13 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(nVersion);
+        READWRITE(options);        
         READWRITE(parent);        
         READWRITE(name);        
         READWRITE(systemID);
         READWRITE(nativeCurrencyID);
-        READWRITE(VARINT((int32_t)notarizationProtocol));
-        READWRITE(VARINT((int32_t)proofProtocol));
+        READWRITE(notarizationProtocol);
+        READWRITE(proofProtocol);
         READWRITE(VARINT(idRegistrationAmount));
         READWRITE(VARINT(idReferralLevels));
         READWRITE(notaries);
@@ -324,7 +324,6 @@ public:
         READWRITE(conversions);
         READWRITE(minPreconvert);
         READWRITE(maxPreconvert);
-        READWRITE(VARINT(launchFee));
         READWRITE(VARINT(preAllocationRatio));
         READWRITE(preAllocation);
         READWRITE(contributions);
@@ -382,7 +381,7 @@ public:
 
     bool IsToken() const
     {
-        return !(ChainOptions() & OPTION_TOKEN);
+        return ChainOptions() & OPTION_TOKEN;
     }
 
     void SetToken(bool isToken)

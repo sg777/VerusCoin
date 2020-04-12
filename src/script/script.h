@@ -29,6 +29,7 @@
 #define OPRETTYPE_STAKEPARAMS2 6
 
 class CCurrencyStateNew;
+class CIdentity;
 
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V2 = 1024;
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_IDENTITY = 3073;    // fulfillment maximum size + 1, MAKE SURE TO KEEP MAX_BINARY_CC_SIZE IN SYNC WITH THIS-1, BUF_SIZE in crypto conditions, should be >=
@@ -419,6 +420,8 @@ typedef boost::variant<CNoDestination, CPubKey, CKeyID, CScriptID, CIdentityID, 
 
 CTxDestination TransferDestinationToDestination(const CTransferDestination &trasnferDest);
 CTransferDestination DestinationToTransferDestination(const CTxDestination &dest);
+CTransferDestination IdentityToTransferDestination(const CIdentity &identity);
+CIdentity TransferDestinationToIdentity(const CTransferDestination &dest);
 std::vector<CTxDestination> TransferDestinationsToDestinations(const std::vector<CTransferDestination> &transferDests);
 std::vector<CTransferDestination> DestinationsToTransferDestinations(const std::vector<CTxDestination> &dests);
 
