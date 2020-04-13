@@ -611,8 +611,8 @@ public:
     std::set<std::vector<unsigned char>> signatures;
 
     CIdentitySignature() : version(VERSION_CURRENT), blockHeight(0) {}
-    CIdentitySignature(uint32_t height, const std::vector<unsigned char> &oneSig) : version(VERSION_CURRENT), blockHeight(0), signatures({oneSig}) {}
-    CIdentitySignature(uint32_t height, const std::set<std::vector<unsigned char>> &sigs) : version(VERSION_CURRENT), blockHeight(0), signatures(sigs) {}
+    CIdentitySignature(uint32_t height, const std::vector<unsigned char> &oneSig) : version(VERSION_CURRENT), blockHeight(height), signatures({oneSig}) {}
+    CIdentitySignature(uint32_t height, const std::set<std::vector<unsigned char>> &sigs) : version(VERSION_CURRENT), blockHeight(height), signatures(sigs) {}
     CIdentitySignature(const std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);

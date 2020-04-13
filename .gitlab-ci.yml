@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.4-1
+  VERSION: 0.6.4-2
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
@@ -128,10 +128,6 @@ build:windows:
       doc/man/verus-cli/windows/README.txt
       zcutil/fetch-params.bat
       verus-cli
-    - mkdir -p verus-cli/compat
-    - wget https://curl.haxx.se/windows/dl-7.68.0/curl-7.68.0-win64-mingw.zip
-    - unzip -qq curl-7.68.0-win64-mingw.zip -d verus-cli/compat
-    - rm curl-7.68.0-win64-mingw.zip
     - if [ "${STRIP_BINARIES}" = "true" ]; then strip --strip-unneeded verus-cli/verusd.exe && strip --strip-unneeded verus-cli/verus.exe; fi
     - zip -r ${VERUS_CLI_WINDOWS} verus-cli
     - sha256sum ${VERUS_CLI_WINDOWS} > ${VERUS_CLI_WINDOWS}.sha256
@@ -368,16 +364,6 @@ deploy:
       gcloud auth activate-service-account
       --key-file AUTH_KEY.json
     - gsutil cp -r Windows MacOS Linux  $STAGING/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}
-    - curl -X POST
-      -F token="$CI_JOB_TOKEN"
-      -F ref="${CI_COMMIT_REF_NAME}"
-      -F variables\[UPSTREAM_TRIGGER\]="${CI_PROJECT_NAME} ; ${CI_COMMIT_SHA}"
-      -F variables\[VERUS_VERSION\]="${VERSION}"
-      -F variables\[UPSTREAM_CLI_BRANCH\]="${CI_COMMIT_REF_NAME}"
-      -F variables\[VERUS_CLI_LINUX_AMD64\]="${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/Linux/${VERUS_CLI_LINUX_AMD64}"
-      -F variables\[VERUS_CLI_WINDOWS\]="${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/Windows/${VERUS_CLI_WINDOWS}"
-      -F variables\[VERUS_CLI_MACOS\]="${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/MacOS/${VERUS_CLI_MACOS}"
-      "https://gitlab.com/api/v4/projects/16158513/trigger/pipeline"
   artifacts:
     paths:
       - ${VERUS_CLI_LINUX_AMD64}
