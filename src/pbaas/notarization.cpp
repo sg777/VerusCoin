@@ -603,13 +603,15 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
     // to spend a coinbase instant spend
 
     CPBaaSNotarization crossNotarizaton(crossTx);
-    CCurrencyDefinition chainDef(crossTx);        // only matters if we get no cross notarization prior
-    if (crossNotarizaton.prevNotarization.IsNull() && !chainDef.IsValid())
+    std::vector<CCurrencyDefinition> chainDefs = CCurrencyDefinition::GetCurrencyDefinitions(crossTx);
+    if (chainDefs.size())
     {
         // must either have a prior notarization or be the definition
         printf("%s: no prior notarization and no chain definition in cross notarization\n", __func__);
         return false;
     }
+
+    CCurrencyDefinition chainDef = chainDefs[0];
 
     pbn.prevNotarization = lastNotarizationID;
     if (lastNotarizationID.IsNull())

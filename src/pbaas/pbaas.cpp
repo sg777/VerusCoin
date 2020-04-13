@@ -408,29 +408,31 @@ CCrossChainExport::CCrossChainExport(const CTransaction &tx, int32_t *pCCXOutput
     }
 }
 
-CCurrencyDefinition::CCurrencyDefinition(const CTransaction &tx)
+CCurrencyDefinition::CCurrencyDefinition(const CScript &scriptPubKey)
 {
-    bool definitionFound = false;
     nVersion = PBAAS_VERSION_INVALID;
-    for (auto &out : tx.vout)
+    COptCCParams p;
+    if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
     {
-        COptCCParams p;
-        if (out.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+        if (p.evalCode == EVAL_CURRENCY_DEFINITION)
         {
-            if (p.evalCode == EVAL_CURRENCY_DEFINITION)
-            {
-                if (definitionFound)
-                {
-                    nVersion = PBAAS_VERSION_INVALID;
-                }
-                else
-                {
-                    FromVector(p.vData[0], *this);
-                    definitionFound = true;
-                }
-            }
+            FromVector(p.vData[0], *this);
         }
     }
+}
+
+std::vector<CCurrencyDefinition> CCurrencyDefinition::GetCurrencyDefinitions(const CTransaction &tx)
+{
+    std::vector<CCurrencyDefinition> retVal;
+    for (auto &out : tx.vout)
+    {
+        CCurrencyDefinition oneCur = CCurrencyDefinition(out.scriptPubKey);
+        if (oneCur.IsValid())
+        {
+            retVal.push_back(oneCur);
+        }
+    }
+    return retVal;
 }
 
 uint160 CCurrencyDefinition::GetID(const std::string &Name, uint160 &Parent)
@@ -462,7 +464,7 @@ bool ValidateChainDefinition(struct CCcontract_info *cp, Eval* eval, const CTran
 
 // ensures that the chain definition is valid and that there are no other definitions of the same name
 // that have been confirmed.
-bool CheckChainDefinitionOutput(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
+bool CheckChainDefinitionOutputs(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn)
 {
     // checked before a chain definition output script is accepted as a valid transaction
 
@@ -482,25 +484,84 @@ bool CheckChainDefinitionOutput(struct CCcontract_info *cp, Eval* eval, const CT
         return false;
     }
 
-    CCurrencyDefinition chainDef(thisTx);
+    std::vector<CCurrencyDefinition> chainDefs = CCurrencyDefinition::GetCurrencyDefinitions(thisTx);
     CPBaaSNotarization notarization(thisTx);
     CNotarizationFinalization finalization(thisTx);
+    bool isVerusActive = IsVerusActive();
 
-    if (!chainDef.IsValid() || !notarization.IsValid() || finalization.IsValid())
+    if (!notarization.IsValid() || !finalization.IsValid())
     {
-        LogPrintf("transaction specified, %s, must have valid chain definition, notarization, and finaization outputs\n", tx.vin[nIn].prevout.hash.GetHex().c_str());
+        LogPrintf("transaction specified, %s, must have valid notarization, and finaization outputs\n", tx.vin[nIn].prevout.hash.GetHex().c_str());
         return false;
     }
 
-    CCurrencyDefinition prior;
-    // this ensures that there is no other definition of the same name already on the blockchain
-    if (!GetCurrencyDefinition(chainDef.name, prior))
+    std::set<uint160> allCurrencyIDs;
+    for (auto &curPair : ConnectedChains.ReserveCurrencies())
     {
-        LogPrintf("PBaaS chain with the name %s already exists\n", chainDef.name.c_str());
-        return false;
+        allCurrencyIDs.insert(curPair.first);
+    }
+    allCurrencyIDs.insert(ConnectedChains.ThisChain().GetID());
+    if (!isVerusActive)
+    {
+        allCurrencyIDs.insert(ConnectedChains.notaryChain.GetID());
     }
 
-    return true;
+    bool isCoinbase = thisTx.IsCoinBase();
+    bool isVerified = false;
+    CIdentity activatedID(thisTx);
+
+    // currency definitions can be valid as follows:
+    // 1. original definition in a transaction that simultaneously sets the active currency bit on the identity of the same
+    //    name and ID.
+    // 2. outputs of a coinbase transaction in block 1 that defines the parent currency, new currency, and any reserve currencies
+    // 3. currency import from the defining chain of the currency, which has not been implemented as of this comment
+    if (activatedID.IsValid() && 
+        activatedID.HasActiveCurrency() && 
+        chainDefs.size() == 1 &&
+        activatedID.parent == ASSETCHAINS_CHAINID &&
+        activatedID.GetID() == chainDefs[0].GetID())
+    {
+        isVerified = true;
+    }
+    else if (isCoinbase && chainDefs.size() >= 1 && !isVerusActive)
+    {
+        int32_t height1 = 1;
+        CScript expect = CScript() << height1;
+        opcodetype opcode = (opcodetype)*expect.begin();
+
+        if (opcode >= OP_1 && opcode <= OP_16)
+        {
+            isVerified = (thisTx.vin[0].scriptSig.size() >= 1 && CScript::DecodeOP_N(opcode) == height1) || 
+                            (thisTx.vin[0].scriptSig.size() >= 2 && thisTx.vin[0].scriptSig[0] == OP_PUSHDATA1 && (int)thisTx.vin[0].scriptSig[1] == height1);
+        }
+        else
+        {
+            isVerified = thisTx.vin[0].scriptSig.size() >= expect.size() && std::equal(expect.begin(), expect.end(), thisTx.vin[0].scriptSig.begin());
+        }
+
+        for (auto &chainDef : chainDefs)
+        {
+            uint160 chainID = chainDef.GetID();
+            if (!chainDef.IsValid())
+            {
+                LogPrintf("transaction specified, %s, must not contain invalid chain definitions\n", tx.vin[nIn].prevout.hash.GetHex().c_str());
+                return false;
+            }
+            if (!allCurrencyIDs.count(chainID))
+            {
+                LogPrintf("transaction specified, %s, must not contain invalid chain definitions\n", tx.vin[nIn].prevout.hash.GetHex().c_str());
+                return false;
+            }
+            allCurrencyIDs.erase(chainID);
+        }
+        if (allCurrencyIDs.size())
+        {
+            LogPrintf("transaction specified, %s, does not contain all required chain definitions\n", tx.vin[nIn].prevout.hash.GetHex().c_str());
+            return false;
+        }
+    }
+
+    return isVerified;
 }
 
 CCurrencyValueMap CCrossChainExport::CalculateExportFee() const
@@ -1016,15 +1077,14 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     currencyDefCache[output.second.second.currencyID] = destDef;
                 }
 
-                // if this is a currency on this chain that starts at a height greater than this one,
-                // skip this tranfer for now. all transfers posted that do not need chain transfer, proceed when the currency starts.
+                // if currency is controlled by this chain and it hasn't started yet, skip it
+                if (destDef.systemID == ASSETCHAINS_CHAINID && destDef.startBlock > nHeight)
+                {
+                    continue;
+                }
+
                 if (destDef.systemID == ASSETCHAINS_CHAINID)
                 {
-                    if (destDef.startBlock > nHeight)
-                    {
-                        continue;
-                    }
-
                     // see if the chain has failed to launch, and we haven't recorded that yet, do so
                     CCurrencyValueMap minPreMap, preConvertedMap;
                     uint160 destID = destDef.GetID();
@@ -1035,7 +1095,20 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     {
                         failedLaunches.insert(destID);
                     }
-                    systemDef = ConnectedChains.ThisChain();
+                    // if this currency is controlled by the ID that created it, consider the currency def its own system
+                    // even for these types of currencies, pre-convert is considered an automatic chain function controlled by this
+                    // chain. If any centralized participatory control is desired, it will currenty require that qualified
+                    // pre-conversions be handled off chain and posted by the currency's controller. All chain defined preconversions
+                    // are available to all participants.
+                    if (destDef.proofProtocol == CCurrencyDefinition::PROOF_CHAINID && !(output.second.second.flags & CReserveTransfer::PRECONVERT))
+                    {
+                        // controller of the currency is responsible for fielding export transactions
+                        systemDef = destDef;
+                    }
+                    else
+                    {
+                        systemDef = ConnectedChains.ThisChain();
+                    }
                     currencyDefCache[ASSETCHAINS_CHAINID] = systemDef;
                 }
                 else

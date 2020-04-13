@@ -138,20 +138,29 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
         {
             CTransaction tx;
             uint256 blkHash;
+
             if (GetTransaction(txidx.first.txhash, tx, blkHash))
             {
-                chainDef = CCurrencyDefinition(tx);
-                if (found = chainDef.IsValid() && chainDef.GetID() == chainID)
+                std::vector<CCurrencyDefinition> chainDefs = CCurrencyDefinition::GetCurrencyDefinitions(tx);
+                for (auto &oneDef : chainDefs)
                 {
-                    // TODO: if we need to calculate the total contribution, do so
-                    // we can get it from either a total of all exports, or the block 1 notarization if there is one
-                    if (pDefHeight)
+                    if (found = oneDef.GetID() == chainID)
                     {
-                        auto it = mapBlockIndex.find(blkHash);
-                        *pDefHeight = it->second->GetHeight();
+                        chainDef = oneDef;
+                        // TODO: consider calculating the total contribution
+                        // we can get it from either a total of all exports, or the block 1 notarization if there is one
+                        if (pDefHeight)
+                        {
+                            auto it = mapBlockIndex.find(blkHash);
+                            *pDefHeight = it->second->GetHeight();
+                        }
+                        break;
                     }
-                    break;
                 }
+            }
+            if (found)
+            {
+                break;
             }
         }
     }
@@ -336,20 +345,24 @@ void GetDefinedChains(vector<CCurrencyDefinition> &chains, bool includeExpired)
             uint256 blkHash;
             if (GetTransaction(txidx.first.txhash, tx, blkHash))
             {
-                chains.push_back(CCurrencyDefinition(tx));
+                std::vector<CCurrencyDefinition> newChains = CCurrencyDefinition::GetCurrencyDefinitions(tx);
+                chains.insert(chains.begin(), newChains.begin(), newChains.end());
 
-                UniValue valStr(UniValue::VSTR);
-
-                // TODO: remove/comment this if statement, as it is redundant with the one below
-                if (!valStr.read(chains.back().ToUniValue().write()))
+                for (int i = chains.size() - 1; i >= chains.size() - newChains.size(); i--)
                 {
-                    printf("Invalid characters in blockchain definition: %s\n", chains.back().ToUniValue().write().c_str());
-                }
+                    UniValue valStr(UniValue::VSTR);
 
-                // remove after to use less storage
-                if (!valStr.read(chains.back().ToUniValue().write()) || ClosedPBaaSChains.count(chains.back().GetID()) || (!includeExpired && chains.back().endBlock != 0 && chains.back().endBlock < chainActive.Height()))
-                {
-                    chains.pop_back();
+                    // TODO: remove/comment this if statement, as it is redundant with the one below
+                    if (!valStr.read(chains[i].ToUniValue().write()))
+                    {
+                        printf("Invalid characters in blockchain definition: %s\n", chains[i].ToUniValue().write().c_str());
+                    }
+
+                    // remove after to use less storage
+                    if (!valStr.read(chains[i].ToUniValue().write()) || ClosedPBaaSChains.count(chains[i].GetID()) || (!includeExpired && chains[i].endBlock != 0 && chains[i].endBlock < chainActive.Height()))
+                    {
+                        chains.erase(chains.begin() + i);
+                    }
                 }
             }
         }
@@ -500,10 +513,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &systemDef,
 
     // either a fully valid import with an export or the first import either in block 1 or the chain definition
     // on the Verus chain
+    std::vector<CCurrencyDefinition> chainDefs;
     if (!(lastCrossChainImport.vout.back().scriptPubKey.IsOpReturn() &&
           (chainObjs = RetrieveOpRetArray(lastCrossChainImport.vout.back().scriptPubKey)).size() == 1 &&
           chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF) &&
-        !(chainObjs.size() == 0 && CCurrencyDefinition(lastCrossChainImport).IsValid()))
+        !(chainObjs.size() == 0 && 
+          (chainDefs = CCurrencyDefinition::GetCurrencyDefinitions(lastCrossChainImport)).size()))
     {
         DeleteOpRetObjects(chainObjs);
         LogPrintf("%s: Invalid last import tx\n", __func__);
@@ -1524,7 +1539,11 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
                 if (!chainDef.IsValid())
                 {
                     // try to make a chain definition out of each transaction, and keep the first one that is valid
-                    chainDef = CCurrencyDefinition(ntx);
+                    std::vector<CCurrencyDefinition> chainDefs = CCurrencyDefinition::GetCurrencyDefinitions(ntx);
+                    if (chainDefs.size())
+                    {
+                        chainDef = chainDefs[0];
+                    }
                 }
                 CPBaaSNotarization notarization = CPBaaSNotarization(ntx);
                 if (notarization.IsValid())
@@ -3158,7 +3177,8 @@ bool GetLastImportIn(uint160 chainID, CTransaction &lastImportTx)
                     {
                         // if this is the Verus chain, then we need to either be part of a chain definition transaction
                         // or spend a valid import output
-                        if (CCurrencyDefinition(lastTx).IsValid())
+                        std::vector<CCurrencyDefinition> definedChains = CCurrencyDefinition::GetCurrencyDefinitions(lastTx);
+                        if (definedChains.size() == 1 && definedChains[0].IsValid())
                         {
                             lastImportTx = lastTx;
                             return true;
@@ -3355,11 +3375,12 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     CCurrencyValueMap tokenImportAvailable(find_value(params[0], "tokenimportavailable"));
 
     std::vector<CBaseChainObject *> chainObjs;
+    std::vector<CCurrencyDefinition> curDefs = CCurrencyDefinition::GetCurrencyDefinitions(lastImportTx);
     if (!(DecodeHexTx(lastImportTx, lastImportHex) && 
           DecodeHexTx(templateTx, templateTxHex) &&
           DecodeHexTx(lastConfirmedNotarization, lastConfirmedTxHex) &&
           CCrossChainImport(lastImportTx).IsValid() &&
-          (CCurrencyDefinition(lastImportTx).IsValid() ||
+          (curDefs.size() && curDefs[0].IsValid() ||
           (lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
           (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() == 1 &&
           chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF))))
@@ -3411,11 +3432,12 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
 
     // either a fully valid import with an export or the first import either in block 1 or chain definition
     // on the Verus chain
+    std::vector<CCurrencyDefinition> curDefs = CCurrencyDefinition::GetCurrencyDefinitions(lastImportTx);
     if (!(lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
           (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() == 1 &&
           chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF &&
           !(ccp = ((CChainObject<CCrossChainProof> *)(chainObjs[0]))->object).Empty()) &&
-          !(chainObjs.size() == 0 && CCurrencyDefinition(lastImportTx).IsValid()))
+          !(chainObjs.size() == 0 && curDefs.size() && curDefs[0].IsValid()))
     {
         DeleteOpRetObjects(chainObjs);
         errorReason = "invalid-import-thread-found";
@@ -4516,7 +4538,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
 
     UniValue uvret(UniValue::VOBJ);
-    uvret.push_back(Pair("chaindefinition", CCurrencyDefinition(wtx).ToUniValue()));
+    std::vector<CCurrencyDefinition> curDefs = CCurrencyDefinition::GetCurrencyDefinitions(wtx);
+    uvret.push_back(Pair("chaindefinition", (curDefs.size() ? curDefs[0] : CCurrencyDefinition()).ToUniValue()));
 
     uvret.push_back(Pair("basenotarization", CPBaaSNotarization(wtx).ToUniValue()));
 

@@ -27,6 +27,7 @@ static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
 class CTransaction;
+class CScript;
 
 class CCrossChainRPCData
 {
@@ -253,7 +254,8 @@ public:
         ::FromVector(asVector, *this);
     }
 
-    CCurrencyDefinition(const CTransaction &tx);
+    CCurrencyDefinition(const CScript &scriptPubKey);
+    static std::vector<CCurrencyDefinition> GetCurrencyDefinitions(const CTransaction &tx);
 
     CCurrencyDefinition(uint32_t Options, uint160 Parent, const std::string &Name, const uint160 &SystemID, const CTransferDestination &NativeID,
                         ENotarizationProtocol NotarizationProtocol, EProofProtocol ProofProtocol, int64_t IDRegistrationAmount, int32_t IDReferralLevels,

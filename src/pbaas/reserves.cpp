@@ -1678,8 +1678,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     std::vector<CBaseChainObject *> chainObjs;
                     // either a fully valid import with an export or the first import either in block 1 or the chain definition
                     // on the Verus chain
+                    std::vector<CCurrencyDefinition> txCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
                     if ((nHeight == 1 && tx.IsCoinBase() && !IsVerusActive()) ||
-                        ((newCurrencyDef = CCurrencyDefinition(tx)).IsValid() && IsVerusActive()) ||
+                        (txCurrencies.size() == 1 && txCurrencies[0].parent == ASSETCHAINS_CHAINID && isVerusActive) ||
                         (tx.vout.back().scriptPubKey.IsOpReturn() &&
                         (chainObjs = RetrieveOpRetArray(tx.vout.back().scriptPubKey)).size() == 1 &&
                         chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF))
@@ -1718,17 +1719,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 flags |= IS_REJECT;
                             }
                         }
-                        // if this is a new currency definition, the currency def is the source of the pre-allocated output
-                        // that will be "transferred" to the chain and materialize when the chain starts, assuming it met any
-                        // minimums, etc.
-                        if (newCurrencyDef.IsValid() && newCurrencyDef.IsToken() && newCurrencyDef.preAllocation.size())
-                        {
-                            // if we have pre-allocation, consider the output of pre-allocation the source of input to this transaction
-                            for (auto &onePreAlloc : newCurrencyDef.preAllocation)
-                            {
-                                AddReserveInput(newCurrencyDef.GetID(), onePreAlloc.second);
-                            }
-                        }
                     }
                     else
                     {
@@ -1748,9 +1738,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 case EVAL_CROSSCHAIN_EXPORT:
                 {
                     // cross chain export is incompatible with reserve exchange outputs
+                    std::vector<CCurrencyDefinition> txCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
                     if (IsReserveExchange() ||
                         (!(nHeight == 1 && tx.IsCoinBase() && !isVerusActive) &&
-                        !(CCurrencyDefinition(tx).IsValid() && isVerusActive) &&
+                        !(txCurrencies.size() == 1 && txCurrencies[0].parent == ASSETCHAINS_CHAINID && isVerusActive) &&
                         (flags & IS_IMPORT)))
                     {
                         flags &= ~IS_VALID;
