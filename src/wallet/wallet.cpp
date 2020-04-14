@@ -524,6 +524,19 @@ bool CWallet::AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMa
     return CWalletDB(strWalletFile).WriteIdentity(mapKey, identity);
 }
 
+void CWallet::ClearIdentities()
+{
+    if (fFileBacked)
+    {
+        for (auto idPair : mapIdentities)
+        {
+            CWalletDB(strWalletFile).EraseIdentity(idPair.first);
+        }    
+    }
+
+    CCryptoKeyStore::ClearIdentities();
+}
+
 bool CWallet::RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid)
 {
     CIdentityMapKey localKey = mapKey;

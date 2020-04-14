@@ -1842,6 +1842,11 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         if (clearWitnessCaches || GetBoolArg("-rescan", false))
         {
             pwalletMain->ClearNoteWitnessCache();
+            // zap and rescan clears IDs
+            if (GetArg("-zapwallettxes", false))
+            {
+                pwalletMain->ClearIdentities();
+            }
             pindexRescan = chainActive.Genesis();
         }
         else

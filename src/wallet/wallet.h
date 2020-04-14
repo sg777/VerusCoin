@@ -1106,6 +1106,7 @@ public:
     bool AddCScript(const CScript& redeemScript);
     bool LoadCScript(const CScript& redeemScript);
 
+    void ClearIdentities();
     bool AddIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
     bool UpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
     bool AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
