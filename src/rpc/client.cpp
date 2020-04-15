@@ -490,7 +490,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     // pbaas
     { "definecurrency", 0},
     { "getdefinedchains", 0},
-    { "sendcurrency", 0},
+    { "sendcurrency", 1},
     { "registeridentity", 0},
     { "updateidentity", 0},
     { "recoveridentity", 0},

@@ -2012,9 +2012,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                                            curTransfer.currencyID,
                                                            DestinationToTransferDestination(sendBackAddr));
 
-                    CTxDestination indexDest(CKeyID(currencyDest.GetConditionID(EVAL_RESERVE_TRANSFER)));
+                    std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
+                                                            CKeyID(currencyDest.systemID)});
                     CScript sendBackScript = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), 
-                                                              &indexDest);
+                                                              &indexDests);
 
                     // if this is sending back to the same chain as its native currency, make it a native output
                     if (systemDestID == currencySourceID)
@@ -2199,6 +2200,8 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
 
                 // cast object to the most derived class to avoid template errors to a least derived class
                 CTxDestination rtIndexDest(CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)));
+                std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
+                                                        CKeyID(reserveCurrencyIt->second.systemID)});
                 conversionTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), 
                                                                        &rtIndexDest)));
             }

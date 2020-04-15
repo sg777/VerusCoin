@@ -348,7 +348,8 @@ void GetDefinedChains(vector<CCurrencyDefinition> &chains, bool includeExpired)
                 std::vector<CCurrencyDefinition> newChains = CCurrencyDefinition::GetCurrencyDefinitions(tx);
                 chains.insert(chains.begin(), newChains.begin(), newChains.end());
 
-                for (int i = chains.size() - 1; i >= chains.size() - newChains.size(); i--)
+                int downTo = chains.size() - newChains.size();
+                for (int i = chains.size() - 1; i >= downTo; i--)
                 {
                     UniValue valStr(UniValue::VSTR);
 
@@ -1379,6 +1380,20 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                 for (int i = 0; i < ntx.vout.size(); i++)
                 {
                     // if this is a transfer output, optionally to this chain, add it to the input vector
+                    std::vector<CTxDestination> dests;
+                    int numRequired = 0;
+                    txnouttype typeRet;
+                    if (ExtractDestinations(ntx.vout[i].scriptPubKey, typeRet, dests, numRequired))
+                    {
+                        if (!nofilter)
+                        {
+                            printf("filter: %s\n", EncodeDestination(CKeyID(chainFilter)).c_str());
+                        }
+                        for (auto &oneDest : dests)
+                        {
+                            printf("%s\n", EncodeDestination(oneDest).c_str());
+                        }
+                    }
                     COptCCParams p;
                     CReserveTransfer rt;
                     if (ntx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && 
@@ -1414,7 +1429,7 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_RESERVE_TRANSFER), 1, unspentOutputs))
+    if (!GetAddressUnspent(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER), 1, unspentOutputs))
     {
         return false;
     }
@@ -1442,7 +1457,7 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
                             (nofilter || GetDestinationID(p.vKeys[1]) == chainFilter))
                         {
                             inputDescriptors.insert(make_pair(GetDestinationID(p.vKeys[1]),
-                                                     make_pair(CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))), rt)));
+                                                    make_pair(CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))), rt)));
                         }
                     }
                 }
@@ -2814,8 +2829,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "    [{\n"
             "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
             "      \"amount\":amount        (numeric, required) The numeric amount of currency, denominated in source currency\n"
-            "      \"converto\":\"name\",   (string, optional) Valid currency to convert to, either a reserve of a native source, or fractional of reserve\n"
-            "      \"destination\":\"dest\" (string, required) The address and optionally chain/system after the \"@\" as a system specific destination\n"
+            "      \"convertto\":\"name\",  (string, optional) Valid currency to convert to, either a reserve of a native source, or fractional of reserve\n"
+            "      \"address\":\"dest\"     (string, required) The address and optionally chain/system after the \"@\" as a system specific destination\n"
             "      \"refundto\":\"dest\"    (string, optional) For pre-conversions, this is where refunds will go, defaults to fromaddress\n"
             "      \"memo\":memo            (string, optional) If destination is a zaddr (not supported on testnet), a string message (not hexadecimal) to include.\n"
             "      \"preconvert\":\"false\", (bool,   optional) auto-convert to PBaaS currency at market price, this only works if the order is mined before block start of the chain\n"
@@ -2855,7 +2870,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     }
 
     bool isVerusActive = IsVerusActive();
-    uint160 thisChainID = ConnectedChains.ThisChain().GetID();
+    CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
+    uint160 thisChainID = thisChain.GetID();
 
     std::vector<CRecipient> outputs;
 
@@ -2870,8 +2886,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         {        
             auto currencyStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "currency")));
             CAmount sourceAmount = AmountFromValue(find_value(uniOutputs[i], "amount"));
-            auto convertToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "converto")));
-            auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "destination")));
+            auto convertToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "convertto")));
+            auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "address")));
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
@@ -2889,7 +2905,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             }
             else
             {
-                sourceCurrencyDef = ConnectedChains.ThisChain();
+                sourceCurrencyDef = thisChain;
                 sourceCurrencyID = sourceCurrencyDef.GetID();
             }
             
@@ -2906,7 +2922,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             std::string systemDestStr;
             uint160 destSystemID = thisChainID;
-            CCurrencyDefinition destSystemDef = ConnectedChains.ThisChain();
+            CCurrencyDefinition destSystemDef = thisChain;
             std::vector<std::string> subNames = ParseSubNames(destStr, systemDestStr, true);
             if (systemDestStr != "")
             {
@@ -2988,10 +3004,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(destSystemDef.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(destSystemID)});
+                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(destSystemID)});
 
                     oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
                 }
             }
             // a currency conversion without transfer?
@@ -3021,7 +3037,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-                        std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(convertToCurrencyDef.GetConditionID(EVAL_RESERVE_TRANSFER)), 
+                        std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), 
                                                                                               CKeyID(thisChainID)});
 
                         CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT, 
@@ -3032,7 +3048,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                DestinationToTransferDestination(destination));
 
                         oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
-                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
                     }
                     else
                     {
@@ -3047,7 +3063,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({destination});
                         oneOutput.nAmount = sourceAmount;
-                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_EXCHANGE, dests, 1, &re));
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveExchange>(EVAL_RESERVE_EXCHANGE, dests, 1, &re));
                     }
                 }
                 else if (convertToCurrencyDef.IsReserve())
@@ -3062,7 +3078,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     CReserveExchange re(CReserveExchange::VALID, convertToCurrencyID, sourceAmount);
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({destination});
                     oneOutput.nAmount = 0;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_EXCHANGE, dests, 1, &re));
+                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveExchange>(EVAL_RESERVE_EXCHANGE, dests, 1, &re));
                 }
                 else
                 {
@@ -4429,13 +4445,14 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid specified identity: " + EncodeDestination(CIdentityID(oneID)));
             }
 
-            // emit a reserve exchange output
+            // emit a reserve transfer output
             cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
             CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
             // send a zero output to this ID and pass the full ID to do so
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
-            indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(newChain.systemID, EVAL_RESERVE_TRANSFER))});
+            indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
+                                                      CKeyID(newChain.systemID)});
 
             CTransferDestination transferDest = IdentityToTransferDestination(oneIdentity);
             CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, 
@@ -4455,13 +4472,13 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         // output preallocation
         for (auto &oneAlloc : newChain.preAllocation)
         {
-            // emit a reserve exchange output
+            // emit a reserve transfer output, which will be imported on successful launch
             cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
             CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-            // send a zero output to this ID and pass the full ID to do so
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
-            indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(newChain.systemID, EVAL_RESERVE_TRANSFER))});
+            indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
+                                                      CKeyID(newChain.systemID)});
 
             CTransferDestination transferDest = DestinationToTransferDestination(CIdentityID(oneAlloc.first));
             CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, 
@@ -4500,7 +4517,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                 CPubKey pk(ParseHex(CC.CChexstr));
 
-                indexDests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_RESERVE_TRANSFER))});
+                indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
+                                                          CKeyID(newChain.systemID)});
                 dests = std::vector<CTxDestination>({pk});
 
                 vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 
