@@ -5883,10 +5883,14 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
         totalReserveOutput.valueMap.erase(newCurrency.GetID());
     }
 
+    int nextBlockHeight = chainActive.Height() + 1;
+
+    CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nextBlockHeight);
+
+    std::vector<CTxIn> extraInputs = wtxNew.vin;
+
     wtxNew.fTimeReceivedIsTxTime = true;
     wtxNew.BindWallet(this);
-    int nextBlockHeight = chainActive.Height() + 1;
-    CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nextBlockHeight);
     txNew.nLockTime = (uint32_t)chainActive.LastTip()->nTime + 1; // set to a time close to now
 
     // Activates after Overwinter network upgrade
@@ -6245,6 +6249,22 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 //
                 // Note how the sequence number is set to max()-1 so that the
                 // nLockTime set above actually works.
+                for (auto &oneIn : extraInputs)
+                {
+                    auto wit = mapWallet.find(oneIn.prevout.hash);
+                    if (wit != mapWallet.end() &&
+                        wit->second.vout.size() > oneIn.prevout.n &&
+                        !wit->second.vout[oneIn.prevout.n].nValue &&
+                        wit->second.vout[oneIn.prevout.n].ReserveOutValue() == CCurrencyValueMap())
+                    {
+                        setCoins.insert(std::make_pair(&(wit->second), oneIn.prevout.n));
+                    }
+                    else
+                    {
+                        setCoins.clear();
+                        break;
+                    }
+                }
                 BOOST_FOREACH(const PAIRTYPE(const CWalletTx*,unsigned int)& coin, setCoins)
                     txNew.vin.push_back(CTxIn(coin.first->GetHash(),coin.second,CScript(),
                                               std::numeric_limits<unsigned int>::max()-1));

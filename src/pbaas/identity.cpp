@@ -845,6 +845,7 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
 
     if (oldIdentity.IsInvalidMutation(newIdentity))
     {
+        LogPrintf("Invalid identity modification %s\n", spendingTx.GetHash().GetHex().c_str());
         return eval->Error("Invalid identity modification");
     }
 

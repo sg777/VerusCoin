@@ -4271,7 +4271,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     //
     // ensure that the appropriate identity is an input to the transaction,
     // and fund the transaction
-    std::vector<CTxIn> vInputs({idTxIn});
     std::vector<CRecipient> vOutputs;
 
     // first, we need the identity output with currency activated
@@ -4513,6 +4512,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     // create the transaction
     CWalletTx wtx;
+    CMutableTransaction mtx(wtx);
+    mtx.vin.push_back(idTxIn);
+    *static_cast<CTransaction*>(&wtx) = mtx;
+
     {
         LOCK2(cs_main, pwalletMain->cs_wallet);
 
@@ -5920,16 +5923,16 @@ static const CRPCCommand commands[] =
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
-    { "multichain",   "definecurrency",                  &definecurrency,            true  },
+    { "multichain",   "definecurrency",               &definecurrency,         true  },
     { "multichain",   "getdefinedchains",             &getdefinedchains,       true  },
-    { "multichain",   "getcurrencydefinition",           &getcurrencydefinition,     true  },
+    { "multichain",   "getcurrencydefinition",        &getcurrencydefinition,  true  },
     { "multichain",   "getnotarizationdata",          &getnotarizationdata,    true  },
     { "multichain",   "getcrossnotarization",         &getcrossnotarization,   true  },
     { "multichain",   "submitacceptednotarization",   &submitacceptednotarization, true },
     { "multichain",   "paynotarizationrewards",       &paynotarizationrewards, true  },
     { "multichain",   "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "multichain",   "getcurrencystate",             &getcurrencystate,       true  },
-    { "multichain",   "sendcurrency",                  &sendcurrency,            true  },
+    { "multichain",   "sendcurrency",                 &sendcurrency,           true  },
     { "multichain",   "getpendingchaintransfers",     &getpendingchaintransfers, true  },
     { "multichain",   "getchainexports",              &getchainexports,        true  },
     { "multichain",   "getchainimports",              &getchainimports,        true  },

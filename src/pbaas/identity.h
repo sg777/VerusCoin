@@ -374,6 +374,10 @@ public:
 
     void ActivateCurrency()
     {
+        if (nVersion == VERSION_FIRSTVALID)
+        {
+            nVersion = VERSION_PBAAS;
+        }
         flags |= FLAG_ACTIVECURRENCY;
     }
 
@@ -451,9 +455,9 @@ public:
     {
         if (parent != newIdentity.parent ||
             name != newIdentity.name ||
-            (newIdentity.flags & ~(FLAG_REVOKED) != 0 && newIdentity.nVersion == VERSION_FIRSTVALID) ||
-            (newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY) != 0 && newIdentity.nVersion >= VERSION_PBAAS) ||
-            (flags & FLAG_ACTIVECURRENCY != 0 && newIdentity.flags & FLAG_ACTIVECURRENCY == 0) ||
+            ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
+            ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
+            ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
             newIdentity.nVersion < VERSION_FIRSTVALID ||
             newIdentity.nVersion > VERSION_LASTVALID)
         {
