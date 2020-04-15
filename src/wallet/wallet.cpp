@@ -5178,7 +5178,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         CAmount nativeN = pcoin->vout[i].nValue;
 
         // if it has no output types we care about, move on
-        if (!n.valueMap.size())
+        if (!n.valueMap.size() && !nativeN)
         {
             continue;
         }
@@ -5302,28 +5302,29 @@ bool CWallet::SelectReserveCoins(const CCurrencyValueMap& targetReserveValues,
     bool fProtectCoinbase = Params().GetConsensus().fCoinbaseMustBeProtected;
     vector<COutput> vCoins = (fProtectCoinbase) ? vCoinsNoCoinbase : vCoinsWithCoinbase;
 
+
     // Output parameter fNeedCoinbaseCoinsRet is set to true if coinbase utxos need to be spent to meet target amount
     if (fProtectCoinbase && vCoinsWithCoinbase.size() > vCoinsNoCoinbase.size()) {
-        CCurrencyValueMap value;
+        CCurrencyValueMap reserveValues;
         CAmount nativeValue = 0;
         for (const COutput& out : vCoinsNoCoinbase) {
             if (!out.fSpendable) {
                 continue;
             }
             nativeValue += out.tx->vout[out.i].nValue;
-            value += out.tx->vout[out.i].ReserveOutValue();
+            reserveValues += out.tx->vout[out.i].ReserveOutValue();
         }
-        if (value < targetReserveValues || nativeValue < targetNativeValue) {
-            CCurrencyValueMap valueWithCoinbase;
+        if (reserveValues < targetReserveValues || nativeValue < targetNativeValue) {
+            CCurrencyValueMap reserveValuesWithCoinbase;
             CAmount nativeValueWithCoinbase = 0;
             for (const COutput& out : vCoinsWithCoinbase) {
                 if (!out.fSpendable) {
                     continue;
                 }
-                valueWithCoinbase += out.tx->vout[out.i].ReserveOutValue();
+                reserveValuesWithCoinbase += out.tx->vout[out.i].ReserveOutValue();
                 nativeValueWithCoinbase += out.tx->vout[out.i].nValue;
             }
-            fNeedCoinbaseCoinsRet = (valueWithCoinbase >= targetReserveValues) && (nativeValueWithCoinbase >= targetNativeValue);
+            fNeedCoinbaseCoinsRet = (reserveValuesWithCoinbase >= targetReserveValues) && (nativeValueWithCoinbase >= targetNativeValue);
         }
     }
 

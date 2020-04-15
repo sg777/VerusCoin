@@ -4112,6 +4112,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to define a chain relative to a parent that is not the current chain.");
     }
 
+    uint160 newChainID = newChain.GetID();
+
     std::vector<CNodeData> vNodes;
     UniValue nodeArr = find_value(params[0], "nodes");
     if (nodeArr.isArray() && nodeArr.size())
@@ -4153,7 +4155,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     else
     {
         // it is a PBaaS chain, and it is its own system, responsible for its own communication and currency control
-        newChain.systemID = newChain.GetID();
+        newChain.systemID = newChainID;
     }
 
     CIdentity launchIdentity;
@@ -4162,14 +4164,14 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     bool canSign = false, canSpend = false;
 
     std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
-    if (pwalletMain->GetIdentity(newChain.GetID(), keyAndIdentity))
+    if (pwalletMain->GetIdentity(newChainID, keyAndIdentity))
     {
         canSign = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SIGN;
         canSpend = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SPEND;
         launchIdentity = static_cast<CIdentity>(keyAndIdentity.second);
     }
 
-    if (!(launchIdentity = CIdentity::LookupIdentity(newChain.GetID(), 0, &idHeight, &idTxIn)).IsValidUnrevoked() || launchIdentity.HasActiveCurrency())
+    if (!(launchIdentity = CIdentity::LookupIdentity(newChainID, 0, &idHeight, &idTxIn)).IsValidUnrevoked() || launchIdentity.HasActiveCurrency())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID " + newChain.name + " not found, is revoked, or already has an active currency defined");
     }
@@ -4320,8 +4322,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         }
     }
 
-    CKeyID newChainID(newChain.GetID());
-
     CPBaaSNotarization pbn = CPBaaSNotarization(newChain.notarizationProtocol, 
                                                 newChainID, 
                                                 notaryDest, 
@@ -4466,7 +4466,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
             CTransferDestination transferDest = DestinationToTransferDestination(CIdentityID(oneAlloc.first));
             CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, 
-                                                   newChain.GetID(), 
+                                                   newChainID, 
                                                    oneAlloc.second, 
                                                    CReserveTransfer::CalculateTransferFee(transferDest), 
                                                    ASSETCHAINS_CHAINID,
@@ -4496,7 +4496,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                        contribution,
                                                        fee,
                                                        newChain.systemID,
-                                                       DestinationToTransferDestination(CIdentityID(newChain.GetID())));
+                                                       DestinationToTransferDestination(CIdentityID(newChainID)));
 
                 cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                 CPubKey pk(ParseHex(CC.CChexstr));
@@ -4522,7 +4522,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         int nChangeOutput;
         string failReason;
 
-        CTxDestination chainDefSource = CIdentityID(thisChainID);
+        CTxDestination chainDefSource = CIdentityID(newChainID);
         if (!pwalletMain->CreateReserveTransaction(vOutputs, 
                                                    wtx, 
                                                    reserveKey, 
