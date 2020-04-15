@@ -1538,6 +1538,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     }
 
     bool isVerusActive = IsVerusActive();
+    bool isPBaaSActivation = CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight);
 
     CCrossChainImport cci;
     CCrossChainExport ccx;
@@ -1680,7 +1681,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     // on the Verus chain
                     std::vector<CCurrencyDefinition> txCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
                     if ((nHeight == 1 && tx.IsCoinBase() && !IsVerusActive()) ||
-                        (txCurrencies.size() == 1 && txCurrencies[0].parent == ASSETCHAINS_CHAINID && isVerusActive) ||
+                        (txCurrencies.size() == 1 &&
+                        ((txCurrencies[0].parent == ASSETCHAINS_CHAINID) || 
+                         (txCurrencies[0].GetID() == ASSETCHAINS_CHAINID && isPBaaSActivation)) &&
+                        isVerusActive) ||
                         (tx.vout.back().scriptPubKey.IsOpReturn() &&
                         (chainObjs = RetrieveOpRetArray(tx.vout.back().scriptPubKey)).size() == 1 &&
                         chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF))
@@ -1741,7 +1745,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     std::vector<CCurrencyDefinition> txCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
                     if (IsReserveExchange() ||
                         (!(nHeight == 1 && tx.IsCoinBase() && !isVerusActive) &&
-                        !(txCurrencies.size() == 1 && txCurrencies[0].parent == ASSETCHAINS_CHAINID && isVerusActive) &&
+                        !((txCurrencies[0].parent == ASSETCHAINS_CHAINID) || 
+                         (txCurrencies[0].GetID() == ASSETCHAINS_CHAINID && isPBaaSActivation)) &&
                         (flags & IS_IMPORT)))
                     {
                         flags &= ~IS_VALID;
