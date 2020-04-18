@@ -330,7 +330,7 @@ bool SetThisChain(const UniValue &chainDefinition)
     return true;
 }
 
-void GetDefinedChains(vector<CCurrencyDefinition> &chains, bool includeExpired)
+void GetCurrencyDefinitions(vector<CCurrencyDefinition> &chains, bool includeExpired)
 {
     CCcontract_info CC;
     CCcontract_info *cp;
@@ -1258,12 +1258,12 @@ UniValue getchainimports(const UniValue& params, bool fHelp)
     return NullUniValue;
 }
 
-UniValue getdefinedchains(const UniValue& params, bool fHelp)
+UniValue getcurrencydefinitions(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() > 1)
     {
         throw runtime_error(
-            "getdefinedchains (includeexpired)\n"
+            "getcurrencydefinitions (includeexpired)\n"
             "\nReturns a complete definition for any given chain if it is registered on the blockchain. If the chain requested\n"
             "\nis NULL, chain definition of the current chain is returned.\n"
 
@@ -1298,8 +1298,8 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
             "]\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getdefinedchains", "true")
-            + HelpExampleRpc("getdefinedchains", "true")
+            + HelpExampleCli("getcurrencydefinitions", "true")
+            + HelpExampleRpc("getcurrencydefinitions", "true")
         );
     }
 
@@ -1310,12 +1310,12 @@ UniValue getdefinedchains(const UniValue& params, bool fHelp)
     bool includeExpired = params[0].isBool() ? params[0].get_bool() : false;
 
     vector<CCurrencyDefinition> chains;
-    GetDefinedChains(chains, includeExpired);
+    GetCurrencyDefinitions(chains, includeExpired);
 
     for (auto def : chains)
     {
         UniValue oneChain(UniValue::VOBJ);
-        oneChain.push_back(Pair("chaindefinition", def.ToUniValue()));
+        oneChain.push_back(Pair("currencydefinition", def.ToUniValue()));
 
         CChainNotarizationData cnd;
         GetNotarizationData(def.GetID(), IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
@@ -1443,22 +1443,25 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
 
             if (view.GetCoins(it->first.txhash, coins))
             {
-                for (int i = 0; i < coins.vout.size(); i++)
+                if (coins.IsAvailable(it->first.index))
                 {
-                    if (coins.IsAvailable(i))
+                    // if this is a transfer output, optionally to this chain, add it to the input vector
+                    // chain filter was applied in index search
+                    COptCCParams p;
+                    COptCCParams m;
+                    CReserveTransfer rt;
+                    if (::IsPayToCryptoCondition(coins.vout[it->first.index].scriptPubKey, p) && p.evalCode == EVAL_RESERVE_TRANSFER &&
+                        p.vData.size() > 1 && 
+                        p.version == p.VERSION_V3 &&
+                        (m = COptCCParams(p.vData.back())).IsValid() &&
+                        (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                        m.vKeys.size() > 1 &&
+                        (nofilter || GetDestinationID(m.vKeys[1]) == chainFilter))
                     {
-                        // if this is a transfer output, optionally to this chain, add it to the input vector
-                        // chain filter was applied in index search
-                        COptCCParams p;
-                        CReserveTransfer rt;
-                        if (::IsPayToCryptoCondition(coins.vout[i].scriptPubKey, p) && p.evalCode == EVAL_RESERVE_TRANSFER &&
-                            p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
-                            p.vKeys.size() > 1 &&
-                            (nofilter || GetDestinationID(p.vKeys[1]) == chainFilter))
-                        {
-                            inputDescriptors.insert(make_pair(GetDestinationID(p.vKeys[1]),
-                                                    make_pair(CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))), rt)));
-                        }
+                        inputDescriptors.insert(make_pair(GetDestinationID(m.vKeys[1]),
+                                                make_pair(CInputDescriptor(coins.vout[it->first.index].scriptPubKey, 
+                                                                           coins.vout[it->first.index].nValue, 
+                                                                           CTxIn(COutPoint(it->first.txhash, it->first.index))), rt)));
                     }
                 }
             }
@@ -2994,9 +2997,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT, 
                                                             sourceCurrencyID, 
                                                             sourceAmount,
-                                                            (CReserveTransfer::DEFAULT_PER_STEP_FEE << 2),
-                                                            destSystemID,
+                                                            0,
+                                                            convertToCurrencyID,
                                                             DestinationToTransferDestination(destination));
+                    rt.nFees = rt.CalculateTransferFee();
 
                     CCcontract_info CC;
                     CCcontract_info *cp;
@@ -3006,7 +3010,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
                     std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(destSystemID)});
 
-                    oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
+                    oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : 0;
                     oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
                 }
             }
@@ -3038,16 +3042,17 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
                         std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), 
-                                                                                              CKeyID(thisChainID)});
+                                                                                              CKeyID(convertToCurrencyID)});
 
                         CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT, 
                                                                sourceCurrencyID, 
                                                                sourceAmount,
-                                                               (CReserveTransfer::DEFAULT_PER_STEP_FEE << 2),
+                                                               0,
                                                                convertToCurrencyID,
                                                                DestinationToTransferDestination(destination));
+                        rt.nFees = rt.CalculateTransferFee();
 
-                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
+                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : 0;
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
                     }
                     else
@@ -4459,7 +4464,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                    ASSETCHAINS_CHAINID, 
                                                    0, 
                                                    CReserveTransfer::CalculateTransferFee(transferDest), 
-                                                   newChain.systemID,
+                                                   newChain.GetID(),
                                                    transferDest);
 
             vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 
@@ -4478,19 +4483,17 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
             indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
-                                                      CKeyID(newChain.systemID)});
+                                                      CKeyID(newChainID)});
 
             CTransferDestination transferDest = DestinationToTransferDestination(CIdentityID(oneAlloc.first));
             CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, 
                                                    newChainID, 
                                                    oneAlloc.second, 
                                                    CReserveTransfer::CalculateTransferFee(transferDest), 
-                                                   ASSETCHAINS_CHAINID,
+                                                   newChainID,
                                                    transferDest);
 
-            vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 
-                                                 rt.nFees, 
-                                                 false});
+            vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 0, false});
         }
     }
 
@@ -4511,7 +4514,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                        newChain.currencies[i],
                                                        contribution,
                                                        fee,
-                                                       newChain.systemID,
+                                                       newChainID,
                                                        DestinationToTransferDestination(CIdentityID(newChainID)));
 
                 cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
@@ -4560,7 +4563,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     UniValue uvret(UniValue::VOBJ);
     std::vector<CCurrencyDefinition> curDefs = CCurrencyDefinition::GetCurrencyDefinitions(wtx);
-    uvret.push_back(Pair("chaindefinition", (curDefs.size() ? curDefs[0] : CCurrencyDefinition()).ToUniValue()));
+    uvret.push_back(Pair("currencydefinition", (curDefs.size() ? curDefs[0] : CCurrencyDefinition()).ToUniValue()));
 
     uvret.push_back(Pair("basenotarization", CPBaaSNotarization(wtx).ToUniValue()));
 
@@ -5942,7 +5945,7 @@ static const CRPCCommand commands[] =
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
     { "multichain",   "definecurrency",               &definecurrency,         true  },
-    { "multichain",   "getdefinedchains",             &getdefinedchains,       true  },
+    { "multichain",   "getcurrencydefinitions",             &getcurrencydefinitions,       true  },
     { "multichain",   "getcurrencydefinition",        &getcurrencydefinition,  true  },
     { "multichain",   "getnotarizationdata",          &getnotarizationdata,    true  },
     { "multichain",   "getcrossnotarization",         &getcrossnotarization,   true  },

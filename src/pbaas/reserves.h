@@ -394,6 +394,7 @@ public:
                totalAmounts.valueMap.size() == totalFees.valueMap.size();
     }
 
+    static CCurrencyValueMap CalculateExportFee(const CCurrencyValueMap &fees, int numIn);
     CCurrencyValueMap CalculateExportFee() const;
 
     CCurrencyValueMap CalculateImportFee() const;

@@ -564,23 +564,28 @@ bool CheckChainDefinitionOutputs(struct CCcontract_info *cp, Eval* eval, const C
     return isVerified;
 }
 
-CCurrencyValueMap CCrossChainExport::CalculateExportFee() const
+CCurrencyValueMap CCrossChainExport::CalculateExportFee(const CCurrencyValueMap &fees, int numIn)
 {
     CCurrencyValueMap retVal;
 
-    if (numInputs > MAX_EXPORT_INPUTS)
+    if (numIn > MAX_EXPORT_INPUTS)
     {
         return retVal;
     }
     static const arith_uint256 satoshis(100000000);
 
-    arith_uint256 ratio(50000000 + ((25000000 / MAX_EXPORT_INPUTS) * (numInputs - 1)));
+    arith_uint256 ratio(50000000 + ((25000000 / MAX_EXPORT_INPUTS) * (numIn - 1)));
 
-    for (auto &feePair : totalFees.valueMap)
+    for (auto &feePair : fees.valueMap)
     {
         retVal.valueMap[feePair.first] = (((arith_uint256(feePair.second) * ratio)) / satoshis).GetLow64();
     }
     return retVal;
+}
+
+CCurrencyValueMap CCrossChainExport::CalculateExportFee() const
+{
+    return CalculateExportFee(totalFees, numInputs);
 }
 
 CCurrencyValueMap CCrossChainExport::CalculateImportFee() const
@@ -1033,8 +1038,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
         }
 
         std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> transferOutputs;
-        std::multimap<std::pair<uint160, uint160>, std::pair<CInputDescriptor, CReserveTransfer>> sortedTransferOutputs;
-        std::set<uint160> failedLaunches;
         std::map<uint160, CCurrencyDefinition> currencyDefCache;                            // keep cache as we look up definitions
 
         LOCK(cs_main);
@@ -1048,71 +1051,45 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             {
                 return;
             }
+
+            std::vector<pair<CInputDescriptor, CReserveTransfer>> txInputs;
+            uint160 bookEnd({uint160(ParseHex("ffffffffffffffffffffffffffffffffffffffff"))});
+            uint160 lastChain = bookEnd;
+            transferOutputs.insert(std::make_pair(bookEnd, std::make_pair(CInputDescriptor(), CReserveTransfer())));
+            CCurrencyDefinition lastChainDef;
+
             for (auto &output : transferOutputs)
             {
                 CCurrencyDefinition sourceDef, destDef, systemDef;
-                auto it = currencyDefCache.find(output.second.second.currencyID);
-                if ((it != currencyDefCache.end() && !(sourceDef = it->second).IsValid()) ||
-                    (it == currencyDefCache.end() && !GetCurrencyDefinition(output.second.second.currencyID, sourceDef)))
-                {
-                    printf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
-                    LogPrintf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
-                    continue;
-                }
-                if (it == currencyDefCache.end())
-                {
-                    currencyDefCache[output.second.second.currencyID] = sourceDef;
-                }
 
-                it = currencyDefCache.find(output.second.second.destCurrencyID);
-                if ((it != currencyDefCache.end() && !(destDef = it->second).IsValid()) ||
-                    (it == currencyDefCache.end() && !GetCurrencyDefinition(output.second.second.destCurrencyID, destDef)))
+                if (output.first != bookEnd)
                 {
-                    printf("%s: definition for destination currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(output.second.second.destCurrencyID)).c_str());
-                    LogPrintf("%s: definition for destination currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(output.second.second.destCurrencyID)).c_str());
-                    continue;
-                }
-                if (it == currencyDefCache.end())
-                {
-                    currencyDefCache[output.second.second.currencyID] = destDef;
-                }
+                    auto it = currencyDefCache.find(output.second.second.currencyID);
+                    if ((it != currencyDefCache.end() && !(sourceDef = it->second).IsValid()) ||
+                        (it == currencyDefCache.end() && !GetCurrencyDefinition(output.second.second.currencyID, sourceDef)))
+                    {
+                        printf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
+                        LogPrintf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
+                        continue;
+                    }
+                    if (it == currencyDefCache.end())
+                    {
+                        currencyDefCache[output.second.second.currencyID] = sourceDef;
+                    }
 
-                // if currency is controlled by this chain and it hasn't started yet, skip it
-                if (destDef.systemID == ASSETCHAINS_CHAINID && destDef.startBlock > nHeight)
-                {
-                    continue;
-                }
+                    it = currencyDefCache.find(output.second.second.destCurrencyID);
+                    if ((it != currencyDefCache.end() && !(destDef = it->second).IsValid()) ||
+                        (it == currencyDefCache.end() && !GetCurrencyDefinition(output.second.second.destCurrencyID, destDef)))
+                    {
+                        printf("%s: definition for destination currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(output.second.second.destCurrencyID)).c_str());
+                        LogPrintf("%s: definition for destination currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(output.second.second.destCurrencyID)).c_str());
+                        continue;
+                    }
+                    if (it == currencyDefCache.end())
+                    {
+                        currencyDefCache[output.second.second.destCurrencyID] = destDef;
+                    }
 
-                if (destDef.systemID == ASSETCHAINS_CHAINID)
-                {
-                    // see if the chain has failed to launch, and we haven't recorded that yet, do so
-                    CCurrencyValueMap minPreMap, preConvertedMap;
-                    uint160 destID = destDef.GetID();
-                    if (!failedLaunches.count(destID) &&
-                        destDef.minPreconvert.size() &&
-                        (minPreMap = CCurrencyValueMap(destDef.currencies, destDef.minPreconvert)) > preConvertedMap &&
-                        (preConvertedMap = CCurrencyValueMap(destDef.currencies, GetInitialCurrencyState(destDef).reserveIn)) < minPreMap)
-                    {
-                        failedLaunches.insert(destID);
-                    }
-                    // if this currency is controlled by the ID that created it, consider the currency def its own system
-                    // even for these types of currencies, pre-convert is considered an automatic chain function controlled by this
-                    // chain. If any centralized participatory control is desired, it will currenty require that qualified
-                    // pre-conversions be handled off chain and posted by the currency's controller. All chain defined preconversions
-                    // are available to all participants.
-                    if (destDef.proofProtocol == CCurrencyDefinition::PROOF_CHAINID && !(output.second.second.flags & CReserveTransfer::PRECONVERT))
-                    {
-                        // controller of the currency is responsible for fielding export transactions
-                        systemDef = destDef;
-                    }
-                    else
-                    {
-                        systemDef = ConnectedChains.ThisChain();
-                    }
-                    currencyDefCache[ASSETCHAINS_CHAINID] = systemDef;
-                }
-                else
-                {
                     it = currencyDefCache.find(destDef.systemID);
                     if ((it != currencyDefCache.end() && !(systemDef = it->second).IsValid()) ||
                         (it == currencyDefCache.end() && !GetCurrencyDefinition(destDef.systemID, systemDef)))
@@ -1125,50 +1102,33 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     {
                         currencyDefCache[destDef.systemID] = systemDef;
                     }
+
+                    // if destination is a token on the current chain, consider it its own system
+                    if (destDef.systemID == thisChainID)
+                    {
+                        systemDef = destDef;
+                    }
                 }
 
-                // if tokens on this chain, group like currencies together, otherwise don't
-                if (systemDef.GetID() == thisChainID)
-                {
-                    sortedTransferOutputs.insert({{output.first, output.second.second.currencyID}, output.second});
-                }
-                else
-                {
-                    sortedTransferOutputs.insert({{output.first, uint160()}, output.second});
-                }
-            }
-
-            std::vector<pair<CInputDescriptor, CReserveTransfer>> txInputs;
-            std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
-
-            // this pair will sort to the end
-            std::pair<uint160, uint160> bookEnd({uint160(ParseHex("ffffffffffffffffffffffffffffffffffffffff")), uint160(ParseHex("ffffffffffffffffffffffffffffffffffffffff"))});
-            std::pair<uint160, uint160> lastChain = bookEnd;
-
-            // add a bookend entry at the end of transfer outputs to ensure that we try to export all before it
-            sortedTransferOutputs.insert(make_pair(bookEnd, make_pair(CInputDescriptor(), CReserveTransfer())));
-
-            CCurrencyDefinition lastChainDef;
-
-            // merge all of the common chainID outputs into common export transactions if either MIN_BLOCKS blocks have passed since the last
-            // export of that type, or there are MIN_INPUTS or more outputs to aggregate
-            for (auto it = sortedTransferOutputs.begin(); it != sortedTransferOutputs.end(); it++)
-            {
                 // get chain target and see if it is the same
-                if (lastChain.first == bookEnd.first || it->first.first == lastChain.first)
+                if (lastChain == bookEnd || output.first == lastChain)
                 {
-                    txInputs.push_back(it->second);
+                    txInputs.push_back(output.second);
                 }
                 else
                 {
                     // when we get here, we have a consecutive number of transfer outputs to consume in txInputs
                     // we need an unspent export output to export, or use the last one of it is an export to the same
                     // system
-                    if (GetUnspentChainExports(lastChain.first, exportOutputs) && exportOutputs.size())
+                    std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
+                    lastChainDef = currencyDefCache[lastChain];
+
+                    if (GetUnspentChainExports(lastChain, exportOutputs) && exportOutputs.size())
                     {
                         auto lastExport = *exportOutputs.begin();
+                        bool oneFullSize = txInputs.size() >= CCrossChainExport::MIN_INPUTS;
 
-                        if (((nHeight - lastExport.second.first) >= CCrossChainExport::MIN_BLOCKS) || (txInputs.size() >= CCrossChainExport::MIN_INPUTS))
+                        if (((nHeight - lastExport.second.first) >= CCrossChainExport::MIN_BLOCKS) || oneFullSize)
                         {
                             boost::optional<CTransaction> oneExport;
 
@@ -1177,38 +1137,20 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             {
                                 TransactionBuilder tb(Params().GetConsensus(), nHeight);
 
-                                int numInputs = 0;
                                 int inputsLeft = txInputs.size();
+                                int numInputs = inputsLeft > CCrossChainExport::MAX_EXPORT_INPUTS ? CCrossChainExport::MAX_EXPORT_INPUTS : inputsLeft;
 
-                                if (it->first.second.IsNull())
-                                {
-                                    numInputs = txInputs.size();
-                                }
-                                else
-                                {
-                                    for (int i = 0; i < txInputs.size(); i++)
-                                    {
-                                        if (txInputs[i].second.currencyID == it->first.second)
-                                        {
-                                            numInputs++;
-                                        }
-                                        else
-                                        {
-                                            break;
-                                        }
-                                    }
-
-                                }
                                 if (numInputs > CCrossChainExport::MAX_EXPORT_INPUTS)
                                 {
                                     numInputs = CCrossChainExport::MAX_EXPORT_INPUTS;
                                 }
                                 inputsLeft = txInputs.size() - numInputs;
-                                if (inputsLeft > 0 && inputsLeft < CCrossChainExport::MIN_INPUTS)
+
+                                // if we have already made one and don't have enough to make another
+                                // without going under the input minimum, wait until next time for the others
+                                if (numInputs > 0 && numInputs < CCrossChainExport::MIN_INPUTS && oneFullSize)
                                 {
-                                    inputsLeft += CCrossChainExport::MIN_INPUTS - inputsLeft;
-                                    numInputs -= CCrossChainExport::MIN_INPUTS - inputsLeft;
-                                    assert(numInputs > 0);
+                                    break;
                                 }
 
                                 // each time through, we make one export transaction with the remainder or a subset of the
@@ -1264,6 +1206,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                 COptCCParams p;
                                 std::vector<int> toRemove;
+
                                 for (int j = 0; j < numInputs; j++)
                                 {
                                     tb.AddTransparentInput(txInputs[j].first.txIn.prevout, txInputs[j].first.scriptPubKey, txInputs[j].first.nValue, txInputs[j].first.txIn.nSequence);
@@ -1272,11 +1215,11 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                     // TODO: make fee currency calculation more flexible on conversion
                                     // rules should be pay fee in native currency of source system
-                                    uint160 feeCurrencyID = currencyDefCache[txInputs[j].second.currencyID].systemID;
-
                                     CCurrencyValueMap newTransferOutput;
-                                    newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nValue;
-                                    newTransferOutput.valueMap[feeCurrencyID] += txInputs[j].second.nFees;
+                                    newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nValue + txInputs[j].second.nFees;
+
+                                    //printf("input:\n%s\n", newTransferInput.ToUniValue().write().c_str());
+                                    //printf("output:\n%s\n", newTransferOutput.ToUniValue().write().c_str());
 
                                     if ((newTransferInput - newTransferOutput).HasNegative())
                                     {
@@ -1289,35 +1232,36 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     }
                                     else
                                     {
-                                        totalAmounts += newTransferOutput;
-                                        totalTxFees.valueMap[feeCurrencyID] += txInputs[j].second.nFees;
+                                        CCurrencyValueMap allFees = txInputs[j].second.CalculateFee(txInputs[j].second.flags, txInputs[j].second.nValue);
+                                        totalAmounts += newTransferInput;
+                                        totalTxFees += allFees;
                                         CReserveTransfer rt(txInputs[j].second);
-                                        if (failedLaunches.count(rt.currencyID))
-                                        {
-                                            // turn it into a normal transfer, which will create an unconverted output
-                                            rt.flags &= ~(CReserveTransfer::SEND_BACK | CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT);
-                                        }
                                         chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(rt), rt));
                                     }
                                 }
+
                                 // remove in reverse order so one removal does not affect the position of the next
                                 for (int j = toRemove.size() - 1; j >= 0; j--)
                                 {
                                     txInputs.erase(txInputs.begin() + toRemove[j]);
                                     numInputs--;
                                 }
-                                if (!numInputs)
+
+                                // this logic may cause us to create a tx that will get rejected, but we will never wait too long
+                                if (!numInputs || (oneFullSize && (nHeight - lastExport.second.first) < CCrossChainExport::MIN_BLOCKS && numInputs < CCrossChainExport::MIN_INPUTS))
                                 {
                                     continue;
                                 }
 
-                                CCrossChainExport ccx(lastChain.first, numInputs, totalAmounts, totalTxFees);
+                                //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
+
+                                CCrossChainExport ccx(lastChain, numInputs, totalAmounts, totalTxFees);
 
                                 // make extra outputs for fees in each currency
                                 for (auto &outPair : ccx.CalculateExportFee().valueMap)
                                 {
                                     CReserveTransfer feeOut(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT, 
-                                                            outPair.first, outPair.second, 0, lastChain.first, DestinationToTransferDestination(feeOutput));
+                                                            outPair.first, outPair.second, 0, outPair.first, DestinationToTransferDestination(feeOutput));
                                     chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
                                 }
 
@@ -1360,18 +1304,22 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     CScript opRet = StoreOpRetArray(chainObjects);
                                     DeleteOpRetObjects(chainObjects);
 
+                                    // now send transferred currencies to a reserve deposit
                                     cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
                                     for (auto &oneCurrencyOut : ccx.totalAmounts.valueMap)
                                     {
                                         CCurrencyDefinition oneDef = currencyDefCache[oneCurrencyOut.first];
-                                        // if we control this currency, it must go to reserve deposit of the system it is
-                                        // being exported to
-                                        if (oneDef.systemID == ASSETCHAINS_CHAINID)
+
+                                        // if the destination is the not the source currency, and
+                                        // the destination is not another blockchain that controls the source currency, store in reserve
+                                        if (!(oneCurrencyOut.first == lastChain ||
+                                            (lastChainDef.systemID != ASSETCHAINS_CHAINID && oneDef.systemID == lastChainDef.systemID)))
                                         {
                                             CAmount nativeOut = oneDef.GetID() == ASSETCHAINS_CHAINID ? oneCurrencyOut.second : 0;
 
-                                            // send the entire amount to a reserve transfer output of the specific chain
-                                            // we receive our fee on the other chain or when it comes back
+                                            // send the entire amount to a reserve deposit output of the specific chain
+                                            // we receive our fee on the other chain, when it comes back, or if a token,
+                                            // when it gets imported back to the chain
                                             std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(oneDef.GetID(), EVAL_RESERVE_DEPOSIT))});
                                             std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
 
@@ -1385,7 +1333,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
 
                                     // send native amount of zero to a cross chain export output of the specific chain
-                                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain.first, EVAL_CROSSCHAIN_EXPORT))});
+                                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_CROSSCHAIN_EXPORT))});
                                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
 
                                     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx), &indexDests),
@@ -1433,7 +1381,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         }
                     }
                 }
-                lastChain = it->first;
+                lastChain = output.first;
             }
         }
     }

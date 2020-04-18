@@ -612,7 +612,11 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p) const
             case EVAL_RESERVE_TRANSFER:
             {
                 CReserveTransfer rt(p.vData[0]);
-                retVal.valueMap[rt.currencyID] = rt.nValue + rt.nFees;
+                // this currency can only be present as native
+                if (rt.currencyID != ASSETCHAINS_CHAINID)
+                {
+                    retVal.valueMap[rt.currencyID] = rt.nValue + rt.nFees;
+                }
                 break;
             }
             case EVAL_RESERVE_EXCHANGE:

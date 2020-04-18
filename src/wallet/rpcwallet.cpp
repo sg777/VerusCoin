@@ -3085,9 +3085,10 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     obj.push_back(Pair("unconfirmed_balance", ValueFromAmount(pwalletMain->GetUnconfirmedBalance())));
     obj.push_back(Pair("immature_balance", ValueFromAmount(pwalletMain->GetImmatureBalance())));
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
-    if (chainDef.ChainOptions() & chainDef.OPTION_FRACTIONAL)
+    CCurrencyValueMap reserveBalance = pwalletMain->GetReserveBalance();
+    if (reserveBalance.valueMap.size())
     {
-        obj.push_back(Pair("reserve_balance", pwalletMain->GetReserveBalance().ToUniValue()));
+        obj.push_back(Pair("reserve_balance", reserveBalance.ToUniValue()));
         obj.push_back(Pair("unconfirmed_reserve_balance", pwalletMain->GetUnconfirmedReserveBalance().ToUniValue()));
         obj.push_back(Pair("immature_reserve_balance", pwalletMain->GetImmatureReserveBalance().ToUniValue()));
         uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
