@@ -718,6 +718,11 @@ void CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
     sem_submitthread.post();
 }
 
+void CConnectedChains::CheckImports()
+{
+    sem_submitthread.post();
+}
+
 // get the latest block header and submit one block at a time, returning after there are no more
 // matching blocks to be found
 vector<pair<string, UniValue>> CConnectedChains::SubmitQualifiedBlocks()
@@ -1038,7 +1043,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
         }
 
         std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> transferOutputs;
-        std::map<uint160, CCurrencyDefinition> currencyDefCache;                            // keep cache as we look up definitions
 
         LOCK(cs_main);
 
@@ -1214,7 +1218,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     newTransferInput.valueMap[ASSETCHAINS_CHAINID] = txInputs[j].first.nValue;
 
                                     // TODO: make fee currency calculation more flexible on conversion
-                                    // rules should be pay fee in native currency of source system
+                                    // rules should be pay fee in native currency of destination system
+                                    // if source is same currency
                                     CCurrencyValueMap newTransferOutput;
                                     newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nValue + txInputs[j].second.nFees;
 
@@ -1232,9 +1237,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     }
                                     else
                                     {
-                                        CCurrencyValueMap allFees = txInputs[j].second.CalculateFee(txInputs[j].second.flags, txInputs[j].second.nValue);
+                                        totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, txInputs[j].second.nValue);
                                         totalAmounts += newTransferInput;
-                                        totalTxFees += allFees;
                                         CReserveTransfer rt(txInputs[j].second);
                                         chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(rt), rt));
                                     }
@@ -1320,10 +1324,15 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                             // send the entire amount to a reserve deposit output of the specific chain
                                             // we receive our fee on the other chain, when it comes back, or if a token,
                                             // when it gets imported back to the chain
-                                            std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(oneDef.GetID(), EVAL_RESERVE_DEPOSIT))});
+                                            std::vector<CTxDestination> indexDests({CKeyID(lastChainDef.GetConditionID(EVAL_RESERVE_DEPOSIT))});
                                             std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
 
-                                            CTokenOutput ro(oneCurrencyOut.first, oneCurrencyOut.second);
+                                            CTokenOutput ro;
+
+                                            if (!nativeOut)
+                                            {
+                                                ro = CTokenOutput(oneCurrencyOut.first, oneCurrencyOut.second);
+                                            }
 
                                             tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_DEPOSIT, dests, 1, &ro), &indexDests), 
                                                                     nativeOut);
@@ -1333,7 +1342,11 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
 
                                     // send native amount of zero to a cross chain export output of the specific chain
-                                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChain, EVAL_CROSSCHAIN_EXPORT))});
+                                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(lastChainDef.GetConditionID(EVAL_CROSSCHAIN_EXPORT))});
+                                    if (lastChain != lastChainDef.systemID)
+                                    {
+                                        indexDests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_CROSSCHAIN_EXPORT)));
+                                    }
                                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
 
                                     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx), &indexDests),
@@ -1383,18 +1396,201 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 }
                 lastChain = output.first;
             }
+            CheckImports();
         }
     }
 }
 
-// send new imports from this chain to the specified chain, which generally will be the notary chain
-void CConnectedChains::SendNewImports(const uint160 &chainID, 
-                                      const CPBaaSNotarization &notarization, 
-                                      const uint256 &lastExportTx, 
-                                      const CTransaction &lastCrossImport, 
-                                      const CTransaction &lastExport)
+void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastImportTx, const std::vector<CTransaction> &transactions)
 {
-    // currently only support sending imports to  
+    uint32_t consensusBranchId = CurrentEpochBranchId(chainActive.LastTip()->GetHeight(), Params().GetConsensus());
+    LOCK2(cs_main, mempool.cs);
+
+    // sign and commit the transactions
+    for (auto &tx : transactions)
+    {
+        CMutableTransaction newTx(tx);
+
+        // sign the transaction and submit
+        bool signSuccess;
+        for (int i = 0; i < tx.vin.size(); i++)
+        {
+            SignatureData sigdata;
+            CAmount value;
+            CScript outputScript;
+
+            if (tx.vin[i].prevout.hash == lastImportTx.GetHash())
+            {
+                value = lastImportTx.vout[tx.vin[i].prevout.n].nValue;
+                outputScript = lastImportTx.vout[tx.vin[i].prevout.n].scriptPubKey;
+            }
+            else
+            {
+                CCoinsViewCache view(pcoinsTip);
+                CCoins coins;
+                if (!view.GetCoins(tx.vin[i].prevout.hash, coins))
+                {
+                    fprintf(stderr,"%s: cannot get input coins from tx: %s, output: %d\n", __func__, tx.vin[i].prevout.hash.GetHex().c_str(), tx.vin[i].prevout.n);
+                    LogPrintf("%s: cannot get input coins from tx: %s, output: %d\n", __func__, tx.vin[i].prevout.hash.GetHex().c_str(), tx.vin[i].prevout.n);
+                    break;
+                }
+                value = coins.vout[tx.vin[i].prevout.n].nValue;
+                outputScript = coins.vout[tx.vin[i].prevout.n].scriptPubKey;
+            }
+
+            signSuccess = ProduceSignature(TransactionSignatureCreator(nullptr, &tx, i, value, SIGHASH_ALL), outputScript, sigdata, consensusBranchId);
+
+            if (!signSuccess)
+            {
+                fprintf(stderr,"%s: failure to sign refund transaction\n", __func__);
+                LogPrintf("%s: failure to sign refund transaction\n", __func__);
+                break;
+            } else {
+                UpdateTransaction(newTx, i, sigdata);
+            }
+        }
+
+        if (signSuccess)
+        {
+            // push to local node and sync with wallets
+            CValidationState state;
+            bool fMissingInputs;
+            CTransaction signedTx(newTx);
+            if (!AcceptToMemoryPool(mempool, state, signedTx, false, &fMissingInputs)) {
+                if (state.IsInvalid()) {
+                    fprintf(stderr,"%s: rejected by memory pool for %s\n", __func__, state.GetRejectReason().c_str());
+                    LogPrintf("%s: rejected by memory pool for %s\n", __func__, state.GetRejectReason().c_str());
+                } else {
+                    if (fMissingInputs) {
+                        fprintf(stderr,"%s: missing inputs\n", __func__);
+                        LogPrintf("%s: missing inputs\n", __func__);
+                    }
+                    else
+                    {
+                        fprintf(stderr,"%s: rejected by memory pool for\n", __func__);
+                        LogPrintf("%s: rejected by memory pool for\n", __func__);
+                    }
+                }
+                break;
+            }
+            else
+            {
+                RelayTransaction(signedTx);
+            }
+        }
+    }
+}
+
+// process token related, local imports and exports
+void CConnectedChains::ProcessLocalImports()
+{
+    // first determine all export threads on the current chain that are valid to import
+    std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
+    std::multimap<uint160, CTransaction> importThreads;
+    uint160 thisChainID = thisChain.GetID();
+
+    LOCK2(cs_main, mempool.cs);
+    uint32_t nHeight = chainActive.Height();
+
+    if (GetUnspentChainExports(thisChainID, exportOutputs) && exportOutputs.size())
+    {
+        for (auto &exportThread : exportOutputs)
+        {
+            CCurrencyDefinition exportDef;
+            int32_t defHeight;
+            if (!GetCurrencyDefinition(exportThread.first, exportDef, &defHeight))
+            {
+                printf("%s: definition for export currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(exportThread.first)).c_str());
+                LogPrintf("%s: definition for export currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(exportThread.first)).c_str());
+                continue;
+            }
+            currencyDefCache[exportThread.first] = exportDef;
+
+            // if chain hasn't started, it isn't controlled by us, imports are by chain ID only, or no exports, skip
+            if (exportDef.startBlock > nHeight || 
+                exportDef.systemID != thisChainID || 
+                exportDef.proofProtocol != CCurrencyDefinition::PROOF_PBAASMMR ||
+                defHeight == exportThread.second.first)
+            {
+                continue;
+            }
+
+            // get the first import for each of the remaining export threads
+            CTransaction lastImportTx;
+
+            // we need to find the last unspent import transaction
+            std::vector<CAddressUnspentDbEntry> unspentOutputs;
+
+            bool found = false;
+
+            if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(exportThread.first, EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
+            {
+                // if one spends the prior one, get the one that is not spent
+                for (auto txidx : unspentOutputs)
+                {
+                    uint256 blkHash;
+                    CTransaction itx;
+                    CCrossChainImport oneCCI;
+                    if (myGetTransaction(txidx.first.txhash, lastImportTx, blkHash) &&
+                        (oneCCI = CCrossChainImport(lastImportTx)).IsValid() &&
+                        oneCCI.systemID == exportDef.GetID())
+                    {
+                        importThreads.insert(std::make_pair(exportThread.first, lastImportTx));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
+    for (auto &oneIT : importThreads)
+    {
+        std::vector<CTransaction> importTxes;
+        int32_t importOutNum;
+        CCrossChainImport oneImportInput(oneIT.second, &importOutNum);
+        if (oneImportInput.IsValid())
+        {
+            std::vector<CAddressUnspentDbEntry> reserveDeposits;
+            GetAddressUnspent(currencyDefCache[oneIT.first].GetConditionID(EVAL_RESERVE_DEPOSIT), CScript::P2CC, reserveDeposits);
+            CCurrencyValueMap tokenImportAvailable;
+            CAmount nativeImportAvailable = 0;
+            for (auto &oneOut : reserveDeposits)
+            {
+                nativeImportAvailable += oneOut.second.satoshis;
+                tokenImportAvailable += oneOut.second.script.ReserveOutValue();
+                //printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
+            }
+            nativeImportAvailable += oneIT.second.vout[importOutNum].nValue;
+            tokenImportAvailable += oneIT.second.vout[importOutNum].ReserveOutValue();
+            //printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
+            if (CreateLatestImports(currencyDefCache[oneIT.first], oneIT.second, txTemplate, CTransaction(), tokenImportAvailable, nativeImportAvailable, importTxes))
+            {
+                // fund the first import transaction with all reserveDeposits
+                // change amounts are passed through on the import thread
+                //
+                // TODO: manage when this becomes to large by splitting reserve deposits over the
+                // transactions
+                if (importTxes.size())
+                {
+                    CMutableTransaction firstImport = importTxes[0];
+                    int32_t outNum;
+                    CCrossChainImport cci(importTxes[0], &outNum);
+                    if (cci.IsValid())
+                    {
+                        // add the reserve deposit inputs and output values to the first transaction
+                        // they should have been automatically propagated through
+                        for (auto &oneOut : reserveDeposits)
+                        {
+                            firstImport.vin.push_back(CTxIn(oneOut.first.txhash, oneOut.first.index));
+                        }
+                        importTxes[0] = firstImport;
+                        SignAndCommitImportTransactions(oneIT.second, importTxes);
+                    }
+                }
+            }
+        }
+    }
 }
 
 void CConnectedChains::SubmissionThread()
@@ -1433,7 +1629,7 @@ void CConnectedChains::SubmissionThread()
                 }
                 else
                 {
-                    //printf("SubmissionThread: waiting on sem\n");
+                    ProcessLocalImports();
                     sem_submitthread.wait();
                 }
             }

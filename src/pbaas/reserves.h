@@ -151,7 +151,7 @@ public:
     bool IsValid() const
     {
         // we don't support op returns, value must be in native or reserve
-        return nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID && !currencyID.IsNull();
+        return nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID && !(currencyID.IsNull() && nValue);
     }
 };
 
@@ -306,18 +306,18 @@ public:
     uint32_t nVersion;
     uint160 systemID;                                   // the blockchain or currency system source from where these transactions come
     CCurrencyValueMap importValue;                      // total amount of coins imported from chain with or without conversion, including fees
-    CCurrencyValueMap totalImportableOutput;            // all non-native currencies being held in this thread exported to systemID system
+    CCurrencyValueMap totalReserveOutMap;               // all non-native currencies being held in this thread and released on import
 
     CCrossChainImport() : nVersion(VERSION_INVALID) {}
-    CCrossChainImport(const uint160 &cID, const CCurrencyValueMap &ImportValue, const CCurrencyValueMap &TotalImportableOutput=CCurrencyValueMap()) : 
-                        nVersion(VERSION_CURRENT), systemID(cID), importValue(ImportValue), totalImportableOutput(TotalImportableOutput) { }
+    CCrossChainImport(const uint160 &cID, const CCurrencyValueMap &ImportValue, const CCurrencyValueMap &InitialReserveOutput=CCurrencyValueMap()) : 
+                        nVersion(VERSION_CURRENT), systemID(cID), importValue(ImportValue), totalReserveOutMap(InitialReserveOutput) { }
 
     CCrossChainImport(const std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);
     }
 
-    CCrossChainImport(const CTransaction &tx);
+    CCrossChainImport(const CTransaction &tx, int32_t *pOutNum=nullptr);
 
     ADD_SERIALIZE_METHODS;
 
@@ -326,7 +326,7 @@ public:
         READWRITE(nVersion);
         READWRITE(systemID);
         READWRITE(importValue);
-        READWRITE(totalImportableOutput);
+        READWRITE(totalReserveOutMap);
     }
 
     std::vector<unsigned char> AsVector()

@@ -1711,8 +1711,8 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 uint256 txRoot = txView.GetRoot();
 
                 std::vector<CTransactionComponentProof> txProofVec;
-                txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_HEADER, 0));
-                txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_OUTPUT, pwinner->i));
+                txProofVec.emplace_back(txView, txMap, stakeSource, CTransactionHeader::TX_HEADER, 0);
+                txProofVec.emplace_back(txView, txMap, stakeSource, CTransactionHeader::TX_OUTPUT, pwinner->i);
 
                 // now, both the header and stake output are dependent on the transaction MMR root being provable up
                 // through the block MMR, and since we don't cache the new MMR proof for transactions yet, we need the block to create the proof.

@@ -330,8 +330,6 @@ void ProcessNewImports(const uint160 &sourceChainID, const CTransaction &lastCon
 
     bool found = false;
 
-    // we cannot get export to a chain that has shut down
-    // if the chain definition is spent, a chain is inactive
     if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
     {
         // if one spends the prior one, get the one that is not spent
@@ -2134,7 +2132,7 @@ static bool ProcessBlockFound(CBlock* pblock)
 #endif // ENABLE_WALLET
 {
     int32_t height = chainActive.LastTip()->GetHeight()+1;
-    LogPrintf("%s\n", pblock->ToString());
+    //LogPrintf("%s\n", pblock->ToString());
     LogPrintf("generated %s height.%d\n", FormatMoney(pblock->vtx[0].vout[0].nValue), height);
 
     // Found a solution

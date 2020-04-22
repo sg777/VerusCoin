@@ -170,10 +170,7 @@ public:
 
     CChainObject() : CBaseChainObject() {}
 
-    CChainObject(uint16_t objType, const SERIALIZABLE &rObject) : CBaseChainObject(objType)
-    {
-        object = rObject;
-    }
+    CChainObject(uint16_t objType, const SERIALIZABLE &rObject) : CBaseChainObject(objType), object(rObject) { }
 
     ADD_SERIALIZE_METHODS;
 
@@ -808,6 +805,7 @@ protected:
 public:
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::map<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
+    std::map<uint160, CCurrencyDefinition> currencyDefCache;                            // protected by cs_main, which is used for lookup
 
     std::string notaryChainVersion;
     int32_t notaryChainHeight;
@@ -854,6 +852,10 @@ public:
 
     void QueueNewBlockHeader(CBlockHeader &bh);
     void QueueEarnedNotarization(CBlock &blk, int32_t txIndex, int32_t height);
+    void CheckImports();
+    void SignAndCommitImportTransactions(const CTransaction &lastImportTx, const std::vector<CTransaction> &transactions);
+    // send new imports from this chain to the specified chain, which generally will be the notary chain
+    void ProcessLocalImports();
 
     bool AddMergedBlock(CPBaaSMergeMinedChainData &blkData);
     bool RemoveMergedBlock(uint160 chainID);
@@ -864,13 +866,6 @@ public:
     // returns false if destinations are empty or first is not either pubkey or pubkeyhash
     bool SetLatestMiningOutputs(const std::vector<std::pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut);
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
-
-    // send new imports from this chain to the specified chain, which generally will be the notary chain
-    void SendNewImports(const uint160 &systemID, 
-                        const CPBaaSNotarization &notarization, 
-                        const uint256 &lastExportTx, 
-                        const CTransaction &lastCrossImport, 
-                        const CTransaction &lastExport);
 
     bool GetLastImport(const uint160 &systemID, 
                        CTransaction &lastImport, 

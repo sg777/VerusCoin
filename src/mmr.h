@@ -512,13 +512,12 @@ public:
         {
             bool finished = false;
             bool error = false;
-            while (!finished)
+            while (!(finished || error))
             {
                 try
                 {
-                    // NOTE: our normal way out is an exception at end of stream
+                    // our normal way out is an exception at end of stream
                     // would prefer a better way
-                    error = false;
                     uint8_t branchType;
                     READWRITE(branchType);
                     union {
@@ -540,6 +539,7 @@ public:
                             {
                                 READWRITE(*pBranch);
                             }
+                            error = false;
                             break;
                         }
                         case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
@@ -549,6 +549,7 @@ public:
                             {
                                 READWRITE(*pNodeBranch);
                             }
+                            error = false;
                             break;
                         }
                         case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
@@ -558,7 +559,12 @@ public:
                             {
                                 READWRITE(*pPowerNodeBranch);
                             }
+                            error = false;
                             break;
+                        }
+                        default:
+                        {
+                            printf("%s: ERROR: proof sequence is likely corrupt\n", __func__);
                         }
                     }
 
@@ -575,8 +581,8 @@ public:
 
             if (error)
             {
-                printf("%s: ERROR: proof secuence is likely corrupt", __func__);
-                LogPrintf("%s: ERROR: proof secuence is likely corrupt", __func__);
+                printf("%s: ERROR: proof sequence is likely corrupt\n", __func__);
+                LogPrintf("%s: ERROR: proof sequence is likely corrupt\n", __func__);
                 DeleteProofSequence();
             }
         }

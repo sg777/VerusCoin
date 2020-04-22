@@ -29,7 +29,12 @@ extern string PBAAS_HOST;
 extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 
-CPBaaSNotarization::CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx)
+CPBaaSNotarization::CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx) :
+                    nVersion(CURRENT_VERSION),
+                    protocol(CCurrencyDefinition::NOTARIZATION_AUTO),
+                    notarizationHeight(0),
+                    prevHeight(0),
+                    crossHeight(0)
 {
     // the PBaaS notarization itself is a combination of proper inputs, one output, and
     // a sequence of opret chain objects as proof of the output values on the chain to which the
@@ -42,7 +47,6 @@ CPBaaSNotarization::CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx)
     // a notarization must have notarization output that spends to the address indicated by the 
     // ChainID, an opret, that there is only one, and that it can be properly decoded to a notarization 
     // output, whether or not validate is true
-    bool notarizationFound = false;
     bool found = false;
     for (int i = 0; i < tx.vout.size(); i++)
     {

@@ -591,10 +591,14 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p) const
     {
         switch (p.evalCode)
         {
+            case EVAL_RESERVE_DEPOSIT:
             case EVAL_RESERVE_OUTPUT:
             {
                 CTokenOutput ro(p.vData[0]);
-                retVal.valueMap[ro.currencyID] = ro.nValue;
+                if (ro.nValue)
+                {
+                    retVal.valueMap[ro.currencyID] = ro.nValue;
+                }
                 break;
             }
             case EVAL_CURRENCYSTATE:
@@ -628,6 +632,14 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p) const
                 {
                     retVal.valueMap[re.currencyID] = re.nValue;
                 }
+                break;
+            }
+            case EVAL_CROSSCHAIN_IMPORT:
+            {
+                CCrossChainImport cci(p.vData[0]);
+                // reserve out amount when converting to reserve is 0, since the amount cannot be calculated in isolation as an input
+                // if reserve in, we can consider the output the same reserve value as the input
+                retVal = cci.totalReserveOutMap;
                 break;
             }
         }
