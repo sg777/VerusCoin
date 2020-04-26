@@ -6028,7 +6028,15 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                         {
                             // add all values to a native equivalent
                             // reserve currencies have a native value as well
-                            nativeEquivalent += currencyState.ReserveToNativeRaw(relevantReserves, exchangeRates.AsCurrencyVector(currencyState.currencies));
+                            if (exchangeRates.IntersectingValues(reserveOutput).valueMap.size())
+                            {
+                                nativeEquivalent += currencyState.ReserveToNativeRaw(relevantReserves, exchangeRates.AsCurrencyVector(currencyState.currencies));
+                            }
+                            else
+                            {
+                                nativeEquivalent += reserveOutput.valueMap.size() ? reserveOutput.valueMap.begin()->second : 0;
+                            }
+                            
                             if (nativeEquivalent < dustThreshold)
                             {
                                 if (recipient.fSubtractFeeFromAmount && nFeeRet > 0)
