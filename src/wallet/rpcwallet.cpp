@@ -3084,16 +3084,6 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance())));
     obj.push_back(Pair("unconfirmed_balance", ValueFromAmount(pwalletMain->GetUnconfirmedBalance())));
     obj.push_back(Pair("immature_balance", ValueFromAmount(pwalletMain->GetImmatureBalance())));
-    CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
-    CCurrencyValueMap reserveBalance = pwalletMain->GetReserveBalance();
-    if (reserveBalance.valueMap.size())
-    {
-        obj.push_back(Pair("reserve_balance", reserveBalance.ToUniValue()));
-        obj.push_back(Pair("unconfirmed_reserve_balance", pwalletMain->GetUnconfirmedReserveBalance().ToUniValue()));
-        obj.push_back(Pair("immature_reserve_balance", pwalletMain->GetImmatureReserveBalance().ToUniValue()));
-        uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
-        obj.push_back(Pair("price_in_reserve", ValueFromAmount(ConnectedChains.GetCurrencyState(height).PriceInReserve())));
-    }
 
     std::vector<COutput> vecOutputs;
     CAmount totalStakingAmount = 0;
@@ -3116,6 +3106,60 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     }
 
     obj.push_back(Pair("eligible_staking_balance", ValueFromAmount(totalStakingAmount)));
+
+    CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
+    UniValue reserveBal(UniValue::VARR);
+    for (auto &oneBalance : pwalletMain->GetReserveBalance().valueMap)
+    {
+        UniValue oneCurObj(UniValue::VOBJ);
+        oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        reserveBal.push_back(oneCurObj);
+    }
+    if (reserveBal.size())
+    {
+        obj.push_back(Pair("reserve_balance", reserveBal));
+    }
+
+    UniValue unconfirmedReserveBal(UniValue::VARR);
+    for (auto &oneBalance : pwalletMain->GetUnconfirmedReserveBalance().valueMap)
+    {
+        UniValue oneCurObj(UniValue::VOBJ);
+        oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        unconfirmedReserveBal.push_back(oneCurObj);
+    }
+    if (unconfirmedReserveBal.size())
+    {
+        obj.push_back(Pair("unconfirmed_reserve_balance", unconfirmedReserveBal));
+    }
+
+    UniValue immatureReserveBal(UniValue::VARR);
+    for (auto &oneBalance : pwalletMain->GetImmatureReserveBalance().valueMap)
+    {
+        UniValue oneCurObj(UniValue::VOBJ);
+        oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        immatureReserveBal.push_back(oneCurObj);
+    }
+    if (immatureReserveBal.size())
+    {
+        obj.push_back(Pair("immature_reserve_balance", immatureReserveBal));
+    }
+
+    uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
+
+    if ((ConnectedChains.ThisChain().IsReserve() || ConnectedChains.ThisChain().startBlock < height) && 
+        ConnectedChains.ThisChain().currencies.size())
+    {
+        UniValue pricesInReserve(UniValue::VARR);
+        CCoinbaseCurrencyState thisCurState(ConnectedChains.GetCurrencyState(height));
+        std::vector<CAmount> prices(thisCurState.PricesInReserve());
+        for (int i = 0; i < thisCurState.currencies.size(); i++)
+        {
+            UniValue oneCurObj(UniValue::VOBJ);
+            oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(thisCurState.currencies[i]).name, ValueFromAmount(prices[i])));
+            pricesInReserve.push_back(oneCurObj);
+        }
+        obj.push_back(Pair("prices", pricesInReserve));
+    }
 
     obj.push_back(Pair("txcount",       (int)pwalletMain->mapWallet.size()));
     obj.push_back(Pair("keypoololdest", pwalletMain->GetOldestKeyPoolTime()));

@@ -889,7 +889,6 @@ uint32_t CConnectedChains::CombineBlocks(CBlockHeader &bh)
             {
                 LogPrintf("Merge mined block for %s does not contain PBaaS information\n", chain.second.chainDefinition.name.c_str());
             }
-            
         }
         dirty = false;
     }
@@ -1313,13 +1312,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     CCcontract_info *cp;
 
                                     // debugging out
-                                    printf("%s: exported outputs:\n", __func__);
+                                    // printf("%s: exported outputs:\n", __func__);
                                     for (auto &oneout : chainObjects)
                                     {
                                         if (oneout->objectType == CHAINOBJ_RESERVETRANSFER)
                                         {
                                             CReserveTransfer &rt = ((CChainObject<CReserveTransfer> *)(oneout))->object;
-                                            printf("%s\n", rt.ToUniValue().write(true, 2).c_str());
+                                            // printf("%s\n", rt.ToUniValue().write(true, 2).c_str());
                                         }
                                     }
 
@@ -1428,10 +1427,10 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
     for (auto &tx : transactions)
     {
         //DEBUGGING
-        extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
-        UniValue jsonTX(UniValue::VOBJ);
-        TxToJSON(tx, uint256(), jsonTX);
-        printf("signed transaction:\n%s\n", jsonTX.write(1, 2).c_str());
+        // extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
+        // UniValue jsonTX(UniValue::VOBJ);
+        // TxToJSON(tx, uint256(), jsonTX);
+        // printf("signed transaction:\n%s\n", jsonTX.write(1, 2).c_str());
 
         CMutableTransaction newTx(tx);
 
@@ -1482,8 +1481,8 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
             CTransaction signedTx(newTx);
 
             //DEBUGGING
-            TxToJSON(tx, uint256(), jsonTX);
-            printf("signed transaction:\n%s\n", jsonTX.write(1, 2).c_str());
+            //TxToJSON(tx, uint256(), jsonTX);
+            //printf("signed transaction:\n%s\n", jsonTX.write(1, 2).c_str());
 
             if (!AcceptToMemoryPool(mempool, state, signedTx, false, &fMissingInputs)) {
                 if (state.IsInvalid()) {
