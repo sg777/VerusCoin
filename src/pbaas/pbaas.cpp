@@ -1033,6 +1033,24 @@ bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScrip
     return true;
 }
 
+CCurrencyDefinition &CConnectedChains::GetCachedCurrency(const uint160 &currencyID)
+{
+    LOCK(cs_main);
+    CCurrencyDefinition currencyDef;
+    auto it = currencyDefCache.find(currencyID);
+    if ((it != currencyDefCache.end() && !(currencyDef = it->second).IsValid()) ||
+        (it == currencyDefCache.end() && !GetCurrencyDefinition(currencyID, currencyDef)))
+    {
+        printf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
+        LogPrintf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
+    }
+    if (it == currencyDefCache.end())
+    {
+        currencyDefCache[currencyID] = currencyDef;
+    }
+    return currencyDefCache[currencyID];
+}
+
 void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight)
 {
     // all chains aggregate reserve transfer transactions, so aggregate and add all necessary export transactions to the mem pool
@@ -1409,6 +1427,12 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
     // sign and commit the transactions
     for (auto &tx : transactions)
     {
+        //DEBUGGING
+        extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
+        UniValue jsonTX(UniValue::VOBJ);
+        TxToJSON(tx, uint256(), jsonTX);
+        printf("signed transaction:\n%s\n", jsonTX.write(1, 2).c_str());
+
         CMutableTransaction newTx(tx);
 
         // sign the transaction and submit
@@ -1456,6 +1480,11 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
             CValidationState state;
             bool fMissingInputs;
             CTransaction signedTx(newTx);
+
+            //DEBUGGING
+            TxToJSON(tx, uint256(), jsonTX);
+            printf("signed transaction:\n%s\n", jsonTX.write(1, 2).c_str());
+
             if (!AcceptToMemoryPool(mempool, state, signedTx, false, &fMissingInputs)) {
                 if (state.IsInvalid()) {
                     fprintf(stderr,"%s: rejected by memory pool for %s\n", __func__, state.GetRejectReason().c_str());

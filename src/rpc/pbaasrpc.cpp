@@ -495,10 +495,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     uint160 thisChainID = thisChain.GetID();
     bool isTokenImport = systemID == thisChainID;
 
-    CCurrencyValueMap totalAvailableInput(AvailableTokenInput);
+    CCurrencyValueMap availableTokenInput(AvailableTokenInput);
     CAmount totalNativeInput(TotalNativeInput);
 
-    printf("totalNativeInput: %ld, totalAvailableInput:%s\n", totalNativeInput, totalAvailableInput.ToUniValue().write().c_str());
+    printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
 
     CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
     if ((isTokenImport && chainActive.LastTip() == NULL) ||
@@ -791,10 +791,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 return false;
             }
 
-            printf("DEBUGOUT: totalNativeInput: %ld, totalAvailableInput:%s\n", totalNativeInput, totalAvailableInput.ToUniValue().write().c_str());
-            printf("DEBUGOUT: rtxd.nativeIn: %ld, rtxd.ReserveInputMap():%s\n", totalNativeInput, rtxd.ReserveInputMap().ToUniValue().write().c_str());
+            printf("DEBUGOUT: totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
+            printf("DEBUGOUT: rtxd.nativeIn: %ld, rtxd.ReserveInputMap():%s\n", rtxd.nativeIn, rtxd.ReserveInputMap().ToUniValue().write().c_str());
 
-            totalAvailableInput -= (rtxd.ReserveInputMap() - rtxd.ReserveOutConvertedMap());
+            availableTokenInput -= (rtxd.ReserveInputMap() - rtxd.ReserveOutConvertedMap());
             CAmount nativeOutConverted = 0;
             for (auto &oneNativeConversion : rtxd.NativeOutConvertedMap().valueMap)
             {
@@ -804,16 +804,16 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             printf("DEBUGOUT: nativeOutConverted: %ld, rtxd.ReserveOutConvertedMap():%s\n", nativeOutConverted, rtxd.ReserveOutConvertedMap().ToUniValue().write().c_str());
 
             totalNativeInput -= (rtxd.nativeIn - nativeOutConverted);
-            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetID(), ccx.totalAmounts + ccx.totalFees, totalAvailableInput);
-            newImportTx.vout[0] = CTxOut(TotalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)));
+            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetID(), ccx.totalAmounts, availableTokenInput);
+            newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
 
-            printf("totalNativeInput: %ld, totalAvailableInput:%s\n", totalNativeInput, totalAvailableInput.ToUniValue().write().c_str());
-            if (totalNativeInput < 0 || totalAvailableInput.HasNegative())
+            printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
+            if (totalNativeInput < 0 || availableTokenInput.HasNegative())
             {
                 LogPrintf("%s: ERROR - importing more currency than available for %s\n", __func__, currencyDef.name.c_str());
-                LogPrintf("totalNativeInput: %ld, totalAvailableInput:%s\n", totalNativeInput, totalAvailableInput.ToUniValue().write().c_str());
+                LogPrintf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
                 printf("%s: ERROR - importing more currency than available for %s\n", __func__, currencyDef.name.c_str());
-                printf("totalNativeInput: %ld, totalAvailableInput:%s\n", totalNativeInput, totalAvailableInput.ToUniValue().write().c_str());
+                printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
                 return false;
             }
 
@@ -829,7 +829,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             }
 
             // prove ccx input 0, export output, and opret
-            std::vector<std::pair<int16_t, int16_t>> parts({{CTransactionHeader::TX_PREVOUTSEQ, (int16_t)0},
+            std::vector<std::pair<int16_t, int16_t>> parts({{CTransactionHeader::TX_HEADER, (int16_t)0},
+                                                            {CTransactionHeader::TX_PREVOUTSEQ, (int16_t)0},
                                                             {CTransactionHeader::TX_OUTPUT, ccxOutputNum},
                                                             {CTransactionHeader::TX_OUTPUT, (int16_t)(aixIt->second.second.vout.size() - 1)}});
 

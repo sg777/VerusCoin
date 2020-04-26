@@ -217,7 +217,6 @@ public:
     ~CCrossChainProof()
     {
         DeleteOpRetObjects(chainObjects);
-        chainObjects.clear();
         version = VERSION_INVALID;
     }
 
@@ -228,21 +227,20 @@ public:
         READWRITE(version);
         if (ser_action.ForRead())
         {
+            printf("entering CCrossChainProof unserialize\n");
             if (chainObjects.size())
             {
                 DeleteOpRetObjects(chainObjects);
-                chainObjects.clear();
             }
 
-            bool finished = false;
+            int32_t proofSize;
+            READWRITE(VARINT(proofSize));
+
             bool error = false;
-            while (!finished)
+            for (int i = 0; i < proofSize && !error; i++)
             {
                 try
                 {
-                    // NOTE: our normal way out is an exception at end of stream
-                    // would prefer a better way
-                    error = false;
                     uint16_t objType;
                     READWRITE(objType);
                     union {
@@ -256,98 +254,101 @@ public:
                         CBaseChainObject *pobj;
                     };
 
-                    // non-error exception comes from the first try on each object. after this, it is an error
-                    error = true;
+                    pobj = nullptr;
 
                     switch(objType)
                     {
-                        case CHAINOBJ_HEADER:
-                            pNewHeader = new CChainObject<CBlockHeaderAndProof>();
-                            if (pNewHeader)
-                            {
-                                READWRITE(pNewHeader->object);
-                                pNewHeader->objectType = objType;
-                            }
-                            break;
-                        case CHAINOBJ_TRANSACTION_PROOF:
-                            pNewTx = new CChainObject<CPartialTransactionProof>();
-                            if (pNewTx)
-                            {
-                                READWRITE(pNewTx->object);
-                                pNewTx->objectType = objType;
-                            }
-                            break;
-                        case CHAINOBJ_PROOF_ROOT:
-                            pNewProof = new CChainObject<uint256>();
-                            if (pNewProof)
-                            {
-                                READWRITE(pNewProof->object);
-                                pNewProof->objectType = objType;
-                            }
-                            break;
-                        case CHAINOBJ_HEADER_REF:
-                            pNewHeaderRef = new CChainObject<CBlockHeaderProof>();
-                            if (pNewHeaderRef)
-                            {
-                                READWRITE(pNewHeaderRef->object);
-                                pNewHeaderRef->objectType = objType;
-                            }
-                            break;
-                        case CHAINOBJ_PRIORBLOCKS:
-                            pPriors = new CChainObject<CPriorBlocksCommitment>();
-                            if (pPriors)
-                            {
-                                READWRITE(pPriors->object);
-                                pPriors->objectType = objType;
-                            }
-                            break;
-                        case CHAINOBJ_RESERVETRANSFER:
-                            pExport = new CChainObject<CReserveTransfer>();
-                            if (pExport)
-                            {
-                                READWRITE(pExport->object);
-                                pExport->objectType = objType;
-                            }
-                            break;
-                        case CHAINOBJ_CROSSCHAINPROOF:
-                            pCrossChainProof = new CChainObject<CCrossChainProof>();
-                            if (pCrossChainProof)
-                            {
-                                READWRITE(pCrossChainProof->object);
-                                pCrossChainProof->objectType = objType;
-                            }
-                            break;
-                        case CHAINOBJ_COMPOSITEOBJECT:
-                            pCrossChainProof = new CChainObject<CCrossChainProof>();
-                            if (pCrossChainProof)
-                            {
-                                READWRITE(pCrossChainProof->object);
-                                pCrossChainProof->objectType = CHAINOBJ_COMPOSITEOBJECT;
-                            }
-                            break;
+                    case CHAINOBJ_HEADER:
+                        pNewHeader = new CChainObject<CBlockHeaderAndProof>();
+                        if (pNewHeader)
+                        {
+                            READWRITE(pNewHeader->object);
+                            pNewHeader->objectType = objType;
+                        }
+                        break;
+                    case CHAINOBJ_TRANSACTION_PROOF:
+                        pNewTx = new CChainObject<CPartialTransactionProof>();
+                        if (pNewTx)
+                        {
+                            READWRITE(pNewTx->object);
+                            pNewTx->objectType = objType;
+                        }
+                        break;
+                    case CHAINOBJ_PROOF_ROOT:
+                        pNewProof = new CChainObject<uint256>();
+                        if (pNewProof)
+                        {
+                            READWRITE(pNewProof->object);
+                            pNewProof->objectType = objType;
+                        }
+                        break;
+                    case CHAINOBJ_HEADER_REF:
+                        pNewHeaderRef = new CChainObject<CBlockHeaderProof>();
+                        if (pNewHeaderRef)
+                        {
+                            READWRITE(pNewHeaderRef->object);
+                            pNewHeaderRef->objectType = objType;
+                        }
+                        break;
+                    case CHAINOBJ_PRIORBLOCKS:
+                        pPriors = new CChainObject<CPriorBlocksCommitment>();
+                        if (pPriors)
+                        {
+                            READWRITE(pPriors->object);
+                            pPriors->objectType = objType;
+                        }
+                        break;
+                    case CHAINOBJ_RESERVETRANSFER:
+                        pExport = new CChainObject<CReserveTransfer>();
+                        if (pExport)
+                        {
+                            READWRITE(pExport->object);
+                            pExport->objectType = objType;
+                        }
+                        break;
+                    case CHAINOBJ_CROSSCHAINPROOF:
+                        pCrossChainProof = new CChainObject<CCrossChainProof>();
+                        if (pCrossChainProof)
+                        {
+                            READWRITE(pCrossChainProof->object);
+                            pCrossChainProof->objectType = objType;
+                        }
+                        break;
+                    case CHAINOBJ_COMPOSITEOBJECT:
+                        pCrossChainProof = new CChainObject<CCrossChainProof>();
+                        if (pCrossChainProof)
+                        {
+                            READWRITE(pCrossChainProof->object);
+                            pCrossChainProof->objectType = CHAINOBJ_COMPOSITEOBJECT;
+                        }
+                        break;
                     }
 
                     if (pobj)
                     {
+                        printf("%s: storing object, code %u\n", __func__, objType);
                         chainObjects.push_back(pobj);
                     }
                 }
                 catch(const std::exception& e)
                 {
-                    finished = true;
+                    error = true;
+                    break;
                 }
             }
 
             if (error)
             {
-                printf("%s: ERROR: opret is likely corrupt", __func__);
-                LogPrintf("%s: ERROR: opret is likely corrupt", __func__);
+                printf("%s: ERROR: opret is likely corrupt\n", __func__);
+                LogPrintf("%s: ERROR: opret is likely corrupt\n", __func__);
                 DeleteOpRetObjects(chainObjects);
-                chainObjects.clear();
             }
         }
         else
         {
+            printf("entering CCrossChainProof serialize\n");
+            int32_t proofSize = chainObjects.size();
+            READWRITE(VARINT(proofSize));
             for (auto &oneVal : chainObjects)
             {
                 DehydrateChainObject(s, oneVal);
@@ -866,6 +867,7 @@ public:
     // returns false if destinations are empty or first is not either pubkey or pubkeyhash
     bool SetLatestMiningOutputs(const std::vector<std::pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut);
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
+    CCurrencyDefinition &GetCachedCurrency(const uint160 &currencyID);
 
     bool GetLastImport(const uint160 &systemID, 
                        CTransaction &lastImport, 

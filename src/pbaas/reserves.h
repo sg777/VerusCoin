@@ -863,7 +863,7 @@ public:
                                              const CCurrencyStateNew *pCurrencyState=nullptr) const;
 
     bool AddReserveTransferImportOutputs(const uint160 &currencySourceID, 
-                                         const CCurrencyDefinition &currencyDest, 
+                                         const CCurrencyDefinition &systemDest, 
                                          const std::vector<CBaseChainObject *> &exportObjects, 
                                          std::vector<CTxOut> &vOutputs);
 };

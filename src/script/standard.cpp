@@ -654,6 +654,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                 // always add the index keys to destinations, but that has nothing to do with whether or not
                 // an ID present in that index represents an address that can sign or spend. ids in this block
                 // are ignored, as all IDs in an output are always indexed in the address and unspent indexes.
+                std::set<CTxDestination> indexSet;
                 for (auto dest : master.vKeys)
                 {
                     // all but ID types
@@ -661,7 +662,11 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     {
                         // include all non-name addresses from master as destinations as well
                         // name addresses can only be destinations if they are at least "cansign" on one of the subconditions
-                        addressRet.push_back(dest);
+                        if (!indexSet.count(dest))
+                        {
+                            addressRet.push_back(dest);
+                        }
+                        indexSet.insert(dest);
                     }
                 }
 
@@ -678,7 +683,10 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                         for (auto dest : oneP.vKeys)
                         {
                             uint160 destId = GetDestinationID(dest);
-                            addressRet.push_back(dest);
+                            if (!indexSet.count(dest))
+                            {
+                                addressRet.push_back(dest);
+                            }
                             if (dest.which() == COptCCParams::ADDRTYPE_ID)
                             {
                                 // lookup identity, we must have all registered target identity scripts in our keystore, or we try as if they are a keyID, which will be the same

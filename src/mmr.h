@@ -335,14 +335,13 @@ public:
     uint32_t nSize;                 // size of the entire MMR, which is used to determine correct path
     std::vector<uint256> branch;    // variable size branch, depending on the position in the range
 
-    CMMRBranch() : nIndex(0) {}
+    CMMRBranch() : nIndex(0), nSize(0) {}
     CMMRBranch(BRANCH_TYPE type) : CMerkleBranchBase(type), nIndex(0), nSize(0) {}
     CMMRBranch(BRANCH_TYPE type, int size, int i, const std::vector<uint256> &b) : CMerkleBranchBase(type), nSize(size), nIndex(i), branch(b) {}
 
-    // MMR branches cannot append position, so the position stays fixed
     CMMRBranch& operator<<(CMMRBranch append)
     {
-        nIndex = append.nIndex;
+        nIndex += append.nIndex << branch.size();
         branch.insert(branch.end(), append.branch.begin(), append.branch.end());
         return *this;
     }
@@ -379,7 +378,7 @@ public:
         }
 
         // printf("start SafeCheck branch.size(): %lu, index: %lu, hash: %s\n", branch.size(), index, HashAbbrev(hash).c_str());
-        for (auto it(branch.begin()); it != branch.end(); ++it)
+        for (auto it(branch.begin()); it != branch.end(); it++)
         {
             HASHALGOWRITER hw(SER_GETHASH, 0);
             if (index & 1) 
@@ -510,9 +509,11 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         if (ser_action.ForRead())
         {
-            bool finished = false;
+            int32_t proofSize;
+            READWRITE(VARINT(proofSize));
+
             bool error = false;
-            while (!(finished || error))
+            for (int i = 0; i < proofSize && !error; i++)
             {
                 try
                 {
@@ -520,6 +521,7 @@ public:
                     // would prefer a better way
                     uint8_t branchType;
                     READWRITE(branchType);
+
                     union {
                         CBTCMerkleBranch *pBranch;
                         CMMRNodeBranch *pNodeBranch;
@@ -528,7 +530,7 @@ public:
                     };
 
                     // non-error exception comes from the first try on each object. after this, it is an error
-                    error = true;
+                    pobj = nullptr;
 
                     switch(branchType)
                     {
@@ -539,7 +541,6 @@ public:
                             {
                                 READWRITE(*pBranch);
                             }
-                            error = false;
                             break;
                         }
                         case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
@@ -564,7 +565,9 @@ public:
                         }
                         default:
                         {
-                            printf("%s: ERROR: proof sequence is likely corrupt\n", __func__);
+                            printf("%s: ERROR: default case - proof sequence is likely corrupt, code %d\n", __func__, branchType);
+                            LogPrintf("%s: ERROR: default case - proof sequence is likely corrupt, code %d\n", __func__, branchType);
+                            error = true;
                         }
                     }
 
@@ -575,22 +578,27 @@ public:
                 }
                 catch(const std::exception& e)
                 {
-                    finished = true;
+                    error = true;
                 }
             }
 
             if (error)
             {
-                printf("%s: ERROR: proof sequence is likely corrupt\n", __func__);
+                printf("%s: ERROR: failure - proof sequence is likely corrupt\n", __func__);
                 LogPrintf("%s: ERROR: proof sequence is likely corrupt\n", __func__);
                 DeleteProofSequence();
             }
         }
         else
         {
+            int32_t proofSize = proofSequence.size();
+            READWRITE(VARINT(proofSize));
+
             for (auto pProof : proofSequence)
             {
+                bool error = false;
                 READWRITE(pProof->branchType);
+
                 switch(pProof->branchType)
                 {
                     case CMerkleBranchBase::BRANCH_BTC:
@@ -608,7 +616,14 @@ public:
                         READWRITE(*(CMMRPowerNodeBranch *)pProof);
                         break;
                     }
+                    default:
+                    {
+                        error = true;
+                        printf("ERROR: unknown branch type (%u), likely corrupt\n", pProof->branchType);
+                        break;
+                    }
                 }
+                assert(!error);
             }
         }
     }

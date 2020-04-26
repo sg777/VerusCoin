@@ -568,3 +568,217 @@ std::string CTransaction::ToString() const
         str += "    " + vout[i].ToString() + "\n";
     return str;
 }
+
+CTransactionComponentProof::CTransactionComponentProof(TransactionMMView &txView, const CTransactionMap &txMap, const CTransaction &tx, int16_t partType, int16_t subIndex) : 
+    elType(partType), elIdx(subIndex)
+{
+    std::pair<int16_t, int16_t> idx({partType, subIndex});
+    switch(partType)
+    {
+        case CTransactionHeader::TX_FULL:
+        {
+            elVchObj = ::AsVector(tx);
+            break;
+        }
+        case CTransactionHeader::TX_HEADER:
+        {
+            if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
+            {
+                elVchObj = ::AsVector(CTransactionHeader(tx));
+            }
+            break;
+        }
+        case CTransactionHeader::TX_PREVOUTSEQ:
+        {
+            if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
+            {
+                CTxIn prevOutSeqOnly = tx.vin[subIndex];
+                prevOutSeqOnly.scriptSig = CScript();
+                elVchObj = ::AsVector(prevOutSeqOnly);
+            }
+            break;
+        }
+        case CTransactionHeader::TX_SIGNATURE:
+        {
+            if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
+            {
+                elVchObj = ::AsVector(tx.vin[subIndex]);
+            }
+            break;
+        }
+        case CTransactionHeader::TX_OUTPUT:
+        {
+            if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
+            {
+                elVchObj = ::AsVector(tx.vout[subIndex]);
+            }
+            break;
+        }
+        case CTransactionHeader::TX_SHIELDEDSPEND:
+        {
+            if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
+            {
+                elVchObj = ::AsVector(tx.vShieldedSpend[subIndex]);
+            }
+            break;
+        }
+        case CTransactionHeader::TX_SHIELDEDOUTPUT:
+        {
+            if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
+            {
+                elVchObj = ::AsVector(tx.vShieldedOutput[subIndex]);
+            }
+            break;
+        }
+    }
+}
+
+// this validates that all parts of a transaction match and either returns a full transaction
+// and its hash, a partially filled transaction and its MMR root, or NULL
+uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx) const
+{
+    CTransactionHeader txh;
+    CMutableTransaction mtx;
+
+    uint256 txRoot;
+    bool checkOK = false;
+    if (components.size())
+    {
+        if (components[0].elType == CTransactionHeader::TX_HEADER && components[0].Rehydrate(txh))
+        {
+            // validate the header and calculate a transaction root
+            txRoot = components[0].CheckProof();
+
+            checkOK = true;
+            mtx = txh.RehydrateTransactionScaffold();
+            for (int i = 1; i < components.size(); i++)
+            {
+                if (components[i].CheckProof() != txRoot)
+                {
+                    checkOK = false;
+                    break;
+                }
+                else
+                {
+                    switch (components[i].elType)
+                    {
+                        case CTransactionHeader::TX_PREVOUTSEQ:
+                        case CTransactionHeader::TX_SIGNATURE:
+                        {
+                            if (mtx.vin.size() > components[i].elIdx)
+                            {
+                                ::FromVector(components[i].elVchObj, mtx.vin[components[i].elIdx]);
+                            }
+                            else
+                            {
+                                checkOK = false;
+                            }
+                            break;
+                        }
+                        case CTransactionHeader::TX_OUTPUT:
+                        {
+                            if (mtx.vout.size() > components[i].elIdx)
+                            {
+                                ::FromVector(components[i].elVchObj, mtx.vout[components[i].elIdx]);
+                            }
+                            else
+                            {
+                                checkOK = false;
+                            }
+                            break;
+                        }
+                        case CTransactionHeader::TX_SHIELDEDSPEND:
+                        {
+                            if (mtx.vShieldedSpend.size() > components[i].elIdx)
+                            {
+                                ::FromVector(components[i].elVchObj, mtx.vShieldedSpend[components[i].elIdx]);
+                            }
+                            else
+                            {
+                                checkOK = false;
+                            }
+                            break;
+                        }
+                        case CTransactionHeader::TX_SHIELDEDOUTPUT:
+                        {
+                            if (mtx.vShieldedOutput.size() > components[i].elIdx)
+                            {
+                                ::FromVector(components[i].elVchObj, mtx.vShieldedOutput[components[i].elIdx]);
+                            }
+                            else
+                            {
+                                checkOK = false;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            if (checkOK)
+            {
+                outTx = mtx;
+            }
+            else
+            {
+                txRoot = uint256();
+            }
+        }
+        else if (components[0].elType == CTransactionHeader::TX_FULL && components[0].Rehydrate(outTx))
+        {
+            txRoot = outTx.GetHash();
+        }
+    }
+    return txRoot;
+}
+
+// this validates that all parts of a transaction match and either returns a full transaction
+// and its hash, a partially filled transaction and its MMR root, or NULL
+uint256 CPartialTransactionProof::CheckPartialTransaction(CTransaction &outTx, bool *pIsPartial) const
+{
+    CTransactionHeader txh;
+    CMutableTransaction mtx;
+
+    uint256 txRoot;
+    bool checkOK = false;
+    if (components.size())
+    {
+        if (components[0].elType == CTransactionHeader::TX_HEADER && components[0].Rehydrate(txh))
+        {
+            if (pIsPartial)
+            {
+                *pIsPartial = false;
+            }
+
+            txRoot = components[0].CheckProof();
+
+            checkOK = true;
+            mtx = txh.RehydrateTransactionScaffold();
+            for (int i = 1; i < components.size(); i++)
+            {
+                if (components[i].CheckProof() != txRoot)
+                {
+                    checkOK = false;
+                    break;
+                }
+            }
+            if (checkOK)
+            {
+                outTx = mtx;
+            }
+            else
+            {
+                txRoot = uint256();
+            }
+        }
+        else if (components[0].elType == CTransactionHeader::TX_FULL && components[0].Rehydrate(outTx))
+        {
+            if (pIsPartial)
+            {
+                *pIsPartial = false;
+            }
+            
+            txRoot = outTx.GetHash();
+        }
+    }
+    return txProof.CheckProof(txRoot);
+}
