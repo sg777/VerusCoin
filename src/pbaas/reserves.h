@@ -355,7 +355,7 @@ public:
     uint32_t nVersion;
     uint160 systemID;                           // target blockchain or currency system ID
     int32_t numInputs;                          // number of inputs aggregated to calculate the fee percentage
-    CCurrencyValueMap totalAmounts;             // total amount of inputs of each currency, not including fees
+    CCurrencyValueMap totalAmounts;             // total amount of inputs of each currency, including fees
     CCurrencyValueMap totalFees;                // total amount of fees of each currency to split between miner on exporting chain and importing chain
 
     CCrossChainExport() : nVersion(VERSION_INVALID), numInputs(0) {}

@@ -215,6 +215,6 @@ uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int
             }
         }
     }
-    printf("retindex: %lu\n", retIndex);
+    //printf("retindex: %lu\n", retIndex);
     return retIndex;
 }

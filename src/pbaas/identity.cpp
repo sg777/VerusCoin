@@ -86,22 +86,6 @@ CPrincipal::CPrincipal(const UniValue &uni)
     minSigs = uni_get_int(find_value(uni, "minimumsignatures"));
 }
 
-UniValue CPrincipal::ToUniValue() const
-{
-    UniValue obj(UniValue::VOBJ);
-    obj.push_back(Pair("version", (int32_t)nVersion));
-    obj.push_back(Pair("flags", (int32_t)flags));
-
-    UniValue primaryAddressesUni(UniValue::VARR);
-    for (int i = 0; i < primaryAddresses.size(); i++)
-    {
-        primaryAddressesUni.push_back(EncodeDestination(primaryAddresses[i]));
-    }
-    obj.push_back(Pair("primaryaddresses", primaryAddressesUni));
-    obj.push_back(Pair("minimumsignatures", minSigs));
-    return obj;
-}
-
 CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 {
     parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "parent")))));
@@ -156,30 +140,6 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     {
         privateAddresses.push_back(*boost::get<libzcash::SaplingPaymentAddress>(&pa));
     }
-}
-
-UniValue CIdentity::ToUniValue() const
-{
-    UniValue obj = ((CPrincipal *)this)->ToUniValue();
-
-    obj.push_back(Pair("identityaddress", EncodeDestination(CIdentityID(GetID()))));
-    obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
-    obj.push_back(Pair("name", name));
-
-    UniValue hashes(UniValue::VOBJ);
-    for (auto &entry : contentMap)
-    {
-        hashes.push_back(Pair(entry.first.GetHex(), entry.second.GetHex()));
-    }
-    obj.push_back(Pair("contentmap", hashes));
-
-    obj.push_back(Pair("revocationauthority", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
-    obj.push_back(Pair("recoveryauthority", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
-    if (privateAddresses.size())
-    {
-        obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddresses[0])));
-    }
-    return obj;
 }
 
 CIdentity::CIdentity(const CTransaction &tx, int *voutNum)

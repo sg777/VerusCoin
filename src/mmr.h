@@ -373,7 +373,7 @@ public:
 
         if (index == -1)
         {
-            printf("returning null 1\n");
+            //printf("returning null 1\n");
             return uint256();
         }
 
@@ -386,7 +386,7 @@ public:
                 if (*it == hash) 
                 {
                     // non canonical. hash may be equal to node but never on the right.
-                    printf("returning null 2\n");
+                    //printf("returning null 2\n");
                     return uint256();
                 }
                 hw << *it;
@@ -400,7 +400,7 @@ public:
             hash = hw.GetHash();
             index >>= 1;
         }
-        printf("end SafeCheck %s\n", hash.GetHex().c_str());
+        //printf("end SafeCheck %s\n", hash.GetHex().c_str());
         return hash;
     }
 };

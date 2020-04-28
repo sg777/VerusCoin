@@ -64,18 +64,6 @@ CCurrencyValueMap::CCurrencyValueMap(const std::vector<uint160> &currencyIDs, co
     }
 }
 
-UniValue CCurrencyValueMap::ToUniValue() const
-{
-    UniValue retVal(UniValue::VARR);
-    for (auto &curValue : valueMap)
-    {
-        UniValue obj(UniValue::VOBJ);
-        obj.push_back(Pair(EncodeDestination(CIdentityID(curValue.first)), ValueFromAmount(curValue.second)));
-        retVal.push_back(obj);
-    }
-    return retVal;
-}
-
 bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
 {
     if (!a.valueMap.size() && !b.valueMap.size())
@@ -83,17 +71,16 @@ bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
         return false;
     }
     bool isaltb = false;
-    for (auto &oneVal : a.valueMap)
+    
+    for (auto &oneVal : b.valueMap)
     {
-        auto it = b.valueMap.find(oneVal.first);
-        if (it == b.valueMap.end() || it->second < oneVal.second)
+        if (oneVal.second)
         {
-            isaltb = false;
-            break;
-        }
-        else if (it->second > oneVal.second)
-        {
-            isaltb = true;
+            auto it = a.valueMap.find(oneVal.first);
+            if (it == a.valueMap.end() || it->second < oneVal.second)
+            {
+                isaltb = true;
+            }
         }
     }
     return isaltb;
@@ -131,21 +118,7 @@ bool operator!=(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
 
 bool operator<=(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
 {
-    if (!a.valueMap.size() && !b.valueMap.size())
-    {
-        return true;
-    }
-    bool isalteb = true;
-    for (auto &oneVal : a.valueMap)
-    {
-        auto it = b.valueMap.find(oneVal.first);
-        if (it == b.valueMap.end() || it->second < oneVal.second)
-        {
-            isalteb = false;
-            break;
-        }
-    }
-    return isalteb;
+    return (a < b) || (a == b);
 }
 
 bool operator>=(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
@@ -327,6 +300,7 @@ bool CCurrencyValueMap::HasNegative() const
 // subtract, but do not subtract to negative values
 CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& operand)
 {
+    std::vector<uint160> toRemove;
     if (valueMap.size() && operand.valueMap.size())
     {
         for (auto &oneVal : valueMap)
@@ -334,12 +308,17 @@ CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& ope
             auto it = operand.valueMap.find(oneVal.first);
             if (it != operand.valueMap.end())
             {
-                if (it->second > 0 && oneVal.second > 0)
+                oneVal.second = oneVal.second - it->second;
+                if (oneVal.second <= 0)
                 {
-                    oneVal.second = oneVal.second < it->second ? 0 : oneVal.second - it->second;
+                    toRemove.push_back(oneVal.first);
                 }
             }
         }
+    }
+    for (auto &toErase : toRemove)
+    {
+        valueMap.erase(toErase);
     }
     return *this;
 }
@@ -380,51 +359,6 @@ CTokenOutput::CTokenOutput(const UniValue &obj)
         std::cerr << e.what() << '\n';
         nVersion = VERSION_INVALID;
     }
-}
-
-UniValue CTokenOutput::ToUniValue() const
-{
-    UniValue ret(UniValue::VOBJ);
-    ret.push_back(Pair("version", (int64_t)nVersion));
-    ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
-    ret.push_back(Pair("value", ValueFromAmount(nValue)));
-    return ret;
-}
-
-UniValue CReserveTransfer::ToUniValue() const
-{
-    UniValue ret(((CTokenOutput *)this)->ToUniValue());
-    ret.push_back(Pair("convert", (bool)(flags & CONVERT)));
-    ret.push_back(Pair("preconvert", (bool)(flags & PRECONVERT)));
-    ret.push_back(Pair("feeoutput", (bool)(flags & FEE_OUTPUT)));
-    ret.push_back(Pair("sendback", (bool)(flags & SEND_BACK)));
-    ret.push_back(Pair("fees", ValueFromAmount(nFees)));
-    ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
-    std::string destStr;
-    switch (destination.type)
-    {
-    case CTransferDestination::DEST_PKH:
-        destStr = EncodeDestination(CKeyID(uint160(destination.destination)));
-        break;
-
-    case CTransferDestination::DEST_SH:
-        destStr = EncodeDestination(CScriptID(uint160(destination.destination)));
-        break;
-
-    case CTransferDestination::DEST_ID:
-        destStr = EncodeDestination(CIdentityID(uint160(destination.destination)));
-        break;
-
-    case CTransferDestination::DEST_QUANTUM:
-        destStr = EncodeDestination(CQuantumID(uint160(destination.destination)));
-        break;
-
-    default:
-        destStr = HexStr(destination.destination);
-        break;
-    }
-    ret.push_back(Pair("destination", destStr));
-    return ret;
 }
 
 CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transferTotal) const
@@ -524,45 +458,6 @@ CReserveExchange::CReserveExchange(const CTransaction &tx)
     }
 }
 
-UniValue CReserveExchange::ToUniValue() const
-{
-    UniValue ret(((CTokenOutput *)this)->ToUniValue());
-    ret.push_back(Pair("toreserve", (bool)(flags & TO_RESERVE)));
-    ret.push_back(Pair("tonative", !((bool)(flags & TO_RESERVE))));
-    ret.push_back(Pair("limitorder", (bool)(flags & LIMIT)));
-    if (flags & LIMIT)
-    {
-        ret.push_back(Pair("limitprice", ValueFromAmount(nLimit)));
-    }
-    ret.push_back(Pair("fillorkill", (bool)(flags & FILL_OR_KILL)));
-    if (flags & FILL_OR_KILL)
-    {
-        ret.push_back(Pair("validbeforeblock", (int32_t)nValidBefore));
-    }
-    ret.push_back(Pair("sendoutput", (bool)(flags & SEND_OUTPUT)));
-    return ret;
-}
-
-UniValue CCrossChainExport::ToUniValue() const
-{
-    UniValue obj(UniValue::VOBJ);
-    obj.push_back(Pair("version", (int)nVersion));
-    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
-    obj.push_back(Pair("numinputs", numInputs));
-    obj.push_back(Pair("totalamounts", totalAmounts.ToUniValue()));
-    obj.push_back(Pair("totalfees", totalFees.ToUniValue()));
-    return obj;
-}
-
-UniValue CCrossChainImport::ToUniValue() const
-{
-    UniValue obj(UniValue::VOBJ);
-    obj.push_back(Pair("version", (int)nVersion));
-    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
-    obj.push_back(Pair("valuein", importValue.ToUniValue()));
-    return obj;
-}
-
 CCrossChainImport::CCrossChainImport(const CTransaction &tx, int32_t *pOutNum)
 {
     for (int i = 0; i < tx.vout.size(); i++)
@@ -648,31 +543,6 @@ CCurrencyStateNew::CCurrencyStateNew(const UniValue &obj)
     }
 }
 
-UniValue CCurrencyStateNew::ToUniValue() const
-{
-    UniValue ret(UniValue::VOBJ);
-    ret.push_back(Pair("flags", (int32_t)flags));
-
-    if (IsValid() && IsReserve())
-    {
-        UniValue currencyArr(UniValue::VARR);
-        for (int i = 0; i < currencies.size(); i++)
-        {
-            UniValue currencyObj(UniValue::VOBJ);
-            currencyObj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencies[i]))));
-            currencyObj.push_back(Pair("weight", ValueFromAmount(i < weights.size() ? weights[i] : 0)));
-            currencyObj.push_back(Pair("reserves", ValueFromAmount(i < reserves.size() ? reserves[i] : 0)));
-            currencyObj.push_back(Pair("priceinreserve", ValueFromAmount(PriceInReserve(i))));
-            currencyArr.push_back(currencyObj);
-        }
-        ret.push_back(Pair("reservecurrencies", currencyArr));
-    }
-    ret.push_back(Pair("initialsupply", ValueFromAmount(initialSupply)));
-    ret.push_back(Pair("emitted", ValueFromAmount(emitted)));
-    ret.push_back(Pair("supply", ValueFromAmount(supply)));
-    return ret;
-}
-
 CCoinbaseCurrencyState::CCoinbaseCurrencyState(const CTransaction &tx, int *pOutIdx)
 {
     int localIdx;
@@ -689,40 +559,6 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const CTransaction &tx, int *pOut
             }
         }
     }
-}
-
-template <typename INNERVECTOR>
-UniValue ValueVectorsToUniValue(const std::vector<std::string> &rowNames,
-                                const std::vector<std::string> &columnNames,
-                                const std::vector<INNERVECTOR *> &vec,
-                                bool columnVectors)
-{
-    UniValue retVal(UniValue::VOBJ);
-    if (columnVectors)
-    {
-        for (int i = 0; i < rowNames.size(); i++)
-        {
-            UniValue row(UniValue::VOBJ);
-            for (int j = 0; j < columnNames.size(); j++)
-            {
-                row.push_back(Pair(columnNames[j], ValueFromAmount((*(vec[j])).size() > i ? (*(vec[j]))[i] : 0)));
-            }
-            retVal.push_back(Pair(rowNames[i], row));
-        }
-    }
-    else
-    {
-        for (int i = 0; i < rowNames.size(); i++)
-        {
-            UniValue row(UniValue::VOBJ);
-            for (int j = 0; j < columnNames.size(); j++)
-            {
-                row.push_back(Pair(columnNames[j], ValueFromAmount((*(vec[i])).size() > j ? (*(vec[i]))[j] : 0)));
-            }
-            retVal.push_back(Pair(rowNames[i], row));
-        }
-    }
-    return retVal;
 }
 
 std::vector<std::vector<CAmount>> ValueColumnsFromUniValue(const UniValue &uni,
@@ -781,24 +617,6 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
     }
     nativeFees = uni_get_int64(find_value(obj, "nativefees"));
     nativeConversionFees = uni_get_int64(find_value(obj, "nativeconversionfees"));
-}
-
-UniValue CCoinbaseCurrencyState::ToUniValue() const
-{
-    UniValue ret(UniValue::VOBJ);
-    ret = ((CCurrencyStateNew *)this)->ToUniValue();
-    std::vector<std::string> rowNames;
-    for (int i = 0; i < currencies.size(); i++)
-    {
-        rowNames.push_back(EncodeDestination(CIdentityID(currencies[i])));
-    }
-    std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "fees", "conversionfees"});
-    std::vector<const std::vector<CAmount> *> data = {&reserveIn, &nativeIn, &reserveOut, &conversionPrice, &fees, &conversionFees};
-
-    ret.push_back(Pair("currencies", ValueVectorsToUniValue(rowNames, columnNames, data, true)));
-    ret.push_back(Pair("nativefees", nativeFees));
-    ret.push_back(Pair("nativeconversionfees", nativeConversionFees));
-    return ret;
 }
 
 CAmount CalculateFractionalOut(CAmount NormalizedReserveIn, CAmount Supply, CAmount NormalizedReserve, int32_t reserveRation)
@@ -1816,19 +1634,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
             }
         }
 
-        // if we have a valid import, override all normal fee calculations
-        // in lieu of the import fee calculations
-        if (cci.IsValid() && ccx.IsValid())
-        {
-            if (!(cci.importValue == ccx.totalAmounts))
-            {
-                printf("%s: export value does not match import value\n", __func__);
-                flags &= ~IS_VALID;
-                flags |= IS_REJECT;
-                return;
-            }
-        }
-
         // TODO:PBAAS hardening total minimum required fees as we build the descriptor and
         // reject if not correct
         ptx = &tx;
@@ -1846,7 +1651,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 {
     // we do not change native in or conversion fees, but we define all of these members
     nativeIn = 0;
-    nativeOut = 0;
     numTransfers = 0;
     for (auto &oneInOut : currencies)
     {
@@ -1897,8 +1701,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         feeOutputs = CCrossChainExport::CalculateExportFee(transferFees, numTransfers);
                     }
 
-                    printf("%s: transferFees, numTransfers: %s, %d\n", __func__, transferFees.ToUniValue().write().c_str(), numTransfers);
-                    printf("%s: feeOutputs: %s\n", __func__, feeOutputs.ToUniValue().write().c_str());
+                    //printf("%s: transferFees, numTransfers: %s, %d\n", __func__, transferFees.ToUniValue().write().c_str(), numTransfers);
+                    //printf("%s: feeOutputs: %s\n", __func__, feeOutputs.ToUniValue().write().c_str());
 
                     if (curTransfer.nValue > feeOutputs.valueMap[curTransfer.currencyID])
                     {

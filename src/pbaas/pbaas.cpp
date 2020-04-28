@@ -435,16 +435,6 @@ std::vector<CCurrencyDefinition> CCurrencyDefinition::GetCurrencyDefinitions(con
     return retVal;
 }
 
-uint160 CCurrencyDefinition::GetID(const std::string &Name, uint160 &Parent)
-{
-    return CIdentity::GetID(Name, Parent);
-}
-
-uint160 CCurrencyDefinition::GetConditionID(int32_t condition) const
-{
-    return CCrossChainRPCData::GetConditionID(name, condition);
-}
-
 #define _ASSETCHAINS_TIMELOCKOFF 0xffffffffffffffff
 extern uint64_t ASSETCHAINS_TIMELOCKGTE, ASSETCHAINS_TIMEUNLOCKFROM, ASSETCHAINS_TIMEUNLOCKTO;
 extern int64_t ASSETCHAINS_SUPPLY, ASSETCHAINS_REWARD[3], ASSETCHAINS_DECAY[3], ASSETCHAINS_HALVING[3], ASSETCHAINS_ENDSUBSIDY[3], ASSETCHAINS_ERAOPTIONS[3];
@@ -1606,8 +1596,8 @@ void CConnectedChains::ProcessLocalImports()
                     CCrossChainImport cci(importTxes[0], &outNum);
                     if (cci.IsValid())
                     {
-                        // add the reserve deposit inputs and output values to the first transaction
-                        // they should have been automatically propagated through
+                        // add the reserve deposit inputs to the first transaction
+                        // the  outputs should have been automatically propagated through
                         for (auto &oneOut : reserveDeposits)
                         {
                             firstImport.vin.push_back(CTxIn(oneOut.first.txhash, oneOut.first.index));

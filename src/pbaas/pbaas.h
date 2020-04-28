@@ -227,7 +227,7 @@ public:
         READWRITE(version);
         if (ser_action.ForRead())
         {
-            printf("entering CCrossChainProof unserialize\n");
+            //printf("entering CCrossChainProof unserialize\n");
             if (chainObjects.size())
             {
                 DeleteOpRetObjects(chainObjects);
@@ -326,7 +326,7 @@ public:
 
                     if (pobj)
                     {
-                        printf("%s: storing object, code %u\n", __func__, objType);
+                        //printf("%s: storing object, code %u\n", __func__, objType);
                         chainObjects.push_back(pobj);
                     }
                 }
@@ -346,7 +346,7 @@ public:
         }
         else
         {
-            printf("entering CCrossChainProof serialize\n");
+            //printf("entering CCrossChainProof serialize\n");
             int32_t proofSize = chainObjects.size();
             READWRITE(VARINT(proofSize));
             for (auto &oneVal : chainObjects)

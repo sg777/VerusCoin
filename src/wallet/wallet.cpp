@@ -1611,14 +1611,6 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
     uint32_t solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
 
-    // TODO: remove this unnecessary code to test creating a root at this stage
-    if (pwinner)
-    {
-        uint256 txRootTmp = pwinner->tx->GetMMRRoot();
-        printf("%s\n", txRootTmp.GetHex().c_str());
-    }
-    // END REMOVE
-
     // we get these sources of entropy to prove all sources in the header
     int posHeight = -1, powHeight = -1, altHeight = -1;
     uint256 pastHash;
@@ -4891,7 +4883,9 @@ static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<con
                 {
                     totals += vValue[i].first;
                     vfIncluded[i] = true;
-                    if (totals >= targetValues)
+                    // we reached the target if we fulfill all currencies
+                    CCurrencyValueMap curLeft = totals - targetValues;
+                    if (!curLeft.HasNegative())
                     {
                         fReachedTarget = true;
                         if (totals < bestTotals)
@@ -5154,13 +5148,14 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     //memset(interests,0,sizeof(interests));
 
     // List of values less than target
-    std::pair<CCurrencyValueMap, std::pair<const CWalletTx*,unsigned int> > coinLowestLarger;
-    coinLowestLarger.second.first = NULL;
-    vector<std::pair<CCurrencyValueMap, std::pair<const CWalletTx*, unsigned int> > > vValue;
+    std::vector<std::pair<CCurrencyValueMap, std::pair<const CWalletTx*, unsigned int>>> coinLowestLarger;
+    std::vector<std::pair<CCurrencyValueMap, std::pair<const CWalletTx*, unsigned int>>> vValue;
     CCurrencyValueMap totalLower;
-    CAmount totalNativeLower;
+    CAmount totalNativeLower = 0;
 
     random_shuffle(vCoins.begin(), vCoins.end(), GetRandInt);
+
+    CCurrencyValueMap nTotalTarget = targetValues + CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({targetNativeValue}));
 
     BOOST_FOREACH(const COutput &output, vCoins)
     {
@@ -5173,43 +5168,61 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
             continue;
 
         int i = output.i;
-        CCurrencyValueMap nAll = pcoin->vout[i].scriptPubKey.ReserveOutValue();
+        CCurrencyValueMap nAll(pcoin->vout[i].scriptPubKey.ReserveOutValue());
         CCurrencyValueMap n = targetValues.IntersectingValues(nAll);
+        CCurrencyValueMap nTotal = n;
         CAmount nativeN = pcoin->vout[i].nValue;
+        if (nativeN)
+        {
+            nAll.valueMap[ASSETCHAINS_CHAINID] = nativeN;
+            if (targetNativeValue)
+            {
+                nTotal.valueMap[ASSETCHAINS_CHAINID] = nativeN;
+            }
+        }
 
-        // if it has no output types we care about, move on
-        if (!n.valueMap.size() && !nativeN)
+        // if it has no output types we care about, next
+        if (!nTotal.valueMap.size())
         {
             continue;
         }
+        std::pair<CCurrencyValueMap, pair<const CWalletTx*, unsigned int>> coin = make_pair(nAll, make_pair(pcoin, i));
 
-        pair<CCurrencyValueMap, pair<const CWalletTx*, unsigned int>> coin = make_pair(n, make_pair(pcoin, i));
+        //printf("available: %s\ntarget: %s\n", nAll.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
 
         // if the values are equivalent to targets, we're done
-        if (n == targetValues && nativeN == targetNativeValue)
+        if (nAll == nTotalTarget)
         {
             setCoinsRet.insert(coin.second);
-            valueRet += nAll;
+            valueRet += pcoin->vout[i].scriptPubKey.ReserveOutValue();
             nativeValueRet += nativeN;
             return true;
         }
-        else if (n < (targetValues + CENT) || nativeN < (targetNativeValue + CENT))
+
+        if (nTotal < nTotalTarget)
         {
             vValue.push_back(coin);
             totalLower += n;
             totalNativeLower += nativeN;
  
-            if ( totalLower > (targetValues * 4) + CENT && totalNativeLower > (targetNativeValue * 4) + CENT )
+            if ( totalLower > ((targetValues * 4) + CENT) && totalNativeLower > ((targetNativeValue * 4) + CENT))
             {
                 //fprintf(stderr,"why bother with other utxos if we have much more than what is needed?\n");
                 break;
             }
         }
-        // if the largest output that isn't quite enough is non-existent or smaller than this one, WRT targets, replace
-        else if ((coinLowestLarger.second.first == NULL) || 
-                 n < coinLowestLarger.first && nativeN < coinLowestLarger.second.first->vout[coinLowestLarger.second.second].nValue)
+        // if this one output can satisfy requirements, check if it is the smallest that can
+        else if (!coinLowestLarger.size() ||
+                 coinLowestLarger[0].first > nTotal)
         {
-            coinLowestLarger = coin;
+            if (coinLowestLarger.size())
+            {
+                coinLowestLarger[0] = coin;
+            }
+            else
+            {
+                coinLowestLarger.push_back(coin);
+            }
         }
     }
 
@@ -5226,52 +5239,48 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
 
     if (totalLower < targetValues || totalNativeLower < targetNativeValue)
     {
-        if (coinLowestLarger.second.first == NULL)
+        // if we don't have a larger one, we can't satisfy it
+        if (!coinLowestLarger.size())
             return false;
-        setCoinsRet.insert(coinLowestLarger.second);
-        valueRet += coinLowestLarger.second.first->vout[coinLowestLarger.second.second].ReserveOutValue();
-        nativeValueRet += coinLowestLarger.second.first->vout[coinLowestLarger.second.second].nValue;
+
+        setCoinsRet.insert(coinLowestLarger[0].second);
+        valueRet += coinLowestLarger[0].first;
         return true;
     }
 
     // Solve subset sum by stochastic approximation, add native currency to maps to 
     // simplify solution
-    CCurrencyValueMap targetValuesWithNative = targetValues;
-    targetValuesWithNative.valueMap[ConnectedChains.ThisChain().GetID()] = targetNativeValue;
     totalLower.valueMap[ConnectedChains.ThisChain().GetID()] = totalNativeLower;
+
+    //printf("totalLower:%s\ntargetValuesWithNative:%s\n", totalLower.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
 
     sort(vValue.rbegin(), vValue.rend(), CompareReserveAndNative());
     vector<char> vfBest;
     CCurrencyValueMap bestTotals;
 
-    ApproximateBestReserveSubset(vValue, totalLower, targetValuesWithNative, vfBest, bestTotals, 1000);
+    ApproximateBestReserveSubset(vValue, totalLower, nTotalTarget, vfBest, bestTotals, 1000);
     if (bestTotals != targetValues && totalLower >= targetValues + CENT)
-        ApproximateBestReserveSubset(vValue, totalLower, targetValuesWithNative + CENT, vfBest, bestTotals, 1000);
+        ApproximateBestReserveSubset(vValue, totalLower, nTotalTarget + CENT, vfBest, bestTotals, 1000);
 
-    // If we have a bigger coin and (either the stochastic approximation didn't find a good solution,
-    //                                   or the next bigger coin is closer), return the bigger coin
-    if (coinLowestLarger.second.first &&
-        ((bestTotals != targetValues && bestTotals < targetValues + CENT) || coinLowestLarger.first <= bestTotals))
+    for (unsigned int i = 0; i < vValue.size(); i++)
     {
-        setCoinsRet.insert(coinLowestLarger.second);
-        valueRet += coinLowestLarger.second.first->vout[coinLowestLarger.second.second].ReserveOutValue();
-        nativeValueRet += coinLowestLarger.second.first->vout[coinLowestLarger.second.second].nValue;
+        if (vfBest[i])
+        {
+            setCoinsRet.insert(vValue[i].second);
+            valueRet += vValue[i].second.first->vout[vValue[i].second.second].ReserveOutValue();
+            nativeValueRet += vValue[i].second.first->vout[vValue[i].second.second].nValue;
+        }
     }
-    else {
-        for (unsigned int i = 0; i < vValue.size(); i++)
-            if (vfBest[i])
-            {
-                setCoinsRet.insert(vValue[i].second);
-                valueRet += vValue[i].second.first->vout[vValue[i].second.second].ReserveOutValue();
-                nativeValueRet += vValue[i].second.first->vout[vValue[i].second.second].nValue;
-            }
 
-        LogPrint("selectcoins", "SelectCoins() best subset: ");
-        for (unsigned int i = 0; i < vValue.size(); i++)
-            if (vfBest[i])
-                LogPrint("selectcoins", "%s", FormatMoney(vValue[i].first.valueMap[targetValues.valueMap.begin()->first]));
-        LogPrint("selectcoins", "total %s\n", FormatMoney(bestTotals.valueMap[targetValues.valueMap.begin()->first]));
+    LogPrint("selectcoins", "SelectCoins() best subset: ");
+    for (unsigned int i = 0; i < vValue.size(); i++)
+    {
+        if (vfBest[i])
+        {
+            LogPrint("selectcoins", "%s", FormatMoney(vValue[i].first.valueMap[targetValues.valueMap.begin()->first]));
+        }
     }
+    LogPrint("selectcoins", "total %s\n", FormatMoney(bestTotals.valueMap[targetValues.valueMap.begin()->first]));
 
     return true;
 }
@@ -5287,21 +5296,17 @@ bool CWallet::SelectReserveCoins(const CCurrencyValueMap& targetReserveValues,
                                  const CTxDestination *pOnlyFromDest) const
 {
     // Output parameter fOnlyCoinbaseCoinsRet is set to true when the only available coins are coinbase utxos.
-    uint64_t tmp; int32_t retval;
-    //if ( interestp == 0 )
-    //{
-    //    interestp = &tmp;
-    //    *interestp = 0;
-    //}
+
     vector<COutput> vCoinsNoCoinbase, vCoinsWithCoinbase;
-    AvailableReserveCoins(vCoinsNoCoinbase, true, coinControl, false, targetNativeValue > 0, pOnlyFromDest, &targetReserveValues);
-    AvailableReserveCoins(vCoinsWithCoinbase, true, coinControl, true, targetNativeValue > 0, pOnlyFromDest, &targetReserveValues);
+    AvailableReserveCoins(vCoinsNoCoinbase, true, coinControl, false, true, pOnlyFromDest, &targetReserveValues);
+    AvailableReserveCoins(vCoinsWithCoinbase, true, coinControl, true, true, pOnlyFromDest, &targetReserveValues);
     fOnlyCoinbaseCoinsRet = vCoinsNoCoinbase.size() == 0 && vCoinsWithCoinbase.size() > 0;
 
-    // If coinbase utxos can only be sent to zaddrs, exclude any coinbase utxos from coin selection.
+    // If coinbase utxos can only be sent to zaddrs, exclude any coinbase utxos from coin selection
+    // TODO (after identity update, don't protect coinbases when making these outputs)
     bool fProtectCoinbase = Params().GetConsensus().fCoinbaseMustBeProtected;
-    vector<COutput> vCoins = (fProtectCoinbase) ? vCoinsNoCoinbase : vCoinsWithCoinbase;
 
+    vector<COutput> vCoins = (fProtectCoinbase) ? vCoinsNoCoinbase : vCoinsWithCoinbase;
 
     // Output parameter fNeedCoinbaseCoinsRet is set to true if coinbase utxos need to be spent to meet target amount
     if (fProtectCoinbase && vCoinsWithCoinbase.size() > vCoinsNoCoinbase.size()) {
@@ -5374,7 +5379,8 @@ bool CWallet::SelectReserveCoins(const CCurrencyValueMap& targetReserveValues,
         else
             ++it;
     }
-    retval = false;
+
+    bool retval = false;
     if ( targetNativeValue <= nativeRet &&
          targetReserveValues <= targetReserveValues.IntersectingValues(valueFromPresetInputs) && targetNativeValue <= nativeValueFromPresets )
         retval = true;
@@ -5938,7 +5944,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
     {
         LOCK2(cs_main, cs_wallet);
         {
-            nFeeRet = 0;
+            nFeeRet = 5000;
             while (true)
             {
                 //interest = 0;
@@ -5949,7 +5955,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 nChangeOutputs = 0;
                 bool fFirst = true;
 
-                // dust threshold of reserve is different than native coin, convert
+                // dust threshold of reserve may be different than native coin, if so, convert
                 CAmount dustThreshold;
 
                 CAmount nTotalNativeValue = totalNativeOutput;
@@ -6082,21 +6088,18 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     return false;
                 }
 
+                //printf("totaltokensin: %s\nnativein: %s\n", totalValueIn.ToUniValue().write().c_str(), ValueFromAmount(totalNativeValueIn).write().c_str());
+
                 std::vector<std::pair<std::pair<const CWalletTx*, unsigned int>, CAmount>> coinsWithEquivalentNative;
-                BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
+                if (reserveCurrencies.valueMap.size())
                 {
-                    CAmount nCredit = pcoin.first->vout[pcoin.second].nValue + 
-                                      currencyState.ReserveToNativeRaw(reserveCurrencies.IntersectingValues(pcoin.first->vout[pcoin.second].ReserveOutValue()), 
-                                                                       exchangeRates.AsCurrencyVector(currencyState.currencies));
-                    coinsWithEquivalentNative.push_back(make_pair(pcoin, nCredit));
-                    //The coin age after the next block (depth+1) is used instead of the current,
-                    //reflecting an assumption the user would accept a bit more delay for
-                    //a chance at a free transaction.
-                    //But mempool inputs might still be in the mempool, so their age stays 0
-                    int age = pcoin.first->GetDepthInMainChain();
-                    if (age != 0)
-                        age += 1;
-                    dPriority += (double)nCredit * age;
+                    BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
+                    {
+                        CAmount nCredit = pcoin.first->vout[pcoin.second].nValue + 
+                                        currencyState.ReserveToNativeRaw(reserveCurrencies.IntersectingValues(pcoin.first->vout[pcoin.second].ReserveOutValue()), 
+                                                                        exchangeRates.AsCurrencyVector(currencyState.currencies));
+                        coinsWithEquivalentNative.push_back(make_pair(pcoin, nCredit));
+                    }
                 }
 
                 CCurrencyValueMap reserveChange = totalValueIn - totalReserveValue;
@@ -6104,10 +6107,12 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 CAmount nChange = totalNativeValueIn - nTotalNativeValue;
                 CAmount nConvertedReserveChange = 0;
 
+                //("tokenChange: %s\nnativeChange: %s\n", reserveChange.ToUniValue().write().c_str(), ValueFromAmount(nChange).write().c_str());
+
                 // if we will try to take the fee from change
                 if (nSubtractFeeFromAmount == 0)
                 {
-                    if (nChange < nFeeRet)
+                    if (nChange < nFeeRet && convertibleChange.valueMap.size())
                     {
                         nConvertedReserveChange = currencyState.ReserveToNativeRaw(convertibleChange, 
                                                                                    exchangeRates.AsCurrencyVector(currencyState.currencies));
@@ -6115,10 +6120,10 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     nChange -= nFeeRet;
                 }
 
-                if (nChange + nConvertedReserveChange > 0)
+                if ((nChange + nConvertedReserveChange > 0) || (reserveChange > CCurrencyValueMap()))
                 {
-                    // if we need to convert reserves, zero nChange and adjust reserve change output amounts as needed
-                    if (nChange < 0)
+                    // if we can and need to convert reserves, adjust reserve change output amounts as needed
+                    if (nChange < 0 && convertibleChange.valueMap.size())
                     {
                         // no native change output, so, convert what's needed and make reserve output(s)
                         // attempt to convert equally across currencies, and if we fail, take the rest as
@@ -6226,23 +6231,32 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     }
 
                     // now, loop through the remaining reserve currencies and make a change output for each
-                    // if dust, just remove for fee
-                    for (int i = 0; i < currencyState.currencies.size(); i++)
+                    // if dust, just remove
+                    auto reserveIndexMap = currencyState.GetReserveMap();
+                    for (auto &curChangeOut : reserveChange.valueMap)
                     {
-                        auto it = reserveChange.valueMap.find(currencyState.currencies[i]);
-                        if (it != reserveChange.valueMap.end())
+                        CAmount outVal;
+                        assert(curChangeOut.first != ASSETCHAINS_CHAINID);
+                        auto curIt = reserveIndexMap.find(curChangeOut.first);
+                        if (curIt != reserveIndexMap.end())
                         {
-                            CAmount outVal = currencyState.ReserveToNative(it->second, i);
-                            if (outVal >= dustThreshold)
-                            {
-                                vector<CTxOut>::iterator position = txNew.vout.begin() + (nChangePosRet + nChangeOutputs++);
-                                CTokenOutput to = CTokenOutput(it->first, it->second);
-                                txNew.vout.insert(position, CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, {changeDest}, 1, &to))));
-                            }
-                            else
-                            {
-                                nFeeRet += outVal;
-                            }
+                            outVal = currencyState.ReserveToNative(curChangeOut.second, curIt->second);
+                        }
+                        else
+                        {
+                            outVal = curChangeOut.second;
+                        }
+                        
+                        if (outVal >= dustThreshold)
+                        {
+                            vector<CTxOut>::iterator position = txNew.vout.begin() + (nChangePosRet + nChangeOutputs++);
+                            CTokenOutput to = CTokenOutput(curChangeOut.first, curChangeOut.second);
+                            txNew.vout.insert(position, CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, {changeDest}, 1, &to))));
+                        }
+                        // if it is dust and we cannot convert to native, drop it. it may be taken by the miner
+                        else if (curIt != reserveIndexMap.end())
+                        {
+                            nFeeRet += outVal;
                         }
                     }
 

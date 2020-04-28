@@ -108,31 +108,6 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     }
 }
 
-UniValue CPBaaSNotarization::ToUniValue() const
-{
-    UniValue obj(UniValue::VOBJ);
-    obj.push_back(Pair("version", (int32_t)nVersion));
-    obj.push_back(Pair("chainid", systemID.GetHex()));
-    obj.push_back(Pair("notaryaddress", EncodeDestination(notaryDest)));
-    obj.push_back(Pair("notarizationheight", (int32_t)notarizationHeight));
-    obj.push_back(Pair("mmrroot", mmrRoot.GetHex()));
-    obj.push_back(Pair("notarizationprehash", notarizationPreHash.GetHex()));
-    obj.push_back(Pair("work", ((UintToArith256(compactPower) << 128) >> 128).ToString()));
-    obj.push_back(Pair("stake", (UintToArith256(compactPower) >> 128).ToString()));
-    obj.push_back(Pair("currencystate", currencyState.ToUniValue()));
-    obj.push_back(Pair("prevnotarization", prevNotarization.GetHex()));
-    obj.push_back(Pair("prevheight", prevHeight));
-    obj.push_back(Pair("crossnotarization", crossNotarization.GetHex()));
-    obj.push_back(Pair("crossheight", crossHeight));
-    UniValue nodesUni(UniValue::VARR);
-    for (auto node : nodes)
-    {
-        nodesUni.push_back(node.ToUniValue());
-    }
-    obj.push_back(Pair("nodes", nodesUni));
-    return obj;
-}
-
 CNotarizationFinalization::CNotarizationFinalization(const CTransaction &tx, bool validate)
 {
     bool found = false;
