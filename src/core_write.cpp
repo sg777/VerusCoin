@@ -200,7 +200,7 @@ uint160 CCurrencyDefinition::GetConditionID(int32_t condition) const
     return CCrossChainRPCData::GetConditionID(name, condition);
 }
 
-UniValue CCurrencyStateNew::ToUniValue() const
+UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("flags", (int32_t)flags));
@@ -262,7 +262,7 @@ UniValue ValueVectorsToUniValue(const std::vector<std::string> &rowNames,
 UniValue CCoinbaseCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
-    ret = ((CCurrencyStateNew *)this)->ToUniValue();
+    ret = ((CCurrencyState *)this)->ToUniValue();
     std::vector<std::string> rowNames;
     for (int i = 0; i < currencies.size(); i++)
     {

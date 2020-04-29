@@ -95,7 +95,7 @@ public:
     uint256 notarizationPreHash;            // combination of block hash, block MMR root, and compact power (or external proxy) for the notarization height
     uint256 compactPower;                   // compact power (or external proxy) of the block height notarization to compare
 
-    CCurrencyStateNew currencyState;        // currency state of this chain as of this notarization
+    CCurrencyState currencyState;        // currency state of this chain as of this notarization
 
     uint256 prevNotarization;               // txid of the prior notarization on this chain that we agree with, even those not accepted yet
     int32_t prevHeight;
@@ -115,7 +115,7 @@ public:
                        const uint256 &MMRRoot,
                        const uint256 &preHash,
                        const uint256 &compactpower,
-                       const CCurrencyStateNew &currencystate,
+                       const CCurrencyState &currencystate,
                        const uint256 &prevnotarization,
                        int32_t prevheight,
                        const uint256 &crossnotarization,

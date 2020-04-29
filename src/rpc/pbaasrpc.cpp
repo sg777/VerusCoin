@@ -325,7 +325,7 @@ bool SetThisChain(const UniValue &chainDefinition)
     PBAAS_ENDBLOCK = ConnectedChains.ThisChain().endBlock;
     mapArgs["-endblock"] = to_string(PBAAS_ENDBLOCK);
 
-    CCurrencyStateNew currencyState = ConnectedChains.GetCurrencyState(0);
+    CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
 
     ASSETCHAINS_SUPPLY = currencyState.supply;
     mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
@@ -387,7 +387,7 @@ bool CConnectedChains::LoadReserveCurrencies()
         UniValue result;
         try
         {
-            result = find_value(RPCCallRoot("getcurrencydefinition", params), "result");
+            result = find_value(RPCCallRoot("getcurrency", params), "result");
         } catch (exception e)
         {
             result = NullUniValue;
@@ -619,8 +619,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
-    CBlockIndex *pIndex;
-
     // get all export transactions including and since this one up to the confirmed height
     if (blkHeight <= lastConfirmed.notarizationHeight && 
         GetAddressIndex(CCrossChainRPCData::GetConditionID(systemID, EVAL_CROSSCHAIN_EXPORT), 1, addressIndex, blkHeight, lastConfirmed.notarizationHeight))
@@ -641,7 +639,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             BlockMap::iterator blkIt;
             CCrossChainExport ccx;
             COptCCParams p;
-            if ((utxo.first.txhash != lastExportHash) &&
+            if (!utxo.first.spending &&
+                (utxo.first.txhash != lastExportHash) &&
                 myGetTransaction(utxo.first.txhash, tx, blkHash1) &&
                 (ccx = CCrossChainExport(tx)).IsValid() &&
                 ccx.numInputs &&
@@ -926,12 +925,12 @@ uint160 GetChainIDFromParam(const UniValue &param, CCurrencyDefinition *pCurrenc
     return ValidateCurrencyName(uni_get_str(param), pCurrencyDef);
 }
 
-UniValue getcurrencydefinition(const UniValue& params, bool fHelp)
+UniValue getcurrency(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "getcurrencydefinition \"chainname\"\n"
+            "getcurrency \"chainname\"\n"
             "\nReturns a complete definition for any given chain if it is registered on the blockchain. If the chain requested\n"
             "\nis NULL, chain definition of the current chain is returned.\n"
 
@@ -971,8 +970,8 @@ UniValue getcurrencydefinition(const UniValue& params, bool fHelp)
             "  }\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getcurrencydefinition", "\"chainname\"")
-            + HelpExampleRpc("getcurrencydefinition", "\"chainname\"")
+            + HelpExampleCli("getcurrency", "\"chainname\"")
+            + HelpExampleRpc("getcurrency", "\"chainname\"")
         );
     }
 
@@ -1053,12 +1052,12 @@ UniValue getcurrencydefinition(const UniValue& params, bool fHelp)
     }
 }
 
-UniValue getpendingchaintransfers(const UniValue& params, bool fHelp)
+UniValue getpendingtransfers(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() > 1)
     {
         throw runtime_error(
-            "getpendingchaintransfers \"chainname\"\n"
+            "getpendingtransfers \"chainname\"\n"
             "\nReturns all pending transfers for a particular chain that have not yet been aggregated into an export\n"
 
             "\nArguments\n"
@@ -1069,8 +1068,8 @@ UniValue getpendingchaintransfers(const UniValue& params, bool fHelp)
             "  }\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getpendingchaintransfers", "\"chainname\"")
-            + HelpExampleRpc("getpendingchaintransfers", "\"chainname\"")
+            + HelpExampleCli("getpendingtransfers", "\"chainname\"")
+            + HelpExampleRpc("getpendingtransfers", "\"chainname\"")
         );
     }
 
@@ -1122,12 +1121,12 @@ UniValue getpendingchaintransfers(const UniValue& params, bool fHelp)
     return NullUniValue;
 }
 
-UniValue getchainexports(const UniValue& params, bool fHelp)
+UniValue getexports(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "getchainexports \"chainname\"\n"
+            "getexports \"chainname\"\n"
             "\nReturns all pending export transfers that are not yet provable with confirmed notarizations.\n"
 
             "\nArguments\n"
@@ -1138,8 +1137,8 @@ UniValue getchainexports(const UniValue& params, bool fHelp)
             "  }\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getchainexports", "\"chainname\"")
-            + HelpExampleRpc("getchainexports", "\"chainname\"")
+            + HelpExampleCli("getexports", "\"chainname\"")
+            + HelpExampleRpc("getexports", "\"chainname\"")
         );
     }
 
@@ -1215,12 +1214,12 @@ UniValue getchainexports(const UniValue& params, bool fHelp)
     return NullUniValue;
 }
 
-UniValue getchainimports(const UniValue& params, bool fHelp)
+UniValue getimports(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "getchainimports \"chainname\"\n"
+            "getimports \"chainname\"\n"
             "\nReturns all imports from a specific chain.\n"
 
             "\nArguments\n"
@@ -1231,8 +1230,8 @@ UniValue getchainimports(const UniValue& params, bool fHelp)
             "  }\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getchainimports", "\"chainname\"")
-            + HelpExampleRpc("getchainimports", "\"chainname\"")
+            + HelpExampleCli("getimports", "\"chainname\"")
+            + HelpExampleRpc("getimports", "\"chainname\"")
         );
     }
 
@@ -1322,12 +1321,12 @@ UniValue getchainimports(const UniValue& params, bool fHelp)
     return NullUniValue;
 }
 
-UniValue getcurrencydefinitions(const UniValue& params, bool fHelp)
+UniValue listcurrencies(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() > 1)
     {
         throw runtime_error(
-            "getcurrencydefinitions (includeexpired)\n"
+            "listcurrencies (includeexpired)\n"
             "\nReturns a complete definition for any given chain if it is registered on the blockchain. If the chain requested\n"
             "\nis NULL, chain definition of the current chain is returned.\n"
 
@@ -1362,8 +1361,8 @@ UniValue getcurrencydefinitions(const UniValue& params, bool fHelp)
             "]\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getcurrencydefinitions", "true")
-            + HelpExampleRpc("getcurrencydefinitions", "true")
+            + HelpExampleCli("listcurrencies", "true")
+            + HelpExampleRpc("listcurrencies", "true")
         );
     }
 
@@ -2620,7 +2619,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             }
 
             CBlockIndex *nzIndex = chainActive[proofheight];
-            CCurrencyStateNew currencyState = ConnectedChains.GetCurrencyState(proofheight);
+            CCurrencyState currencyState = ConnectedChains.GetCurrencyState(proofheight);
 
             // get the current block's MMR root and proof height
             CPBaaSNotarization notarization = CPBaaSNotarization(CPBaaSNotarization::CURRENT_VERSION, 
@@ -2807,7 +2806,7 @@ CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, i
 CCoinbaseCurrencyState GetInitialCurrencyState(CCurrencyDefinition &chainDef)
 {
     bool isReserve = chainDef.IsReserve();
-    CCurrencyStateNew cState;
+    CCurrencyState cState;
 
     // calculate contributions and conversions
     const std::vector<CAmount> reserveFees(chainDef.currencies.size());
@@ -2815,23 +2814,23 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CCurrencyDefinition &chainDef)
     CAmount nativeFees = 0;
     if (isReserve)
     {
-        cState = CCurrencyStateNew(chainDef.currencies,
+        cState = CCurrencyState(chainDef.currencies,
                                    chainDef.weights,
-                                   std::vector<int64_t>(chainDef.currencies.size()), 0, 0, 0, CCurrencyStateNew::VALID + CCurrencyStateNew::ISRESERVE);
-        CCurrencyStateNew tmpState;
+                                   std::vector<int64_t>(chainDef.currencies.size()), 0, 0, 0, CCurrencyState::VALID + CCurrencyState::ISRESERVE);
+        CCurrencyState tmpState;
         chainDef.conversions = cState.ConvertAmounts(chainDef.preconverted, std::vector<int64_t>(chainDef.currencies.size()), tmpState);
         cState = tmpState;
     }
     else
     {
         CAmount PreconvertedNative = cState.ReserveToNativeRaw(CCurrencyValueMap(chainDef.currencies, chainDef.preconverted), chainDef.conversions);
-        CCurrencyStateNew cState(std::vector<uint160>(0), 
+        CCurrencyState cState(std::vector<uint160>(0), 
                                  std::vector<int32_t>(0), 
                                  std::vector<int64_t>(0), 
                                  0, 
                                  PreconvertedNative, 
                                  PreconvertedNative, 
-                                 CCurrencyStateNew::VALID);
+                                 CCurrencyState::VALID);
     }
 
     cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
@@ -3473,6 +3472,10 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
         DeleteOpRetObjects(chainObjs);
         return ret;
     }
+
+    UniValue txUniv(UniValue::VOBJ);
+    TxToUniv(lastImportTx, uint256(), txUniv);
+    printf("lastImportTx%s\n", txUniv.write(1,2).c_str());
 
     DeleteOpRetObjects(chainObjs);
 
@@ -4413,7 +4416,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                 mmvRoot, 
                                                 nodePreHash, 
                                                 mmr.GetNode(0).power,
-                                                static_cast<CCurrencyStateNew>(newCurrencyState),
+                                                static_cast<CCurrencyState>(newCurrencyState),
                                                 uint256(),
                                                 0,
                                                 uint256(),
@@ -4555,7 +4558,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // import thread is specific to the chain importing from
     dests = std::vector<CTxDestination>({proofDest});
     indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_IMPORT))});
-    CCrossChainImport cci(newChainID, InitialPreallocation);
+    // if this is a token on this chain, the transfer that is output here is burned through the export 
+    // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
+    // and the reserve transfer outputs.
+    CCrossChainImport cci(newChainID, newChain.IsToken() ? InitialPreallocation * 2 : InitialPreallocation, InitialPreallocation);
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests), 0, false});
 
     // export thread
@@ -6019,8 +6025,8 @@ static const CRPCCommand commands[] =
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
     { "multichain",   "definecurrency",               &definecurrency,         true  },
-    { "multichain",   "getcurrencydefinitions",             &getcurrencydefinitions,       true  },
-    { "multichain",   "getcurrencydefinition",        &getcurrencydefinition,  true  },
+    { "multichain",   "listcurrencies",             &listcurrencies,       true  },
+    { "multichain",   "getcurrency",        &getcurrency,  true  },
     { "multichain",   "getnotarizationdata",          &getnotarizationdata,    true  },
     { "multichain",   "getcrossnotarization",         &getcrossnotarization,   true  },
     { "multichain",   "submitacceptednotarization",   &submitacceptednotarization, true },
@@ -6028,9 +6034,9 @@ static const CRPCCommand commands[] =
     { "multichain",   "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "multichain",   "getcurrencystate",             &getcurrencystate,       true  },
     { "multichain",   "sendcurrency",                 &sendcurrency,           true  },
-    { "multichain",   "getpendingchaintransfers",     &getpendingchaintransfers, true  },
-    { "multichain",   "getchainexports",              &getchainexports,        true  },
-    { "multichain",   "getchainimports",              &getchainimports,        true  },
+    { "multichain",   "getpendingtransfers",     &getpendingtransfers, true  },
+    { "multichain",   "getexports",              &getexports,        true  },
+    { "multichain",   "getimports",              &getimports,        true  },
     { "multichain",   "reserveexchange",              &reserveexchange,        true  },
     { "multichain",   "getlatestimportsout",          &getlatestimportsout,    true  },
     { "multichain",   "getlastimportin",              &getlastimportin,        true  },

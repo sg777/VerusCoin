@@ -322,7 +322,13 @@ void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
             }
 
             default:
+            {
+                printf("ERROR: invalid object type, likely corrupt pointer %p\n", pobj);
+                printf("generate code that won't be optimized away %s\n", CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({200000000})).ToUniValue().write(1,2).c_str());
+                printf("This is here to generate enough code for a good break point system chain name: %s\n", ConnectedChains.ThisChain().name.c_str());
+                
                 delete pobj;
+            }
         }
     }
     ora.clear();
@@ -934,7 +940,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
             if (!chainInfo.isNull())
             {
                 params.push_back(VERUS_CHAINNAME);
-                chainDef = find_value(RPCCallRoot("getcurrencydefinition", params), "result");
+                chainDef = find_value(RPCCallRoot("getcurrency", params), "result");
 
                 if (!chainDef.isNull() && CheckVerusPBaaSAvailable(chainInfo, chainDef))
                 {
@@ -944,7 +950,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                         bool success = false;
                         params.clear();
                         params.push_back(EncodeDestination(CIdentityID(thisChain.GetID())));
-                        chainDef = find_value(RPCCallRoot("getcurrencydefinition", params), "result");
+                        chainDef = find_value(RPCCallRoot("getcurrency", params), "result");
                         if (!chainDef.isNull())
                         {
                             CCurrencyDefinition currencyDef(chainDef);
@@ -1516,7 +1522,7 @@ void CConnectedChains::ProcessLocalImports()
         for (auto &exportThread : exportOutputs)
         {
             CCurrencyDefinition exportDef;
-            int32_t defHeight;
+            int32_t defHeight = 0;
             if (!GetCurrencyDefinition(exportThread.first, exportDef, &defHeight))
             {
                 printf("%s: definition for export currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(exportThread.first)).c_str());
@@ -1566,7 +1572,7 @@ void CConnectedChains::ProcessLocalImports()
     for (auto &oneIT : importThreads)
     {
         std::vector<CTransaction> importTxes;
-        int32_t importOutNum;
+        int32_t importOutNum = 0;
         CCrossChainImport oneImportInput(oneIT.second, &importOutNum);
         if (oneImportInput.IsValid())
         {
@@ -1593,7 +1599,7 @@ void CConnectedChains::ProcessLocalImports()
                 if (importTxes.size())
                 {
                     CMutableTransaction firstImport = importTxes[0];
-                    int32_t outNum;
+                    int32_t outNum = 0;
                     CCrossChainImport cci(importTxes[0], &outNum);
                     if (cci.IsValid())
                     {

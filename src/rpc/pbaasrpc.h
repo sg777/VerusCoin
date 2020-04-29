@@ -25,7 +25,7 @@ bool GetChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReser
 bool GetUnspentChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter = uint160());
 bool GetUnspentChainExports(uint160 chainID, std::multimap<uint160, std::pair<int, CInputDescriptor>> &exportOutputs);
 
-UniValue getcurrencydefinition(const UniValue& params, bool fHelp);
+UniValue getcurrency(const UniValue& params, bool fHelp);
 UniValue getnotarizationdata(const UniValue& params, bool fHelp);
 UniValue getcrossnotarization(const UniValue& params, bool fHelp);
 UniValue definecurrency(const UniValue& params, bool fHelp);

@@ -539,7 +539,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
     {
         prealloc += onePair.second;
     }
-    CCoinbaseCurrencyState currencyState = CCoinbaseCurrencyState(CCurrencyStateNew(thisChain.currencies,
+    CCoinbaseCurrencyState currencyState = CCoinbaseCurrencyState(CCurrencyState(thisChain.currencies,
                                                                                     thisChain.weights,
                                                                                     thisChain.contributions,
                                                                                     prealloc, 0, 0));

@@ -90,7 +90,7 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     auto currencyObj = find_value(obj, "currencystate");
     if (currencyObj.isObject())
     {
-        currencyState = CCurrencyStateNew(currencyObj);
+        currencyState = CCurrencyState(currencyObj);
     }
 
     prevNotarization = uint256S(uni_get_str(find_value(obj, "prevnotarization")));

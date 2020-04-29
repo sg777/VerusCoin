@@ -28,7 +28,7 @@
 #define OPRETTYPE_OBJECTARR 5
 #define OPRETTYPE_STAKEPARAMS2 6
 
-class CCurrencyStateNew;
+class CCurrencyState;
 class CIdentity;
 
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V2 = 1024;

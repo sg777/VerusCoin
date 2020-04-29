@@ -323,7 +323,7 @@ CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& ope
     return *this;
 }
 
-std::vector<CAmount> CCurrencyValueMap::AsCurrencyVector(const CCurrencyStateNew &cState) const
+std::vector<CAmount> CCurrencyValueMap::AsCurrencyVector(const CCurrencyState &cState) const
 {
     std::vector<CAmount> retVal(cState.currencies.size());
     std::map<uint160, int> curMap = cState.GetReserveMap();
@@ -479,7 +479,7 @@ CCrossChainImport::CCrossChainImport(const CTransaction &tx, int32_t *pOutNum)
     }
 }
 
-CCurrencyStateNew::CCurrencyStateNew(const UniValue &obj)
+CCurrencyState::CCurrencyState(const UniValue &obj)
 {
     flags = uni_get_int(find_value(obj, "flags"));
 
@@ -594,7 +594,7 @@ std::vector<std::vector<CAmount>> ValueColumnsFromUniValue(const UniValue &uni,
 }
 
 
-CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyStateNew(obj)
+CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyState(obj)
 {
     std::vector<std::vector<CAmount>> columnAmounts;
 
@@ -634,7 +634,7 @@ CAmount CalculateFractionalOut(CAmount NormalizedReserveIn, CAmount Supply, CAmo
     {
         cpp_dec_float_50 supplyout = (supply * (pow((reservein / reserve) + one, ratio) - one));
 
-        if (!CCurrencyStateNew::to_int64(supplyout, fractionalOut))
+        if (!CCurrencyState::to_int64(supplyout, fractionalOut))
         {
             assert(false);
         }
@@ -656,7 +656,7 @@ CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount Normal
     if (FractionalIn)
     {
         cpp_dec_float_50 reserveout = reserve * (one - pow(one - (fractionalin / supply), (one / ratio)));
-        if (!CCurrencyStateNew::to_int64(reserveout, reserveOut))
+        if (!CCurrencyState::to_int64(reserveout, reserveOut))
         {
             assert(false);
         }
@@ -668,7 +668,7 @@ CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount Normal
 // takes both input amounts of any number of reserves and the fractional currencies targeting those reserves to merge the conversion into one 
 // merged calculation with the same price across currencies for all transactions in the block. It returns the newly calculated 
 // conversion prices of the fractional reserve in the reserve currency.
-std::vector<CAmount> CCurrencyStateNew::ConvertAmounts(const std::vector<CAmount> &inputReserves, const std::vector<CAmount> &inputFractional, CCurrencyStateNew &newState) const
+std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &inputReserves, const std::vector<CAmount> &inputFractional, CCurrencyState &newState) const
 {
     // we use indexes because transactions use indexes to refer to fractional currency, which means once
     // a spot is used in a blockchain, it cannot be changed
@@ -975,7 +975,7 @@ std::vector<CAmount> CCurrencyStateNew::ConvertAmounts(const std::vector<CAmount
     return rates;
 }
 
-CAmount CCurrencyStateNew::ConvertAmounts(CAmount inputReserve, CAmount inputFraction, CCurrencyStateNew &newState, int32_t reserveIndex) const
+CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFraction, CCurrencyState &newState, int32_t reserveIndex) const
 {
     if (reserveIndex >= newState.currencies.size())
     {
@@ -1268,7 +1268,7 @@ void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &r
     vRex.push_back(std::make_pair(outputIndex, rex));
 }
 
-CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyStateNew &currencyState) const
+CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyState &currencyState) const
 {
     CAmount nativeFees = NativeFees();
     CCurrencyValueMap reserveFees = ReserveFees();
@@ -1283,7 +1283,7 @@ CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyStateNew &
     return nativeFees;
 }
 
-CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyStateNew &currencyState, const std::vector<CAmount> &exchangeRates) const
+CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyState &currencyState, const std::vector<CAmount> &exchangeRates) const
 {
     assert(exchangeRates.size() == currencyState.currencies.size());
     CAmount nativeFees = NativeFees();
@@ -1299,7 +1299,7 @@ CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyStateNew &
     return nativeFees;
 }
 
-CCurrencyValueMap CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyStateNew &currencyState, int defaultReserve) const
+CCurrencyValueMap CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyState &currencyState, int defaultReserve) const
 {
     CCurrencyValueMap reserveFees = ReserveFees();
 
@@ -1315,7 +1315,7 @@ CCurrencyValueMap CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrenc
     return reserveFees;
 }
 
-CCurrencyValueMap CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyStateNew &currencyState, const std::vector<CAmount> &exchangeRates, int defaultReserve) const
+CCurrencyValueMap CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyState &currencyState, const std::vector<CAmount> &exchangeRates, int defaultReserve) const
 {
     CCurrencyValueMap reserveFees = ReserveFees();
 
@@ -1676,7 +1676,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         if (exportObjects[i]->objectType == CHAINOBJ_RESERVETRANSFER)
         {
             CReserveTransfer &curTransfer = ((CChainObject<CReserveTransfer> *)exportObjects[i])->object;
-            CCurrencyDefinition &currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID);
+            CCurrencyDefinition currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID);
             if (!currencyDest.IsValid())
             {
                 printf("%s: invalid currency or currency not found %s\n", __func__, EncodeDestination(CIdentityID(curTransfer.destCurrencyID)).c_str());
@@ -1773,7 +1773,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     {
                         preConversionFee = CalculateConversionFee(curTransfer.nValue);
                         valueOut = curTransfer.nValue - preConversionFee;
-                        newCurrencyConverted = CCurrencyStateNew::ReserveToNativeRaw(valueOut, currencyDest.conversions[curIdx]);
+                        newCurrencyConverted = CCurrencyState::ReserveToNativeRaw(valueOut, currencyDest.conversions[curIdx]);
 
                         CAmount totalReserveFee = preConversionFee + curTransfer.CalculateTransferFee(curTransfer.destination);
 
@@ -1796,7 +1796,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         {
                             if (curTransfer.destCurrencyID == systemDestID)
                             {
-                                newNativeFees = CCurrencyStateNew::ReserveToNativeRaw(totalReserveFee, currencyDest.conversions[curIdx]);
+                                newNativeFees = CCurrencyState::ReserveToNativeRaw(totalReserveFee, currencyDest.conversions[curIdx]);
                                 AddReserveConversionFees(systemDestID, newNativeFees);
                                 feesConverted = newNativeFees;
                                 nativeIn += newNativeFees;
@@ -1829,7 +1829,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     else
                     {
                         // input comes from non-fee outputs
-                        newCurrencyConverted = CCurrencyStateNew::ReserveToNativeRaw(curTransfer.nValue, currencyDest.conversions[curIdx]);
+                        newCurrencyConverted = CCurrencyState::ReserveToNativeRaw(curTransfer.nValue, currencyDest.conversions[curIdx]);
                         if (curTransfer.destCurrencyID == systemDestID)
                         {
                             nativeOut += newCurrencyConverted;
@@ -1964,7 +1964,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     return true;
 }
 
-CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, const CCurrencyValueMap &_exchangeRates, const CCurrencyStateNew *pCurrencyState) const
+CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, const CCurrencyValueMap &_exchangeRates, const CCurrencyState *pCurrencyState) const
 {
     if (!IsReserveExchange() || IsFillOrKillFail())
     {
@@ -1972,8 +1972,8 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
     }
 
     bool noExchangeRate = false;
-    CCurrencyStateNew dummy;
-    const CCurrencyStateNew &currencyState = pCurrencyState ? *pCurrencyState : dummy;
+    CCurrencyState dummy;
+    const CCurrencyState &currencyState = pCurrencyState ? *pCurrencyState : dummy;
 
     // set exchange rates as well as we can, either from explicit rates or currency state if possible
     CCurrencyValueMap __exchangeRates;
@@ -2174,7 +2174,7 @@ CCurrencyValueMap CReserveTransactionDescriptor::ReserveConversionFeesMap() cons
     return retVal;
 }
 
-std::vector<CAmount> CReserveTransactionDescriptor::ReserveInputVec(const CCurrencyStateNew &cState) const
+std::vector<CAmount> CReserveTransactionDescriptor::ReserveInputVec(const CCurrencyState &cState) const
 {
     std::vector<CAmount> retVal(cState.currencies.size());
     std::map<uint160, int> curMap = cState.GetReserveMap();
@@ -2185,7 +2185,7 @@ std::vector<CAmount> CReserveTransactionDescriptor::ReserveInputVec(const CCurre
     return retVal;
 }
 
-std::vector<CAmount> CReserveTransactionDescriptor::ReserveOutputVec(const CCurrencyStateNew &cState) const
+std::vector<CAmount> CReserveTransactionDescriptor::ReserveOutputVec(const CCurrencyState &cState) const
 {
     std::vector<CAmount> retVal(cState.currencies.size());
     std::map<uint160, int> curMap = cState.GetReserveMap();
@@ -2196,7 +2196,7 @@ std::vector<CAmount> CReserveTransactionDescriptor::ReserveOutputVec(const CCurr
     return retVal;
 }
 
-std::vector<CAmount> CReserveTransactionDescriptor::ReserveOutConvertedVec(const CCurrencyStateNew &cState) const
+std::vector<CAmount> CReserveTransactionDescriptor::ReserveOutConvertedVec(const CCurrencyState &cState) const
 {
     std::vector<CAmount> retVal(cState.currencies.size());
     std::map<uint160, int> curMap = cState.GetReserveMap();
@@ -2207,7 +2207,7 @@ std::vector<CAmount> CReserveTransactionDescriptor::ReserveOutConvertedVec(const
     return retVal;
 }
 
-std::vector<CAmount> CReserveTransactionDescriptor::NativeOutConvertedVec(const CCurrencyStateNew &cState) const
+std::vector<CAmount> CReserveTransactionDescriptor::NativeOutConvertedVec(const CCurrencyState &cState) const
 {
     std::vector<CAmount> retVal(cState.currencies.size());
     std::map<uint160, int> curMap = cState.GetReserveMap();
@@ -2218,7 +2218,7 @@ std::vector<CAmount> CReserveTransactionDescriptor::NativeOutConvertedVec(const 
     return retVal;
 }
 
-std::vector<CAmount> CReserveTransactionDescriptor::ReserveConversionFeesVec(const CCurrencyStateNew &cState) const
+std::vector<CAmount> CReserveTransactionDescriptor::ReserveConversionFeesVec(const CCurrencyState &cState) const
 {
     std::vector<CAmount> retVal(cState.currencies.size());
     std::map<uint160, int> curMap = cState.GetReserveMap();
@@ -2231,7 +2231,7 @@ std::vector<CAmount> CReserveTransactionDescriptor::ReserveConversionFeesVec(con
 
 // this should be done no more than once to prepare a currency state to be updated to the next state
 // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
-CCurrencyStateNew &CCurrencyStateNew::UpdateWithEmission(CAmount Emitted)
+CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount Emitted)
 {
     initialSupply = supply;
     emitted = 0;
@@ -2359,7 +2359,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<CRe
     CMutableTransaction mConversionTx = pConversionTx ? *pConversionTx : CMutableTransaction();
     std::vector<CInputDescriptor> tmpConversionInputs(conversionInputs);
 
-    int64_t totalSerializedSize = pInOutTotalSerializeSize ? *pInOutTotalSerializeSize + CCurrencyStateNew::CONVERSION_TX_SIZE_MIN : CCurrencyStateNew::CONVERSION_TX_SIZE_MIN;
+    int64_t totalSerializedSize = pInOutTotalSerializeSize ? *pInOutTotalSerializeSize + CCurrencyState::CONVERSION_TX_SIZE_MIN : CCurrencyState::CONVERSION_TX_SIZE_MIN;
     int64_t conversionSizeOverhead = 0;
 
     if (!(flags & ISRESERVE))
@@ -2427,7 +2427,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<CRe
     //    there is no point in retracing if an element fails to be added
     // 3. calculate a final order price
     // 4. create and return a new, updated CCoinbaseCurrencyState
-    CCoinbaseCurrencyState newState(*(CCurrencyStateNew *)this);
+    CCoinbaseCurrencyState newState(*(CCurrencyState *)this);
 
     conversionSizeOverhead = GetSerializeSize(mConversionTx, SER_NETWORK, PROTOCOL_VERSION);
 
@@ -2563,7 +2563,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<CRe
     limitOrdersSizeLimit = maxSerializeSize - totalSerializedSize;
     int64_t buyLimitSizeLimit = numLimitOrders ? totalSerializedSize + ((arith_uint256(limitBuys.size()) * arith_uint256(limitOrdersSizeLimit)) / arith_uint256(numLimitOrders)).GetLow64() : limitOrdersSizeLimit;
 
-    CCurrencyStateNew latestState = newState;
+    CCurrencyState latestState = newState;
 
     // TODO - finish limit orders, which are significantly more complex after moving to
     // multi-reserves. until then, skip limit orders.
@@ -2787,7 +2787,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<CRe
     }
 }
 
-CAmount CCurrencyStateNew::CalculateConversionFee(CAmount inputAmount, bool convertToNative, int currencyIndex) const
+CAmount CCurrencyState::CalculateConversionFee(CAmount inputAmount, bool convertToNative, int currencyIndex) const
 {
     arith_uint256 bigAmount(inputAmount);
     arith_uint256 bigSatoshi(SATOSHIDEN);
@@ -2845,7 +2845,7 @@ CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFee(CAmount 
     return fee;
 }
 
-CAmount CCurrencyStateNew::ReserveToNativeRaw(CAmount reserveAmount, CAmount exchangeRate)
+CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, CAmount exchangeRate)
 {
     static arith_uint256 bigSatoshi(SATOSHIDEN);
     arith_uint256 bigAmount(reserveAmount);
@@ -2854,7 +2854,7 @@ CAmount CCurrencyStateNew::ReserveToNativeRaw(CAmount reserveAmount, CAmount exc
     return bigAmount.GetLow64();
 }
 
-CAmount CCurrencyStateNew::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, const std::vector<CAmount> &exchangeRates) const
+CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, const std::vector<CAmount> &exchangeRates) const
 {
     CAmount nativeOut = 0;
     for (int i = 0; i < currencies.size(); i++)
@@ -2868,7 +2868,7 @@ CAmount CCurrencyStateNew::ReserveToNativeRaw(const CCurrencyValueMap &reserveAm
     return nativeOut;
 }
 
-CAmount CCurrencyStateNew::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, 
+CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, 
                                               const std::vector<uint160> &currencies, 
                                               const std::vector<CAmount> &exchangeRates)
 {
@@ -2884,14 +2884,14 @@ CAmount CCurrencyStateNew::ReserveToNativeRaw(const CCurrencyValueMap &reserveAm
     return nativeOut;
 }
 
-CAmount CCurrencyStateNew::NativeToReserveRaw(CAmount nativeAmount, CAmount exchangeRate)
+CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, CAmount exchangeRate)
 {
     static arith_uint256 bigSatoshi(SATOSHIDEN);
     arith_uint256 bigAmount(nativeAmount);
     return ((bigAmount * arith_uint256(exchangeRate)) / bigSatoshi).GetLow64();
 }
 
-CCurrencyValueMap CCurrencyStateNew::NativeToReserveRaw(const std::vector<CAmount> &nativeAmount, const std::vector<CAmount> &exchangeRates) const
+CCurrencyValueMap CCurrencyState::NativeToReserveRaw(const std::vector<CAmount> &nativeAmount, const std::vector<CAmount> &exchangeRates) const
 {
     static arith_uint256 bigSatoshi(SATOSHIDEN);
     CCurrencyValueMap retVal;

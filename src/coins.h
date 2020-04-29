@@ -597,7 +597,7 @@ public:
     bool HaveShieldedRequirements(const CTransaction& tx) const;
 
     //! Return priority of tx at height nHeight
-    double GetPriority(const CTransaction &tx, int nHeight, const CReserveTransactionDescriptor *desc=NULL, const CCurrencyStateNew *currencyState=NULL) const;
+    double GetPriority(const CTransaction &tx, int nHeight, const CReserveTransactionDescriptor *desc=NULL, const CCurrencyState *currencyState=NULL) const;
 
     const CTxOut &GetOutputFor(const CTxIn& input) const;
     const CScript &GetSpendFor(const CTxIn& input) const;

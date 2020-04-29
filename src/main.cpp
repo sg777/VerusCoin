@@ -1906,13 +1906,13 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         double dPriority;
 
         CReserveTransactionDescriptor txDesc;
-        CCurrencyStateNew currencyState;
+        CCurrencyState currencyState;
         bool isVerusActive = IsVerusActive();
 
         {
             LOCK(mempool.cs);
             // if we don't recognize it, process and check
-            CCurrencyStateNew currencyState = ConnectedChains.GetCurrencyState(nextBlockHeight > chainActive.Height() ? chainActive.Height() : nextBlockHeight);
+            CCurrencyState currencyState = ConnectedChains.GetCurrencyState(nextBlockHeight > chainActive.Height() ? chainActive.Height() : nextBlockHeight);
             if (!mempool.IsKnownReserveTransaction(hash, txDesc))
             {
                 // we need the current currency state
@@ -3886,7 +3886,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (isBlock1 && thisChain.preconverted.size() && thisChain.conversions.size())
     {
         // if we can have a pre-conversion output on block 1, add pre-conversion
-        nativeBlockReward += CCurrencyStateNew::ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted),
+        nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted),
                                                                    thisChain.currencies,
                                                                    thisChain.conversions) + currencyState.nativeFees;
     }
@@ -3896,7 +3896,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         {
             return state.DoS(100, error(("ConnectBlock(): invalid currency state fee does not match block total of " + totalReserveTxFees.ToUniValue().write()).c_str()), REJECT_INVALID, "bad-blk-currency-fee");
         }
-        nativeBlockReward += CCurrencyStateNew::ReserveToNativeRaw(CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn),
+        nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn),
                                                                    currencyState.currencies,
                                                                    currencyState.conversionPrice) + currencyState.nativeFees;
     }

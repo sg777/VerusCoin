@@ -34,7 +34,7 @@ class CTransaction;
 class CMutableTransaction;
 class CTxOut;
 class CReserveTransactionDescriptor;
-class CCurrencyStateNew;
+class CCurrencyState;
 
 // convenience class for collections of currencies that supports comparisons, including ==, >, >=, <, <=, as well as addition, and subtraction
 class CCurrencyValueMap
@@ -96,7 +96,7 @@ public:
     // subtract, but do not subtract to negative values
     CCurrencyValueMap SubtractToZero(const CCurrencyValueMap& operand);
 
-    std::vector<CAmount> AsCurrencyVector(const CCurrencyStateNew &cState) const;
+    std::vector<CAmount> AsCurrencyVector(const CCurrencyState &cState) const;
     std::vector<CAmount> AsCurrencyVector(const std::vector<uint160> &currencies) const;
 
     UniValue ToUniValue() const;
@@ -390,8 +390,7 @@ public:
     {
         return nVersion > VERSION_INVALID && 
                nVersion <= VERSION_LAST && 
-               !systemID.IsNull() && 
-               totalAmounts.valueMap.size() == totalFees.valueMap.size();
+               !systemID.IsNull();
     }
 
     static CCurrencyValueMap CalculateExportFee(const CCurrencyValueMap &fees, int numIn);
@@ -402,7 +401,7 @@ public:
     UniValue ToUniValue() const;
 };
 
-class CCurrencyStateNew
+class CCurrencyState
 {
 public:
     enum {
@@ -427,9 +426,9 @@ public:
 
     //std::vector<CAmount> Reserves; // reserve currencies amounts controlled by this fractional chain - only present for reserve currencies, currency IDs are in chain definition
 
-    CCurrencyStateNew() : flags(0), initialSupply(0), emitted(0), supply(0) {}
+    CCurrencyState() : flags(0), initialSupply(0), emitted(0), supply(0) {}
 
-    CCurrencyStateNew(const std::vector<uint160> &Currencies, 
+    CCurrencyState(const std::vector<uint160> &Currencies, 
                       const std::vector<int32_t> &Weights, 
                       const std::vector<int64_t> &Reserves, 
                       CAmount InitialSupply, 
@@ -439,12 +438,12 @@ public:
         flags(Flags), supply(Supply), initialSupply(InitialSupply), emitted(Emitted), weights(Weights), reserves(Reserves)
     {}
 
-    CCurrencyStateNew(const std::vector<unsigned char> &asVector)
+    CCurrencyState(const std::vector<unsigned char> &asVector)
     {
         FromVector(asVector, *this);
     }
 
-    CCurrencyStateNew(const UniValue &uni);
+    CCurrencyState(const UniValue &uni);
 
     ADD_SERIALIZE_METHODS;
 
@@ -466,7 +465,7 @@ public:
 
     // this should be done no more than once to prepare a currency state to be moved to the next state
     // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
-    CCurrencyStateNew &UpdateWithEmission(CAmount emitted);
+    CCurrencyState &UpdateWithEmission(CAmount emitted);
 
     cpp_dec_float_50 GetReserveRatio(int32_t reserveIndex=0) const
     {
@@ -526,12 +525,12 @@ public:
     }
 
     // This considers one currency at a time
-    CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyStateNew &newState, int32_t reserveIndex=0) const;
+    CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState, int32_t reserveIndex=0) const;
 
     // convert amounts for multi-reserve fractional reserve currencies
     // one entry in the vector for each currency in and one fractional input for each
     // currency expected as output
-    std::vector<CAmount> ConvertAmounts(const std::vector<CAmount> &inputReserve, const std::vector<CAmount> &inputFractional, CCurrencyStateNew &newState) const;
+    std::vector<CAmount> ConvertAmounts(const std::vector<CAmount> &inputReserve, const std::vector<CAmount> &inputFractional, CCurrencyState &newState) const;
 
     CAmount CalculateConversionFee(CAmount inputAmount, bool convertToNative = false, int32_t reserveIndex=0) const;
     CAmount ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount, int32_t reserveIndex=0) const;
@@ -581,12 +580,12 @@ public:
 
     bool IsValid() const
     {
-        return flags & CCurrencyStateNew::VALID;
+        return flags & CCurrencyState::VALID;
     }
 
     bool IsReserve() const
     {
-        return flags & CCurrencyStateNew::ISRESERVE;
+        return flags & CCurrencyState::ISRESERVE;
     }
 
     std::map<uint160, int32_t> GetReserveMap() const
@@ -600,7 +599,7 @@ public:
     }
 };
 
-class CCoinbaseCurrencyState : public CCurrencyStateNew
+class CCoinbaseCurrencyState : public CCurrencyState
 {
 public:
     CAmount nativeFees;
@@ -614,7 +613,7 @@ public:
 
     CCoinbaseCurrencyState() : nativeFees(0), nativeConversionFees(0) {}
 
-    CCoinbaseCurrencyState(const CCurrencyStateNew &CurrencyState,
+    CCoinbaseCurrencyState(const CCurrencyState &CurrencyState,
                            CAmount NativeFees=0, CAmount NativeConversionFees=0,
                            const std::vector<CAmount> &ReserveIn=std::vector<CAmount>(),
                            const std::vector<CAmount> &NativeIn=std::vector<CAmount>(), 
@@ -622,7 +621,7 @@ public:
                            const std::vector<CAmount> &ConversionPrice=std::vector<CAmount>(), 
                            const std::vector<CAmount> &Fees=std::vector<CAmount>(), 
                            const std::vector<CAmount> &ConversionFees=std::vector<CAmount>()) : 
-        CCurrencyStateNew(CurrencyState), nativeFees(NativeFees), nativeConversionFees(NativeConversionFees)
+        CCurrencyState(CurrencyState), nativeFees(NativeFees), nativeConversionFees(NativeConversionFees)
     {
         if (!reserveIn.size()) reserveIn = std::vector<CAmount>(currencies.size());
         if (!nativeIn.size()) nativeIn = std::vector<CAmount>(currencies.size());
@@ -645,7 +644,7 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(*(CCurrencyStateNew *)this);
+        READWRITE(*(CCurrencyState *)this);
         READWRITE(nativeFees);
         READWRITE(nativeConversionFees);
         READWRITE(reserveIn);
@@ -810,10 +809,10 @@ public:
         return retFees;
     }
 
-    CAmount AllFeesAsNative(const CCurrencyStateNew &currencyState) const;
-    CAmount AllFeesAsNative(const CCurrencyStateNew &currencyState, const std::vector<CAmount> &exchangeRates) const;
-    CCurrencyValueMap AllFeesAsReserve(const CCurrencyStateNew &currencyState, int defaultReserve=0) const;
-    CCurrencyValueMap AllFeesAsReserve(const CCurrencyStateNew &currencyState, const std::vector<CAmount> &exchangeRates, int defaultReserve=0) const;
+    CAmount AllFeesAsNative(const CCurrencyState &currencyState) const;
+    CAmount AllFeesAsNative(const CCurrencyState &currencyState, const std::vector<CAmount> &exchangeRates) const;
+    CCurrencyValueMap AllFeesAsReserve(const CCurrencyState &currencyState, int defaultReserve=0) const;
+    CCurrencyValueMap AllFeesAsReserve(const CCurrencyState &currencyState, const std::vector<CAmount> &exchangeRates, int defaultReserve=0) const;
 
     // does not check for errors
     void AddReserveInput(const uint160 &currency, CAmount value);
@@ -829,11 +828,11 @@ public:
     CCurrencyValueMap ReserveConversionFeesMap() const;
 
     // returns vectors in same size and order as reserve currencies
-    std::vector<CAmount> ReserveInputVec(const CCurrencyStateNew &cState) const;
-    std::vector<CAmount> ReserveOutputVec(const CCurrencyStateNew &cState) const;
-    std::vector<CAmount> ReserveOutConvertedVec(const CCurrencyStateNew &cState) const;
-    std::vector<CAmount> NativeOutConvertedVec(const CCurrencyStateNew &cState) const;
-    std::vector<CAmount> ReserveConversionFeesVec(const CCurrencyStateNew &cState) const;
+    std::vector<CAmount> ReserveInputVec(const CCurrencyState &cState) const;
+    std::vector<CAmount> ReserveOutputVec(const CCurrencyState &cState) const;
+    std::vector<CAmount> ReserveOutConvertedVec(const CCurrencyState &cState) const;
+    std::vector<CAmount> NativeOutConvertedVec(const CCurrencyState &cState) const;
+    std::vector<CAmount> ReserveConversionFeesVec(const CCurrencyState &cState) const;
 
     void AddReserveOutput(const CTokenOutput &ro)
     {
@@ -860,7 +859,7 @@ public:
     CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx, 
                                              std::vector<CInputDescriptor> &conversionInputs, 
                                              const CCurrencyValueMap &exchangeRates=CCurrencyValueMap(), 
-                                             const CCurrencyStateNew *pCurrencyState=nullptr) const;
+                                             const CCurrencyState *pCurrencyState=nullptr) const;
 
     bool AddReserveTransferImportOutputs(const uint160 &currencySourceID, 
                                          const CCurrencyDefinition &systemDest, 

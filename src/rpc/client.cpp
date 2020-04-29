@@ -489,7 +489,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "calc_MoM", 2},
     // pbaas
     { "definecurrency", 0},
-    { "getcurrencydefinitions", 0},
+    { "listcurrencies", 0},
     { "sendcurrency", 1},
     { "registeridentity", 0},
     { "updateidentity", 0},

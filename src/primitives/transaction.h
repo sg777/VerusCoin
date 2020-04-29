@@ -33,7 +33,7 @@
 #include "zcash/Proof.hpp"
 
 extern uint32_t ASSETCHAINS_MAGIC;
-class CCurrencyStateNew;
+class CCurrencyState;
 
 
 // Overwinter transaction version
