@@ -1510,7 +1510,7 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
 void CConnectedChains::ProcessLocalImports()
 {
     // first determine all export threads on the current chain that are valid to import
-    std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
+    std::multimap<uint160, std::pair<int, CInputDescriptor>> exportOutputs;
     std::multimap<uint160, CTransaction> importThreads;
     uint160 thisChainID = thisChain.GetID();
 

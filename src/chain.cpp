@@ -111,7 +111,7 @@ uint256 CChain::GetVerusEntropyHash(int forHeight, int *pPOSheight, int *pPOWhei
         LogPrintf("%s: invalid height for entropy hash %d, chain height is %d\n", __func__, height, vChain.size() - 1);
         return retVal;
     }
-    if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE || height <= 10)
+    if (CConstVerusSolutionVector::GetVersionByHeight(forHeight) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE || height <= 10)
     {
         if (vChain[height]->IsVerusPOSBlock())
         {
@@ -135,8 +135,12 @@ uint256 CChain::GetVerusEntropyHash(int forHeight, int *pPOSheight, int *pPOWhei
         {
             powh = height - i;
         }
+        if (posh != -1 && powh != -1)
+        {
+            break;
+        }
     }
-    // only pow, set alt
+    // only one type of block found, set alt
     if (i == 10)
     {
         alth = height - i;

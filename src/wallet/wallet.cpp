@@ -1617,6 +1617,12 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     {
         LOCK(cs_main);
         pastHash = chainActive.GetVerusEntropyHash(nHeight, &posHeight, &powHeight, &altHeight);
+        if (altHeight == -1 && (powHeight == -1 || posHeight == -1))
+        {
+            printf("Error retrieving entropy hash at height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
+            LogPrintf("Error retrieving entropy hash at height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
+            return false;
+        }
     }
 
     int secondBlockHeight = altHeight != -1 ? altHeight : (posHeight > powHeight ? powHeight : posHeight);
@@ -1761,6 +1767,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 if (!chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight))
                 {
                     LogPrintf("%s: ERROR: could not create block proof for second entropy source block %u\n", __func__, srcIndex);
+                    chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight); // repeat for debugging
                     return false;
                 }
                 headerStream << CBlockHeaderProof(blockHeaderProof2, chainActive[secondBlockHeight]->GetBlockHeader());
