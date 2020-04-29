@@ -4555,7 +4555,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // import thread is specific to the chain importing from
     dests = std::vector<CTxDestination>({proofDest});
     indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_IMPORT))});
-    CCrossChainImport cci(newChainID, InitialPreallocation, InitialPreallocation);
+    CCrossChainImport cci(newChainID, InitialPreallocation);
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests), 0, false});
 
     // export thread

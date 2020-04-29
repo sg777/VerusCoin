@@ -5145,6 +5145,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
 {
     int32_t count = 0; //uint64_t lowest_interest = 0;
     setCoinsRet.clear();
+    valueRet.valueMap.clear();
+    nativeValueRet = 0;
     //memset(interests,0,sizeof(interests));
 
     // List of values less than target
@@ -5194,8 +5196,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         if (nAll == nTotalTarget)
         {
             setCoinsRet.insert(coin.second);
-            valueRet += pcoin->vout[i].scriptPubKey.ReserveOutValue();
-            nativeValueRet += nativeN;
+            valueRet = pcoin->vout[i].scriptPubKey.ReserveOutValue();
+            nativeValueRet = nativeN;
             return true;
         }
 
@@ -5244,7 +5246,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
             return false;
 
         setCoinsRet.insert(coinLowestLarger[0].second);
-        valueRet += coinLowestLarger[0].first;
+        valueRet = coinLowestLarger[0].second.first->vout[coinLowestLarger[0].second.second].ReserveOutValue();
+        nativeValueRet = coinLowestLarger[0].second.first->vout[coinLowestLarger[0].second.second].nValue;
         return true;
     }
 
@@ -6088,7 +6091,16 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     return false;
                 }
 
-                //printf("totaltokensin: %s\nnativein: %s\n", totalValueIn.ToUniValue().write().c_str(), ValueFromAmount(totalNativeValueIn).write().c_str());
+                if (totalValueIn.valueMap.count(ASSETCHAINS_CHAINID))
+                {
+                    for (auto oneOut : setCoins)
+                    {
+                        UniValue oneTxObj(UniValue::VOBJ);
+                        TxToUniv(*oneOut.first, uint256(), oneTxObj);
+                        printf("TRANSACTION\n%s\n", oneTxObj.write(1,2).c_str());
+                    }
+                    printf("totalValueIn: %s\ntotalReserveValue: %s\n", totalValueIn.ToUniValue().write().c_str(), totalReserveValue.ToUniValue().write().c_str());
+                }
 
                 std::vector<std::pair<std::pair<const CWalletTx*, unsigned int>, CAmount>> coinsWithEquivalentNative;
                 if (reserveCurrencies.valueMap.size())
@@ -6107,7 +6119,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 CAmount nChange = totalNativeValueIn - nTotalNativeValue;
                 CAmount nConvertedReserveChange = 0;
 
-                //("tokenChange: %s\nnativeChange: %s\n", reserveChange.ToUniValue().write().c_str(), ValueFromAmount(nChange).write().c_str());
+                // /printf("tokenChange: %s\nnativeChange: %s\n", reserveChange.ToUniValue().write().c_str(), ValueFromAmount(nChange).write().c_str());
 
                 // if we will try to take the fee from change
                 if (nSubtractFeeFromAmount == 0)

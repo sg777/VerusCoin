@@ -2735,7 +2735,19 @@ namespace Consensus {
         
         CAmount nValueIn = 0;
         CCurrencyValueMap ReserveValueIn;
-        bool isImport = false;
+        int32_t outNum;
+        CCrossChainImport cci(tx, &outNum);
+
+        if (cci.IsValid())
+        {
+            ReserveValueIn += cci.importValue;
+            if (ReserveValueIn.valueMap.count(ASSETCHAINS_CHAINID))
+            {
+                nValueIn = ReserveValueIn.valueMap[ASSETCHAINS_CHAINID];
+                ReserveValueIn.valueMap.erase(ASSETCHAINS_CHAINID);
+            }
+        }
+
         CAmount nFees = 0;
         for (unsigned int i = 0; i < tx.vin.size(); i++)
         {
@@ -2784,38 +2796,7 @@ namespace Consensus {
             nValueIn += coins->vout[prevout.n].nValue;
 
             COptCCParams p;
-            if (!isImport)
-            {
-                auto outMap = coins->vout[prevout.n].scriptPubKey.ReserveOutValue(p);
-                for (auto &outPair : outMap.valueMap)
-                {
-                    auto it = ReserveValueIn.valueMap.find(outPair.first);
-                    if (it != ReserveValueIn.valueMap.end())
-                    {
-                        it->second += outPair.second;
-                    }
-                    else
-                    {
-                        ReserveValueIn.valueMap[outPair.first] = outPair.second;
-                    }
-                }
-            }
-
-            // if this spends the import thread, it is an import, and states explicitly how much it is importing of each token.
-            // ensure the source can import such a coin, as either it is our parent and we are importing one of our reserves,
-            // or it is a child of ours, and it is either the child's native currency, or one of its reserves.
-            if (p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
-            {
-                CCrossChainImport cci(tx);
-                if (!cci.IsValid())
-                {
-                    return state.DoS(100,
-                                     error("CheckInputs(): non-cross-chain import tried to spend import thread"),
-                                     REJECT_INVALID, "bad-txns-invalid-import-spend");
-                }
-                isImport = true;
-                ReserveValueIn = cci.importValue;
-            }
+            auto outMap = coins->vout[prevout.n].scriptPubKey.ReserveOutValue(p);
 
 #ifdef KOMODO_ENABLE_INTEREST
             if ( ASSETCHAINS_SYMBOL[0] == 0 && nSpendHeight > 60000 )//chainActive.LastTip() != 0 && chainActive.LastTip()->GetHeight() >= 60000 )

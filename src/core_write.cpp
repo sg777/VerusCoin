@@ -521,6 +521,7 @@ UniValue CCrossChainImport::ToUniValue() const
     obj.push_back(Pair("version", (int)nVersion));
     obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
     obj.push_back(Pair("valuein", importValue.ToUniValue()));
+    obj.push_back(Pair("tokensout", totalReserveOutMap.ToUniValue()));
     return obj;
 }
 
@@ -590,11 +591,11 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
                 if (p.vData.size() && (definition = CCurrencyDefinition(p.vData[0])).IsValid())
                 {
-                    out.push_back(Pair("pbaasChainDefinition", definition.ToUniValue()));
+                    out.push_back(Pair("currencydefinition", definition.ToUniValue()));
                 }
                 else
                 {
-                    out.push_back(Pair("pbaasChainDefinition", "invalid"));
+                    out.push_back(Pair("currencydefinition", "invalid"));
                 }
                 break;
             }

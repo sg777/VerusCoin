@@ -1022,7 +1022,7 @@ bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScrip
     return true;
 }
 
-CCurrencyDefinition &CConnectedChains::GetCachedCurrency(const uint160 &currencyID)
+CCurrencyDefinition CConnectedChains::GetCachedCurrency(const uint160 &currencyID)
 {
     LOCK(cs_main);
     CCurrencyDefinition currencyDef;
@@ -1032,6 +1032,7 @@ CCurrencyDefinition &CConnectedChains::GetCachedCurrency(const uint160 &currency
     {
         printf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
         LogPrintf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
+        return currencyDef;
     }
     if (it == currencyDefCache.end())
     {

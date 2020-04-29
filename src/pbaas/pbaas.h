@@ -867,7 +867,7 @@ public:
     // returns false if destinations are empty or first is not either pubkey or pubkeyhash
     bool SetLatestMiningOutputs(const std::vector<std::pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut);
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
-    CCurrencyDefinition &GetCachedCurrency(const uint160 &currencyID);
+    CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
 
     bool GetLastImport(const uint160 &systemID, 
                        CTransaction &lastImport, 

@@ -43,6 +43,7 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 {
     txnouttype type;
     vector<CTxDestination> addresses;
+    CCurrencyValueMap tokensOut = scriptPubKey.ReserveOutValue();
 
     // needs to be an object
     if (!out.isObject())
@@ -65,11 +66,11 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
                 if (p.vData.size() && (definition = CCurrencyDefinition(p.vData[0])).IsValid())
                 {
-                    out.push_back(Pair("pbaasChainDefinition", definition.ToUniValue()));
+                    out.push_back(Pair("currencydefinition", definition.ToUniValue()));
                 }
                 else
                 {
-                    out.push_back(Pair("pbaasChainDefinition", "invalid"));
+                    out.push_back(Pair("currencydefinition", "invalid"));
                 }
                 break;
             }
@@ -274,6 +275,21 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
             default:
                 out.push_back(Pair("unknown", ""));
+        }
+    }
+
+    if (tokensOut.valueMap.size())
+    {
+        UniValue reserveBal(UniValue::VARR);
+        for (auto &oneBalance : tokensOut.valueMap)
+        {
+            UniValue oneCurObj(UniValue::VOBJ);
+            oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+            reserveBal.push_back(oneCurObj);
+        }
+        if (reserveBal.size())
+        {
+            out.push_back(Pair("reserve_balance", reserveBal));
         }
     }
 
