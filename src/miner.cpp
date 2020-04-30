@@ -1051,7 +1051,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             // conversions for this block, if any, will be processed
             // below
             coinbaseTx.vout.push_back(CTxOut(currencyState.ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted), thisChain.conversions),
-                                                MakeMofNCCScript(CConditionObj<CCoinbaseCurrencyState>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &currencyState), &indexDests)));
+                                                MakeMofNCCScript(CConditionObj<CCoinbaseCurrencyState>(EVAL_CURRENCYSTATE, dests, 1, &currencyState), &indexDests)));
 
             currencyStateOutNum = coinbaseTx.vout.size() - 1;
 
@@ -1682,7 +1682,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             int i;
             for (i = 0; i < newNotarizationTx.vout.size(); i++)
             {
-                if (newNotarizationTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.evalCode == EVAL_EARNEDNOTARIZATION)
+                if (newNotarizationTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_EARNEDNOTARIZATION)
                 {
                     break;
                 }

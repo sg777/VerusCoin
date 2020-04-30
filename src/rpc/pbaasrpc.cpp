@@ -772,7 +772,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 return false;
             }
 
-            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CROSSCHAIN_IMPORT)))});
+            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ccx.systemID, EVAL_CROSSCHAIN_IMPORT)))});
             std::vector<CTxDestination> dests;
 
             if (ConnectedChains.ThisChain().proofProtocol == CCurrencyDefinition::PROOF_PBAASMMR)
@@ -808,7 +808,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
             totalNativeInput -= (rtxd.nativeIn - nativeOutConverted);
 
-            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetID(), 
+            CCrossChainImport cci = CCrossChainImport(ccx.systemID, 
                                                       availableTokenInput + 
                                                         CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>(nativeOutConverted)));
 
@@ -1257,8 +1257,8 @@ UniValue getimports(const UniValue& params, bool fHelp)
         CBlockIndex *pIndex;
 
         CChainNotarizationData cnd;
-        // get all export transactions including and since this one up to the confirmed height
-        if (GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT), 1, addressIndex))
+        // get all import transactions including and since this one up to the confirmed height
+        if (GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT), 1, addressIndex))
         {
             UniValue ret(UniValue::VARR);
 
@@ -1566,8 +1566,9 @@ bool GetUnspentChainExports(uint160 chainID, multimap<uint160, pair<int, CInputD
                         // if this is an export output, optionally to this chain, add it to the input vector
                         COptCCParams p;
                         CCrossChainExport cx;
-                        if (::IsPayToCryptoCondition(coins.vout[i].scriptPubKey, p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                            p.vData.size() && (cx = CCrossChainExport(p.vData[0])).IsValid())
+                        if (coins.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                            p.vData.size() && (cx = CCrossChainExport(p.vData[0])).IsValid() &&
+                            cx.numInputs)
                         {
                             exportOutputs.insert(make_pair(cx.systemID,
                                                      make_pair(coins.nHeight, CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))))));
@@ -3372,7 +3373,7 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
                     for (auto deposit : reserveDeposits)
                     {
                         COptCCParams p;
-                        if (deposit.second.script.IsPayToCryptoCondition(p) && p.evalCode == EVAL_RESERVE_DEPOSIT)
+                        if (deposit.second.script.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_RESERVE_DEPOSIT)
                         {
                             txTemplate.vin.push_back(CTxIn(deposit.first.txhash, deposit.first.index, CScript()));
                         }
@@ -6025,8 +6026,8 @@ static const CRPCCommand commands[] =
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
     { "multichain",   "definecurrency",               &definecurrency,         true  },
-    { "multichain",   "listcurrencies",             &listcurrencies,       true  },
-    { "multichain",   "getcurrency",        &getcurrency,  true  },
+    { "multichain",   "listcurrencies",               &listcurrencies,         true  },
+    { "multichain",   "getcurrency",                  &getcurrency,            true  },
     { "multichain",   "getnotarizationdata",          &getnotarizationdata,    true  },
     { "multichain",   "getcrossnotarization",         &getcrossnotarization,   true  },
     { "multichain",   "submitacceptednotarization",   &submitacceptednotarization, true },
@@ -6034,9 +6035,9 @@ static const CRPCCommand commands[] =
     { "multichain",   "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "multichain",   "getcurrencystate",             &getcurrencystate,       true  },
     { "multichain",   "sendcurrency",                 &sendcurrency,           true  },
-    { "multichain",   "getpendingtransfers",     &getpendingtransfers, true  },
-    { "multichain",   "getexports",              &getexports,        true  },
-    { "multichain",   "getimports",              &getimports,        true  },
+    { "multichain",   "getpendingtransfers",          &getpendingtransfers,    true  },
+    { "multichain",   "getexports",                   &getexports,             true  },
+    { "multichain",   "getimports",                   &getimports,             true  },
     { "multichain",   "reserveexchange",              &reserveexchange,        true  },
     { "multichain",   "getlatestimportsout",          &getlatestimportsout,    true  },
     { "multichain",   "getlastimportin",              &getlastimportin,        true  },

@@ -502,7 +502,7 @@ bool CScript::IsInstantSpend() const
 {
     COptCCParams p;
     bool isInstantSpend = false;
-    if (!_IsVerusActive() && IsPayToCryptoCondition(p))
+    if (!_IsVerusActive() && IsPayToCryptoCondition(p) && p.IsValid())
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
         if ((p.evalCode == EVAL_EARNEDNOTARIZATION && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)) || 
