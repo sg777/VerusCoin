@@ -978,6 +978,16 @@ public:
         }
     }
 
+    uint8_t GetBranchType(const CDefaultMMRNode &overload)
+    {
+        return CMerkleBranchBase::BRANCH_MMRBLAKE_NODE;
+    }
+
+    uint8_t GetBranchType(const CDefaultMMRPowerNode &overload)
+    {
+        return CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE;
+    }
+
     // return a proof of the element at "pos"
     bool GetProof(CMMRProof &retProof, uint64_t pos)
     {
@@ -1075,6 +1085,7 @@ public:
                     }
                 }
             }
+            retBranch.branchType = GetBranchType(NODE_TYPE());
             retBranch.nSize = size();
             retBranch.nIndex = pos;
             retProof << retBranch;

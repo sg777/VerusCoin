@@ -338,9 +338,7 @@ public:
     CMMRNodeBranch MMRProofBridge() const
     {
         // we need to add the block hash on the right, no change to index, as bit is zero
-        CMMRNodeBranch retVal(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE);
-        retVal.branch.push_back(GetHash());
-        return retVal;
+        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 0, std::vector<uint256>({GetHash()}));
     }
 
     // this does not work on blocks prior to the Verus PBaaS hard fork
@@ -350,10 +348,7 @@ public:
     CMMRNodeBranch BlockProofBridge()
     {
         // we need to add the merkle root on the left
-        CMMRNodeBranch retVal(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE);
-        retVal.nIndex |= 1;
-        retVal.branch.push_back(GetBlockMMRRoot());
-        return retVal;
+        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 1, std::vector<uint256>({GetBlockMMRRoot()}));
     }
 };
 

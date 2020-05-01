@@ -1731,7 +1731,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                 // fee has already been accounted for, so skip it
                 // in all other cases, calculate inputs from export
-                if (!(curTransfer.flags & (curTransfer.FEE_OUTPUT | curTransfer.PRECONVERT)))
+                if (!(curTransfer.flags & curTransfer.FEE_OUTPUT))
                 {
                     if (curTransfer.currencyID == systemDestID)
                     {
@@ -1783,13 +1783,24 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
                             if (curTransfer.currencyID != systemDestID)
                             {
-                                AddReserveInput(curTransfer.currencyID, totalReserveFee);
+                                if (currencyDest.IsToken())
+                                {
+                                    AddReserveOutput(curTransfer.currencyID, (curTransfer.nValue + curTransfer.nFees) - totalReserveFee);
+                                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CIdentityID(currencyDest.GetID())});
+                                    CTokenOutput ro = CTokenOutput(curTransfer.destCurrencyID, newCurrencyConverted);
+                                    vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
+                                }
                             }
                             else
                             {
                                 newNativeFees = totalReserveFee;
-                                nativeIn += totalReserveFee;
                                 totalReserveFee = 0;
+                                if (currencyDest.IsToken())
+                                {
+                                    CAmount oneNative = (curTransfer.nValue + curTransfer.nFees) - newNativeFees;
+                                    nativeOut += oneNative;
+                                    vOutputs.push_back(CTxOut(oneNative, GetScriptForDestination(CIdentityID(currencyDest.GetID()))));
+                                }
                             }
                         }
                         else
@@ -1799,14 +1810,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                 newNativeFees = CCurrencyState::ReserveToNativeRaw(totalReserveFee, currencyDest.conversions[curIdx]);
                                 AddReserveConversionFees(systemDestID, newNativeFees);
                                 feesConverted = newNativeFees;
-                                nativeIn += newNativeFees;
                                 totalReserveFee = 0;
                             }
                             else if (curTransfer.currencyID == systemDestID)
                             {
                                 AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
                                 newNativeFees = totalReserveFee;
-                                nativeIn += newNativeFees;
                                 totalReserveFee = 0;
                             }
                             else
@@ -1878,8 +1887,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                     // transfer it back to the source chain and to our address
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), TransferDestinationToDestination(curTransfer.destination)});
-
-                    AddReserveOutput(curTransfer.currencyID, curTransfer.nValue);
                     
                     // naturally compress a full ID to an ID destination, since it is going back where it came from
                     CTxDestination sendBackAddr = TransferDestinationToDestination(curTransfer.destination);
@@ -1906,6 +1913,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     }
                     else
                     {
+                        AddReserveOutput(curTransfer.currencyID, curTransfer.nValue);
                         newOut = CTxOut(0, sendBackScript);                    
                     }
                 }

@@ -8,11 +8,19 @@
 
 #include "mmr.h"
 
+// just used for setting breakpoints that may be hard to set and printing messages
+void ErrorAndBP(std::string msg)
+{
+    printf("%s\n", msg.c_str());
+}
+
+
 void CMMRProof::DeleteProofSequence()
 {
     // delete any objects that may be present
-    for (auto pProof : proofSequence)
+    for (int i = proofSequence.size() - 1; i >= 0 && proofSequence[i]; i--)
     {
+        CMerkleBranchBase *pProof = proofSequence[i];
         switch(pProof->branchType)
         {
             case CMerkleBranchBase::BRANCH_BTC:
@@ -31,15 +39,18 @@ void CMMRProof::DeleteProofSequence()
                 break;
             }
             default:
+            {
+                ErrorAndBP("ERROR: unrecognized object in proof sequence");
                 delete pProof;
+            }
         }
+        proofSequence.pop_back();
     }
-    proofSequence.clear();
 }
 
 const CMMRProof &CMMRProof::operator<<(const CBTCMerkleBranch &append)
 {
-    CMerkleBranchBase *pNewProof = static_cast<CMerkleBranchBase *>(new CBTCMerkleBranch(static_cast<const CBTCMerkleBranch &>(append)));
+    CMerkleBranchBase *pNewProof = new CBTCMerkleBranch(append);
     pNewProof->branchType = CMerkleBranchBase::BRANCH_BTC;
     proofSequence.push_back(pNewProof);
     return *this;
@@ -47,7 +58,7 @@ const CMMRProof &CMMRProof::operator<<(const CBTCMerkleBranch &append)
 
 const CMMRProof &CMMRProof::operator<<(const CMMRNodeBranch &append)
 {
-    CMerkleBranchBase *pNewProof = static_cast<CMerkleBranchBase *>(new CMMRNodeBranch(static_cast<const CMMRNodeBranch &>(append)));
+    CMerkleBranchBase *pNewProof = new CMMRNodeBranch(append);
     pNewProof->branchType = CMerkleBranchBase::BRANCH_MMRBLAKE_NODE;
     proofSequence.push_back(pNewProof);
     return *this;
@@ -55,7 +66,7 @@ const CMMRProof &CMMRProof::operator<<(const CMMRNodeBranch &append)
 
 const CMMRProof &CMMRProof::operator<<(const CMMRPowerNodeBranch &append)
 {
-    CMerkleBranchBase *pNewProof = static_cast<CMerkleBranchBase *>(new CMMRPowerNodeBranch(static_cast<const CMMRPowerNodeBranch &>(append)));
+    CMerkleBranchBase *pNewProof = new CMMRPowerNodeBranch(append);
     pNewProof->branchType = CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE;
     proofSequence.push_back(pNewProof);
     return *this;
