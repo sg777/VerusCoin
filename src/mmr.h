@@ -510,7 +510,7 @@ public:
         if (ser_action.ForRead())
         {
             int32_t proofSize;
-            READWRITE(VARINT(proofSize));
+            READWRITE(proofSize);
 
             bool error = false;
             for (int i = 0; i < proofSize && !error; i++)
@@ -592,7 +592,7 @@ public:
         else
         {
             int32_t proofSize = proofSequence.size();
-            READWRITE(VARINT(proofSize));
+            READWRITE(proofSize);
 
             for (auto pProof : proofSequence)
             {

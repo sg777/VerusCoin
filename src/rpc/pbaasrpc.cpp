@@ -451,13 +451,11 @@ bool CConnectedChains::GetLastImport(const uint160 &systemID,
         return false;
     }
     ccImport = CCrossChainImport(p.vData[0]);
-    CCrossChainProof *pMultiProof;
+    CPartialTransactionProof *pTxProof;
     auto opRetArr = RetrieveOpRetArray(lastImport.vout.back().scriptPubKey);
-    if (!opRetArr.size() != 1 || 
-        opRetArr[0]->objectType != CHAINOBJ_CROSSCHAINPROOF || 
-        (pMultiProof = &(((CChainObject<CCrossChainProof> *)(opRetArr[0]))->object))->chainObjects.size() < 2 ||
-        pMultiProof->chainObjects[0]->objectType != CHAINOBJ_TRANSACTION_PROOF ||
-        pMultiProof->chainObjects[1]->objectType != CHAINOBJ_PROOF_ROOT)
+    if (!opRetArr.size() < 1 || 
+        opRetArr[0]->objectType != CHAINOBJ_TRANSACTION_PROOF || 
+        (pTxProof = &(((CChainObject<CPartialTransactionProof> *)(opRetArr[0]))->object))->txProof.proofSequence.size() < 3)
     {
         DeleteOpRetObjects(opRetArr);
         return false;
@@ -523,8 +521,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     // on the Verus chain
     std::vector<CCurrencyDefinition> chainDefs;
     if (!(lastCrossChainImport.vout.back().scriptPubKey.IsOpReturn() &&
-          (chainObjs = RetrieveOpRetArray(lastCrossChainImport.vout.back().scriptPubKey)).size() == 1 &&
-          chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF) &&
+          (chainObjs = RetrieveOpRetArray(lastCrossChainImport.vout.back().scriptPubKey)).size() >= 1 &&
+          chainObjs[0]->objectType == CHAINOBJ_TRANSACTION_PROOF) &&
         !(chainObjs.size() == 0 && 
           (chainDefs = CCurrencyDefinition::GetCurrencyDefinitions(lastCrossChainImport)).size()))
     {
@@ -545,17 +543,17 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     }
 
     uint256 lastExportHash;
-    CCrossChainProof exportProof;
     CTransaction lastExportTx;
     uint256 blkHash;
     uint32_t blkHeight = 0;
     bool found = false;
     if (chainObjs.size())
     {
-        exportProof = ((CChainObject<CCrossChainProof> *)chainObjs[0])->object;
-        if (exportProof.chainObjects.size() == 2 && exportProof.chainObjects[0]->objectType == CHAINOBJ_TRANSACTION_PROOF)
+
+        CPartialTransactionProof oneExportProof(((CChainObject<CPartialTransactionProof> *)chainObjs[0])->object);
+        if (oneExportProof.txProof.proofSequence.size() == 3)
         {
-            lastExportHash = ((CChainObject<CPartialTransactionProof> *)chainObjs[0])->object.GetPartialTransaction(lastExportTx);
+            lastExportHash = oneExportProof.GetPartialTransaction(lastExportTx);
         }
 
         BlockMap::iterator blkMapIt;
@@ -611,8 +609,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     }
     if (!found)
     {
-        LogPrintf("%s: No export thread found\n", __func__);
-        printf("%s: No export thread found\n", __func__);
+        //LogPrintf("%s: No export thread found\n", __func__);
+        //printf("%s: No export thread found\n", __func__);
         return false;
     }
 
@@ -839,8 +837,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 return false;
             }
 
-            CCrossChainProof exportTransactionProof;
-
             // add a proof of the export transaction at the notarization height
             CBlock block;
             if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus(), false))
@@ -857,16 +853,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                                                             {CTransactionHeader::TX_OUTPUT, (int16_t)(aixIt->second.second.vout.size() - 1)}});
 
             // prove our transaction up to the MMR root of the last transaction
-            auto exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.index, parts);
+            CPartialTransactionProof exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.index, parts);
             exportProof.txProof << block.MMRProofBridge();
 
             // TODO: don't include chain MMR proof for exports from the same chain
             ChainMerkleMountainView(chainActive.GetMMR(), lastConfirmed.notarizationHeight).GetProof(exportProof.txProof, aixIt->second.first.blockHeight);
 
-            // add it to the export transaction proof, now proven up to the MMR root of the last confirmed transaction
-            exportTransactionProof << exportProof;
-
-            CChainObject<CCrossChainProof> exportXProof(CHAINOBJ_CROSSCHAINPROOF, exportTransactionProof);
+            CChainObject<CPartialTransactionProof> exportXProof(CHAINOBJ_TRANSACTION_PROOF, exportProof);
 
             // add the opret with the transaction and proof
             newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(std::vector<CBaseChainObject *>({&exportXProof}))));
@@ -1292,7 +1285,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
                         opretImports = RetrieveOpRetArray(importTx.vout.back().scriptPubKey);
 
-                        if (opretImports.size() >= 2 && 
+                        if (opretImports.size() >= 1 && 
                             opretImports[0]->objectType == CHAINOBJ_TRANSACTION_PROOF && 
                             !((CChainObject<CPartialTransactionProof> *)opretImports[0])->object.CheckPartialTransaction(exportTx).IsNull() &&
                             (ccx = CCrossChainExport(exportTx)).IsValid() && 
@@ -3531,15 +3524,15 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
     }
 
     std::vector<CBaseChainObject *> chainObjs;
-    CCrossChainProof ccp;
+    CPartialTransactionProof lastExportTxProof;
 
     // either a fully valid import with an export or the first import either in block 1 or chain definition
     // on the Verus chain
     std::vector<CCurrencyDefinition> curDefs = CCurrencyDefinition::GetCurrencyDefinitions(lastImportTx);
     if (!(lastImportTx.vout.back().scriptPubKey.IsOpReturn() &&
-          (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() == 1 &&
-          chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF &&
-          !(ccp = ((CChainObject<CCrossChainProof> *)(chainObjs[0]))->object).Empty()) &&
+          (chainObjs = RetrieveOpRetArray(lastImportTx.vout.back().scriptPubKey)).size() >= 1 &&
+          chainObjs[0]->objectType == CHAINOBJ_TRANSACTION_PROOF &&
+          !(lastExportTxProof = ((CChainObject<CPartialTransactionProof> *)(chainObjs[0]))->object).txProof.proofSequence.size() < 3) &&
           !(chainObjs.size() == 0 && curDefs.size() && curDefs[0].IsValid()))
     {
         DeleteOpRetObjects(chainObjs);
@@ -3552,20 +3545,14 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
     bool isVerusActive = IsVerusActive();
 
     uint256 lastExportHash;
-    CPartialTransactionProof lastExportTxProof;
     CTransaction lastExportTx;
 
     uint32_t blkHeight = defHeight;
     bool found = false;
 
-    if (!ccp.Empty())
+    if (lastExportTxProof.txProof.proofSequence.size())
     {
-        if (ccp.chainObjects[0]->objectType != CHAINOBJ_TRANSACTION_PROOF)
-        {
-            errorReason = "invalid-import-transaction-proof";
-            return false;
-        }
-        lastExportHash = (lastExportTxProof = ((CChainObject<CPartialTransactionProof> *)(ccp.chainObjects[0]))->object).CheckPartialTransaction(lastExportTx);
+        lastExportHash = lastExportTxProof.CheckPartialTransaction(lastExportTx);
         CTransaction tx;
         uint256 blkHash;
         BlockMap::iterator blkMapIt;

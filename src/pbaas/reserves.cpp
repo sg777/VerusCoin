@@ -1519,19 +1519,18 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                          (txCurrencies[0].GetID() == ASSETCHAINS_CHAINID && isPBaaSActivation)) &&
                         isVerusActive) ||
                         (tx.vout.back().scriptPubKey.IsOpReturn() &&
-                        (chainObjs = RetrieveOpRetArray(tx.vout.back().scriptPubKey)).size() == 1 &&
-                        chainObjs[0]->objectType == CHAINOBJ_CROSSCHAINPROOF))
+                        (chainObjs = RetrieveOpRetArray(tx.vout.back().scriptPubKey)).size() >= 1 &&
+                        chainObjs[0]->objectType == CHAINOBJ_TRANSACTION_PROOF))
                     {
                         if (chainObjs.size())
                         {
-                            CCrossChainProof &exportTxProof = ((CChainObject<CCrossChainProof> *)chainObjs[0])->object;
+                            CPartialTransactionProof &exportTxProof = ((CChainObject<CPartialTransactionProof> *)chainObjs[0])->object;
                             CTransaction exportTx;
                             uint256 exportTxId;
                             std::vector<CBaseChainObject *> exportTransfers;
 
-                            if (exportTxProof.chainObjects.size() == 1 &&
-                                exportTxProof.chainObjects[0]->objectType == CHAINOBJ_TRANSACTION_PROOF &&
-                                !(exportTxId = ((CChainObject<CPartialTransactionProof> *)(exportTxProof.chainObjects[0]))->object.GetPartialTransaction(exportTx)).IsNull() &&
+                            if (exportTxProof.txProof.proofSequence.size() == 3 &&
+                                !(exportTxId = exportTxProof.GetPartialTransaction(exportTx)).IsNull() &&
                                 (ccx = CCrossChainExport(exportTx)).IsValid() && 
                                 exportTx.vout.back().scriptPubKey.IsOpReturn() &&
                                 (exportTransfers = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey)).size() &&

@@ -323,7 +323,7 @@ void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
 
             default:
             {
-                printf("ERROR: invalid object type, likely corrupt pointer %p\n", pobj);
+                printf("ERROR: invalid object type (%u), likely corrupt pointer %p\n", pobj->objectType, pobj);
                 printf("generate code that won't be optimized away %s\n", CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({200000000})).ToUniValue().write(1,2).c_str());
                 printf("This is here to generate enough code for a good break point system chain name: %s\n", ConnectedChains.ThisChain().name.c_str());
                 
