@@ -3215,6 +3215,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         }
         else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
         {
+            UniValue jsonTx(UniValue::VOBJ);
+            TxToUniv(wtx, uint256(), jsonTx);
+            printf("%s\n", jsonTx.write(1,2).c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit reserve transaction " + wtx.GetHash().GetHex());
         }
         else

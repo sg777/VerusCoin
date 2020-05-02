@@ -66,12 +66,16 @@ CCurrencyValueMap::CCurrencyValueMap(const std::vector<uint160> &currencyIDs, co
 
 bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
 {
+    // to be less than means, in this order:
+    // 1. To have fewer non-zero currencies.
+    // 2. If not fewer currencies, to be unable to be subtracted from the one being checked
+    //    without creating negative values
     if (!a.valueMap.size() && !b.valueMap.size())
     {
         return false;
     }
     bool isaltb = false;
-    
+
     for (auto &oneVal : b.valueMap)
     {
         if (oneVal.second)
@@ -240,13 +244,25 @@ CCurrencyValueMap CCurrencyValueMap::IntersectingValues(const CCurrencyValueMap&
         for (auto &oneVal : valueMap)
         {
             auto it = operand.valueMap.find(oneVal.first);
-            if (it != operand.valueMap.end())
+            if (it != operand.valueMap.end() &&
+                it->second != 0 && 
+                oneVal.second != 0)
             {
-                if (it->second > 0 && oneVal.second > 0)
-                {
-                    retVal.valueMap[it->first] = it->second;
-                }
+                retVal.valueMap[oneVal.first] = oneVal.second;
             }
+        }
+    }
+    return retVal;
+}
+
+CCurrencyValueMap CCurrencyValueMap::CanonicalMap() const
+{
+    CCurrencyValueMap retVal;
+    for (auto valPair : valueMap)
+    {
+        if (valPair.second != 0)
+        {
+            retVal.valueMap.insert(valPair);
         }
     }
     return retVal;
@@ -298,12 +314,13 @@ bool CCurrencyValueMap::HasNegative() const
 }
 
 // subtract, but do not subtract to negative values
-CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& operand)
+CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& operand) const
 {
+    CCurrencyValueMap retVal = *this;
     std::vector<uint160> toRemove;
     if (valueMap.size() && operand.valueMap.size())
     {
-        for (auto &oneVal : valueMap)
+        for (auto &oneVal : retVal.valueMap)
         {
             auto it = operand.valueMap.find(oneVal.first);
             if (it != operand.valueMap.end())
@@ -318,9 +335,9 @@ CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& ope
     }
     for (auto &toErase : toRemove)
     {
-        valueMap.erase(toErase);
+        retVal.valueMap.erase(toErase);
     }
-    return *this;
+    return retVal;
 }
 
 std::vector<CAmount> CCurrencyValueMap::AsCurrencyVector(const CCurrencyState &cState) const

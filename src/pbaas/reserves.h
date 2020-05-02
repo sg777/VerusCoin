@@ -88,13 +88,14 @@ public:
 
     // determine if the operand intersects this map
     bool Intersects(const CCurrencyValueMap& operand) const;
+    CCurrencyValueMap CanonicalMap() const;
     CCurrencyValueMap IntersectingValues(const CCurrencyValueMap& operand) const;
     CCurrencyValueMap NonIntersectingValues(const CCurrencyValueMap& operand) const;
     bool IsValid() const;
     bool HasNegative() const;
 
     // subtract, but do not subtract to negative values
-    CCurrencyValueMap SubtractToZero(const CCurrencyValueMap& operand);
+    CCurrencyValueMap SubtractToZero(const CCurrencyValueMap& operand) const;
 
     std::vector<CAmount> AsCurrencyVector(const CCurrencyState &cState) const;
     std::vector<CAmount> AsCurrencyVector(const std::vector<uint160> &currencies) const;

@@ -2738,10 +2738,15 @@ namespace Consensus {
         int32_t outNum;
         CCrossChainImport cci(tx, &outNum);
 
+        CReserveTransactionDescriptor rtxd(tx, inputs, nSpendHeight);
+
         if (cci.IsValid())
         {
-            CReserveTransactionDescriptor rtxd(tx, inputs, nSpendHeight);
             ReserveValueIn = rtxd.ReserveInputMap() + rtxd.ReserveOutConvertedMap();
+        }
+        else
+        {
+            ReserveValueIn = rtxd.ReserveInputMap();
         }
 
         CAmount nFees = 0;

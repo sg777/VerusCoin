@@ -82,12 +82,73 @@ struct CompareValueOnly
     }
 };
 
-struct CompareReserveAndNative
+struct CompareValueMap
 {
+    bool operator()(const CCurrencyValueMap &m1,
+                    const CCurrencyValueMap &m2) const
+    {
+        if (m1 < m2 && m2 < m1)
+        {
+            // this is used for sorting
+            // what we care about most in this case is that we always give the same answer,
+            // so, run a repeatable check, regardless of the order of operands. we'd also want
+            // to be as close to right as possible.
+            CCurrencyValueMap checkMap1 = m1.IntersectingValues(m2);
+            CCurrencyValueMap checkMap2;
+            // where they intersect, they are empty, no way to know which is less for sorting
+            if (!(checkMap2 < checkMap1))
+            {
+                return false;
+            }
+            checkMap2 = checkMap1 - m2.IntersectingValues(m1);
+            CAmount total = 0;
+            for (auto &oneCur : checkMap2.valueMap)
+            {
+                total += oneCur.second;
+            }
+            if (total < 0)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return m1 < m2;
+    }
     bool operator()(const pair<CCurrencyValueMap, pair<const CWalletTx*, unsigned int> >& t1,
                     const pair<CCurrencyValueMap, pair<const CWalletTx*, unsigned int> >& t2) const
     {
-        return t1.first < t2.first || t1.second.first->vout[t1.second.second].nValue < t2.second.first->vout[t1.second.second].nValue;
+        if (t1.first < t2.first && t2.first < t1.first)
+        {
+            // this is used for sorting
+            // what we care about most in this case is that we always give the same answer,
+            // so, run a repeatable check, regardless of the order of operands. we'd also want
+            // to be as close to right as possible.
+            CCurrencyValueMap checkMap1 = t1.first.IntersectingValues(t2.first);
+            CCurrencyValueMap checkMap2;
+            // where they intersect, they are empty, no way to know which is less for sorting
+            if (!(checkMap2 < checkMap1))
+            {
+                return false;
+            }
+            checkMap2 = checkMap1 - t2.first.IntersectingValues(t1.first);
+            CAmount total = 0;
+            for (auto &oneCur : checkMap2.valueMap)
+            {
+                total += oneCur.second;
+            }
+            if (total < 0)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return t1.first < t2.first;
     }
 };
 
@@ -4857,9 +4918,21 @@ static void ApproximateBestSubset(vector<pair<CAmount, pair<const CWalletTx*,uns
     }
 }
 
+// returns true if the selection contributes to getting any closer to the target. for example,
+// if a candidate value map contains more of currencies already present and none of those that are needed
+// but not present, it will return false. if it contains currencies that are needed, it will return
+// true.
+bool CloserToTarget(const CCurrencyValueMap &target, const CCurrencyValueMap &current, const CCurrencyValueMap &candidate)
+{
+    CCurrencyValueMap workingTarget = target.SubtractToZero(current);   // whatever is left is what we still need
+    //printf("with candidate: \n%s\nprior target: %s\n", workingTarget.SubtractToZero(candidate).ToUniValue().write(1,2).c_str(),
+    //                                                   workingTarget.ToUniValue().write(1,2).c_str());
+    return workingTarget.SubtractToZero(candidate) < workingTarget;
+}
+
 static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<const CWalletTx*,unsigned int> > >vValue, 
-                                         const CCurrencyValueMap& totalLower, 
-                                         const CCurrencyValueMap& targetValues,
+                                         const CCurrencyValueMap &totalLower, 
+                                         const CCurrencyValueMap &targetValues,
                                          vector<char>& vfBest, 
                                          CCurrencyValueMap& bestTotals, 
                                          int iterations = 1000)
@@ -4886,7 +4959,13 @@ static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<con
                 //that the rng is fast. We do not use a constant random sequence,
                 //because there may be some privacy improvement by making
                 //the selection random.
-                if (nPass == 0 ? insecure_rand()&1 : !vfIncluded[i])
+                /*
+                printf("targetValues\n%s\ntotals\n%s\nvValue[i].first\n%s\n", targetValues.ToUniValue().write(1,2).c_str(), 
+                                                                              totals.ToUniValue().write(1,2).c_str(), 
+                                                                              vValue[i].first.ToUniValue().write(1,2).c_str());
+                printf("iscloser: %d\n", CloserToTarget(targetValues, totals, vValue[i].first));
+                */
+                if ((nPass == 0 ? insecure_rand()&1 : !vfIncluded[i]) && CloserToTarget(targetValues, totals, vValue[i].first))
                 {
                     totals += vValue[i].first;
                     vfIncluded[i] = true;
@@ -4895,7 +4974,7 @@ static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<con
                     if (!curLeft.HasNegative())
                     {
                         fReachedTarget = true;
-                        if (totals < bestTotals)
+                        if (CompareValueMap()(totals, bestTotals))
                         {
                             bestTotals = totals;
                             vfBest = vfIncluded;
@@ -5165,6 +5244,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     random_shuffle(vCoins.begin(), vCoins.end(), GetRandInt);
 
     CCurrencyValueMap nTotalTarget = targetValues + CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({targetNativeValue}));
+    printf("totaltarget: %s\n", nTotalTarget.ToUniValue().write().c_str());
 
     BOOST_FOREACH(const COutput &output, vCoins)
     {
@@ -5190,14 +5270,14 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
             }
         }
 
+        printf("available: %s\nall currencies: %s\n", nAll.ToUniValue().write().c_str(), nTotal.ToUniValue().write().c_str());
+
         // if it has no output types we care about, next
-        if (!nTotal.valueMap.size())
+        if (!nTotal.CanonicalMap().valueMap.size())
         {
             continue;
         }
         std::pair<CCurrencyValueMap, pair<const CWalletTx*, unsigned int>> coin = make_pair(nAll, make_pair(pcoin, i));
-
-        //printf("available: %s\ntarget: %s\n", nAll.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
 
         // if the values are equivalent to targets, we're done
         if (nAll == nTotalTarget)
@@ -5222,7 +5302,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         }
         // if this one output can satisfy requirements, check if it is the smallest that can
         else if (!coinLowestLarger.size() ||
-                 coinLowestLarger[0].first > nTotal)
+                 !(coinLowestLarger[0].first.IntersectingValues(targetValues) < nTotal))
         {
             if (coinLowestLarger.size())
             {
@@ -5234,6 +5314,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
             }
         }
     }
+
+    printf("totalLower: %s\ntotalNativeLower: %s\n", totalLower.ToUniValue().write().c_str(), ValueFromAmount(totalNativeLower).write().c_str());
 
     if (totalLower == targetValues && totalNativeLower == targetNativeValue)
     {
@@ -5262,9 +5344,16 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     // simplify solution
     totalLower.valueMap[ConnectedChains.ThisChain().GetID()] = totalNativeLower;
 
-    //printf("totalLower:%s\ntargetValuesWithNative:%s\n", totalLower.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
+    printf("totalLower:%s\ntargetValuesWithNative:%s\n", totalLower.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
+    CCurrencyValueMap totPrint;
+    for (auto &one : vValue)
+    {
+        totPrint += one.first;
+    }
+    printf("num outputs: %lu, totalmap: %s\n", vValue.size(), totPrint.ToUniValue().write(1,2).c_str());
 
-    sort(vValue.rbegin(), vValue.rend(), CompareReserveAndNative());
+    std::sort(vValue.rbegin(), vValue.rend(), CompareValueMap());
+
     vector<char> vfBest;
     CCurrencyValueMap bestTotals;
 
@@ -6098,6 +6187,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     return false;
                 }
 
+                /*
                 if (totalValueIn.valueMap.count(ASSETCHAINS_CHAINID))
                 {
                     for (auto oneOut : setCoins)
@@ -6108,6 +6198,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     }
                     printf("totalValueIn: %s\ntotalReserveValue: %s\n", totalValueIn.ToUniValue().write().c_str(), totalReserveValue.ToUniValue().write().c_str());
                 }
+                */
 
                 std::vector<std::pair<std::pair<const CWalletTx*, unsigned int>, CAmount>> coinsWithEquivalentNative;
                 if (reserveCurrencies.valueMap.size())
