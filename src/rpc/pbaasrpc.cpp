@@ -154,7 +154,7 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
                         if (pDefHeight)
                         {
                             auto it = mapBlockIndex.find(blkHash);
-                            *pDefHeight = it->second->GetHeight();
+                            *pDefHeight = it != mapBlockIndex.end() ? it->second->GetHeight() : 0;
                         }
                         break;
                     }
@@ -4467,7 +4467,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                          false});
 
     std::set<CIdentityID> idExportSet;
-    CCurrencyValueMap InitialPreallocation;
 
     if (!newChain.IsToken())
     {
@@ -4528,16 +4527,15 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                       CKeyID(newChainID)});
 
             CTransferDestination transferDest = DestinationToTransferDestination(CIdentityID(oneAlloc.first));
-            CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, 
-                                                   newChainID, 
-                                                   oneAlloc.second, 
+            CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE, 
+                                                   newChain.systemID, 
+                                                   0,
                                                    CReserveTransfer::CalculateTransferFee(transferDest), 
                                                    newChainID,
                                                    transferDest);
 
-            vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 0, false});
-
-            InitialPreallocation.valueMap[newChainID] += oneAlloc.second + rt.CalculateTransferFee();
+            vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 
+                                CReserveTransfer::CalculateTransferFee(transferDest), false});
         }
     }
 
@@ -4566,7 +4564,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // if this is a token on this chain, the transfer that is output here is burned through the export 
     // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
     // and the reserve transfer outputs.
-    CCrossChainImport cci(newChainID, newChain.IsToken() ? InitialPreallocation * 2 : InitialPreallocation, InitialPreallocation);
+    CCrossChainImport cci(newChainID, CCurrencyValueMap(), CCurrencyValueMap());
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests), 0, false});
 
     // export thread
@@ -4632,6 +4630,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         string failReason;
 
         CTxDestination chainDefSource = CIdentityID(newChainID);
+
         if (!pwalletMain->CreateReserveTransaction(vOutputs, 
                                                    wtx, 
                                                    reserveKey, 

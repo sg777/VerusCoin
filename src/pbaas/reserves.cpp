@@ -1681,6 +1681,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
     uint160 systemDestID = systemDest.systemID;         // native on destination system
 
+    std::map<uint160, CAmount> preAllocMap;             // if this contains pre-allocations, only make the necessary map once
+
     CCurrencyValueMap transferFees;                     // calculated fees based on all transfers/conversions, etc.
     CCurrencyValueMap feeOutputs;                       // actual fee output amounts
 
@@ -1693,6 +1695,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         {
             CReserveTransfer &curTransfer = ((CChainObject<CReserveTransfer> *)exportObjects[i])->object;
             CCurrencyDefinition currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID);
+            CAmount mintAmount = 0;
+
             if (!currencyDest.IsValid())
             {
                 printf("%s: invalid currency or currency not found %s\n", __func__, EncodeDestination(CIdentityID(curTransfer.destCurrencyID)).c_str());
@@ -1758,6 +1762,31 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
                     }
                     transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
+
+                    if (curTransfer.flags & curTransfer.PREALLOCATE)
+                    {
+                        // look up preallocation in the currency definition based on ID, add the correct amount to input
+                        // and to the transfer for output
+                        if (currencyDest.preAllocation.size() && !preAllocMap.size())
+                        {
+                            for (auto &onePreAlloc : currencyDest.preAllocation)
+                            {
+                                preAllocMap.insert(onePreAlloc);
+                            }
+                            // TODO: this is where we should add percentage based pre-allocation calculations
+                        }
+
+                        auto it = preAllocMap.find(GetDestinationID(TransferDestinationToDestination(curTransfer.destination)));
+                        if (it == preAllocMap.end())
+                        {
+                            printf("%s: Invalid preallocation transfer\n", __func__);
+                            LogPrintf("%s: Invalid preallocation transfer\n", __func__);
+                            return false;
+                        }
+
+                        // by adding it here, it does not affect the input requirements, but it will affect output below
+                        mintAmount = it->second;
+                    }
                 }
 
                 if (curTransfer.flags & curTransfer.PRECONVERT)
@@ -1837,7 +1866,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             else
                             {
                                 AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
-                                AddReserveInput(curTransfer.currencyID, totalReserveFee);
                             }
                         }
 
@@ -1936,7 +1964,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 else
                 {
                     // if we are creating a reserve import for native currency, it must be spent from native inputs on the destination system
-                    if (systemDestID == curTransfer.currencyID)
+                    if (systemDestID == curTransfer.destCurrencyID)
                     {
                         nativeOut += curTransfer.nValue;
                         newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(TransferDestinationToDestination(curTransfer.destination)));
@@ -1946,9 +1974,19 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         // generate a reserve output of the amount indicated, less fees
                         // we will send using a reserve output, fee will be paid through coinbase by converting from reserve or not, depending on currency settings
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({TransferDestinationToDestination(curTransfer.destination)});
-                        CTokenOutput ro = CTokenOutput(curTransfer.currencyID, curTransfer.nValue);
+                        CTokenOutput ro = CTokenOutput(curTransfer.destCurrencyID, curTransfer.nValue);
 
-                        AddReserveOutput(curTransfer.currencyID, curTransfer.nValue);
+                        // if this is a minting of currency
+                        // this is used for both pre-allocation and also centrally, algorithmically, or externally controlled currencies
+                        if ((curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)) && curTransfer.destCurrencyID == currencyDest.GetID())
+                        {
+                            AddReserveOutConverted(curTransfer.destCurrencyID, mintAmount);
+                            ro.nValue = mintAmount;
+                        }
+                        else
+                        {
+                            AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);
+                        }
 
                         newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                     }

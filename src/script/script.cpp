@@ -582,16 +582,48 @@ CScript &CScript::ReplaceCCParams(const COptCCParams &params)
     return *this;
 }
 
-CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p) const
+bool CScript::IsSpendableOutputType(const COptCCParams &p) const
+{
+    bool isSpendable = true;
+    if (!p.IsValid())
+    {
+        return isSpendable;
+    }
+    switch (p.evalCode)
+    {
+        case EVAL_CURRENCYSTATE:
+        case EVAL_RESERVE_TRANSFER:
+        case EVAL_RESERVE_EXCHANGE:
+        case EVAL_CROSSCHAIN_IMPORT:
+        {
+            isSpendable = false;
+            break;
+        }
+    }
+    return isSpendable;
+}
+
+bool CScript::IsSpendableOutputType() const
+{
+    COptCCParams p;
+    if (IsPayToCryptoCondition(p))
+    {
+        return IsSpendableOutputType(p);
+    }
+    // default for non-CC outputs is true, this is to protect from accidentally spending specific CC output types, 
+    // even though they could be spent
+    return true;
+}
+
+CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p, bool spendableOnly) const
 {
     CCurrencyValueMap retVal;
 
     // already validated above
-    if (IsPayToCryptoCondition(p) && p.IsValid())
+    if (IsPayToCryptoCondition(p) && p.IsValid() && (!spendableOnly || IsSpendableOutputType(p)))
     {
         switch (p.evalCode)
         {
-            case EVAL_RESERVE_DEPOSIT:
             case EVAL_RESERVE_OUTPUT:
             {
                 CTokenOutput ro(p.vData[0]);
@@ -601,6 +633,17 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p) const
                 }
                 break;
             }
+
+            case EVAL_RESERVE_DEPOSIT:
+            {
+                CTokenOutput ro(p.vData[0]);
+                if (ro.nValue)
+                {
+                    retVal.valueMap[ro.currencyID] = ro.nValue;
+                }
+                break;
+            }
+
             case EVAL_CURRENCYSTATE:
             {
                 CCoinbaseCurrencyState cbcs(p.vData[0]);
@@ -613,6 +656,7 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p) const
                 }
                 break;
             }
+
             case EVAL_RESERVE_TRANSFER:
             {
                 CReserveTransfer rt(p.vData[0]);
@@ -623,6 +667,7 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p) const
                 }
                 break;
             }
+
             case EVAL_RESERVE_EXCHANGE:
             {
                 CReserveExchange re(p.vData[0]);

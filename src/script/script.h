@@ -759,8 +759,10 @@ public:
     bool IsPayToCryptoCondition() const;
     CScript &ReplaceCCParams(const COptCCParams &params);
 
+    bool IsSpendableOutputType(const COptCCParams &p) const;
+    bool IsSpendableOutputType() const;
     CCurrencyValueMap ReserveOutValue() const;
-    CCurrencyValueMap ReserveOutValue(COptCCParams &p) const;
+    CCurrencyValueMap ReserveOutValue(COptCCParams &p, bool spendingOnly=false) const;
     bool SetReserveOutValue(const CCurrencyValueMap &newValue);
 
     bool IsCoinImport() const;

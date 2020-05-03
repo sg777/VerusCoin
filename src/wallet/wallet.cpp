@@ -4829,7 +4829,11 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                     (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*it).first, i)))
                 {
                     COptCCParams p;
-                    CCurrencyValueMap rOut = pcoin->vout[i].scriptPubKey.ReserveOutValue(p);
+                    CCurrencyValueMap rOut = pcoin->vout[i].scriptPubKey.ReserveOutValue(p, true);
+                    if (p.IsValid() && !pcoin->vout[i].scriptPubKey.IsSpendableOutputType(p))
+                    {
+                        continue;
+                    }
                     if (pOnlyFromDest)
                     {
                         if (p.IsValid())
@@ -4859,7 +4863,7 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                         }
                     }
                     // don't return zero valued outputs
-                    if (rOut.valueMap.size() || pcoin->vout[i].nValue)
+                    if (rOut.CanonicalMap().valueMap.size() || pcoin->vout[i].nValue)
                     {
                         if ((rOut.valueMap.size() && (!pOnlyTheseCurrencies || (pOnlyTheseCurrencies && pOnlyTheseCurrencies->Intersects(rOut)))) || 
                             (fIncludeNative && pcoin->vout[i].nValue))

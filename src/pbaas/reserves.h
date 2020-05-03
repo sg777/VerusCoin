@@ -166,6 +166,8 @@ public:
         PRECONVERT = 4,
         FEE_OUTPUT = 8,                     // one per import, amount must match total percentage of fees for exporter, no pre-convert allowed
         SEND_BACK = 0x10,                   // fee is sent back immediately to destination on exporting chain
+        MINT_CURRENCY = 0x20,               // set when this output is being minted on import
+        PREALLOCATE = 0x40                  // combined with minting for pre-allocation of currency
     };
 
     enum EConstants

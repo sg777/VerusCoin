@@ -452,10 +452,21 @@ UniValue CTokenOutput::ToUniValue() const
 UniValue CReserveTransfer::ToUniValue() const
 {
     UniValue ret(((CTokenOutput *)this)->ToUniValue());
-    ret.push_back(Pair("convert", (bool)(flags & CONVERT)));
-    ret.push_back(Pair("preconvert", (bool)(flags & PRECONVERT)));
-    ret.push_back(Pair("feeoutput", (bool)(flags & FEE_OUTPUT)));
-    ret.push_back(Pair("sendback", (bool)(flags & SEND_BACK)));
+    if (flags & PREALLOCATE)
+    {
+        ret.push_back(Pair("preallocation", true));
+    }
+    else if (flags & MINT_CURRENCY)
+    {
+        ret.push_back(Pair("mintedcurrency", true));
+    }
+    else
+    {
+        ret.push_back(Pair("convert", (bool)(flags & CONVERT)));
+        ret.push_back(Pair("preconvert", (bool)(flags & PRECONVERT)));
+        ret.push_back(Pair("feeoutput", (bool)(flags & FEE_OUTPUT)));
+        ret.push_back(Pair("sendback", (bool)(flags & SEND_BACK)));
+    }
     ret.push_back(Pair("fees", ValueFromAmount(nFees)));
     ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
     std::string destStr;
