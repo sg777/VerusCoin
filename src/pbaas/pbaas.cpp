@@ -1344,13 +1344,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                             std::vector<CTxDestination> indexDests({CKeyID(lastChainDef.GetConditionID(EVAL_RESERVE_DEPOSIT))});
                                             std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
 
-                                            CTokenOutput ro;
-
-                                            if (!nativeOut)
-                                            {
-                                                ro = CTokenOutput(oneCurrencyOut.first, oneCurrencyOut.second);
-                                            }
-
+                                            CTokenOutput ro = CTokenOutput(oneCurrencyOut.first, oneCurrencyOut.second);
                                             tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_DEPOSIT, dests, 1, &ro), &indexDests), 
                                                                     nativeOut);
                                         }

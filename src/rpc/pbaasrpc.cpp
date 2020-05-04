@@ -3191,8 +3191,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                convertToCurrencyID,
                                                                DestinationToTransferDestination(destination));
                         rt.nFees = rt.CalculateTransferFee();
-
-                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : 0;
+                        oneOutput.nAmount = (sourceCurrencyID == thisChainID) ? sourceAmount + rt.nFees : 0;
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
                     }
                     else

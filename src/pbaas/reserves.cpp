@@ -1464,7 +1464,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
-                    if (ro.nValue)
+                    if (ro.currencyID != ASSETCHAINS_CHAINID && ro.nValue)
                     {
                         AddReserveOutput(ro);
                     }
@@ -1759,7 +1759,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     }
                     else
                     {
-                        AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
+                        // when minting currency, we source fees from source native coin
+                        if (curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE))
+                        {
+                            nativeIn += curTransfer.nFees;
+                            AddReserveInput(curTransfer.currencyID, curTransfer.nValue);
+                        }
+                        else
+                        {
+                            AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
+                        }
                     }
                     if (curTransfer.flags & (curTransfer.PREALLOCATE | curTransfer.MINT_CURRENCY))
                     {
@@ -1995,7 +2004,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         {
                             AddReserveOutConverted(curTransfer.destCurrencyID, mintAmount);
                             ro.nValue = mintAmount;
-                            newOut = CTxOut(curTransfer.nFees, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
+                            newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                         }
                         else
                         {
