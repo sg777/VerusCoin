@@ -1464,7 +1464,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
-                    if (ro.currencyID != ASSETCHAINS_CHAINID && ro.nValue)
+                    if (ro.nValue)
                     {
                         AddReserveOutput(ro);
                     }

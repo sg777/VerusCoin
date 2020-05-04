@@ -444,7 +444,7 @@ UniValue CTokenOutput::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("version", (int64_t)nVersion));
-    ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
+    ret.push_back(Pair("currencyid", currencyID.IsNull() ? "NULL" : EncodeDestination(CIdentityID(currencyID))));
     ret.push_back(Pair("value", ValueFromAmount(nValue)));
     return ret;
 }

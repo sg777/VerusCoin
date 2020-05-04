@@ -1702,7 +1702,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
     AssertLockHeld(cs_main);
     if (pfMissingInputs)
         *pfMissingInputs = false;
-    
+
     int flag=0, nextBlockHeight = simHeight ? simHeight : chainActive.Height() + 1;
     auto consensusBranchId = CurrentEpochBranchId(nextBlockHeight, Params().GetConsensus());
     auto chainParams = Params();

@@ -152,7 +152,7 @@ public:
     bool IsValid() const
     {
         // we don't support op returns, value must be in native or reserve
-        return nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID && !(currencyID.IsNull() && nValue);
+        return nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID;
     }
 };
 
