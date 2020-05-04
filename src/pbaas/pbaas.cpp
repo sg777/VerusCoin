@@ -1539,10 +1539,9 @@ void CConnectedChains::ProcessLocalImports()
             }
             currencyDefCache[exportThread.first] = exportDef;
 
-            // if chain hasn't started, it isn't controlled by us, imports are by chain ID only, or no exports, skip
+            // if chain hasn't started, it isn't controlled by us, or no exports, skip
             if (exportDef.startBlock > nHeight || 
                 exportDef.systemID != thisChainID || 
-                exportDef.proofProtocol != CCurrencyDefinition::PROOF_PBAASMMR ||
                 defHeight == exportThread.second.first)
             {
                 continue;
