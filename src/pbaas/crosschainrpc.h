@@ -153,6 +153,72 @@ public:
     }
 };
 
+// convenience class for collections of currencies that supports comparisons, including ==, >, >=, <, <=, as well as addition, and subtraction
+class CCurrencyValueMap
+{
+public:
+    std::map<uint160, int64_t> valueMap;
+
+    CCurrencyValueMap() {}
+    CCurrencyValueMap(const std::map<uint160, int64_t> &vMap) : valueMap(vMap) {}
+    CCurrencyValueMap(const std::vector<uint160> &currencyIDs, const std::vector<int64_t> &amounts);
+    CCurrencyValueMap(const UniValue &uni);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(valueMap);
+        std::vector<std::pair<uint160, int64_t>> vPairs;
+        if (ser_action.ForRead())
+        {
+            READWRITE(vPairs);
+            for (auto &oneVal : vPairs)
+            {
+                valueMap.insert(oneVal);
+            }
+        }
+        else
+        {
+            for (auto &oneVal : valueMap)
+            {
+                vPairs.push_back(oneVal);
+            }
+            READWRITE(vPairs);
+        }
+    }
+
+    friend bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
+    friend bool operator>(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
+    friend bool operator==(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
+    friend bool operator!=(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
+    friend bool operator<=(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
+    friend bool operator>=(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
+    friend CCurrencyValueMap operator+(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
+    friend CCurrencyValueMap operator-(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
+    friend CCurrencyValueMap operator+(const CCurrencyValueMap& a, int b);
+    friend CCurrencyValueMap operator-(const CCurrencyValueMap& a, int b);
+    friend CCurrencyValueMap operator*(const CCurrencyValueMap& a, int b);
+
+    const CCurrencyValueMap &operator-=(const CCurrencyValueMap& operand);
+    const CCurrencyValueMap &operator+=(const CCurrencyValueMap& operand);
+
+    // determine if the operand intersects this map
+    bool Intersects(const CCurrencyValueMap& operand) const;
+    CCurrencyValueMap CanonicalMap() const;
+    CCurrencyValueMap IntersectingValues(const CCurrencyValueMap& operand) const;
+    CCurrencyValueMap NonIntersectingValues(const CCurrencyValueMap& operand) const;
+    bool IsValid() const;
+    bool HasNegative() const;
+
+    // subtract, but do not subtract to negative values
+    CCurrencyValueMap SubtractToZero(const CCurrencyValueMap& operand) const;
+
+    std::vector<int64_t> AsCurrencyVector(const std::vector<uint160> &currencies) const;
+
+    UniValue ToUniValue() const;
+};
+
 // This defines the currency characteristics of a PBaaS currency that will be the native coins of a PBaaS chain
 class CCurrencyDefinition
 {
