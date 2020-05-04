@@ -1271,12 +1271,12 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     continue;
                                 }
 
-                                //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
+                                printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
 
                                 CCrossChainExport ccx(lastChain, numInputs, totalAmounts, totalTxFees);
 
                                 // make extra outputs for fees in each currency
-                                for (auto &outPair : ccx.CalculateExportFee().valueMap)
+                                for (auto &outPair : ccx.CalculateExportFee().CanonicalMap().valueMap)
                                 {
                                     CReserveTransfer feeOut(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT, 
                                                             outPair.first, outPair.second, 0, outPair.first, DestinationToTransferDestination(feeOutput));
@@ -1310,20 +1310,23 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                     // debugging out
                                     // printf("%s: exported outputs:\n", __func__);
+                                    /*
                                     for (auto &oneout : chainObjects)
                                     {
                                         if (oneout->objectType == CHAINOBJ_RESERVETRANSFER)
                                         {
                                             CReserveTransfer &rt = ((CChainObject<CReserveTransfer> *)(oneout))->object;
-                                            // printf("%s\n", rt.ToUniValue().write(true, 2).c_str());
+                                            printf("%s\n", rt.ToUniValue().write(true, 2).c_str());
                                         }
                                     }
+                                    */
 
                                     CScript opRet = StoreOpRetArray(chainObjects);
                                     DeleteOpRetObjects(chainObjects);
 
                                     // now send transferred currencies to a reserve deposit
                                     cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
+
                                     for (auto &oneCurrencyOut : ccx.totalAmounts.valueMap)
                                     {
                                         CCurrencyDefinition oneDef = currencyDefCache[oneCurrencyOut.first];
@@ -1369,6 +1372,12 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     tb.AddOpRet(opRet);
                                     tb.SetFee(0);
 
+                                    {
+                                        UniValue uni(UniValue::VOBJ);
+                                        TxToUniv(tb.mtx, uint256(), uni);
+                                        printf("%s: about to send reserve deposits with tx:\n%s\n", __func__, uni.write(1,2).c_str());
+                                    }
+
                                     TransactionBuilderResult buildResult(tb.Build());
 
                                     if (!buildResult.IsError() && buildResult.IsTx())
@@ -1390,7 +1399,12 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                             uint256 hash = tx.GetHash();
                                             CAmount nativeExportFees = ccx.totalFees.valueMap[ASSETCHAINS_CHAINID];
                                             mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(nativeExportFees << 1), nativeExportFees);
-                                            RelayTransaction(tx);
+                                        }
+                                        else
+                                        {
+                                            UniValue uni(UniValue::VOBJ);
+                                            TxToUniv(tx, uint256(), uni);
+                                            printf("%s: created invalid tranaction:\n%s\n", __func__, uni.write(1,2).c_str());
                                         }
                                     }
                                     else

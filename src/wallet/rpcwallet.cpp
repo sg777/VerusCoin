@@ -3108,12 +3108,10 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     obj.push_back(Pair("eligible_staking_balance", ValueFromAmount(totalStakingAmount)));
 
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
-    UniValue reserveBal(UniValue::VARR);
+    UniValue reserveBal(UniValue::VOBJ);
     for (auto &oneBalance : pwalletMain->GetReserveBalance().valueMap)
     {
-        UniValue oneCurObj(UniValue::VOBJ);
-        oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
-        reserveBal.push_back(oneCurObj);
+        reserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
     }
     if (reserveBal.size())
     {

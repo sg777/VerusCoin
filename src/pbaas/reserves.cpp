@@ -1761,7 +1761,15 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     {
                         AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
                     }
-                    transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
+                    if (curTransfer.flags & (curTransfer.PREALLOCATE | curTransfer.MINT_CURRENCY))
+                    {
+                        CCurrencyDefinition currencySource = ConnectedChains.GetCachedCurrency(curTransfer.currencyID);
+                        transferFees.valueMap[currencySource.systemID] += curTransfer.nFees;
+                    }
+                    else
+                    {
+                        transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
+                    }
 
                     if (curTransfer.flags & curTransfer.PREALLOCATE)
                     {
@@ -1987,13 +1995,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         {
                             AddReserveOutConverted(curTransfer.destCurrencyID, mintAmount);
                             ro.nValue = mintAmount;
+                            newOut = CTxOut(curTransfer.nFees, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                         }
                         else
                         {
                             AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);
+                            newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                         }
-
-                        newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                     }
                 }
                 vOutputs.push_back(newOut);
