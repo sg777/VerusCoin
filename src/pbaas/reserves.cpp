@@ -1787,6 +1787,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         // by adding it here, it does not affect the input requirements, but it will affect output below
                         mintAmount = it->second;
                     }
+                    else if (curTransfer.flags & curTransfer.MINT_CURRENCY)
+                    {
+                        // by adding it here, it does not affect the input requirements, but it will affect output below
+                        mintAmount = curTransfer.nValue;
+                    }
                 }
 
                 if (curTransfer.flags & curTransfer.PRECONVERT)

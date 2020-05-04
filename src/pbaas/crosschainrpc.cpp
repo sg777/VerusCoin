@@ -48,6 +48,7 @@ using namespace std;
 extern string PBAAS_HOST;
 extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
+extern std::string VERUS_CHAINNAME;
 
 //
 // Exception thrown on connection error.  This error is used to determine
@@ -252,10 +253,15 @@ bool uni_get_bool(UniValue uv, bool def)
             }
             return def;
         }
+        else if (uv.isNum())
+        {
+            return uv.get_int() != 0;
+        }
         else
         {
             return uv.get_bool();
         }
+        return false;
     }
     catch(const std::exception& e)
     {
@@ -350,7 +356,7 @@ uint160 CurrencyNameToChainID(std::string currencyStr)
         return retVal;
     }
     ParseSubNames(currencyStr, extraName, true);
-    if (currencyStr.back() == '@' || extraName != "")
+    if (currencyStr.back() == '@' || (extraName != VERUS_CHAINNAME && extraName != ""))
     {
         return retVal;
     }
@@ -420,7 +426,17 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
         endBlock = uni_get_int(find_value(obj, "endblock"));
 
         proofProtocol = (EProofProtocol)uni_get_int(find_value(obj, "proofprotocol"), (int32_t)PROOF_PBAASMMR);
+        if (proofProtocol != PROOF_PBAASMMR && proofProtocol != PROOF_CHAINID)
+        {
+            LogPrintf("%s: proofprotocol must be either %d or %d\n", __func__, (int)PROOF_PBAASMMR, (int)PROOF_CHAINID);
+            nVersion = PBAAS_VERSION_INVALID;
+        }
         notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_AUTO);
+        if (notarizationProtocol != NOTARIZATION_AUTO)
+        {
+            LogPrintf("%s: notarization protocol must be %d at this time\n", __func__, (int)NOTARIZATION_AUTO);
+            nVersion = PBAAS_VERSION_INVALID;
+        }
         int32_t totalReserveWeight = AmountFromValueNoErr(find_value(obj, "reserveratio"));
         UniValue currencyArr = find_value(obj, "currencies");
         UniValue weightArr = find_value(obj, "weights");
@@ -473,7 +489,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                 }
             }
 
-            // if we have weights, we can be a reserve currency
+            // if we have weights, we can be a fractional currency
             if (weights.size())
             {
                 // if we are a reserve currency, explicit conversion values are not valid

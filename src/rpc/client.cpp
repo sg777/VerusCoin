@@ -4,16 +4,11 @@
 // file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #include <univalue.h>
-#include "rpc/client.h"
 #include "rpc/protocol.h"
 #include "pbaas/crosschainrpc.h"
 #include "pbaas/identity.h"
+#include "rpc/client.h"
 #include "util.h"
-
-#include <set>
-#include <stdint.h>
-
-#include <univalue.h>
 
 using namespace std;
 extern std::string VERUS_CHAINNAME;
@@ -71,10 +66,15 @@ bool uni_get_bool(UniValue uv, bool def)
             }
             return def;
         }
+        else if (uv.isNum())
+        {
+            return uv.get_int() != 0;
+        }
         else
         {
             return uv.get_bool();
         }
+        return false;
     }
     catch(const std::exception& e)
     {
