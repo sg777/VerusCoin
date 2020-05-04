@@ -1398,7 +1398,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         {
                                             UniValue uni(UniValue::VOBJ);
                                             TxToUniv(tx, uint256(), uni);
-                                            printf("%s: created invalid tranaction:\n%s\n", __func__, uni.write(1,2).c_str());
+                                            printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
                                         }
                                     }
                                     else

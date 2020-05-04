@@ -663,44 +663,11 @@ CCurrencyValueMap CCoinsViewCache::GetReserveValueIn(int32_t nHeight, const CTra
         const CCoins* coins = AccessCoins(tx.vin[i].prevout.hash);
         if (coins && coins->IsAvailable(tx.vin[i].prevout.n))
         {
-            COptCCParams p;
-            if (coins->vout[tx.vin[i].prevout.n].scriptPubKey.IsPayToCryptoCondition(p))
-            {
-                if (p.evalCode == EVAL_RESERVE_OUTPUT)
-                {
-                    auto outMap = coins->vout[tx.vin[i].prevout.n].scriptPubKey.ReserveOutValue();
-                    for (auto &outPair : outMap.valueMap)
-                    {
-                        auto it = retMap.valueMap.find(outPair.first);
-                        if (it != retMap.valueMap.end())
-                        {
-                            it->second += outPair.second;
-                        }
-                        else
-                        {
-                            retMap.valueMap[outPair.first] = outPair.second;
-                        }
-                    }
-                }
-                else if (!_IsVerusActive() && coins->fCoinBase && p.evalCode == EVAL_CURRENCYSTATE)
-                {
-                    // if spends currency state, all input comes from that
-                    // rest is burned
-                    CCoinbaseCurrencyState cbcs;
-                    if (p.vData.size() && (cbcs = CCoinbaseCurrencyState(p.vData[0])).IsValid() && cbcs.IsReserve())
-                    {
-                        retMap.valueMap.clear();
-                        for (int i = 0; i < cbcs.currencies.size(); i++)
-                        {
-                            retMap.valueMap[cbcs.currencies[i]] = cbcs.reserveOut[i];
-                        }
-                        break;
-                    }
-                }
-            }
+            retMap += coins->vout[tx.vin[i].prevout.n].scriptPubKey.ReserveOutValue();
         }
         else
         {
+            // if coins aren't available, fail all
             return CCurrencyValueMap();
         }
     }
