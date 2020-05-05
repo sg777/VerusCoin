@@ -2633,7 +2633,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             CCurrencyState currencyState = ConnectedChains.GetCurrencyState(proofheight);
 
             // get the current block's MMR root and proof height
-            CPBaaSNotarization notarization = CPBaaSNotarization(CPBaaSNotarization::CURRENT_VERSION, 
+            CPBaaSNotarization notarization = CPBaaSNotarization(CCurrencyDefinition::NOTARIZATION_AUTO, 
                                                                  ASSETCHAINS_CHAINID,
                                                                  notaryDest,
                                                                  proofheight,

@@ -121,7 +121,7 @@ public:
                        const uint256 &crossnotarization,
                        int32_t crossheight,
                        const COpRetProof &orp,
-                       const std::vector<CNodeData> &Nodes,
+                       const std::vector<CNodeData> &Nodes=std::vector<CNodeData>(),
                        uint32_t version = CURRENT_VERSION) : 
                        nVersion(version),
                        systemID(currencyid),
