@@ -178,14 +178,49 @@ UniValue CNodeData::ToUniValue() const
     return obj;
 }
 
+CCurrencyValueMap::CCurrencyValueMap(const UniValue &uni)
+{
+    // must be an array of key:value, where key is currency ID encoded as i-address
+    if (uni.isObject())
+    {
+        const std::vector<std::string> &keys(uni.getKeys());
+        const std::vector<UniValue> &values(uni.getValues());
+        for (int i = 0; i < keys.size(); i++)
+        {
+            uint160 currencyID = GetDestinationID(DecodeDestination(keys[i]));
+            if (currencyID.IsNull())
+            {
+                LogPrintf("Invalid JSON CurrencyValueMap\n");
+                valueMap.clear();
+                break;
+            }
+            if (valueMap.count(currencyID))
+            {
+                LogPrintf("Duplicate currency in JSON CurrencyValueMap\n");
+                valueMap.clear();
+                break;
+            }
+
+            try
+            {
+                valueMap[currencyID] = AmountFromValueNoErr(values[i]);
+            }
+            catch(const std::exception& e)
+            {
+                std::cerr << e.what() << '\n';
+                valueMap.clear();
+                break;
+            }
+        }
+    }
+}
+
 UniValue CCurrencyValueMap::ToUniValue() const
 {
-    UniValue retVal(UniValue::VARR);
+    UniValue retVal(UniValue::VOBJ);
     for (auto &curValue : valueMap)
     {
-        UniValue obj(UniValue::VOBJ);
-        obj.push_back(Pair(EncodeDestination(CIdentityID(curValue.first)), ValueFromAmount(curValue.second)));
-        retVal.push_back(obj);
+        retVal.push_back(Pair(EncodeDestination(CIdentityID(curValue.first)), ValueFromAmount(curValue.second)));
     }
     return retVal;
 }

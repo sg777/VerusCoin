@@ -1061,43 +1061,6 @@ CAmount AmountFromValueNoErr(const UniValue& value)
     }
 }
 
-CCurrencyValueMap::CCurrencyValueMap(const UniValue &uni)
-{
-    // must be an array of key:value, where key is currency ID encoded as i-address
-    if (uni.isArray())
-    {
-        const std::vector<std::string> &keys = uni.getKeys();
-        const std::vector<UniValue> &values = uni.getValues();
-        for (int i = 0; i < keys.size(); i++)
-        {
-            uint160 currencyID = GetDestinationID(DecodeDestination(keys[i]));
-            if (currencyID.IsNull())
-            {
-                LogPrintf("Invalid JSON CurrencyValueMap\n");
-                valueMap.clear();
-                break;
-            }
-            if (valueMap.count(currencyID))
-            {
-                LogPrintf("Duplicate currency in JSON CurrencyValueMap\n");
-                valueMap.clear();
-                break;
-            }
-
-            try
-            {
-                valueMap[currencyID] = AmountFromValueNoErr(values[i]);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-                valueMap.clear();
-                break;
-            }
-        }
-    }
-}
-
 CCurrencyValueMap::CCurrencyValueMap(const std::vector<uint160> &currencyIDs, const std::vector<CAmount> &amounts)
 {
     int commonNum = currencyIDs.size() >= amounts.size() ? amounts.size() : currencyIDs.size();
