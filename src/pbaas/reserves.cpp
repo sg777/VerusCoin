@@ -2218,7 +2218,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<CRe
                 {
                     newState.reserveIn = AddVectors(
                                             AddVectors(txDesc.ReserveOutConvertedVec(*this), newState.reserveIn),
-                                            AddVectors(txDesc.ReserveFees().AsCurrencyVector(*this), txDesc.ReserveConversionFeesVec(*this))
+                                            AddVectors(txDesc.ReserveFees().AsCurrencyVector(currencies), txDesc.ReserveConversionFeesVec(*this))
                                          );
                     newState.nativeIn = AddVectors(txDesc.NativeOutConvertedVec(*this), newState.nativeIn);
                 }
@@ -2235,7 +2235,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<CRe
             }
             else
             {
-                newState.reserveIn = AddVectors(newState.reserveIn, txDesc.ReserveFees().AsCurrencyVector(*this));
+                newState.reserveIn = AddVectors(newState.reserveIn, txDesc.ReserveFees().AsCurrencyVector(currencies));
             }
             it++;
         }
@@ -2279,7 +2279,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<CRe
             {
                 newState.reserveIn = AddVectors(
                                         AddVectors(marketOrder.second.ReserveOutConvertedVec(*this), newState.reserveIn),
-                                        AddVectors(marketOrder.second.ReserveFees().AsCurrencyVector(*this), marketOrder.second.ReserveConversionFeesVec(*this))
+                                        AddVectors(marketOrder.second.ReserveFees().AsCurrencyVector(currencies), marketOrder.second.ReserveConversionFeesVec(*this))
                                         );
                 newState.nativeIn = AddVectors(marketOrder.second.NativeOutConvertedVec(*this), newState.nativeIn);
             }
@@ -2490,8 +2490,8 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<CRe
                                       newState.nativeIn,
                                       newState.reserveOut, 
                                       exchangeRates, 
-                                      totalReserveFees.AsCurrencyVector(*this), 
-                                      totalReserveConversionFees.AsCurrencyVector(*this));
+                                      totalReserveFees.AsCurrencyVector(currencies), 
+                                      totalReserveConversionFees.AsCurrencyVector(currencies));
 
     prices = exchangeRates;
 

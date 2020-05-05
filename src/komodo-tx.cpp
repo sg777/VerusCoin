@@ -376,31 +376,6 @@ CAmount AmountFromValue(const UniValue& value)
     return amount;
 }
 
-CAmount AmountFromValueNoErr(const UniValue& value)
-{
-    try
-    {
-        CAmount amount;
-        if (!value.isNum() && !value.isStr())
-        {
-            amount = 0;
-        }
-        else if (!ParseFixedPoint(value.getValStr(), 8, &amount))
-        {
-            amount = 0;
-        }
-        else if (!MoneyRange(amount))
-        {
-            amount = 0;
-        }
-        return amount;
-    }
-    catch(const std::exception& e)
-    {
-        return 0;
-    }
-}
-
 static void MutateTxSign(CMutableTransaction& tx, const std::string& strInput)
 {
     // separate HEIGHT:SIGHASH-FLAGS in string

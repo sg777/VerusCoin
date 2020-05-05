@@ -13,6 +13,7 @@
 #include "standard.h"
 #include "pbaas/reserves.h"
 #include "key_io.h"
+#include "univalue.h"
 #include "pbaas/identity.h"
 
 using namespace std;
@@ -1035,3 +1036,360 @@ uint160 GetNameID(const std::string &Name, const uint160 &parent)
     return CIdentity::GetID(Name, writeable);
 }
 
+CAmount AmountFromValueNoErr(const UniValue& value)
+{
+    try
+    {
+        CAmount amount;
+        if (!value.isNum() && !value.isStr())
+        {
+            amount = 0;
+        }
+        else if (!ParseFixedPoint(value.getValStr(), 8, &amount))
+        {
+            amount = 0;
+        }
+        else if (!MoneyRange(amount))
+        {
+            amount = 0;
+        }
+        return amount;
+    }
+    catch(const std::exception& e)
+    {
+        return 0;
+    }
+}
+
+CCurrencyValueMap::CCurrencyValueMap(const UniValue &uni)
+{
+    // must be an array of key:value, where key is currency ID encoded as i-address
+    if (uni.isArray())
+    {
+        const std::vector<std::string> &keys = uni.getKeys();
+        const std::vector<UniValue> &values = uni.getValues();
+        for (int i = 0; i < keys.size(); i++)
+        {
+            uint160 currencyID = GetDestinationID(DecodeDestination(keys[i]));
+            if (currencyID.IsNull())
+            {
+                LogPrintf("Invalid JSON CurrencyValueMap\n");
+                valueMap.clear();
+                break;
+            }
+            if (valueMap.count(currencyID))
+            {
+                LogPrintf("Duplicate currency in JSON CurrencyValueMap\n");
+                valueMap.clear();
+                break;
+            }
+
+            try
+            {
+                valueMap[currencyID] = AmountFromValueNoErr(values[i]);
+            }
+            catch(const std::exception& e)
+            {
+                std::cerr << e.what() << '\n';
+                valueMap.clear();
+                break;
+            }
+        }
+    }
+}
+
+CCurrencyValueMap::CCurrencyValueMap(const std::vector<uint160> &currencyIDs, const std::vector<CAmount> &amounts)
+{
+    int commonNum = currencyIDs.size() >= amounts.size() ? amounts.size() : currencyIDs.size();
+    for (int i = 0; i < commonNum; i++)
+    {
+        valueMap[currencyIDs[i]] = amounts[i];
+    }
+}
+
+bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+{
+    // to be less than means, in this order:
+    // 1. To have fewer non-zero currencies.
+    // 2. If not fewer currencies, to be unable to be subtracted from the one being checked
+    //    without creating negative values
+    if (!a.valueMap.size() && !b.valueMap.size())
+    {
+        return false;
+    }
+    bool isaltb = false;
+
+    for (auto &oneVal : b.valueMap)
+    {
+        if (oneVal.second)
+        {
+            auto it = a.valueMap.find(oneVal.first);
+            if (it == a.valueMap.end() || it->second < oneVal.second)
+            {
+                isaltb = true;
+            }
+        }
+    }
+    return isaltb;
+}
+
+bool operator>(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+{
+    return b < a;
+}
+
+bool operator==(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+{
+    if (a.valueMap.size() != b.valueMap.size())
+    {
+        return false;
+    }
+
+    bool isaeqb = true;
+    for (auto &oneVal : a.valueMap)
+    {
+        auto it = b.valueMap.find(oneVal.first);
+        if (it == b.valueMap.end() || it->second != oneVal.second)
+        {
+            isaeqb = false;
+            break;
+        }
+    }
+    return isaeqb;
+}
+
+bool operator!=(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+{
+    return !(a == b);
+}
+
+bool operator<=(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+{
+    return (a < b) || (a == b);
+}
+
+bool operator>=(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+{
+    return b <= a;
+}
+
+CCurrencyValueMap operator+(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+{
+    CCurrencyValueMap retVal = a;
+    if (a.valueMap.size() || b.valueMap.size())
+    {
+        for (auto &oneVal : b.valueMap)
+        {
+            auto it = retVal.valueMap.find(oneVal.first);
+            if (it == retVal.valueMap.end())
+            {
+                retVal.valueMap[oneVal.first] = oneVal.second;
+            }
+            else
+            {
+                it->second += oneVal.second;
+            }
+        }
+    }
+    return retVal;
+}
+
+CCurrencyValueMap operator-(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+{
+    CCurrencyValueMap retVal = a;
+    if (a.valueMap.size() || b.valueMap.size())
+    {
+        for (auto &oneVal : b.valueMap)
+        {
+            auto it = retVal.valueMap.find(oneVal.first);
+            if (it == retVal.valueMap.end())
+            {
+                retVal.valueMap[oneVal.first] = -oneVal.second;
+            }
+            else
+            {
+                it->second -= oneVal.second;
+            }
+        }
+    }
+    return retVal;
+}
+
+CCurrencyValueMap operator+(const CCurrencyValueMap& a, int b)
+{
+    CCurrencyValueMap retVal = a;
+    for (auto &oneVal : retVal.valueMap)
+    {
+        oneVal.second += b;
+    }
+    return retVal;
+}
+
+CCurrencyValueMap operator-(const CCurrencyValueMap& a, int b)
+{
+    CCurrencyValueMap retVal = a;
+    for (auto &oneVal : retVal.valueMap)
+    {
+        oneVal.second -= b;
+    }
+    return retVal;
+}
+
+CCurrencyValueMap operator*(const CCurrencyValueMap& a, int b)
+{
+    CCurrencyValueMap retVal = a;
+    for (auto &oneVal : retVal.valueMap)
+    {
+        oneVal.second *= b;
+    }
+    return retVal;
+}
+
+const CCurrencyValueMap &CCurrencyValueMap::operator-=(const CCurrencyValueMap& operand)
+{
+    return *this = *this - operand;
+}
+
+const CCurrencyValueMap &CCurrencyValueMap::operator+=(const CCurrencyValueMap& operand)
+{
+    return *this = *this + operand;
+}
+
+// determine if the operand intersects this map
+bool CCurrencyValueMap::Intersects(const CCurrencyValueMap& operand) const
+{
+    bool retVal = false;
+
+    if (valueMap.size() && operand.valueMap.size())
+    {
+        for (auto &oneVal : valueMap)
+        {
+            auto it = operand.valueMap.find(oneVal.first);
+            if (it != operand.valueMap.end())
+            {
+                if (it->second > 0 && oneVal.second > 0)
+                {
+                    retVal = true;
+                    break;
+                }
+            }
+        }
+    }
+    return retVal;
+}
+
+CCurrencyValueMap CCurrencyValueMap::IntersectingValues(const CCurrencyValueMap& operand) const
+{
+    CCurrencyValueMap retVal;
+
+    if (valueMap.size() && operand.valueMap.size())
+    {
+        for (auto &oneVal : valueMap)
+        {
+            auto it = operand.valueMap.find(oneVal.first);
+            if (it != operand.valueMap.end() &&
+                it->second != 0 && 
+                oneVal.second != 0)
+            {
+                retVal.valueMap[oneVal.first] = oneVal.second;
+            }
+        }
+    }
+    return retVal;
+}
+
+CCurrencyValueMap CCurrencyValueMap::CanonicalMap() const
+{
+    CCurrencyValueMap retVal;
+    for (auto valPair : valueMap)
+    {
+        if (valPair.second != 0)
+        {
+            retVal.valueMap.insert(valPair);
+        }
+    }
+    return retVal;
+}
+
+CCurrencyValueMap CCurrencyValueMap::NonIntersectingValues(const CCurrencyValueMap& operand) const
+{
+    CCurrencyValueMap retVal = operand;
+
+    if (valueMap.size() && operand.valueMap.size())
+    {
+        for (auto &oneVal : valueMap)
+        {
+            auto it = operand.valueMap.find(oneVal.first);
+            if (it != operand.valueMap.end())
+            {
+                if (it->second > 0 && oneVal.second > 0)
+                {
+                    retVal.valueMap.erase(it);
+                }
+            }
+        }
+    }
+    return retVal;
+}
+
+bool CCurrencyValueMap::IsValid() const
+{
+    for (auto &oneVal : valueMap)
+    {
+        if (oneVal.first.IsNull())
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool CCurrencyValueMap::HasNegative() const
+{
+    for (auto &oneVal : valueMap)
+    {
+        if (oneVal.second < 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// subtract, but do not subtract to negative values
+CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& operand) const
+{
+    CCurrencyValueMap retVal = *this;
+    std::vector<uint160> toRemove;
+    if (valueMap.size() && operand.valueMap.size())
+    {
+        for (auto &oneVal : retVal.valueMap)
+        {
+            auto it = operand.valueMap.find(oneVal.first);
+            if (it != operand.valueMap.end())
+            {
+                oneVal.second = oneVal.second - it->second;
+                if (oneVal.second <= 0)
+                {
+                    toRemove.push_back(oneVal.first);
+                }
+            }
+        }
+    }
+    for (auto &toErase : toRemove)
+    {
+        retVal.valueMap.erase(toErase);
+    }
+    return retVal;
+}
+
+std::vector<CAmount> CCurrencyValueMap::AsCurrencyVector(const std::vector<uint160> &currencies) const
+{
+    std::vector<CAmount> retVal(currencies.size());
+    for (int i = 0; i < currencies.size(); i++)
+    {
+        auto it = valueMap.find(currencies[i]);
+        retVal[i] = it != valueMap.end() ? it->second : 0;
+    }
+    return retVal;
+}

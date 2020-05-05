@@ -361,7 +361,6 @@ libbitcoin_server_a_SOURCES = \
   net.cpp \
   noui.cpp \
   notarisationdb.cpp \
-  pbaas/crosschainrpc.cpp \
   pbaas/identity.cpp \
   pbaas/notarization.cpp \
   pbaas/pbaas.cpp \
@@ -531,6 +530,7 @@ libbitcoin_common_a_SOURCES = \
   netbase.cpp \
   metrics.cpp \
   mmr.cpp \
+  pbaas/crosschainrpc.cpp \
   primitives/block.cpp \
   primitives/transaction.cpp \
   primitives/nonce.cpp \
@@ -674,6 +674,7 @@ verus_LDADD = \
 if ENABLE_WALLET
 wallet_utility_LDADD = \
 	libbitcoin_wallet.a \
+  $(LIBUNIVALUE) \
 	$(LIBBITCOIN_COMMON) \
 	$(LIBBITCOIN_CRYPTO) \
 	$(LIBVERUS_CRYPTO) \
@@ -699,9 +700,9 @@ if TARGET_WINDOWS
 verus_tx_SOURCES += bitcoin-tx-res.rc
 endif
 
-# FIXME: Is libzcash needed for zcash_tx?
 verus_tx_LDADD = \
   $(LIBUNIVALUE) \
+	$(BOOST_LIBS) \
   $(LIBBITCOIN_COMMON) \
   $(LIBBITCOIN_UTIL) \
   $(LIBSECP256K1) \

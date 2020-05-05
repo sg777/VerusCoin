@@ -153,6 +153,8 @@ public:
     }
 };
 
+extern int64_t AmountFromValueNoErr(const UniValue& value);
+
 // convenience class for collections of currencies that supports comparisons, including ==, >, >=, <, <=, as well as addition, and subtraction
 class CCurrencyValueMap
 {
