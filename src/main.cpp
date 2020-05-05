@@ -2827,9 +2827,6 @@ namespace Consensus {
         if (nValueIn < tx.GetValueOut())
         {
             fprintf(stderr,"spentheight.%d valuein %s vs %s error\n",nSpendHeight,FormatMoney(nValueIn).c_str(), FormatMoney(tx.GetValueOut()).c_str());
-            UniValue jsonTx(UniValue::VOBJ);
-            TxToUniv(tx, uint256(), jsonTx);
-            fprintf(stderr,"%s\n", jsonTx.write(1,2).c_str());
             return state.DoS(100, error("CheckInputs(): %s value in (%s) < value out (%s) diff %.8f",
                                         tx.GetHash().ToString(), FormatMoney(nValueIn), FormatMoney(tx.GetValueOut()),((double)nValueIn - tx.GetValueOut())/COIN),REJECT_INVALID, "bad-txns-in-belowout");
         }
@@ -2838,6 +2835,9 @@ namespace Consensus {
         {
             fprintf(stderr,"spentheight.%d reservevaluein: %s\nis less than out: %s\n", nSpendHeight,
                     ReserveValueIn.ToUniValue().write(1, 2).c_str(), tx.GetReserveValueOut().ToUniValue().write(1, 2).c_str());
+            UniValue jsonTx(UniValue::VOBJ);
+            TxToUniv(tx, uint256(), jsonTx);
+            fprintf(stderr,"%s\n", jsonTx.write(1,2).c_str());
             return state.DoS(100, error("CheckInputs(): reserve value in < reserve value out"), REJECT_INVALID, "bad-txns-reservein-belowout");
         }
 

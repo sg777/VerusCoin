@@ -502,13 +502,11 @@ BlockMMRange CBlock::BuildBlockMMRTree() const
     return mmRange;
 }
 
-
 BlockMMRange CBlock::GetBlockMMRTree() const
 {
     // no caching yet, the anticipation of which is why this is separate from build
     return BuildBlockMMRTree();
 }
-
 
 CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes) const
 {

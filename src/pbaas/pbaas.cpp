@@ -1366,11 +1366,11 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     tb.AddOpRet(opRet);
                                     tb.SetFee(0);
 
-                                    {
+                                    /* {
                                         UniValue uni(UniValue::VOBJ);
                                         TxToUniv(tb.mtx, uint256(), uni);
                                         printf("%s: about to send reserve deposits with tx:\n%s\n", __func__, uni.write(1,2).c_str());
-                                    }
+                                    } */
 
                                     TransactionBuilderResult buildResult(tb.Build());
 

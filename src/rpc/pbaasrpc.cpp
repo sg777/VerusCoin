@@ -820,7 +820,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCrossChainImport cci = CCrossChainImport(ccx.systemID, 
                                                       rtxd.ReserveOutConvertedMap() + 
                                                         CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>(nativeOutConverted)),
-                                                      leftoverCurrency);
+                                                      leftoverCurrency.CanonicalMap());
 
             newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
 
@@ -850,7 +850,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                                                             {CTransactionHeader::TX_OUTPUT, (int16_t)(aixIt->second.second.vout.size() - 1)}});
 
             // prove our transaction up to the MMR root of the last transaction
-            CPartialTransactionProof exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.index, parts);
+            CPartialTransactionProof exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.txindex, parts);
+            if (!exportProof.components.size())
+            {
+                LogPrintf("%s: could not create partial transaction proof in block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
+                printf("%s: could not create partial transaction proof in block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
+                return false;
+            }
             exportProof.txProof << block.MMRProofBridge();
 
             // TODO: don't include chain MMR proof for exports from the same chain
@@ -3329,7 +3335,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         {
             UniValue jsonTx(UniValue::VOBJ);
             TxToUniv(wtx, uint256(), jsonTx);
-            printf("%s\n", jsonTx.write(1,2).c_str());
+            LogPrintf("%s\n", jsonTx.write(1,2).c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit reserve transaction " + wtx.GetHash().GetHex());
         }
         else
@@ -3596,9 +3602,9 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
         return ret;
     }
 
-    UniValue txUniv(UniValue::VOBJ);
-    TxToUniv(lastImportTx, uint256(), txUniv);
-    printf("lastImportTx%s\n", txUniv.write(1,2).c_str());
+    //UniValue txUniv(UniValue::VOBJ);
+    //TxToUniv(lastImportTx, uint256(), txUniv);
+    //printf("lastImportTx%s\n", txUniv.write(1,2).c_str());
 
     DeleteOpRetObjects(chainObjs);
 
@@ -3908,7 +3914,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                                                                 {CTransactionHeader::TX_OUTPUT, (int16_t)(aixIt->second.second.vout.size() - 1)}});
 
                 // prove our transaction up to the block MMR root only, since this is not cross chain
-                auto exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.index, parts);
+                auto exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.txindex, parts);
 
                 // add it to the export transaction proof, now proven up to the MMR root of the last confirmed transaction
                 CCrossChainProof exportTransactionProof;

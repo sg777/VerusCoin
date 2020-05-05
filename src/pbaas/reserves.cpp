@@ -1506,24 +1506,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
                             if (curTransfer.currencyID != systemDestID)
                             {
-                                if (currencyDest.IsToken())
-                                {
-                                    AddReserveOutput(curTransfer.currencyID, (curTransfer.nValue + curTransfer.nFees) - totalReserveFee);
-                                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CIdentityID(currencyDest.GetID())});
-                                    CTokenOutput ro = CTokenOutput(curTransfer.destCurrencyID, newCurrencyConverted);
-                                    vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
-                                }
+                                AddReserveOutput(curTransfer.currencyID, (curTransfer.nValue + curTransfer.nFees) - totalReserveFee);
+                                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CIdentityID(currencyDest.GetID())});
+                                CTokenOutput ro = CTokenOutput(curTransfer.currencyID, (curTransfer.nValue + curTransfer.nFees) - totalReserveFee);
+                                vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
                             }
                             else
                             {
                                 newNativeFees = totalReserveFee;
                                 totalReserveFee = 0;
-                                if (currencyDest.IsToken())
-                                {
-                                    CAmount oneNative = (curTransfer.nValue + curTransfer.nFees) - newNativeFees;
-                                    nativeOut += oneNative;
-                                    vOutputs.push_back(CTxOut(oneNative, GetScriptForDestination(CIdentityID(currencyDest.GetID()))));
-                                }
+                                CAmount oneNative = (curTransfer.nValue + curTransfer.nFees) - newNativeFees;
+                                nativeOut += oneNative;
+                                vOutputs.push_back(CTxOut(oneNative, GetScriptForDestination(CIdentityID(currencyDest.GetID()))));
                             }
                         }
                         else
