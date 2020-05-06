@@ -1512,7 +1512,7 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
 
 bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vector<CTransaction> &newRefunds, std::string &errorReason);
 
-CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, int32_t definitionHeight)
+CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, int32_t definitionHeight, CCurrencyValueMap &fees)
 {
     // if we are getting information on the current chain, we assume that preconverted amounts have been
     // pre-calculated. otherwise, we will calculate them.
@@ -1521,15 +1521,23 @@ CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, i
     {
         std::multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferInputs;
         CCurrencyValueMap preconvertedAmounts;
-        CCurrencyValueMap fees;
-        bool isReserve = chainDef.ChainOptions() & CCurrencyDefinition::OPTION_FRACTIONAL;
 
         if (GetChainTransfers(transferInputs, chainDef.GetID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
         {
-            for (auto transfer : transferInputs)
+            for (auto &transfer : transferInputs)
             {
-                preconvertedAmounts.valueMap[transfer.second.second.currencyID] += transfer.second.second.nValue;
-                fees.valueMap[transfer.second.second.currencyID] += transfer.second.second.nFees;
+                auto curMap = chainDef.GetCurrenciesMap();
+                if (!(transfer.second.second.flags & CReserveTransfer::PREALLOCATE) && curMap.count(transfer.second.second.currencyID))
+                {
+                    CAmount conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
+                    preconvertedAmounts.valueMap[transfer.second.second.currencyID] += (transfer.second.second.nValue - conversionFee);
+                    fees.valueMap[transfer.second.second.currencyID] += transfer.second.second.nFees + conversionFee;
+                }
+            }
+            retVal = preconvertedAmounts;
+            if (!chainDef.IsToken() && !(chainDef.ChainOptions() & chainDef.OPTION_FEESASRESERVE))
+            {
+                retVal += fees;
             }
         }
     }
@@ -1537,7 +1545,6 @@ CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, i
     {
         retVal = CCurrencyValueMap(chainDef.currencies, chainDef.preconverted);
     }
-    
     return retVal;
 }
 
@@ -1576,7 +1583,7 @@ void CConnectedChains::ProcessLocalImports()
                 continue;
             }
             // we have started and this currency is controlled by our chain, check or create its launch notarization
-            else if (exportDef.systemID == thisChainID)
+            else if (exportThread.first != thisChainID && exportDef.systemID == thisChainID)
             {
                 CChainNotarizationData cnd;
                 std::vector<std::pair<CTransaction, uint256>> notarizations;
@@ -1595,8 +1602,8 @@ void CConnectedChains::ProcessLocalImports()
                 if (cnd.vtx.back().second.prevHeight == 0)
                 {
                     // check if the chain is qualified for a refund
-                    CCurrencyValueMap minPreMap, preConvertedMap;
-                    exportDef.preconverted = CalculatePreconversions(exportDef, defHeight).AsCurrencyVector(exportDef.currencies);
+                    CCurrencyValueMap minPreMap, preConvertedMap, fees;
+                    exportDef.preconverted = CalculatePreconversions(exportDef, defHeight, fees).AsCurrencyVector(exportDef.currencies);
                     CCoinbaseCurrencyState initialCur = GetInitialCurrencyState(exportDef);
                     if (minPreMap > preConvertedMap &&
                         (preConvertedMap = CCurrencyValueMap(exportDef.currencies, initialCur.reserveIn)) < minPreMap)

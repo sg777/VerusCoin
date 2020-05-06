@@ -1468,17 +1468,28 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                             printf("%s\n", EncodeDestination(oneDest).c_str());
                         }
                     }
-                    COptCCParams p;
+                    COptCCParams p, m;
                     CReserveTransfer rt;
-                    if (ntx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                    if (ntx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
                         p.evalCode == EVAL_RESERVE_TRANSFER &&
-                        p.vData.size() && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
-                        p.vKeys.size() > 1 &&
-                        (nofilter || GetDestinationID(p.vKeys[1]) == chainFilter) &&
+                        p.vData.size() > 1 && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                        (m = COptCCParams(p.vData[1])).IsValid() &&
+                        (nofilter || (m.vKeys.size() > 1 && GetDestinationID(m.vKeys[1]) == chainFilter)) &&
                         (rt.flags & flags) == flags)
                     {
                         inputDescriptors.insert(make_pair(GetDestinationID(p.vKeys[1]),
                                                     make_pair(CInputDescriptor(ntx.vout[i].scriptPubKey, ntx.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))), rt)));
+                    }
+                    else if (p.IsValid() &&
+                             p.evalCode == EVAL_RESERVE_TRANSFER &&
+                             p.version != p.VERSION_V3)
+                    {
+                        // if we change the version, stop here in case it wasn't caught
+                        assert(false);
+                    }
+                    else if (m.IsValid() && m.vKeys.size() > 1)
+                    {
+                        printf("%s, %x, %x\n", EncodeDestination(m.vKeys[1]).c_str(), rt.flags, flags);
                     }
                 }
             }
@@ -2796,22 +2807,23 @@ CCoinbaseCurrencyState GetInitialCurrencyState(CCurrencyDefinition &chainDef)
     if (isReserve)
     {
         cState = CCurrencyState(chainDef.currencies,
-                                   chainDef.weights,
-                                   std::vector<int64_t>(chainDef.currencies.size()), 0, 0, 0, CCurrencyState::VALID + CCurrencyState::ISRESERVE);
+                                chainDef.weights,
+                                std::vector<int64_t>(chainDef.currencies.size()), 0, 0, 0, CCurrencyState::VALID + CCurrencyState::ISRESERVE);
         CCurrencyState tmpState;
         chainDef.conversions = cState.ConvertAmounts(chainDef.preconverted, std::vector<int64_t>(chainDef.currencies.size()), tmpState);
         cState = tmpState;
     }
     else
     {
+        cState.currencies = chainDef.currencies;
         CAmount PreconvertedNative = cState.ReserveToNativeRaw(CCurrencyValueMap(chainDef.currencies, chainDef.preconverted), chainDef.conversions);
-        CCurrencyState cState(std::vector<uint160>(0), 
-                                 std::vector<int32_t>(0), 
-                                 std::vector<int64_t>(0), 
-                                 0, 
-                                 PreconvertedNative, 
-                                 PreconvertedNative, 
-                                 CCurrencyState::VALID);
+        cState = CCurrencyState(std::vector<uint160>(0), 
+                                std::vector<int32_t>(0), 
+                                std::vector<int64_t>(0), 
+                                0, 
+                                PreconvertedNative,
+                                PreconvertedNative, 
+                                CCurrencyState::VALID);
     }
 
     cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
@@ -4083,7 +4095,8 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
     }
 
     // get accurate preconversions
-    chainDef.preconverted = CalculatePreconversions(chainDef, definitionHeight).AsCurrencyVector(chainDef.currencies);
+    CCurrencyValueMap fees;
+    chainDef.preconverted = CalculatePreconversions(chainDef, definitionHeight, fees).AsCurrencyVector(chainDef.currencies);
     return GetInitialCurrencyState(chainDef).ToUniValue();
 }
 
