@@ -1625,10 +1625,16 @@ void CConnectedChains::ProcessLocalImports()
                 {
                     // check if the chain is qualified for a refund
                     CCurrencyValueMap minPreMap, preConvertedMap, fees;
-                    exportDef.preconverted = CalculatePreconversions(exportDef, defHeight, fees).AsCurrencyVector(exportDef.currencies);
+                    preConvertedMap = CalculatePreconversions(exportDef, defHeight, fees).CanonicalMap();
+                    exportDef.preconverted = preConvertedMap.AsCurrencyVector(exportDef.currencies);
                     CCoinbaseCurrencyState initialCur = GetInitialCurrencyState(exportDef);
-                    if (minPreMap > preConvertedMap &&
-                        (preConvertedMap = CCurrencyValueMap(exportDef.currencies, initialCur.reserveIn)) < minPreMap)
+
+                    if (exportDef.minPreconvert.size() && exportDef.minPreconvert.size() == exportDef.currencies.size())
+                    {
+                        minPreMap = CCurrencyValueMap(exportDef.currencies, exportDef.minPreconvert).CanonicalMap();
+                    }
+
+                    if (minPreMap.valueMap.size() && preConvertedMap < minPreMap)
                     {
                         // we force the supply to zero
                         // in any case where there was a minimum participation,
