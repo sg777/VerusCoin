@@ -1760,10 +1760,17 @@ void komodo_args(char *argv0)
     */
 
     // setting test mode also prevents the name of this chain from being set to VRSC
-    name = GetArg("-chain", name == "" ? "VRSC" : name);
+
+    // for testnet release, default to testnet
+    name = GetArg("-chain", name == "" ? "VRSCTEST" : name);
+    //name = GetArg("-chain", name == "" ? "VRSC" : name);
+
     name = GetArg("-ac_name", name);
+
     if (PBAAS_TESTMODE && name == "VRSC")
     {
+        // for testnet release, default to testnet
+        name = "VRSCTEST";
         PBAAS_TESTMODE = false;
     }
     else if (name == "VRSCTEST" && !PBAAS_TESTMODE)
@@ -1859,7 +1866,7 @@ void komodo_args(char *argv0)
                 UniValue result;
                 try
                 {
-                    result = RPCCallRoot("getcurrencydefinition", params);
+                    result = RPCCallRoot("getcurrency", params);
                     // set local parameters
                     result = find_value(result, "result");
                     if (result.isNull() || !SetThisChain(result))
@@ -1874,7 +1881,7 @@ void komodo_args(char *argv0)
                     if (result.size() > 0)
                     {
                         // load the mapArgs from the chain definition
-                        printf("getcurrencydefinition result:\n");
+                        printf("getcurrency result:\n");
                         auto keys = result.getKeys();
                         auto values = result.getValues();
                         for (int i = 0; i < keys.size(); i++)

@@ -1595,6 +1595,8 @@ void CConnectedChains::ProcessLocalImports()
             }
             currencyDefCache[exportThread.first] = exportDef;
 
+            printf("processing exports for currency: %s\n", exportDef.name.c_str());
+
             // if it is not launched, check and initiate refund if we control this currency
             bool refunding = false;
 
@@ -1768,7 +1770,7 @@ void CConnectedChains::ProcessLocalImports()
                 }
                 else if (cnd.vtx.size() > 1)
                 {
-                    if (minPreMap.valueMap.size() && !cnd.vtx[cnd.bestChain].second.currencyState.supply)
+                    if (minPreMap.valueMap.size() && !cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.supply)
                     {
                         refunding = true;
                     }
