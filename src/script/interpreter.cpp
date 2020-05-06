@@ -1663,7 +1663,6 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                 nHashType = signatures.sigHashType;
                 for (auto &sig : signatures.signatures)
                 {
-
                     if (sig.second.sigType != sig.second.SIGTYPE_SECP256K1 || !sig.second.signature.size() || !cc_ApplySecp256k1Signature(outputCC, sig.second.pubKeyData.data(), sig.first.begin(), sig.second.signature.data()))
                     {
                         success = false;

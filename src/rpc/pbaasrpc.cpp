@@ -2268,7 +2268,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 CAmount value;
                 const CScript *pScriptPubKey;
 
-                // if this is our coinbase input, we won't find it elsewhere
                 if (i < notarizationInputs.size())
                 {
                     pScriptPubKey = &notarizationInputs[i].scriptPubKey;
@@ -2782,35 +2781,6 @@ UniValue listreservetransactions(const UniValue& params, bool fHelp)
     }
     // lists all transactions in a wallet that are 
     return NullUniValue;
-}
-
-CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, int32_t definitionHeight)
-{
-    // if we are getting information on the current chain, we assume that preconverted amounts have been
-    // pre-calculated. otherwise, we will calculate them.
-    CCurrencyValueMap retVal;
-    if (chainDef.GetID() != ConnectedChains.ThisChain().GetID())
-    {
-        std::multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferInputs;
-        CCurrencyValueMap preconvertedAmounts;
-        CCurrencyValueMap fees;
-        bool isReserve = chainDef.ChainOptions() & CCurrencyDefinition::OPTION_FRACTIONAL;
-
-        if (GetChainTransfers(transferInputs, chainDef.GetID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
-        {
-            for (auto transfer : transferInputs)
-            {
-                preconvertedAmounts.valueMap[transfer.second.second.currencyID] += transfer.second.second.nValue;
-                fees.valueMap[transfer.second.second.currencyID] += transfer.second.second.nFees;
-            }
-        }
-    }
-    else
-    {
-        retVal = CCurrencyValueMap(chainDef.currencies, chainDef.preconverted);
-    }
-    
-    return retVal;
 }
 
 // this must be called after all initial contributions are updated in the currency definition.
