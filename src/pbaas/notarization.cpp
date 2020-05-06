@@ -807,7 +807,7 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
                 // block is correct, check tx
                 CTransaction notTx;
                 CPBaaSNotarization cpbn;
-                if (txProof.CheckPartialTransaction(notTx) != mmrProofResult)
+                if (txProof.GetPartialTransaction(notTx) != mmrProofResult)
                 {
                     LogPrintf("%s: prior notarization fails proof validation on its home chain\n", __func__);
                     fail = true;

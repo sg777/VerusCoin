@@ -1271,7 +1271,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     continue;
                                 }
 
-                                printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
+                                //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
 
                                 CCrossChainExport ccx(lastChain, numInputs, totalAmounts, totalTxFees);
 
@@ -1386,8 +1386,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         mempool.removeConflicts(tx, removed);
 
                                         // add to mem pool, prioritize according to the fee we will get, and relay
-                                        printf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
-                                        LogPrintf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
+                                        //printf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
+                                        //LogPrintf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
                                         if (myAddtomempool(tx))
                                         {
                                             uint256 hash = tx.GetHash();
@@ -1728,9 +1728,11 @@ void CConnectedChains::ProcessLocalImports()
                     {
                         if (state.GetRejectCode() != REJECT_DUPLICATE)
                         {
-                            UniValue uniTx(UniValue::VOBJ);
-                            TxToUniv(ntx, uint256(), uniTx);
-                            printf("ERROR: could not create launch notarization for currency %s: %s\ntx: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str(), uniTx.write(1,2).c_str());
+                            //UniValue uniTx(UniValue::VOBJ);
+                            //TxToUniv(ntx, uint256(), uniTx);
+                            //printf("ERROR: could not create launch notarization for currency %s: %s\ntx: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str(), uniTx.write(1,2).c_str());
+                            printf("ERROR: could not create launch notarization for currency %s: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str());
+                            LogPrintf("ERROR: could not create launch notarization for currency %s: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str());
                         }
                     }
                     // we will import after the launch notarization is mined/staked
@@ -1827,6 +1829,7 @@ void CConnectedChains::ProcessLocalImports()
                     {
                         // add the reserve deposit inputs to the first transaction
                         // the  outputs should have been automatically propagated through
+                        // TODO - get reserve deposits from exports, not all at once, as in refunds
                         for (auto &oneOut : reserveDeposits)
                         {
                             firstImport.vin.push_back(CTxIn(oneOut.first.txhash, oneOut.first.index));

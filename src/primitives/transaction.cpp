@@ -776,7 +776,6 @@ uint256 CPartialTransactionProof::CheckPartialTransaction(CTransaction &outTx, b
             {
                 *pIsPartial = false;
             }
-            
             txRoot = outTx.GetHash();
         }
     }

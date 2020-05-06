@@ -465,7 +465,7 @@ bool CConnectedChains::GetLastImport(const uint160 &systemID,
         crossChainExport = ((CChainObject<CPartialTransactionProof> *)opRetArr[0])->object;
         DeleteOpRetObjects(opRetArr);
         CTransaction tx;
-        if (crossChainExport.CheckPartialTransaction(tx).IsNull())
+        if (crossChainExport.GetPartialTransaction(tx).IsNull())
         {
             return false;
         }
@@ -1260,7 +1260,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
     LOCK(cs_main);
 
-    if ((IsVerusActive() && GetCurrencyDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetID() == chainID)
+    if (GetCurrencyDefinition(chainID, chainDef, &defHeight))
     {
         // which transaction are we in this block?
         std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
@@ -1290,7 +1290,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
                         if (opretImports.size() >= 1 && 
                             opretImports[0]->objectType == CHAINOBJ_TRANSACTION_PROOF && 
-                            !((CChainObject<CPartialTransactionProof> *)opretImports[0])->object.CheckPartialTransaction(exportTx).IsNull() &&
+                            !((CChainObject<CPartialTransactionProof> *)opretImports[0])->object.GetPartialTransaction(exportTx).IsNull() &&
                             (ccx = CCrossChainExport(exportTx)).IsValid() && 
                             ccx.numInputs &&
                             exportTx.vout.size() && 
@@ -1454,6 +1454,7 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                 for (int i = 0; i < ntx.vout.size(); i++)
                 {
                     // if this is a transfer output, optionally to this chain, add it to the input vector
+                    /*
                     std::vector<CTxDestination> dests;
                     int numRequired = 0;
                     txnouttype typeRet;
@@ -1468,6 +1469,8 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                             printf("%s\n", EncodeDestination(oneDest).c_str());
                         }
                     }
+                    */
+
                     COptCCParams p, m;
                     CReserveTransfer rt;
                     if (ntx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -3655,7 +3658,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
 
     if (lastExportTxProof.txProof.proofSequence.size())
     {
-        lastExportHash = lastExportTxProof.CheckPartialTransaction(lastExportTx);
+        lastExportHash = lastExportTxProof.GetPartialTransaction(lastExportTx);
         CTransaction tx;
         uint256 blkHash;
         BlockMap::iterator blkMapIt;

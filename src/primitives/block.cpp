@@ -512,16 +512,13 @@ CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &
 {
     std::vector<CTransactionComponentProof> components;
 
-    if (IsPBaaS())
+    if (IsPBaaS() != 0)
     {
         // make a partial transaction proof for the export opret only
         BlockMMRange blockMMR(BuildBlockMMRTree());
         BlockMMView blockMMV(blockMMR);
         CMMRProof txProof;
 
-        CTransactionMap txMap(tx);
-        TransactionMMView txMMV(txMap.transactionMMR);
-        
         if (!blockMMV.GetProof(txProof, txIndex))
         {
             LogPrintf("%s: Cannot make transaction proof in block\n", __func__);
@@ -529,6 +526,9 @@ CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &
             return CPartialTransactionProof();
         }
 
+        CTransactionMap txMap(tx);
+        TransactionMMView txMMV(txMap.transactionMMR);
+        
         for (auto &partIdx : partIndexes)
         {
             components.push_back(CTransactionComponentProof(txMMV, txMap, tx, partIdx.first, partIdx.second));
