@@ -713,6 +713,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             // if no prepared input, make one
             if (!newImportTx.vin.size())
             {
+                //printf("adding input: %s, %d\n", lastImport.GetHash().GetHex().c_str(), importOutNum);
                 newImportTx.vin.push_back(CTxIn(lastImport.GetHash(), importOutNum));
             }
 
@@ -872,6 +873,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             lastImport = newImportTx;
             newImports.push_back(lastImport);
             lastExportHash = aixIt->second.first.txhash;
+            //printf("loop again with lastImport.GetHash(): %s, lastExportHash %s\n", lastImport.GetHash().GetHex().c_str(), lastExportHash.GetHex().c_str());
         }
     }
     return true;
@@ -1431,7 +1433,7 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressIndex(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_RESERVE_TRANSFER), 1, addressIndex, start, end))
+    if (!GetAddressIndex(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER), 1, addressIndex, start, end))
     {
         return false;
     }
@@ -1489,10 +1491,6 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                     {
                         // if we change the version, stop here in case it wasn't caught
                         assert(false);
-                    }
-                    else if (m.IsValid() && m.vKeys.size() > 1)
-                    {
-                        printf("%s, %x, %x\n", EncodeDestination(m.vKeys[1]).c_str(), rt.flags, flags);
                     }
                 }
             }

@@ -1425,22 +1425,36 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
 void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastImportTx, const std::vector<CTransaction> &transactions)
 {
-    uint32_t consensusBranchId = CurrentEpochBranchId(chainActive.LastTip()->GetHeight(), Params().GetConsensus());
+    int nHeight = chainActive.LastTip()->GetHeight();
+    uint32_t consensusBranchId = CurrentEpochBranchId(nHeight, Params().GetConsensus());
     LOCK2(cs_main, mempool.cs);
 
-    // sign and commit the transactions
-    for (auto &tx : transactions)
-    {
-        //DEBUGGING
-        // extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
-        // UniValue jsonTX(UniValue::VOBJ);
-        // TxToJSON(tx, uint256(), jsonTX);
-        // printf("signed transaction:\n%s\n", jsonTX.write(1, 2).c_str());
+    uint256 lastHash, lastSignedHash;
+    CCoinsViewCache view(pcoinsTip);
 
-        CMutableTransaction newTx(tx);
+    // sign and commit the transactions
+    for (auto &_tx : transactions)
+    {
+        CMutableTransaction newTx(_tx);
+
+        if (!lastHash.IsNull())
+        {
+            //printf("last hash before signing: %s\n", lastHash.GetHex().c_str());
+            for (auto &oneIn : newTx.vin)
+            {
+                //printf("checking input with hash: %s\n", oneIn.prevout.hash.GetHex().c_str());
+                if (oneIn.prevout.hash == lastHash)
+                {
+                    oneIn.prevout.hash = lastSignedHash;
+                    //printf("updated hash before signing: %s\n", lastSignedHash.GetHex().c_str());
+                }
+            }
+        }
+        lastHash = _tx.GetHash();
+        CTransaction tx = newTx;
 
         // sign the transaction and submit
-        bool signSuccess;
+        bool signSuccess = false;
         for (int i = 0; i < tx.vin.size(); i++)
         {
             SignatureData sigdata;
@@ -1454,7 +1468,6 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
             }
             else
             {
-                CCoinsViewCache view(pcoinsTip);
                 CCoins coins;
                 if (!view.GetCoins(tx.vin[i].prevout.hash, coins))
                 {
@@ -1506,6 +1519,15 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
                 }
                 break;
             }
+            else
+            {
+                UpdateCoins(signedTx, view, nHeight);
+                lastSignedHash = signedTx.GetHash();
+            }
+        }
+        else
+        {
+            break;
         }
     }
 }
@@ -1731,7 +1753,7 @@ void CConnectedChains::ProcessLocalImports()
                             //UniValue uniTx(UniValue::VOBJ);
                             //TxToUniv(ntx, uint256(), uniTx);
                             //printf("ERROR: could not create launch notarization for currency %s: %s\ntx: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str(), uniTx.write(1,2).c_str());
-                            printf("ERROR: could not create launch notarization for currency %s: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str());
+                            //printf("ERROR: could not create launch notarization for currency %s: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str());
                             LogPrintf("ERROR: could not create launch notarization for currency %s: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str());
                         }
                     }
@@ -1760,9 +1782,18 @@ void CConnectedChains::ProcessLocalImports()
 
             bool found = false;
 
-            if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(exportThread.first, EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
+            if (refunding)
             {
-                // if one spends the prior one, get the one that is not spent
+                std::vector<CTransaction> newRefunds;
+                std::string failReason;
+                if (!RefundFailedLaunch(exportThread.first, lastImportTx, newRefunds, failReason))
+                {
+                    LogPrintf("%s: ERROR refunding token %s: %s\n", __func__, exportDef.name.c_str(), failReason.c_str());
+                }
+                continue;
+            }
+            else if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(exportThread.first, EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
+            {
                 for (auto txidx : unspentOutputs)
                 {
                     uint256 blkHash;
@@ -1772,20 +1803,7 @@ void CConnectedChains::ProcessLocalImports()
                         (oneCCI = CCrossChainImport(lastImportTx)).IsValid() &&
                         oneCCI.systemID == exportDef.GetID())
                     {
-                        if (refunding)
-                        {
-                            std::vector<CTransaction> newRefunds;
-                            std::string failReason;
-                            if (!RefundFailedLaunch(exportThread.first, lastImportTx, newRefunds, failReason))
-                            {
-                                LogPrintf("%s: ERROR refunding token %s: %s\n", __func__, exportDef.name.c_str(), failReason.c_str());
-                            }
-                        }
-                        else
-                        {
-                            importThreads.insert(std::make_pair(exportThread.first, lastImportTx));
-                        }
-                        break;
+                        importThreads.insert(std::make_pair(exportThread.first, lastImportTx));
                     }
                 }
             }
@@ -1822,19 +1840,47 @@ void CConnectedChains::ProcessLocalImports()
                 // transactions
                 if (importTxes.size())
                 {
-                    CMutableTransaction firstImport = importTxes[0];
+                    CMutableTransaction oneImport = importTxes[0];
                     int32_t outNum = 0;
                     CCrossChainImport cci(importTxes[0], &outNum);
                     if (cci.IsValid())
                     {
                         // add the reserve deposit inputs to the first transaction
                         // the  outputs should have been automatically propagated through
-                        // TODO - get reserve deposits from exports, not all at once, as in refunds
-                        for (auto &oneOut : reserveDeposits)
+                        // fixup inputs if necessary
+                        if (reserveDeposits.size())
                         {
-                            firstImport.vin.push_back(CTxIn(oneOut.first.txhash, oneOut.first.index));
+                            UniValue jsonTX(UniValue::VOBJ);
+                            std::vector<uint256> prevHashes;
+
+                            for (int i = 0; i < importTxes.size() - 1; i++)
+                            {
+                                prevHashes.push_back(importTxes[i].GetHash());
+                            }
+
+                            // TODO - get reserve deposits from exports, not all at once, as in refunds
+                            for (auto &oneOut : reserveDeposits)
+                            {
+                                oneImport.vin.push_back(CTxIn(oneOut.first.txhash, oneOut.first.index));
+                            }
+
+                            importTxes[0] = oneImport;
+
+                            for (int i = 0; i < importTxes.size() - 1; i++)
+                            {
+                                oneImport = importTxes[i + 1];
+                                for (auto &oneIn : oneImport.vin)
+                                {
+                                    if (oneIn.prevout.hash == prevHashes[i])
+                                    {
+                                        //printf("updating hash before signing to new value\nold: %s\nnew: %s\n", oneIn.prevout.hash.GetHex().c_str(), importTxes[i].GetHash().GetHex().c_str());
+                                        oneIn.prevout.hash = importTxes[i].GetHash();
+                                    }
+                                }
+                                importTxes[i + 1] = oneImport;
+                            }
+
                         }
-                        importTxes[0] = firstImport;
                         SignAndCommitImportTransactions(oneIT.second, importTxes);
                     }
                 }
