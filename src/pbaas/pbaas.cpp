@@ -1790,6 +1790,7 @@ void CConnectedChains::ProcessLocalImports()
                 {
                     LogPrintf("%s: ERROR refunding token %s: %s\n", __func__, exportDef.name.c_str(), failReason.c_str());
                 }
+                ConnectedChains.SignAndCommitImportTransactions(lastImportTx, newRefunds);
                 continue;
             }
             else if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(exportThread.first, EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
