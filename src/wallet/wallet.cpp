@@ -5248,7 +5248,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     random_shuffle(vCoins.begin(), vCoins.end(), GetRandInt);
 
     CCurrencyValueMap nTotalTarget = targetValues + CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({targetNativeValue}));
-    printf("totaltarget: %s\n", nTotalTarget.ToUniValue().write().c_str());
+    //printf("totaltarget: %s\n", nTotalTarget.ToUniValue().write().c_str());
 
     BOOST_FOREACH(const COutput &output, vCoins)
     {
@@ -5274,7 +5274,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
             }
         }
 
-        printf("available: %s\nall currencies: %s\n", nAll.ToUniValue().write().c_str(), nTotal.ToUniValue().write().c_str());
+        //printf("available: %s\nall currencies: %s\n", nAll.ToUniValue().write().c_str(), nTotal.ToUniValue().write().c_str());
 
         // if it has no output types we care about, next
         if (!nTotal.CanonicalMap().valueMap.size())
@@ -5319,7 +5319,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         }
     }
 
-    printf("totalLower: %s\ntotalNativeLower: %s\n", totalLower.ToUniValue().write().c_str(), ValueFromAmount(totalNativeLower).write().c_str());
+    //printf("totalLower: %s\ntotalNativeLower: %s\n", totalLower.ToUniValue().write().c_str(), ValueFromAmount(totalNativeLower).write().c_str());
 
     if (totalLower == targetValues && totalNativeLower == targetNativeValue)
     {
@@ -5348,13 +5348,13 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     // simplify solution
     totalLower.valueMap[ConnectedChains.ThisChain().GetID()] = totalNativeLower;
 
-    printf("totalLower:%s\ntargetValuesWithNative:%s\n", totalLower.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
+    //printf("totalLower:%s\ntargetValuesWithNative:%s\n", totalLower.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
     CCurrencyValueMap totPrint;
     for (auto &one : vValue)
     {
         totPrint += one.first;
     }
-    printf("num outputs: %lu, totalmap: %s\n", vValue.size(), totPrint.ToUniValue().write(1,2).c_str());
+    //printf("num outputs: %lu, totalmap: %s\n", vValue.size(), totPrint.ToUniValue().write(1,2).c_str());
 
     std::sort(vValue.rbegin(), vValue.rend(), CompareValueMap());
 
