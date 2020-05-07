@@ -1235,6 +1235,14 @@ public:
     CPartialTransactionProof(const CMMRProof &txRootProof, const CTransaction &tx) : 
         txProof(txRootProof), components({CTransactionComponentProof(tx, 0, CMMRProof())}) { }
 
+    const CPartialTransactionProof &operator=(const CPartialTransactionProof &operand)
+    {
+        CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+        s << operand;
+        s >> *this;
+        return *this;
+    }
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>

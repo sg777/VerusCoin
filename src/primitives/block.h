@@ -549,6 +549,14 @@ public:
     CBlockHeaderProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh) : 
         headerProof(powerNodeProof), mmrBridge(bh.MMRProofBridge()), preHeader(bh) {}
 
+    const CBlockHeaderProof &operator=(const CBlockHeaderProof &operand)
+    {
+        CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+        s << operand;
+        s >> *this;
+        return *this;
+    }
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
