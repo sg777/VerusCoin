@@ -1235,7 +1235,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     // rules should be pay fee in native currency of destination system
                                     // if source is same currency
                                     CCurrencyValueMap newTransferOutput;
-                                    if (txInputs[j].second.flags | txInputs[j].second.MINT_CURRENCY)
+                                    bool isMint = (txInputs[j].second.flags & (CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY));
+                                    if (isMint)
                                     {
                                         newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nFees;
                                     }
@@ -1264,8 +1265,17 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     }
                                     else
                                     {
-                                        totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, txInputs[j].second.nValue);
-                                        totalAmounts += newTransferInput;
+                                        CAmount valueOut = 0;
+                                        if (isMint)
+                                        {
+                                            totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, valueOut);
+                                        }
+                                        else
+                                        {
+                                            valueOut = txInputs[j].second.nValue;
+                                            totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, valueOut);
+                                            totalAmounts += newTransferInput;
+                                        }
                                         CReserveTransfer rt(txInputs[j].second);
                                         chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(rt), rt));
                                     }
