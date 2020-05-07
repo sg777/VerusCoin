@@ -1237,7 +1237,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     CCurrencyValueMap newTransferOutput;
                                     if (txInputs[j].second.flags | txInputs[j].second.MINT_CURRENCY)
                                     {
-                                        newTransferOutput.valueMap[lastChainDef.systemID] = txInputs[j].second.nFees;
+                                        newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nFees;
                                     }
                                     else
                                     {
@@ -1559,9 +1559,9 @@ CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, i
 
         if (GetChainTransfers(transferInputs, chainDef.GetID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
         {
+            auto curMap = chainDef.GetCurrenciesMap();
             for (auto &transfer : transferInputs)
             {
-                auto curMap = chainDef.GetCurrenciesMap();
                 if (!(transfer.second.second.flags & CReserveTransfer::PREALLOCATE) && curMap.count(transfer.second.second.currencyID))
                 {
                     CAmount conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);

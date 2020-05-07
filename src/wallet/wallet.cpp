@@ -5966,6 +5966,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
         }
 
         totalNativeOutput += recipient.nAmount;
+
         totalReserveOutput += values;
 
         // if we should take from this output, it must be able to pay the fee. fail if it does not
@@ -5991,6 +5992,8 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
     {
         totalReserveOutput.valueMap.erase(newCurrency.GetID());
     }
+
+    //printf("totalReserveOutput: %s\n", totalReserveOutput.ToUniValue().write(1,2).c_str());
 
     int nextBlockHeight = chainActive.Height() + 1;
 
@@ -6217,6 +6220,9 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 }
 
                 CCurrencyValueMap reserveChange = totalValueIn - totalReserveValue;
+
+                //printf("reservechange: %s\ntotalvaluein: %s\n", reserveChange.ToUniValue().write(1,2).c_str(), totalValueIn.ToUniValue().write(1,2).c_str());
+
                 CCurrencyValueMap convertibleChange = reserveCurrencies.IntersectingValues(reserveChange);
                 CAmount nChange = totalNativeValueIn - nTotalNativeValue;
                 CAmount nConvertedReserveChange = 0;

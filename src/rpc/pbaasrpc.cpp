@@ -3063,7 +3063,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             if (mintNew)
             {
                 flags |= CReserveTransfer::MINT_CURRENCY;
-                convertToCurrencyID = sourceCurrencyID;
             }
 
             // are we a system/chain transfer with or without conversion?
@@ -3209,17 +3208,17 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
                             std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), 
-                                                                                                CKeyID(convertToCurrencyID)});
+                                                                                                  CKeyID(sourceCurrencyID)});
 
                             CReserveTransfer rt = CReserveTransfer(flags, 
-                                                                sourceCurrencyID, 
-                                                                sourceAmount,
-                                                                0,
-                                                                convertToCurrencyID,
-                                                                DestinationToTransferDestination(destination));
+                                                                   thisChainID, 
+                                                                   sourceAmount,
+                                                                   0,
+                                                                   sourceCurrencyID,
+                                                                   DestinationToTransferDestination(destination));
                             rt.nFees = rt.CalculateTransferFee();
 
-                            oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : rt.CalculateTransferFee();
+                            oneOutput.nAmount = rt.CalculateTransferFee();
                             oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
                         }
                         else
@@ -3837,7 +3836,6 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                         if (rt.flags & (CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY))
                         {
                             rt.flags &= ~(CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY);
-                            rt.currencyID = ASSETCHAINS_CHAINID;
                             rt.nValue = 0;
                         }
                         rt.destCurrencyID = rt.currencyID;

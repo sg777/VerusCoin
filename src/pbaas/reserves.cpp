@@ -1419,22 +1419,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         if (curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE))
                         {
                             nativeIn += curTransfer.nFees;
-                            AddReserveInput(curTransfer.currencyID, curTransfer.nValue);
+                            AddReserveInput(curTransfer.destCurrencyID, curTransfer.nValue);
                         }
                         else
                         {
                             AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
                         }
                     }
-                    if (curTransfer.flags & (curTransfer.PREALLOCATE | curTransfer.MINT_CURRENCY))
-                    {
-                        CCurrencyDefinition currencySource = ConnectedChains.GetCachedCurrency(curTransfer.currencyID);
-                        transferFees.valueMap[currencySource.systemID] += curTransfer.nFees;
-                    }
-                    else
-                    {
-                        transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
-                    }
+                    transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
 
                     if (curTransfer.flags & curTransfer.PREALLOCATE)
                     {
@@ -1657,7 +1649,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             ro.nValue = mintAmount;
                             newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                         }
-                        else
+                        else if (!(curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
                         {
                             AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);
                             newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));

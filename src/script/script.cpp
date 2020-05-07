@@ -662,7 +662,7 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p, bool spendableOnly) 
             {
                 CReserveTransfer rt(p.vData[0]);
                 // this currency can only be present as native
-                if (!(rt.flags & rt.MINT_CURRENCY) && rt.currencyID != ASSETCHAINS_CHAINID)
+                if (!(rt.flags & (rt.MINT_CURRENCY | rt.PREALLOCATE)) && rt.currencyID != ASSETCHAINS_CHAINID)
                 {
                     retVal.valueMap[rt.currencyID] = rt.nValue + rt.nFees;
                 }
