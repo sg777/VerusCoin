@@ -3037,7 +3037,14 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             }
 
             CTxDestination refundDestination = DecodeDestination(refundToStr);
-            if (refundDestination.which() == COptCCParams::ADDRTYPE_INVALID)
+            if (refundDestination.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                if (!CIdentity::LookupIdentity(GetDestinationID(refundDestination)).IsValid())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "When sending or refunding to an ID, the ID must be valid.");
+                }
+            }
+            else if (refundDestination.which() == COptCCParams::ADDRTYPE_INVALID)
             {
                 refundDestination = destination;
             }
@@ -4347,6 +4354,14 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to define a chain relative to a parent that is not the current chain.");
     }
 
+    for (auto &oneID : newChain.preAllocation)
+    {
+        if (!CIdentity::LookupIdentity(CIdentityID(oneID.first)).IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to pre-allocate currency to a non-existent ID.");
+        }
+    }
+
     uint160 newChainID = newChain.GetID();
 
     std::vector<CNodeData> vNodes;
@@ -4433,6 +4448,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     if (!newChain.IsToken())
     {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "Current testnet does not support launch of independent PBaaS blockchains. Please use token currencies for now.\n");
+
         if (newChain.billingPeriod < CCurrencyDefinition::MIN_BILLING_PERIOD || (newChain.notarizationReward / newChain.billingPeriod) < CCurrencyDefinition::MIN_PER_BLOCK_NOTARIZATION)
         {
             throw JSONRPCError(RPC_INVALID_PARAMS, "Billing period of at least " + 
