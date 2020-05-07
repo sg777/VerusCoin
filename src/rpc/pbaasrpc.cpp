@@ -3894,30 +3894,37 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                     }
                 }
 
-                // prove the export tx only to the block header
+                // add a proof of the export transaction at the notarization height
                 CBlock block;
-                if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus()))
+                if (!ReadBlockFromDisk(block, chainActive[aixIt->second.first.blockHeight], Params().GetConsensus(), false))
                 {
-                    LogPrintf("%s: POSSIBLE CORRUPTION cannot read block from disk at height %d\n", __func__, aixIt->second.first.blockHeight);
-                    printf("%s: POSSIBLE CORRUPTION cannot read block from disk at height %d\n", __func__, aixIt->second.first.blockHeight);
+                    LogPrintf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
+                    printf("%s: POSSIBLE CORRUPTION cannot read block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
                     return false;
                 }
 
                 // prove ccx input 0, export output, and opret
-                std::vector<std::pair<int16_t, int16_t>> parts({{CTransactionHeader::TX_PREVOUTSEQ, (int16_t)0},
+                std::vector<std::pair<int16_t, int16_t>> parts({{CTransactionHeader::TX_HEADER, (int16_t)0},
+                                                                {CTransactionHeader::TX_PREVOUTSEQ, (int16_t)0},
                                                                 {CTransactionHeader::TX_OUTPUT, ccxOutputNum},
                                                                 {CTransactionHeader::TX_OUTPUT, (int16_t)(aixIt->second.second.vout.size() - 1)}});
 
-                // prove our transaction up to the block MMR root only, since this is not cross chain
-                auto exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.txindex, parts);
+                // prove our transaction up to the MMR root of the last transaction
+                CPartialTransactionProof exportProof = block.GetPartialTransactionProof(aixIt->second.second, aixIt->second.first.txindex, parts);
+                if (!exportProof.components.size())
+                {
+                    LogPrintf("%s: could not create partial transaction proof in block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
+                    printf("%s: could not create partial transaction proof in block %s\n", __func__, chainActive[aixIt->second.first.blockHeight]->GetBlockHash().GetHex().c_str());
+                    return false;
+                }
+                exportProof.txProof << block.MMRProofBridge();
 
-                // add it to the export transaction proof, now proven up to the MMR root of the last confirmed transaction
-                CCrossChainProof exportTransactionProof;
-                exportTransactionProof << exportProof;
+                // TODO: don't include chain MMR proof for exports from the same chain
+                ChainMerkleMountainView(chainActive.GetMMR(), nHeight).GetProof(exportProof.txProof, aixIt->second.first.blockHeight);
 
-                CChainObject<CCrossChainProof> exportXProof(CHAINOBJ_CROSSCHAINPROOF, exportTransactionProof);
+                CChainObject<CPartialTransactionProof> exportXProof(CHAINOBJ_TRANSACTION_PROOF, exportProof);
 
-                // add the opret with the transaction and its proof that references the notarization with the correct MMR
+                // add the opret with the transaction and proof
                 newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(std::vector<CBaseChainObject *>({&exportXProof}))));
 
                 // we now have an Import transaction for the chainID chain, it is the latest, and the export we used is now the latest as well
