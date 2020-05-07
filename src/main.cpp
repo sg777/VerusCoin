@@ -2797,7 +2797,7 @@ namespace Consensus {
             nValueIn += coins->vout[prevout.n].nValue;
 
             COptCCParams p;
-            auto outMap = coins->vout[prevout.n].scriptPubKey.ReserveOutValue(p);
+            ReserveValueIn += coins->vout[prevout.n].scriptPubKey.ReserveOutValue(p);
 
 #ifdef KOMODO_ENABLE_INTEREST
             if ( ASSETCHAINS_SYMBOL[0] == 0 && nSpendHeight > 60000 )//chainActive.LastTip() != 0 && chainActive.LastTip()->GetHeight() >= 60000 )
@@ -2835,9 +2835,9 @@ namespace Consensus {
         {
             fprintf(stderr,"spentheight.%d reservevaluein: %s\nis less than out: %s\n", nSpendHeight,
                     ReserveValueIn.ToUniValue().write(1, 2).c_str(), tx.GetReserveValueOut().ToUniValue().write(1, 2).c_str());
-            UniValue jsonTx(UniValue::VOBJ);
-            TxToUniv(tx, uint256(), jsonTx);
-            fprintf(stderr,"%s\n", jsonTx.write(1,2).c_str());
+            //UniValue jsonTx(UniValue::VOBJ);
+            //TxToUniv(tx, uint256(), jsonTx);
+            //fprintf(stderr,"%s\n", jsonTx.write(1,2).c_str());
             return state.DoS(100, error("CheckInputs(): reserve value in < reserve value out"), REJECT_INVALID, "bad-txns-reservein-belowout");
         }
 

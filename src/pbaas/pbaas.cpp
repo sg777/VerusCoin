@@ -1235,7 +1235,14 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     // rules should be pay fee in native currency of destination system
                                     // if source is same currency
                                     CCurrencyValueMap newTransferOutput;
-                                    newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nValue + txInputs[j].second.nFees;
+                                    if (txInputs[j].second.flags | txInputs[j].second.MINT_CURRENCY)
+                                    {
+                                        newTransferOutput.valueMap[lastChainDef.systemID] = txInputs[j].second.nFees;
+                                    }
+                                    else
+                                    {
+                                        newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nValue + txInputs[j].second.nFees;
+                                    }
 
                                     //printf("input:\n%s\n", newTransferInput.ToUniValue().write().c_str());
                                     //printf("output:\n%s\n", newTransferOutput.ToUniValue().write().c_str());
@@ -1245,8 +1252,14 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         // if this transfer is invalid and claims to carry more funds than it does, we consume it since it won't properly verify as a transfer, and
                                         // it is too expensive to let it force evaluation repeatedly. this condition should not get by normal checks, but just in case, don't let it slow transfers
                                         // we should formalize this into a chain contribution or amount adjustment.
-                                        printf("%s: transaction %s claims incorrect value\n", __func__, txInputs[j].first.txIn.prevout.hash.GetHex().c_str());
-                                        LogPrintf("%s: transaction %s claims incorrect value\n", __func__, txInputs[j].first.txIn.prevout.hash.GetHex().c_str());
+                                        printf("%s: transaction %s claims incorrect value:\n%s\nactual:\n%s\n", __func__, 
+                                                    txInputs[j].first.txIn.prevout.hash.GetHex().c_str(),
+                                                    newTransferInput.ToUniValue().write().c_str(),
+                                                    newTransferOutput.ToUniValue().write().c_str());
+                                        LogPrintf("%s: transaction %s claims incorrect value:\n%s\nactual:\n%s\n", __func__, 
+                                                    txInputs[j].first.txIn.prevout.hash.GetHex().c_str(),
+                                                    newTransferInput.ToUniValue().write().c_str(),
+                                                    newTransferOutput.ToUniValue().write().c_str());
                                         toRemove.push_back(j);
                                     }
                                     else

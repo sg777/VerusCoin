@@ -1522,6 +1522,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         }
                         else
                         {
+                            // TODO: need to recalculate
                             if (curTransfer.destCurrencyID == systemDestID)
                             {
                                 newNativeFees = CCurrencyState::ReserveToNativeRaw(totalReserveFee, currencyDest.conversions[curIdx]);
