@@ -495,6 +495,14 @@ public:
         s << oldProof;
         s >> *this;
     }
+    const CMMRProof &operator=(const CMMRProof &operand)
+    {
+        CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+        s << operand;
+        DeleteProofSequence();
+        s >> *this;
+        return *this;
+    }
 
     ~CMMRProof()
     {

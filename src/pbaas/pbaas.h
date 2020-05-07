@@ -220,6 +220,15 @@ public:
         version = VERSION_INVALID;
     }
 
+    const CCrossChainProof &operator=(const CCrossChainProof &operand)
+    {
+        CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+        s << operand;
+        DeleteOpRetObjects(chainObjects);
+        s >> *this;
+        return *this;
+    }
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>

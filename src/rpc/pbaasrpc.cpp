@@ -3619,7 +3619,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
     CTransaction chainDefTx;
     uint160 thisChainID = ConnectedChains.ThisChain().GetID();
 
-    LOCK(cs_main);
+    LOCK2(cs_main, mempool.cs);
 
     if (!GetCurrencyDefinition(currencyID, chainDef, &defHeight) || currencyID == thisChainID)
     {
@@ -3689,7 +3689,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
     if (!found)
     {
         LogPrintf("%s: No export thread found\n", __func__);
-        printf("%s: No export thread found\n", __func__);
+        //printf("%s: No export thread found\n", __func__);
         return false;
     }
 
@@ -3911,10 +3911,6 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                     if (aixIt->second.second.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_RESERVE_DEPOSIT)
                     {
                         newImportTx.vin.push_back(CTxIn(depositTxId, i, CScript()));
-                        for (auto &oneCur : aixIt->second.second.vout[i].ReserveOutValue().valueMap)
-                        {
-                            rtxd.AddReserveInput(oneCur.first, oneCur.second);
-                        }
                     }
                 }
 

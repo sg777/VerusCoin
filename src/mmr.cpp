@@ -12,6 +12,7 @@
 void ErrorAndBP(std::string msg)
 {
     printf("%s\n", msg.c_str());
+    LogPrintf("%s\n", msg.c_str());
 }
 
 
@@ -40,8 +41,9 @@ void CMMRProof::DeleteProofSequence()
             }
             default:
             {
-                ErrorAndBP("ERROR: unrecognized object in proof sequence");
-                delete pProof;
+                ErrorAndBP("ERROR: likely double-free or memory corruption, unrecognized object in proof sequence");
+                // this is likely a memory error
+                // delete pProof;
             }
         }
         proofSequence.pop_back();
