@@ -1225,6 +1225,8 @@ public:
 
     CPartialTransactionProof() {}
 
+    CPartialTransactionProof(const CPartialTransactionProof &obj) : txProof(obj.txProof), components(obj.components) {}
+
     CPartialTransactionProof(const CMMRProof &proof, const std::vector<CTransactionComponentProof> &Components) : txProof(proof), components(Components) {}
 
     // This creates a proof for older blocks and full transactions, typically where the root proof is a standard
