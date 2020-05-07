@@ -3118,24 +3118,20 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
         obj.push_back(Pair("reserve_balance", reserveBal));
     }
 
-    UniValue unconfirmedReserveBal(UniValue::VARR);
+    UniValue unconfirmedReserveBal(UniValue::VOBJ);
     for (auto &oneBalance : pwalletMain->GetUnconfirmedReserveBalance().valueMap)
     {
-        UniValue oneCurObj(UniValue::VOBJ);
-        oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
-        unconfirmedReserveBal.push_back(oneCurObj);
+        unconfirmedReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
     }
     if (unconfirmedReserveBal.size())
     {
         obj.push_back(Pair("unconfirmed_reserve_balance", unconfirmedReserveBal));
     }
 
-    UniValue immatureReserveBal(UniValue::VARR);
+    UniValue immatureReserveBal(UniValue::VOBJ);
     for (auto &oneBalance : pwalletMain->GetImmatureReserveBalance().valueMap)
     {
-        UniValue oneCurObj(UniValue::VOBJ);
-        oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
-        immatureReserveBal.push_back(oneCurObj);
+        immatureReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
     }
     if (immatureReserveBal.size())
     {

@@ -3063,6 +3063,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             if (mintNew)
             {
                 flags |= CReserveTransfer::MINT_CURRENCY;
+                convertToCurrencyID = sourceCurrencyID;
+                convertToCurrencyDef = sourceCurrencyDef;
             }
 
             // are we a system/chain transfer with or without conversion?
@@ -3214,7 +3216,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                    thisChainID, 
                                                                    sourceAmount,
                                                                    0,
-                                                                   sourceCurrencyID,
+                                                                   convertToCurrencyID,
                                                                    DestinationToTransferDestination(destination));
                             rt.nFees = rt.CalculateTransferFee();
 
