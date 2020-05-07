@@ -1442,20 +1442,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         }
 
                         auto it = preAllocMap.find(GetDestinationID(TransferDestinationToDestination(curTransfer.destination)));
-                        if (it == preAllocMap.end())
+                        if (it == preAllocMap.end() || it->second != curTransfer.nValue)
                         {
                             printf("%s: Invalid preallocation transfer\n", __func__);
                             LogPrintf("%s: Invalid preallocation transfer\n", __func__);
                             return false;
                         }
-
-                        // by adding it here, it does not affect the input requirements, but it will affect output below
-                        mintAmount = it->second;
-                    }
-                    else if (curTransfer.flags & curTransfer.MINT_CURRENCY)
-                    {
-                        // by adding it here, it does not affect the input requirements, but it will affect output below
-                        mintAmount = curTransfer.nValue;
                     }
                 }
 
@@ -1645,8 +1637,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         // this is used for both pre-allocation and also centrally, algorithmically, or externally controlled currencies
                         if ((curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)) && curTransfer.destCurrencyID == currencyDest.GetID())
                         {
-                            AddReserveOutConverted(curTransfer.destCurrencyID, mintAmount);
-                            ro.nValue = mintAmount;
+                            AddReserveOutConverted(curTransfer.destCurrencyID, ro.nValue);
+                            AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);
                             newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                         }
                         else if (!(curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
@@ -1684,7 +1676,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     ReserveInputs.valueMap[currencyDest.systemID] += nativeIn;
     ReserveOutputs.valueMap[currencyDest.systemID] += nativeOut;
     CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs - transferFees, transferFees);
-    if (ReserveInputs - ReserveOutputs > ccx.CalculateImportFee())
+    if (ReserveInputs - ReserveOutputs < ccx.CalculateImportFee())
     {
         printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\nccx: %s\n", __func__,
                 ReserveInputs.ToUniValue().write(1,2).c_str(), ReserveOutputs.ToUniValue().write(1,2).c_str(), ccx.ToUniValue().write(1,2).c_str());

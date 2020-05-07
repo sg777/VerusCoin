@@ -4671,7 +4671,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             CTransferDestination transferDest = DestinationToTransferDestination(CIdentityID(oneAlloc.first));
             CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE, 
                                                    newChain.systemID, 
-                                                   0,
+                                                   oneAlloc.second,
                                                    CReserveTransfer::CalculateTransferFee(transferDest), 
                                                    newChainID,
                                                    transferDest);
