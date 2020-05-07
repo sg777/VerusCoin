@@ -1595,7 +1595,7 @@ void CConnectedChains::ProcessLocalImports()
             }
             currencyDefCache[exportThread.first] = exportDef;
 
-            printf("processing exports for currency: %s\n", exportDef.name.c_str());
+            //printf("processing exports for currency: %s\n", exportDef.name.c_str());
 
             // if it is not launched, check and initiate refund if we control this currency
             bool refunding = false;

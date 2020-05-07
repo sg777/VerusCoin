@@ -3627,7 +3627,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
         return false;
     }
 
-    if (!GetLastImportIn(chainDef.systemID, lastImportTx))
+    if (!GetLastImportIn(chainDef.IsToken() ? chainDef.GetID() : chainDef.systemID, lastImportTx))
     {
         errorReason = "no-import-thread-found";
         return false;
@@ -3816,6 +3816,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                 ccx.totalFees = CCurrencyValueMap();
 
                 CCurrencyValueMap feeMap;
+                bool inFeeOutputs = false;
 
                 for (auto &objPtr : exportOutputs)
                 {
@@ -3833,26 +3834,28 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                         // turn it into a normal transfer, which will create an unconverted output
                         rt.flags &= ~(CReserveTransfer::SEND_BACK | CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT);
 
+                        if (rt.flags & (CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY))
+                        {
+                            rt.flags &= ~(CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY);
+                            rt.currencyID = ASSETCHAINS_CHAINID;
+                            rt.nValue = 0;
+                        }
+
                         // once we get to fees, we should have processed all non-fee outputs and be able to accurately calculate fees
-                        if (rt.flags & CReserveTransfer::FEE_OUTPUT)
+                        if (inFeeOutputs || rt.flags & CReserveTransfer::FEE_OUTPUT)
                         {
                             // will be recalculated
+                            if (!inFeeOutputs)
+                            {
+                                inFeeOutputs = true;
+                                ccx.totalFees = feeMap;
+                            }
                             rt.nFees = 0;
                             rt.nValue = ccx.CalculateExportFee().valueMap[rt.currencyID];
-                            continue;
                         }
                         else
                         {
-                            CCurrencyValueMap fees = rt.CalculateFee(rt.flags, rt.nValue + rt.nFees);
-                            if (fees.valueMap.size() == 1)
-                            {
-                                ccx.totalFees.valueMap[rt.currencyID] += rt.nFees;
-                            }
-                            else
-                            {
-                                fees.valueMap.erase(rt.currencyID);
-                                ccx.totalFees.valueMap[fees.valueMap.begin()->first] += fees.valueMap.begin()->second;
-                            }
+                            feeMap.valueMap[rt.currencyID] += rt.CalculateTransferFee(rt.destination);
                         }
                     }
                 }
