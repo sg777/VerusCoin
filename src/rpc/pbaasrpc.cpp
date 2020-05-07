@@ -3878,6 +3878,30 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                 // free the memory
                 DeleteOpRetObjects(exportOutputs);
 
+                // emit a crosschain import output as summary
+                CCcontract_info CC;
+                CCcontract_info *cpcp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
+                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ccx.systemID, EVAL_CROSSCHAIN_IMPORT)))});
+                std::vector<CTxDestination> dests;
+
+                if (ConnectedChains.ThisChain().proofProtocol == CCurrencyDefinition::PROOF_PBAASMMR ||
+                    ConnectedChains.ThisChain().proofProtocol == CCurrencyDefinition::PROOF_CHAINID)
+                {
+                    dests = std::vector<CTxDestination>({pk});
+                }
+                else
+                {
+                    LogPrintf("%s: ERROR - invalid proof protocol\n", __func__);
+                    printf("%s: ERROR - invalid proof protocol\n", __func__);
+                    return false;
+                }
+
+                CCrossChainImport cci = CCrossChainImport(ccx.systemID, CCurrencyValueMap(), CCurrencyValueMap());
+
+                newImportTx.vout[0] = CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
+
                 // now add unspent reserve deposit that came from this export as input to return it back to senders, less transfer fees
                 // based on consensus rules, this should provide the necessary funds by definition
                 uint256 depositTxId = aixIt->second.second.GetHash();
