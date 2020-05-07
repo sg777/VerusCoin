@@ -1637,7 +1637,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         if ((curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)) && curTransfer.destCurrencyID == currencyDest.GetID())
                         {
                             AddReserveOutConverted(curTransfer.destCurrencyID, ro.nValue);
-                            AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);
                             newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                         }
                         else if (!(curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
