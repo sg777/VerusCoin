@@ -1409,7 +1409,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 // in all other cases, calculate inputs from export
                 if (!(curTransfer.flags & curTransfer.FEE_OUTPUT))
                 {
-                    if (curTransfer.currencyID == systemDestID)
+                    if (curTransfer.currencyID == systemDestID && !(curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
                     {
                         nativeIn += (curTransfer.nValue + curTransfer.nFees);
                     }
