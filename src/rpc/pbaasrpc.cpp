@@ -3849,19 +3849,21 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                             {
                                 inFeeOutputs = true;
                                 ccx.totalFees = feeMap;
+                                printf("total fees:\n%s\n", feeMap.ToUniValue().write(1,2).c_str());
                             }
                             rt.nFees = 0;
                             rt.nValue = ccx.CalculateExportFee().valueMap[rt.currencyID];
+                            printf("one fee out:\n%s\n", rt.ToUniValue().write(1,2).c_str());
                         }
                         else
                         {
-                            feeMap.valueMap[rt.currencyID] += rt.CalculateTransferFee(rt.destination);
+                            feeMap.valueMap[rt.currencyID] += rt.nFees;
                         }
                     }
                 }
 
                 if (!rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(),
-                                                          ConnectedChains.ThisChain(), 
+                                                          chainDef, 
                                                           exportOutputs, 
                                                           newImportTx.vout))
                 {

@@ -1316,8 +1316,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 // currencies that are supported in that system and are not limited to the native currency. Fees are assumed to
 // be covered by the native currency of the source. That means that all explicit fees are assumed to be in the
 // currency of the source.
-bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint160 &currencySourceID, 
-                                                                    const CCurrencyDefinition &systemDest, 
+bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint160 &nativeSourceCurrencyID, 
+                                                                    const CCurrencyDefinition &currencyDest, 
                                                                     const std::vector<CBaseChainObject *> &exportObjects, 
                                                                     std::vector<CTxOut> &vOutputs)
 {
@@ -1335,7 +1335,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     CCcontract_info CC;
     CCcontract_info *cp;
 
-    uint160 systemDestID = systemDest.systemID;         // native on destination system
+    uint160 systemDestID = currencyDest.systemID;         // native on destination system
 
     std::map<uint160, CAmount> preAllocMap;             // if this contains pre-allocations, only make the necessary map once
 
@@ -1595,7 +1595,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && 
                          curTransfer.nValue >= (curTransfer.DEFAULT_PER_STEP_FEE << 2) && 
-                         curTransfer.currencyID == currencySourceID)
+                         curTransfer.currencyID == nativeSourceCurrencyID)
                 {
                     // emit a reserve exchange output
                     cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
@@ -1622,7 +1622,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                                               &indexDests);
 
                     // if this is sending back to the same chain as its native currency, make it a native output
-                    if (systemDestID == currencySourceID)
+                    if (systemDestID == nativeSourceCurrencyID)
                     {
                         nativeOut += curTransfer.nValue;
                         newOut = CTxOut(curTransfer.nValue, sendBackScript);                    
