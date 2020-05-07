@@ -1419,7 +1419,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         if (curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE))
                         {
                             nativeIn += curTransfer.nFees;
-                            AddReserveInput(curTransfer.destCurrencyID, curTransfer.nValue);
                         }
                         else
                         {
