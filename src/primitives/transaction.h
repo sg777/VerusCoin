@@ -1060,6 +1060,7 @@ public:
     CMMRProof elProof;
 
     CTransactionComponentProof() : elType(0), elIdx(0) {}
+    CTransactionComponentProof(const CTransactionComponentProof &obj) : elType(obj.elType), elIdx(obj.elIdx), elVchObj(obj.elVchObj), elProof(obj.elProof) {}
     CTransactionComponentProof(int type, int subIndex, const std::vector<unsigned char> &vch, const CMMRProof &proof) : 
         elType(type), elIdx(subIndex), elVchObj(vch), elProof(proof) {}
 

@@ -545,6 +545,7 @@ public:
     CPBaaSPreHeader preHeader;                              // non-canonical information from block header
 
     CBlockHeaderProof() {}
+    CBlockHeaderProof(const CBlockHeaderProof &obj) : headerProof(obj.headerProof), mmrBridge(obj.mmrBridge), preHeader(obj.preHeader) {}
     CBlockHeaderProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh) : 
         headerProof(powerNodeProof), mmrBridge(bh.MMRProofBridge()), preHeader(bh) {}
 
