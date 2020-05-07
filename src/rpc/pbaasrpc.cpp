@@ -3840,6 +3840,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                             rt.currencyID = ASSETCHAINS_CHAINID;
                             rt.nValue = 0;
                         }
+                        rt.destCurrencyID = rt.currencyID;
 
                         // once we get to fees, we should have processed all non-fee outputs and be able to accurately calculate fees
                         if (inFeeOutputs || rt.flags & CReserveTransfer::FEE_OUTPUT)
@@ -3849,11 +3850,11 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                             {
                                 inFeeOutputs = true;
                                 ccx.totalFees = feeMap;
-                                printf("total fees:\n%s\n", feeMap.ToUniValue().write(1,2).c_str());
+                                //printf("total fees:\n%s\n", feeMap.ToUniValue().write(1,2).c_str());
                             }
                             rt.nFees = 0;
                             rt.nValue = ccx.CalculateExportFee().valueMap[rt.currencyID];
-                            printf("one fee out:\n%s\n", rt.ToUniValue().write(1,2).c_str());
+                            //printf("one fee out:\n%s\n", rt.ToUniValue().write(1,2).c_str());
                         }
                         else
                         {

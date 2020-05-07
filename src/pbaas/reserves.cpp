@@ -1688,6 +1688,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             ReserveOutputs.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
         }
     }
+    ReserveInputs.valueMap[currencyDest.systemID] += nativeIn;
+    ReserveOutputs.valueMap[currencyDest.systemID] += nativeOut;
     CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs - transferFees, transferFees);
     if (ReserveInputs - ReserveOutputs > ccx.CalculateImportFee())
     {
