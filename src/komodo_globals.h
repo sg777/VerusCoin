@@ -99,16 +99,12 @@ int32_t VERUS_V2_CONSECUTIVE_POS_THRESHOLD = 5; // reduce to max 5 in a row
 int32_t VERUS_NOPOS_THRESHHOLD = 150;   // if we have no POS blocks in this many blocks, set to default difficulty
 int32_t PBAAS_STARTBLOCK = 0;           // the parent blockchain must be notarized at this value in block 1 for it to be accepted
 int32_t PBAAS_ENDBLOCK = 0;             // end of life block for the PBaaS blockchain
-int64_t PBAAS_PRECONVERSION = 0;
-int64_t PBAAS_MINPRECONVERT = 0;
-int64_t PBAAS_MAXPRECONVERT = 0;
-
 
 int32_t ASSETCHAINS_SAPLING;
 int32_t ASSETCHAINS_OVERWINTER;
 
 uint64_t KOMODO_INTERESTSUM,KOMODO_WALLETBALANCE;
-uint64_t ASSETCHAINS_COMMISSION,ASSETCHAINS_STAKED,ASSETCHAINS_SUPPLY = 10;
+uint64_t ASSETCHAINS_COMMISSION, ASSETCHAINS_STAKED, ASSETCHAINS_SUPPLY = 10;
 
 uint32_t KOMODO_INITDONE;
 char KMDUSERPASS[8192],BTCUSERPASS[8192]; uint16_t KMD_PORT = 7771,BITCOIND_RPCPORT = 7771;

@@ -105,6 +105,16 @@ CTxOut MakeCC1of2vout(uint8_t evalcode,CAmount nValue,CPubKey pk1,CPubKey pk2)
     return(vout);
 }
 
+std::vector<unsigned char> GetFulfillmentVector(CScript const& scriptSig)
+{
+    auto pc = scriptSig.begin();
+    opcodetype opcode;
+    std::vector<unsigned char> ffbin;
+    if (scriptSig.GetOp(pc, opcode, ffbin))
+        return ffbin;
+    return std::vector<unsigned char>();
+}
+
 CC* GetCryptoCondition(CScript const& scriptSig)
 {
     auto pc = scriptSig.begin();

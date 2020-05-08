@@ -1554,9 +1554,7 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                 }
                 else
                 {
-                    CBlockHeader bh = pastBlockIndex->GetBlockHeader();
-                    uint256 pastHash = bh.GetVerusEntropyHash(height - 100);
-
+                    uint256 pastHash = chainActive.GetVerusEntropyHash(height);
                     // if height is over when Nonce is required to be the new format, we check that the new format is correct
                     // if over when we have the new POS hash function, we validate that as well
                     // they are 100 blocks apart

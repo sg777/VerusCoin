@@ -364,7 +364,7 @@ std::vector<unsigned char> ParseHexUO(std::map<std::string,UniValue>& o, std::st
     return ParseHexUV(o[strKey], strKey);
 }
 
-static CAmount AmountFromValue(const UniValue& value)
+CAmount AmountFromValue(const UniValue& value)
 {
     if (!value.isNum() && !value.isStr())
         throw std::runtime_error("Amount is not a number or string");

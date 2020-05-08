@@ -20,9 +20,7 @@
 #include "httprpc.h"
 #include "key.h"
 #include "notarisationdb.h"
-#ifdef ENABLE_MINING
 #include "key_io.h"
-#endif
 #include "main.h"
 #include "metrics.h"
 #include "miner.h"
@@ -1224,7 +1222,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 110);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 110);
-            //CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 110);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 155);
         }
         else
         {
@@ -1234,6 +1232,9 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 1);
         }
     }
+
+    auto defaultIDDest = DecodeDestination(GetArg("-defaultid", ""));
+    VERUS_DEFAULTID = defaultIDDest.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(defaultIDDest)) : CIdentityID();
 
     // Sanity check
     if (!InitSanityCheck())
@@ -1841,6 +1842,11 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         if (clearWitnessCaches || GetBoolArg("-rescan", false))
         {
             pwalletMain->ClearNoteWitnessCache();
+            // zap and rescan clears IDs
+            if (GetArg("-zapwallettxes", false))
+            {
+                pwalletMain->ClearIdentities();
+            }
             pindexRescan = chainActive.Genesis();
         }
         else
@@ -1960,6 +1966,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         if ( !ActivateBestChain(state, Params()))
             strErrors << "Failed to connect best block";
     }
+    InitializePremineSupply();
     std::vector<boost::filesystem::path> vImportFiles;
     if (mapArgs.count("-loadblock"))
     {

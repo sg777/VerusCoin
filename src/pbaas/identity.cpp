@@ -13,15 +13,9 @@
  * 
  * 
  */
-#include "pbaas/identity.h"
-
-#include "boost/algorithm/string.hpp"
-#include "script/standard.h"
-#include "script/cc.h"
-#include "cc/CCinclude.h"
-#include "pbaas/pbaas.h"
-#include "pbaas/reserves.h"
 #include "main.h"
+#include "pbaas/pbaas.h"
+#include "identity.h"
 
 extern CTxMemPool mempool;
 
@@ -64,7 +58,7 @@ CPrincipal::CPrincipal(const UniValue &uni)
     nVersion = uni_get_int(find_value(uni, "version"));
     if (nVersion == VERSION_INVALID)
     {
-        nVersion = VERSION_CURRENT;
+        nVersion = VERSION_VERUSID;
     }
     flags = uni_get_int(find_value(uni, "flags"));
     UniValue primaryAddressesUni = find_value(uni, "primaryaddresses");
@@ -90,22 +84,6 @@ CPrincipal::CPrincipal(const UniValue &uni)
     }
 
     minSigs = uni_get_int(find_value(uni, "minimumsignatures"));
-}
-
-UniValue CPrincipal::ToUniValue() const
-{
-    UniValue obj(UniValue::VOBJ);
-    obj.push_back(Pair("version", (int32_t)nVersion));
-    obj.push_back(Pair("flags", (int32_t)flags));
-
-    UniValue primaryAddressesUni(UniValue::VARR);
-    for (int i = 0; i < primaryAddresses.size(); i++)
-    {
-        primaryAddressesUni.push_back(EncodeDestination(primaryAddresses[i]));
-    }
-    obj.push_back(Pair("primaryaddresses", primaryAddressesUni));
-    obj.push_back(Pair("minimumsignatures", minSigs));
-    return obj;
 }
 
 CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
@@ -162,30 +140,6 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     {
         privateAddresses.push_back(*boost::get<libzcash::SaplingPaymentAddress>(&pa));
     }
-}
-
-UniValue CIdentity::ToUniValue() const
-{
-    UniValue obj = ((CPrincipal *)this)->ToUniValue();
-
-    obj.push_back(Pair("identityaddress", EncodeDestination(CIdentityID(GetID()))));
-    obj.push_back(Pair("parent", EncodeDestination(CKeyID(parent))));
-    obj.push_back(Pair("name", name));
-
-    UniValue hashes(UniValue::VOBJ);
-    for (auto &entry : contentMap)
-    {
-        hashes.push_back(Pair(entry.first.GetHex(), entry.second.GetHex()));
-    }
-    obj.push_back(Pair("contentmap", hashes));
-
-    obj.push_back(Pair("revocationauthority", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
-    obj.push_back(Pair("recoveryauthority", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
-    if (privateAddresses.size())
-    {
-        obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddresses[0])));
-    }
-    return obj;
 }
 
 CIdentity::CIdentity(const CTransaction &tx, int *voutNum)
@@ -409,7 +363,7 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
 }
 
 // this enables earliest rejection of invalid CC transactions
-bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, bool referrals)
+bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, CCurrencyDefinition issuingChain)
 {
     // CHECK #1 - there is only one reservation output, and there is also one identity output that matches the reservation.
     //            the identity output must come first and have from 0 to 3 referral outputs between it and the reservation.
@@ -448,7 +402,13 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             }
             else if (identityCount && !reservationCount)
             {
-                if (!referrals || p.vKeys.size() < 1 || referrers.size() > (CIdentity::REFERRAL_LEVELS - 1) || p.evalCode != 0 || p.n > 1 || txout.nValue < newIdentity.ReferralAmount())
+                if (!issuingChain.IDReferralLevels() || 
+                    p.vKeys.size() < 1 || 
+                    referrers.size() > (issuingChain.IDReferralLevels() - 1) || 
+                    p.evalCode != 0 || 
+                    p.n > 1 || 
+                    p.m != 1 || 
+                    txout.nValue < issuingChain.IDReferralAmount())
                 {
                     valid = false;
                     break;
@@ -490,7 +450,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     }
 
     // CHECK #2 - must be rooted in this chain
-    if (newIdentity.parent != ConnectedChains.ThisChain().GetChainID())
+    if (newIdentity.parent != ConnectedChains.ThisChain().GetID())
     {
         return state.Error("Identity parent of new identity must be current chain");
     }
@@ -559,7 +519,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             return state.Error("Mismatched identity commitment");
         }
 
-        if (!newName.referral.IsNull() && referrals && !(CIdentity::LookupIdentity(newName.referral, priorHeightOut - 1).IsValid()))
+        if (!newName.referral.IsNull() && issuingChain.IDReferralLevels() && !(CIdentity::LookupIdentity(newName.referral, priorHeightOut - 1).IsValid()))
         {
             // invalid referral identity
             return state.Error("Invalid referral identity specified");
@@ -570,10 +530,10 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
 
     // CHECK #4 - if blockchain referrals are not enabled or if there is no referring identity, make sure the fees of this transaction are full price for an identity, 
     // all further checks only if referrals are enabled and there is a referrer
-    if (!referrals || newName.referral.IsNull())
+    if (!issuingChain.IDReferralLevels() || newName.referral.IsNull())
     {
         // make sure the fees of this transaction are full price for an identity, all further checks only if there is a referrer
-        if (rtxd.NativeFees() < newIdentity.FullRegistrationAmount())
+        if (rtxd.NativeFees() < issuingChain.IDFullRegistrationAmount())
         {
             return state.Error("Invalid identity registration - insufficient fee");
         }
@@ -619,7 +579,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                 else
                 {
                     checkReferrers.push_back(p.vKeys[0]);
-                    if (checkReferrers.size() == CIdentity::REFERRAL_LEVELS)
+                    if (checkReferrers.size() == issuingChain.IDReferralLevels())
                     {
                         break;
                     }
@@ -642,7 +602,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     }
 
     // CHECK #6 - ensure that the transaction pays the correct mining and refferal fees
-    if (rtxd.NativeFees() < (newIdentity.ReferredRegistrationAmount() - (referrers.size() * newIdentity.ReferralAmount())))
+    if (rtxd.NativeFees() < (issuingChain.IDReferredRegistrationAmount() - (referrers.size() * issuingChain.IDReferralAmount())))
     {
         return state.Error("Invalid identity registration - insufficient fee");
     }
@@ -652,7 +612,8 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
 
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
-    return PrecheckIdentityReservation(tx, outNum, state, height, ConnectedChains.ThisChain().IDReferrals());
+    CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
+    return PrecheckIdentityReservation(tx, outNum, state, height, thisChain);
 }
 
 // with the thorough check for an identity reservation, the only thing we need to check is that either 1) this transaction includes an identity reservation output or 2)
@@ -773,8 +734,11 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
+    extern uint160 VERUS_CHAINID;
+    extern std::string VERUS_CHAINNAME;
+
     // compare commitment without regard to case or other textual transformations that are irrelevant to matching
-    uint160 parentChain = ConnectedChains.ThisChain().GetChainID();
+    uint160 parentChain = ConnectedChains.ThisChain().GetID();
     if (validReservation && identity.GetID(nameRes.name, parentChain) == identity.GetID())
     {
         return true;
@@ -841,6 +805,7 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
 
     if (oldIdentity.IsInvalidMutation(newIdentity))
     {
+        LogPrintf("Invalid identity modification %s\n", spendingTx.GetHash().GetHex().c_str());
         return eval->Error("Invalid identity modification");
     }
 
@@ -1122,7 +1087,40 @@ bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const C
     return eval->Error("Identity reservations are unspendable");
 }
 
+// quantum key outputs can be spent without restriction
+bool ValidateQuantumKeyOut(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
+{
+    return true;
+}
+
+bool IsQuantumKeyOutInput(const CScript &scriptSig)
+{
+    return false;
+}
+
+bool PrecheckQuantumKeyOut(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    // need to ensure that the output is used for a signature in the tx before authorizing it
+    return true;
+}
+
 bool IsIdentityInput(const CScript &scriptSig)
 {
     return false;
 }
+
+bool ValidateIdentityExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
+{
+    return false;
+}
+
+bool IsIdentityExportInput(const CScript &scriptSig)
+{
+    return false;
+}
+
+bool IdentityExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    return false;
+}
+

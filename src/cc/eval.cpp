@@ -16,8 +16,6 @@
 #include <assert.h>
 #include <cryptoconditions.h>
 
-#include "primitives/block.h"
-#include "primitives/transaction.h"
 #include "script/cc.h"
 #include "cc/eval.h"
 #include "cc/utils.h"
@@ -93,7 +91,7 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn, 
     std::vector<uint8_t> vparams(cond->code+1, cond->code+cond->codeLength);
     switch ( ecode )
     {
-        case EVAL_PBAASDEFINITION:
+        case EVAL_CURRENCY_DEFINITION:
         case EVAL_SERVICEREWARD:
         case EVAL_EARNEDNOTARIZATION:
         case EVAL_ACCEPTEDNOTARIZATION:
@@ -105,6 +103,7 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn, 
         case EVAL_CROSSCHAIN_EXPORT:
         case EVAL_CROSSCHAIN_IMPORT:
         case EVAL_CURRENCYSTATE:
+        case EVAL_IDENTITY_EXPORT:
             if (!chainActive.LastTip() || CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight() + 1) < CActivationHeight::ACTIVATE_PBAAS)
             {
                 // if chain is not able to process this yet, don't drop through to do so
@@ -118,7 +117,6 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn, 
         case EVAL_IDENTITY_RESERVATION:
             if (!chainActive.LastTip() || CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight() + 1) < CActivationHeight::ACTIVATE_IDENTITY)
             {
-                // if chain is not able to process this yet, don't drop through to do so
                 break;
             }
 

@@ -887,7 +887,7 @@ bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescripto
     if (txDesc.IsValid())
     {
         mapReserveTransactions[hash] = txDesc;
-        CAmount feeDelta = currencyState.ReserveToNative(txDesc.ReserveFees() + txDesc.reserveConversionFees) + txDesc.nativeConversionFees;
+        CAmount feeDelta = txDesc.AllFeesAsNative(currencyState);
         PrioritiseTransaction(hash, hash.GetHex().c_str(), (double)feeDelta * 100.0, feeDelta);
         return true;
     }

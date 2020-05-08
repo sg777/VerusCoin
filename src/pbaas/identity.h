@@ -33,7 +33,7 @@
 #include "arith_uint256.h"
 
 std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false);
-std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter=false);
+std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter=false, bool addVerus=true);
 
 class CCommitmentHash
 {
@@ -136,9 +136,10 @@ class CPrincipal
 {
 public:
     static const uint8_t VERSION_INVALID = 0;
-    static const uint8_t VERSION_CURRENT = 1;
+    static const uint8_t VERSION_VERUSID = 1;
+    static const uint8_t VERSION_PBAAS = 2;
     static const uint8_t VERSION_FIRSTVALID = 1;
-    static const uint8_t VERSION_LASTVALID = 1;
+    static const uint8_t VERSION_LASTVALID = 2;
 
     uint32_t nVersion;
     uint32_t flags;
@@ -240,8 +241,7 @@ class CIdentity : public CPrincipal
 {
 public:
     static const uint32_t FLAG_REVOKED = 0x8000;
-    static const int64_t MIN_REGISTRATION_AMOUNT = 10000000000;
-    static const int REFERRAL_LEVELS = 3;
+    static const uint32_t FLAG_ACTIVECURRENCY = 0x0001;     // flag that is set when this ID is being used as an active currency name
     static const int MAX_NAME_LEN = 64;
 
     uint160 parent;
@@ -372,6 +372,25 @@ public:
         return flags & FLAG_REVOKED;
     }
 
+    void ActivateCurrency()
+    {
+        if (nVersion == VERSION_FIRSTVALID)
+        {
+            nVersion = VERSION_PBAAS;
+        }
+        flags |= FLAG_ACTIVECURRENCY;
+    }
+
+    void DeactivateCurrency()
+    {
+        flags &= ~FLAG_ACTIVECURRENCY;
+    }
+
+    bool HasActiveCurrency() const
+    {
+        return flags & FLAG_ACTIVECURRENCY;
+    }
+
     bool IsValid() const
     {
         return CPrincipal::IsValid() && name.size() > 0 && (name.size() <= MAX_NAME_LEN);
@@ -380,21 +399,6 @@ public:
     bool IsValidUnrevoked() const
     {
         return IsValid() && !IsRevoked();
-    }
-
-    inline static CAmount FullRegistrationAmount()
-    {
-        return MIN_REGISTRATION_AMOUNT;
-    }
-
-    inline static CAmount ReferredRegistrationAmount()
-    {
-        return (MIN_REGISTRATION_AMOUNT * (CIdentity::REFERRAL_LEVELS + 1)) / (CIdentity::REFERRAL_LEVELS + 2);
-    }
-
-    inline static CAmount ReferralAmount()
-    {
-        return MIN_REGISTRATION_AMOUNT / (CIdentity::REFERRAL_LEVELS + 2);
     }
 
     CIdentityID GetID() const;
@@ -447,16 +451,13 @@ public:
     // creates an output script to control updates to this identity
     CScript IdentityUpdateOutputScript() const;
 
-    inline static CAmount MinRegistrationAmount()
-    {
-        return MIN_REGISTRATION_AMOUNT;
-    }
-
     bool IsInvalidMutation(const CIdentity &newIdentity) const
     {
         if (parent != newIdentity.parent ||
             name != newIdentity.name ||
-            newIdentity.flags & ~(FLAG_REVOKED) != 0 ||
+            ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
+            ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
+            ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
             newIdentity.nVersion < VERSION_FIRSTVALID ||
             newIdentity.nVersion > VERSION_LASTVALID)
         {
@@ -469,7 +470,8 @@ public:
     {
         if (CPrincipal::IsPrimaryMutation(newIdentity) ||
             contentMap != newIdentity.contentMap ||
-            privateAddresses != newIdentity.privateAddresses)
+            privateAddresses != newIdentity.privateAddresses ||
+            (HasActiveCurrency() != newIdentity.HasActiveCurrency()))
         {
             return true;
         }
@@ -593,6 +595,58 @@ public:
     }
 };
 
+class CIdentityExport
+{
+public:
+    enum
+    {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_CURRENT = 1,
+        VERSION_LAST = 1,
+        DEFAULT_EXPORT_FEE = 30000
+    };
+    int32_t version;
+    CIdentityID idID;                       // the identity we are registering on or transferring to another chain or system
+    uint256 idHash;                         // hash of the identity object when this transaction was mined, used to prove transfer
+    uint160 currencyID;                     // currency in which registration fees are being paid, which get transferred to the destination system
+    CAmount fees;                           // cross-chain network fees only, separated out to enable market conversions
+    uint160 systemID;                       // system to export to, which may represent a PBaaS chain or external bridge
+
+    CIdentityExport() : version(VERSION_INVALID), fees(0) {}
+    CIdentityExport(const UniValue &uni);
+    CIdentityExport(const CIdentityID &id, const uint256 &hash, const uint160 &cID, CAmount Fees, const uint160 &systemIDTarget) : 
+            version(VERSION_CURRENT), idID(id), idHash(hash), currencyID(cID), fees(Fees), systemID(systemIDTarget) {}
+    CIdentityExport(const std::vector<unsigned char> &vch)
+    {
+        ::FromVector(vch, *this);
+    }
+
+    UniValue ToUniValue() const
+    {
+        UniValue retVal(UniValue::VOBJ);
+        retVal.push_back(std::make_pair("exportingidentity", EncodeDestination(idID)));
+        return retVal;
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(version);
+        READWRITE(idID);
+        READWRITE(idHash);
+        READWRITE(currencyID);
+        READWRITE(fees);
+        READWRITE(systemID);
+    }
+    
+    bool IsValid() const
+    {
+        return version >= VERSION_FIRST && version <= VERSION_LAST  && !idID.IsNull()  && !systemID.IsNull();
+    }
+};
+
 // an identity signature is a compound signature consisting of the block height of its creation, and one or more cryptographic 
 // signatures of the controlling addresses. validation can be performed based on the validity when signed, using the block height
 // stored in the signature instance, or based on the continued signature validity of the current identity, which may automatically
@@ -602,7 +656,7 @@ class CIdentitySignature
 public:
     enum {
         VERSION_INVALID = 0,
-        VERSION_CURRENT = 1,
+        VERSION_VERUSID = 1,
         VERSION_FIRST = 1,
         VERSION_LAST = 1
     };
@@ -610,9 +664,9 @@ public:
     uint32_t blockHeight;
     std::set<std::vector<unsigned char>> signatures;
 
-    CIdentitySignature() : version(VERSION_CURRENT), blockHeight(0) {}
-    CIdentitySignature(uint32_t height, const std::vector<unsigned char> &oneSig) : version(VERSION_CURRENT), blockHeight(height), signatures({oneSig}) {}
-    CIdentitySignature(uint32_t height, const std::set<std::vector<unsigned char>> &sigs) : version(VERSION_CURRENT), blockHeight(height), signatures(sigs) {}
+    CIdentitySignature() : version(VERSION_VERUSID), blockHeight(0) {}
+    CIdentitySignature(uint32_t height, const std::vector<unsigned char> &oneSig) : version(VERSION_VERUSID), blockHeight(height), signatures({oneSig}) {}
+    CIdentitySignature(uint32_t height, const std::set<std::vector<unsigned char>> &sigs) : version(VERSION_VERUSID), blockHeight(height), signatures(sigs) {}
     CIdentitySignature(const std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);
@@ -674,8 +728,14 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
 bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
-bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, bool referrals);
+bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, int referralLevels, int64_t referralAmount);
 bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool IsIdentityInput(const CScript &scriptSig);
+bool ValidateQuantumKeyOut(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled);
+bool IsQuantumKeyOutInput(const CScript &scriptSig);
+bool PrecheckQuantumKeyOut(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
+bool ValidateIdentityExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool IsIdentityExportInput(const CScript &scriptSig);
+bool IdentityExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 
 #endif // IDENTITY_H

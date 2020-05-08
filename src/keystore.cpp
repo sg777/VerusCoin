@@ -104,6 +104,11 @@ bool CBasicKeyStore::GetCScript(const CScriptID &hash, CScript& redeemScriptOut)
     return false;
 }
 
+void CBasicKeyStore::ClearIdentities()
+{
+    mapIdentities.clear();
+}
+
 bool CBasicKeyStore::HaveIdentity(const CIdentityID &idID) const
 {
     return mapIdentities.count(CIdentityMapKey(idID).MapKey()) != 0;

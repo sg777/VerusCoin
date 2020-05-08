@@ -14,6 +14,7 @@
 #include "internal.h"
 #include "asn/OCTET_STRING.h"
 #include "include/falcon/falcon.h"
+#include "asn/Falcon512FingerprintContents.h"
 
 struct CCType CC_Falcon512Type;
 
@@ -127,3 +128,79 @@ int cc_VerifyFalcon512Key(const unsigned char *msg32, const unsigned char *publi
 
     return 1;
 }
+
+static unsigned char *falcon512Fingerprint(const CC *cond) {
+    Falcon512FingerprintContents_t *fp = calloc(1, sizeof(Falcon512FingerprintContents_t));
+    OCTET_STRING_fromBuf(&fp->publicKey, cond->publicKey, FALCON_PUBKEY_SIZE(9));
+    return hashFingerprintContents(&asn_DEF_Falcon512FingerprintContents, fp);
+}
+
+static unsigned long falcon512Cost(const CC *cond) {
+    return 131072;
+}
+
+
+//static CC *cc_falcon512Condition(const unsigned char *publicKey, const unsigned char *signature) {
+  
+  //  return 0;
+//}
+
+
+static CC *falcon512FromJSON(const cJSON *params, char *err) {
+  //  CC *cond = 0;
+  //  unsigned char *pk = 0, *sig = 0;
+ //   size_t pkSize, sigSize;
+
+    return 0;
+}
+
+
+static void falcon512ToJSON(const CC *cond, cJSON *params) {
+
+}
+
+
+static CC *falcon512FromFulfillment(const Fulfillment_t *ffill) {
+    return 0;
+}
+
+
+static Fulfillment_t *falcon512ToFulfillment(const CC *cond) {
+    if (!cond->signature) {
+        return NULL;
+    }
+
+    return 0;
+}
+
+
+static CC *falcon512FromPartialFulfillment(const Fulfillment_t *ffill) {
+    return 0;
+}
+
+
+static Fulfillment_t *falcon512ToPartialFulfillment(const CC *cond) {
+
+    
+    return 0;
+}
+
+
+int falcon512IsFulfilled(const CC *cond) {
+    return cond->signature != 0;
+}
+
+
+static void falcon512Free(CC *cond) {
+    free(cond->publicKey);
+    if (cond->signature) {
+        free(cond->signature);
+    }
+}
+
+
+static uint32_t falcon512Subtypes(const CC *cond) {
+    return 0;
+}
+
+struct CCType CC_Falcon512Type = { 5, "falcon512-sha-256", Condition_PR_falcon512, 0, &falcon512Fingerprint, &falcon512Cost, &falcon512Subtypes, &falcon512FromJSON, &falcon512ToJSON, &falcon512FromFulfillment, &falcon512ToFulfillment, &falcon512FromPartialFulfillment, &falcon512ToPartialFulfillment, &falcon512IsFulfilled, &falcon512Free };
