@@ -553,7 +553,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
         CPartialTransactionProof oneExportProof(((CChainObject<CPartialTransactionProof> *)chainObjs[0])->object);
         if (oneExportProof.txProof.proofSequence.size() == 3)
         {
-            lastExportHash = oneExportProof.GetPartialTransaction(lastExportTx);
+            lastExportHash = oneExportProof.TransactionHash();
         }
 
         BlockMap::iterator blkMapIt;
@@ -864,6 +864,15 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             ChainMerkleMountainView(chainActive.GetMMR(), lastConfirmed.notarizationHeight).GetProof(exportProof.txProof, aixIt->second.first.blockHeight);
 
             CChainObject<CPartialTransactionProof> exportXProof(CHAINOBJ_TRANSACTION_PROOF, exportProof);
+
+            CTransaction checkTx;
+            uint256 checkTxID = exportProof.TransactionHash();
+            if (checkTxID != aixIt->second.second.GetHash())
+            {
+                printf("%s: invalid partial transaction proof, hash is %s, should be %s\n", __func__, checkTxID.GetHex().c_str(), aixIt->second.second.GetHash().GetHex().c_str());
+                LogPrintf("%s: invalid partial transaction proof, hash is %s, should be %s\n", __func__, checkTxID.GetHex().c_str(), aixIt->second.second.GetHash().GetHex().c_str());
+                return false;
+            }
 
             // add the opret with the transaction and proof
             newImportTx.vout.push_back(CTxOut(0, StoreOpRetArray(std::vector<CBaseChainObject *>({&exportXProof}))));
@@ -3670,7 +3679,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
 
     if (lastExportTxProof.txProof.proofSequence.size())
     {
-        lastExportHash = lastExportTxProof.GetPartialTransaction(lastExportTx);
+        lastExportHash = lastExportTxProof.TransactionHash();
         CTransaction tx;
         uint256 blkHash;
         BlockMap::iterator blkMapIt;
