@@ -1265,21 +1265,11 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     }
                                     else
                                     {
-                                        CAmount valueOut = 0;
-                                        if (isMint)
-                                        {
-                                            CCurrencyValueMap newFees = txInputs[j].second.CalculateFee(txInputs[j].second.flags, valueOut);
-                                            totalTxFees += newFees;
-                                            totalAmounts += newFees;
-                                        }
-                                        else
-                                        {
-                                            valueOut = txInputs[j].second.nValue;
-                                            totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, valueOut);
-                                            totalAmounts += newTransferInput;
-                                        }
-                                        CReserveTransfer rt(txInputs[j].second);
-                                        chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(rt), rt));
+                                        CAmount valueOut = isMint ? 0 : txInputs[j].second.nValue;
+                                        CCurrencyValueMap newFees;
+                                        totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, valueOut);
+                                        totalAmounts += newTransferInput;
+                                        chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
                                     }
                                 }
 
@@ -1296,7 +1286,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     continue;
                                 }
 
-                                //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
+                                printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
 
                                 CCrossChainExport ccx(lastChain, numInputs, totalAmounts, totalTxFees);
 

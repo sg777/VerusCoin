@@ -1405,8 +1405,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     return false;
                 }
 
-                // fee has already been accounted for, so skip it
-                // in all other cases, calculate inputs from export
                 if (!(curTransfer.flags & curTransfer.FEE_OUTPUT))
                 {
                     if (curTransfer.currencyID == systemDestID && !(curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
@@ -1425,7 +1423,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
                         }
                     }
-                    transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
+                    if (!(curTransfer.flags & curTransfer.PRECONVERT))
+                    {
+                        transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
+                    }
 
                     if (curTransfer.flags & curTransfer.PREALLOCATE)
                     {
@@ -1673,11 +1674,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     }
     ReserveInputs.valueMap[currencyDest.systemID] += nativeIn;
     ReserveOutputs.valueMap[currencyDest.systemID] += nativeOut;
-    CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs - transferFees, transferFees);
+    CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs, transferFees);
     if (ReserveInputs - ReserveOutputs < ccx.CalculateImportFee())
     {
-        printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\nccx: %s\n", __func__,
-                ReserveInputs.ToUniValue().write(1,2).c_str(), ReserveOutputs.ToUniValue().write(1,2).c_str(), ccx.ToUniValue().write(1,2).c_str());
+        printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\nccx.CalculateImportFee(): %s\nccx: %s\n", __func__,
+                ReserveInputs.ToUniValue().write(1,2).c_str(), 
+                ReserveOutputs.ToUniValue().write(1,2).c_str(), 
+                ccx.CalculateImportFee().ToUniValue().write(1,2).c_str(), 
+                ccx.ToUniValue().write(1,2).c_str());
         LogPrintf("%s: Too much fee taken by export\n", __func__);
         return false;
     }
