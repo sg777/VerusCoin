@@ -1286,7 +1286,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     continue;
                                 }
 
-                                printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
+                                //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
 
                                 CCrossChainExport ccx(lastChain, numInputs, totalAmounts, totalTxFees);
 
@@ -1411,9 +1411,11 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         }
                                         else
                                         {
-                                            UniValue uni(UniValue::VOBJ);
-                                            TxToUniv(tx, uint256(), uni);
-                                            printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
+                                            //UniValue uni(UniValue::VOBJ);
+                                            //TxToUniv(tx, uint256(), uni);
+                                            //printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
+                                            LogPrintf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
+                                            break;
                                         }
                                     }
                                     else
