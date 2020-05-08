@@ -1221,6 +1221,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 {
                                     flags |= IS_REJECT;
                                 }
+
+                                for (auto &oneOutCur : cci.totalReserveOutMap.valueMap)
+                                {
+                                    AddReserveOutput(oneOutCur.first, oneOutCur.second);
+                                }
                                 // TODO:PBAAS - hardening - validate all the outputs we got back as the same as what is in the transaction
                             }
                             else
@@ -1350,6 +1355,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         if (exportObjects[i]->objectType == CHAINOBJ_RESERVETRANSFER)
         {
             CReserveTransfer &curTransfer = ((CChainObject<CReserveTransfer> *)exportObjects[i])->object;
+
+            //printf("currency transfer #%d:\n%s\n", i, curTransfer.ToUniValue().write(1,2).c_str());
+
             CCurrencyDefinition currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID);
             CAmount mintAmount = 0;
 

@@ -281,7 +281,7 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
     if (tokensOut.valueMap.size())
     {
         UniValue reserveBal(UniValue::VOBJ);
-        for (auto &oneBalance : pwalletMain->GetReserveBalance().valueMap)
+        for (auto &oneBalance : tokensOut.valueMap)
         {
             reserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
         }

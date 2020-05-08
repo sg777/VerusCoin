@@ -2735,6 +2735,7 @@ namespace Consensus {
         
         CAmount nValueIn = 0;
         CCurrencyValueMap ReserveValueIn;
+        CCurrencyValueMap inputValueIn;
         int32_t outNum;
         CCrossChainImport cci(tx, &outNum);
 
@@ -2743,10 +2744,13 @@ namespace Consensus {
         if (cci.IsValid())
         {
             ReserveValueIn = rtxd.ReserveInputMap() + rtxd.ReserveOutConvertedMap();
+            //printf("cci.importValue:\n%s\n rtxd.ReserveInputMap():\n%s, rtxd.ReserveOutConvertedMap():\n%s\n", cci.importValue.ToUniValue().write(1, 2).c_str(), 
+            //    rtxd.ReserveInputMap().ToUniValue().write(1, 2).c_str(), rtxd.ReserveOutConvertedMap().ToUniValue().write(1, 2).c_str());
         }
         else
         {
             ReserveValueIn = rtxd.ReserveInputMap();
+            //fprintf(stderr,"cci invalid ReserveValueIn: %s\n", ReserveValueIn.ToUniValue().write(1, 2).c_str());
         }
 
         CAmount nFees = 0;
@@ -2797,7 +2801,8 @@ namespace Consensus {
             nValueIn += coins->vout[prevout.n].nValue;
 
             COptCCParams p;
-            ReserveValueIn += coins->vout[prevout.n].scriptPubKey.ReserveOutValue(p);
+            inputValueIn += coins->vout[prevout.n].scriptPubKey.ReserveOutValue(p);
+            //printf("inputValueIn: %s\n", inputValueIn.ToUniValue().write(1, 2).c_str());
 
 #ifdef KOMODO_ENABLE_INTEREST
             if ( ASSETCHAINS_SYMBOL[0] == 0 && nSpendHeight > 60000 )//chainActive.LastTip() != 0 && chainActive.LastTip()->GetHeight() >= 60000 )
@@ -2830,6 +2835,8 @@ namespace Consensus {
             return state.DoS(100, error("CheckInputs(): %s value in (%s) < value out (%s) diff %.8f",
                                         tx.GetHash().ToString(), FormatMoney(nValueIn), FormatMoney(tx.GetValueOut()),((double)nValueIn - tx.GetValueOut())/COIN),REJECT_INVALID, "bad-txns-in-belowout");
         }
+
+        //printf("ReserveValueIn: %s\nGetReserveValueOut: %s\n", ReserveValueIn.ToUniValue().write(1, 2).c_str(), tx.GetReserveValueOut().ToUniValue().write(1, 2).c_str());
 
         if (ReserveValueIn < tx.GetReserveValueOut())
         {
