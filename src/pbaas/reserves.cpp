@@ -1337,6 +1337,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
     bool isVerusActive = IsVerusActive();
 
+    if (currencyDest.GetID() == GetDestinationID(DecodeDestination("iAYDPgZ8PuDQyMa4mXycC964bzgU4sWH57")))
+    {
+        printf("operation for reserve currency: %s\n", currencyDest.name.c_str());
+    }
+
     CCcontract_info CC;
     CCcontract_info *cp;
 

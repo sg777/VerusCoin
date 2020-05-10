@@ -269,13 +269,9 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
         // Shortcut for pay-to-crypto-condition
         CScript ccSubScript = CScript();
         std::vector<std::vector<unsigned char>> vParams;
-        if (scriptPubKey.IsPayToCryptoCondition(&ccSubScript, vParams))
+        COptCCParams cp;
+        if (scriptPubKey.IsPayToCryptoCondition(cp))
         {
-            COptCCParams cp;
-            if (vParams.size())
-            {
-                cp = COptCCParams(vParams[0]);
-            }
             if (cp.IsValid() && cp.version >= cp.VERSION_V3)
             {
                 typeRet = TX_CRYPTOCONDITION;
@@ -319,22 +315,20 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     return true;
                 }
             }
-            else if (scriptPubKey.MayAcceptCryptoCondition(cp.evalCode))
+            else if (scriptPubKey.IsPayToCryptoCondition(&ccSubScript, vParams))
             {
                 typeRet = TX_CRYPTOCONDITION;
 
-                if (vParams.size())
+                if (cp.IsValid())
                 {
-                    if (cp.IsValid())
+                    if (cp.evalCode != EVAL_STAKEGUARD)
                     {
-                        for (auto k : cp.vKeys)
-                        {
-                            vSolutionsRet.push_back(GetDestinationBytes(k));
-                        }
-                    }
-                    else
-                    {
+                        LogPrintf("unrecognized smart transaction script type\n");
                         return false;
+                    }
+                    for (auto k : cp.vKeys)
+                    {
+                        vSolutionsRet.push_back(GetDestinationBytes(k));
                     }
                 }
 
