@@ -1337,11 +1337,16 @@ bool ContextualCheckTransaction(
     }
 
     // precheck all crypto conditions
+    bool invalid = false;
     for (int i = 0; i < tx.vout.size(); i++)
     {
         COptCCParams p;
-        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p))
         {
+            if (!p.IsValid())
+            {
+                invalid = true;
+            }
             if (p.evalCode == EVAL_NONE)
             {
                 if (!DefaultCCContextualPreCheck(tx, i, state, nHeight))
@@ -1363,6 +1368,13 @@ bool ContextualCheckTransaction(
                 }
             }
         }
+    }
+    if (invalid)
+    {
+        // TODO: reenable on testnet reset - testnet disable for update
+        //UniValue jsonTx(UniValue::VOBJ);
+        //TxToUniv(tx, uint256(), jsonTx);
+        //printf("INVALID transaction:\n%s\n", jsonTx.write(1,2).c_str());
     }
     return true;
 }
