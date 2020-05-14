@@ -25,6 +25,8 @@ extern uint160 VERUS_CHAINID;
 extern std::string VERUS_CHAINNAME;
 
 CIdentityID VERUS_DEFAULTID;
+bool VERUS_PRIVATECHANGE;
+std::string VERUS_DEFAULT_ZADDR;
 
 namespace
 {

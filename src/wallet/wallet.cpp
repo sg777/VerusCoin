@@ -1677,7 +1677,8 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         return false;
     }
 
-    uint32_t solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
+    uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool extendedStake = solutionVersion >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
     // we get these sources of entropy to prove all sources in the header
     int posHeight = -1, powHeight = -1, altHeight = -1;
@@ -1685,7 +1686,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     {
         LOCK(cs_main);
         pastHash = chainActive.GetVerusEntropyHash(nHeight, &posHeight, &powHeight, &altHeight);
-        if (altHeight == -1 && (powHeight == -1 || posHeight == -1))
+        if (extendedStake && (altHeight == -1 && (powHeight == -1 || posHeight == -1)))
         {
             printf("Error retrieving entropy hash at height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
             LogPrintf("Error retrieving entropy hash at height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
@@ -1693,10 +1694,25 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         }
     }
 
-    int secondBlockHeight = altHeight != -1 ? altHeight : (posHeight > powHeight ? powHeight : posHeight);
+    // secondBlockHeight is either less than first or -1 if there isn't one
+    int secondBlockHeight = altHeight != -1 ? 
+                                altHeight : 
+                                posHeight == -1 ? 
+                                    posHeight :
+                                    powHeight == -1 ?
+                                        powHeight :
+                                        (posHeight > powHeight ? 
+                                            powHeight : 
+                                            posHeight);
+
     int proveBlockHeight = posHeight > secondBlockHeight ? posHeight : powHeight;
 
-    if (proveBlockHeight != -1)
+    if (proveBlockHeight == -1)
+    {
+        printf("No block suitable for proof for height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
+        LogPrintf("No block suitable for proof for height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
+    }
+    else
     {
         CPOSNonce curNonce;
         uint32_t srcIndex;
@@ -1705,7 +1721,6 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         CMutableTransaction checkStakeTx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
         std::vector<CTxDestination> addressRet;
         int nRequiredRet;
-        bool extendedStake = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
         BOOST_FOREACH(COutput &txout, vecOutputs)
         {
@@ -1752,7 +1767,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
-            if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS)
+            if (solutionVersion >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE)
             {
                 CDataStream headerStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 

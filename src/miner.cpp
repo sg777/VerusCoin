@@ -594,7 +594,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         CBlockIndex *ppast;
         CTransaction cb;
         int cheatHeight = nHeight - COINBASE_MATURITY < 1 ? 1 : nHeight - COINBASE_MATURITY;
-        if (cheatCatcher &&
+        if (defaultSaplingDest &&
             sapling && chainActive.Height() > 100 && 
             (ppast = chainActive[cheatHeight]) && 
             ppast->IsVerusPOSBlock() && 
@@ -650,7 +650,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                                 ovk = ovkForShieldingFromTaddr(seed);
 
                                 // send everything to Sapling address
-                                tb.SendChangeTo(cheatCatcher.value(), ovk);
+                                tb.SendChangeTo(defaultSaplingDest.value(), ovk);
 
                                 tb.AddOpRet(mtx.vout[mtx.vout.size() - 1].scriptPubKey);
 
@@ -3426,39 +3426,23 @@ void static BitcoinMiner(CWallet *pwallet)
             return;
         }
 
-        // if we are supposed to catch stake cheaters, there must be a valid sapling parameter, we need it at
-        // initialization, and this is the first time we can get it. store the Sapling address here
-        extern boost::optional<libzcash::SaplingPaymentAddress> cheatCatcher;
-        extern std::string VERUS_CHEATCATCHER;
-        libzcash::PaymentAddress addr = DecodePaymentAddress(VERUS_CHEATCATCHER);
-        if (VERUS_CHEATCATCHER.size() > 0 && IsValidPaymentAddress(addr))
-        {
-            try
-            {
-                cheatCatcher = boost::get<libzcash::SaplingPaymentAddress>(addr);
-            } 
-            catch (...)
-            {
-            }
-        }
-
         VERUS_MINTBLOCKS = (VERUS_MINTBLOCKS && ASSETCHAINS_LWMAPOS != 0);
 
         if (fGenerate == true || VERUS_MINTBLOCKS)
         {
             mapArgs["-gen"] = "1";
 
-            if (VERUS_CHEATCATCHER.size() > 0)
+            if (VERUS_DEFAULT_ZADDR.size() > 0)
             {
-                if (cheatCatcher == boost::none)
+                if (defaultSaplingDest == boost::none)
                 {
-                    LogPrintf("ERROR: -cheatcatcher parameter is invalid Sapling payment address\n");
-                    fprintf(stderr, "-cheatcatcher parameter is invalid Sapling payment address\n");
+                    LogPrintf("ERROR: -defaultzaddr parameter is invalid Sapling payment address\n");
+                    fprintf(stderr, "-defaultzaddr parameter is invalid Sapling payment address\n");
                 }
                 else
                 {
-                    LogPrintf("StakeGuard searching for double stakes on %s\n", VERUS_CHEATCATCHER.c_str());
-                    fprintf(stderr, "StakeGuard searching for double stakes on %s\n", VERUS_CHEATCATCHER.c_str());
+                    LogPrintf("StakeGuard searching for double stakes on %s\n", VERUS_DEFAULT_ZADDR.c_str());
+                    fprintf(stderr, "StakeGuard searching for double stakes on %s\n", VERUS_DEFAULT_ZADDR.c_str());
                 }
             }
         }

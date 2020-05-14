@@ -47,7 +47,6 @@ extern unsigned int nTxConfirmTarget;
 extern bool bSpendZeroConfChange;
 extern bool fSendFreeTransactions;
 extern bool fPayAtLeastCustomFee;
-extern CIdentityID VERUS_DEFAULTID;
 
 //! -paytxfee default
 static const CAmount DEFAULT_TRANSACTION_FEE = 0.0001 * COIN;

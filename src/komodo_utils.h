@@ -1694,7 +1694,7 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
 }
 
 extern int64_t MAX_MONEY;
-extern std::string VERUS_CHEATCATCHER;
+extern std::string VERUS_DEFAULT_ZADDR;
 bool SetThisChain(const UniValue &chainDefinition);
 const uint256 &CurrencyDefHash();
 

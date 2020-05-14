@@ -443,6 +443,8 @@ void CNode::PushVersion()
     else
         LogPrint("net", "send version message: version %d, blocks=%d, us=%s, peer=%d\n", PROTOCOL_VERSION, nBestHeight, addrMe.ToString(), id);
 
+    //printf("net send version message: version %d, blocks=%d, us=%s, peer=%d\n", PROTOCOL_VERSION, nBestHeight, addrMe.ToString().c_str(), id);
+
     if (PROTOCOL_VERSION >= MIN_PBAAS_VERSION)
     {
         CKeyID nodePaymentAddress;
