@@ -6,9 +6,9 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.1
+  VERSION: 0.6.5-1
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
-  VERUS_CLI_LINUX: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
+  VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
   VERUS_CLI_MACOS: Verus-CLI-MacOS-v${VERSION}.tar.gz
   DOWNSTREAM_AGAMA_BRANCH: ${CI_COMMIT_REF_NAME}
@@ -31,7 +31,6 @@ build:linux:
   image: asherd/verus-builders:verus-centos
   variables:
     DOCKER_DRIVER: overlay2
-    STATIC_LIBCURL: 1
     CONFIGURE_FLAGS: --with-gcc-arch=x86-64
   stage: build
   cache:
@@ -53,30 +52,27 @@ build:linux:
     - chmod +x verus-cli/verus
     - chmod +x verus-cli/verusd
     - chmod +x verus-cli/fetch-params
-    - tar -czvf ${VERUS_CLI_LINUX} verus-cli
-    - sha256sum ${VERUS_CLI_LINUX} > ${VERUS_CLI_LINUX}.sha256
+    - tar -czvf ${VERUS_CLI_LINUX_AMD64} verus-cli
+    - sha256sum ${VERUS_CLI_LINUX_AMD64} > ${VERUS_CLI_LINUX_AMD64}.sha256
     - git status
   after_script:
-    - curl -F file=@"${VERUS_CLI_LINUX}"
+    - curl -F file=@"${VERUS_CLI_LINUX_AMD64}"
       -F channels="${CLI_POST_CHANNEL}"
       -F initial_comment="${POST_MESSAGE}"
       -H "${SLACK_BOT_AUTH}"
       "https://slack.com/api/files.upload"
   artifacts:
     paths:
-      - ${VERUS_CLI_LINUX}
-      - ${VERUS_CLI_LINUX}.sha256
+      - ${VERUS_CLI_LINUX_AMD64}
+      - ${VERUS_CLI_LINUX_AMD64}.sha256
     expire_in: 1 week
 
-.build:linux:arm64:
+build:linux:arm64:
   image: asherd/verus-builders:cross-arm
   variables:
     DOCKER_DRIVER: overlay2
     HOST: aarch64-linux-gnu
     STRIP: /usr/aarch64-linux-gnu/bin/strip
-    STATIC_LIBCURL: 1
-    CXX: g++-8-aarch64-linux-gnu
-    CC: gcc-8-aarch64-linux-gnu
   stage: build
   cache:
     key: "${CI_JOB_NAME}${CI_COMMIT_REF_NAME}"
@@ -131,7 +127,6 @@ build:windows:
       src/verusd.exe
       doc/man/verus-cli/windows/README.txt
       zcutil/fetch-params.bat
-      zcutil/wget64.exe
       verus-cli
     - if [ "${STRIP_BINARIES}" = "true" ]; then strip --strip-unneeded verus-cli/verusd.exe && strip --strip-unneeded verus-cli/verus.exe; fi
     - zip -r ${VERUS_CLI_WINDOWS} verus-cli
@@ -244,7 +239,7 @@ build:mac:
     - rm -rf /root/.komodo || true
     - mv .komodo /root/ || true
   script:
-    - tar -xzvf ${VERUS_CLI_LINUX}
+    - tar -xzvf ${VERUS_CLI_LINUX_AMD64}
     - export PATH=$PATH:$CI_PROJECT_DIR/verus-cli
     - python qa/verus-cli-tests/verus-cli-tester.py
   after_script:
@@ -273,7 +268,7 @@ build:mac:
     - rm -rf /root/.komodo || true
     - mv .komodo /root/ || true
   script:
-    - tar -xzvf ${VERUS_CLI_LINUX}
+    - tar -xzvf ${VERUS_CLI_LINUX_AMD64}
     - export PATH=$PATH:$CI_PROJECT_DIR/verus-cli
     - python qa/verus-cli-tests/verus-cli-tester.py
   after_script:
@@ -358,35 +353,27 @@ deploy:
     - build:linux
     - build:windows
     - build:mac
- #   - build:linux:arm64
+    - build:linux:arm64
   script:
-    - mkdir Windows && mkdir Linux && mkdir MacOS &&
-      cp ${VERUS_CLI_WINDOWS} Windows &&
-      cp ${VERUS_CLI_LINUX} Linux &&
-      cp ${VERUS_CLI_MACOS} MacOS
+    - mkdir Windows && mkdir Linux && mkdir MacOS
+    - cp ${VERUS_CLI_WINDOWS} Windows
+    - cp ${VERUS_CLI_LINUX_AMD64} Linux
+    - cp ${VERUS_CLI_ARM64_LINUX} Linux
+    - cp ${VERUS_CLI_MACOS} MacOS
     - echo "$AUTH_KEY" > AUTH_KEY.json &&
       gcloud auth activate-service-account
       --key-file AUTH_KEY.json
     - gsutil cp -r Windows MacOS Linux  $STAGING/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}
-    - curl -X POST
-      -F token="$CI_JOB_TOKEN"
-      -F ref="$DOWNSTREAM_AGAMA_BRANCH"
-      -F variables\[UPSTREAM_TRIGGER\]="${CI_PROJECT_NAME}"
-      -F variables\[UPSTREAM_CLI_BRANCH\]="${CI_COMMIT_REF_NAME}"
-      -F variables\[VERUS_CLI_LINUX\]="${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/Linux/${VERUS_CLI_LINUX}"
-      -F variables\[VERUS_CLI_WINDOWS\]="${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/Windows/${VERUS_CLI_WINDOWS}"
-      -F variables\[VERUS_CLI_MACOS\]="${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}/MacOS/${VERUS_CLI_MACOS}"
-      "https://gitlab.com/api/v4/projects/12539166/trigger/pipeline"
   artifacts:
     paths:
-      - ${VERUS_CLI_LINUX}
-      - ${VERUS_CLI_LINUX}.sha256
+      - ${VERUS_CLI_LINUX_AMD64}
+      - ${VERUS_CLI_LINUX_AMD64}.sha256
       - ${VERUS_CLI_WINDOWS}
       - ${VERUS_CLI_WINDOWS}.sha256
       - ${VERUS_CLI_MACOS}
       - ${VERUS_CLI_MACOS}.sha256
-   #   - ${VERUS_CLI_ARM64_LINUX}
-   #   - ${VERUS_CLI_ARM64_LINUX}.sha256
+      - ${VERUS_CLI_ARM64_LINUX}
+      - ${VERUS_CLI_ARM64_LINUX}.sha256
     expire_in: 1 week
 ########################################################################################################################
 ####END####                                           Deploy                                                 ####END####

@@ -81,23 +81,23 @@ UniValue convertpassphrase(const UniValue& params, bool fHelp)
             "convertpassphrase \"walletpassphrase\"\n"
             "\nConverts Verus Desktop, Agama, Verus Agama, or Verus Mobile passphrase to a private key and WIF (for import with importprivkey).\n"
             "\nArguments:\n"
-            "1. \"walletpassphrase\"   (string, required) Agama passphrase\n"
+            "1. \"walletpassphrase\"   (string, required) Wallet passphrase\n"
             "\nResult:\n"
-            "\"agamapassphrase\": \"agamapassphrase\",   (string) Wallet passphrase you entered\n"
-            "\"address\": \"komodoaddress\",             (string) Address corresponding to your passphrase\n"
+            "\"walletpassphrase\": \"walletpassphrase\",   (string) Wallet passphrase you entered\n"
+            "\"address\": \"verus address\",             (string) Address corresponding to your passphrase\n"
             "\"pubkey\": \"publickeyhex\",               (string) The hex value of the raw public key\n"
             "\"privkey\": \"privatekeyhex\",             (string) The hex value of the raw private key\n"
             "\"wif\": \"wif\"                            (string) The private key in WIF format to use with 'importprivkey'\n"
             "\nExamples:\n"
-            + HelpExampleCli("convertpassphrase", "\"agamapassphrase\"")
-            + HelpExampleRpc("convertpassphrase", "\"agamapassphrase\"")
+            + HelpExampleCli("convertpassphrase", "\"walletpassphrase\"")
+            + HelpExampleRpc("convertpassphrase", "\"walletpassphrase\"")
         );
 
     bool fCompressed = true;
     string strAgamaPassphrase = params[0].get_str();
 
     UniValue ret(UniValue::VOBJ);
-    ret.push_back(Pair("agamapassphrase", strAgamaPassphrase));
+    ret.push_back(Pair("walletpassphrase", strAgamaPassphrase));
 
     CKey tempkey = DecodeSecret(strAgamaPassphrase);
     /* first we should check if user pass wif to method, instead of passphrase */
@@ -143,7 +143,7 @@ UniValue importprivkey(const UniValue& params, bool fHelp)
             "importprivkey \"komodoprivkey\" ( \"label\" rescan )\n"
             "\nAdds a private key (as returned by dumpprivkey) to your wallet.\n"
             "\nArguments:\n"
-            "1. \"komodoprivkey\"   (string, required) The private key (see dumpprivkey)\n"
+            "1. \"verusprivkey\"   (string, required) The private key (see dumpprivkey)\n"
             "2. \"label\"            (string, optional, default=\"\") An optional label\n"
             "3. rescan               (boolean, optional, default=true) Rescan the wallet for transactions\n"
             "\nNote: This call can take minutes to complete if rescan is true.\n"
