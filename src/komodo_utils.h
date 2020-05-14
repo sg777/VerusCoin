@@ -1740,7 +1740,7 @@ void komodo_args(char *argv0)
     } //else KOMODO_PAX = GetArg("-pax",0);
 
     // either the testmode parameter or calling this chain VRSCTEST will put us into testmode
-    PBAAS_TESTMODE = GetBoolArg("-testmode", true);
+    PBAAS_TESTMODE = GetBoolArg("-testmode", false);
 
     /*
     if ( argv0 != 0 )
@@ -1762,7 +1762,7 @@ void komodo_args(char *argv0)
     // setting test mode also prevents the name of this chain from being set to VRSC
 
     // for testnet release, default to testnet
-    name = GetArg("-chain", name == "" ? "VRSCTEST" : name);
+    name = GetArg("-chain", name == "" ? "VRSC" : name);
     //name = GetArg("-chain", name == "" ? "VRSC" : name);
 
     name = GetArg("-ac_name", name);

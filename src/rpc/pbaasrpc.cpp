@@ -4441,9 +4441,13 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // refunding a currency after its launch is aborted, or shutting it down after the endblock has passed must be completed
     // to fully decommission a blockchain and clear the active blockchain bit from an ID
 
-    if (!newChain.startBlock || newChain.startBlock < (chainActive.Height() + PBAAS_MINSTARTBLOCKDELTA))
+    //if (!newChain.startBlock || newChain.startBlock < (chainActive.Height() + PBAAS_MINSTARTBLOCKDELTA))
+    //{
+    //    newChain.startBlock = chainActive.Height() + (PBAAS_MINSTARTBLOCKDELTA + 5);    // give a little time to send the tx
+    //}
+    if (!newChain.startBlock || newChain.startBlock < (chainActive.Height() + 10))
     {
-        newChain.startBlock = chainActive.Height() + (PBAAS_MINSTARTBLOCKDELTA + 5);    // give a little time to send the tx
+        newChain.startBlock = chainActive.Height() + 15;    // give a little time to send the tx
     }
 
     if (newChain.endBlock && newChain.endBlock < (newChain.startBlock + CCurrencyDefinition::MIN_CURRENCY_LIFE))

@@ -307,8 +307,10 @@ bool ValidateMatchingStake(const CTransaction &ccTx, uint32_t voutNum, const CTr
                         }
                     }
                 }
-                else if ((p.version < p.VERSION_EXTENDED_STAKE && ccp.version < ccp.VERSION_V3) &&
-                         (ccp.IsValid() & ccp.vData.size()) >= 3 && 
+                else if (p.version < p.VERSION_EXTENDED_STAKE &&
+                         ccp.version < ccp.VERSION_V3 &&
+                         ccp.IsValid() &&
+                         ccp.vData.size() >= 3 && 
                          ccp.vData[2].size() <= 4)
                 {
                     hw << stakeTx.vin[0].prevout.hash;
@@ -495,8 +497,12 @@ bool StakeGuardValidate(struct CCcontract_info *cp, Eval* eval, const CTransacti
                     }
                 }
 
-                if ((!signedByFirstKey && ccp.evalCode == EVAL_STAKEGUARD && ccp.vKeys.size() == 2 && ccp.version == COptCCParams::VERSION_V1) &&
-                    params.size() == 2 && params[0].size() > 0 && params[0][0] == OPRETTYPE_STAKECHEAT)
+                if (!signedByFirstKey && 
+                    ccp.evalCode == EVAL_STAKEGUARD && 
+                    ccp.vKeys.size() == 2 &&
+                    params.size() == 2 &&
+                    params[0].size() > 0 && 
+                    params[0][0] == OPRETTYPE_STAKECHEAT)
                 {
                     CDataStream s = CDataStream(std::vector<unsigned char>(params[1].begin(), params[1].end()), SER_DISK, PROTOCOL_VERSION);
                     bool checkOK = false;

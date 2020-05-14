@@ -2680,7 +2680,7 @@ void UpdateCoins(const CTransaction& tx, CCoinsViewCache& inputs, CTxUndo &txund
             
             if (nPos >= coins->vout.size() || coins->vout[nPos].IsNull())
             {
-                printf("Failed to find coins for transaction %s, output %d, at height %d\n", txin.prevout.hash.GetHex().c_str(), txin.prevout.n, nHeight);
+                //printf("Failed to find coins for transaction %s, output %d, at height %d\n", txin.prevout.hash.GetHex().c_str(), txin.prevout.n, nHeight);
                 LogPrintf("Failed to find coins for transaction %s, output %d, at height %d\n", txin.prevout.hash.GetHex().c_str(), txin.prevout.n, nHeight);
                 // we can't generate undo information for this, allow if it's a block bound transaction
                 return;
@@ -4556,7 +4556,7 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
     const CBlockIndex *pindexFork = chainActive.FindFork(pindexMostWork);
 
     // stop trying to reorg if the reorged chain is before last notarized height. 
-    // stay on the same chain tip! 
+    // stay on the same chain tip!
     int32_t notarizedht,prevMoMheight; uint256 notarizedhash,txid;
     notarizedht = komodo_notarized_height(&prevMoMheight,&notarizedhash,&txid);
     if ( pindexFork != 0 && pindexOldTip->GetHeight() > notarizedht && pindexFork->GetHeight() < notarizedht )
@@ -7439,7 +7439,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     }
     
     
-    else if (pfrom->nVersion == 0)
+    else if (pfrom->nVersion == 0 && strCommand != "reject")
     {
         // Must have a version message before anything else
         Misbehaving(pfrom->GetId(), 1);
@@ -7459,8 +7459,36 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             State(pfrom->GetId())->fCurrentlyConnected = true;
         }
     }
-    
-    
+
+
+    else if (strCommand == "reject")
+    {
+        //if (fDebug) {
+            try {
+                string strMsg; unsigned char ccode; string strReason;
+                vRecv >> LIMITED_STRING(strMsg, CMessageHeader::COMMAND_SIZE) >> ccode >> LIMITED_STRING(strReason, MAX_REJECT_MESSAGE_LENGTH);
+                
+                ostringstream ss;
+                ss << strMsg << " code " << itostr(ccode) << ": " << strReason;
+                
+                if (strMsg == "block" || strMsg == "tx")
+                {
+                    uint256 hash;
+                    vRecv >> hash;
+                    ss << ": hash " << hash.ToString();
+                }
+                LogPrint("net", "Reject %s\n", SanitizeString(ss.str()));
+                //printf("Reject message %s\n", SanitizeString(ss.str()).c_str());
+            } catch (const std::ios_base::failure&) {
+                // Avoid feedback loops by preventing reject messages from triggering a new reject message.
+                LogPrint("net", "Unparseable reject message received\n");
+            }
+        //}
+        pfrom->fDisconnect = true;
+        return false;
+    }
+
+
     // Disconnect existing peer connection when:
     // 1. The version message has been received
     // 2. Peer version is below the minimum version for the current epoch
@@ -7475,8 +7503,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         pfrom->fDisconnect = true;
         return false;
     }
-    
-    
+
+
     else if (strCommand == "addr")
     {
         vector<CAddress> vAddr;
@@ -8167,6 +8195,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         }
     }
 
+
     else if (!(nLocalServices & NODE_BLOOM) &&
               (strCommand == "filterload" ||
                strCommand == "filteradd"))
@@ -8231,29 +8260,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     }
     
     
-    else if (strCommand == "reject")
-    {
-        if (fDebug) {
-            try {
-                string strMsg; unsigned char ccode; string strReason;
-                vRecv >> LIMITED_STRING(strMsg, CMessageHeader::COMMAND_SIZE) >> ccode >> LIMITED_STRING(strReason, MAX_REJECT_MESSAGE_LENGTH);
-                
-                ostringstream ss;
-                ss << strMsg << " code " << itostr(ccode) << ": " << strReason;
-                
-                if (strMsg == "block" || strMsg == "tx")
-                {
-                    uint256 hash;
-                    vRecv >> hash;
-                    ss << ": hash " << hash.ToString();
-                }
-                LogPrint("net", "Reject %s\n", SanitizeString(ss.str()));
-            } catch (const std::ios_base::failure&) {
-                // Avoid feedback loops by preventing reject messages from triggering a new reject message.
-                LogPrint("net", "Unparseable reject message received\n");
-            }
-        }
-    }
     else if (strCommand == "notfound") {
         // We do not care about the NOTFOUND message, but logging an Unknown Command
         // message would be undesirable as we transmit it ourselves.
@@ -8264,8 +8270,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         LogPrint("net", "Unknown command \"%s\" from peer=%d\n", SanitizeString(strCommand), pfrom->id);
     }
     
-    
-    
+
     return true;
 }
 
@@ -8347,6 +8352,7 @@ bool ProcessMessages(CNode* pfrom)
         bool fRet = false;
         try
         {
+            //printf("processing message: %s, from %s\n", strCommand.c_str(), pfrom->addr.ToString().c_str());
             fRet = ProcessMessage(pfrom, strCommand, vRecv, msg.nTime);
             boost::this_thread::interruption_point();
         }
