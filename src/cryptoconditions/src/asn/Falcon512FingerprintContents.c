@@ -17,7 +17,7 @@ memb_publicKey_constraint_1(asn_TYPE_descriptor_t *td, const void *sptr,
 	
 	size = st->size;
 	
-	if((size == 33)) {
+	if((size == 896)) {
 		/* Constraint check succeeded */
 		return 0;
 	} else {
@@ -40,7 +40,7 @@ static asn_TYPE_member_t asn_MBR_Falcon512FingerprintContents_1[] = {
 		},
 };
 static const ber_tlv_tag_t asn_DEF_Falcon512FingerprintContents_tags_1[] = {
-	(ASN_TAG_CLASS_UNIVERSAL | (16 << 2))
+	(ASN_TAG_CLASS_UNIVERSAL | (16 << 2)) /* monkins: not sure agin what the masks do*/
 };
 static const asn_TYPE_tag2member_t asn_MAP_Falcon512FingerprintContents_tag2el_1[] = {
     { (ASN_TAG_CLASS_CONTEXT | (0 << 2)), 0, 0, 0 } /* publicKey */
