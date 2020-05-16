@@ -1041,10 +1041,11 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
 {
     bool valid = true, timelocked = false;
     CTxDestination firstDest;
- 
+
     // if time locks are on, ensure that this coin base is time locked exactly as it should be, or invalidate
-    if (((uint64_t)tx.GetValueOut() >= ASSETCHAINS_TIMELOCKGTE) || 
-        (((nHeight >= 31680) || !IsVerusMainnetActive()) && komodo_ac_block_subsidy(nHeight) >= ASSETCHAINS_TIMELOCKGTE))
+    if (((nHeight >= 31680 && nHeight <= 129600) && IsVerusMainnetActive()) &&
+        ((((uint64_t)tx.GetValueOut() >= ASSETCHAINS_TIMELOCKGTE) || 
+        (komodo_ac_block_subsidy(nHeight) >= ASSETCHAINS_TIMELOCKGTE))))
     {
         CScriptID scriptHash;
         valid = false;
@@ -2774,13 +2775,26 @@ namespace Consensus {
 
             if (coins->IsCoinBase()) {
                 // ensure that output of coinbases are not still time locked, or are the outputs that are instant spend
-                if ((uint64_t)coins->TotalTxValue() >= ASSETCHAINS_TIMELOCKGTE && !coins->vout[prevout.n].scriptPubKey.IsInstantSpend())
+                if ((uint64_t)coins->TotalTxValue() >= ASSETCHAINS_TIMELOCKGTE &&
+                    !coins->vout[prevout.n].scriptPubKey.IsInstantSpend())
                 {
                     uint64_t unlockTime = komodo_block_unlocktime(coins->nHeight);
-                    if (nSpendHeight < unlockTime) {
-                        return state.DoS(10,
-                                        error("CheckInputs(): tried to spend coinbase that is timelocked until block %d", unlockTime),
-                                        REJECT_INVALID, "bad-txns-premature-spend-of-coinbase");
+                    if ((coins->nHeight >= 31680 && coins->nHeight <= 129600) && IsVerusMainnetActive() && nSpendHeight < unlockTime)
+                    {
+                        if (CConstVerusSolutionVector::GetVersionByHeight(nSpendHeight) < CActivationHeight::ACTIVATE_IDENTITY)
+                        {
+                            printf("Questionable spend at height %u of coinbase at height %u\n", nSpendHeight, coins->nHeight);
+                        }
+                        else
+                        {
+                            return state.DoS(10,
+                                            error("CheckInputs(): tried to spend coinbase that is timelocked until block %d", unlockTime),
+                                            REJECT_INVALID, "bad-txns-premature-spend-of-coinbase");
+                        }
+                    }
+                    else if (nSpendHeight < unlockTime)
+                    {
+                        printf("Potential version specific spend issue at height %u of coinbase at height %u\n", nSpendHeight, coins->nHeight);
                     }
                 }
 
@@ -2793,7 +2807,7 @@ namespace Consensus {
                                      REJECT_INVALID, "bad-txns-premature-spend-of-coinbase");
                 }
 
-                // As of solution version 3, we're done with the Zcash coinbase protection.
+                // As of solution version 5, we're done with the Zcash coinbase protection.
                 // After careful consideration, it seems that while there is no real privacy benefit to the
                 // coinbase protection beyond forcing the private address pool to be used at least a little by everyone, it does increase the size of the blockchain
                 // and often reduces privacy by mixing multiple coinbase payment addresses
@@ -5309,7 +5323,7 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                     } else if (state.GetRejectReason() != "already have coins" && 
                                !((missinginputs || state.GetRejectCode() == REJECT_DUPLICATE) && (!fCheckTxInputs || chainActive.Height() < height - 1)))
                     {
-                        //printf("Rejected transaction for %s, reject code %d\n", state.GetRejectReason().c_str(), state.GetRejectCode());
+                        // printf("Rejected transaction for %s, reject code %d\n", state.GetRejectReason().c_str(), state.GetRejectCode());
                         //for (auto input : Tx.vin)
                         //{
                         //    LogPrintf("input n: %d, hash: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str());

@@ -375,6 +375,8 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     std::vector<CTxDestination> referrers;
     bool valid = true;
 
+    bool extendedIDValidation = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
+
     AssertLockHeld(cs_main);
 
     for (auto &txout : tx.vout)
@@ -459,29 +461,41 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     CTxIn idTxIn;
     uint32_t priorHeightOut;
     CIdentity dupID = newIdentity.LookupIdentity(newIdentity.GetID(), height - 1, &priorHeightOut, &idTxIn);
-    uint256 inputBlockHash;
 
-    CCoinsViewCache view(pcoinsTip);
+    // CHECK #3a - if dupID is invalid, ensure we spend a matching name commitment
     if (dupID.IsValid())
     {
         return state.Error("Identity already exists");
     }
-    // CHECK #3a - if dupID is invalid, ensure we spend a matching name commitment
-    else
-    {
-        CCommitmentHash ch;
-        int idx = -1;
-        CTransaction txInput;
 
+    int commitmentHeight = 0;
+    const CCoins *coins;
+    CCoinsView dummy;
+    CCoinsViewCache view(&dummy);
+
+    LOCK(mempool.cs);
+    CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+    view.SetBackend(viewMemPool);
+
+    CCommitmentHash ch;
+    int idx = -1;
+
+    CAmount nValueIn = 0;
+    {
         // from here, we must spend a matching name commitment
+        std::map<uint256, const CCoins *> txMap;
         for (auto &oneTxIn : tx.vin)
         {
-            if (!myGetTransaction(oneTxIn.prevout.hash, txInput, inputBlockHash))
+            coins = txMap[oneTxIn.prevout.hash];
+            if (!coins && !(coins = view.AccessCoins(oneTxIn.prevout.hash)))
             {
+                //LogPrintf("Cannot access input from output %u of transaction %s in transaction %s\n", oneTxIn.prevout.n, oneTxIn.prevout.hash.GetHex().c_str(), tx.GetHash().GetHex().c_str());
+                //printf("Cannot access input from output %u of transaction %s in transaction %s\n", oneTxIn.prevout.n, oneTxIn.prevout.hash.GetHex().c_str(), tx.GetHash().GetHex().c_str());
                 return state.Error("Cannot access input");
             }
+            txMap[oneTxIn.prevout.hash] = coins;
 
-            if (oneTxIn.prevout.n >= txInput.vout.size())
+            if (oneTxIn.prevout.n >= coins->vout.size())
             {
                 //extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
                 //UniValue uniTx;
@@ -491,39 +505,44 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             }
 
             COptCCParams p;
-            if (txInput.vout[oneTxIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT && p.vData.size())
+            if (idx == -1 && 
+                coins->vout[oneTxIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && 
+                p.IsValid() && 
+                p.evalCode == EVAL_IDENTITY_COMMITMENT && 
+                p.vData.size())
             {
                 idx = oneTxIn.prevout.n;
                 ::FromVector(p.vData[0], ch);
-                break;
+                commitmentHeight = coins->nHeight;
+                // this needs to already be in a prior block, or we can't consider it valid
+                if (!commitmentHeight)
+                {
+                    if (extendedIDValidation)
+                    {
+                        return state.Error("ID commitment was not already in blockchain");
+                    }
+                    printf("Identity commitment in tx: %s spends commitment in same block at height %d\n", tx.GetHash().GetHex().c_str(), height);
+                }
             }
         }
+    }
 
-        if (idx == -1 || ch.hash.IsNull() || inputBlockHash.IsNull())
-        {
-            std::string specificMsg = "Invalid identity commitment in tx: " + tx.GetHash().GetHex();
-            return state.Error(specificMsg);
-        }
+    if (idx == -1 || ch.hash.IsNull())
+    {
+        std::string specificMsg = "Invalid identity commitment in tx: " + tx.GetHash().GetHex();
+        return state.Error(specificMsg);
+    }
 
-        auto priorIt = mapBlockIndex.find(inputBlockHash);
-        if (priorIt == mapBlockIndex.end() || !chainActive.Contains(priorIt->second))
-        {
-            return state.Error("Identity commitment not in current chain");
-        }
+    // are we spending a matching name commitment?
+    if (ch.hash != newName.GetCommitment().hash)
+    {
+        return state.Error("Mismatched identity commitment");
+    }
 
-        priorHeightOut = priorIt->second->GetHeight();
-
-        // are we spending a matching name commitment?
-        if (ch.hash != newName.GetCommitment().hash)
-        {
-            return state.Error("Mismatched identity commitment");
-        }
-
-        if (!newName.referral.IsNull() && issuingChain.IDReferralLevels() && !(CIdentity::LookupIdentity(newName.referral, priorHeightOut - 1).IsValid()))
-        {
-            // invalid referral identity
-            return state.Error("Invalid referral identity specified");
-        }
+    if (!newName.referral.IsNull() && issuingChain.IDReferralLevels() && !(CIdentity::LookupIdentity(newName.referral, commitmentHeight).IsValid()))
+    {
+        // invalid referral identity
+        return state.Error("Invalid referral identity specified");
     }
 
     CReserveTransactionDescriptor rtxd(tx, view, height);
@@ -727,7 +746,9 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         for (auto &dest : dests)
         {
             uint160 oneDestID;
-            if (dest.which() == COptCCParams::ADDRTYPE_ID && (oneDestID = GetDestinationID(dest)) != thisID && !CIdentity::LookupIdentity(CIdentityID(oneDestID)).IsValid())
+            if (dest.which() == COptCCParams::ADDRTYPE_ID && 
+                (oneDestID = GetDestinationID(dest)) != thisID &&
+                !CIdentity::LookupIdentity(CIdentityID(oneDestID)).IsValid())
             {
                 return state.Error("Destination includes invalid identity");
             }

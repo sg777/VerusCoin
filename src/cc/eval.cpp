@@ -56,19 +56,6 @@ bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fu
 bool DefaultCCContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     // make sure that if the destinations include identities that those identities are valid on this blockchain
-    std::vector<CTxDestination> dests;
-    int minSigs;
-    txnouttype outType;
-    if (ExtractDestinations(tx.vout[outNum].scriptPubKey, outType, dests, minSigs))
-    {
-        for (auto &dest : dests)
-        {
-            if (dest.which() == COptCCParams::ADDRTYPE_ID && !CIdentity::LookupIdentity(CIdentityID(GetDestinationID(dest))).IsValid())
-            {
-                return state.Error("Transaction destination includes invalid identity");
-            }
-        }
-    }
     return true;
 }
 
