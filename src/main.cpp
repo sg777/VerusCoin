@@ -2783,7 +2783,7 @@ namespace Consensus {
                     {
                         if (CConstVerusSolutionVector::GetVersionByHeight(nSpendHeight) < CActivationHeight::ACTIVATE_IDENTITY)
                         {
-                            printf("Questionable spend at height %u of coinbase at height %u\n", nSpendHeight, coins->nHeight);
+                            LogPrintf("Questionable spend at height %u of coinbase at height %u\n", nSpendHeight, coins->nHeight);
                         }
                         else
                         {
@@ -2791,10 +2791,6 @@ namespace Consensus {
                                             error("CheckInputs(): tried to spend coinbase that is timelocked until block %d", unlockTime),
                                             REJECT_INVALID, "bad-txns-premature-spend-of-coinbase");
                         }
-                    }
-                    else if (nSpendHeight < unlockTime)
-                    {
-                        printf("Potential version specific spend issue at height %u of coinbase at height %u\n", nSpendHeight, coins->nHeight);
                     }
                 }
 
