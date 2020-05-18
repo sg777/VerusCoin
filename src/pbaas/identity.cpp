@@ -193,8 +193,6 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
-    LOCK(cs_main);
-
     CKeyID keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
 
     if (GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
@@ -376,8 +374,6 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     bool valid = true;
 
     bool extendedIDValidation = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
-
-    AssertLockHeld(cs_main);
 
     for (auto &txout : tx.vout)
     {
@@ -1202,8 +1198,6 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
         return false;
     }
 
-    LOCK2(cs_main, mempool.cs);
-
     if (!chainActive.LastTip())
     {
         LogPrintf("%s: unable to find chain tip\n");
@@ -1217,6 +1211,8 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
     CNameReservation reservation;
     CTransaction sourceTx;
     uint256 blkHash;
+
+    LOCK(mempool.cs);
     if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
     {
         COptCCParams p;
