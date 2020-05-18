@@ -4272,7 +4272,6 @@ UniValue getsaplingtree(const UniValue& params, bool fHelp)
             + HelpExampleRpc("getsaplingtree", "name")
         );
     }
-    CheckPBaaSAPIsValid();
 
     uint64_t lStart;
     uint64_t startEnd[3] = {0};
