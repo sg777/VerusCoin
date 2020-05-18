@@ -363,7 +363,7 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
 }
 
 // this enables earliest rejection of invalid CC transactions
-bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, CCurrencyDefinition issuingChain)
+bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, CCurrencyDefinition issuingChain)
 {
     // CHECK #1 - there is only one reservation output, and there is also one identity output that matches the reservation.
     //            the identity output must come first and have from 0 to 3 referral outputs between it and the reservation.
@@ -632,7 +632,149 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
-    return PrecheckIdentityReservation(tx, outNum, state, height, thisChain);
+
+    int numReferrers = 0;
+    int identityCount = 0;
+    int reservationCount = 0;
+    CIdentity newIdentity;
+    CNameReservation newName;
+    std::vector<CTxDestination> referrers;
+    bool valid = true;
+
+    bool extendedIDValidation = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
+
+    AssertLockHeld(cs_main);
+
+    for (auto &txout : tx.vout)
+    {
+        COptCCParams p;
+        if (txout.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+        {
+            if (p.evalCode == EVAL_IDENTITY_PRIMARY)
+            {
+                if (identityCount++ || p.vData.size() < 2)
+                {
+                    valid = false;
+                    break;
+                }
+                newIdentity = CIdentity(p.vData[0]);
+            }
+            else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
+            {
+                if (reservationCount++ || p.vData.size() < 2)
+                {
+                    valid = false;
+                    break;
+                }
+                newName = CNameReservation(p.vData[0]);
+            }
+            else if (identityCount && !reservationCount)
+            {
+                if (!thisChain.IDReferralLevels() || 
+                    p.vKeys.size() < 1 || 
+                    referrers.size() > (thisChain.IDReferralLevels() - 1) || 
+                    p.evalCode != 0 || 
+                    p.n > 1 || 
+                    p.m != 1 || 
+                    txout.nValue < thisChain.IDReferralAmount())
+                {
+                    valid = false;
+                    break;
+                }
+                referrers.push_back(p.vKeys[0]);
+            }
+            else if (identityCount != reservationCount)
+            {
+                valid = false;
+                break;
+            }
+        }
+    }
+
+    // we can close a commitment UTXO without an identity
+    if (valid && !identityCount)
+    {
+        return state.Error("Transaction may not have an identity reservation without a matching identity");
+    }
+    else if (!valid)
+    {
+        return state.Error("Improperly formed identity definition transaction");
+    }
+
+    int commitmentHeight = 0;
+
+    LOCK2(cs_main, mempool.cs);
+
+    CCommitmentHash ch;
+    int idx = -1;
+
+    CAmount nValueIn = 0;
+    {
+        // from here, we must spend a matching name commitment
+        std::map<uint256, CTransaction> txMap;
+        uint256 hashBlk;
+        for (auto &oneTxIn : tx.vin)
+        {
+            CTransaction sourceTx = txMap[oneTxIn.prevout.hash];
+            if (sourceTx.nVersion <= sourceTx.SPROUT_MIN_CURRENT_VERSION && !myGetTransaction(oneTxIn.prevout.hash, sourceTx, hashBlk))
+            {
+                //LogPrintf("Cannot access input from output %u of transaction %s in transaction %s\n", oneTxIn.prevout.n, oneTxIn.prevout.hash.GetHex().c_str(), tx.GetHash().GetHex().c_str());
+                //printf("Cannot access input from output %u of transaction %s in transaction %s\n", oneTxIn.prevout.n, oneTxIn.prevout.hash.GetHex().c_str(), tx.GetHash().GetHex().c_str());
+                return state.Error("Cannot access input");
+            }
+            txMap[oneTxIn.prevout.hash] = sourceTx;
+
+            auto blockIt = mapBlockIndex.find(hashBlk);
+            if (blockIt != mapBlockIndex.end())
+            {
+                commitmentHeight = blockIt->second->GetHeight();
+            }
+
+            if (oneTxIn.prevout.n >= sourceTx.vout.size())
+            {
+                //extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
+                //UniValue uniTx;
+                //TxToJSON(tx, uint256(), uniTx);
+                //printf("%s\n", uniTx.write(1, 2).c_str());
+                return state.Error("Input index out of range");
+            }
+
+            COptCCParams p;
+            if (idx == -1 && 
+                sourceTx.vout[oneTxIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && 
+                p.IsValid() && 
+                p.evalCode == EVAL_IDENTITY_COMMITMENT && 
+                p.vData.size())
+            {
+                idx = oneTxIn.prevout.n;
+                ::FromVector(p.vData[0], ch);
+
+                // this needs to already be in a prior block, or we can't consider it valid
+                if (!commitmentHeight)
+                {
+                    if (extendedIDValidation)
+                    {
+                        return state.Error("ID commitment was not already in blockchain");
+                    }
+                    printf("Identity commitment in tx: %s spends commitment in same block at height %d\n", tx.GetHash().GetHex().c_str(), height);
+                }
+            }
+        }
+    }
+
+    if (idx == -1 || ch.hash.IsNull())
+    {
+        std::string specificMsg = "Invalid identity commitment in tx: " + tx.GetHash().GetHex();
+        return state.Error(specificMsg);
+    }
+
+    // are we spending a matching name commitment?
+    if (ch.hash != newName.GetCommitment().hash)
+    {
+        return state.Error("Mismatched identity commitment");
+    }
+
+    return true;
 }
 
 // with the thorough check for an identity reservation, the only thing we need to check is that either 1) this transaction includes an identity reservation output or 2)
@@ -1054,11 +1196,22 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
 
 bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
-    // if not fulfilled, return true so as to allow it to fail if fulfillment matters, but not to veto
+    // if not fulfilled, fail
     if (!fulfilled)
     {
-        return true;
+        return false;
     }
+
+    LOCK2(cs_main, mempool.cs);
+
+    if (!chainActive.LastTip())
+    {
+        LogPrintf("%s: unable to find chain tip\n");
+        return false;
+    }
+
+    uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+    bool extendedIDValidation = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
     CCommitmentHash ch;
     CNameReservation reservation;
@@ -1071,7 +1224,8 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
             p.IsValid() && 
             p.evalCode == EVAL_IDENTITY_COMMITMENT && 
             p.version >= COptCCParams::VERSION_V3 &&
-            p.vData.size() > 1)
+            p.vData.size() > 1 &&
+            (!extendedIDValidation || !blkHash.IsNull()))
         {
             ch = CCommitmentHash(p.vData[0]);
         }
@@ -1080,8 +1234,11 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
             return eval->Error("Invalid source commitment output");
         }
 
-        for (auto output : spendingTx.vout)
+        int i;
+        int outputNum = -1;
+        for (i = 0; i < spendingTx.vout.size(); i++)
         {
+            auto &output = spendingTx.vout[i];
             if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1)
             {
                 if (reservation.IsValid())
@@ -1095,8 +1252,17 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
                     {
                         return eval->Error("Identity reservation output spend does not match commitment");
                     }
+                    outputNum = i;
                 }
             }
+        }
+        if (outputNum != -1)
+        {
+            // can only be spent by a matching name reservation if validated
+            // if there is no matching name reservation, it can be spent just by a valid signature
+            CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
+            CValidationState state;
+            return ValidateSpendingIdentityReservation(spendingTx, outputNum, state, height, thisChain);
         }
     }
     return true;
