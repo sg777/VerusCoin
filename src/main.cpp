@@ -5839,7 +5839,7 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
     bool checked; uint256 hash; int32_t futureblock=0;
     auto verifier = libzcash::ProofVerifier::Disabled();
     hash = pblock->GetHash();
-    uint32_t nHeight = height != 0 ? height: komodo_block2height(pblock);
+    uint32_t nHeight = height != 0 ? height : komodo_block2height(pblock);
 
     //fprintf(stderr,"ProcessBlock %d\n",(int32_t)chainActive.LastTip()->GetHeight());
     {
@@ -5903,7 +5903,7 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
 
     // when we succeed here, we prune all cheat candidates in the cheat list to 250 blocks ago, as they should be used or not
     // useful by then
-    if ((nHeight - 250) > 1)
+    if (nHeight > 250)
         cheatList.Prune(nHeight - 200);
 
     if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
