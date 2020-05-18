@@ -33,9 +33,10 @@ extern pthread_mutex_t KOMODO_CC_mutex;
 bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fulfilled)
 {
     EvalRef eval;
-    pthread_mutex_lock(&KOMODO_CC_mutex);
+    // Verus commenting out Komodo lock since it is not used in Verus CCs, and other locks are
+    //pthread_mutex_lock(&KOMODO_CC_mutex);
     bool out = eval->Dispatch(cond, tx, nIn, fulfilled);
-    pthread_mutex_unlock(&KOMODO_CC_mutex);
+    //pthread_mutex_unlock(&KOMODO_CC_mutex);
     //fprintf(stderr,"out %d vs %d isValid\n",(int32_t)out,(int32_t)eval->state.IsValid());
     assert(eval->state.IsValid() == out);
 
