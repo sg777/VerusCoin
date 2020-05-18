@@ -4245,6 +4245,99 @@ UniValue getcurrencystate(const UniValue& params, bool fHelp)
     return ret;
 }
 
+UniValue getsaplingtree(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error(
+            "getsaplingtree \"n\"\n"
+            "\nReturns the entries for a light wallet Sapling tree state.\n"
+
+            "\nArguments\n"
+            "   \"n\" or \"m,n\" or \"m,n,o\"         (int or string, optional) height or inclusive range with optional step at which to get the Sapling tree state\n"
+            "                                                                   If not specified, the latest currency state and height is returned\n"
+            "\nResult:\n"
+            "   [\n"
+            "       {\n"
+            "           \"network\": \"VRSC\",\n"
+            "           \"height\": n,\n"
+            "           \"hash\": \"hex\"\n"
+            "           \"time\": n,\n"
+            "           \"tree\": \"hex\"\n"
+            "       },\n"
+            "   ]\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getsaplingtree", "name")
+            + HelpExampleRpc("getsaplingtree", "name")
+        );
+    }
+    CheckPBaaSAPIsValid();
+
+    uint64_t lStart;
+    uint64_t startEnd[3] = {0};
+
+    lStart = startEnd[1] = startEnd[0] = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 1;
+
+    if (params.size() == 1)
+    {
+        if (uni_get_int(params[0], -1) == -1 && params[0].isStr())
+        {
+            Split(params[0].get_str(), startEnd, startEnd[0], 3);
+        }
+    }
+
+    if (startEnd[0] > startEnd[1])
+    {
+        startEnd[0] = startEnd[1];
+    }
+
+    if (startEnd[1] > lStart)
+    {
+        startEnd[1] = lStart;
+    }
+
+    if (startEnd[1] < startEnd[0])
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid block range for currency state");
+    }
+
+    if (startEnd[2] == 0)
+    {
+        startEnd[2] = 1;
+    }
+
+    if (startEnd[2] > INT_MAX)
+    {
+        startEnd[2] = INT_MAX;
+    }
+
+    uint32_t start = startEnd[0], end = startEnd[1], step = startEnd[2];
+
+    UniValue ret(UniValue::VARR);
+
+    LOCK(cs_main);
+    CCoinsViewCache view(pcoinsTip);
+    SaplingMerkleTree tree;
+
+    for (int i = start; i <= end; i += step)
+    {
+        CBlockIndex &blkIndex = *(chainActive[i]);
+        if (!view.GetSaplingAnchorAt(blkIndex.hashFinalSaplingRoot, tree))
+        {
+            UniValue entry(UniValue::VOBJ);
+            entry.push_back(Pair("network", ConnectedChains.ThisChain().name));
+            entry.push_back(Pair("height", blkIndex.GetHeight()));
+            entry.push_back(Pair("hash", blkIndex.GetBlockHash().GetHex()));
+            entry.push_back(Pair("time", (uint64_t)chainActive.LastTip()->nTime));
+            std::vector<unsigned char> treeBytes = ::AsVector(tree);
+            entry.push_back(Pair("currencystate", HexBytes(treeBytes.data(), treeBytes.size())));
+            ret.push_back(entry);
+        }
+    }
+    return ret;
+}
+
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
 UniValue definecurrency(const UniValue& params, bool fHelp)
@@ -6203,6 +6296,7 @@ static const CRPCCommand commands[] =
     { "multichain",   "paynotarizationrewards",       &paynotarizationrewards, true  },
     { "multichain",   "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "multichain",   "getcurrencystate",             &getcurrencystate,       true  },
+    { "multichain",   "getsaplingtree",               &getsaplingtree,         true  },
     { "multichain",   "sendcurrency",                 &sendcurrency,           true  },
     { "multichain",   "getpendingtransfers",          &getpendingtransfers,    true  },
     { "multichain",   "getexports",                   &getexports,             true  },
