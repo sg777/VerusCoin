@@ -309,8 +309,6 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
 
     std::vector<CAddressUnspentDbEntry> unspentOutputs;
 
-    LOCK(cs_main);
-
     CKeyID keyID(CCrossChainRPCData::GetConditionID(idID, EVAL_IDENTITY_RESERVATION));
 
     if (GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
