@@ -1767,7 +1767,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
             voutNum = pwinner->i;
             pBlock->nNonce = curNonce;
 
-            if (solutionVersion >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE)
+            if (solutionVersion >= CActivationHeight::ACTIVATE_STAKEHEADER)
             {
                 CDataStream headerStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 

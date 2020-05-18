@@ -140,6 +140,7 @@ uint256 CChain::GetVerusEntropyHash(int forHeight, int *pPOSheight, int *pPOWhei
             break;
         }
     }
+
     // only one type of block found, set alt
     if (i == 10)
     {

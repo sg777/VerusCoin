@@ -1356,7 +1356,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                             // send the entire amount to a reserve deposit output of the specific chain
                                             // we receive our fee on the other chain, when it comes back, or if a token,
                                             // when it gets imported back to the chain
-                                            std::vector<CTxDestination> indexDests({CKeyID(lastChainDef.GetConditionID(EVAL_RESERVE_DEPOSIT))});
+                                            std::vector<CTxDestination> indexDests({CKeyID(lastChainDef.GetConditionID(EVAL_RESERVE_DEPOSIT)), CKeyID(lastChainDef.GetID())});
                                             std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
 
                                             CTokenOutput ro = CTokenOutput(oneCurrencyOut.first, nativeOut ? 0 : oneCurrencyOut.second);

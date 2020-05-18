@@ -32,7 +32,8 @@ class CActivationHeight
             ACTIVATE_IDENTITY = SOLUTION_VERUSV4,
             ACTIVATE_VERUSHASH2_1 = SOLUTION_VERUSV4,
             ACTIVATE_EXTENDEDSTAKE = SOLUTION_VERUSV5,
-            ACTIVATE_PBAAS = SOLUTION_VERUSV5
+            ACTIVATE_STAKEHEADER = SOLUTION_VERUSV6,
+            ACTIVATE_PBAAS = SOLUTION_VERUSV6
         };
         bool active;
         int32_t heights[NUM_VERSIONS];

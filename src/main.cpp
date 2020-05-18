@@ -5839,15 +5839,17 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
     bool checked; uint256 hash; int32_t futureblock=0;
     auto verifier = libzcash::ProofVerifier::Disabled();
     hash = pblock->GetHash();
+    uint32_t nHeight = height != 0 ? height: komodo_block2height(pblock);
+
     //fprintf(stderr,"ProcessBlock %d\n",(int32_t)chainActive.LastTip()->GetHeight());
     {
         LOCK(cs_main);
         if ( chainActive.LastTip() != 0 )
             komodo_currentheight_set(chainActive.LastTip()->GetHeight());
-        checked = CheckBlock(&futureblock,height!=0?height:komodo_block2height(pblock), 0, *pblock, state, chainparams, verifier, 0, true, false);
+        checked = CheckBlock(&futureblock, nHeight, 0, *pblock, state, chainparams, verifier, 0, true, false);
         bool fRequested = MarkBlockAsReceived(hash);
         fRequested |= fForceProcessing;
-        if ( checked != 0 && komodo_checkPOW(0,pblock,height) < 0 ) //from_miner && ASSETCHAINS_STAKED == 0
+        if ( checked != 0 && komodo_checkPOW(0, pblock, height) < 0 ) //from_miner && ASSETCHAINS_STAKED == 0
         {
             checked = 0;
             //fprintf(stderr,"passed checkblock but failed checkPOW.%d\n",from_miner && ASSETCHAINS_STAKED == 0);
@@ -5895,16 +5897,16 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
         CPBaaSNotarization pbn(pblock->vtx[1]);       // TODO:PBAAS - make better solution to checking for a notarization to queue in a block, index can be off
         if (::GetHash(pbncb) == ::GetHash(pbn))
         {
-            ConnectedChains.QueueEarnedNotarization(*pblock, 1, height);
+            ConnectedChains.QueueEarnedNotarization(*pblock, 1, nHeight);
         }
     }
 
     // when we succeed here, we prune all cheat candidates in the cheat list to 250 blocks ago, as they should be used or not
     // useful by then
-    if ((height - 250) > 1)
-        cheatList.Prune(height - 200);
+    if ((nHeight - 250) > 1)
+        cheatList.Prune(nHeight - 200);
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
+    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
     {
         CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
     }

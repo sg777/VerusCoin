@@ -375,7 +375,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     std::vector<CTxDestination> referrers;
     bool valid = true;
 
-    bool extendedIDValidation = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
+    bool extendedIDValidation = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
 
     AssertLockHeld(cs_main);
 

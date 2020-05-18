@@ -6199,7 +6199,16 @@ int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blockt
 
 int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, uint8_t *utxosig, CPubKey &pk)
 {
-    return pwalletMain->VerusStakeTransaction(pBlock, txNew, nBits, hashResult, utxosig, pk);
+    try
+    {
+        return pwalletMain->VerusStakeTransaction(pBlock, txNew, nBits, hashResult, utxosig, pk);
+    }
+    catch(const std::exception& e)
+    {
+        printf("ERROR: %s exception in staking\n", e.what());
+        LogPrintf("ERROR: %s exception in staking\n", e.what());
+    }
+    return 0;
 }
 
 int32_t ensure_CCrequirements()
