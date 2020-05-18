@@ -171,6 +171,8 @@ CIdentity::CIdentity(const CTransaction &tx, int *voutNum)
 
 CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn)
 {
+    LOCK(mempool.cs);
+
     CIdentity ret;
 
     uint32_t heightOut = 0;
@@ -194,8 +196,6 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
     CKeyID keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
-
-    LOCK(cs_main);
 
     if (GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
@@ -433,8 +433,6 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         return state.Error("Improperly formed identity definition transaction");
     }
 
-    LOCK2(cs_main, mempool.cs);
-
     std::vector<CTxDestination> dests;
     int minSigs;
     txnouttype outType;
@@ -474,6 +472,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     CCoinsViewCache view(&dummy);
 
     LOCK(mempool.cs);
+
     CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
     view.SetBackend(viewMemPool);
 

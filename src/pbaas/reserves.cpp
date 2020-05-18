@@ -1277,9 +1277,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         }
     }
 
-    // for getting inputs
-    LOCK2(cs_main, mempool.cs);
-
     // we have all inputs, outputs, and fees, if check inputs, we can check all for consistency
     // inputs may be in the memory pool or on the blockchain
     CAmount dummyInterest;
