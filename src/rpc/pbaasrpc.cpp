@@ -4322,7 +4322,7 @@ UniValue getsaplingtree(const UniValue& params, bool fHelp)
     for (int i = start; i <= end; i += step)
     {
         CBlockIndex &blkIndex = *(chainActive[i]);
-        if (!view.GetSaplingAnchorAt(blkIndex.hashFinalSaplingRoot, tree))
+        if (view.GetSaplingAnchorAt(blkIndex.hashFinalSaplingRoot, tree))
         {
             UniValue entry(UniValue::VOBJ);
             entry.push_back(Pair("network", ConnectedChains.ThisChain().name));
@@ -4330,7 +4330,7 @@ UniValue getsaplingtree(const UniValue& params, bool fHelp)
             entry.push_back(Pair("hash", blkIndex.GetBlockHash().GetHex()));
             entry.push_back(Pair("time", (uint64_t)chainActive.LastTip()->nTime));
             std::vector<unsigned char> treeBytes = ::AsVector(tree);
-            entry.push_back(Pair("currencystate", HexBytes(treeBytes.data(), treeBytes.size())));
+            entry.push_back(Pair("tree", HexBytes(treeBytes.data(), treeBytes.size())));
             ret.push_back(entry);
         }
     }
