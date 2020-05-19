@@ -724,7 +724,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             txMap[oneTxIn.prevout.hash] = sourceTx;
 
             auto blockIt = mapBlockIndex.find(hashBlk);
-            if (blockIt != mapBlockIndex.end())
+            if (blockIt != mapBlockIndex.end() && blockIt->second)
             {
                 commitmentHeight = blockIt->second->GetHeight();
             }
