@@ -723,12 +723,6 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             }
             txMap[oneTxIn.prevout.hash] = sourceTx;
 
-            auto blockIt = mapBlockIndex.find(hashBlk);
-            if (blockIt != mapBlockIndex.end() && blockIt->second)
-            {
-                commitmentHeight = blockIt->second->GetHeight();
-            }
-
             if (oneTxIn.prevout.n >= sourceTx.vout.size())
             {
                 //extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
@@ -747,16 +741,6 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             {
                 idx = oneTxIn.prevout.n;
                 ::FromVector(p.vData[0], ch);
-
-                // this needs to already be in a prior block, or we can't consider it valid
-                if (!commitmentHeight)
-                {
-                    if (extendedIDValidation)
-                    {
-                        return state.Error("ID commitment was not already in blockchain");
-                    }
-                    printf("Identity commitment in tx: %s spends commitment in same block at height %d\n", tx.GetHash().GetHex().c_str(), height);
-                }
             }
         }
     }
