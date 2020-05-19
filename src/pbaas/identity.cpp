@@ -1182,13 +1182,12 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
     // if not fulfilled, fail
     if (!fulfilled)
     {
-        return false;
+        return eval->Error("missing required signature to spend");
     }
 
     if (!chainActive.LastTip())
     {
-        LogPrintf("%s: unable to find chain tip\n");
-        return false;
+        return eval->Error("unable to find chain tip");
     }
 
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
@@ -1244,8 +1243,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
             // can only be spent by a matching name reservation if validated
             // if there is no matching name reservation, it can be spent just by a valid signature
             CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
-            CValidationState state;
-            return ValidateSpendingIdentityReservation(spendingTx, outputNum, state, height, thisChain);
+            return ValidateSpendingIdentityReservation(spendingTx, outputNum, eval->state, height, thisChain);
         }
     }
     return true;
