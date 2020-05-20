@@ -512,7 +512,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                 ::FromVector(p.vData[0], ch);
                 commitmentHeight = coins->nHeight;
                 // this needs to already be in a prior block, or we can't consider it valid
-                if (!commitmentHeight)
+                if (!commitmentHeight || commitmentHeight == -1)
                 {
                     if (extendedIDValidation)
                     {
