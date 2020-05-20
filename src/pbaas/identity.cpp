@@ -512,7 +512,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                 ::FromVector(p.vData[0], ch);
                 commitmentHeight = coins->nHeight;
                 // this needs to already be in a prior block, or we can't consider it valid
-                if (!commitmentHeight)
+                if (!commitmentHeight || commitmentHeight == -1)
                 {
                     if (extendedIDValidation)
                     {
@@ -723,12 +723,6 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             }
             txMap[oneTxIn.prevout.hash] = sourceTx;
 
-            auto blockIt = mapBlockIndex.find(hashBlk);
-            if (blockIt != mapBlockIndex.end())
-            {
-                commitmentHeight = blockIt->second->GetHeight();
-            }
-
             if (oneTxIn.prevout.n >= sourceTx.vout.size())
             {
                 //extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
@@ -747,16 +741,6 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             {
                 idx = oneTxIn.prevout.n;
                 ::FromVector(p.vData[0], ch);
-
-                // this needs to already be in a prior block, or we can't consider it valid
-                if (!commitmentHeight)
-                {
-                    if (extendedIDValidation)
-                    {
-                        return state.Error("ID commitment was not already in blockchain");
-                    }
-                    printf("Identity commitment in tx: %s spends commitment in same block at height %d\n", tx.GetHash().GetHex().c_str(), height);
-                }
             }
         }
     }
@@ -1198,13 +1182,12 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
     // if not fulfilled, fail
     if (!fulfilled)
     {
-        return false;
+        return eval->Error("missing required signature to spend");
     }
 
     if (!chainActive.LastTip())
     {
-        LogPrintf("%s: unable to find chain tip\n");
-        return false;
+        return eval->Error("unable to find chain tip");
     }
 
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
@@ -1260,8 +1243,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
             // can only be spent by a matching name reservation if validated
             // if there is no matching name reservation, it can be spent just by a valid signature
             CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
-            CValidationState state;
-            return ValidateSpendingIdentityReservation(spendingTx, outputNum, state, height, thisChain);
+            return ValidateSpendingIdentityReservation(spendingTx, outputNum, eval->state, height, thisChain);
         }
     }
     return true;
