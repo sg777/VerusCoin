@@ -2811,7 +2811,7 @@ UniValue listreservetransactions(const UniValue& params, bool fHelp)
 // this must be called after all initial contributions are updated in the currency definition.
 CCoinbaseCurrencyState GetInitialCurrencyState(CCurrencyDefinition &chainDef)
 {
-    bool isReserve = chainDef.IsReserve();
+    bool isReserve = chainDef.IsFractional();
     CCurrencyState cState;
 
     // calculate contributions and conversions
@@ -3212,7 +3212,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CCoinbaseCurrencyState thisCurrency = ConnectedChains.GetCurrencyState(height);
                         auto reserveMap = thisCurrency.GetReserveMap();
                         if (!mintNew &&
-                            (!thisCurrency.IsReserve() || !reserveMap.count(convertToCurrencyID)))
+                            (!thisCurrency.IsFractional() || !reserveMap.count(convertToCurrencyID)))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 2");
                         }
@@ -3264,7 +3264,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                     }
                 }
-                else if (convertToCurrencyDef.IsReserve())
+                else if (convertToCurrencyDef.IsFractional())
                 {
                     // native currency must be the currency we are converting to, and the source must be a reserve
                     auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
@@ -4490,7 +4490,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     if (newChain.IsToken())
     {
-        if (newChain.IsReserve())
+        if (newChain.IsFractional())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specified as a fractional currency.");
         }
@@ -4573,7 +4573,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMS, "A currency must either be based on a token protocol or must specify blockchain rewards, even if 0\n");
         }
 
-        if (newChain.currencies.empty() && newChain.IsReserve())
+        if (newChain.currencies.empty() && newChain.IsFractional())
         {
             throw JSONRPCError(RPC_INVALID_PARAMS, "Fractional reserve currencies must specify blockchain rewards, even if 0 and at least one reserve currency\n");
         }
@@ -4583,7 +4583,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         // is VRSC or VRSCTEST.
         std::vector<CCurrencyDefinition> reserveCurrencies;
         bool hasCoreReserve = false;
-        if (newChain.IsReserve())
+        if (newChain.IsFractional())
         {
             for (auto &currency : newChain.currencies)
             {

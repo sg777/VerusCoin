@@ -519,7 +519,7 @@ public:
         return flags & CCurrencyState::VALID;
     }
 
-    bool IsReserve() const
+    bool IsFractional() const
     {
         return flags & CCurrencyState::ISRESERVE;
     }

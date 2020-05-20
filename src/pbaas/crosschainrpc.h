@@ -439,7 +439,7 @@ public:
 
     int GetDefinedPort() const;
 
-    bool IsReserve() const
+    bool IsFractional() const
     {
         return ChainOptions() & OPTION_FRACTIONAL;
     }

@@ -240,7 +240,7 @@ UniValue CCurrencyState::ToUniValue() const
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("flags", (int32_t)flags));
 
-    if (IsValid() && IsReserve())
+    if (IsValid() && IsFractional())
     {
         UniValue currencyArr(UniValue::VARR);
         for (int i = 0; i < currencies.size(); i++)
