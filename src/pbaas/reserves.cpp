@@ -1319,7 +1319,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 // be covered by the native currency of the source. That means that all explicit fees are assumed to be in the
 // currency of the source.
 bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint160 &nativeSourceCurrencyID, 
-                                                                    const CCurrencyDefinition &currencyDest, 
+                                                                    const CCurrencyDefinition &importCurrency, 
                                                                     const std::vector<CBaseChainObject *> &exportObjects, 
                                                                     std::vector<CTxOut> &vOutputs)
 {
@@ -1337,7 +1337,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     CCcontract_info CC;
     CCcontract_info *cp;
 
-    uint160 systemDestID = currencyDest.systemID;         // native on destination system
+    uint160 systemDestID = importCurrency.systemID;     // native on destination system
+    uint160 importCurrencyID = importCurrency.GetID();
 
     std::map<uint160, CAmount> preAllocMap;             // if this contains pre-allocations, only make the necessary map once
 
@@ -1496,7 +1497,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             if (curTransfer.currencyID != systemDestID)
                             {
                                 AddReserveOutput(curTransfer.currencyID, (curTransfer.nValue + curTransfer.nFees) - totalReserveFee);
-                                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CIdentityID(currencyDest.GetID())});
+                                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CIdentityID(importCurrencyID)});
                                 CTokenOutput ro = CTokenOutput(curTransfer.currencyID, (curTransfer.nValue + curTransfer.nFees) - totalReserveFee);
                                 vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
                             }
@@ -1506,7 +1507,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                 totalReserveFee = 0;
                                 CAmount oneNative = (curTransfer.nValue + curTransfer.nFees) - newNativeFees;
                                 nativeOut += oneNative;
-                                vOutputs.push_back(CTxOut(oneNative, GetScriptForDestination(CIdentityID(currencyDest.GetID()))));
+                                vOutputs.push_back(CTxOut(oneNative, GetScriptForDestination(CIdentityID(importCurrencyID))));
                             }
                         }
                         else
@@ -1570,6 +1571,52 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 }
                 else if (curTransfer.flags & curTransfer.CONVERT)
                 {
+                    // either the source or destination must be a reserve currency of the other fractional currency
+                    // if destination is a fractional currency of a reserve, we will mint currency
+                    // if not, we will burn currency
+                    // currency it is importing to must be fractional for this to work
+                    if (!currencyDest.IsFractional())
+                    {
+                        printf("%s: Import destination for conversion is not a fractional currency\n", __func__);
+                        LogPrintf("%s: Import destination for conversion is not a fractional currency\n", __func__);
+                        return false;
+                    }
+                    if (curTransfer.currencyID == curTransfer.destCurrencyID)
+                    {
+                        printf("%s: Conversion does not specify two currencies\n", __func__);
+                        LogPrintf("%s: Conversion does not specify two currencies\n", __func__);
+                        return false;
+                    }
+                    bool toFractional = false;
+                    CCurrencyDefinition sourceCurrency;
+                    CCurrencyDefinition destinationCurrency;
+                    // currency conversion must either be to or from the currency destination of the import itself
+                    if (curTransfer.destCurrencyID == importCurrencyID &&
+                        currencyDest.GetCurrenciesMap().count(curTransfer.currencyID))
+                    {
+                        destinationCurrency = currencyDest;
+                        sourceCurrency = ConnectedChains.GetCachedCurrency(curTransfer.currencyID);
+                        toFractional = true;
+                    }
+                    else if (!(curTransfer.currencyID == importCurrencyID &&
+                             (destinationCurrency = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID)).IsValid() &&
+                             (sourceCurrency = ConnectedChains.GetCachedCurrency(curTransfer.currencyID)).GetCurrenciesMap().count(importCurrencyID)))
+                    {
+                        printf("%s: Conversion can only occur between a fractional currency and one of its reserves\n", __func__);
+                        LogPrintf("%s: Conversion can only occur between a fractional currency and one of its reserves\n", __func__);
+                        return false;
+                    }
+                    
+                    if (!sourceCurrency.IsValid() || !destinationCurrency.IsValid())
+                    {
+                        printf("%s: Currency specified for conversion not found\n", __func__);
+                        LogPrintf("%s: Currency specified for conversion not found\n", __func__);
+                        return false;
+                    }
+
+                    // 
+
+                    /*
                     // emit a reserve exchange output
                     cp = CCinit(&CC, EVAL_RESERVE_EXCHANGE);
                     CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
@@ -1582,6 +1629,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                     CReserveExchange rex = CReserveExchange(CReserveExchange::VALID, curTransfer.currencyID, curTransfer.nValue);
                     newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CReserveExchange>(EVAL_RESERVE_EXCHANGE, dests, 1, &rex)));
+                    */
                 }
                 else if ((curTransfer.flags & curTransfer.SEND_BACK) && 
                          curTransfer.nValue >= (curTransfer.DEFAULT_PER_STEP_FEE << 2) && 
@@ -1640,7 +1688,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                         // if this is a minting of currency
                         // this is used for both pre-allocation and also centrally, algorithmically, or externally controlled currencies
-                        if ((curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)) && curTransfer.destCurrencyID == currencyDest.GetID())
+                        if ((curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)) && curTransfer.destCurrencyID == importCurrencyID)
                         {
                             AddReserveOutConverted(curTransfer.destCurrencyID, ro.nValue);
                             newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
@@ -1677,8 +1725,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             ReserveOutputs.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
         }
     }
-    ReserveInputs.valueMap[currencyDest.systemID] += nativeIn;
-    ReserveOutputs.valueMap[currencyDest.systemID] += nativeOut;
+    ReserveInputs.valueMap[importCurrency.systemID] += nativeIn;
+    ReserveOutputs.valueMap[importCurrency.systemID] += nativeOut;
     CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs, transferFees);
     if (ReserveInputs - ReserveOutputs < ccx.CalculateImportFee())
     {
@@ -1713,7 +1761,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
     }
     else
     {
-        if (pCurrencyState && currencyState.IsReserve())
+        if (pCurrencyState && currencyState.IsFractional())
         {
             __exchangeRates = CCurrencyValueMap(currencyState.currencies, currencyState.PricesInReserve());
         }

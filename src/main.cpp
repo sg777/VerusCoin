@@ -3760,9 +3760,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             if (rtxd.IsValid() && !isVerusActive)
             {
                 CCurrencyValueMap unconvertedReserves = rtxd.ReserveFees() + rtxd.ReserveConversionFeesMap();
-                if (!currencyState.IsReserve() || thisChain.ChainOptions() & thisChain.OPTION_FEESASRESERVE)
+                if (!currencyState.IsFractional() || thisChain.ChainOptions() & thisChain.OPTION_FEESASRESERVE)
                 {
-                    if (currencyState.IsReserve())
+                    if (currencyState.IsFractional())
                     {
                         reserveIn += rtxd.ReserveOutConvertedMap();
                         nativeIn += rtxd.NativeOutConvertedMap();
@@ -3772,7 +3772,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 }
                 else
                 {
-                    if (currencyState.IsReserve())
+                    if (currencyState.IsFractional())
                     {
                         reserveIn += rtxd.ReserveOutConvertedMap() + rtxd.ReserveConversionFeesMap() + rtxd.ReserveFees();
                         nativeIn += rtxd.NativeOutConvertedMap();

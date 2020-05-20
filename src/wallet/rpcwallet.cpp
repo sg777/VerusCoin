@@ -2052,7 +2052,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     bool bIsStake = false;
     bool bIsCoinbase = false;
     bool bIsMint = false;
-    bool bIsReserve = ConnectedChains.ThisChain().IsReserve();
+    bool bIsReserve = ConnectedChains.ThisChain().IsFractional();
     CReserveTransactionDescriptor rtxd;
     CCoinsViewCache view(pcoinsTip);
     uint32_t nHeight = chainActive.Height();
@@ -3140,7 +3140,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
 
-    if ((ConnectedChains.ThisChain().IsReserve() || ConnectedChains.ThisChain().startBlock < height) && 
+    if ((ConnectedChains.ThisChain().IsFractional() || ConnectedChains.ThisChain().startBlock < height) && 
         ConnectedChains.ThisChain().currencies.size())
     {
         UniValue pricesInReserve(UniValue::VARR);
@@ -3299,7 +3299,7 @@ UniValue listunspent(const UniValue& params, bool fHelp)
         entry.push_back(Pair("amount", ValueFromAmount(out.tx->vout[out.i].nValue)));
 
         CCurrencyValueMap reserveOut;
-        if (ConnectedChains.ThisChain().IsReserve() && (reserveOut = out.tx->vout[out.i].scriptPubKey.ReserveOutValue()).valueMap.size())
+        if (ConnectedChains.ThisChain().IsFractional() && (reserveOut = out.tx->vout[out.i].scriptPubKey.ReserveOutValue()).valueMap.size())
         {
             entry.push_back(Pair("reserveAmount", reserveOut.ToUniValue()));
         }

@@ -498,7 +498,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                     !initialContributionArr.isArray() || 
                     initialContributionArr.size() != currencyArr.size() ||
                     weights.size() != currencyArr.size() ||
-                    !IsReserve())
+                    !IsFractional())
                 {
                     LogPrintf("%s: reserve currencies must have weights, initial contributions in every currency, and no explicit conversion rates\n", __func__);
                     nVersion = PBAAS_VERSION_INVALID;
@@ -552,7 +552,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
             bool explicitConversions = conversionArr.isArray() && conversionArr.size();
             bool havePreConversions = preConversionsArr.isArray() && preConversionsArr.size();
 
-            if (IsReserve() && explicitConversions)
+            if (IsFractional() && explicitConversions)
             {
                 LogPrintf("%s: cannot specify explicit conversion values for reserve currencies\n", __func__);
                 nVersion = PBAAS_VERSION_INVALID;
@@ -575,7 +575,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                 if (isInitialContributions)
                 {
                     int64_t contrib = AmountFromValueNoErr(initialContributionArr[i]);
-                    if (IsReserve() && contrib < MIN_RESERVE_CONTRIBUTION)
+                    if (IsFractional() && contrib < MIN_RESERVE_CONTRIBUTION)
                     {
                         LogPrintf("%s: all fractional reserve currencies must start with %s minimum initial contribution in each currency\n", __func__, ValueFromAmount(MIN_RESERVE_CONTRIBUTION).write().c_str());
                         nVersion = PBAAS_VERSION_INVALID;

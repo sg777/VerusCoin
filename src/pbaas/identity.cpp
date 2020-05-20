@@ -373,8 +373,6 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     std::vector<CTxDestination> referrers;
     bool valid = true;
 
-    bool extendedIDValidation = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
-
     for (auto &txout : tx.vout)
     {
         COptCCParams p;
@@ -514,11 +512,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                 // this needs to already be in a prior block, or we can't consider it valid
                 if (!commitmentHeight || commitmentHeight == -1)
                 {
-                    if (extendedIDValidation)
-                    {
-                        return state.Error("ID commitment was not already in blockchain");
-                    }
-                    printf("Identity commitment in tx: %s spends commitment in same block at height %d\n", tx.GetHash().GetHex().c_str(), height);
+                    return state.Error("ID commitment was not already in blockchain");
                 }
             }
         }
@@ -637,8 +631,6 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     CNameReservation newName;
     std::vector<CTxDestination> referrers;
     bool valid = true;
-
-    bool extendedIDValidation = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
     AssertLockHeld(cs_main);
 
@@ -1191,7 +1183,6 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
     }
 
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
-    bool extendedIDValidation = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
     CCommitmentHash ch;
     CNameReservation reservation;
@@ -1207,7 +1198,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
             p.evalCode == EVAL_IDENTITY_COMMITMENT && 
             p.version >= COptCCParams::VERSION_V3 &&
             p.vData.size() > 1 &&
-            (!extendedIDValidation || !blkHash.IsNull()))
+            !blkHash.IsNull())
         {
             ch = CCommitmentHash(p.vData[0]);
         }

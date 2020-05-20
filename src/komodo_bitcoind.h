@@ -1674,7 +1674,7 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                                                 if (!reserveDepositCurrencyID.IsNull() &&
                                                     GetCurrencyDefinition(reserveDepositCurrencyID, reserveDepositCurrency) &&
                                                     reserveDepositCurrency.IsValid() &&
-                                                    reserveDepositCurrency.IsReserve())
+                                                    reserveDepositCurrency.IsFractional())
                                                 {
                                                     reserveDepositReserves = reserveDepositCurrency.GetCurrenciesMap();
                                                 }
