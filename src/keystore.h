@@ -58,6 +58,7 @@ public:
     virtual bool HaveWatchOnly() const =0;
 
     //! Support for identities
+    virtual void ClearIdentities() =0;
     virtual bool HaveIdentity(const CIdentityID &idID) const =0;
     virtual bool AddIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity) =0;
     virtual bool UpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity) =0;
@@ -191,6 +192,7 @@ public:
     virtual bool HaveCScript(const CScriptID &hash) const;
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const;
 
+    virtual void ClearIdentities();
     virtual bool HaveIdentity(const CIdentityID &idID) const;
     virtual bool AddIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
     virtual bool UpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);

@@ -83,7 +83,7 @@ LIBBITCOIN_WALLET=libbitcoin_wallet.a
 endif
 
 $(LIBSECP256K1): $(wildcard secp256k1/src/*) $(wildcard secp256k1/include/*)
-	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F) OPTFLAGS="-O2 -march=$(PLATFORM_VARIANT) -g "
+	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F) OPTFLAGS="-O3 -march=$(PLATFORM_VARIANT) -g "
 
 LIBSNARK_CXXFLAGS = $(AM_CXXFLAGS) $(PIC_FLAGS) -DBINARY_OUTPUT -DNO_PT_COMPRESSION=1 -fstack-protector-all
 LIBSNARK_CONFIG_FLAGS = CURVE=ALT_BN128 NO_PROCPS=1 NO_DOCS=1 STATIC=1 NO_SUPERCOP=1 FEATUREFLAGS=-DMONTGOMERY_OUTPUT NO_COPY_DEPINST=1 NO_COMPILE_LIBGTEST=1
@@ -101,10 +101,10 @@ libsnark-tests: $(wildcard snark/src/*)
 	$(AM_V_at) CC="$(CC)" CXX="$(CXX)" AR="$(AR)" CXXFLAGS="$(LIBSNARK_CXXFLAGS)" $(MAKE) $(AM_MAKEFLAGS) -C snark/ check DEPINST="$(LIBSNARK_DEPINST)" $(LIBSNARK_CONFIG_FLAGS) OPTFLAGS="$(LIBSNARK_OPTFLAGS)"
 
 $(LIBUNIVALUE): $(wildcard univalue/lib/*)
-	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F) OPTFLAGS="-O2 -march=$(PLATFORM_VARIANT) -g "
+	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F) OPTFLAGS="-O3 -march=$(PLATFORM_VARIANT) -g "
 
 $(LIBCRYPTOCONDITIONS): $(wildcard cryptoconditions/src/*) $(wildcard cryptoconditions/include/*)
-	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F) OPTFLAGS="-O2 -march=$(PLATFORM_VARIANT) -g "
+	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F) OPTFLAGS="-O3 -march=$(PLATFORM_VARIANT) -g "
 
 # Make is not made aware of per-object dependencies to avoid limiting building parallelization
 # But to build the less dependent modules first, we manually select their order here:
@@ -361,7 +361,6 @@ libbitcoin_server_a_SOURCES = \
   net.cpp \
   noui.cpp \
   notarisationdb.cpp \
-  pbaas/crosschainrpc.cpp \
   pbaas/identity.cpp \
   pbaas/notarization.cpp \
   pbaas/pbaas.cpp \
@@ -530,6 +529,8 @@ libbitcoin_common_a_SOURCES = \
   keystore.cpp \
   netbase.cpp \
   metrics.cpp \
+  mmr.cpp \
+  pbaas/crosschainrpc.cpp \
   primitives/block.cpp \
   primitives/transaction.cpp \
   primitives/nonce.cpp \
@@ -673,6 +674,7 @@ verus_LDADD = \
 if ENABLE_WALLET
 wallet_utility_LDADD = \
 	libbitcoin_wallet.a \
+  $(LIBUNIVALUE) \
 	$(LIBBITCOIN_COMMON) \
 	$(LIBBITCOIN_CRYPTO) \
 	$(LIBVERUS_CRYPTO) \
@@ -698,9 +700,9 @@ if TARGET_WINDOWS
 verus_tx_SOURCES += bitcoin-tx-res.rc
 endif
 
-# FIXME: Is libzcash needed for zcash_tx?
 verus_tx_LDADD = \
   $(LIBUNIVALUE) \
+	$(BOOST_LIBS) \
   $(LIBBITCOIN_COMMON) \
   $(LIBBITCOIN_UTIL) \
   $(LIBSECP256K1) \

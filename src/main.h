@@ -269,6 +269,7 @@ bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock, b
 bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams, const CBlock* pblock = NULL);
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams);
 CAmount GetBlockOnePremine();
+void SetBlockOnePremine(CAmount value);
 
 /**
  * Prune block and undo files (blk???.dat and undo???.dat) so that the disk space used is less than a user-defined target.
@@ -574,5 +575,10 @@ CMutableTransaction CreateNewContextualCMutableTransaction(const Consensus::Para
  * actually increasing the available supply.
  */
 bool IsBlockBoundTransaction(const CTransaction &tx, const uint256 &cbHash);
+
+/**
+ * Sets the premine from chain definition
+ */
+void InitializePremineSupply();
 
 #endif // BITCOIN_MAIN_H
