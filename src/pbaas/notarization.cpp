@@ -12,11 +12,9 @@
  */
 
 #include <univalue.h>
-#include "pbaas/notarization.h"
-#include "pbaas/crosschainrpc.h"
-#include "rpc/pbaasrpc.h"
-#include "cc/CCinclude.h"
 #include "main.h"
+#include "rpc/pbaasrpc.h"
+#include "pbaas/notarization.h"
 
 #include <assert.h>
 

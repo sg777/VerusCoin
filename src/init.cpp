@@ -1609,7 +1609,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             fReindex = true;
         }
 
-        fTimeStampIndex = GetBoolArg("-timestampindex", fInsightExplorer ? fInsightExplorer : DEFAULT_TIMESTAMPINDEX);
+        fTimeStampIndex = GetBoolArg("-timestampindex", DEFAULT_TIMESTAMPINDEX);
         pblocktree->ReadFlag("timestampindex", checkval);
         if ( checkval != fTimeStampIndex )
         {
