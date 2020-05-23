@@ -1104,7 +1104,7 @@ const uint256 &CurrencyDefHash(UniValue &chainDefinition);
 
 extern CConnectedChains ConnectedChains;
 extern uint160 ASSETCHAINS_CHAINID;
-CCoinbaseCurrencyState GetInitialCurrencyState(CCurrencyDefinition &chainDef);
+CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainDef);
 CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, int32_t definitionHeight, CCurrencyValueMap &fees);
 
 #endif

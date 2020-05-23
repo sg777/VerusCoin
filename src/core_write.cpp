@@ -316,7 +316,7 @@ UniValue CPBaaSNotarization::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int32_t)nVersion));
-    obj.push_back(Pair("chainid", systemID.GetHex()));
+    obj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
     obj.push_back(Pair("notaryaddress", EncodeDestination(notaryDest)));
     obj.push_back(Pair("notarizationheight", (int32_t)notarizationHeight));
     obj.push_back(Pair("mmrroot", mmrRoot.GetHex()));

@@ -342,7 +342,7 @@ class CCurrencyState
 public:
     enum {
         VALID = 1,
-        ISRESERVE = 2,
+        ISFRACTIONAL = 2,
         MIN_RESERVE_RATIO = 1000000,        // we will not start a chain with less than 1% reserve ratio in any single currency
         MAX_RESERVE_RATIO = 100000000,      // we will not start a chain with greater than 100% reserve ratio
         SHUTDOWN_RESERVE_RATIO = 500000,    // if we hit this reserve ratio in any currency, initiate chain shutdown
@@ -428,6 +428,10 @@ public:
         if (reserveIndex >= reserves.size())
         {
             return 0;
+        }
+        if (!IsFractional())
+        {
+            return reserves[reserveIndex];
         }
         if (supply == 0 || weights[reserveIndex] == 0)
         {
@@ -521,7 +525,7 @@ public:
 
     bool IsFractional() const
     {
-        return flags & CCurrencyState::ISRESERVE;
+        return flags & CCurrencyState::ISFRACTIONAL;
     }
 
     std::map<uint160, int32_t> GetReserveMap() const
@@ -798,9 +802,11 @@ public:
                                              const CCurrencyState *pCurrencyState=nullptr) const;
 
     bool AddReserveTransferImportOutputs(const uint160 &currencySourceID, 
-                                         const CCurrencyDefinition &systemDest, 
+                                         const CCurrencyDefinition &importCurrencyDef, 
+                                         const CCoinbaseCurrencyState &importCurrencyState,
                                          const std::vector<CBaseChainObject *> &exportObjects, 
-                                         std::vector<CTxOut> &vOutputs);
+                                         std::vector<CTxOut> &vOutputs,
+                                         CCoinbaseCurrencyState *pNewCurrencyState=nullptr);
 };
 
 #endif // PBAAS_RESERVES_H

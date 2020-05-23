@@ -74,7 +74,12 @@ CPBaaSNotarization::CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx)
 CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
 {
     nVersion = (uint32_t)uni_get_int(find_value(obj, "version"));
-    systemID.SetHex(uni_get_str(find_value(obj, "chainid")));
+
+    CTxDestination currencyIDDest = DecodeDestination(uni_get_str(find_value(obj, "currencyid")));
+    if (currencyIDDest.which() != COptCCParams::ADDRTYPE_INVALID)
+    {
+        currencyID = GetDestinationID(currencyIDDest);
+    }
 
     CBitcoinAddress notaryAddress(uni_get_str(find_value(obj, "notaryaddress")));
     CKeyID notaryKey;
@@ -423,22 +428,25 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
     UniValue txidArr(UniValue::VARR);
 
     std::vector<pair<CTransaction, uint256>> txes;
-    if (GetNotarizationData(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION, cnd, &txes))
     {
-        if (cnd.IsConfirmed())
+        LOCK2(cs_main, mempool.cs);
+        if (GetNotarizationData(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION, cnd, &txes))
         {
-            lastConfirmed = txes[cnd.lastConfirmed].first;
-        }
+            if (cnd.IsConfirmed())
+            {
+                lastConfirmed = txes[cnd.lastConfirmed].first;
+            }
 
-        // make an array of all possible txids on this chain
-        for (auto it : cnd.vtx)
-        {
-            txidArr.push_back(it.first.GetHex());
+            // make an array of all possible txids on this chain
+            for (auto it : cnd.vtx)
+            {
+                txidArr.push_back(it.first.GetHex());
+            }
         }
-    }
-    else if (height != 1)
-    {
-        return false;
+        else if (height != 1)
+        {
+            return false;
+        }
     }
 
     params.push_back(txidArr);
@@ -718,9 +726,9 @@ bool ValidateEarnedNotarization(CTransaction &ntx, CPBaaSNotarization *notarizat
         LogPrintf("%s: called from %s chain\n", __func__, ASSETCHAINS_SYMBOL);
         return false;
     }
-    else if (n.systemID != VERUS_CHAINID || !ntx.vout.size() || !ntx.vout.back().scriptPubKey.IsOpReturn())
+    else if (n.currencyID != VERUS_CHAINID || !ntx.vout.size() || !ntx.vout.back().scriptPubKey.IsOpReturn())
     {
-        LogPrintf("%s: earned notarization for chain %s for unrecognized chain ID %s\n", __func__, VERUS_CHAINNAME, n.systemID.GetHex().c_str());
+        LogPrintf("%s: earned notarization for chain %s for unrecognized chain ID %s\n", __func__, VERUS_CHAINNAME, n.currencyID.GetHex().c_str());
         return false;
     }
 
@@ -949,7 +957,7 @@ uint256 CreateAcceptedNotarization(const CBlock &blk, int32_t txIndex, int32_t h
         orp.hashes.push_back(::GetHash(priorBlocks));
 
         pbn.nVersion = CPBaaSNotarization::CURRENT_VERSION;
-        pbn.systemID = ASSETCHAINS_CHAINID;
+        pbn.currencyID = ASSETCHAINS_CHAINID;
         pbn.notaryDest = crosspbn.notaryDest;
         pbn.notarizationHeight = height;
 

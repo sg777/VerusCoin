@@ -1600,25 +1600,21 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             fReindex = true;
         }
 
-        checkval = DEFAULT_TIMESTAMPINDEX;
-        pblocktree->ReadFlag("timestampindex", checkval);
-        bool defaultState = DEFAULT_TIMESTAMPINDEX ? DEFAULT_TIMESTAMPINDEX : checkval;
-        fTimeStampIndex = GetBoolArg("-timestampindex", defaultState);
-        if (checkval != fTimeStampIndex)
+        fInsightExplorer = GetBoolArg("-insightexplorer", DEFAULT_INSIGHTEXPLORER);
+        pblocktree->ReadFlag("insightexplorer", checkval);
+        if ( checkval != fInsightExplorer )
         {
-            pblocktree->WriteFlag("timestampindex", fTimeStampIndex);
-            fprintf(stderr,"set timestamp index, will reindex. sorry will take a while.\n");
+            pblocktree->WriteFlag("insightexplorer", fInsightExplorer);
+            fprintf(stderr,"set insightexplorer, will reindex. sorry will take a while.\n");
             fReindex = true;
         }
 
-        checkval = DEFAULT_INSIGHTEXPLORER;
-        pblocktree->ReadFlag("insightexplorer", checkval);
-        defaultState = DEFAULT_INSIGHTEXPLORER ? DEFAULT_INSIGHTEXPLORER : checkval;
-        fInsightExplorer = GetBoolArg("-insightexplorer", defaultState);
-        if (checkval != fInsightExplorer)
+        fTimeStampIndex = GetBoolArg("-timestampindex", fInsightExplorer ? fInsightExplorer : DEFAULT_TIMESTAMPINDEX);
+        pblocktree->ReadFlag("timestampindex", checkval);
+        if ( checkval != fTimeStampIndex )
         {
-            pblocktree->WriteFlag("insightexplorer", fInsightExplorer);
-            fprintf(stderr,"set main indexes, will reindex. sorry will take a while.\n");
+            pblocktree->WriteFlag("timestampindex", fTimeStampIndex);
+            fprintf(stderr,"set timestampindex, will reindex. sorry will take a while.\n");
             fReindex = true;
         }
     }

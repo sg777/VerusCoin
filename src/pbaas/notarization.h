@@ -87,7 +87,7 @@ public:
 
     uint32_t nVersion;                      // PBAAS version
     int32_t protocol;                       // notarization protocol
-    uint160 systemID;                     // chain being notarized
+    uint160 currencyID;                       // currency being notarized
     CTxDestination notaryDest;              // confirmed notary rewards are spent to this address when this notarization is confirmed
 
     uint32_t notarizationHeight;            // height (or sequence) of the notarization we certify
@@ -95,7 +95,7 @@ public:
     uint256 notarizationPreHash;            // combination of block hash, block MMR root, and compact power (or external proxy) for the notarization height
     uint256 compactPower;                   // compact power (or external proxy) of the block height notarization to compare
 
-    CCurrencyState currencyState;        // currency state of this chain as of this notarization
+    CCurrencyState currencyState;           // currency state of this currency as of this notarization
 
     uint256 prevNotarization;               // txid of the prior notarization on this chain that we agree with, even those not accepted yet
     int32_t prevHeight;
@@ -124,7 +124,7 @@ public:
                        const std::vector<CNodeData> &Nodes=std::vector<CNodeData>(),
                        uint32_t version = CURRENT_VERSION) : 
                        nVersion(version),
-                       systemID(currencyid),
+                       currencyID(currencyid),
                        protocol(Protocol),
                        notaryDest(notaryDestination),
 
@@ -158,7 +158,7 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(VARINT(nVersion));
-        READWRITE(systemID);
+        READWRITE(currencyID);
         READWRITE(protocol);
         if (ser_action.ForRead())
         {

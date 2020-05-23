@@ -1301,8 +1301,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 // do a preliminary check
                                 CReserveTransactionDescriptor rtxd;
                                 std::vector<CTxOut> vOutputs;
-
-                                if (!rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, chainObjects, vOutputs))
+                                CCoinbaseCurrencyState currencyState = GetInitialCurrencyState(lastChainDef);
+                                if (!currencyState.IsValid() ||
+                                    !rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs))
                                 {
                                     DeleteOpRetObjects(chainObjects);
 
