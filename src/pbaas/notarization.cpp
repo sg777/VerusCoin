@@ -111,7 +111,7 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     }
 }
 
-CNotarizationFinalization::CNotarizationFinalization(const CTransaction &tx, bool validate)
+CTransactionFinalization::CTransactionFinalization(const CTransaction &tx, bool validate)
 {
     bool found = false;
     bool error = false;
@@ -120,7 +120,7 @@ CNotarizationFinalization::CNotarizationFinalization(const CTransaction &tx, boo
         uint32_t ecode;
         if (out.scriptPubKey.IsPayToCryptoCondition(&ecode))
         {
-            if (ecode == EVAL_FINALIZENOTARIZATION)
+            if (ecode == EVAL_FINALIZE_NOTARIZATION)
             {
                 if (found)
                 {
@@ -349,7 +349,7 @@ vector<CInputDescriptor> AddSpendsAndFinalizations(CChainNotarizationData &cnd,
                     {
                         pbn = CPBaaSNotarization(p.vData[0]);
                     }
-                    else if (p.evalCode == EVAL_FINALIZENOTARIZATION)
+                    else if (p.evalCode == EVAL_FINALIZE_NOTARIZATION)
                     {
                         break;
                     }
@@ -389,7 +389,7 @@ bool GetNotarizationAndFinalization(int32_t ecode, CMutableTransaction mtx, CPBa
                 if (notarize) duplicate = true;
                 notarize = true;
             }
-            else if (p.evalCode == EVAL_FINALIZENOTARIZATION)
+            else if (p.evalCode == EVAL_FINALIZE_NOTARIZATION)
             {
                 *pFinalizeOutIndex = j;
                 if (finalize) duplicate = true;
@@ -512,7 +512,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
                 notarizeOutIndex = j;
                 pbn = CPBaaSNotarization(p.vData[0]);
             }
-            else if (p.evalCode == EVAL_FINALIZENOTARIZATION)
+            else if (p.evalCode == EVAL_FINALIZE_NOTARIZATION)
             {
                 finalizeOutIndex = j;
             }
@@ -662,7 +662,7 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
                                            MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &pbn), &indexDests));
     
     // make the finalization output
-    cp = CCinit(&CC, EVAL_FINALIZENOTARIZATION);
+    cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
 
     // if not centrally controlled, change pubkey
     if (chainDef.notarizationProtocol != chainDef.NOTARIZATION_NOTARY_CHAINID)
@@ -671,13 +671,13 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
     }
 
     // we need to store the input that we confirmed if we spent finalization outputs
-    CNotarizationFinalization nf(*pConfirmedInput);
+    CTransactionFinalization nf(*pConfirmedInput);
 
-    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_FINALIZENOTARIZATION))});
+    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_FINALIZE_NOTARIZATION))});
 
     // update crypto condition with final notarization output data
     mnewTx.vout[finalizeOutIndex] = CTxOut(PBAAS_MINNOTARIZATIONOUTPUT, 
-                                           MakeMofNCCScript(CConditionObj<CNotarizationFinalization>(EVAL_FINALIZENOTARIZATION, dests, 1, &nf), &indexDests));
+                                           MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests));
 
     // if this is block 1, add chain definition output with updated currency numbers
 
@@ -1138,6 +1138,6 @@ bool IsFinalizeNotarizationInput(const CScript &scriptSig)
 {
     // this is an output check, and is incorrect. need to change to input
     uint32_t ecode;
-    return scriptSig.IsPayToCryptoCondition(&ecode) && ecode == EVAL_FINALIZENOTARIZATION;
+    return scriptSig.IsPayToCryptoCondition(&ecode) && ecode == EVAL_FINALIZE_NOTARIZATION;
 }
 

@@ -482,7 +482,7 @@ bool CheckChainDefinitionOutputs(struct CCcontract_info *cp, Eval* eval, const C
 
     std::vector<CCurrencyDefinition> chainDefs = CCurrencyDefinition::GetCurrencyDefinitions(thisTx);
     CPBaaSNotarization notarization(thisTx);
-    CNotarizationFinalization finalization(thisTx);
+    CTransactionFinalization finalization(thisTx);
     bool isVerusActive = IsVerusActive();
 
     if (!notarization.IsValid() || !finalization.IsValid())
@@ -1379,6 +1379,16 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx), &indexDests),
                                                             exportOutVal);
 
+                                    // when exports are confirmed as having been imported, they are finalized
+                                    // until then, a finalization UTXO enables an index search to only find transactions
+                                    // that have work to complete on this chain, or have not had their cross-chain import 
+                                    // acknowledged
+                                    cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
+                                    CTransactionFinalization finalization(0);
+                                    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))});
+                                    dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
+                                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_EXPORT, dests, 1, &finalization), &indexDests), 0);
+
                                     tb.AddOpRet(opRet);
                                     tb.SetFee(0);
 
@@ -1709,7 +1719,7 @@ void CConnectedChains::ProcessLocalImports()
                     mnewTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn), &indexDests)));
 
                     // make the finalization output
-                    cp = CCinit(&CC, EVAL_FINALIZENOTARIZATION);
+                    cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
 
                     if (exportDef.notarizationProtocol == exportDef.NOTARIZATION_AUTO)
                     {
@@ -1733,13 +1743,13 @@ void CConnectedChains::ProcessLocalImports()
                     mnewTx.vin.push_back(CTxIn(COutPoint(notarizations[0].first.GetHash(), finalizeOut)));
 
                     // we need to store the input that we confirmed if we spent finalization outputs
-                    CNotarizationFinalization nf(0);
+                    CTransactionFinalization nf(0);
 
-                    indexDests = std::vector<CTxDestination>({CKeyID(exportDef.GetConditionID(EVAL_FINALIZENOTARIZATION))});
+                    indexDests = std::vector<CTxDestination>({CKeyID(exportDef.GetConditionID(EVAL_FINALIZE_NOTARIZATION))});
 
                     // update crypto condition with final notarization output data
                     mnewTx.vout.push_back(CTxOut(PBAAS_MINNOTARIZATIONOUTPUT, 
-                            MakeMofNCCScript(CConditionObj<CNotarizationFinalization>(EVAL_FINALIZENOTARIZATION, dests, 1, &nf), &indexDests)));
+                            MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests)));
 
                     CTransaction ntx(mnewTx);
 

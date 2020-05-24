@@ -677,14 +677,14 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 break;
             }
 
-            case EVAL_FINALIZENOTARIZATION:
+            case EVAL_FINALIZE_NOTARIZATION:
             {
-                CNotarizationFinalization finalization;
+                CTransactionFinalization finalization;
 
                 if (p.vData.size())
                 {
-                    finalization = CNotarizationFinalization(p.vData[0]);
-                    out.push_back(Pair("pbaasFinalization", finalization.ToUniValue()));
+                    finalization = CTransactionFinalization(p.vData[0]);
+                    out.push_back(Pair("finalizeNotarization", finalization.ToUniValue()));
                 }
                 break;
             }
@@ -829,17 +829,14 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 out.push_back(Pair("stakeguard", ""));
                 break;
 
-            case EVAL_IDENTITY_EXPORT:
+            case EVAL_FINALIZE_EXPORT:
             {
-                CIdentityExport identityExport;
+                CTransactionFinalization finalization;
 
-                if (p.vData.size() && (identityExport = CIdentityExport(p.vData[0])).IsValid())
+                if (p.vData.size())
                 {
-                    out.push_back(Pair("identityexport", identityExport.ToUniValue()));
-                }
-                else
-                {
-                    out.push_back(Pair("identityexport", "invalid"));
+                    finalization = CTransactionFinalization(p.vData[0]);
+                    out.push_back(Pair("finalizeNotarization", finalization.ToUniValue()));
                 }
                 break;
             }

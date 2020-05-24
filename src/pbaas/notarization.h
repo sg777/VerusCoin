@@ -197,19 +197,19 @@ public:
     UniValue ToUniValue() const;
 };
 
-class CNotarizationFinalization
+class CTransactionFinalization
 {
 public:
     static const int64_t DEFAULT_OUTPUT_VALUE = 100000;
     int32_t confirmedInput;
 
-    CNotarizationFinalization() : confirmedInput(-1) {}
-    CNotarizationFinalization(int32_t nIn) : confirmedInput(nIn) {}
-    CNotarizationFinalization(std::vector<unsigned char> vch)
+    CTransactionFinalization() : confirmedInput(-1) {}
+    CTransactionFinalization(int32_t nIn) : confirmedInput(nIn) {}
+    CTransactionFinalization(std::vector<unsigned char> vch)
     {
         ::FromVector(vch, *this);
     }
-    CNotarizationFinalization(const CTransaction &tx, bool validate=false);
+    CTransactionFinalization(const CTransaction &tx, bool validate=false);
 
     ADD_SERIALIZE_METHODS;
 

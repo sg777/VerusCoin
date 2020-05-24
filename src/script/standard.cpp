@@ -282,7 +282,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     EVAL_SERVICEREWARD,
                     EVAL_EARNEDNOTARIZATION,
                     EVAL_ACCEPTEDNOTARIZATION,
-                    EVAL_FINALIZENOTARIZATION,
+                    EVAL_FINALIZE_NOTARIZATION,
                     EVAL_CURRENCYSTATE,
                     EVAL_RESERVE_TRANSFER,
                     EVAL_RESERVE_OUTPUT,
@@ -295,7 +295,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     EVAL_IDENTITY_RECOVER,
                     EVAL_IDENTITY_COMMITMENT,
                     EVAL_IDENTITY_RESERVATION,
-                    EVAL_IDENTITY_EXPORT
+                    EVAL_FINALIZE_EXPORT
                 });
                 if (VALID_EVAL_CODES.count(cp.evalCode))
                 {

@@ -1641,7 +1641,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
     bool allFinalized = false;
 
     // get the last unspent notarization for this currency
-    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZENOTARIZATION), 1, unspentFinalizations))
+    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZE_NOTARIZATION), 1, unspentFinalizations))
     {
         return false;
     }
@@ -1787,7 +1787,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
                 // ensure that we have a finalization output
                 COptCCParams p;
                 CPBaaSNotarization notarization;
-                CNotarizationFinalization finalization;
+                CTransactionFinalization finalization;
                 uint32_t notarizeIdx, finalizeIdx;
 
                 if (GetNotarizationAndFinalization(ecode, CMutableTransaction(rootTx), notarization, &notarizeIdx, &finalizeIdx))
@@ -2181,11 +2181,11 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         {
             CCcontract_info CC;
             CCcontract_info *cp;
-            cp = CCinit(&CC, EVAL_FINALIZENOTARIZATION);
+            cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
 
             // use public key of cc
             CPubKey pk(ParseHex(CC.CChexstr));
-            std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(pbn.currencyID, EVAL_FINALIZENOTARIZATION))});
+            std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(pbn.currencyID, EVAL_FINALIZE_NOTARIZATION))});
 
             std::vector<CTxDestination> dests;
             if (chainDef.notarizationProtocol == chainDef.NOTARIZATION_NOTARY_CHAINID)
@@ -2197,11 +2197,11 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 dests = std::vector<CTxDestination>({pk});
             }
 
-            CNotarizationFinalization nf(confirmedInput);
+            CTransactionFinalization nf(confirmedInput);
 
             mnewTx.vout.insert(mnewTx.vout.begin() + (mnewTx.vout.size() - 1), 
                                 CTxOut(CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
-                                       MakeMofNCCScript(CConditionObj<CNotarizationFinalization>(EVAL_FINALIZENOTARIZATION, dests, 1, &nf), &indexDests)));
+                                       MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests)));
         }
 
         if (notarizationInputs.size() && GetNotarizationAndFinalization(EVAL_ACCEPTEDNOTARIZATION, mnewTx, dummy, &notarizationIdx, &finalizationIdx))
@@ -2584,7 +2584,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             // which transaction are we in this block?
             std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
-            if (!GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZENOTARIZATION), 1, addressIndex, prevHeight, prevHeight))
+            if (!GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZE_NOTARIZATION), 1, addressIndex, prevHeight, prevHeight))
             {
                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Address index read error - possible corruption in address index");
             }
@@ -2769,16 +2769,16 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
                                                   MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(crosscode, dests, 1, &notarization), &indexDests)));
 
             // make the unspent finalization output
-            cp = CCinit(&CC, EVAL_FINALIZENOTARIZATION);
+            cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
             if (chainDef.notarizationProtocol != chainDef.NOTARIZATION_NOTARY_CHAINID)
             {
                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
             }
-            indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZENOTARIZATION))});
+            indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZE_NOTARIZATION))});
 
-            CNotarizationFinalization nf;
+            CTransactionFinalization nf;
             newNotarization.vout.push_back(CTxOut(DEFAULT_TRANSACTION_FEE, 
-                                                  MakeMofNCCScript(CConditionObj<CNotarizationFinalization>(EVAL_FINALIZENOTARIZATION, dests, 1, &nf), &indexDests)));
+                                                  MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests)));
 
             newNotarization.vout.push_back(CTxOut(0, StoreOpRetArray(chainObjects)));
 
@@ -4835,16 +4835,16 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                          false});
 
     // make the finalization output
-    cp = CCinit(&CC, EVAL_FINALIZENOTARIZATION);
+    cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
     pk = CPubKey(ParseHex(CC.CChexstr));
 
-    indexDests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_FINALIZENOTARIZATION))});
+    indexDests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_FINALIZE_NOTARIZATION))});
     dests = std::vector<CTxDestination>({pk});
 
-    CNotarizationFinalization nf;
+    CTransactionFinalization nf;
 
-    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CNotarizationFinalization>(EVAL_FINALIZENOTARIZATION, dests, 1, &nf), &indexDests), 
-                                         CNotarizationFinalization::DEFAULT_OUTPUT_VALUE, 
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests), 
+                                         CTransactionFinalization::DEFAULT_OUTPUT_VALUE, 
                                          false});
 
     std::set<CIdentityID> idExportSet;
