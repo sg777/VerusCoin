@@ -151,10 +151,10 @@ std::string IdentityReservationAddr = "RDbzJU8rEv4CkMABNUnKQoKDTfnikSm9fM";
 std::string IdentityReservationPubKey = "03974e76f57409197870d4e5539380b2f8468465c2bd374e3610edf1282cd1a304";
 std::string IdentityReservationWIF = "UqCXEj8oonBt6p9iDXbsAshCeFX7RsDpL6R62GUhTVRiSKDCQkYi";
 
-// IdentityExport
-std::string IdentityExportAddr = "REL7oLNeaeoQB1XauiHfcvjKMZC52Uj5xF";
-std::string IdentityExportPubKey = "0391fa230bd2509cbcc165c636c79ff540a8e3615993b16b8e366770bc4261bf10";
-std::string IdentityExportWIF = "UrRwoqyLMNddbASS7XV6rm3Q1JCBmMV9V5oPr92KEFmH5U8Evkf6";
+// FinalizeExport
+std::string FinalizeExportAddr = "REL7oLNeaeoQB1XauiHfcvjKMZC52Uj5xF";
+std::string FinalizeExportPubKey = "0391fa230bd2509cbcc165c636c79ff540a8e3615993b16b8e366770bc4261bf10";
+std::string FinalizeExportWIF = "UrRwoqyLMNddbASS7XV6rm3Q1JCBmMV9V5oPr92KEFmH5U8Evkf6";
 
 // quantum resistant public key output to keep one copy of a public key and refer to it via its hash on the chain
 std::string QuantumKeyOutAddr = "RQ55dLQ7uGnLx8scXfkaFV6QS6qVBGyxAG";
@@ -383,7 +383,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             cp->contextualprecheck = DefaultCCContextualPreCheck;
             break;
 
-        case EVAL_FINALIZENOTARIZATION:
+        case EVAL_FINALIZE_NOTARIZATION:
             strcpy(cp->unspendableCCaddr,FinalizeNotarizationAddr.c_str());
             strcpy(cp->normaladdr,FinalizeNotarizationAddr.c_str());
             strcpy(cp->CChexstr,FinalizeNotarizationPubKey.c_str());
@@ -523,14 +523,14 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             cp->contextualprecheck = PrecheckIdentityReservation;
             break;
 
-        case EVAL_IDENTITY_EXPORT:
-            strcpy(cp->unspendableCCaddr,IdentityExportAddr.c_str());
-            strcpy(cp->normaladdr,IdentityExportAddr.c_str());
-            strcpy(cp->CChexstr,IdentityExportPubKey.c_str());
-            memcpy(cp->CCpriv,DecodeSecret(IdentityExportWIF).begin(),32);
-            cp->validate = ValidateIdentityExport;
-            cp->ismyvin = IsIdentityExportInput;  // TODO: these input functions are not useful for new CCs
-            cp->contextualprecheck = IdentityExportContextualPreCheck;
+        case EVAL_FINALIZE_EXPORT:
+            strcpy(cp->unspendableCCaddr,FinalizeExportAddr.c_str());
+            strcpy(cp->normaladdr,FinalizeExportAddr.c_str());
+            strcpy(cp->CChexstr,FinalizeExportPubKey.c_str());
+            memcpy(cp->CCpriv,DecodeSecret(FinalizeExportWIF).begin(),32);
+            cp->validate = ValidateFinalizeExport;
+            cp->ismyvin = IsFinalizeExportInput;  // TODO: these input functions are not useful for new CCs
+            cp->contextualprecheck = FinalizeExportContextualPreCheck;
             break;
 
         case EVAL_QUANTUM_KEY:

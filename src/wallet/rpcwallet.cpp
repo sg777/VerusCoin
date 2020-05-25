@@ -2113,6 +2113,15 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
             MaybePushAddress(entry, s.destination);
             entry.push_back(Pair("category", bIsStake ? "stake" : "send"));
             entry.push_back(Pair("amount", ValueFromAmount(-s.amount)));
+
+
+            CCurrencyValueMap tokenAmounts = wtx.vout[s.vout].scriptPubKey.ReserveOutValue();
+            if (tokenAmounts.valueMap.size())
+            {
+                entry.push_back(Pair("tokenamounts", tokenAmounts.ToUniValue()));
+            }
+
+
             entry.push_back(Pair("vout", s.vout));
             entry.push_back(Pair("fee", ValueFromAmount(-nFee)));
             if (fLong)
