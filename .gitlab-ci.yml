@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.5-dev-12
+  VERSION: 0.6.5-dev-13
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
@@ -38,8 +38,8 @@ build:linux:
     paths:
       - depends
   script:
-    - scl enable devtoolset-7 sh
-    - source /opt/rh/devtoolset-7/enable
+    - scl enable devtoolset-8 sh
+    - source /opt/rh/devtoolset-8/enable
     - zcutil/build.sh -j$(nproc)
     - if [ "${STRIP_BINARIES}" = "true" ]; then strip --strip-unneeded  src/verus && strip --strip-unneeded  src/verusd; fi
     - mkdir verus-cli
@@ -157,7 +157,16 @@ build:mac:
       - depends
   script:
     - zcutil/build-mac.sh -j$(sysctl -n hw.physicalcpu)
-    - ./makeReleaseMac.sh
+    - mkdir verus-cli
+    - cp src/verus \
+        src/verusd \
+        doc/man/verus-cli/mac/README.txt \
+        zcutil/fetch-params.sh \
+        verus-cli
+    - mv verus-cli/fetch-params.sh verus-cli/fetch-params
+    - chmod +x verus-cli/fetch-params
+    - chmod +x verus-cli/verus
+    - chmod +x verus-cli/verusd
     - tar -czvf ${VERUS_CLI_MACOS} verus-cli
     - shasum -a 256 ${VERUS_CLI_MACOS} > ${VERUS_CLI_MACOS}.sha256
     - curl -F file=@"${VERUS_CLI_MACOS}"
