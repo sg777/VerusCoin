@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.5-dev-13
+  VERSION: 0.6.5-dev-14
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
@@ -28,7 +28,7 @@ variables:
 ####START####                                            LINUX                                             ####START####
 ########################################################################################################################
 build:linux:
-  image: asherd/verus-builders:verus-centos
+  image: asherd/verus-builders:verus-ubuntu
   variables:
     DOCKER_DRIVER: overlay2
     CONFIGURE_FLAGS: --with-gcc-arch=x86-64
@@ -38,8 +38,6 @@ build:linux:
     paths:
       - depends
   script:
-    - scl enable devtoolset-8 sh
-    - source /opt/rh/devtoolset-8/enable
     - zcutil/build.sh -j$(nproc)
     - if [ "${STRIP_BINARIES}" = "true" ]; then strip --strip-unneeded  src/verus && strip --strip-unneeded  src/verusd; fi
     - mkdir verus-cli
