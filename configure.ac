@@ -791,7 +791,7 @@ else
 fi
 
 # Set optimization flags for libsnark
-AX_GCC_ARCHFLAG([yes], [LIBSNARK_OPTFLAGS="-O2 $ax_cv_gcc_archflag"], [LIBSNARK_OPTFLAGS="-O2"])
+AX_GCC_ARCHFLAG([no], [LIBSNARK_OPTFLAGS="-O2 $ax_cv_gcc_archflag"], [LIBSNARK_OPTFLAGS="-O2"])
 
 # Additional Zcash flags
 AX_CHECK_COMPILE_FLAG([-fwrapv],[CXXFLAGS="$CXXFLAGS -fwrapv"])
