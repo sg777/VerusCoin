@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.5-dev-14
+  VERSION: 0.6.5-dev-15
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
@@ -31,7 +31,6 @@ build:linux:
   image: asherd/verus-builders:verus-ubuntu
   variables:
     DOCKER_DRIVER: overlay2
-    CONFIGURE_FLAGS: --with-gcc-arch=x86-64
   stage: build
   cache:
     key: "${CI_JOB_NAME}${CI_COMMIT_REF_NAME}"
