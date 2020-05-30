@@ -902,6 +902,14 @@ public:
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
 
+    bool NewImportNotarization(const CCurrencyDefinition &_curDef, 
+                               uint32_t height, 
+                               const CTransaction &lastImportTx, 
+                               uint32_t exportHeight, 
+                               const CTransaction &exportTx, 
+                               CMutableTransaction &mnewTx,
+                               CCoinbaseCurrencyState &newCurState);
+
     bool GetLastImport(const uint160 &systemID, 
                        CTransaction &lastImport, 
                        CPartialTransactionProof &crossChainExport, 

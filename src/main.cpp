@@ -3185,30 +3185,41 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
 
         if (fAddressIndex && updateIndices) {
             for (unsigned int k = tx.vout.size(); k-- > 0;) {
-                const CTxOut &out = tx.vout[k];
-                CScript::ScriptType scriptType = out.scriptPubKey.GetType();
-                if (scriptType != CScript::UNKNOWN) {
-                    if (scriptType == CScript::P2CC)
-                    {
-                        std::vector<CTxDestination> dests = out.scriptPubKey.GetDestinations();
-                        for (auto dest : dests)
-                        {
-                            if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
-                            {
-                                // undo receiving activity
-                                addressIndex.push_back(make_pair(
-                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, k, false),
-                                    out.nValue));
 
-                                // undo unspent index
-                                addressUnspentIndex.push_back(make_pair(
-                                    CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), hash, k),
-                                    CAddressUnspentValue()));
-                            }
-                        }
+                const CTxOut &out = tx.vout[k];
+                COptCCParams p;
+                if (out.scriptPubKey.IsPayToCryptoCondition(p))
+                {
+                    std::vector<CTxDestination> dests;
+                    if (p.IsValid())
+                    {
+                        dests = p.GetDestinations();
                     }
                     else
                     {
+                        dests = out.scriptPubKey.GetDestinations();
+                    }
+                    
+                    for (auto dest : dests)
+                    {
+                        if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
+                        {
+                            // undo receiving activity
+                            addressIndex.push_back(make_pair(
+                                CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, k, false),
+                                out.nValue));
+
+                            // undo unspent index
+                            addressUnspentIndex.push_back(make_pair(
+                                CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), hash, k),
+                                CAddressUnspentValue()));
+                        }
+                    }
+                }
+                else
+                {
+                    CScript::ScriptType scriptType = out.scriptPubKey.GetType();
+                    if (scriptType != CScript::UNKNOWN) {
                         uint160 const addrHash = out.scriptPubKey.AddressHash();
                         if (!addrHash.IsNull())
                         {
@@ -3265,29 +3276,39 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                 const CTxIn input = tx.vin[j];
                 if (fAddressIndex && updateIndices) {
                     const CTxOut &prevout = view.GetOutputFor(input);
-                    CScript::ScriptType scriptType = prevout.scriptPubKey.GetType();
-                    if (scriptType != CScript::UNKNOWN) {
-                        if (scriptType == CScript::P2CC)
-                        {
-                            std::vector<CTxDestination> dests = prevout.scriptPubKey.GetDestinations();
-                            for (auto dest : dests)
-                            {
-                                if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
-                                {
-                                    // undo spending activity
-                                    addressIndex.push_back(make_pair(
-                                        CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, j, true),
-                                        prevout.nValue * -1));
 
-                                    // restore unspent index
-                                    addressUnspentIndex.push_back(make_pair(
-                                        CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
-                                        CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undo.nHeight)));
-                                }
-                            }
+                    COptCCParams p;
+                    if (prevout.scriptPubKey.IsPayToCryptoCondition(p))
+                    {
+                        std::vector<CTxDestination> dests;
+                        if (p.IsValid())
+                        {
+                            dests = p.GetDestinations();
                         }
                         else
                         {
+                            dests = prevout.scriptPubKey.GetDestinations();
+                        }
+                        for (auto dest : dests)
+                        {
+                            if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
+                            {
+                                // undo spending activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, j, true),
+                                    prevout.nValue * -1));
+
+                                // restore unspent index
+                                addressUnspentIndex.push_back(make_pair(
+                                    CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
+                                    CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undo.nHeight)));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        CScript::ScriptType scriptType = prevout.scriptPubKey.GetType();
+                        if (scriptType != CScript::UNKNOWN) {
                             uint160 const addrHash = prevout.scriptPubKey.AddressHash();
 
                             if (!addrHash.IsNull())
@@ -3303,7 +3324,7 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                                     CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undo.nHeight)));
                             }
                         }
-                    }
+                    }                
                 }
                 // insightexplorer
                 if (fSpentIndex && updateIndices) {
@@ -3667,39 +3688,49 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                 const CTxIn input = tx.vin[j];
                 const CTxOut &prevout = view.GetOutputFor(tx.vin[j]);
-                CScript::ScriptType scriptType = prevout.scriptPubKey.GetType();
 
-                if (fAddressIndex && scriptType != CScript::UNKNOWN)
+                COptCCParams p;
+                if (prevout.scriptPubKey.IsPayToCryptoCondition(p))
                 {
-                    if (scriptType == CScript::P2CC)
+                    std::vector<CTxDestination> dests;
+                    if (p.IsValid())
                     {
-                        std::vector<CTxDestination> dests = prevout.scriptPubKey.GetDestinations();
-                        for (auto dest : dests)
-                        {
-                            if (dest.which() != COptCCParams::ADDRTYPE_INVALID) 
-                            {
-                                // record spending activity
-                                addressIndex.push_back(make_pair(
-                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, j, true),
-                                    prevout.nValue * -1));
-
-                                // remove address from unspent index
-                                addressUnspentIndex.push_back(make_pair(
-                                    CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
-                                    CAddressUnspentValue()));
-                            }
-                        }
-                        if (fSpentIndex) {
-                            // Add the spent index to determine the txid and input that spent an output
-                            // and to find the amount and address from an input.
-                            // If we do not recognize the script type, we still add an entry to the
-                            // spentindex db, with a script type of 0 and addrhash of all zeroes.
-                            spentIndex.push_back(make_pair(
-                                CSpentIndexKey(input.prevout.hash, input.prevout.n),
-                                CSpentIndexValue(txhash, j, pindex->GetHeight(), prevout.nValue, dests.size() ? AddressTypeFromDest(dests[0]) : CScript::UNKNOWN, dests.size() ? GetDestinationID(dests[0]) : uint160())));
-                        }
+                        dests = p.GetDestinations();
                     }
                     else
+                    {
+                        dests = prevout.scriptPubKey.GetDestinations();
+                    }
+                    for (auto dest : dests)
+                    {
+                        if (dest.which() != COptCCParams::ADDRTYPE_INVALID) 
+                        {
+                            // record spending activity
+                            addressIndex.push_back(make_pair(
+                                CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, j, true),
+                                prevout.nValue * -1));
+
+                            // remove address from unspent index
+                            addressUnspentIndex.push_back(make_pair(
+                                CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
+                                CAddressUnspentValue()));
+                        }
+                    }
+                    if (fSpentIndex) {
+                        // Add the spent index to determine the txid and input that spent an output
+                        // and to find the amount and address from an input.
+                        // If we do not recognize the script type, we still add an entry to the
+                        // spentindex db, with a script type of 0 and addrhash of all zeroes.
+                        spentIndex.push_back(make_pair(
+                            CSpentIndexKey(input.prevout.hash, input.prevout.n),
+                            CSpentIndexValue(txhash, j, pindex->GetHeight(), prevout.nValue, dests.size() ? AddressTypeFromDest(dests[0]) : CScript::UNKNOWN, dests.size() ? GetDestinationID(dests[0]) : uint160())));
+                    }
+                }
+                else
+                {
+                    CScript::ScriptType scriptType = prevout.scriptPubKey.GetType();
+
+                    if (fAddressIndex && scriptType != CScript::UNKNOWN)
                     {
                         const uint160 addrHash = prevout.scriptPubKey.AddressHash();
                         if (!addrHash.IsNull()) {
@@ -3805,29 +3836,43 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (fAddressIndex) {
             for (unsigned int k = 0; k < tx.vout.size(); k++) {
                 const CTxOut &out = tx.vout[k];
-                CScript::ScriptType scriptType = out.scriptPubKey.GetType();
-                if (scriptType != CScript::UNKNOWN) 
+                COptCCParams p;
+                if (out.scriptPubKey.IsPayToCryptoCondition(p))
                 {
-                    if (scriptType == CScript::P2CC)
+                    std::vector<CTxDestination> dests;
+                    if (p.IsValid())
                     {
-                        std::vector<CTxDestination> dests = out.scriptPubKey.GetDestinations();
-                        for (auto dest : dests)
-                        {
-                            if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
-                            {
-                                // record receiving activity
-                                addressIndex.push_back(make_pair(
-                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, k, false),
-                                    out.nValue));
-
-                                // record unspent output
-                                addressUnspentIndex.push_back(make_pair(
-                                    CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), txhash, k),
-                                    CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->GetHeight())));
-                            }
-                        }
+                        dests = p.GetDestinations();
                     }
                     else
+                    {
+                        dests = out.scriptPubKey.GetDestinations();
+                    }
+                    for (auto dest : dests)
+                    {
+                        if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
+                        {
+                            // record receiving activity
+                            addressIndex.push_back(make_pair(
+                                CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, k, false),
+                                out.nValue));
+
+                            if (dest.which() == COptCCParams::ADDRTYPE_PKH)
+                            {
+                                printf("%s: adding unspent index for address %s\n", __func__, GetDestinationID(dest).GetHex().c_str());
+                            }
+
+                            // record unspent output
+                            addressUnspentIndex.push_back(make_pair(
+                                CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), txhash, k),
+                                CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->GetHeight())));
+                        }
+                    }
+                }
+                else
+                {
+                    CScript::ScriptType scriptType = out.scriptPubKey.GetType();
+                    if (scriptType != CScript::UNKNOWN) 
                     {
                         uint160 const addrHash = out.scriptPubKey.AddressHash();
 

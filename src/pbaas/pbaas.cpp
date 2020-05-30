@@ -1385,6 +1385,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     // acknowledged
                                     cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
                                     CTransactionFinalization finalization(0);
+
+                                    printf("%s: Finalizing export with index dest %s\n", __func__, CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT).GetHex().c_str());
+
                                     indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))});
                                     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
                                     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_EXPORT, dests, 1, &finalization), &indexDests), 0);
@@ -1598,6 +1601,223 @@ CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, i
     return retVal;
 }
 
+// This creates a new token notarization input and output and attaches them to a new import transaction,
+// given the next export transaction about to be imported and its height
+bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef, 
+                                             uint32_t height, 
+                                             const CTransaction &lastImportTx, 
+                                             uint32_t exportHeight, 
+                                             const CTransaction &exportTx, 
+                                             CMutableTransaction &mnewTx,
+                                             CCoinbaseCurrencyState &newCurState)
+{
+    if (!_curDef.IsValid() || !_curDef.IsToken())
+    {
+        LogPrintf("%s: cannot create import notarization for invalid or non-token currencies\n", __func__);
+        return false;
+    }
+
+    uint160 currencyID = _curDef.GetID();
+
+    CCurrencyDefinition curDef = _curDef;
+
+    CPBaaSNotarization lastNotarization(lastImportTx);
+    if (!lastNotarization.IsValid())
+    {
+        LogPrintf("%s: error getting notarization transaction %s\n", __func__, lastImportTx.GetHash().GetHex().c_str());
+        return false;
+    }
+
+    CCrossChainExport ccx(exportTx);
+    if (!ccx.IsValid())
+    {
+        LogPrintf("%s: invalid export transaction %s\n", __func__, lastImportTx.GetHash().GetHex().c_str());
+        return false;
+    }
+
+    std::vector<CCurrencyDefinition> txCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(lastImportTx);
+
+    bool isDefinition = false;
+    for (auto &oneCur : txCurrencies)
+    {
+        if (oneCur.GetID() == currencyID)
+        {
+            isDefinition = true;
+        }
+    }
+
+    CBlockIndex *pindex;
+    CTxDestination notarizationID = VERUS_DEFAULTID.IsNull() ? CTxDestination(CIdentityID(currencyID)) : CTxDestination(VERUS_DEFAULTID);
+
+    // if this is the first notarization after start, make the notarization and determine if we should
+    // launch or refund
+    if (isDefinition)
+    {
+        bool refunding = false;
+
+        pindex = chainActive[curDef.startBlock];
+
+        // check if the chain is qualified for a refund
+        CCurrencyValueMap minPreMap, preConvertedMap, fees;
+        preConvertedMap = CalculatePreconversions(curDef, pindex->GetHeight(), fees).CanonicalMap();
+        curDef.preconverted = preConvertedMap.AsCurrencyVector(curDef.currencies);
+
+        CCoinbaseCurrencyState initialCur = GetInitialCurrencyState(curDef);
+        newCurState = initialCur;
+
+        if (curDef.minPreconvert.size() && curDef.minPreconvert.size() == curDef.currencies.size())
+        {
+            minPreMap = CCurrencyValueMap(curDef.currencies, curDef.minPreconvert).CanonicalMap();
+        }
+
+        if (minPreMap.valueMap.size() && preConvertedMap < minPreMap)
+        {
+            // we force the supply to zero
+            // in any case where there was a minimum participation,
+            // the result of the supply cannot be zero, enabling us to easily determine that this
+            // represents a failed launch
+            newCurState.supply = 0;
+            refunding = true;
+        }
+        else if (curDef.IsFractional() &&
+                 exportTx.vout.size() &&
+                 exportTx.vout.back().scriptPubKey.IsOpReturn())
+        {
+            // we are not refunding, and it is possible that we also have
+            // normal conversions in addition to pre-conversions. add any conversions that may 
+            // be present into the new currency state
+            CReserveTransactionDescriptor rtxd;
+            std::vector<CBaseChainObject *> exportObjects;
+            std::vector<CTxOut> vOutputs;
+
+            exportObjects = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
+
+            bool isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, initialCur, exportObjects, vOutputs, &newCurState);
+            DeleteOpRetObjects(exportObjects);
+            if (!isValidExport)
+            {
+                LogPrintf("%s: invalid export opreturn for transaction %s\n", __func__, exportTx.GetHash().GetHex().c_str());
+                return false;
+            }
+        }
+    }
+    else
+    {
+        pindex = chainActive.LastTip();
+        if (!pindex)
+        {
+            LogPrintf("%s: invalid active chain\n", __func__);
+            return false;
+        }
+
+        // this is not the first notarization, so the last notarization will let us know if this is a refund or not
+        CCurrencyValueMap minPreMap;
+
+        CCoinbaseCurrencyState initialCur = lastNotarization.currencyState;
+        newCurState = initialCur;
+
+
+        if (curDef.minPreconvert.size() && curDef.minPreconvert.size() == curDef.currencies.size())
+        {
+            minPreMap = CCurrencyValueMap(curDef.currencies, curDef.minPreconvert).CanonicalMap();
+        }
+
+        // we don't need any more notarizations after failure to launch, if success, continue
+        if (!(minPreMap.valueMap.size() && lastNotarization.currencyState.supply == 0))
+        {
+            // calculate new currency state from this import
+            // we are not refunding, and it is possible that we also have
+            // normal conversions in addition to pre-conversions. add any conversions that may 
+            // be present into the new currency state
+            CReserveTransactionDescriptor rtxd;
+            std::vector<CBaseChainObject *> exportObjects;
+            std::vector<CTxOut> vOutputs;
+
+            exportObjects = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
+
+            bool isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, initialCur, exportObjects, vOutputs, &newCurState);
+            DeleteOpRetObjects(exportObjects);
+            if (!isValidExport)
+            {
+                LogPrintf("%s: invalid export opreturn for transaction %s\n", __func__, exportTx.GetHash().GetHex().c_str());
+                return false;
+            }
+        }
+    }
+
+    uint256 lastImportTxHash = lastImportTx.GetHash();
+
+    // now, add the initial notarization to the import tx
+    // we will begin refund or import after notarization is accepted and returned by GetNotarizationData
+    CPBaaSNotarization pbn = CPBaaSNotarization(curDef.notarizationProtocol,
+                                                currencyID,
+                                                notarizationID,
+                                                pindex->GetHeight(),
+                                                chainActive.GetMMV().GetRoot(),
+                                                chainActive.GetMMRNode(pindex->GetHeight()).hash,
+                                                ArithToUint256(GetCompactPower(pindex->nNonce, pindex->nBits, pindex->nVersion)),
+                                                newCurState,
+                                                lastImportTxHash,
+                                                lastNotarization.notarizationHeight,
+                                                uint256(), 0, COpRetProof(), std::vector<CNodeData>());
+
+    // create notarization output
+    CCcontract_info CC;
+    CCcontract_info *cp;
+
+    std::vector<CTxDestination> dests;
+    std::vector<CTxDestination> indexDests;
+
+    // make the accepted notarization output
+    cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
+
+    if (curDef.notarizationProtocol == curDef.NOTARIZATION_NOTARY_CHAINID)
+    {
+        dests = std::vector<CTxDestination>({CIdentityID(currencyID)});
+    }
+    else if (curDef.notarizationProtocol == curDef.NOTARIZATION_AUTO)
+    {
+        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+    }
+    else
+    {
+        return false;
+    }
+    indexDests = std::vector<CTxDestination>({CKeyID(curDef.GetConditionID(EVAL_ACCEPTEDNOTARIZATION))});
+    mnewTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn), &indexDests)));
+
+    // make the finalization output
+    cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
+
+    if (curDef.notarizationProtocol == curDef.NOTARIZATION_AUTO)
+    {
+        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+    }
+
+    // finish transaction by adding the prior input and finalization, sign, then put it in the mempool
+    // all output for notarizing will be paid as mining fees, so there's no need to relay
+    uint32_t confirmedOut, finalizeOut;
+    if (!GetNotarizationAndFinalization(EVAL_ACCEPTEDNOTARIZATION, lastImportTx, pbn, &confirmedOut, &finalizeOut))
+    {
+        printf("ERROR: could not find expected initial notarization for currency %s\n", curDef.name.c_str());
+        return false;
+    }
+
+    mnewTx.vin.push_back(CTxIn(COutPoint(lastImportTxHash, confirmedOut)));
+    mnewTx.vin.push_back(CTxIn(COutPoint(lastImportTxHash, finalizeOut)));
+
+    // we need to store the input that we confirmed if we spent finalization outputs
+    CTransactionFinalization nf(mnewTx.vin.size() - 1);
+
+    indexDests = std::vector<CTxDestination>({CKeyID(curDef.GetConditionID(EVAL_FINALIZE_NOTARIZATION))});
+
+    // update crypto condition with final notarization output data
+    mnewTx.vout.push_back(CTxOut(PBAAS_MINNOTARIZATIONOUTPUT, 
+            MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests)));
+
+    return true;
+}
+
 // process token related, local imports and exports
 void CConnectedChains::ProcessLocalImports()
 {
@@ -1609,250 +1829,48 @@ void CConnectedChains::ProcessLocalImports()
     LOCK2(cs_main, mempool.cs);
     uint32_t nHeight = chainActive.Height();
 
-    if (GetUnspentChainExports(thisChainID, exportOutputs) && exportOutputs.size())
+    // get all pending, local exports and put them into a map
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
+    std::map<uint160, std::pair<uint32_t, CTransaction>> currenciesToImport;    // height of earliest tx
+    CCurrencyDefinition oneCurrency;
+    printf("%s: Searching for %s\n", __func__, ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT).GetHex().c_str());
+    if (GetAddressUnspent(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT), 1, unspentOutputs))
     {
-        for (auto &exportThread : exportOutputs)
+        CCrossChainExport ccx, ccxDummy;
+        CTransaction txOut, txImport;
+        CPartialTransactionProof lastExport;
+        CCrossChainImport cci;
+        uint256 blkHash;
+        for (auto &oneOut : unspentOutputs)
         {
-            CCurrencyDefinition exportDef;
-            int32_t defHeight = 0;
-            if (!GetCurrencyDefinition(exportThread.first, exportDef, &defHeight))
+            COptCCParams p;
+            if (oneOut.second.script.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_FINALIZE_EXPORT &&
+                p.vData.size() &&
+                CTransactionFinalization(p.vData[0]).IsValid() &&
+                myGetTransaction(oneOut.first.txhash, txOut, blkHash) &&
+                (ccx = CCrossChainExport(txOut)).IsValid() &&
+                (oneCurrency = GetCachedCurrency(ccx.systemID)).IsValid() &&
+                oneCurrency.startBlock < nHeight &&
+                !currenciesToImport.count(ccx.systemID) &&
+                GetLastImport(ccx.systemID, txImport, lastExport, cci, ccxDummy))
             {
-                printf("%s: definition for export currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(exportThread.first)).c_str());
-                LogPrintf("%s: definition for export currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(exportThread.first)).c_str());
-                continue;
-            }
-            currencyDefCache[exportThread.first] = exportDef;
-
-            //printf("processing exports for currency: %s\n", exportDef.name.c_str());
-
-            // if it is not launched, check and initiate refund if we control this currency
-            bool refunding = false;
-
-            // if chain hasn't started, and it is controlled by us, or if it has no exports, skip
-            if ((exportDef.startBlock > nHeight && exportDef.systemID == thisChainID) ||
-                defHeight == exportThread.second.first)
-            {
-                continue;
-            }
-            // we have started and this currency is controlled by our chain, check or create its launch notarization
-            else if (exportThread.first != thisChainID && exportDef.systemID == thisChainID)
-            {
-                CChainNotarizationData cnd;
-                std::vector<std::pair<CTransaction, uint256>> notarizations;
-                if (!GetNotarizationData(exportThread.first, EVAL_ACCEPTEDNOTARIZATION, cnd, &notarizations))
+                auto blockIt = mapBlockIndex.find(blkHash);
+                if (blockIt != mapBlockIndex.end() && chainActive.Contains(blockIt->second))
                 {
-                    LogPrintf("%s: error getting notarization data for token %s\n", __func__, exportDef.name.c_str());
-                    continue;
-                }
-
-                CCurrencyValueMap minPreMap;
-                if (exportDef.minPreconvert.size())
-                {
-                    minPreMap = CCurrencyValueMap(exportDef.currencies, exportDef.minPreconvert).CanonicalMap();
-                }
-
-                if (cnd.vtx.back().second.prevHeight == 0)
-                {
-                    // check if the chain is qualified for a refund
-                    CCurrencyValueMap minPreMap, preConvertedMap, fees;
-                    preConvertedMap = CalculatePreconversions(exportDef, defHeight, fees).CanonicalMap();
-                    exportDef.preconverted = preConvertedMap.AsCurrencyVector(exportDef.currencies);
-                    CCoinbaseCurrencyState initialCur = GetInitialCurrencyState(exportDef);
-
-                    if (exportDef.minPreconvert.size() && exportDef.minPreconvert.size() == exportDef.currencies.size())
-                    {
-                        minPreMap = CCurrencyValueMap(exportDef.currencies, exportDef.minPreconvert).CanonicalMap();
-                    }
-
-                    if (minPreMap.valueMap.size() && preConvertedMap < minPreMap)
-                    {
-                        // we force the supply to zero
-                        // in any case where there was a minimum participation,
-                        // the result of the supply cannot be zero, enabling us to easily determine that this
-                        // represents a failed launch
-                        initialCur.supply = 0;
-                    }
-
-                    // now, create the initial notarization and continue
-                    // we will begin refund or import after notarization is accepted and returned by GetNotarizationData
-                    CBlockIndex *pindex = chainActive[exportDef.startBlock];
-                    ChainMerkleMountainView mmv(chainActive.GetMMR(), exportDef.startBlock);
-                    CPBaaSNotarization pbn = CPBaaSNotarization(exportDef.notarizationProtocol,
-                                                                exportThread.first,
-                                                                CTxDestination(CIdentityID(exportThread.first)),
-                                                                exportDef.startBlock,
-                                                                chainActive.GetMMV().GetRoot(),
-                                                                chainActive.GetMMRNode(exportDef.startBlock).hash,
-                                                                ArithToUint256(GetCompactPower(pindex->nNonce, pindex->nBits, pindex->nVersion)),
-                                                                initialCur,
-                                                                notarizations[0].first.GetHash(),
-                                                                defHeight,
-                                                                uint256(), 0, COpRetProof(), std::vector<CNodeData>());
-
-
-                    // setup to create the accepted notarization transaction
-                    CMutableTransaction mnewTx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
-
-                    // create notarization output
-                    CCcontract_info CC;
-                    CCcontract_info *cp;
-
-                    std::vector<CTxDestination> dests;
-                    std::vector<CTxDestination> indexDests;
-
-                    // make the accepted notarization output
-                    cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
-
-                    if (exportDef.notarizationProtocol == exportDef.NOTARIZATION_NOTARY_CHAINID)
-                    {
-                        dests = std::vector<CTxDestination>({CIdentityID(exportThread.first)});
-                    }
-                    else if (exportDef.notarizationProtocol == exportDef.NOTARIZATION_AUTO)
-                    {
-                        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-                    }
-                    else
-                    {
-                        continue;
-                    }
-                    indexDests = std::vector<CTxDestination>({CKeyID(exportDef.GetConditionID(EVAL_ACCEPTEDNOTARIZATION))});
-                    mnewTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn), &indexDests)));
-
-                    // make the finalization output
-                    cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
-
-                    if (exportDef.notarizationProtocol == exportDef.NOTARIZATION_AUTO)
-                    {
-                        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-                    }
-                    else
-                    {
-                        continue;
-                    }
-
-                    // finish transaction by adding the prior input and finalization, sign, then put it in the mempool
-                    // all output for notarizing will be paid as mining fees, so there's no need to relay
-                    uint32_t confirmedOut, finalizeOut;
-                    if (!GetNotarizationAndFinalization(EVAL_ACCEPTEDNOTARIZATION, notarizations[0].first, pbn, &confirmedOut, &finalizeOut))
-                    {
-                        printf("ERROR: could not find expected initial notarization for currency %s\n", exportDef.name.c_str());
-                        continue;
-                    }
-
-                    mnewTx.vin.push_back(CTxIn(COutPoint(notarizations[0].first.GetHash(), confirmedOut)));
-                    mnewTx.vin.push_back(CTxIn(COutPoint(notarizations[0].first.GetHash(), finalizeOut)));
-
-                    // we need to store the input that we confirmed if we spent finalization outputs
-                    CTransactionFinalization nf(0);
-
-                    indexDests = std::vector<CTxDestination>({CKeyID(exportDef.GetConditionID(EVAL_FINALIZE_NOTARIZATION))});
-
-                    // update crypto condition with final notarization output data
-                    mnewTx.vout.push_back(CTxOut(PBAAS_MINNOTARIZATIONOUTPUT, 
-                            MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests)));
-
-                    CTransaction ntx(mnewTx);
-
-                    uint32_t consensusBranchId = CurrentEpochBranchId(chainActive.LastTip()->GetHeight(), Params().GetConsensus());
-
-                    // sign the transaction and submit
-                    for (int i = 0; i < ntx.vin.size(); i++)
-                    {
-                        bool signSuccess;
-                        SignatureData sigdata;
-                        CAmount value;
-                        const CScript *pScriptPubKey;
-
-                        pScriptPubKey = &(notarizations[0].first.vout[ntx.vin[i].prevout.n].scriptPubKey);
-                        value = notarizations[0].first.vout[ntx.vin[i].prevout.n].nValue;
-
-                        extern CWallet *pwalletMain;
-                        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &ntx, i, value, SIGHASH_ALL), *pScriptPubKey, sigdata, consensusBranchId);
-
-                        if (!signSuccess)
-                        {
-                            printf("%s: failure to sign notarization\n", __func__);
-                            continue;
-                        } else {
-                            UpdateTransaction(mnewTx, i, sigdata);
-                        }
-                    }
-
-                    // add to mempool and submit transaction
-                    ntx = mnewTx;
-
-                    CValidationState state;
-                    if (!myAddtomempool(ntx, &state))
-                    {
-                        if (state.GetRejectCode() != REJECT_DUPLICATE)
-                        {
-                            //UniValue uniTx(UniValue::VOBJ);
-                            //TxToUniv(ntx, uint256(), uniTx);
-                            //printf("ERROR: could not create launch notarization for currency %s: %s\ntx: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str(), uniTx.write(1,2).c_str());
-                            //printf("ERROR: could not create launch notarization for currency %s: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str());
-                            LogPrintf("ERROR: could not create launch notarization for currency %s: %s\n", exportDef.name.c_str(), state.GetRejectReason().c_str());
-                        }
-                    }
-                    // we will import after the launch notarization is mined/staked
-                    continue;
-                }
-                else if (cnd.vtx.size() > 1)
-                {
-                    if (minPreMap.valueMap.size() && !cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.supply)
-                    {
-                        refunding = true;
-                    }
-                }
-                else
-                {
-                    LogPrintf("%s: error getting notarization data for token %s\n", __func__, exportDef.name.c_str());
-                    continue;
-                }
-            }
-
-            // get the first import for each of the remaining export threads
-            CTransaction lastImportTx;
-
-            // we need to find the last unspent import transaction
-            std::vector<CAddressUnspentDbEntry> unspentOutputs;
-
-            bool found = false;
-
-            if (refunding)
-            {
-                std::vector<CTransaction> newRefunds;
-                std::string failReason;
-                if (!RefundFailedLaunch(exportThread.first, lastImportTx, newRefunds, failReason))
-                {
-                    LogPrintf("%s: ERROR refunding token %s: %s\n", __func__, exportDef.name.c_str(), failReason.c_str());
-                }
-                ConnectedChains.SignAndCommitImportTransactions(lastImportTx, newRefunds);
-                continue;
-            }
-            else if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(exportThread.first, EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
-            {
-                for (auto txidx : unspentOutputs)
-                {
-                    uint256 blkHash;
-                    CTransaction itx;
-                    CCrossChainImport oneCCI;
-                    if (myGetTransaction(txidx.first.txhash, lastImportTx, blkHash) &&
-                        (oneCCI = CCrossChainImport(lastImportTx)).IsValid() &&
-                        oneCCI.systemID == exportDef.GetID())
-                    {
-                        importThreads.insert(std::make_pair(exportThread.first, lastImportTx));
-                    }
+                    currenciesToImport.insert(make_pair(ccx.systemID, make_pair(blockIt->second->GetHeight(), txImport)));
                 }
             }
         }
     }
 
     CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
-    for (auto &oneIT : importThreads)
+    for (auto &oneIT : currenciesToImport)
     {
         std::vector<CTransaction> importTxes;
         int32_t importOutNum = 0;
-        CCrossChainImport oneImportInput(oneIT.second, &importOutNum);
+        CCrossChainImport oneImportInput(oneIT.second.second, &importOutNum);
         if (oneImportInput.IsValid())
         {
             std::vector<CAddressUnspentDbEntry> reserveDeposits;
@@ -1865,10 +1883,10 @@ void CConnectedChains::ProcessLocalImports()
                 tokenImportAvailable += oneOut.second.script.ReserveOutValue();
                 //printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
             }
-            nativeImportAvailable += oneIT.second.vout[importOutNum].nValue;
-            tokenImportAvailable += oneIT.second.vout[importOutNum].ReserveOutValue();
+            nativeImportAvailable += oneIT.second.second.vout[importOutNum].nValue;
+            tokenImportAvailable += oneIT.second.second.vout[importOutNum].ReserveOutValue();
             //printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
-            if (CreateLatestImports(currencyDefCache[oneIT.first], oneIT.second, txTemplate, CTransaction(), tokenImportAvailable, nativeImportAvailable, importTxes))
+            if (CreateLatestImports(currencyDefCache[oneIT.first], oneIT.second.second, txTemplate, CTransaction(), tokenImportAvailable, nativeImportAvailable, importTxes))
             {
                 // fund the first import transaction with all reserveDeposits
                 // change amounts are passed through on the import thread
@@ -1918,7 +1936,7 @@ void CConnectedChains::ProcessLocalImports()
                             }
 
                         }
-                        SignAndCommitImportTransactions(oneIT.second, importTxes);
+                        SignAndCommitImportTransactions(oneIT.second.second, importTxes);
                     }
                 }
             }

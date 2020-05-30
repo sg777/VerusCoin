@@ -321,7 +321,7 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CPrincipal *)this);
         READWRITE(parent);
-        READWRITE(name);
+        READWRITE(LIMITED_STRING(name, MAX_NAME_LEN));
 
         std::vector<std::pair<uint160, uint256>> kvContent;
         if (ser_action.ForRead())

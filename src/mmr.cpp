@@ -100,6 +100,57 @@ uint256 CMMRProof::CheckProof(uint256 hash) const
     return hash;
 }
 
+UniValue CMMRProof::ToUniValue() const
+{
+    UniValue retObj(UniValue::VOBJ);
+    for (auto &proof : proofSequence)
+    {
+        UniValue branchArray(UniValue::VARR);
+        switch (proof->branchType)
+        {
+            case CMerkleBranchBase::BRANCH_BTC:
+            {
+                CBTCMerkleBranch &branch = *(CBTCMerkleBranch *)(&proof);
+                retObj.push_back(Pair("branchtype", "BTC"));
+                retObj.push_back(Pair("index", (int)branch.nIndex));
+                for (auto &oneHash : branch.branch)
+                {
+                    branchArray.push_back(oneHash.GetHex());
+                }
+                retObj.push_back(Pair("hashes", branchArray));
+                break;
+            }
+            case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
+            {
+                CMMRNodeBranch &branch = *(CMMRNodeBranch *)(&proof);
+                retObj.push_back(Pair("branchtype", "MMRBLAKENODE"));
+                retObj.push_back(Pair("index", (int)branch.nIndex));
+                retObj.push_back(Pair("mmvsize", (int)branch.nSize));
+                for (auto &oneHash : branch.branch)
+                {
+                    branchArray.push_back(oneHash.GetHex());
+                }
+                retObj.push_back(Pair("hashes", branchArray));
+                break;
+            }
+            case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
+            {
+                CMMRPowerNodeBranch &branch = *(CMMRPowerNodeBranch *)(&proof);
+                retObj.push_back(Pair("branchtype", "MMRBLAKEPOWERNODE"));
+                retObj.push_back(Pair("index", (int)branch.nIndex));
+                retObj.push_back(Pair("mmvsize", (int)branch.nSize));
+                for (auto &oneHash : branch.branch)
+                {
+                    branchArray.push_back(oneHash.GetHex());
+                }
+                retObj.push_back(Pair("hashes", branchArray));
+                break;
+            }
+        };
+    }
+    return retObj;
+}
+
 // return the index that would be generated for an mmv of the indicated size at the specified position
 uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int extrahashes)
 {
@@ -132,9 +183,10 @@ uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int
             }
         }
 
-        uint64_t layerNum = 0, layerSize = Sizes[0];
+        // figure out the peak merkle
+        uint64_t layerNum = 0, layerSize = PeakIndexes.size();
         // with an odd number of elements below, the edge passes through
-        for (bool passThrough = (layerSize & 1); layerNum == 0 || layerSize > 1; passThrough = (layerSize & 1), layerNum++)
+        for (int passThrough = (layerSize & 1); layerNum == 0 || layerSize > 1; passThrough = (layerSize & 1), layerNum++)
         {
             layerSize = (layerSize >> 1) + passThrough;
             if (layerSize)
@@ -203,6 +255,7 @@ uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int
                             {
                                 // hash with the one before us
                                 retIndex |= ((uint64_t)1) << bitPos;
+                                bitPos++;
 
                                 for (int i = 0; i < extrahashes; i++)
                                 {

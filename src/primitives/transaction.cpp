@@ -714,8 +714,9 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx) con
                     }
                 }
             }
-            if (checkOK)
+            if (checkOK && !txRoot.IsNull())
             {
+                txRoot = txProof.CheckProof(txRoot);
                 outTx = mtx;
             }
             else

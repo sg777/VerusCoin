@@ -640,6 +640,7 @@ public:
     const CMMRProof &operator<<(const CMMRNodeBranch &append);
     const CMMRProof &operator<<(const CMMRPowerNodeBranch &append);
     uint256 CheckProof(uint256 checkHash) const;
+    UniValue ToUniValue() const;
 };
 
 // an in memory MMR is represented by a vector of vectors of hashes, each being a layer of nodes of the binary tree, with the lowest layer
@@ -1006,11 +1007,15 @@ public:
         {
             // just make sure the peakMerkle tree is calculated
             GetRoot();
+
+            /* TODO: validate that this is ok
+            // if we have leaf information, add it
             std::vector<uint256> toAdd = mmr.layer0[pos].GetLeafHash();
             if (toAdd.size())
             {
                 retBranch.branch.insert(retBranch.branch.end(), toAdd.begin(), toAdd.end());
             }
+            */
 
             uint64_t p = pos;
             for (int l = 0; l < sizes.size(); l++)
@@ -1137,7 +1142,8 @@ public:
                 }
             }
 
-            uint64_t layerNum = 0, layerSize = Sizes[0];
+            // figure out the peak merkle
+            uint64_t layerNum = 0, layerSize = PeakIndexes.size();
             // with an odd number of elements below, the edge passes through
             for (bool passThrough = (layerSize & 1); layerNum == 0 || layerSize > 1; passThrough = (layerSize & 1), layerNum++)
             {

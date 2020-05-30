@@ -836,7 +836,7 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 if (p.vData.size())
                 {
                     finalization = CTransactionFinalization(p.vData[0]);
-                    out.push_back(Pair("finalizeNotarization", finalization.ToUniValue()));
+                    out.push_back(Pair("finalizeexport", finalization.ToUniValue()));
                 }
                 break;
             }
