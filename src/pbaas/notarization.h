@@ -95,7 +95,7 @@ public:
     uint256 notarizationPreHash;            // combination of block hash, block MMR root, and compact power (or external proxy) for the notarization height
     uint256 compactPower;                   // compact power (or external proxy) of the block height notarization to compare
 
-    CCurrencyState currencyState;           // currency state of this currency as of this notarization
+    CCoinbaseCurrencyState currencyState;   // currency state of this currency as of this notarization
 
     uint256 prevNotarization;               // txid of the prior notarization on this chain that we agree with, even those not accepted yet
     int32_t prevHeight;
@@ -209,7 +209,7 @@ public:
     {
         ::FromVector(vch, *this);
     }
-    CTransactionFinalization(const CTransaction &tx, bool validate=false);
+    CTransactionFinalization(const CTransaction &tx, uint32_t *pEcode=nullptr, int32_t *pFinalizationOutNum=nullptr);
 
     ADD_SERIALIZE_METHODS;
 

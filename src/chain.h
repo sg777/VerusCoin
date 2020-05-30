@@ -554,13 +554,13 @@ public:
     CMMRNodeBranch MMRProofBridge()
     {
         // we need to add the block hash on the right, no change to index, as bit is zero
-        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 0, std::vector<uint256>({GetBlockHash()}));
+        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 0, std::vector<uint256>({GetBlockHash(), ArithToUint256(GetCompactPower(nNonce, nBits, nVersion))}));
     }
 
     CMMRNodeBranch BlockProofBridge()
     {
         // we need to add the merkle root on the left
-        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 1, std::vector<uint256>({BlockMMRRoot()}));
+        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 1, std::vector<uint256>({BlockMMRRoot(), ArithToUint256(GetCompactPower(nNonce, nBits, nVersion))}));
     }
 };
 

@@ -1199,11 +1199,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         {
                             CPartialTransactionProof &exportTxProof = ((CChainObject<CPartialTransactionProof> *)chainObjs[0])->object;
                             CTransaction exportTx;
-                            uint256 exportTxId;
                             std::vector<CBaseChainObject *> exportTransfers;
 
                             if (exportTxProof.txProof.proofSequence.size() == 3 &&
-                                !(exportTxId = exportTxProof.GetPartialTransaction(exportTx)).IsNull() &&
+                                !exportTxProof.GetPartialTransaction(exportTx).IsNull() &&
                                 (ccx = CCrossChainExport(exportTx)).IsValid() && 
                                 exportTx.vout.back().scriptPubKey.IsOpReturn() &&
                                 (exportTransfers = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey)).size() &&
@@ -1217,18 +1216,28 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 // get the chain definition of the chain we are importing
                                 std::vector<CTxOut> checkOutputs;
 
+                                CPBaaSNotarization importNotarization;
                                 CCurrencyDefinition importCurrencyDef = ConnectedChains.GetCachedCurrency(cci.systemID);
-                                CCoinbaseCurrencyState currencyState = GetInitialCurrencyState(importCurrencyDef);
-
-                                if (!currencyState.IsValid() ||
-                                    !AddReserveTransferImportOutputs(cci.systemID, importCurrencyDef, currencyState, exportTransfers, checkOutputs))
+                                if (importCurrencyDef.IsToken() && !(importNotarization = CPBaaSNotarization(tx)).IsValid())
                                 {
                                     flags |= IS_REJECT;
                                 }
-
-                                for (auto &oneOutCur : cci.totalReserveOutMap.valueMap)
+                                else
                                 {
-                                    AddReserveOutput(oneOutCur.first, oneOutCur.second);
+                                    CCoinbaseCurrencyState currencyState = importCurrencyDef.IsToken() ?
+                                                                           GetInitialCurrencyState(importCurrencyDef) :
+                                                                           importNotarization.currencyState;
+
+                                    if (!currencyState.IsValid() ||
+                                        !AddReserveTransferImportOutputs(cci.systemID, importCurrencyDef, currencyState, exportTransfers, checkOutputs))
+                                    {
+                                        flags |= IS_REJECT;
+                                    }
+
+                                    for (auto &oneOutCur : cci.totalReserveOutMap.valueMap)
+                                    {
+                                        AddReserveOutput(oneOutCur.first, oneOutCur.second);
+                                    }
                                 }
                                 // TODO:PBAAS - hardening - validate all the outputs we got back as the same as what is in the transaction
                             }
@@ -1337,6 +1346,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     }
     CCoinbaseCurrencyState &newCurrencyState = *pNewCurrencyState;
     newCurrencyState = importCurrencyState;
+
+    // reserve currency amounts converted to fractional
+    CCurrencyValueMap reserveConverted;
+
+    // fractional currency amount and the reserve it is converted to
+    CCurrencyValueMap fractionalConverted;    
 
     // this is cached here, but only used for pre-conversions
     CCoinbaseCurrencyState initialCurrencyState;
@@ -1737,11 +1752,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                     if ((newCurrencyConverted | feesConverted) && curTransfer.destCurrencyID == systemDestID)
                     {
+                        reserveConverted.valueMap[curTransfer.currencyID] += (newCurrencyConverted + feesConverted);
                         AddNativeOutConverted(curTransfer.currencyID, newCurrencyConverted + feesConverted);
                         newOut = CTxOut(newCurrencyConverted, GetScriptForDestination(TransferDestinationToDestination(curTransfer.destination)));
                     }
                     else if (newCurrencyConverted | feesConverted)
                     {
+                        fractionalConverted.valueMap[curTransfer.destCurrencyID] += (newCurrencyConverted + feesConverted);
                         AddReserveOutConverted(curTransfer.destCurrencyID, newCurrencyConverted + feesConverted);
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({TransferDestinationToDestination(curTransfer.destination)});
                         CTokenOutput ro = CTokenOutput(curTransfer.destCurrencyID, newCurrencyConverted);
@@ -1840,6 +1857,22 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 LogPrintf("%s: Invalid reserve transfer on export\n", __func__);
                 return false;
             }
+        }
+    }
+
+    if (reserveConverted.valueMap.size() || fractionalConverted.valueMap.size())
+    {
+        newCurrencyState.reserveIn = reserveConverted.AsCurrencyVector(importCurrencyState.currencies);
+        newCurrencyState.nativeIn = fractionalConverted.AsCurrencyVector(importCurrencyState.currencies);
+        CCoinbaseCurrencyState currencyCopy = newCurrencyState;
+        newCurrencyState.conversionPrice = 
+            importCurrencyState.ConvertAmounts(currencyCopy.reserveIn,
+                                               currencyCopy.nativeIn,
+                                               newCurrencyState);
+        newCurrencyState.reserveOut.resize(importCurrencyState.currencies.size());
+        for (int i = 0; i < newCurrencyState.reserveOut.size(); i++)
+        {
+            newCurrencyState.reserveOut[i] = newCurrencyState.ReserveToNativeRaw(newCurrencyState.nativeIn[i], newCurrencyState.conversionPrice[i]);
         }
     }
 

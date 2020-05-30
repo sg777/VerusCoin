@@ -561,7 +561,13 @@ public:
                            const std::vector<CAmount> &ConversionPrice=std::vector<CAmount>(), 
                            const std::vector<CAmount> &Fees=std::vector<CAmount>(), 
                            const std::vector<CAmount> &ConversionFees=std::vector<CAmount>()) : 
-        CCurrencyState(CurrencyState), nativeFees(NativeFees), nativeConversionFees(NativeConversionFees)
+        CCurrencyState(CurrencyState), nativeFees(NativeFees), nativeConversionFees(NativeConversionFees),
+        reserveIn(ReserveIn),
+        nativeIn(NativeIn),
+        reserveOut(ReserveOut),
+        conversionPrice(ConversionPrice),
+        fees(Fees),
+        conversionFees(ConversionFees)        
     {
         if (!reserveIn.size()) reserveIn = std::vector<CAmount>(currencies.size());
         if (!nativeIn.size()) nativeIn = std::vector<CAmount>(currencies.size());

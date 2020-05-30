@@ -111,28 +111,30 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     }
 }
 
-CTransactionFinalization::CTransactionFinalization(const CTransaction &tx, bool validate)
+CTransactionFinalization::CTransactionFinalization(const CTransaction &tx, uint32_t *pEcode, int32_t *pFinalizationOutNum)
 {
     bool found = false;
     bool error = false;
-    for (auto out : tx.vout)
+    int32_t finalizeOutNum = -1;
+    for (int i = 0; i < tx.vout.size() && !error; i++)
     {
-        uint32_t ecode;
-        if (out.scriptPubKey.IsPayToCryptoCondition(&ecode))
+        uint32_t _ecode;
+        uint32_t &ecode = pEcode ? *pEcode : _ecode;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(&ecode))
         {
-            if (ecode == EVAL_FINALIZE_NOTARIZATION)
+            if (ecode == EVAL_FINALIZE_NOTARIZATION || ecode == EVAL_FINALIZE_EXPORT)
             {
-                if (found)
+                if (finalizeOutNum != -1)
                 {
                     error = true;
-                    confirmedInput = -1;
+                    confirmedInput = finalizeOutNum = -1;
                 }
                 else
                 {
                     COptCCParams p;
-                    found = true;
+                    finalizeOutNum = i;
 
-                    if (!IsPayToCryptoCondition(out.scriptPubKey, p, *this))
+                    if (!IsPayToCryptoCondition(tx.vout[i].scriptPubKey, p, *this))
                     {
                         confirmedInput = -1;
                     }
@@ -140,10 +142,9 @@ CTransactionFinalization::CTransactionFinalization(const CTransaction &tx, bool 
             }
         }
     }
-
-    if (validate)
+    if (!error && finalizeOutNum != -1 && pFinalizationOutNum)
     {
-        
+        *pFinalizationOutNum = finalizeOutNum;
     }
 }
 
