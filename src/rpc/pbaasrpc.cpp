@@ -846,17 +846,21 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 nativeOutConverted += oneNativeConversion.second;
             }
 
+            /*
             printf("DEBUGOUT: nativeOutConverted: %ld, rtxd.ReserveOutConvertedMap():%s\n", nativeOutConverted, rtxd.ReserveOutConvertedMap().ToUniValue().write().c_str());
             printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
             printf("rtxd.ReserveInputMap(): %s, ccx.totalAmounts: %s\n", rtxd.ReserveInputMap().ToUniValue().write().c_str(), ccx.totalAmounts.ToUniValue().write().c_str());
             printf("leftoverCurrency: %s\n", leftoverCurrency.ToUniValue().write().c_str());
+            */
 
             // breakout native from leftover currency
             totalNativeInput = leftoverCurrency.valueMap[systemID];
             leftoverCurrency.valueMap.erase(systemID);
 
+            /*
             printf("DEBUGOUT: totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
             printf("DEBUGOUT: rtxd.nativeIn: %ld, rtxd.ReserveInputMap():%s\n", rtxd.nativeIn, rtxd.ReserveInputMap().ToUniValue().write().c_str());
+            */
 
             CCrossChainImport cci = CCrossChainImport(ccx.systemID, 
                                                       rtxd.ReserveOutConvertedMap() + 
@@ -903,24 +907,40 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             exportProof.txProof << block.MMRProofBridge();
 
             // TODO: don't include chain MMR proof for exports from the same chain
-            ChainMerkleMountainView(chainActive.GetMMR(), lastConfirmed.notarizationHeight).GetProof(exportProof.txProof, aixIt->second.first.blockHeight);
+            ChainMerkleMountainView mmv(chainActive.GetMMR(), lastConfirmed.notarizationHeight);
+            mmv.GetProof(exportProof.txProof, aixIt->second.first.blockHeight);
 
             CChainObject<CPartialTransactionProof> exportXProof(CHAINOBJ_TRANSACTION_PROOF, exportProof);
 
             CTransaction checkTx;
-            uint256 checkTxID = exportProof.GetPartialTransaction(checkTx);
-            ChainMerkleMountainView mmv = ChainMerkleMountainView(chainActive.GetMMR(), aixIt->second.first.blockHeight);
+
+            uint256 checkTxID = exportProof.CheckPartialTransaction(checkTx);
             CMMRProof blockProof;
             chainActive.GetBlockProof(mmv, blockProof, aixIt->second.first.blockHeight);
             if (checkTxID != mmv.GetRoot())
             {
-                printf("CTransactionRoot\n%s\n\n", TransactionMMView(aixIt->second.second.GetTransactionMMR()).GetRoot().GetHex().c_str());
-                printf("CTransactionHeaderCheck\n%s\n\n", exportProof.components[0].CheckProof().GetHex().c_str());
-                printf("CTransactionProof\n%s\n\n", exportProof.txProof.ToUniValue().write(1,2).c_str());
-                printf("CBlockProof\n%s\n\n", blockProof.ToUniValue().write(1,2).c_str());
+                /*
+                printf("CTransactionHeaderCheck: %s\n\n", exportProof.components[0].CheckProof().GetHex().c_str());
+                printf("CTransactionProof\n%s\n", exportProof.txProof.ToUniValue().write(1,2).c_str());
+                printf("CTransactionProofCheck: %s\n\n", checkTxID.GetHex().c_str());
+                printf("CBlockProof\n%s\n", blockProof.ToUniValue().write(1,2).c_str());
+                printf("CBlockProofCheck: %s\n\n", blockProof.CheckProof(chainActive[aixIt->second.first.blockHeight]->GetBlockHash()).GetHex().c_str());
+                printf("CBlockHash: %s\n\n", block.GetHash().GetHex().c_str());
+                printf("CBlockMMRRoot: %s\n\n", block.GetBlockMMRRoot().GetHex().c_str());
+                printf("CBlockMMViewRoot: %s\n\n", BlockMMView(block.GetBlockMMRTree()).GetRoot().GetHex().c_str());
+                for (auto &oneNode : mmv.GetPeaks())
+                {
+                    printf("oneMerklePeakNode: %s:%s\n", oneNode.hash.GetHex().c_str(), oneNode.power.GetHex().c_str());
+                }
+                printf("MMVRoot: %s\n\n", mmv.GetRoot().GetHex().c_str());
+                for (auto &oneTx : block.vtx)
+                {
+                    printf("oneTxRoot: %s\n", TransactionMMView(oneTx.GetTransactionMMR()).GetRoot().GetHex().c_str());
+                }
+                */
 
-                printf("%s: invalid partial transaction proof, hash is %s, should be %s\n", __func__, checkTxID.GetHex().c_str(), mmv.GetRoot().GetHex().c_str());
-                LogPrintf("%s: invalid partial transaction proof, hash is %s, should be %s\n", __func__, checkTxID.GetHex().c_str(), mmv.GetRoot().GetHex().c_str());
+                printf("%s: invalid partial transaction proof, hash is\n%s, should be\n%s\n", __func__, checkTxID.GetHex().c_str(), mmv.GetRoot().GetHex().c_str());
+                LogPrintf("%s: invalid partial transaction proof, hash is\n%s, should be\n%s\n", __func__, checkTxID.GetHex().c_str(), mmv.GetRoot().GetHex().c_str());
                 return false;
             }
             uint256 lastProof = exportProof.components[0].CheckProof();
@@ -4560,8 +4580,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "         \"reserveratio\" : \"n\",        (value, optional) total reserve ratio, divided among currencies\n"
             "         \"currencies\" : \"[\"VRSC\",..]\", (list, optional) reserve currencies backing this chain in equal amounts\n"
             "         \"conversions\" : \"[\"xx.xx\",..]\", (list, optional) if present, must be same size as currencies. pre-launch conversion ratio overrides\n"
-            "         \"minpreconvert\" : \"[\"xx.xx\",..]\", (list, optional) must be same size as currencies. minimum in each currency to launch\n"
-            "         \"maxpreconvert\" : \"[\"xx.xx\",..]\", (list, optional) maximum in each currency allowed\n"
+            "         \"minpreconversion\" : \"[\"xx.xx\",..]\", (list, optional) must be same size as currencies. minimum in each currency to launch\n"
+            "         \"maxpreconversion\" : \"[\"xx.xx\",..]\", (list, optional) maximum in each currency allowed\n"
 
             "         \"preallocationratio\" : \"xx.xx\", (value, optional) if non-0, pre-allocation is a percentage after initial supply is determined\n"
             "         \"preallocation\" : \"[{\"identity\":xx.xx}..]\", (list, optional) amount or % of from pre-allocation, depending on preallocationratio\n"

@@ -144,8 +144,8 @@ public:
         uint256 preHash = hw.GetHash();
 
         hw = HASHALGOWRITER(SER_GETHASH, 0);
-        hw << hash;
-        hw << nRight.hash;
+        hw << preHash;
+        hw << nodePower;
 
         // these separate hashing steps allow the proof to be represented just as a Merkle proof, with steps along the way
         // hashing with nodePower instead of other hashes
@@ -235,6 +235,11 @@ public:
         }
         else
         {
+            if (newSize > 100000)
+            {
+                // TODO: REMOVE
+                printf("ERROR: invalid new size %lu\n", newSize);
+            }
             uint64_t chunksSize = ((newSize - 1) >> CHUNK_SHIFT) + 1;
             nodes.resize(chunksSize);
             for (uint64_t i = size() ? ((size() - 1) >> CHUNK_SHIFT) + 1 : 1; i <= chunksSize; i++)
@@ -391,16 +396,18 @@ public:
                 }
                 hw << *it;
                 hw << hash;
+                printf("safeCheck: %s:%s\n", it->GetHex().c_str(), hash.GetHex().c_str());
             }
             else
             {
                 hw << hash;
                 hw << *it;
+                printf("safeCheck: %s:%s\n", hash.GetHex().c_str(), it->GetHex().c_str());
             }
             hash = hw.GetHash();
             index >>= 1;
+            printf("safeCheck: %s\n", hash.GetHex().c_str());
         }
-        //printf("end SafeCheck %s\n", hash.GetHex().c_str());
         return hash;
     }
 };
@@ -1008,14 +1015,12 @@ public:
             // just make sure the peakMerkle tree is calculated
             GetRoot();
 
-            /* TODO: validate that this is ok
             // if we have leaf information, add it
             std::vector<uint256> toAdd = mmr.layer0[pos].GetLeafHash();
             if (toAdd.size())
             {
                 retBranch.branch.insert(retBranch.branch.end(), toAdd.begin(), toAdd.end());
             }
-            */
 
             uint64_t p = pos;
             for (int l = 0; l < sizes.size(); l++)
@@ -1037,6 +1042,16 @@ public:
                     }
                     else
                     {
+                        /* for (auto &oneNode : peaks)
+                        {
+                            printf("peaknode: ");
+                            for (auto oneHash : oneNode.GetProofHash(oneNode))
+                            {
+                                printf("%s:", oneHash.GetHex().c_str());
+                            }
+                            printf("\n");
+                        } */
+
                         // we are at a peak, the alternate peak to us, or the next thing we should be hashed with, if there is one, is next on our path
                         uint256 peakHash = mmr.GetNode(l, p).hash;
 

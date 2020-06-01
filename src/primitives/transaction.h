@@ -1271,7 +1271,7 @@ public:
 
     // this validates that all parts of a transaction match and either returns a full transaction
     // and its hash, a partially filled transaction and its MMR root, or NULL
-    uint256 GetPartialTransaction(CTransaction &outTx) const;
+    uint256 GetPartialTransaction(CTransaction &outTx, bool *pIsPartial=nullptr) const;
 
     // this validates that all parts of a transaction match and either returns a full transaction
     // and its hash, a partially filled transaction and its MMR root, or NULL

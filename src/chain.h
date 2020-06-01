@@ -554,13 +554,13 @@ public:
     CMMRNodeBranch MMRProofBridge()
     {
         // we need to add the block hash on the right, no change to index, as bit is zero
-        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 0, std::vector<uint256>({GetBlockHash(), ArithToUint256(GetCompactPower(nNonce, nBits, nVersion))}));
+        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 0, std::vector<uint256>({GetBlockHash()}));
     }
 
     CMMRNodeBranch BlockProofBridge()
     {
         // we need to add the merkle root on the left
-        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 1, std::vector<uint256>({BlockMMRRoot(), ArithToUint256(GetCompactPower(nNonce, nBits, nVersion))}));
+        return CMMRNodeBranch(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE, 2, 1, std::vector<uint256>({BlockMMRRoot()}));
     }
 };
 
@@ -707,7 +707,7 @@ public:
     uint256 GetVerusEntropyHash(int forHeight, int *pPOSheight=nullptr, int *pPOWheight=nullptr, int *pALTheight=nullptr) const;
 
     /** Get the Merkle Mountain Range for this chain. */
-    ChainMerkleMountainRange GetMMR()
+    const ChainMerkleMountainRange &GetMMR()
     {
         return mmr;
     }
@@ -723,33 +723,8 @@ public:
         return vChain[index]->GetBlockMMRNode();
     }
 
-    bool GetBlockProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index)
-    {
-        CBlockIndex *pindex = (index < 0 || index >= (int)vChain.size()) ? NULL : vChain[index];
-        if (pindex)
-        {
-            retProof << pindex->BlockProofBridge();
-            return view.GetProof(retProof, index);
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    bool GetMerkleProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index)
-    {
-        CBlockIndex *pindex = (index < 0 || index >= (int)vChain.size()) ? NULL : vChain[index];
-        if (pindex)
-        {
-            retProof << pindex->MMRProofBridge();
-            return view.GetProof(retProof, index);
-        }
-        else
-        {
-            return false;
-        }
-    }
+    bool GetBlockProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index) const;
+    bool GetMerkleProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index) const;
 
     /** Compare two chains efficiently. */
     friend bool operator==(const CChain &a, const CChain &b) {
