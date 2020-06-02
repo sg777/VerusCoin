@@ -235,11 +235,6 @@ public:
         }
         else
         {
-            if (newSize > 100000)
-            {
-                // TODO: REMOVE
-                printf("ERROR: invalid new size %lu\n", newSize);
-            }
             uint64_t chunksSize = ((newSize - 1) >> CHUNK_SHIFT) + 1;
             nodes.resize(chunksSize);
             for (uint64_t i = size() ? ((size() - 1) >> CHUNK_SHIFT) + 1 : 1; i <= chunksSize; i++)
@@ -396,17 +391,17 @@ public:
                 }
                 hw << *it;
                 hw << hash;
-                printf("safeCheck: %s:%s\n", it->GetHex().c_str(), hash.GetHex().c_str());
+                //printf("safeCheck: %s:%s\n", it->GetHex().c_str(), hash.GetHex().c_str());
             }
             else
             {
                 hw << hash;
                 hw << *it;
-                printf("safeCheck: %s:%s\n", hash.GetHex().c_str(), it->GetHex().c_str());
+                //printf("safeCheck: %s:%s\n", hash.GetHex().c_str(), it->GetHex().c_str());
             }
             hash = hw.GetHash();
             index >>= 1;
-            printf("safeCheck: %s\n", hash.GetHex().c_str());
+            //printf("safeCheck: %s\n", hash.GetHex().c_str());
         }
         return hash;
     }

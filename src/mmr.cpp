@@ -88,13 +88,13 @@ uint256 CMMRProof::CheckProof(uint256 hash) const
             case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
             {
                 hash = ((CMMRNodeBranch *)pProof)->SafeCheck(hash);
-                printf("Result from CMMRNodeBranch check: %s\n", hash.GetHex().c_str());
+                //printf("Result from CMMRNodeBranch check: %s\n", hash.GetHex().c_str());
                 break;
             }
             case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
             {
                 hash = ((CMMRPowerNodeBranch *)pProof)->SafeCheck(hash);
-                printf("Result from CMMRPowerNodeBranch check: %s\n", hash.GetHex().c_str());
+                //printf("Result from CMMRPowerNodeBranch check: %s\n", hash.GetHex().c_str());
                 break;
             }
         }
