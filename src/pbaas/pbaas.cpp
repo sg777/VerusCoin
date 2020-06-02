@@ -1563,8 +1563,6 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
     }
 }
 
-bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vector<CTransaction> &newRefunds, std::string &errorReason);
-
 CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, int32_t definitionHeight, CCurrencyValueMap &fees)
 {
     // if we are getting information on the current chain, we assume that preconverted amounts have been
@@ -1575,7 +1573,7 @@ CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, i
         std::multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> transferInputs;
         CCurrencyValueMap preconvertedAmounts;
 
-        if (GetChainTransfers(transferInputs, chainDef.GetID(), definitionHeight, chainDef.startBlock, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
+        if (GetChainTransfers(transferInputs, chainDef.GetID(), definitionHeight, chainDef.startBlock - 1, CReserveTransfer::PRECONVERT | CReserveTransfer::VALID))
         {
             auto curMap = chainDef.GetCurrenciesMap();
             for (auto &transfer : transferInputs)
@@ -1646,6 +1644,31 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
         }
     }
 
+    int32_t definitionHeight = exportHeight;
+    CChainNotarizationData cnd;
+    if (isDefinition)
+    {
+        CTransaction dummyTx;
+        uint256 blkHash;
+
+        if (!myGetTransaction(lastImportTx.GetHash(), dummyTx, blkHash) || blkHash.IsNull())
+        {
+            LogPrintf("%s: invalid last import transaction for %s\n", __func__, curDef.name.c_str());
+            return false;
+        }
+        definitionHeight = mapBlockIndex[blkHash]->GetHeight();
+    }
+    else if (GetNotarizationData(curDef.GetID(), EVAL_ACCEPTEDNOTARIZATION, cnd) && cnd.vtx.size())
+    {
+        lastNotarization = cnd.vtx[cnd.forks[cnd.bestChain].back()].second;
+    }
+    else
+    {
+        LogPrintf("%s: cannot get last notarization for %s\n", __func__, curDef.name.c_str());
+        return false;
+    }
+    
+
     CBlockIndex *pindex;
     CTxDestination notarizationID = VERUS_DEFAULTID.IsNull() ? CTxDestination(CIdentityID(currencyID)) : CTxDestination(VERUS_DEFAULTID);
 
@@ -1659,7 +1682,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
 
         // check if the chain is qualified for a refund
         CCurrencyValueMap minPreMap, preConvertedMap, fees;
-        preConvertedMap = CalculatePreconversions(curDef, pindex->GetHeight(), fees).CanonicalMap();
+        preConvertedMap = CalculatePreconversions(curDef, definitionHeight, fees).CanonicalMap();
         curDef.preconverted = preConvertedMap.AsCurrencyVector(curDef.currencies);
 
         CCoinbaseCurrencyState initialCur = GetInitialCurrencyState(curDef);
@@ -1677,6 +1700,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
             // the result of the supply cannot be zero, enabling us to easily determine that this
             // represents a failed launch
             newCurState.supply = 0;
+            newCurState.SetRefunding(true);
             refunding = true;
         }
         else if (curDef.IsFractional() &&
@@ -1716,14 +1740,13 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
         CCoinbaseCurrencyState initialCur = lastNotarization.currencyState;
         newCurState = initialCur;
 
-
         if (curDef.minPreconvert.size() && curDef.minPreconvert.size() == curDef.currencies.size())
         {
             minPreMap = CCurrencyValueMap(curDef.currencies, curDef.minPreconvert).CanonicalMap();
         }
 
-        // we don't need any more notarizations after failure to launch, if success, continue
-        if (!(minPreMap.valueMap.size() && lastNotarization.currencyState.supply == 0))
+        // we won't change currency state in notarizations after failure to launch, if success, recalculate as needed
+        if (!(lastNotarization.currencyState.IsRefunding()))
         {
             // calculate new currency state from this import
             // we are not refunding, and it is possible that we also have
@@ -1812,7 +1835,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
     indexDests = std::vector<CTxDestination>({CKeyID(curDef.GetConditionID(EVAL_FINALIZE_NOTARIZATION))});
 
     // update crypto condition with final notarization output data
-    mnewTx.vout.push_back(CTxOut(PBAAS_MINNOTARIZATIONOUTPUT, 
+    mnewTx.vout.push_back(CTxOut(0, 
             MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests)));
 
     return true;
@@ -1833,7 +1856,7 @@ void CConnectedChains::ProcessLocalImports()
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
     std::map<uint160, std::pair<uint32_t, CTransaction>> currenciesToImport;    // height of earliest tx
     CCurrencyDefinition oneCurrency;
-    printf("%s: Searching for %s\n", __func__, ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT).GetHex().c_str());
+    //printf("%s: Searching for %s\n", __func__, ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT).GetHex().c_str());
     if (GetAddressUnspent(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT), 1, unspentOutputs))
     {
         CCrossChainExport ccx, ccxDummy;
@@ -1852,7 +1875,7 @@ void CConnectedChains::ProcessLocalImports()
                 myGetTransaction(oneOut.first.txhash, txOut, blkHash) &&
                 (ccx = CCrossChainExport(txOut)).IsValid() &&
                 (oneCurrency = GetCachedCurrency(ccx.systemID)).IsValid() &&
-                oneCurrency.startBlock < nHeight &&
+                oneCurrency.startBlock <= nHeight &&
                 !currenciesToImport.count(ccx.systemID) &&
                 GetLastImport(ccx.systemID, txImport, lastExport, cci, ccxDummy))
             {

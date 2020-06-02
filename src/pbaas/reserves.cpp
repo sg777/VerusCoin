@@ -156,7 +156,7 @@ CCurrencyState::CCurrencyState(const UniValue &obj)
 {
     flags = uni_get_int(find_value(obj, "flags"));
 
-    if (flags & ISFRACTIONAL)
+    if (flags & FLAG_FRACTIONAL)
     {
         auto CurrenciesArr = find_value(obj, "reservecurrencies");
         size_t numCurrencies;
@@ -164,7 +164,7 @@ CCurrencyState::CCurrencyState(const UniValue &obj)
             !(numCurrencies = CurrenciesArr.size()) ||
             numCurrencies > MAX_RESERVE_CURRENCIES)
         {
-            flags &= ~VALID;
+            flags &= ~FLAG_VALID;
             LogPrintf("Failed to proplerly specify currencies in reserve currency definition\n");
         }
         else
@@ -178,7 +178,7 @@ CCurrencyState::CCurrencyState(const UniValue &obj)
                     if (currencyID.IsNull())
                     {
                         LogPrintf("Invalid currency ID\n");
-                        flags &= ~VALID;
+                        flags &= ~FLAG_VALID;
                         break;
                     }
                     currencies[i] = currencyID;
@@ -189,13 +189,13 @@ CCurrencyState::CCurrencyState(const UniValue &obj)
             catch(const std::exception& e)
             {
                 std::cerr << e.what() << '\n';
-                flags &= ~VALID;
+                flags &= ~FLAG_VALID;
                 LogPrintf("Invalid specification of currencies, weights, and/or reserves in initial definition of reserve currency\n");
             }
         }
     }
 
-    if (!(flags & VALID))
+    if (!(flags & FLAG_VALID))
     {
         printf("Invalid currency specification, see debug.log for reason other than invalid flags\n");
         LogPrintf("Invalid currency specification\n");
@@ -211,7 +211,7 @@ CCurrencyState::CCurrencyState(const UniValue &obj)
         catch(const std::exception& e)
         {
             std::cerr << e.what() << '\n';
-            flags &= ~VALID;
+            flags &= ~FLAG_VALID;
         }
     }
 }
@@ -677,7 +677,7 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
     int64_t totalReserveOut = 0;        // how much reserve goes to sellers
 
     // if both conversions are zero, nothing to do but return current price
-    if ((!inputReserve && !inputFractional) || !(flags & ISFRACTIONAL))
+    if ((!inputReserve && !inputFractional) || !(flags & FLAG_FRACTIONAL))
     {
         return conversionPrice;
     }
@@ -2304,7 +2304,7 @@ CCoinbaseCurrencyState CCoinbaseCurrencyState::MatchOrders(const std::vector<CRe
     int64_t totalSerializedSize = pInOutTotalSerializeSize ? *pInOutTotalSerializeSize + CCurrencyState::CONVERSION_TX_SIZE_MIN : CCurrencyState::CONVERSION_TX_SIZE_MIN;
     int64_t conversionSizeOverhead = 0;
 
-    if (!(flags & ISFRACTIONAL))
+    if (!(flags & FLAG_FRACTIONAL))
     {
         return CCoinbaseCurrencyState();
     }
