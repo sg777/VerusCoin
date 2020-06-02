@@ -88,67 +88,18 @@ uint256 CMMRProof::CheckProof(uint256 hash) const
             case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
             {
                 hash = ((CMMRNodeBranch *)pProof)->SafeCheck(hash);
+                printf("Result from CMMRNodeBranch check: %s\n", hash.GetHex().c_str());
                 break;
             }
             case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
             {
                 hash = ((CMMRPowerNodeBranch *)pProof)->SafeCheck(hash);
+                printf("Result from CMMRPowerNodeBranch check: %s\n", hash.GetHex().c_str());
                 break;
             }
         }
     }
     return hash;
-}
-
-UniValue CMMRProof::ToUniValue() const
-{
-    UniValue retObj(UniValue::VOBJ);
-    for (auto &proof : proofSequence)
-    {
-        UniValue branchArray(UniValue::VARR);
-        switch (proof->branchType)
-        {
-            case CMerkleBranchBase::BRANCH_BTC:
-            {
-                CBTCMerkleBranch &branch = *(CBTCMerkleBranch *)(&proof);
-                retObj.push_back(Pair("branchtype", "BTC"));
-                retObj.push_back(Pair("index", (int)branch.nIndex));
-                for (auto &oneHash : branch.branch)
-                {
-                    branchArray.push_back(oneHash.GetHex());
-                }
-                retObj.push_back(Pair("hashes", branchArray));
-                break;
-            }
-            case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
-            {
-                CMMRNodeBranch &branch = *(CMMRNodeBranch *)(&proof);
-                retObj.push_back(Pair("branchtype", "MMRBLAKENODE"));
-                retObj.push_back(Pair("index", (int)branch.nIndex));
-                retObj.push_back(Pair("mmvsize", (int)branch.nSize));
-                for (auto &oneHash : branch.branch)
-                {
-                    branchArray.push_back(oneHash.GetHex());
-                }
-                retObj.push_back(Pair("hashes", branchArray));
-                break;
-            }
-            case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
-            {
-                CMMRPowerNodeBranch &branch = *(CMMRPowerNodeBranch *)(&proof);
-                retObj.push_back(Pair("branchtype", "MMRBLAKEPOWERNODE"));
-                retObj.push_back(Pair("index", (int)branch.nIndex));
-                retObj.push_back(Pair("mmvsize", (int)branch.nSize));
-                for (auto &oneHash : branch.branch)
-                {
-                    branchArray.push_back(oneHash.GetHex());
-                }
-                retObj.push_back(Pair("hashes", branchArray));
-                break;
-            }
-        };
-    }
-    return retObj;
 }
 
 // return the index that would be generated for an mmv of the indicated size at the specified position

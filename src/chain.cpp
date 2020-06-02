@@ -201,6 +201,34 @@ const CBlockIndex *CChain::FindFork(const CBlockIndex *pindex) const {
     return pindex;
 }
 
+bool CChain::GetBlockProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index) const
+{
+    CBlockIndex *pindex = (index < 0 || index >= (int)vChain.size()) ? NULL : vChain[index];
+    if (pindex)
+    {
+        retProof << pindex->BlockProofBridge();
+        return view.GetProof(retProof, index);
+    }
+    else
+    {
+        return false;
+    }
+}
+
+bool CChain::GetMerkleProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index) const
+{
+    CBlockIndex *pindex = (index < 0 || index >= (int)vChain.size()) ? NULL : vChain[index];
+    if (pindex)
+    {
+        retProof << pindex->MMRProofBridge();
+        return view.GetProof(retProof, index);
+    }
+    else
+    {
+        return false;
+    }
+}
+
 CChainPower::CChainPower(CBlockIndex *pblockIndex)
 {
      nHeight = pblockIndex->GetHeight();
