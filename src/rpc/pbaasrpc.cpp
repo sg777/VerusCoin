@@ -641,7 +641,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
         GetAddressIndex(CCrossChainRPCData::GetConditionID(systemID, EVAL_CROSSCHAIN_EXPORT), 1, addressIndex, blkHeight, lastConfirmed.notarizationHeight))
     {
         // find this export, then check the next one that spends it and use it if also valid
-        bool found = false;
+        found = false;
         uint256 lastHash = lastExportHash;
 
         // indexed by input hash
@@ -1551,6 +1551,12 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
 
             if (myGetTransaction(it->first.txhash, ntx, blkHash))
             {
+                /*
+                uint256 hashBlk;
+                UniValue univTx(UniValue::VOBJ);
+                TxToUniv(ntx, hashBlk, univTx);
+                printf("tx: %s\n", univTx.write(1,2).c_str());
+                */
                 for (int i = 0; i < ntx.vout.size(); i++)
                 {
                     // if this is a transfer output, optionally to this chain, add it to the input vector
@@ -2975,7 +2981,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
     {
         cState = CCurrencyState(chainDef.currencies,
                                 chainDef.weights,
-                                std::vector<int64_t>(chainDef.currencies.size()), 0, 0, 0, CCurrencyState::VALID + CCurrencyState::ISFRACTIONAL);
+                                std::vector<int64_t>(chainDef.currencies.size()), 0, 0, 0, CCurrencyState::FLAG_VALID + CCurrencyState::FLAG_FRACTIONAL);
         CCurrencyState tmpState;
         conversions = cState.ConvertAmounts(chainDef.preconverted, std::vector<int64_t>(chainDef.currencies.size()), tmpState);
         cState = tmpState;
@@ -2991,7 +2997,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
                                 0, 
                                 PreconvertedNative,
                                 PreconvertedNative, 
-                                CCurrencyState::VALID);
+                                CCurrencyState::FLAG_VALID);
     }
 
     cState.UpdateWithEmission(chainDef.GetTotalPreallocation());

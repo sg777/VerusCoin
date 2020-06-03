@@ -2114,13 +2114,14 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
             entry.push_back(Pair("category", bIsStake ? "stake" : "send"));
             entry.push_back(Pair("amount", ValueFromAmount(-s.amount)));
 
-
-            CCurrencyValueMap tokenAmounts = wtx.vout[s.vout].scriptPubKey.ReserveOutValue();
-            if (tokenAmounts.valueMap.size())
+            if (wtx.vout.size() > s.vout)
             {
-                entry.push_back(Pair("tokenamounts", tokenAmounts.ToUniValue()));
+                CCurrencyValueMap tokenAmounts = wtx.vout[s.vout].scriptPubKey.ReserveOutValue();
+                if (tokenAmounts.valueMap.size())
+                {
+                    entry.push_back(Pair("tokenamounts", tokenAmounts.ToUniValue()));
+                }
             }
-
 
             entry.push_back(Pair("vout", s.vout));
             entry.push_back(Pair("fee", ValueFromAmount(-nFee)));
@@ -2179,7 +2180,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 }
 
                 entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
-                if (rtxd.IsReserve())
+                if (wtx.vout.size() > r.vout && rtxd.IsReserve())
                 {
                     entry.push_back(Pair("reserveamount", wtx.vout[r.vout].scriptPubKey.ReserveOutValue().ToUniValue()));
                 }

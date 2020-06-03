@@ -340,9 +340,12 @@ public:
 class CCurrencyState
 {
 public:
-    enum {
-        VALID = 1,
-        ISFRACTIONAL = 2,
+    enum FLAGS {
+        FLAG_VALID = 1,
+        FLAG_FRACTIONAL = 2,
+        FLAG_REFUNDING = 4
+    };
+    enum CONSTANTS {
         MIN_RESERVE_RATIO = 1000000,        // we will not start a chain with less than 1% reserve ratio in any single currency
         MAX_RESERVE_RATIO = 100000000,      // we will not start a chain with greater than 100% reserve ratio
         SHUTDOWN_RESERVE_RATIO = 500000,    // if we hit this reserve ratio in any currency, initiate chain shutdown
@@ -370,7 +373,7 @@ public:
                       CAmount InitialSupply, 
                       CAmount Emitted, 
                       CAmount Supply, 
-                      uint32_t Flags=VALID) : 
+                      uint32_t Flags=FLAG_VALID) : 
         flags(Flags), supply(Supply), initialSupply(InitialSupply), emitted(Emitted), weights(Weights), reserves(Reserves)
     {}
 
@@ -520,12 +523,29 @@ public:
 
     bool IsValid() const
     {
-        return flags & CCurrencyState::VALID;
+        return flags & FLAG_VALID;
     }
 
     bool IsFractional() const
     {
-        return flags & CCurrencyState::ISFRACTIONAL;
+        return flags & FLAG_FRACTIONAL;
+    }
+
+    bool IsRefunding() const
+    {
+        return flags & FLAG_REFUNDING;
+    }
+
+    void SetRefunding(bool newState=true)
+    {
+        if (newState)
+        {
+            flags |= FLAG_REFUNDING;
+        }
+        else
+        {
+            flags &= ~FLAG_REFUNDING;
+        }
     }
 
     std::map<uint160, int32_t> GetReserveMap() const
