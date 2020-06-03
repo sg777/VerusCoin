@@ -4613,8 +4613,13 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
     // stop trying to reorg if the reorged chain is before last notarized height. 
     // stay on the same chain tip!
     int32_t notarizedht,prevMoMheight; uint256 notarizedhash,txid;
-    notarizedht = komodo_notarized_height(&prevMoMheight,&notarizedhash,&txid);
-    if ( pindexFork != 0 && pindexOldTip->GetHeight() > notarizedht && pindexFork->GetHeight() < notarizedht )
+    notarizedht = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+    auto blkIt = mapBlockIndex.find(notarizedhash);
+    if ( pindexFork != 0 && 
+         pindexOldTip->GetHeight() > notarizedht && 
+         blkIt != mapBlockIndex.end() &&
+         chainActive.Contains(blkIt->second) && 
+         pindexFork->GetHeight() < notarizedht )
     {
         LogPrintf("pindexOldTip->GetHeight().%d > notarizedht %d && pindexFork->GetHeight().%d is < notarizedht %d, so ignore it\n",(int32_t)pindexOldTip->GetHeight(),notarizedht,(int32_t)pindexFork->GetHeight(),notarizedht);
         // *** DEBUG ***
