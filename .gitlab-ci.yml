@@ -395,6 +395,7 @@ deploy:
     DOCKER_DRIVER: overlay2
   dependencies:
     - build:linux
+    - build:linux:legacy
     - build:windows
     - build:mac
     - build:linux:arm64
