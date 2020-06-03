@@ -1124,8 +1124,8 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_2(__m128i *randomsource,
                         onekey = _mm_load_si128(rc++);
                         __m128i temp2 = _mm_load_si128(rounds & 1 ? buftmp : pbuf);
                         const __m128i add1 = _mm_xor_si128(onekey, temp2);
-                        const __m128i clprod1 = _mm_clmulepi64_si128(add1, add1, 0x10);
-                        const __m128i clprod2 = _mm_mulhrs_epi16(acc, clprod1);
+                        onekey = _mm_clmulepi64_si128(add1, add1, 0x10);
+                        const __m128i clprod2 = _mm_mulhrs_epi16(acc, onekey);
                         acc = _mm_xor_si128(clprod2, acc);
                     }
                 } while (rounds--);
