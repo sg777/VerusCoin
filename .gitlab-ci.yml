@@ -9,6 +9,7 @@ variables:
   VERSION: 0.6.5-dev-16
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
+  VERUS_CLI_LINUX_AMD64_LEGACY: Verus-CLI-Linux-v${VERSION}-amd64-legacy.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
   VERUS_CLI_MACOS: Verus-CLI-MacOS-v${VERSION}.tar.gz
   DOWNSTREAM_AGAMA_BRANCH: ${CI_COMMIT_REF_NAME}
@@ -28,7 +29,7 @@ variables:
 ####START####                                            LINUX                                             ####START####
 ########################################################################################################################
 build:linux:
-  image: asherd/verus-builders:verus-ubuntu
+  image: asherd/verus-builders:verus-bionic
   variables:
     DOCKER_DRIVER: overlay2
   stage: build
@@ -62,6 +63,43 @@ build:linux:
     paths:
       - ${VERUS_CLI_LINUX_AMD64}
       - ${VERUS_CLI_LINUX_AMD64}.sha256
+    expire_in: 1 week
+
+build:linux:legacy:
+  image: asherd/verus-builders:verus-xenial
+  variables:
+    DOCKER_DRIVER: overlay2
+  stage: build
+  cache:
+    key: "${CI_JOB_NAME}${CI_COMMIT_REF_NAME}"
+    paths:
+      - depends
+  script:
+    - zcutil/build.sh -j$(nproc)
+    - if [ "${STRIP_BINARIES}" = "true" ]; then strip --strip-unneeded  src/verus && strip --strip-unneeded  src/verusd; fi
+    - mkdir verus-cli
+    - cp src/verus
+      src/verusd
+      doc/man/verus-cli/linux/README.txt
+      zcutil/fetch-params.sh
+      verus-cli
+    - mv verus-cli/fetch-params.sh verus-cli/fetch-params
+    - chmod +x verus-cli/verus
+    - chmod +x verus-cli/verusd
+    - chmod +x verus-cli/fetch-params
+    - tar -czvf ${VERUS_CLI_LINUX_AMD64_LEGACY} verus-cli
+    - sha256sum ${VERUS_CLI_LINUX_AMD64_LEGACY} > ${VERUS_CLI_LINUX_AMD64_LEGACY}.sha256
+    - git status
+  after_script:
+    - curl -F file=@"${VERUS_CLI_LINUX_AMD64_LEGACY}"
+      -F channels="${CLI_POST_CHANNEL}"
+      -F initial_comment="${POST_MESSAGE}"
+      -H "${SLACK_BOT_AUTH}"
+      "https://slack.com/api/files.upload"
+  artifacts:
+    paths:
+      - ${VERUS_CLI_LINUX_AMD64_LEGACY}
+      - ${VERUS_CLI_LINUX_AMD64_LEGACY}.sha256
     expire_in: 1 week
 
 build:linux:arm64:
@@ -156,10 +194,10 @@ build:mac:
     - zcutil/build-mac.sh -j$(sysctl -n hw.physicalcpu)
     - mkdir verus-cli
     - cp src/verus
-        src/verusd
-        doc/man/verus-cli/mac/README.txt
-        zcutil/fetch-params.sh
-        verus-cli
+      src/verusd
+      doc/man/verus-cli/mac/README.txt
+      zcutil/fetch-params.sh
+      verus-cli
     - mv verus-cli/fetch-params.sh verus-cli/fetch-params
     - chmod +x verus-cli/fetch-params
     - chmod +x verus-cli/verus
@@ -241,11 +279,11 @@ build:mac:
     DOCKER_DRIVER: overlay2
   stage: test
   before_script:
-    - apt update && apt install -y wget libgomp1 libcurl4-gnutls-dev python
+    - apt update && apt install -y wget libgomp1 python
     - rm -rf /root/.komodo || true
     - mv .komodo /root/ || true
   script:
-    - tar -xzvf ${VERUS_CLI_LINUX_AMD64}
+    - tar -xzvf ${VERUS_CLI_LINUX_AMD64_LEGACY}
     - export PATH=$PATH:$CI_PROJECT_DIR/verus-cli
     - python qa/verus-cli-tests/verus-cli-tester.py
   after_script:
@@ -257,7 +295,7 @@ build:mac:
     paths: [log.txt]
     expire_in: 1 week
   dependencies:
-    - build:linux
+    - build:linux:legacy
 ########################################################################################################################
 ####END####                               Run Verus CLI on Ubuntu Xenial (16.04)                             ####END####
 ########################################################################################################################
@@ -364,6 +402,7 @@ deploy:
     - mkdir Windows && mkdir Linux && mkdir MacOS
     - cp ${VERUS_CLI_WINDOWS} Windows
     - cp ${VERUS_CLI_LINUX_AMD64} Linux
+    - cp ${VERUS_CLI_LINUX_AMD64_LEGACY} Linux
     - cp ${VERUS_CLI_ARM64_LINUX} Linux
     - cp ${VERUS_CLI_MACOS} MacOS
     - echo "$AUTH_KEY" > AUTH_KEY.json &&
@@ -374,6 +413,8 @@ deploy:
     paths:
       - ${VERUS_CLI_LINUX_AMD64}
       - ${VERUS_CLI_LINUX_AMD64}.sha256
+      - ${VERUS_CLI_LINUX_AMD64_LEGACY}
+      - ${VERUS_CLI_LINUX_AMD64_LEGACY}.sha256
       - ${VERUS_CLI_WINDOWS}
       - ${VERUS_CLI_WINDOWS}.sha256
       - ${VERUS_CLI_MACOS}
