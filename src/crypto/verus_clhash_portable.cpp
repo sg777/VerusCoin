@@ -1177,8 +1177,8 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_2_port(__m128i *randomso
                         onekey = _mm_load_si128_emu(rc++);
                         __m128i temp2 = _mm_load_si128_emu(rounds & 1 ? buftmp : pbuf);
                         const __m128i add1 = _mm_xor_si128_emu(onekey, temp2);
-                        onekey = _mm_clmulepi64_si128(add1, add1, 0x10);
-                        const __m128i clprod2 = _mm_mulhrs_epi16(acc, onekey);
+                        onekey = _mm_clmulepi64_si128_emu(add1, add1, 0x10);
+                        const __m128i clprod2 = _mm_mulhrs_epi16_emu(acc, onekey);
                         acc = _mm_xor_si128_emu(clprod2, acc);
                     }
                 } while (rounds--);
