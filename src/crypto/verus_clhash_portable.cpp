@@ -1165,10 +1165,10 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_2_port(__m128i *randomso
                     {
                         onekey = _mm_load_si128_emu(rc++);
                         const __m128i temp2 = _mm_load_si128_emu(rounds & 1 ? pbuf : buftmp);
-                        const __m128i add1 = _mm_xor_si128_emu(onekey, temp2);
+                        onekey = _mm_xor_si128_emu(onekey, temp2);
                         // cannot be zero here, may be negative
                         const int32_t divisor = (uint32_t)selector;
-                        const int64_t dividend = _mm_cvtsi128_si64_emu(add1);
+                        const int64_t dividend = _mm_cvtsi128_si64_emu(onekey);
                         const __m128i modulo = _mm_cvtsi32_si128_emu(dividend % divisor);
                         acc = _mm_xor_si128_emu(modulo, acc);
                     }
