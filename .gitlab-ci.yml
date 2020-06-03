@@ -259,7 +259,7 @@ build:mac:
     paths: [log.txt]
     expire_in: 1 week
   dependencies:
-    - build:linux:legacy
+    - build:linux
 ########################################################################################################################
 ####END####                               Run Verus CLI on Ubuntu Xenial (16.04)                             ####END####
 ########################################################################################################################
@@ -272,7 +272,7 @@ build:mac:
     DOCKER_DRIVER: overlay2
   stage: test
   before_script:
-    - apt update && apt install -y wget libgomp1 libcurl4-gnutls-dev python
+    - apt update && apt install -y wget libgomp1 python
     - rm -rf /root/.komodo || true
     - mv .komodo /root/ || true
   script:
@@ -359,7 +359,6 @@ deploy:
     DOCKER_DRIVER: overlay2
   dependencies:
     - build:linux
-    - build:linux:legacy
     - build:windows
     - build:mac
     - build:linux:arm64
