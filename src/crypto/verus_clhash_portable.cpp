@@ -1237,6 +1237,15 @@ uint64_t verusclhash_sv2_1_port(void * random, const unsigned char buf[64], uint
     return precompReduction64_port(acc);
 }
 
+uint64_t verusclhash_sv2_2_port(void * random, const unsigned char buf[64], uint64_t keyMask, __m128i **pMoveScratch) {
+    __m128i * rs64 = (__m128i *)random;
+    const __m128i * string = (const __m128i *) buf;
+
+    __m128i  acc = __verusclmulwithoutreduction64alignedrepeat_sv2_2_port(rs64, string, keyMask, pMoveScratch);
+    acc = _mm_xor_si128_emu(acc, lazyLengthHash_port(1024, 64));
+    return precompReduction64_port(acc);
+}
+
 bool mine_verus_v2_port(CBlockHeader &bh, CVerusHashV2bWriter &vhw, uint256 &finalHash, uint256 &target, uint64_t start, uint64_t *count)
 {
 	CVerusHashV2 &vh = vhw.GetState();
