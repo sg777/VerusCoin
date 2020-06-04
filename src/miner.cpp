@@ -2254,7 +2254,7 @@ void waitForPeers(const CChainParams &chainparams)
                     }
                 }
             } while (fvNodesEmpty || IsNotInSync());
-            MilliSleep(100 + rand() % 400);
+            MilliSleep(500 + rand() % 1000);
         }
     }
 }
