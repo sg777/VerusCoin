@@ -734,7 +734,7 @@ public:
 
     /** Efficiently check whether a block is present in this chain. */
     bool Contains(const CBlockIndex *pindex) const {
-        return (*this)[pindex->GetHeight()] == pindex;
+        return !pindex ? false : (*this)[pindex->GetHeight()] == pindex;
     }
 
     /** Find the successor of a block in this chain, or NULL if the given index is not found or is the tip. */
