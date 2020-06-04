@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.5-dev-27
+  VERSION: 0.6.5-dev-28
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
@@ -39,13 +39,13 @@ build:linux:
       - depends
   script:
     - zcutil/build.sh -j$(nproc)
-    - if [ "${STRIP_BINARIES}" = "true" ]; then strip --strip-unneeded  src/zcashd && strip --strip-unneeded  src/zcash-cli; fi
+    - if [ "${STRIP_BINARIES}" = "true" ]; then strip --strip-unneeded  src/verus && strip --strip-unneeded  src/verusd; fi
     - mkdir verus-cli
     - cp src/verus
-      src/verusd
-      doc/man/verus-cli/linux/README.txt
-      zcutil/fetch-params.sh
-      verus-cli
+        src/verusd
+        doc/man/verus-cli/linux/README.txt
+        zcutil/fetch-params.sh
+        verus-cli
     - mv verus-cli/fetch-params.sh verus-cli/fetch-params
     - chmod +x verus-cli/verus
     - chmod +x verus-cli/verusd
