@@ -3083,8 +3083,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         );
     }
 
-    CheckPBaaSAPIsValid();
-
     std::string sourceAddress = uni_get_str(params[0]);
     CTxDestination sourceDest;
 
@@ -3127,6 +3125,16 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
             bool subtractFee = uni_get_bool(find_value(uniOutputs[i], "subtractfee"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
+
+            if (currencyStr.size() ||
+                convertToStr.size() ||
+                refundToStr.size() ||
+                memoStr.size() ||
+                preConvert ||
+                mintNew)
+            {
+                CheckPBaaSAPIsValid();
+            }
 
             LOCK2(cs_main, mempool.cs);
 
