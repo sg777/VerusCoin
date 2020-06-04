@@ -3857,10 +3857,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, k, false),
                                 out.nValue));
 
+                            /*
                             if (dest.which() == COptCCParams::ADDRTYPE_PKH)
                             {
                                 printf("%s: adding unspent index for address %s\n", __func__, GetDestinationID(dest).GetHex().c_str());
                             }
+                            */
 
                             // record unspent output
                             addressUnspentIndex.push_back(make_pair(

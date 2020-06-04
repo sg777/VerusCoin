@@ -234,7 +234,6 @@ public:
         }       
         return false; 
     }
-
 };
 
 class CIdentity : public CPrincipal
@@ -451,10 +450,13 @@ public:
     // creates an output script to control updates to this identity
     CScript IdentityUpdateOutputScript() const;
 
-    bool IsInvalidMutation(const CIdentity &newIdentity) const
+    bool IsInvalidMutation(const CIdentity &newIdentity, uint32_t height) const
     {
+        auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         if (parent != newIdentity.parent ||
-            name != newIdentity.name ||
+            (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name) ||
+            (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && newIdentity.HasActiveCurrency()) ||
+            GetID() != newIdentity.GetID() ||
             ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
             ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
             ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
@@ -466,9 +468,11 @@ public:
         return false;
     }
 
-    bool IsPrimaryMutation(const CIdentity &newIdentity) const
+    bool IsPrimaryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
+        auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         if (CPrincipal::IsPrimaryMutation(newIdentity) ||
+            (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
             privateAddresses != newIdentity.privateAddresses ||
             (HasActiveCurrency() != newIdentity.HasActiveCurrency()))
@@ -487,9 +491,11 @@ public:
         return false;
     }
 
-    bool IsRevocationMutation(const CIdentity &newIdentity) const 
+    bool IsRevocationMutation(const CIdentity &newIdentity, uint32_t height) const 
     {
-        if (revocationAuthority != newIdentity.revocationAuthority)
+        auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+        if (revocationAuthority != newIdentity.revocationAuthority &&
+            (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 || !IsRevoked()))
         {
             return true;
         }
@@ -505,9 +511,12 @@ public:
         return false;
     }
 
-    bool IsRecoveryMutation(const CIdentity &newIdentity) const
+    bool IsRecoveryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
-        if (recoveryAuthority != newIdentity.recoveryAuthority)
+        auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+        if (recoveryAuthority != newIdentity.recoveryAuthority ||
+            (revocationAuthority != newIdentity.revocationAuthority &&
+            (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && IsRevoked())))
         {
             return true;
         }
