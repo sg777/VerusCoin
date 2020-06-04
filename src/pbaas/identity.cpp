@@ -969,7 +969,7 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
     // data under primary authority control
     if (!fulfilled && !oldIdentity.IsRevoked())
     {
-        if (oldIdentity.IsPrimaryMutation(newIdentity))
+        if (oldIdentity.IsPrimaryMutation(newIdentity, height))
         {
             return eval->Error("Unauthorized identity modification");
         }
@@ -1067,7 +1067,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     {
         sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
 
-        if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity))
+        if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height))
         {
             return eval->Error("Unauthorized modification of revocation information");
         }
@@ -1167,7 +1167,7 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
 
         // if revoked, only fulfilled recovery condition allows primary mutation
-        if (oldIdentity.IsRevoked() && (oldIdentity.IsPrimaryMutation(newIdentity)))
+        if (oldIdentity.IsRevoked() && (oldIdentity.IsPrimaryMutation(newIdentity, height)))
         {
             return eval->Error("Unauthorized modification of revoked identity without recovery authority");
         }
