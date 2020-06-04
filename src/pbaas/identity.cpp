@@ -854,24 +854,6 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
-    std::vector<CTxDestination> dests;
-    int minSigs;
-    txnouttype outType;
-    if (ExtractDestinations(tx.vout[outNum].scriptPubKey, outType, dests, minSigs))
-    {
-        uint160 thisID = identity.GetID();
-        for (auto &dest : dests)
-        {
-            uint160 oneDestID;
-            if (dest.which() == COptCCParams::ADDRTYPE_ID && 
-                (oneDestID = GetDestinationID(dest)) != thisID &&
-                !CIdentity::LookupIdentity(CIdentityID(oneDestID)).IsValid())
-            {
-                return state.Error("Destination includes invalid identity");
-            }
-        }
-    }
-
     extern uint160 VERUS_CHAINID;
     extern std::string VERUS_CHAINNAME;
 
