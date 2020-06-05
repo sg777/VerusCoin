@@ -1627,6 +1627,9 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     std::vector<CWalletTx> vwtx;
     CAmount totalStakingAmount = 0;
 
+    uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool extendedStake = solutionVersion >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
+
     {
         LOCK2(cs_main, cs_wallet);
         pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
@@ -1636,13 +1639,18 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         for (int i = 0; i < vecOutputs.size(); i++)
         {
             auto &txout = vecOutputs[i];
+            COptCCParams p;
 
             if (txout.tx &&
                 txout.i < txout.tx->vout.size() &&
                 txout.tx->vout[txout.i].nValue > 0 &&
                 txout.fSpendable &&
                 (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
-                !txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition())
+                ((extendedStake && 
+                  txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                  txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p) &&
+                  p.IsValid()) ||
+                (!p.IsValid() && whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH)))
             {
                 totalStakingAmount += txout.tx->vout[txout.i].nValue;
                 // if all are valid, no change, else compress
@@ -1676,9 +1684,6 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         LogPrintf("No VRSC eligible for staking\n");
         return false;
     }
-
-    uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
-    bool extendedStake = solutionVersion >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
     // we get these sources of entropy to prove all sources in the header
     int posHeight = -1, powHeight = -1, altHeight = -1;
@@ -1724,9 +1729,17 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
         BOOST_FOREACH(COutput &txout, vecOutputs)
         {
+            COptCCParams p;
+            std::vector<CTxDestination> destinations;
+            int nRequired = 0;
+            bool canSign = false, canSpend = false;
+
             if (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target &&
-                Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
-                ((extendedStake && whichType == TX_CRYPTOCONDITION) || whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))
+                ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, destinations, nRequired, this, &canSign, &canSpend) &&
+                ((extendedStake && 
+                  txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                  canSpend) ||
+                ((whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]))))
             {
                 uint256 txHash = txout.tx->GetHash();
                 checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
