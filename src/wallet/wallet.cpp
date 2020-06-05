@@ -1711,7 +1711,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                                             powHeight : 
                                             posHeight);
 
-    int proveBlockHeight = posHeight > secondBlockHeight ? posHeight : secondBlockHeight;
+    int proveBlockHeight = posHeight > secondBlockHeight ? posHeight : ((powHeight == -1) ? posHeight : powHeight);
 
     if (proveBlockHeight == -1)
     {
