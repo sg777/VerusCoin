@@ -2634,6 +2634,13 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                         // store transitions as needed in the wallet
                         if (canSignCanSpend.first != wasCanSignCanSpend.first || canSignCanSpend.second != wasCanSignCanSpend.second)
                         {
+                            // mark all transactions dirty to recalculate numbers
+                            for (auto &txidAndWtx : mapWallet)
+                            {
+                                // mark the whole wallet dirty. if this is an issue, we can optimize.
+                                txidAndWtx.second.MarkDirty();
+                            }
+
                             if (canSignCanSpend.first != wasCanSignCanSpend.first)
                             {
                                 if (canSignCanSpend.first)
@@ -2813,9 +2820,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     // that are not on manual hold
                                     for (auto &txidAndWtx : mapWallet)
                                     {
-                                        // mark all txes dirty as well, to force recalculation of amounts
-                                        txidAndWtx.second.MarkDirty();
-
                                         for (auto txout : txidAndWtx.second.vout)
                                         {
                                             if (!txout.scriptPubKey.IsPayToCryptoCondition())
@@ -2878,18 +2882,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 }
                                             }
                                         }
-                                    }
-                                }
-                            }
-                            else if (canSignCanSpend.second != wasCanSignCanSpend.second)
-                            {
-                                if (!canSignCanSpend.second)
-                                {
-                                    // mark all transactions dirty to recalculate numbers
-                                    for (auto &txidAndWtx : mapWallet)
-                                    {
-                                        // mark the whole wallet dirty. if this is an issue, we can optimize.
-                                        txidAndWtx.second.MarkDirty();
                                     }
                                 }
                             }
