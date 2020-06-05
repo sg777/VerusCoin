@@ -1613,7 +1613,6 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     COutput *pwinner = NULL;
     CWalletTx winnerWtx;
 
-    CBlockIndex *pastBlockIndex;
     txnouttype whichType;
     std:vector<std::vector<unsigned char>> vSolutions;
 
@@ -1635,7 +1634,6 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
 
         int newSize = 0;
-        std::vector<std::vector<unsigned char>> vSolutions;
 
         for (int i = 0; i < vecOutputs.size(); i++)
         {
@@ -1647,8 +1645,8 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 txout.tx->vout[txout.i].nValue > 0 &&
                 txout.fSpendable &&
                 (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
-                ((extendedStake && 
-                  txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                  extendedStake && 
                   p.IsValid() && 
                   txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p)) ||
                 (!p.IsValid() && 
@@ -1680,11 +1678,11 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
     if (totalStakingAmount)
     {
-        LogPrintf("Staking with %s eligible VRSC\n", ValueFromAmount(totalStakingAmount).write().c_str());
+        LogPrintf("Staking with %s VRSC\n", ValueFromAmount(totalStakingAmount).write().c_str());
     }
     else
     {
-        LogPrintf("No VRSC eligible for staking\n");
+        LogPrintf("No VRSC staking\n");
         return false;
     }
 
@@ -1713,7 +1711,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                                             powHeight : 
                                             posHeight);
 
-    int proveBlockHeight = posHeight > secondBlockHeight ? posHeight : powHeight;
+    int proveBlockHeight = posHeight > secondBlockHeight ? posHeight : secondBlockHeight;
 
     if (proveBlockHeight == -1)
     {
@@ -1739,17 +1737,17 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
             if (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target &&
                 ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, destinations, nRequired, this, &canSign, &canSpend) &&
-                ((extendedStake && 
-                  txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                  extendedStake && 
                   canSpend) ||
-                ((whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]))))
+                (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]))))
             {
                 uint256 txHash = txout.tx->GetHash();
                 checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
 
                 LOCK2(cs_main, cs_wallet);
 
-                if ((!pwinner || UintToArith256(curNonce) > UintToArith256(pBlock->nNonce)) &&
+                if ((!pwinner || UintToArith256(curNonce) < UintToArith256(pBlock->nNonce)) &&
                     !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100))
                 {
                     if (view.HaveCoins(txHash) && Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
