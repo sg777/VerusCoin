@@ -1635,6 +1635,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
 
         int newSize = 0;
+        std::vector<std::vector<unsigned char>> vSolutions;
 
         for (int i = 0; i < vecOutputs.size(); i++)
         {
@@ -1647,10 +1648,12 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 txout.fSpendable &&
                 (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
                 ((extendedStake && 
-                  txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
-                  txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p) &&
-                  p.IsValid()) ||
-                (!p.IsValid() && whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH)))
+                  txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                  p.IsValid() && 
+                  txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p)) ||
+                (!p.IsValid() && 
+                 Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
+                 (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))))
             {
                 totalStakingAmount += txout.tx->vout[txout.i].nValue;
                 // if all are valid, no change, else compress
