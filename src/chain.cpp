@@ -111,7 +111,7 @@ uint256 CChain::GetVerusEntropyHash(int forHeight, int *pPOSheight, int *pPOWhei
         LogPrintf("%s: invalid height for entropy hash %d, chain height is %d\n", __func__, height, vChain.size() - 1);
         return retVal;
     }
-    if (CConstVerusSolutionVector::GetVersionByHeight(forHeight) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE || height <= 10)
+    if (CConstVerusSolutionVector::GetVersionByHeight(forHeight) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE || height < 11)
     {
         if (vChain[height]->IsVerusPOSBlock())
         {
