@@ -165,20 +165,25 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
             if (it != mapBlockIndex.end() && (pindex = it->second) != NULL && chainActive.Contains(pindex))
             {
                 std::vector<std::vector<unsigned char>> vAddr = std::vector<std::vector<unsigned char>>();
+                bool extendedStake = CConstVerusSolutionVector::GetVersionByHeight(stakeParams.blkHeight) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
+                COptCCParams p;
 
                 if (stakeParams.srcHeight == pindex->GetHeight() && 
                     (stakeParams.blkHeight - stakeParams.srcHeight >= VERUS_MIN_STAKEAGE) &&
-                    Solver(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, txType, vAddr))
+                    ((srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                      extendedStake && 
+                      p.IsValid() &&
+                      srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey.IsSpendableOutputType(p)) ||
+                    (!p.IsValid() && Solver(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, txType, vAddr))))
                 {
-                    bool extendedStake = CConstVerusSolutionVector::GetVersionByHeight(stakeParams.blkHeight) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
-                    if (txType == TX_PUBKEY && !stakeParams.pk.IsValid())
+                    if (!p.IsValid() && txType == TX_PUBKEY && !stakeParams.pk.IsValid())
                     {
                         stakeParams.pk = CPubKey(vAddr[0]);
                     }
                     // once extended stake hits, we only accept extended form of staking
                     if (!(extendedStake && stakeParams.Version() < stakeParams.VERSION_EXTENDED_STAKE) &&
                         !(!extendedStake && stakeParams.Version() >= stakeParams.VERSION_EXTENDED_STAKE) &&
-                        ((extendedStake && txType == TX_CRYPTOCONDITION) || (txType == TX_PUBKEY) || (txType == TX_PUBKEYHASH && (extendedStake || stakeParams.pk.IsFullyValid()))))
+                        ((extendedStake && p.IsValid()) || (txType == TX_PUBKEY) || (txType == TX_PUBKEYHASH && (extendedStake || stakeParams.pk.IsFullyValid()))))
                     {
                         auto consensusBranchId = CurrentEpochBranchId(stakeParams.blkHeight, Params().GetConsensus());
 
@@ -204,7 +209,7 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
     return false;
 }
 
-bool MakeGuardedOutput(CAmount value, CPubKey &dest, CTransaction &stakeTx, CTxOut &vout)
+bool MakeGuardedOutput(CAmount value, CTxDestination &dest, CTransaction &stakeTx, CTxOut &vout)
 {
     CStakeParams p;
     if (GetStakeParams(stakeTx, p) && p.IsValid())
@@ -225,7 +230,7 @@ bool MakeGuardedOutput(CAmount value, CPubKey &dest, CTransaction &stakeTx, CTxO
             vout = CTxOut(value,
                     MakeMofNCCScript(CConditionObj<CStakeInfo>(EVAL_STAKEGUARD, {dest, CTxDestination(CPubKey(ParseHex(cp->CChexstr)))}, 1, &stakeInfo)));
         }
-        else
+        else if (dest.which() == COptCCParams::ADDRTYPE_PK)
         {
             CCcontract_info *cp, C;
             cp = CCinit(&C,EVAL_STAKEGUARD);
@@ -234,7 +239,7 @@ bool MakeGuardedOutput(CAmount value, CPubKey &dest, CTransaction &stakeTx, CTxO
 
             // return an output that is bound to the stake transaction and can be spent by presenting either a signed condition by the original 
             // destination address or a properly signed stake transaction of the same utxo on a fork
-            vout = MakeCC1of2vout(EVAL_STAKEGUARD, value, dest, ccAddress);
+            vout = MakeCC1of2vout(EVAL_STAKEGUARD, value, boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest), ccAddress);
 
             std::vector<CTxDestination> vKeys;
             vKeys.push_back(dest);

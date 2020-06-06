@@ -1905,8 +1905,7 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
 
     bnTarget = lwmaGetNextPOSRequired(tipindex, Params().GetConsensus());
 
-    if (!VerusSelectStakeOutput(pBlock, hashResult, stakeSource, voutNum, stakeHeight, bnTarget) ||
-        !Solver(stakeSource.vout[voutNum].scriptPubKey, whichType, vSolutions))
+    if (!VerusSelectStakeOutput(pBlock, hashResult, stakeSource, voutNum, stakeHeight, bnTarget))
     {
         //LogPrintf("Searched for eligible staking transactions, no winners found\n");
         return 0;
@@ -1924,26 +1923,44 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
     txNew.vin[0].prevout.hash = stakeSource.GetHash();
     txNew.vin[0].prevout.n = voutNum;
 
-    if (whichType == TX_PUBKEY)
+    COptCCParams p;
+    if (stakeSource.vout[voutNum].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
     {
-        txNew.vout[0].scriptPubKey << ToByteVector(vSolutions[0]) << OP_CHECKSIG;
-        if (!pk.IsValid())
-            pk = CPubKey(vSolutions[0]);
-    }
-    else if (whichType == TX_PUBKEYHASH)
-    {
-        txNew.vout[0].scriptPubKey << OP_DUP << OP_HASH160 << ToByteVector(vSolutions[0]) << OP_EQUALVERIFY << OP_CHECKSIG;
-        if (saplingStake && !pk.IsValid())
+        // send output to same destination as source, convert stakeguard into normal output, since
+        // that is a spendable output that only works in coinbases. preserve all recipients and
+        // min sigs
+        if (p.evalCode == EVAL_STAKEGUARD)
         {
-            // we need a pubkey, so try to get one from the key ID, if not there, fail
-            if (!keystore.GetPubKey(CKeyID(uint160(vSolutions[0])), pk))
-                return 0;
+            txNew.vout[0].scriptPubKey = MakeMofNCCScript(CConditionObj<CIdentity>(0, p.vKeys, p.m));
+        }
+        else
+        {
+            txNew.vout[0].scriptPubKey = stakeSource.vout[voutNum].scriptPubKey;
         }
     }
-    else if (whichType == TX_CRYPTOCONDITION)
+    else if (Solver(stakeSource.vout[voutNum].scriptPubKey, whichType, vSolutions))
     {
-        // same output as stake
-        txNew.vout[0].scriptPubKey = stakeSource.vout[voutNum].scriptPubKey;
+        if (whichType == TX_PUBKEY)
+        {
+            txNew.vout[0].scriptPubKey << ToByteVector(vSolutions[0]) << OP_CHECKSIG;
+            if (!pk.IsValid())
+                pk = CPubKey(vSolutions[0]);
+        }
+        else if (whichType == TX_PUBKEYHASH)
+        {
+            txNew.vout[0].scriptPubKey << OP_DUP << OP_HASH160 << ToByteVector(vSolutions[0]) << OP_EQUALVERIFY << OP_CHECKSIG;
+            if (saplingStake && !pk.IsValid())
+            {
+                // we need a pubkey, so try to get one from the key ID, if not there, fail
+                if (!keystore.GetPubKey(CKeyID(uint160(vSolutions[0])), pk))
+                    return 0;
+            }
+        }
+        else
+        {
+            LogPrintf("%s: Please report - found stake source that is not valid\n");
+            return 0;
+        }
     }
     else
     {
