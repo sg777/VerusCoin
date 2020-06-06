@@ -1887,7 +1887,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     return false;
 }
 
-int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &bnTarget, arith_uint256 &hashResult, uint8_t *utxosig, CPubKey pk) const
+int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &bnTarget, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CPubKey pk) const
 {
     CTransaction stakeSource;
     int32_t voutNum, siglen = 0;
@@ -1931,7 +1931,7 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
         // min sigs
         if (p.evalCode == EVAL_STAKEGUARD)
         {
-            txNew.vout[0].scriptPubKey = MakeMofNCCScript(CConditionObj<CIdentity>(0, p.vKeys, p.m));
+            txNew.vout[0].scriptPubKey = MakeMofNCCScript(CConditionObj<CIdentity>(0, {p.vKeys[0]}, 1));
         }
         else
         {
@@ -2043,17 +2043,18 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
     CTransaction txNewConst(txNew);
     signSuccess = ProduceSignature(TransactionSignatureCreator(&keystore, &txNewConst, 0, nValue, stakeSource.vout[voutNum].scriptPubKey), stakeSource.vout[voutNum].scriptPubKey, sigdata, consensusBranchId);
     if (!signSuccess)
+    {
         fprintf(stderr,"failed to create signature\n");
+        utxosig.clear();
+    }
     else
     {
         uint8_t *ptr;
-        UpdateTransaction(txNew,0,sigdata);
-        ptr = (uint8_t *)&sigdata.scriptSig[0];
-        siglen = sigdata.scriptSig.size();
-        for (int i=0; i<siglen; i++)
-            utxosig[i] = ptr[i];//, fprintf(stderr,"%02x",ptr[i]);
+        UpdateTransaction(txNew, 0, sigdata);
+        utxosig.resize(sigdata.scriptSig.size());
+        memcpy(&(utxosig[0]), &(sigdata.scriptSig[0]), utxosig.size());
     }
-    return(siglen);
+    return(utxosig.size());
 }
 
 void CWallet::MarkDirty()
