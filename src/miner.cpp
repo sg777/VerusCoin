@@ -846,8 +846,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                     fprintf(stderr,"CreateNewBlock: invalid public key\n");
                     return NULL;
                 }
+                CTxDestination guardedOutputDest = (p.Version() < p.VERSION_EXTENDED_STAKE) ? p.pk : p.delegate;
                 coinbaseTx.vout.push_back(CTxOut(1, CScript()));
-                if (!MakeGuardedOutput(1, p.pk, stakeTx, coinbaseTx.vout.back()))
+                if (!MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back()))
                 {
                     LogPrintf("CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
                     fprintf(stderr,"CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
@@ -856,7 +857,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 COptCCParams optP;
                 if (!coinbaseTx.vout.back().scriptPubKey.IsPayToCryptoCondition(optP) || !optP.IsValid())
                 {
-                    MakeGuardedOutput(1, p.pk, stakeTx, coinbaseTx.vout.back());
+                    MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back());
                     LogPrintf("%s: created invalid staking coinbase\n", __func__);
                     fprintf(stderr,"%s: created invalid staking coinbase\n", __func__);
                     return NULL;

@@ -209,7 +209,7 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
     return false;
 }
 
-bool MakeGuardedOutput(CAmount value, CPubKey &dest, CTransaction &stakeTx, CTxOut &vout)
+bool MakeGuardedOutput(CAmount value, CTxDestination &dest, CTransaction &stakeTx, CTxOut &vout)
 {
     CStakeParams p;
     if (GetStakeParams(stakeTx, p) && p.IsValid())
@@ -230,7 +230,7 @@ bool MakeGuardedOutput(CAmount value, CPubKey &dest, CTransaction &stakeTx, CTxO
             vout = CTxOut(value,
                     MakeMofNCCScript(CConditionObj<CStakeInfo>(EVAL_STAKEGUARD, {dest, CTxDestination(CPubKey(ParseHex(cp->CChexstr)))}, 1, &stakeInfo)));
         }
-        else
+        else if (dest.which() == COptCCParams::ADDRTYPE_PK)
         {
             CCcontract_info *cp, C;
             cp = CCinit(&C,EVAL_STAKEGUARD);
@@ -239,7 +239,7 @@ bool MakeGuardedOutput(CAmount value, CPubKey &dest, CTransaction &stakeTx, CTxO
 
             // return an output that is bound to the stake transaction and can be spent by presenting either a signed condition by the original 
             // destination address or a properly signed stake transaction of the same utxo on a fork
-            vout = MakeCC1of2vout(EVAL_STAKEGUARD, value, dest, ccAddress);
+            vout = MakeCC1of2vout(EVAL_STAKEGUARD, value, boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest), ccAddress);
 
             std::vector<CTxDestination> vKeys;
             vKeys.push_back(dest);
