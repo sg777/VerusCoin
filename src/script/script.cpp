@@ -596,6 +596,11 @@ bool CScript::IsSpendableOutputType(const COptCCParams &p) const
         case EVAL_RESERVE_TRANSFER:
         case EVAL_RESERVE_EXCHANGE:
         case EVAL_CROSSCHAIN_IMPORT:
+        case EVAL_IDENTITY_COMMITMENT:
+        case EVAL_IDENTITY_PRIMARY:
+        case EVAL_IDENTITY_REVOKE:
+        case EVAL_IDENTITY_RECOVER:
+        case EVAL_IDENTITY_RESERVATION:
         {
             isSpendable = false;
             break;
