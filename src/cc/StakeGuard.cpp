@@ -165,20 +165,25 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
             if (it != mapBlockIndex.end() && (pindex = it->second) != NULL && chainActive.Contains(pindex))
             {
                 std::vector<std::vector<unsigned char>> vAddr = std::vector<std::vector<unsigned char>>();
+                bool extendedStake = CConstVerusSolutionVector::GetVersionByHeight(stakeParams.blkHeight) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
+                COptCCParams p;
 
                 if (stakeParams.srcHeight == pindex->GetHeight() && 
                     (stakeParams.blkHeight - stakeParams.srcHeight >= VERUS_MIN_STAKEAGE) &&
-                    Solver(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, txType, vAddr))
+                    ((srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                      extendedStake && 
+                      p.IsValid() &&
+                      srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey.IsSpendableOutputType(p)) ||
+                    (!p.IsValid() && Solver(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, txType, vAddr))))
                 {
-                    bool extendedStake = CConstVerusSolutionVector::GetVersionByHeight(stakeParams.blkHeight) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
-                    if (txType == TX_PUBKEY && !stakeParams.pk.IsValid())
+                    if (!p.IsValid() && txType == TX_PUBKEY && !stakeParams.pk.IsValid())
                     {
                         stakeParams.pk = CPubKey(vAddr[0]);
                     }
                     // once extended stake hits, we only accept extended form of staking
                     if (!(extendedStake && stakeParams.Version() < stakeParams.VERSION_EXTENDED_STAKE) &&
                         !(!extendedStake && stakeParams.Version() >= stakeParams.VERSION_EXTENDED_STAKE) &&
-                        ((extendedStake && txType == TX_CRYPTOCONDITION) || (txType == TX_PUBKEY) || (txType == TX_PUBKEYHASH && (extendedStake || stakeParams.pk.IsFullyValid()))))
+                        ((extendedStake && p.IsValid()) || (txType == TX_PUBKEY) || (txType == TX_PUBKEYHASH && (extendedStake || stakeParams.pk.IsFullyValid()))))
                     {
                         auto consensusBranchId = CurrentEpochBranchId(stakeParams.blkHeight, Params().GetConsensus());
 

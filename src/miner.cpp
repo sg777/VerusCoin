@@ -854,7 +854,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                     return NULL;
                 }
                 COptCCParams optP;
-                if (!coinbaseTx.vout.back().scriptPubKey.IsPayToCryptoCondition(optP) || !p.IsValid())
+                if (!coinbaseTx.vout.back().scriptPubKey.IsPayToCryptoCondition(optP) || !optP.IsValid())
                 {
                     MakeGuardedOutput(1, p.pk, stakeTx, coinbaseTx.vout.back());
                     LogPrintf("%s: created invalid staking coinbase\n", __func__);
