@@ -2433,6 +2433,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 {
     {
         AssertLockHeld(cs_wallet);
+        AssertLockHeld(cs_main);
         uint256 txHash = tx.GetHash();
         bool fExisted = mapWallet.count(txHash) != 0;
         if (fExisted && !fUpdate) return false;
@@ -2446,9 +2447,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             }
         }
 
-        bool canSign = false;
-        bool isMine = false;
-
         for (auto output : tx.vout)
         {
             bool canSpend = false;
@@ -2456,10 +2454,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
             if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
             {
-                // assert and fix if we find any spot where this wouldn't be held, rather than
-                // creating a deadlock by attempting to take the cs out of order
-                AssertLockHeld(cs_main);
-
                 uint32_t nHeight = 0;
                 if (pblock)
                 {
@@ -2470,7 +2464,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     }
                     else
                     {
-                        // doesn't seem like this should ever happen
+                        // this should never happen
                         assert(false);
                     }
                 }
@@ -2479,7 +2473,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                 if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (*(CIdentity *)&identity = CIdentity(p.vData[0])).IsValid())
                 {
-                    identity.txid = tx.GetHash();
+                    identity.txid = txHash;
                     CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
                                                                nHeight, 
                                                                1, 
@@ -2492,15 +2486,16 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                     std::pair<CIdentityMapKey, CIdentityMapValue> idHistory;
 
-                    // if we are deleting, current identity is what it was, idHistory is what it will be, if adding, current is what it will be, idHistory is what it was
+                    // if adding, current is what it will be, idHistory is what it was
+                    // if we are deleting, current identity is what it was, idHistory is what it will be
                     std::pair<bool, bool> wasCanSignCanSpend({false, false});
                     std::pair<bool, bool> canSignCanSpend(CheckAuthority(identity));
 
-                    // if it is revoked, consider the recovery authority in the can sign/can spend decision
+                    // if the new identity is revoked, the recovery identity holds can sign/can spend authority
                     if (identity.IsRevoked())
                     {
-                        // if it's revoked, default will be no authority, and we will only have authority if
-                        // we have recovery identity in this wallet
+                        // if it's revoked, default is no authority for primary addresses, but we will have authority if
+                        // we have control over the recovery identity
                         std::pair<CIdentityMapKey, CIdentityMapValue> recoveryAuthority;
                         if (GetIdentity(identity.recoveryAuthority, recoveryAuthority, nHeight ? nHeight : INT_MAX))
                         {
@@ -2513,7 +2508,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     {
                         wasCanSignCanSpend = CheckAuthority(idHistory.second);
 
-                        if (idHistory.second.IsRevoked() && !(wasCanSignCanSpend.first && wasCanSignCanSpend.second))
+                        if (idHistory.second.IsRevoked())
                         {
                             std::pair<CIdentityMapKey, CIdentityMapValue> oldRecoveryAuthority;
                             std::pair<bool, bool> auxCSCS;
@@ -2528,17 +2523,27 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             }
                         }
 
-                        // if this is the initial registration, delete all other instances of the ID
+                        // if this is an add of the initial registration, delete all other instances of the ID
                         if (CNameReservation(tx).IsValid())
                         {
                             while (GetIdentity(idID, idHistory))
                             {
+                                // any definition of this identity in this wallet must be
+                                // invalid now
                                 RemoveIdentity(idHistory.first, idHistory.second.txid);
+                                if (idHistory.second.txid != txHash)
+                                {
+                                    // any definition of this ID in this wallet that is not this definition
+                                    // must also be on an invalid transaction
+                                    EraseFromWallet(idHistory.second.txid);
+                                }
                                 // set wasCanSignCanSpend to true, true to delete any dependent transactions
                                 wasCanSignCanSpend = {true, true};
                             }
                             idHistory = std::pair<CIdentityMapKey, CIdentityMapValue>();
+                            wasCanSignCanSpend = std::pair<bool, bool>({false, false});
                         }
+
                         else if (nHeight && idHistory.first.blockHeight == nHeight && idHistory.second.txid != identity.txid)
                         {
                             // this is one of more than one identity records in the same block
@@ -2692,7 +2697,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             {
                                 if (canSignCanSpend.first)
                                 {
-                                    // add all UTXOs that are sent to this address to this wallet
+                                    // add all UTXOs sent to this address to this wallet
                                     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
                                     if (GetAddressUnspent(idID, CScript::P2ID, unspentOutputs))
                                     {
@@ -2718,24 +2723,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 CTransaction newTx;
                                                 if (myGetTransaction(newOut.first.txhash, newTx, blkHash))
                                                 {
-                                                    auto sprNoteData = FindMySproutNotes(newTx);
-                                                    auto sapNoteDataAndAddressesToAdd = FindMySaplingNotes(newTx);
-                                                    auto sapNoteData = sapNoteDataAndAddressesToAdd.first;
-                                                    auto addrsToAdd = sapNoteDataAndAddressesToAdd.second;
-                                                    for (const auto &addressToAdd : addrsToAdd)
-                                                    {
-                                                        AddSaplingIncomingViewingKey(addressToAdd.second, addressToAdd.first);
-                                                    }
-
                                                     CWalletTx wtx(this, newTx);
-
-                                                    if (sprNoteData.size() > 0) {
-                                                        wtx.SetSproutNoteData(sprNoteData);
-                                                    }
-
-                                                    if (sapNoteData.size() > 0) {
-                                                        wtx.SetSaplingNoteData(sapNoteData);
-                                                    }
 
                                                     // Get merkle branch if transaction was found in a block
                                                     CBlock block;
@@ -2787,19 +2775,27 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             continue;
                                         }
 
-                                        // if the tx is from this wallet, we will not erase it
-                                        if (IsFromMe(txidAndWtx.second))
-                                        {
-                                            continue;
-                                        }
-
                                         txnouttype txType;
                                         std::vector<CTxDestination> addresses;
                                         int minSigs;
                                         bool eraseTx = true;
-                                        std::vector<CIdentityID> oneTxIDs;
                                         int i = 0;
                                         uint256 hashTx = txidAndWtx.second.GetHash();
+
+                                        // if we still have z-address notes on the transaction, don't delete
+                                        auto sprNoteData = FindMySproutNotes(txidAndWtx.second);
+                                        auto sapNoteDataAndAddressesToAdd = FindMySaplingNotes(txidAndWtx.second);
+                                        if (sprNoteData.size() || sapNoteDataAndAddressesToAdd.first.size())
+                                        {
+                                            // don't erase the tx, but check to erase IDs
+                                            eraseTx = false;
+                                        }
+
+                                        // if the tx is from this wallet, we will not erase it
+                                        if (IsFromMe(txidAndWtx.second))
+                                        {
+                                            eraseTx = false;
+                                        }
 
                                         // look for a reason not to delete this tx
                                         for (auto txout : txidAndWtx.second.vout)
@@ -2811,7 +2807,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 if (IsMine(txout))
                                                 {
                                                     eraseTx = false;
-                                                    break;
                                                 }
                                                 continue;
                                             }
@@ -2824,14 +2819,14 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 {
                                                     // we should keep this transaction anyhow, check next
                                                     eraseTx = false;
-                                                    break;
+                                                    continue;
                                                 }
                                                 
                                                 for (auto &dest : addresses)
                                                 {
                                                     if (dest.which() == COptCCParams::ADDRTYPE_ID)
                                                     {
-                                                        oneTxIDs.push_back(GetDestinationID(dest));
+                                                        idsToCheck.insert(GetDestinationID(dest));
                                                     }
                                                 }
                                             }
@@ -2841,11 +2836,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         if (eraseTx)
                                         {
                                             txesToErase.push_back(txidAndWtx.first);
-
-                                            for (auto &checkID : oneTxIDs)
-                                            {
-                                                idsToCheck.insert(checkID);
-                                            }
                                         }
                                     }
 
@@ -2938,9 +2928,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             }
         }
 
-        isMine = IsMine(tx);
-
-        if (fExisted || isMine || IsFromMe(tx) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
+        if (fExisted || IsMine(tx) || IsFromMe(tx) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
         {
             CWalletTx wtx(this, tx);
 
