@@ -784,6 +784,8 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_1_port(__m128i *randomso
                     const __m128i tempb3 = _mm_load_si128_emu(prandex);
                     _mm_store_si128_emu(prandex, tempa2);
                     _mm_store_si128_emu(prand, tempb3);
+                    const __m128i tempb4 = _mm_load_si128_emu(pbuf);
+                    acc = _mm_xor_si128_emu(tempb4, acc);
                 }
                 break;
             }
@@ -916,7 +918,8 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_1_port(__m128i *randomso
                 _mm_store_si128_emu(prand, tempa2);
 
                 acc = _mm_xor_si128_emu(tempa3, acc);
-
+                const __m128i temp4 = _mm_load_si128_emu(pbuf - (((selector & 1) << 1) - 1));
+                acc = _mm_xor_si128_emu(temp4,acc);  
                 const __m128i tempb1 = _mm_mulhrs_epi16_emu(acc, tempa3);
                 const __m128i tempb2 = _mm_xor_si128_emu(tempb1, tempa3);
                 _mm_store_si128_emu(prandex, tempb2);
