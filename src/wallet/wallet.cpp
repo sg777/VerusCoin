@@ -2513,6 +2513,21 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     {
                         wasCanSignCanSpend = CheckAuthority(idHistory.second);
 
+                        if (idHistory.second.IsRevoked() && !(wasCanSignCanSpend.first && wasCanSignCanSpend.second))
+                        {
+                            std::pair<CIdentityMapKey, CIdentityMapValue> oldRecoveryAuthority;
+                            std::pair<bool, bool> auxCSCS;
+                            // if we hold the recovery authority in our wallet, then set wasCanSignCanSpend pair to true
+                            if (GetIdentity(idHistory.second.recoveryAuthority, 
+                                            oldRecoveryAuthority, 
+                                            nHeight ? nHeight : INT_MAX))
+                            {
+                                auxCSCS = CheckAuthority(oldRecoveryAuthority.second);
+                                wasCanSignCanSpend = std::pair<bool, bool>({wasCanSignCanSpend.first || auxCSCS.first,
+                                                                            wasCanSignCanSpend.second || auxCSCS.second});
+                            }
+                        }
+
                         // if this is the initial registration, delete all other instances of the ID
                         if (CNameReservation(tx).IsValid())
                         {
@@ -4481,10 +4496,7 @@ bool CWalletTx::IsTrusted() const
             return false;
         if (!parent->vout.size())
         {
-            UniValue uniTx(UniValue::VOBJ);
-            uint256 blkHash;
-            TxToUniv(*parent, blkHash, uniTx);
-            printf("%s: WalletTx found, but no spendable output in wallet for input to transaction %s, output %d\nTRANSACTION: %s\n", __func__, txin.prevout.hash.GetHex().c_str(), txin.prevout.n, uniTx.write(1,2).c_str());
+            LogPrintf("%s: No spendable output in wallet for input to %s, num %d\n", __func__, txin.prevout.hash.GetHex().c_str(), txin.prevout.n);
             return false;
         }
         const CTxOut& parentOut = parent->vout[txin.prevout.n];
