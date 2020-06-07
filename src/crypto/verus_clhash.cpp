@@ -1023,6 +1023,8 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_2(__m128i *randomsource,
                     const __m128i tempb3 = _mm_load_si128(prandex);
                     _mm_store_si128(prandex, tempa2);
                     _mm_store_si128(prand, tempb3);
+                    const __m128i tempb4 = _mm_load_si128(pbuf);
+                    acc = _mm_xor_si128(tempb4, acc);
                 }
                 break;
             }
@@ -1152,7 +1154,8 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_sv2_2(__m128i *randomsource,
                 _mm_store_si128(prand, tempa2);
 
                 acc = _mm_xor_si128(tempa3, acc);
-
+                const __m128i temp4 = _mm_load_si128(pbuf - (((selector & 1) << 1) - 1)); 
+                acc = _mm_xor_si128(temp4,acc);  
                 const __m128i tempb1 = _mm_mulhrs_epi16(acc, tempa3);
                 const __m128i tempb2 = _mm_xor_si128(tempb1, tempa3);
                 _mm_store_si128(prandex, tempb2);
