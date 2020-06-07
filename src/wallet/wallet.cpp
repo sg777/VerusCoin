@@ -4479,6 +4479,14 @@ bool CWalletTx::IsTrusted() const
         const CWalletTx* parent = pwallet->GetWalletTx(txin.prevout.hash);
         if (parent == NULL)
             return false;
+        if (!parent->vout.size())
+        {
+            UniValue uniTx(UniValue::VOBJ);
+            uint256 blkHash;
+            TxToUniv(*parent, blkHash, uniTx);
+            printf("%s: WalletTx found, but no spendable output in wallet for input to transaction %s, output %d\nTRANSACTION: %s\n", __func__, txin.prevout.hash.GetHex().c_str(), txin.prevout.n, uniTx.write(1,2).c_str());
+            return false;
+        }
         const CTxOut& parentOut = parent->vout[txin.prevout.n];
         if (pwallet->IsMine(parentOut) != ISMINE_SPENDABLE)
             return false;
