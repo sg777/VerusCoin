@@ -350,7 +350,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(StakeGuardWIF).begin(),32);
             cp->validate = StakeGuardValidate;
             cp->ismyvin = IsStakeGuardInput;  // TODO: these input functions are not useful for new CCs
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PrecheckStakeGuardOutput;
             break;
 
         case EVAL_CURRENCY_DEFINITION:
