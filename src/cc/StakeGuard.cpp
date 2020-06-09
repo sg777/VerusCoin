@@ -412,7 +412,7 @@ bool PrecheckStakeGuardOutput(const CTransaction &tx, int32_t outNum, CValidatio
         (master = COptCCParams(p.vData.back())).IsValid() &&
         master.evalCode == 0 &&
         master.m == 1 &&
-        (secondary = COptCCParams(p.vData.back())).IsValid() &&
+        (secondary = COptCCParams(p.vData[1])).IsValid() &&
         secondary.evalCode == EVAL_STAKEGUARD &&
         secondary.m == 1 &&
         secondary.n == 1 &&
