@@ -2012,8 +2012,6 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
             
             txOut1.scriptPubKey << OP_RETURN 
                 << CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, tipindex->GetBlockHash(), dest).AsVector();
-
-            auto vchVec = CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, tipindex->GetBlockHash(), dest).AsVector();
         }
         else
         {
