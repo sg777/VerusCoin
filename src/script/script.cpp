@@ -596,6 +596,11 @@ bool CScript::IsSpendableOutputType(const COptCCParams &p) const
         case EVAL_RESERVE_TRANSFER:
         case EVAL_RESERVE_EXCHANGE:
         case EVAL_CROSSCHAIN_IMPORT:
+        case EVAL_IDENTITY_COMMITMENT:
+        case EVAL_IDENTITY_PRIMARY:
+        case EVAL_IDENTITY_REVOKE:
+        case EVAL_IDENTITY_RECOVER:
+        case EVAL_IDENTITY_RESERVATION:
         {
             isSpendable = false;
             break;
@@ -966,7 +971,19 @@ std::vector<CTxDestination> CScript::GetDestinations() const
 {
     std::vector<CTxDestination> destinations;
     COptCCParams p;
-    if (this->IsPayToScriptHash()) {
+    if (this->IsPayToCryptoCondition(p))
+    {
+        if (p.IsValid() && (p.vKeys.size()))
+        {
+            destinations = p.GetDestinations();
+        }
+        else
+        {
+            vector<unsigned char> hashBytes(this->begin(), this->end());
+            destinations.push_back(CKeyID(Hash160(hashBytes)));
+        }
+    }
+    else if (this->IsPayToScriptHash()) {
         destinations.push_back(CScriptID(uint160(std::vector<unsigned char>(this->begin()+2, this->begin()+22))));
     }
     else if (this->IsPayToPublicKeyHash())
@@ -977,55 +994,6 @@ std::vector<CTxDestination> CScript::GetDestinations() const
     {
         std::vector<unsigned char> hashBytes(this->begin()+1, this->begin()+34);
         destinations.push_back(CPubKey(hashBytes));
-    }
-    else if (this->IsPayToCryptoCondition(p))
-    {
-        if (p.IsValid() && (p.vKeys.size()))
-        {
-            COptCCParams master;
-            if (p.version >= p.VERSION_V3 && p.vData.size() > 1 && (master = COptCCParams(p.vData.back())).IsValid())
-            {
-                std::set<CTxDestination> dests;
-                for (auto dest : master.vKeys)
-                {
-                    dests.insert(dest);
-                }
-                for (auto dest : p.vKeys)
-                {
-                    if (dest.which() == COptCCParams::ADDRTYPE_ID)
-                    {
-                        dests.insert(dest);
-                    }
-                }
-                for (int i = 1; i < (int)(p.vData.size() - 1); i++)
-                {
-                    COptCCParams oneP(p.vData[i]);
-                    if (oneP.IsValid())
-                    {
-                        for (auto dest : oneP.vKeys)
-                        {
-                            if (dest.which() == COptCCParams::ADDRTYPE_ID)
-                            {
-                                dests.insert(dest);
-                            }
-                        }
-                    }
-                }
-                for (auto dest : dests)
-                {
-                    destinations.push_back(dest);
-                }
-            }
-            else
-            {
-                destinations.push_back(p.vKeys[0]);
-            }
-        }
-        else
-        {
-            vector<unsigned char> hashBytes(this->begin(), this->end());
-            destinations.push_back(CKeyID(Hash160(hashBytes)));
-        }
     }
     return destinations;
 }

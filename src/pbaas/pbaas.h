@@ -902,6 +902,14 @@ public:
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
 
+    bool NewImportNotarization(const CCurrencyDefinition &_curDef, 
+                               uint32_t height, 
+                               const CTransaction &lastImportTx, 
+                               uint32_t exportHeight, 
+                               const CTransaction &exportTx, 
+                               CMutableTransaction &mnewTx,
+                               CCoinbaseCurrencyState &newCurState);
+
     bool GetLastImport(const uint160 &systemID, 
                        CTransaction &lastImport, 
                        CPartialTransactionProof &crossChainExport, 
@@ -1104,7 +1112,7 @@ const uint256 &CurrencyDefHash(UniValue &chainDefinition);
 
 extern CConnectedChains ConnectedChains;
 extern uint160 ASSETCHAINS_CHAINID;
-CCoinbaseCurrencyState GetInitialCurrencyState(CCurrencyDefinition &chainDef);
+CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainDef);
 CCurrencyValueMap CalculatePreconversions(const CCurrencyDefinition &chainDef, int32_t definitionHeight, CCurrencyValueMap &fees);
 
 #endif

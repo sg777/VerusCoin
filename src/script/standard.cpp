@@ -25,7 +25,7 @@ typedef vector<unsigned char> valtype;
 
 unsigned nMaxDatacarrierBytes = MAX_OP_RETURN_RELAY;
 
-COptCCParams::COptCCParams(std::vector<unsigned char> &vch)
+COptCCParams::COptCCParams(const std::vector<unsigned char> &vch)
 {
     CScript inScr = CScript(vch.begin(), vch.end());
     if (inScr.size() > 1)
@@ -236,35 +236,6 @@ const char* GetTxnOutputType(txnouttype t)
  */
 bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsigned char> >& vSolutionsRet)
 {
-    // Templates
-    static multimap<txnouttype, CScript> mTemplates;
-    if (mTemplates.empty())
-    {
-        // Standard tx, sender provides pubkey, receiver adds signature
-        mTemplates.insert(make_pair(TX_PUBKEY, CScript() << OP_PUBKEY << OP_CHECKSIG));
-
-        // Bitcoin address tx, sender provides hash of pubkey, receiver provides signature and pubkey
-        mTemplates.insert(make_pair(TX_PUBKEYHASH, CScript() << OP_DUP << OP_HASH160 << OP_PUBKEYHASH << OP_EQUALVERIFY << OP_CHECKSIG));
-
-        // Sender provides N pubkeys, receivers provides M signatures
-        mTemplates.insert(make_pair(TX_MULTISIG, CScript() << OP_SMALLINTEGER << OP_PUBKEYS << OP_SMALLINTEGER << OP_CHECKMULTISIG));
-
-        // Empty, provably prunable, data-carrying output
-        if (GetBoolArg("-datacarrier", true))
-            mTemplates.insert(make_pair(TX_NULL_DATA, CScript() << OP_RETURN << OP_SMALLDATA));
-        mTemplates.insert(make_pair(TX_NULL_DATA, CScript() << OP_RETURN));
-    }
-
-    // Shortcut for pay-to-script-hash, which are more constrained than the other types:
-    // it is always OP_HASH160 20 [20 byte hash] OP_EQUAL
-    if (scriptPubKey.IsPayToScriptHash())
-    {
-        typeRet = TX_SCRIPTHASH;
-        vector<unsigned char> hashBytes(scriptPubKey.begin()+2, scriptPubKey.begin()+22);
-        vSolutionsRet.push_back(hashBytes);
-        return true;
-    }
-
     if (IsCryptoConditionsEnabled()) {
         // Shortcut for pay-to-crypto-condition
         CScript ccSubScript = CScript();
@@ -282,7 +253,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     EVAL_SERVICEREWARD,
                     EVAL_EARNEDNOTARIZATION,
                     EVAL_ACCEPTEDNOTARIZATION,
-                    EVAL_FINALIZENOTARIZATION,
+                    EVAL_FINALIZE_NOTARIZATION,
                     EVAL_CURRENCYSTATE,
                     EVAL_RESERVE_TRANSFER,
                     EVAL_RESERVE_OUTPUT,
@@ -295,7 +266,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     EVAL_IDENTITY_RECOVER,
                     EVAL_IDENTITY_COMMITMENT,
                     EVAL_IDENTITY_RESERVATION,
-                    EVAL_IDENTITY_EXPORT
+                    EVAL_FINALIZE_EXPORT
                 });
                 if (VALID_EVAL_CODES.count(cp.evalCode))
                 {
@@ -339,6 +310,35 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
             }
             return false;
         }
+    }
+
+    // Templates
+    static multimap<txnouttype, CScript> mTemplates;
+    if (mTemplates.empty())
+    {
+        // Standard tx, sender provides pubkey, receiver adds signature
+        mTemplates.insert(make_pair(TX_PUBKEY, CScript() << OP_PUBKEY << OP_CHECKSIG));
+
+        // Bitcoin address tx, sender provides hash of pubkey, receiver provides signature and pubkey
+        mTemplates.insert(make_pair(TX_PUBKEYHASH, CScript() << OP_DUP << OP_HASH160 << OP_PUBKEYHASH << OP_EQUALVERIFY << OP_CHECKSIG));
+
+        // Sender provides N pubkeys, receivers provides M signatures
+        mTemplates.insert(make_pair(TX_MULTISIG, CScript() << OP_SMALLINTEGER << OP_PUBKEYS << OP_SMALLINTEGER << OP_CHECKMULTISIG));
+
+        // Empty, provably prunable, data-carrying output
+        if (GetBoolArg("-datacarrier", true))
+            mTemplates.insert(make_pair(TX_NULL_DATA, CScript() << OP_RETURN << OP_SMALLDATA));
+        mTemplates.insert(make_pair(TX_NULL_DATA, CScript() << OP_RETURN));
+    }
+
+    // Shortcut for pay-to-script-hash, which are more constrained than the other types:
+    // it is always OP_HASH160 20 [20 byte hash] OP_EQUAL
+    if (scriptPubKey.IsPayToScriptHash())
+    {
+        typeRet = TX_SCRIPTHASH;
+        vector<unsigned char> hashBytes(scriptPubKey.begin()+2, scriptPubKey.begin()+22);
+        vSolutionsRet.push_back(hashBytes);
+        return true;
     }
 
     // Scan templates

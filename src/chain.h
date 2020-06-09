@@ -707,7 +707,7 @@ public:
     uint256 GetVerusEntropyHash(int forHeight, int *pPOSheight=nullptr, int *pPOWheight=nullptr, int *pALTheight=nullptr) const;
 
     /** Get the Merkle Mountain Range for this chain. */
-    ChainMerkleMountainRange GetMMR()
+    const ChainMerkleMountainRange &GetMMR()
     {
         return mmr;
     }
@@ -723,33 +723,8 @@ public:
         return vChain[index]->GetBlockMMRNode();
     }
 
-    bool GetBlockProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index)
-    {
-        CBlockIndex *pindex = (index < 0 || index >= (int)vChain.size()) ? NULL : vChain[index];
-        if (pindex)
-        {
-            retProof << pindex->BlockProofBridge();
-            return view.GetProof(retProof, index);
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    bool GetMerkleProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index)
-    {
-        CBlockIndex *pindex = (index < 0 || index >= (int)vChain.size()) ? NULL : vChain[index];
-        if (pindex)
-        {
-            retProof << pindex->MMRProofBridge();
-            return view.GetProof(retProof, index);
-        }
-        else
-        {
-            return false;
-        }
-    }
+    bool GetBlockProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index) const;
+    bool GetMerkleProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index) const;
 
     /** Compare two chains efficiently. */
     friend bool operator==(const CChain &a, const CChain &b) {
@@ -759,7 +734,7 @@ public:
 
     /** Efficiently check whether a block is present in this chain. */
     bool Contains(const CBlockIndex *pindex) const {
-        return (*this)[pindex->GetHeight()] == pindex;
+        return !pindex ? false : (*this)[pindex->GetHeight()] == pindex;
     }
 
     /** Find the successor of a block in this chain, or NULL if the given index is not found or is the tip. */

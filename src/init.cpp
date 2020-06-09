@@ -1216,14 +1216,15 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 310000);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 800200);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 800200);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 1053660);
         }
         else if (strcmp(ASSETCHAINS_SYMBOL,"VRSCTEST") == 0)
         {
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 1);
-            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 110);
-            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 110);
-            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 2000);
-            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV6, 2000);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 1);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 1);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 155);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV6, 1600);
         }
         else
         {
@@ -1600,25 +1601,21 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             fReindex = true;
         }
 
-        checkval = DEFAULT_TIMESTAMPINDEX;
-        pblocktree->ReadFlag("timestampindex", checkval);
-        bool defaultState = DEFAULT_TIMESTAMPINDEX ? DEFAULT_TIMESTAMPINDEX : checkval;
-        fTimeStampIndex = GetBoolArg("-timestampindex", defaultState);
-        if (checkval != fTimeStampIndex)
+        fInsightExplorer = GetBoolArg("-insightexplorer", DEFAULT_INSIGHTEXPLORER);
+        pblocktree->ReadFlag("insightexplorer", checkval);
+        if ( checkval != fInsightExplorer )
         {
-            pblocktree->WriteFlag("timestampindex", fTimeStampIndex);
-            fprintf(stderr,"set timestamp index, will reindex. sorry will take a while.\n");
+            pblocktree->WriteFlag("insightexplorer", fInsightExplorer);
+            fprintf(stderr,"set insightexplorer, will reindex. sorry will take a while.\n");
             fReindex = true;
         }
 
-        checkval = DEFAULT_INSIGHTEXPLORER;
-        pblocktree->ReadFlag("insightexplorer", checkval);
-        defaultState = DEFAULT_INSIGHTEXPLORER ? DEFAULT_INSIGHTEXPLORER : checkval;
-        fInsightExplorer = GetBoolArg("-insightexplorer", defaultState);
-        if (checkval != fInsightExplorer)
+        fTimeStampIndex = GetBoolArg("-timestampindex", DEFAULT_TIMESTAMPINDEX);
+        pblocktree->ReadFlag("timestampindex", checkval);
+        if ( checkval != fTimeStampIndex )
         {
-            pblocktree->WriteFlag("insightexplorer", fInsightExplorer);
-            fprintf(stderr,"set main indexes, will reindex. sorry will take a while.\n");
+            pblocktree->WriteFlag("timestampindex", fTimeStampIndex);
+            fprintf(stderr,"set timestampindex, will reindex. sorry will take a while.\n");
             fReindex = true;
         }
     }
@@ -1679,7 +1676,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                 }
 
                 // Check for changed -insightexplorer state
-                if (fInsightExplorer != GetBoolArg("-insightexplorer", false)) {
+                if (fInsightExplorer != GetBoolArg("-insightexplorer", DEFAULT_INSIGHTEXPLORER)) {
                     strLoadError = _("You need to rebuild the database using -reindex to change -insightexplorer");
                     break;
                 }

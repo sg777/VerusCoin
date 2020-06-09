@@ -149,7 +149,7 @@ int32_t komodo_validate_interest(const CTransaction &tx,int32_t txheight,uint32_
 int64_t komodo_block_unlocktime(uint32_t nHeight);
 uint64_t komodo_commission(const CBlock *block);
 int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blocktimep,uint32_t *txtimep,uint256 *utxotxidp,int32_t *utxovoutp,uint64_t *utxovaluep,uint8_t *utxosig);
-int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, uint8_t *utxosig, CPubKey &pk);
+int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CPubKey &pk);
 int32_t komodo_notaryvin(CMutableTransaction &txNew,uint8_t *notarypub33);
 
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &nExtraNonce, bool buildMerkle, uint32_t *pSaveBits)
@@ -701,7 +701,12 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         // if this is not for mining, first determine if we have a right to bother
         if (isStake)
         {
-            uint64_t txfees,utxovalue; uint32_t txtime; uint256 utxotxid; int32_t i,siglen,numsigs,utxovout; uint8_t utxosig[128],*ptr;
+            uint64_t txfees, utxovalue;
+            uint32_t txtime;
+            uint256 utxotxid;
+            int32_t i, siglen, numsigs, utxovout;
+            std::vector<unsigned char> utxosig;
+
             txStaked = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
 
             //if ( blocktime > pindexPrev->GetMedianTimePast()+60 )
@@ -719,10 +724,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 if (siglen > 0)
                     scriptPubKeyIn = CScript(txStaked.vout[0].scriptPubKey);
             }
-            else
-            {
-                siglen = komodo_staked(txStaked, pblock->nBits, &blocktime, &txtime, &utxotxid, &utxovout, &utxovalue, utxosig);
-            }
 
             if (siglen <= 0)
             {
@@ -733,13 +734,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             nStakeTxSize = GetSerializeSize(txStaked, SER_NETWORK, PROTOCOL_VERSION);
             nBlockSize += nStakeTxSize;
 
-            // get the public key and make a miner output if needed for this
-            if (!minerOutputs.size())
-            {
-                minerOutputs.push_back(make_pair((int)1, txStaked.vout[0].scriptPubKey));
-                pk = GetScriptPublicKey(txStaked.vout[0].scriptPubKey);
-                ExtractDestination(minerOutputs[0].second, firstDestination);
-            }
+            pk = GetScriptPublicKey(txStaked.vout[0].scriptPubKey);
+            ExtractDestination(txStaked.vout[0].scriptPubKey, firstDestination);
         }
 
         ConnectedChains.AggregateChainTransfers(firstDestination, nHeight);
@@ -846,17 +842,18 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                     fprintf(stderr,"CreateNewBlock: invalid public key\n");
                     return NULL;
                 }
+                CTxDestination guardedOutputDest = (p.Version() < p.VERSION_EXTENDED_STAKE) ? p.pk : p.delegate;
                 coinbaseTx.vout.push_back(CTxOut(1, CScript()));
-                if (!MakeGuardedOutput(1, p.pk, stakeTx, coinbaseTx.vout.back()))
+                if (!MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back()))
                 {
                     LogPrintf("CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
                     fprintf(stderr,"CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
                     return NULL;
                 }
                 COptCCParams optP;
-                if (!coinbaseTx.vout.back().scriptPubKey.IsPayToCryptoCondition(optP) || !p.IsValid())
+                if (!coinbaseTx.vout.back().scriptPubKey.IsPayToCryptoCondition(optP) || !optP.IsValid())
                 {
-                    MakeGuardedOutput(1, p.pk, stakeTx, coinbaseTx.vout.back());
+                    MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back());
                     LogPrintf("%s: created invalid staking coinbase\n", __func__);
                     fprintf(stderr,"%s: created invalid staking coinbase\n", __func__);
                     return NULL;
@@ -2254,7 +2251,7 @@ void waitForPeers(const CChainParams &chainparams)
                     }
                 }
             } while (fvNodesEmpty || IsNotInSync());
-            MilliSleep(100 + rand() % 400);
+            MilliSleep(500 + rand() % 1000);
         }
     }
 }

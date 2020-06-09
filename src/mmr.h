@@ -144,8 +144,8 @@ public:
         uint256 preHash = hw.GetHash();
 
         hw = HASHALGOWRITER(SER_GETHASH, 0);
-        hw << hash;
-        hw << nRight.hash;
+        hw << preHash;
+        hw << nodePower;
 
         // these separate hashing steps allow the proof to be represented just as a Merkle proof, with steps along the way
         // hashing with nodePower instead of other hashes
@@ -391,16 +391,18 @@ public:
                 }
                 hw << *it;
                 hw << hash;
+                //printf("safeCheck: %s:%s\n", it->GetHex().c_str(), hash.GetHex().c_str());
             }
             else
             {
                 hw << hash;
                 hw << *it;
+                //printf("safeCheck: %s:%s\n", hash.GetHex().c_str(), it->GetHex().c_str());
             }
             hash = hw.GetHash();
             index >>= 1;
+            //printf("safeCheck: %s\n", hash.GetHex().c_str());
         }
-        //printf("end SafeCheck %s\n", hash.GetHex().c_str());
         return hash;
     }
 };
@@ -640,6 +642,7 @@ public:
     const CMMRProof &operator<<(const CMMRNodeBranch &append);
     const CMMRProof &operator<<(const CMMRPowerNodeBranch &append);
     uint256 CheckProof(uint256 checkHash) const;
+    UniValue ToUniValue() const;
 };
 
 // an in memory MMR is represented by a vector of vectors of hashes, each being a layer of nodes of the binary tree, with the lowest layer
@@ -1006,6 +1009,8 @@ public:
         {
             // just make sure the peakMerkle tree is calculated
             GetRoot();
+
+            // if we have leaf information, add it
             std::vector<uint256> toAdd = mmr.layer0[pos].GetLeafHash();
             if (toAdd.size())
             {
@@ -1032,6 +1037,16 @@ public:
                     }
                     else
                     {
+                        /* for (auto &oneNode : peaks)
+                        {
+                            printf("peaknode: ");
+                            for (auto oneHash : oneNode.GetProofHash(oneNode))
+                            {
+                                printf("%s:", oneHash.GetHex().c_str());
+                            }
+                            printf("\n");
+                        } */
+
                         // we are at a peak, the alternate peak to us, or the next thing we should be hashed with, if there is one, is next on our path
                         uint256 peakHash = mmr.GetNode(l, p).hash;
 
@@ -1137,7 +1152,8 @@ public:
                 }
             }
 
-            uint64_t layerNum = 0, layerSize = Sizes[0];
+            // figure out the peak merkle
+            uint64_t layerNum = 0, layerSize = PeakIndexes.size();
             // with an odd number of elements below, the edge passes through
             for (bool passThrough = (layerSize & 1); layerNum == 0 || layerSize > 1; passThrough = (layerSize & 1), layerNum++)
             {

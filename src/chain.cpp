@@ -111,7 +111,7 @@ uint256 CChain::GetVerusEntropyHash(int forHeight, int *pPOSheight, int *pPOWhei
         LogPrintf("%s: invalid height for entropy hash %d, chain height is %d\n", __func__, height, vChain.size() - 1);
         return retVal;
     }
-    if (CConstVerusSolutionVector::GetVersionByHeight(forHeight) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE || height <= 10)
+    if (CConstVerusSolutionVector::GetVersionByHeight(forHeight) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE || height < 11)
     {
         if (vChain[height]->IsVerusPOSBlock())
         {
@@ -199,6 +199,34 @@ const CBlockIndex *CChain::FindFork(const CBlockIndex *pindex) const {
     while (pindex && !Contains(pindex))
         pindex = pindex->pprev;
     return pindex;
+}
+
+bool CChain::GetBlockProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index) const
+{
+    CBlockIndex *pindex = (index < 0 || index >= (int)vChain.size()) ? NULL : vChain[index];
+    if (pindex)
+    {
+        retProof << pindex->BlockProofBridge();
+        return view.GetProof(retProof, index);
+    }
+    else
+    {
+        return false;
+    }
+}
+
+bool CChain::GetMerkleProof(ChainMerkleMountainView &view, CMMRProof &retProof, int index) const
+{
+    CBlockIndex *pindex = (index < 0 || index >= (int)vChain.size()) ? NULL : vChain[index];
+    if (pindex)
+    {
+        retProof << pindex->MMRProofBridge();
+        return view.GetProof(retProof, index);
+    }
+    else
+    {
+        return false;
+    }
 }
 
 CChainPower::CChainPower(CBlockIndex *pblockIndex)

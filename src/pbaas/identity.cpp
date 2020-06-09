@@ -854,24 +854,6 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
-    std::vector<CTxDestination> dests;
-    int minSigs;
-    txnouttype outType;
-    if (ExtractDestinations(tx.vout[outNum].scriptPubKey, outType, dests, minSigs))
-    {
-        uint160 thisID = identity.GetID();
-        for (auto &dest : dests)
-        {
-            uint160 oneDestID;
-            if (dest.which() == COptCCParams::ADDRTYPE_ID && 
-                (oneDestID = GetDestinationID(dest)) != thisID &&
-                !CIdentity::LookupIdentity(CIdentityID(oneDestID)).IsValid())
-            {
-                return state.Error("Destination includes invalid identity");
-            }
-        }
-    }
-
     extern uint160 VERUS_CHAINID;
     extern std::string VERUS_CHAINNAME;
 
@@ -900,8 +882,8 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     return state.Error("Invalid primary identity - does not include identity reservation or spend matching identity");
 }
 
-CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx = nullptr);
-CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx)
+CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx=nullptr, uint32_t *pHeight=nullptr);
+CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx, uint32_t *pHeight)
 {
     CTransaction _sourceTx;
     CTransaction &sourceTx(pSourceTx ? *pSourceTx : _sourceTx);
@@ -911,6 +893,18 @@ CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransact
     uint256 blkHash;
     if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
     {
+        if (pHeight)
+        {
+            auto bIt = mapBlockIndex.find(blkHash);
+            if (bIt == mapBlockIndex.end() || !bIt->second)
+            {
+                *pHeight = chainActive.Height();
+            }
+            else
+            {
+                *pHeight = bIt->second->GetHeight();
+            }
+        }
         COptCCParams p;
         if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
             p.IsValid() && 
@@ -941,7 +935,13 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Attempting to define invalid identity");
     }
 
-    if (oldIdentity.IsInvalidMutation(newIdentity))
+    if (!chainActive.LastTip())
+    {
+        return eval->Error("unable to find chain tip");
+    }
+    uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+
+    if (oldIdentity.IsInvalidMutation(newIdentity, height))
     {
         LogPrintf("Invalid identity modification %s\n", spendingTx.GetHash().GetHex().c_str());
         return eval->Error("Invalid identity modification");
@@ -951,7 +951,7 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
     // data under primary authority control
     if (!fulfilled && !oldIdentity.IsRevoked())
     {
-        if (oldIdentity.IsPrimaryMutation(newIdentity))
+        if (oldIdentity.IsPrimaryMutation(newIdentity, height))
         {
             return eval->Error("Unauthorized identity modification");
         }
@@ -989,7 +989,13 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("Attempting to replace identity with one that is invalid");
     }
 
-    if (oldIdentity.IsInvalidMutation(newIdentity))
+    if (!chainActive.LastTip())
+    {
+        return eval->Error("unable to find chain tip");
+    }
+    uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+
+    if (oldIdentity.IsInvalidMutation(newIdentity, height))
     {
         return eval->Error("Invalid identity modification");
     }
@@ -1043,7 +1049,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     {
         sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
 
-        if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity))
+        if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height))
         {
             return eval->Error("Unauthorized modification of revocation information");
         }
@@ -1087,7 +1093,13 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Attempting to replace identity with one that is invalid");
     }
 
-    if (oldIdentity.IsInvalidMutation(newIdentity))
+    if (!chainActive.LastTip())
+    {
+        return eval->Error("unable to find chain tip");
+    }
+    uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+
+    if (oldIdentity.IsInvalidMutation(newIdentity, height))
     {
         return eval->Error("Invalid identity modification");
     }
@@ -1137,12 +1149,12 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
 
         // if revoked, only fulfilled recovery condition allows primary mutation
-        if (oldIdentity.IsRevoked() && (oldIdentity.IsPrimaryMutation(newIdentity)))
+        if (oldIdentity.IsRevoked() && (oldIdentity.IsPrimaryMutation(newIdentity, height)))
         {
             return eval->Error("Unauthorized modification of revoked identity without recovery authority");
         }
 
-        if (oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity))
+        if (oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity, height))
         {
             return eval->Error("Unauthorized modification of recovery information");
         }
@@ -1181,7 +1193,6 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
     {
         return eval->Error("unable to find chain tip");
     }
-
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
 
     CCommitmentHash ch;
@@ -1268,18 +1279,18 @@ bool IsIdentityInput(const CScript &scriptSig)
     return false;
 }
 
-bool ValidateIdentityExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
+bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
+{
+    return true;
+}
+
+bool IsFinalizeExportInput(const CScript &scriptSig)
 {
     return false;
 }
 
-bool IsIdentityExportInput(const CScript &scriptSig)
+bool FinalizeExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
-    return false;
-}
-
-bool IdentityExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
-{
-    return false;
+    return true;
 }
 

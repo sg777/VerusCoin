@@ -635,13 +635,14 @@ CTransactionComponentProof::CTransactionComponentProof(TransactionMMView &txView
 
 // this validates that all parts of a transaction match and either returns a full transaction
 // and its hash, a partially filled transaction and its MMR root, or NULL
-uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx) const
+uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, bool *pIsPartial) const
 {
     CTransactionHeader txh;
     CMutableTransaction mtx;
 
     uint256 txRoot;
     bool checkOK = false;
+    bool isPartial = true;
     if (components.size())
     {
         if (components[0].elType == CTransactionHeader::TX_HEADER && components[0].Rehydrate(txh))
@@ -714,7 +715,7 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx) con
                     }
                 }
             }
-            if (checkOK)
+            if (checkOK && !txRoot.IsNull())
             {
                 outTx = mtx;
             }
@@ -725,59 +726,20 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx) con
         }
         else if (components[0].elType == CTransactionHeader::TX_FULL && components[0].Rehydrate(outTx))
         {
+            isPartial = false;
             txRoot = outTx.GetHash();
         }
+    }
+    if (pIsPartial)
+    {
+        *pIsPartial = isPartial;
     }
     return txRoot;
 }
 
-// this validates that all parts of a transaction match and either returns a full transaction
-// and its hash, a partially filled transaction and its MMR root, or NULL
+// this validates that all parts of a transaction match and also whether or not it
+// matches the block MMR root, which should be the return value
 uint256 CPartialTransactionProof::CheckPartialTransaction(CTransaction &outTx, bool *pIsPartial) const
 {
-    CTransactionHeader txh;
-    CMutableTransaction mtx;
-
-    uint256 txRoot;
-    bool checkOK = false;
-    if (components.size())
-    {
-        if (components[0].elType == CTransactionHeader::TX_HEADER && components[0].Rehydrate(txh))
-        {
-            if (pIsPartial)
-            {
-                *pIsPartial = false;
-            }
-
-            txRoot = components[0].CheckProof();
-
-            checkOK = true;
-            mtx = txh.RehydrateTransactionScaffold();
-            for (int i = 1; i < components.size(); i++)
-            {
-                if (components[i].CheckProof() != txRoot)
-                {
-                    checkOK = false;
-                    break;
-                }
-            }
-            if (checkOK)
-            {
-                outTx = mtx;
-            }
-            else
-            {
-                txRoot = uint256();
-            }
-        }
-        else if (components[0].elType == CTransactionHeader::TX_FULL && components[0].Rehydrate(outTx))
-        {
-            if (pIsPartial)
-            {
-                *pIsPartial = false;
-            }
-            txRoot = outTx.GetHash();
-        }
-    }
-    return txProof.CheckProof(txRoot);
+    return txProof.CheckProof(GetPartialTransaction(outTx, pIsPartial));
 }

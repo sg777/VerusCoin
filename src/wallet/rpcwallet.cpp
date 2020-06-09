@@ -2113,6 +2113,16 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
             MaybePushAddress(entry, s.destination);
             entry.push_back(Pair("category", bIsStake ? "stake" : "send"));
             entry.push_back(Pair("amount", ValueFromAmount(-s.amount)));
+
+            if (wtx.vout.size() > s.vout)
+            {
+                CCurrencyValueMap tokenAmounts = wtx.vout[s.vout].scriptPubKey.ReserveOutValue();
+                if (tokenAmounts.valueMap.size())
+                {
+                    entry.push_back(Pair("tokenamounts", tokenAmounts.ToUniValue()));
+                }
+            }
+
             entry.push_back(Pair("vout", s.vout));
             entry.push_back(Pair("fee", ValueFromAmount(-nFee)));
             if (fLong)
@@ -2170,7 +2180,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 }
 
                 entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
-                if (rtxd.IsReserve())
+                if (wtx.vout.size() > r.vout && rtxd.IsReserve())
                 {
                     entry.push_back(Pair("reserveamount", wtx.vout[r.vout].scriptPubKey.ReserveOutValue().ToUniValue()));
                 }
@@ -6197,7 +6207,7 @@ int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blockt
     return(siglen);
 }
 
-int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, uint8_t *utxosig, CPubKey &pk)
+int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CPubKey &pk)
 {
     try
     {

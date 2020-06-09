@@ -427,35 +427,82 @@ std::vector<CTransferDestination> DestinationsToTransferDestinations(const std::
 
 class COptCCParams
 {
-    public:
-        static const uint8_t VERSION_V1 = 1;
-        static const uint8_t VERSION_V2 = 2;
-        static const uint8_t VERSION_V3 = 3;
+public:
+    static const uint8_t VERSION_V1 = 1;
+    static const uint8_t VERSION_V2 = 2;
+    static const uint8_t VERSION_V3 = 3;
 
-        static const uint8_t ADDRTYPE_INVALID = 0;
-        static const uint8_t ADDRTYPE_PK = 1;
-        static const uint8_t ADDRTYPE_PKH = 2;
-        static const uint8_t ADDRTYPE_SH = 3;
-        static const uint8_t ADDRTYPE_ID = 4;
-        static const uint8_t ADDRTYPE_QUANTUM = 5;
-        static const uint8_t ADDRTYPE_LAST = 5;
+    static const uint8_t ADDRTYPE_INVALID = 0;
+    static const uint8_t ADDRTYPE_PK = 1;
+    static const uint8_t ADDRTYPE_PKH = 2;
+    static const uint8_t ADDRTYPE_SH = 3;
+    static const uint8_t ADDRTYPE_ID = 4;
+    static const uint8_t ADDRTYPE_QUANTUM = 5;
+    static const uint8_t ADDRTYPE_LAST = 5;
 
-        uint8_t version;
-        uint8_t evalCode;
-        uint8_t m, n; // for m of n sigs required, n pub keys for sigs will follow
-        std::vector<CTxDestination> vKeys;
-        std::vector<std::vector<unsigned char>> vData; // extra parameters
+    uint8_t version;
+    uint8_t evalCode;
+    uint8_t m, n; // for m of n sigs required, n pub keys for sigs will follow
+    std::vector<CTxDestination> vKeys;
+    std::vector<std::vector<unsigned char>> vData; // extra parameters
 
-        COptCCParams() : version(0), evalCode(0), m(0), n(0) {}
+    COptCCParams() : version(0), evalCode(0), m(0), n(0) {}
 
-        COptCCParams(uint8_t ver, uint8_t code, uint8_t _m, uint8_t _n, const std::vector<CTxDestination> &vkeys, const std::vector<std::vector<unsigned char>> &vdata) : 
-            version(ver), evalCode(code), m(_m), n(_n), vKeys(vkeys), vData(vdata) {}
+    COptCCParams(uint8_t ver, uint8_t code, uint8_t _m, uint8_t _n, const std::vector<CTxDestination> &vkeys, const std::vector<std::vector<unsigned char>> &vdata) : 
+        version(ver), evalCode(code), m(_m), n(_n), vKeys(vkeys), vData(vdata) {}
 
-        COptCCParams(std::vector<unsigned char> &vch);
+    COptCCParams(const std::vector<unsigned char> &vch);
 
-        bool IsValid() const { return version == VERSION_V1 || version == VERSION_V2 || version == VERSION_V3; }
+    bool IsValid() const { return version == VERSION_V1 || version == VERSION_V2 || version == VERSION_V3; }
 
-        std::vector<unsigned char> AsVector() const;
+    std::vector<unsigned char> AsVector() const;
+
+    std::vector<CTxDestination> GetDestinations() const
+    {
+        std::vector<CTxDestination> destinations;
+        if (IsValid() && (vKeys.size()))
+        {
+            COptCCParams master;
+            if (version >= VERSION_V3 && vData.size() > 1 && (master = COptCCParams(vData.back())).IsValid())
+            {
+                std::set<CTxDestination> dests;
+                for (auto dest : master.vKeys)
+                {
+                    dests.insert(dest);
+                }
+                for (auto dest : vKeys)
+                {
+                    if (dest.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        dests.insert(dest);
+                    }
+                }
+                for (int i = 1; i < (int)(vData.size() - 1); i++)
+                {
+                    COptCCParams oneP(vData[i]);
+                    if (oneP.IsValid())
+                    {
+                        for (auto dest : oneP.vKeys)
+                        {
+                            if (dest.which() == COptCCParams::ADDRTYPE_ID)
+                            {
+                                dests.insert(dest);
+                            }
+                        }
+                    }
+                }
+                for (auto dest : dests)
+                {
+                    destinations.push_back(dest);
+                }
+            }
+            else
+            {
+                destinations.push_back(vKeys[0]);
+            }
+        }
+        return destinations;
+    }
 };
 
 // This is for STAKEGUARD2, which is versioned and enables staking the reserve of a reserve currency

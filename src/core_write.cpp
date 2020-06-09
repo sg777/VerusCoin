@@ -316,7 +316,7 @@ UniValue CPBaaSNotarization::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int32_t)nVersion));
-    obj.push_back(Pair("chainid", systemID.GetHex()));
+    obj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
     obj.push_back(Pair("notaryaddress", EncodeDestination(notaryDest)));
     obj.push_back(Pair("notarizationheight", (int32_t)notarizationHeight));
     obj.push_back(Pair("mmrroot", mmrRoot.GetHex()));
@@ -611,6 +611,57 @@ UniValue CIdentity::ToUniValue() const
     return obj;
 }
 
+UniValue CMMRProof::ToUniValue() const
+{
+    UniValue retObj(UniValue::VOBJ);
+    for (auto &proof : proofSequence)
+    {
+        UniValue branchArray(UniValue::VARR);
+        switch (proof->branchType)
+        {
+            case CMerkleBranchBase::BRANCH_BTC:
+            {
+                CBTCMerkleBranch &branch = *(CBTCMerkleBranch *)(proof);
+                retObj.push_back(Pair("branchtype", "BTC"));
+                retObj.push_back(Pair("index", (int64_t)(branch.nIndex)));
+                for (auto &oneHash : branch.branch)
+                {
+                    branchArray.push_back(oneHash.GetHex());
+                }
+                retObj.push_back(Pair("hashes", branchArray));
+                break;
+            }
+            case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
+            {
+                CMMRNodeBranch &branch = *(CMMRNodeBranch *)(proof);
+                retObj.push_back(Pair("branchtype", "MMRBLAKENODE"));
+                retObj.push_back(Pair("index", (int64_t)(branch.nIndex)));
+                retObj.push_back(Pair("mmvsize", (int64_t)(branch.nSize)));
+                for (auto &oneHash : branch.branch)
+                {
+                    branchArray.push_back(oneHash.GetHex());
+                }
+                retObj.push_back(Pair("hashes", branchArray));
+                break;
+            }
+            case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
+            {
+                CMMRPowerNodeBranch &branch = *(CMMRPowerNodeBranch *)(proof);
+                retObj.push_back(Pair("branchtype", "MMRBLAKEPOWERNODE"));
+                retObj.push_back(Pair("index", (int64_t)(branch.nIndex)));
+                retObj.push_back(Pair("mmvsize", (int64_t)(branch.nSize)));
+                for (auto &oneHash : branch.branch)
+                {
+                    branchArray.push_back(oneHash.GetHex());
+                }
+                retObj.push_back(Pair("hashes", branchArray));
+                break;
+            }
+        };
+    }
+    return retObj;
+}
+
 void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex, bool fIncludeAsm)
 {
     txnouttype type;
@@ -677,14 +728,14 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 break;
             }
 
-            case EVAL_FINALIZENOTARIZATION:
+            case EVAL_FINALIZE_NOTARIZATION:
             {
-                CNotarizationFinalization finalization;
+                CTransactionFinalization finalization;
 
                 if (p.vData.size())
                 {
-                    finalization = CNotarizationFinalization(p.vData[0]);
-                    out.push_back(Pair("pbaasFinalization", finalization.ToUniValue()));
+                    finalization = CTransactionFinalization(p.vData[0]);
+                    out.push_back(Pair("finalizeNotarization", finalization.ToUniValue()));
                 }
                 break;
             }
@@ -829,17 +880,14 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 out.push_back(Pair("stakeguard", ""));
                 break;
 
-            case EVAL_IDENTITY_EXPORT:
+            case EVAL_FINALIZE_EXPORT:
             {
-                CIdentityExport identityExport;
+                CTransactionFinalization finalization;
 
-                if (p.vData.size() && (identityExport = CIdentityExport(p.vData[0])).IsValid())
+                if (p.vData.size())
                 {
-                    out.push_back(Pair("identityexport", identityExport.ToUniValue()));
-                }
-                else
-                {
-                    out.push_back(Pair("identityexport", "invalid"));
+                    finalization = CTransactionFinalization(p.vData[0]);
+                    out.push_back(Pair("finalizeexport", finalization.ToUniValue()));
                 }
                 break;
             }

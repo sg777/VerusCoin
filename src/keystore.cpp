@@ -298,7 +298,7 @@ bool CBasicKeyStore::GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdent
             CIdentityMapKey idKey(primaryIdentity.first);
 
             // consider our canspend and cansign on revocation and recovery
-            if (primaryIdentity.second.revocationAuthority != idID)
+            if (!primaryIdentity.second.IsRevoked() && primaryIdentity.second.revocationAuthority != idID)
             {
                 if (GetIdentity(primaryIdentity.second.revocationAuthority, revocationAuthority))
                 {
@@ -306,7 +306,7 @@ bool CBasicKeyStore::GetIdentities(std::vector<std::pair<CIdentityMapKey, CIdent
                 }
             }
 
-            if (primaryIdentity.second.recoveryAuthority != idID)
+            if (primaryIdentity.second.IsRevoked() && primaryIdentity.second.recoveryAuthority != idID)
             {
                 if (GetIdentity(primaryIdentity.second.recoveryAuthority, recoveryAuthority))
                 {

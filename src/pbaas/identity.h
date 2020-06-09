@@ -234,7 +234,6 @@ public:
         }       
         return false; 
     }
-
 };
 
 class CIdentity : public CPrincipal
@@ -321,7 +320,7 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CPrincipal *)this);
         READWRITE(parent);
-        READWRITE(name);
+        READWRITE(LIMITED_STRING(name, MAX_NAME_LEN));
 
         std::vector<std::pair<uint160, uint256>> kvContent;
         if (ser_action.ForRead())
@@ -451,10 +450,13 @@ public:
     // creates an output script to control updates to this identity
     CScript IdentityUpdateOutputScript() const;
 
-    bool IsInvalidMutation(const CIdentity &newIdentity) const
+    bool IsInvalidMutation(const CIdentity &newIdentity, uint32_t height) const
     {
+        auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         if (parent != newIdentity.parent ||
-            name != newIdentity.name ||
+            (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name) ||
+            (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && newIdentity.HasActiveCurrency()) ||
+            GetID() != newIdentity.GetID() ||
             ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
             ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
             ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
@@ -466,9 +468,11 @@ public:
         return false;
     }
 
-    bool IsPrimaryMutation(const CIdentity &newIdentity) const
+    bool IsPrimaryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
+        auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         if (CPrincipal::IsPrimaryMutation(newIdentity) ||
+            (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
             privateAddresses != newIdentity.privateAddresses ||
             (HasActiveCurrency() != newIdentity.HasActiveCurrency()))
@@ -487,9 +491,11 @@ public:
         return false;
     }
 
-    bool IsRevocationMutation(const CIdentity &newIdentity) const 
+    bool IsRevocationMutation(const CIdentity &newIdentity, uint32_t height) const 
     {
-        if (revocationAuthority != newIdentity.revocationAuthority)
+        auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+        if (revocationAuthority != newIdentity.revocationAuthority &&
+            (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 || !IsRevoked()))
         {
             return true;
         }
@@ -505,9 +511,12 @@ public:
         return false;
     }
 
-    bool IsRecoveryMutation(const CIdentity &newIdentity) const
+    bool IsRecoveryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
-        if (recoveryAuthority != newIdentity.recoveryAuthority)
+        auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+        if (recoveryAuthority != newIdentity.recoveryAuthority ||
+            (revocationAuthority != newIdentity.revocationAuthority &&
+            (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && IsRevoked())))
         {
             return true;
         }
@@ -592,58 +601,6 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CIdentity *)this);
         READWRITE(txid);
-    }
-};
-
-class CIdentityExport
-{
-public:
-    enum
-    {
-        VERSION_INVALID = 0,
-        VERSION_FIRST = 1,
-        VERSION_CURRENT = 1,
-        VERSION_LAST = 1,
-        DEFAULT_EXPORT_FEE = 30000
-    };
-    int32_t version;
-    CIdentityID idID;                       // the identity we are registering on or transferring to another chain or system
-    uint256 idHash;                         // hash of the identity object when this transaction was mined, used to prove transfer
-    uint160 currencyID;                     // currency in which registration fees are being paid, which get transferred to the destination system
-    CAmount fees;                           // cross-chain network fees only, separated out to enable market conversions
-    uint160 systemID;                       // system to export to, which may represent a PBaaS chain or external bridge
-
-    CIdentityExport() : version(VERSION_INVALID), fees(0) {}
-    CIdentityExport(const UniValue &uni);
-    CIdentityExport(const CIdentityID &id, const uint256 &hash, const uint160 &cID, CAmount Fees, const uint160 &systemIDTarget) : 
-            version(VERSION_CURRENT), idID(id), idHash(hash), currencyID(cID), fees(Fees), systemID(systemIDTarget) {}
-    CIdentityExport(const std::vector<unsigned char> &vch)
-    {
-        ::FromVector(vch, *this);
-    }
-
-    UniValue ToUniValue() const
-    {
-        UniValue retVal(UniValue::VOBJ);
-        retVal.push_back(std::make_pair("exportingidentity", EncodeDestination(idID)));
-        return retVal;
-    }
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(version);
-        READWRITE(idID);
-        READWRITE(idHash);
-        READWRITE(currencyID);
-        READWRITE(fees);
-        READWRITE(systemID);
-    }
-    
-    bool IsValid() const
-    {
-        return version >= VERSION_FIRST && version <= VERSION_LAST  && !idID.IsNull()  && !systemID.IsNull();
     }
 };
 
@@ -734,8 +691,8 @@ bool IsIdentityInput(const CScript &scriptSig);
 bool ValidateQuantumKeyOut(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled);
 bool IsQuantumKeyOutInput(const CScript &scriptSig);
 bool PrecheckQuantumKeyOut(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
-bool ValidateIdentityExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
-bool IsIdentityExportInput(const CScript &scriptSig);
-bool IdentityExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
+bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool IsFinalizeExportInput(const CScript &scriptSig);
+bool FinalizeExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 
 #endif // IDENTITY_H

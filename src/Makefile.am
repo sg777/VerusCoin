@@ -47,15 +47,7 @@ BITCOIN_INCLUDES += -I$(srcdir)/snark
 BITCOIN_INCLUDES += -I$(srcdir)/snark/libsnark
 BITCOIN_INCLUDES += -I$(srcdir)/univalue/include
 
-if TARGET_WINDOWS
 LIBBITCOIN_SERVER=libbitcoin_server.a -lcurl
-endif
-if TARGET_DARWIN
-LIBBITCOIN_SERVER=libbitcoin_server.a -lcurl
-else
-LIBBITCOIN_SERVER=libbitcoin_server.a -lcurl
-endif
-
 LIBBITCOIN_WALLET=libbitcoin_wallet.a
 LIBBITCOIN_COMMON=libbitcoin_common.a
 LIBBITCOIN_CLI=libbitcoin_cli.a
@@ -596,6 +588,10 @@ verusd_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
 verusd_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 verusd_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
+if TARGET_DARWIN
+verusd_LDFLAGS += -static-libgcc
+endif
+
 if TARGET_WINDOWS
 verusd_SOURCES += bitcoind-res.rc
 endif
@@ -644,6 +640,10 @@ verus_SOURCES = bitcoin-cli.cpp
 verus_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(EVENT_CFLAGS)
 verus_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 verus_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
+
+if TARGET_DARWIN
+verus_LDFLAGS += -static-libgcc
+endif
 
 # wallet-utility binary #
 if ENABLE_WALLET

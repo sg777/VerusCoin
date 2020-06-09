@@ -88,11 +88,13 @@ uint256 CMMRProof::CheckProof(uint256 hash) const
             case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
             {
                 hash = ((CMMRNodeBranch *)pProof)->SafeCheck(hash);
+                //printf("Result from CMMRNodeBranch check: %s\n", hash.GetHex().c_str());
                 break;
             }
             case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
             {
                 hash = ((CMMRPowerNodeBranch *)pProof)->SafeCheck(hash);
+                //printf("Result from CMMRPowerNodeBranch check: %s\n", hash.GetHex().c_str());
                 break;
             }
         }
@@ -132,9 +134,10 @@ uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int
             }
         }
 
-        uint64_t layerNum = 0, layerSize = Sizes[0];
+        // figure out the peak merkle
+        uint64_t layerNum = 0, layerSize = PeakIndexes.size();
         // with an odd number of elements below, the edge passes through
-        for (bool passThrough = (layerSize & 1); layerNum == 0 || layerSize > 1; passThrough = (layerSize & 1), layerNum++)
+        for (int passThrough = (layerSize & 1); layerNum == 0 || layerSize > 1; passThrough = (layerSize & 1), layerNum++)
         {
             layerSize = (layerSize >> 1) + passThrough;
             if (layerSize)
@@ -203,6 +206,7 @@ uint64_t CMerkleBranchBase::GetMMRProofIndex(uint64_t pos, uint64_t mmvSize, int
                             {
                                 // hash with the one before us
                                 retIndex |= ((uint64_t)1) << bitPos;
+                                bitPos++;
 
                                 for (int i = 0; i < extrahashes; i++)
                                 {
