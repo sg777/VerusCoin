@@ -508,7 +508,30 @@ bool StakeGuardValidate(struct CCcontract_info *cp, Eval* eval, const CTransacti
 
         if (ccp.version >= COptCCParams::VERSION_V3)
         {
-            signedByFirstKey = fulfilled;
+            CPubKey defaultPubKey(ParseHex(cp->CChexstr));
+
+            CSmartTransactionSignatures smartSigs;
+            bool signedByDefaultKey = false;
+            std::vector<unsigned char> ffVec = GetFulfillmentVector(tx.vin[nIn].scriptSig);
+            smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()));
+            CKeyID checkKeyID = defaultPubKey.GetID();
+            for (auto &keySig : smartSigs.signatures)
+            {
+                CPubKey thisKey;
+                thisKey.Set(keySig.second.pubKeyData.begin(), keySig.second.pubKeyData.end());
+                if (thisKey.GetID() == checkKeyID)
+                {
+                    signedByDefaultKey = true;
+                    break;
+                }
+            }
+
+            // if we don't have enough signatures to satisfy conditions,
+            // it will fail before we check this. that means if it is not signed
+            // by the default key, it must be signed / fulfilled by the alternate, which is
+            // the first condition/key/identity
+            signedByFirstKey = fulfilled || !signedByDefaultKey;
+
             if (!signedByFirstKey && 
                 params.size() == 2 &&
                 params[0].size() > 0 && 
@@ -548,31 +571,8 @@ bool StakeGuardValidate(struct CCcontract_info *cp, Eval* eval, const CTransacti
 
             if (keys.size() == 2)
             {
-                if (cc && ccp.version < COptCCParams::VERSION_V3)
-                {
-                    ccFulfillmentCheck fc = {keys, vc};
-                    signedByFirstKey = (IsCCFulfilled(cc, &fc) != 0);
-                }
-                else if (ccp.version >= COptCCParams::VERSION_V3)
-                {
-                    CSmartTransactionSignatures smartSigs;
-                    if (!cc)
-                    {
-                        std::vector<unsigned char> ffVec = GetFulfillmentVector(tx.vin[nIn].scriptSig);
-                        smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()));
-                        uint160 checkHash = GetDestinationID(keys[0]);
-                        for (auto &keySig : smartSigs.signatures)
-                        {
-                            CPubKey thisKey;
-                            thisKey.Set(keySig.second.pubKeyData.begin(), keySig.second.pubKeyData.end());
-                            if (thisKey.GetID() == checkHash)
-                            {
-                                signedByFirstKey = true;
-                                break;
-                            }
-                        }
-                    }
-                }
+                ccFulfillmentCheck fc = {keys, vc};
+                signedByFirstKey = (IsCCFulfilled(cc, &fc) != 0);
 
                 if (!signedByFirstKey && 
                     ccp.evalCode == EVAL_STAKEGUARD && 
