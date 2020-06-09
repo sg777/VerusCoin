@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.6.5-dev-44
+  VERSION: 0.7.0
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
@@ -14,7 +14,7 @@ variables:
   DOWNSTREAM_AGAMA_BRANCH: ${CI_COMMIT_REF_NAME}
   POST_MESSAGE: "Source: ${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}\n
   Pipeline Trigger: ${CI_PIPELINE_SOURCE}\n
-  Commit: https://github.com/VerusCoin/VerusCoin/commit/${CI_COMMIT_SHA}\n
+  Commit: https://github.com/VerusCoin/${CI_PROJECT_NAME}/commit/${CI_COMMIT_SHA}\n
   ${CI_COMMIT_MESSAGE}"
   STRIP_BINARIES: "true"
 ########################################################################################################################
