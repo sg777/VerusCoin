@@ -407,7 +407,7 @@ int32_t komodo_notaries(uint8_t pubkeys[64][33],int32_t height,uint32_t timestam
             if ( did4 == 0 )
             {
                 n4 = (int32_t)(sizeof(Notaries_elected4)/sizeof(*Notaries_elected4));
-                for (i=0; i<n2; i++)
+                for (i=0; i<n4; i++)
                     decode_hex(elected_pubkeys4[i],33,(char *)Notaries_elected4[i][1]);
                 if ( 0 && ASSETCHAINS_SYMBOL[0] != 0 )
                     fprintf(stderr,"%s height.%d t.%u elected.%d notaries2\n",ASSETCHAINS_SYMBOL,height,timestamp,n4);

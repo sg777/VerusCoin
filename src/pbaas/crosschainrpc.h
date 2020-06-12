@@ -412,7 +412,7 @@ public:
 
     static uint160 GetID(const std::string &Name, uint160 &Parent);
 
-    uint160 GetID(const std::string &Name) const
+    static inline uint160 GetID(const std::string &Name)
     {
         uint160 Parent;
         return GetID(Name, Parent);
