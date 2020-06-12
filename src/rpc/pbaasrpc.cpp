@@ -999,6 +999,10 @@ uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurr
     {
         return retVal;
     }
+    if (CCurrencyDefinition::GetID(currencyStr) == ConnectedChains.ThisChain().GetID())
+    {
+        return ConnectedChains.ThisChain().GetID();
+    }
     CTxDestination currencyDest = DecodeDestination(currencyStr);
     if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
     {
@@ -3078,8 +3082,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "   \"hextx\" : \"hex\"         (string) The hexadecimal, serialized transaction if (returntx) is true\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("sendcurrency", "\"*\" '[{\"destination\":\"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\" ,\"amount\":500.0},...]'")
-            + HelpExampleRpc("sendcurrency", "\"bob@\" '[{\"currency\":\"btc\", \"destination\":\"alice@quad\", \"amount\":500.0},...]'")
+            + HelpExampleCli("sendcurrency", "\"*\" '[{\"address\":\"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\" ,\"amount\":500.0},...]'")
+            + HelpExampleRpc("sendcurrency", "\"bob@\" '[{\"currency\":\"btc\", \"address\":\"alice@quad\", \"amount\":500.0},...]'")
         );
     }
 

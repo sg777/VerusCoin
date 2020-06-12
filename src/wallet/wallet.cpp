@@ -5457,9 +5457,9 @@ bool CWallet::SelectReserveCoins(const CCurrencyValueMap& targetReserveValues,
     AvailableReserveCoins(vCoinsWithCoinbase, true, coinControl, true, true, pOnlyFromDest, &targetReserveValues);
     fOnlyCoinbaseCoinsRet = vCoinsNoCoinbase.size() == 0 && vCoinsWithCoinbase.size() > 0;
 
-    // If coinbase utxos can only be sent to zaddrs, exclude any coinbase utxos from coin selection
-    // TODO (after identity update, don't protect coinbases when making these outputs)
-    bool fProtectCoinbase = Params().GetConsensus().fCoinbaseMustBeProtected;
+    // coinbase protection forcing them to be spent only to z-addresses ended
+    // when identities were released
+    bool fProtectCoinbase = false;
 
     vector<COutput> vCoins = (fProtectCoinbase) ? vCoinsNoCoinbase : vCoinsWithCoinbase;
 
@@ -6236,13 +6236,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                                         coinControl,
                                         pOnlyFromDest))
                 {
-                    if (fOnlyCoinbaseCoins && Params().GetConsensus().fCoinbaseMustBeProtected) {
-                        strFailReason = _("Coinbase funds can only be sent to a zaddr");
-                    } else if (fNeedCoinbaseCoins) {
-                        strFailReason = _("Insufficient funds, coinbase funds can only be spent after they have been sent to a zaddr");
-                    } else {
-                        strFailReason = _("Insufficient funds");
-                    }
+                    strFailReason = _("Insufficient funds");
                     return false;
                 }
 
