@@ -3082,7 +3082,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "   \"hextx\" : \"hex\"         (string) The hexadecimal, serialized transaction if (returntx) is true\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("sendcurrency", "\"*\" '[{\"address\":\"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\" ,\"amount\":500.0},...]'")
+            + HelpExampleCli("sendcurrency", "\"*\" '[{\"currency\":\"btc\",\"address\":\"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\" ,\"amount\":500.0},...]'")
             + HelpExampleRpc("sendcurrency", "\"bob@\" '[{\"currency\":\"btc\", \"address\":\"alice@quad\", \"amount\":500.0},...]'")
         );
     }
