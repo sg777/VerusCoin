@@ -26,7 +26,7 @@ class CActivationHeight
             SOLUTION_VERUSV3 = 2,
             SOLUTION_VERUSV4 = 3,
             SOLUTION_VERUSV5 = 4,
-            SOLUTION_VERUSV5_1 = 4,
+            SOLUTION_VERUSV5_1 = 5,
             SOLUTION_VERUSV6 = 6,
             ACTIVATE_VERUSHASH2 = SOLUTION_VERUSV2,
             ACTIVATE_EXTENDEDSOLUTION = SOLUTION_VERUSV3,
