@@ -81,7 +81,7 @@ CPBaaSPreHeader::CPBaaSPreHeader(const CBlockHeader &bh)
     nNonce = bh.nNonce;
     nBits = bh.nBits;
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(bh.nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         hashPrevMMRRoot = descr.hashPrevMMRRoot;
         hashBlockMMRRoot = descr.hashBlockMMRRoot;
@@ -101,7 +101,7 @@ ChainMMRNode CBlockHeader::GetBlockMMRNode() const
 uint256 CBlockHeader::GetPrevMMRRoot() const
 {
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         return descr.hashPrevMMRRoot;
     }
@@ -114,7 +114,7 @@ uint256 CBlockHeader::GetPrevMMRRoot() const
 void CBlockHeader::SetPrevMMRRoot(const uint256 &prevMMRRoot)
 {
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         descr.hashPrevMMRRoot = prevMMRRoot;
     }
@@ -124,7 +124,7 @@ void CBlockHeader::SetPrevMMRRoot(const uint256 &prevMMRRoot)
 uint256 CBlockHeader::GetBlockMMRRoot() const
 {
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         return descr.hashBlockMMRRoot;
     }
@@ -137,7 +137,7 @@ uint256 CBlockHeader::GetBlockMMRRoot() const
 void CBlockHeader::SetBlockMMRRoot(const uint256 &transactionMMRRoot)
 {
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         descr.hashBlockMMRRoot = transactionMMRRoot;
     }
@@ -231,7 +231,7 @@ int32_t CBlockHeader::AddPBaaSHeader(const CPBaaSBlockHeader &pbh)
 bool CBlockHeader::AddUpdatePBaaSHeader(const CPBaaSBlockHeader &pbh)
 {
     CPBaaSBlockHeader pbbh;
-    if (nVersion == VERUS_V2 && CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS)
+    if (nVersion == VERUS_V2 && CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS_HEADER)
     {
         if (int32_t idx = GetPBaaSHeader(pbbh, pbh.chainID) != -1)
         {
@@ -249,7 +249,7 @@ bool CBlockHeader::AddUpdatePBaaSHeader(const CPBaaSBlockHeader &pbh)
 // This is required to make a valid PoS or PoW block.
 bool CBlockHeader::AddUpdatePBaaSHeader()
 {
-    if (nVersion == VERUS_V2 && CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS)
+    if (nVersion == VERUS_V2 && CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS_HEADER)
     {
         CPBaaSBlockHeader pbh(ASSETCHAINS_CHAINID, CPBaaSPreHeader(*this));
 
@@ -297,7 +297,10 @@ uint256 CBlockHeader::GetVerusV2Hash() const
 
             // in order for this to work, the PBaaS hash of the pre-header must match the header data
             // otherwise, it cannot clear the canonical data and hash in a chain-independent manner
-            if (CConstVerusSolutionVector::HasPBaaSHeader(nSolution) && CheckNonCanonicalData())
+            int pbaasType;
+            if ((pbaasType = CConstVerusSolutionVector::HasPBaaSHeader(nSolution)) &&
+                (CheckNonCanonicalData() ||
+                 (pbaasType == -1 && solutionVersion == CActivationHeight::ACTIVATE_PBAAS_HEADER)))
             {
                 CBlockHeader bh = CBlockHeader(*this);
                 bh.ClearNonCanonicalData();
