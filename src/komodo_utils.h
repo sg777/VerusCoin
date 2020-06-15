@@ -1726,7 +1726,7 @@ void komodo_args(char *argv0)
     if ( strlen(NOTARY_PUBKEY.c_str()) == 66 )
     {
         CPubKey pubKey = CPubKey(ParseHex(NOTARY_PUBKEY));
-        if (pubKey.IsFullyValid())
+        if (pubKey.IsValid())
         {
             USE_EXTERNAL_PUBKEY = 1;
             if ( IS_KOMODO_NOTARY == 0 )
