@@ -298,13 +298,13 @@ uint256 CBlockHeader::GetVerusV2Hash() const
             // in order for this to work, the PBaaS hash of the pre-header must match the header data
             // otherwise, it cannot clear the canonical data and hash in a chain-independent manner
             int pbaasType = CConstVerusSolutionVector::HasPBaaSHeader(nSolution);
-            //bool debugPrint = false;
+            bool debugPrint = false;
             //if (pbaasType != 0 && solutionVersion == CActivationHeight::SOLUTION_VERUSV5_1)
             //{
             //    debugPrint = true;
             //    printf("%s: version V5_1 header, pbaasType: %d, CheckNonCanonicalData: %d\n", __func__, pbaasType, CheckNonCanonicalData());
             //}
-            if (pbaasType == 1 && CheckNonCanonicalData())
+            if (pbaasType != 0 && CheckNonCanonicalData())
             {
                 CBlockHeader bh = CBlockHeader(*this);
                 bh.ClearNonCanonicalData();
