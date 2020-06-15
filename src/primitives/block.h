@@ -222,7 +222,7 @@ public:
         nBits = 0;
         nNonce = uint256();
         CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-        if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+        if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
         {
             descr.hashPrevMMRRoot = descr.hashBlockMMRRoot = uint256();
             CConstVerusSolutionVector::SetDescriptor(nSolution, descr);
