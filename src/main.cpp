@@ -3516,7 +3516,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         //fprintf(stderr,"checkblock failure in connectblock futureblock.%d\n",futureblock);
         return false;
     }
-    
+
     // verify that the view's current state corresponds to the previous block
     uint256 hashPrevBlock = pindex->pprev == NULL ? uint256() : pindex->pprev->GetBlockHash();
 
@@ -5541,9 +5541,10 @@ bool ContextualCheckBlock(
         std::vector<unsigned char> vch = block.nSolution;
         uint32_t ver = CVerusSolutionVector(vch).Version();
         // we let some V3's slip by, so enforce correct version for all versions after V3
-        if (ver < CActivationHeight::SOLUTION_VERUSV2 || (CConstVerusSolutionVector::GetVersionByHeight(nHeight) > CActivationHeight::SOLUTION_VERUSV3 && ver != CConstVerusSolutionVector::GetVersionByHeight(nHeight)))
+        int solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+        if (ver < CActivationHeight::SOLUTION_VERUSV2 || (solutionVersion > CActivationHeight::SOLUTION_VERUSV3 && ver != solutionVersion))
         {
-            return state.DoS(10, error("%s: block header has incorrect version", __func__), REJECT_INVALID, "incorrect-block-version");
+            return state.DoS(10, error("%s: block header has incorrect version %d, should be %d", __func__, ver, solutionVersion), REJECT_INVALID, "incorrect-block-version");
         }
     }
 
