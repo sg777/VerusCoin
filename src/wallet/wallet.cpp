@@ -1997,9 +1997,16 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
         if (extendedStake)
         {
             CTxDestination dest;
-            if (VERUS_DEFAULTID.IsNull())
+            if (VERUS_DEFAULTID.IsNull() || USE_EXTERNAL_PUBKEY)
             {
-                ExtractDestination(txNew.vout[0].scriptPubKey, dest, true);
+                if (USE_EXTERNAL_PUBKEY)
+                {
+                    dest = CPubKey(ParseHex(NOTARY_PUBKEY));
+                }
+                else
+                {
+                    ExtractDestination(txNew.vout[0].scriptPubKey, dest, true);
+                }
             }
             else
             {
