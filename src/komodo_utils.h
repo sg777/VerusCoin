@@ -1725,16 +1725,20 @@ void komodo_args(char *argv0)
     NOTARY_PUBKEY = GetArg("-pubkey", "");
     if ( strlen(NOTARY_PUBKEY.c_str()) == 66 )
     {
-        USE_EXTERNAL_PUBKEY = 1;
-        if ( IS_KOMODO_NOTARY == 0 )
+        CPubKey pubKey = CPubKey(ParseHex(NOTARY_PUBKEY));
+        if (pubKey.IsValid())
         {
-            for (int i=0; i<64; i++)
-                if ( strcmp(NOTARY_PUBKEY.c_str(),Notaries_elected1[i][1]) == 0 )
-                {
-                    IS_KOMODO_NOTARY = 1;
-                    fprintf(stderr,"running as notary.%d %s\n",i,Notaries_elected1[i][0]);
-                    break;
-                }
+            USE_EXTERNAL_PUBKEY = 1;
+            if ( IS_KOMODO_NOTARY == 0 )
+            {
+                for (int i=0; i<64; i++)
+                    if ( strcmp(NOTARY_PUBKEY.c_str(),Notaries_elected1[i][1]) == 0 )
+                    {
+                        IS_KOMODO_NOTARY = 1;
+                        fprintf(stderr,"running as notary.%d %s\n",i,Notaries_elected1[i][0]);
+                        break;
+                    }
+            }
         }
         //KOMODO_PAX = 1;
     } //else KOMODO_PAX = GetArg("-pax",0);

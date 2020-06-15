@@ -81,7 +81,7 @@ CPBaaSPreHeader::CPBaaSPreHeader(const CBlockHeader &bh)
     nNonce = bh.nNonce;
     nBits = bh.nBits;
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(bh.nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         hashPrevMMRRoot = descr.hashPrevMMRRoot;
         hashBlockMMRRoot = descr.hashBlockMMRRoot;
@@ -101,7 +101,7 @@ ChainMMRNode CBlockHeader::GetBlockMMRNode() const
 uint256 CBlockHeader::GetPrevMMRRoot() const
 {
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         return descr.hashPrevMMRRoot;
     }
@@ -114,7 +114,7 @@ uint256 CBlockHeader::GetPrevMMRRoot() const
 void CBlockHeader::SetPrevMMRRoot(const uint256 &prevMMRRoot)
 {
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         descr.hashPrevMMRRoot = prevMMRRoot;
     }
@@ -124,7 +124,7 @@ void CBlockHeader::SetPrevMMRRoot(const uint256 &prevMMRRoot)
 uint256 CBlockHeader::GetBlockMMRRoot() const
 {
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         return descr.hashBlockMMRRoot;
     }
@@ -137,7 +137,7 @@ uint256 CBlockHeader::GetBlockMMRRoot() const
 void CBlockHeader::SetBlockMMRRoot(const uint256 &transactionMMRRoot)
 {
     CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         descr.hashBlockMMRRoot = transactionMMRRoot;
     }
@@ -189,7 +189,7 @@ int32_t CBlockHeader::GetPBaaSHeader(CPBaaSBlockHeader &pbh, const uint160 &cID)
     {
         // search in the solution for this header index and return it if found
         CPBaaSSolutionDescriptor d = CVerusSolutionVector::solutionTools.GetDescriptor(nSolution);
-        if (CVerusSolutionVector::solutionTools.IsPBaaS(nSolution) != 0)
+        if (CVerusSolutionVector::solutionTools.HasPBaaSHeader(nSolution) != 0)
         {
             int32_t len = CVerusSolutionVector::solutionTools.ExtraDataLen(nSolution);
             int32_t numHeaders = d.numPBaaSHeaders;
@@ -231,7 +231,7 @@ int32_t CBlockHeader::AddPBaaSHeader(const CPBaaSBlockHeader &pbh)
 bool CBlockHeader::AddUpdatePBaaSHeader(const CPBaaSBlockHeader &pbh)
 {
     CPBaaSBlockHeader pbbh;
-    if (nVersion == VERUS_V2 && CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS)
+    if (nVersion == VERUS_V2 && CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS_HEADER)
     {
         if (int32_t idx = GetPBaaSHeader(pbbh, pbh.chainID) != -1)
         {
@@ -249,7 +249,7 @@ bool CBlockHeader::AddUpdatePBaaSHeader(const CPBaaSBlockHeader &pbh)
 // This is required to make a valid PoS or PoW block.
 bool CBlockHeader::AddUpdatePBaaSHeader()
 {
-    if (nVersion == VERUS_V2 && CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS)
+    if (nVersion == VERUS_V2 && CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS_HEADER)
     {
         CPBaaSBlockHeader pbh(ASSETCHAINS_CHAINID, CPBaaSPreHeader(*this));
 
@@ -297,14 +297,30 @@ uint256 CBlockHeader::GetVerusV2Hash() const
 
             // in order for this to work, the PBaaS hash of the pre-header must match the header data
             // otherwise, it cannot clear the canonical data and hash in a chain-independent manner
-            if (CConstVerusSolutionVector::IsPBaaS(nSolution) && CheckNonCanonicalData())
+            int pbaasType = CConstVerusSolutionVector::HasPBaaSHeader(nSolution);
+            bool debugPrint = false;
+            //if (pbaasType != 0 && solutionVersion == CActivationHeight::SOLUTION_VERUSV5_1)
+            //{
+            //    debugPrint = true;
+            //    printf("%s: version V5_1 header, pbaasType: %d, CheckNonCanonicalData: %d\n", __func__, pbaasType, CheckNonCanonicalData());
+            //}
+            if (pbaasType != 0 && CheckNonCanonicalData())
             {
                 CBlockHeader bh = CBlockHeader(*this);
                 bh.ClearNonCanonicalData();
+                //if (debugPrint)
+                //{
+                //    printf("%s\n", SerializeVerusHashV2b(bh, solutionVersion).GetHex().c_str());
+                //    printf("%s\n", SerializeVerusHashV2b(*this, solutionVersion).GetHex().c_str());
+                //}
                 return SerializeVerusHashV2b(bh, solutionVersion);
             }
             else
             {
+                //if (debugPrint)
+                //{
+                //    printf("%s\n", SerializeVerusHashV2b(*this, solutionVersion).GetHex().c_str());
+                //}
                 return SerializeVerusHashV2b(*this, solutionVersion);
             }
         }

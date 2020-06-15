@@ -20,13 +20,14 @@ class CActivationHeight
         enum {
             MAX_HEIGHT = INT_MAX,
             DEFAULT_UPGRADE_HEIGHT = MAX_HEIGHT,
-            NUM_VERSIONS = 6,
+            NUM_VERSIONS = 7,   // NEVER ADD A NEW VERSION WITHOUT UPDATING THE ARRAY BELOW WITH ALL ENTRIES PRESENT
             SOLUTION_VERUSV1 = 0,
             SOLUTION_VERUSV2 = 1,
             SOLUTION_VERUSV3 = 2,
             SOLUTION_VERUSV4 = 3,
             SOLUTION_VERUSV5 = 4,
-            SOLUTION_VERUSV6 = 5,
+            SOLUTION_VERUSV5_1 = 5,
+            SOLUTION_VERUSV6 = 6,
             ACTIVATE_VERUSHASH2 = SOLUTION_VERUSV2,
             ACTIVATE_EXTENDEDSOLUTION = SOLUTION_VERUSV3,
             ACTIVATE_IDENTITY = SOLUTION_VERUSV4,
@@ -34,12 +35,13 @@ class CActivationHeight
             ACTIVATE_EXTENDEDSTAKE = SOLUTION_VERUSV5,
             ACTIVATE_IDCONSENSUS2 = SOLUTION_VERUSV5,
             ACTIVATE_VERUSHASH2_2 = SOLUTION_VERUSV5,
+            ACTIVATE_PBAAS_HEADER = SOLUTION_VERUSV5_1,
             ACTIVATE_STAKEHEADER = SOLUTION_VERUSV6,
             ACTIVATE_PBAAS = SOLUTION_VERUSV6
         };
         bool active;
         int32_t heights[NUM_VERSIONS];
-        CActivationHeight() : heights{0, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT}, active(true) {}
+        CActivationHeight() : heights{0, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT, DEFAULT_UPGRADE_HEIGHT}, active(true) {}
 
         void SetActivationHeight(int32_t version, int32_t height)
         {
@@ -345,6 +347,15 @@ class CConstVerusSolutionVector
             return 0;
         }
 
+        static int32_t HasPBaaSHeader(const std::vector<unsigned char> &vch)
+        {
+            if (Version(vch) >= CActivationHeight::ACTIVATE_PBAAS_HEADER)
+            {
+                return  (DescriptorBits(vch) & SOLUTION_POW) ? 1 : -1;
+            }
+            return 0;
+        }
+
         static const CPBaaSBlockHeader *GetFirstPBaaSHeader(const std::vector<unsigned char> &vch)
         {
             return (CPBaaSBlockHeader *)(&vch[0] + sizeof(CPBaaSSolutionDescriptor)); // any headers present are right after descriptor
@@ -442,6 +453,12 @@ class CVerusSolutionVector
         int32_t IsPBaaS()
         {
             return solutionTools.IsPBaaS(vch);
+        }
+
+        // returns 0 if not PBaaS, 1 if PBaaS PoW, -1 if PBaaS PoS
+        int32_t HasPBaaSHeader()
+        {
+            return solutionTools.HasPBaaSHeader(vch);
         }
 
         const CPBaaSBlockHeader *GetFirstPBaaSHeader() const

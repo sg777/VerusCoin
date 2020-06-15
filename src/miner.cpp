@@ -170,7 +170,9 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
 
     int32_t nHeight = pindexPrev->GetHeight() + 1;
 
-    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
+    int solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
+
+    if (solutionVersion >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
         // coinbase should already be finalized in the new version
         if (buildMerkle)
@@ -185,20 +187,12 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
 
         UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
 
-        uint256 mmvRoot;
-        {
-            LOCK(cs_main);
-            // set the PBaaS header
-            ChainMerkleMountainView mmv = chainActive.GetMMV();
-            mmvRoot = mmv.GetRoot();
-        }
-
-        pblock->AddUpdatePBaaSHeader();
-
         // POS blocks have already had their solution space filled, and there is no actual extra nonce, extradata is used
         // for POS proof, so don't modify it
-        if (!pblock->IsVerusPOSBlock())
+        if (solutionVersion >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS && !pblock->IsVerusPOSBlock())
         {
+            pblock->AddUpdatePBaaSHeader();
+
             uint8_t dummy;
             // clear extra data to allow adding more PBaaS headers
             pblock->SetExtraData(&dummy, 0);
@@ -2420,7 +2414,7 @@ void static VerusStaker(CWallet *pwallet)
                                                      sTx.vin[0].prevout.hash, 
                                                      sTx.vin[0].prevout.n, 
                                                      newHeight, 
-                                                     chainActive.GetVerusEntropyHash(Mining_height), 
+                                                     chainActive.GetVerusEntropyHash(newHeight), 
                                                      sTx.vout[0].nValue).GetHex().c_str(), 
                                                      ArithToUint256(post).GetHex().c_str());
                 if (unlockTime > newHeight && subsidy >= ASSETCHAINS_TIMELOCKGTE)
