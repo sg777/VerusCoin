@@ -2063,7 +2063,7 @@ void GetScriptForMinerAddress(boost::shared_ptr<CReserveScript> &script)
     CKeyID keyID = boost::get<CKeyID>(addr);
 
     script = mAddr;
-    script->reserveScript = CScript() << OP_DUP << OP_HASH160 << ToByteVector(keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
+    script->reserveScript = GetScriptForDestination(addr);
 }
 
 #ifdef ENABLE_WALLET
@@ -2074,7 +2074,12 @@ void GetScriptForMinerAddress(boost::shared_ptr<CReserveScript> &script)
 
 CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, int32_t gpucount, bool isStake)
 {
-    CPubKey pubkey; CScript scriptPubKey; uint8_t *ptr; int32_t i;
+    CPubKey pubkey; 
+    CScript scriptPubKey; 
+    uint8_t *ptr; 
+    int32_t i;
+    boost::shared_ptr<CReserveScript> coinbaseScript;
+ 
     if ( nHeight == 1 && ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 )
     {
         scriptPubKey = CScript() << ParseHex(ASSETCHAINS_OVERRIDE_PUBKEY) << OP_CHECKSIG;
@@ -2084,7 +2089,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
         //fprintf(stderr,"use notary pubkey\n");
         scriptPubKey = CScript() << ParseHex(NOTARY_PUBKEY) << OP_CHECKSIG;
     }
-    else
+    else if (GetArg("-mineraddress", "").empty() || !(GetScriptForMinerAddress(coinbaseScript), (scriptPubKey = coinbaseScript->reserveScript).size()))
     {
         if (!isStake)
         {
