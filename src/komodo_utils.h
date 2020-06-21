@@ -2060,6 +2060,8 @@ void komodo_args(char *argv0)
 
         ASSETCHAINS_CHAINID = CCrossChainRPCData::GetID(std::string(ASSETCHAINS_SYMBOL));
 
+        //printf("Chain name %s, chain hash, %s\n", ASSETCHAINS_SYMBOL, ASSETCHAINS_CHAINID.ToString().c_str());
+
         MAX_MONEY = komodo_max_money();
 
         //printf("baseid.%d MAX_MONEY.%s %.8f\n",baseid,ASSETCHAINS_SYMBOL,(double)MAX_MONEY/SATOSHIDEN);

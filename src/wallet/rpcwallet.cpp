@@ -3100,21 +3100,33 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
 
+    int numTransactions = 0;
+    txnouttype whichType;
+    std::vector<std::vector<unsigned char>> vSolutions;
+
     for (int i = 0; i < vecOutputs.size(); i++)
     {
         auto &txout = vecOutputs[i];
+        COptCCParams p;
 
         if (txout.tx &&
             txout.i < txout.tx->vout.size() &&
             txout.tx->vout[txout.i].nValue > 0 &&
             txout.fSpendable &&
             (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
-            !txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition())
+            ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() && 
+                txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p)) ||
+            (!p.IsValid() && 
+                Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
+                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))))
         {
             totalStakingAmount += txout.tx->vout[txout.i].nValue;
+            numTransactions++;
         }
     }
 
+    obj.push_back(Pair("eligible_staking_outputs", numTransactions));
     obj.push_back(Pair("eligible_staking_balance", ValueFromAmount(totalStakingAmount)));
 
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();

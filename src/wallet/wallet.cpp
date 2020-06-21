@@ -5964,7 +5964,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
 // tokens/reserve currencies, not the native currency of this chain, represented as reserve outputs for both input and output.
 // That means that all outputs must be reserve consuming outputs. Fee is added or converted from reserves if this is a
 // fractional reserve chain. Fees are calculated based on the current reserve conversion price.
-bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CAmount& nFeeRet,
+int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CAmount& nFeeRet,
                                        int& nChangePosRet, int &nChangeOutputs, std::string& strFailReason, const CCoinControl* coinControl, 
                                        const CTxDestination *pOnlyFromDest, bool sign)
 {
@@ -5992,7 +5992,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
     if (vecSend.empty())
     {
         strFailReason = _("Transaction must have outputs");
-        return false;
+        return RPC_INVALID_PARAMETER;
     }
 
     CCurrencyDefinition newCurrency;
@@ -6006,7 +6006,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
             if (newCurrency.IsValid())
             {
                 strFailReason = _("A normal transaction cannot define define multiple currencies");
-                return false;
+                return RPC_INVALID_PARAMETER;
             }
             newCurrency = CCurrencyDefinition(p.vData[0]);
         }
@@ -6016,12 +6016,12 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
         if (!values.IsValid())
         {
             strFailReason = _("Output cannot have NULL currency type");
-            return false;
+            return RPC_INVALID_PARAMETER;
         }
         if (values.HasNegative())
         {
             strFailReason = _("Transaction output amounts must not be negative");
-            return false;
+            return RPC_INVALID_PARAMETER;
         }
 
         totalNativeOutput += recipient.nAmount;
@@ -6036,14 +6036,14 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
         else if (recipient.fSubtractFeeFromAmount)
         {
             strFailReason = _("Cannot specify to subtract fee from amount on non-native, non-reserve currency outputs");
-            return false;
+            return RPC_INVALID_PARAMETER;
         }
 
         // make sure we have no negative totals. we do not move this outside the loop, so we can check against overflow on every iteration
         if (totalReserveOutput.HasNegative())
         {
             strFailReason = _("Transaction amounts must not be negative");
-            return false;
+            return RPC_INVALID_PARAMETER;
         }
     }
 
@@ -6067,8 +6067,8 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
     // Activates after Overwinter network upgrade
     if (Params().GetConsensus().NetworkUpgradeActive(nextBlockHeight, Consensus::UPGRADE_OVERWINTER)) {
         if (txNew.nExpiryHeight >= TX_EXPIRY_HEIGHT_THRESHOLD){
-            strFailReason = _("nExpiryHeight must be less than TX_EXPIRY_HEIGHT_THRESHOLD.");
-            return false;
+            strFailReason = "nExpiryHeight must be less than" + std::to_string((uint)TX_EXPIRY_HEIGHT_THRESHOLD);
+            return RPC_INVALID_PARAMETER;
         }
     }
 
@@ -6183,8 +6183,8 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                             {
                                 // asking to pay a fee on an output, but not being able to is not accepted, should
                                 // never get here, as it should have been checked above
-                                strFailReason = _("UNEXPECTED ERROR: Cannot subtract fee from amount on non-native, non-reserve currency outputs");
-                                return false;
+                                strFailReason = "Cannot subtract fee from amount on non-native, non-reserve currency outputs";
+                                return RPC_INVALID_PARAMETER;
                             }
                         }
 
@@ -6219,7 +6219,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                                 }
                                 else
                                     strFailReason = _("Transaction amount too small");
-                                return false;
+                                return RPC_INVALID_PARAMETER;
                             }
                         }
                     }
@@ -6244,7 +6244,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                                         pOnlyFromDest))
                 {
                     strFailReason = _("Insufficient funds");
-                    return false;
+                    return RPC_WALLET_INSUFFICIENT_FUNDS;
                 }
 
                 /*
@@ -6476,7 +6476,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     size_t n = txNew.vin.size();
                     if (n > limit) {
                         strFailReason = _(strprintf("Too many transparent inputs %zu > limit %zu", n, limit).c_str());
-                        return false;
+                        return RPC_INVALID_PARAMETER;
                     }
                 }
 
@@ -6499,7 +6499,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                     if (!signSuccess)
                     {
                         strFailReason = _("Signing transaction failed");
-                        return false;
+                        return RPC_TRANSACTION_ERROR;
                     } else {
                         UpdateTransaction(txNew, nIn, sigdata);
                     }
@@ -6522,7 +6522,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 if (nBytes >= max_tx_size)
                 {
                     strFailReason = _("Transaction too large");
-                    return false;
+                    return RPC_TRANSACTION_ERROR;
                 }
 
                 dPriority = wtxNew.ComputePriority(dPriority, nBytes);
@@ -6550,7 +6550,7 @@ bool CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWalle
                 if (nFeeNeeded < ::minRelayTxFee.GetFee(nBytes))
                 {
                     strFailReason = _("Transaction too large for fee policy");
-                    return false;
+                    return RPC_TRANSACTION_ERROR;
                 }
 
                 if (nFeeRet >= nFeeNeeded)

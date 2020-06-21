@@ -73,21 +73,6 @@ arith_uint256 GetCompactPower(const uint256 &nNonce, uint32_t nBits, int32_t ver
     }
 }
 
-CPBaaSPreHeader::CPBaaSPreHeader(const CBlockHeader &bh)
-{
-    hashPrevBlock = bh.hashPrevBlock;
-    hashMerkleRoot = bh.hashMerkleRoot;
-    hashFinalSaplingRoot = bh.hashFinalSaplingRoot;
-    nNonce = bh.nNonce;
-    nBits = bh.nBits;
-    CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(bh.nSolution);
-    if (descr.version >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
-    {
-        hashPrevMMRRoot = descr.hashPrevMMRRoot;
-        hashBlockMMRRoot = descr.hashBlockMMRRoot;
-    }
-}
-
 ChainMMRNode CBlockHeader::GetBlockMMRNode() const
 {
     uint256 blockHash = GetHash();
@@ -298,7 +283,7 @@ uint256 CBlockHeader::GetVerusV2Hash() const
             // in order for this to work, the PBaaS hash of the pre-header must match the header data
             // otherwise, it cannot clear the canonical data and hash in a chain-independent manner
             int pbaasType = CConstVerusSolutionVector::HasPBaaSHeader(nSolution);
-            bool debugPrint = false;
+            //bool debugPrint = false;
             //if (pbaasType != 0 && solutionVersion == CActivationHeight::SOLUTION_VERUSV5_1)
             //{
             //    debugPrint = true;
