@@ -546,26 +546,45 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
     uint256 cbHash;
 
     CBlockIndex* pindexPrev = 0;
+    bool loop = true;
+    while (loop)
     {
-        LOCK2(cs_main, mempool.cs);
-        pindexPrev = chainActive.LastTip();
-        const int nHeight = pindexPrev->GetHeight() + 1;
+        loop = false;
+        int nHeight;
         const Consensus::Params &consensusParams = chainparams.GetConsensus();
-        uint32_t consensusBranchId = CurrentEpochBranchId(nHeight, consensusParams);
-        bool sapling = consensusParams.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_SAPLING);
+        uint32_t consensusBranchId;
+        bool sapling = true;
+        int64_t nMedianTimePast = 0;
+        uint32_t proposedTime = 0;
 
-        const int64_t nMedianTimePast = pindexPrev->GetMedianTimePast();
-        uint32_t proposedTime = GetAdjustedTime();
-        if (proposedTime == nMedianTimePast)
         {
-            // too fast or stuck, this addresses the too fast issue, while moving
-            // forward as quickly as possible
-            for (int i; i < 100; i++)
+            while (proposedTime == nMedianTimePast)
             {
+                if (proposedTime)
+                {
+                    MilliSleep(20);
+                }
+                LOCK(cs_main);
+                pindexPrev = chainActive.LastTip();
+                nHeight = pindexPrev->GetHeight() + 1;
+                consensusBranchId = CurrentEpochBranchId(nHeight, consensusParams);
+                sapling = consensusParams.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_SAPLING);
+                nMedianTimePast = pindexPrev->GetMedianTimePast();
                 proposedTime = GetAdjustedTime();
+
                 if (proposedTime == nMedianTimePast)
-                    MilliSleep(10);
+                {
+                    boost::this_thread::interruption_point();
+                }
             }
+        }
+
+        LOCK2(cs_main, mempool.cs);
+        if (pindexPrev != chainActive.LastTip())
+        {
+            // try again
+            loop = true;
+            continue;
         }
         pblock->nTime = GetAdjustedTime();
 
