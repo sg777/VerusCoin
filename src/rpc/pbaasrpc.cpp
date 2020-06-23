@@ -174,6 +174,21 @@ bool GetCurrencyDefinition(string &name, CCurrencyDefinition &chainDef)
     return GetCurrencyDefinition(CCrossChainRPCData::GetID(name), chainDef);
 }
 
+CTxDestination ValidateDestination(const std::string &destStr)
+{
+    CTxDestination destination = DecodeDestination(destStr);
+    CTransferDestination transferDestination;
+    if (destination.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        AssertLockHeld(cs_main);
+        if (!CIdentity::LookupIdentity(GetDestinationID(destination)).IsValid())
+        {
+            return CTxDestination();
+        }
+    }
+    return destination;
+}
+
 // set default peer nodes in the current connected chains
 bool SetPeerNodes(const UniValue &nodes)
 {
@@ -3196,7 +3211,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Only the ID of a mintable currency can mint such a currency. Minting cannot be combined with conversion.");
             }
 
-            CTxDestination destination = DecodeDestination(destStr);
+            CTxDestination destination = ValidateDestination(destStr);
             CTransferDestination transferDestination;
             if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
             {
@@ -3211,18 +3226,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         rawDestBytes.insert(rawDestBytes.end(), subNames[i].begin(), subNames[i].end());
                     }
+                    if (!rawDestBytes.size())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
+                    }
                     transferDestination = CTransferDestination(CTransferDestination::DEST_RAW, rawDestBytes);
                 }
                 else
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
-                }
-            }
-            else if (destination.which() == COptCCParams::ADDRTYPE_ID)
-            {
-                if (!CIdentity::LookupIdentity(GetDestinationID(destination)).IsValid())
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "When sending to an ID, the ID must be valid.");
                 }
             }
 

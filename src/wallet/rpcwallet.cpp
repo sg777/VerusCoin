@@ -472,7 +472,8 @@ UniValue sendtoaddress(const UniValue& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    CTxDestination dest = DecodeDestination(params[0].get_str());
+    CTxDestination dest = ValidateDestination(params[0].get_str());
+
     if (!IsValidDestination(dest)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Verus address");
     }
@@ -4871,7 +4872,7 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
 
         string address = find_value(o, "address").get_str();
         bool isZaddr = false;
-        CTxDestination taddr = DecodeDestination(address);
+        CTxDestination taddr = ValidateDestination(address);
         if (!IsValidDestination(taddr)) {
             auto res = DecodePaymentAddress(address);
             if (IsValidPaymentAddress(res, branchId)) {
