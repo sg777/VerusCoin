@@ -1079,6 +1079,10 @@ UniValue estimatefee(const UniValue& params, bool fHelp)
         nBlocks = 1;
 
     CFeeRate feeRate = mempool.estimateFee(nBlocks);
+    if (feeRate == CFeeRate(0))
+    {
+        feeRate = CFeeRate(DEFAULT_MIN_RELAY_TX_FEE);
+    }
     return ValueFromAmount(feeRate.GetFeePerK());
 }
 
