@@ -6067,7 +6067,7 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
     // Activates after Overwinter network upgrade
     if (Params().GetConsensus().NetworkUpgradeActive(nextBlockHeight, Consensus::UPGRADE_OVERWINTER)) {
         if (txNew.nExpiryHeight >= TX_EXPIRY_HEIGHT_THRESHOLD){
-            strFailReason = "nExpiryHeight must be less than" + std::to_string((uint)TX_EXPIRY_HEIGHT_THRESHOLD);
+            strFailReason = "nExpiryHeight must be less than" + std::to_string((uint32_t)TX_EXPIRY_HEIGHT_THRESHOLD);
             return RPC_INVALID_PARAMETER;
         }
     }
