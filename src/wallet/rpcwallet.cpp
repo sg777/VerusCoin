@@ -1632,7 +1632,7 @@ UniValue sendfrom(const UniValue& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     std::string strAccount = AccountFromValue(params[0]);
-    CTxDestination dest = DecodeDestination(params[1].get_str());
+    CTxDestination dest = ValidateDestination(params[1].get_str());
     if (!IsValidDestination(dest)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Verus address");
     }
@@ -1729,7 +1729,7 @@ UniValue sendmany(const UniValue& params, bool fHelp)
     CAmount totalAmount = 0;
     std::vector<std::string> keys = sendTo.getKeys();
     for (const std::string& name_ : keys) {
-        CTxDestination dest = DecodeDestination(name_);
+        CTxDestination dest = ValidateDestination(name_);
         if (!IsValidDestination(dest)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Verus address: ") + name_);
         }

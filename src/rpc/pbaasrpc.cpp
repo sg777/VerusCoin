@@ -3562,9 +3562,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     CAmount nFeesRet;
     int nChangePosRet, nChangeOutputs;
     std::string failReason;
+    int errorRet;
 
     UniValue ret;
-    if (pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, nFeesRet, nChangePosRet, nChangeOutputs, failReason, NULL, pSourceDest, true) == CWallet::RPC_OK)
+    if ((errorRet = 
+         pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, nFeesRet, nChangePosRet, nChangeOutputs, failReason, NULL, pSourceDest, true))
+          == CWallet::RPC_OK)
     {
         // now, we either return or commit the transaction
         if (returnTx)
@@ -3587,7 +3590,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     }
     else
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, failReason);
+        throw JSONRPCError(errorRet, failReason);
     }
     return ret;
 }
@@ -5140,15 +5143,16 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
         CTxDestination chainDefSource = CIdentityID(newChainID);
 
-        if (pwalletMain->CreateReserveTransaction(vOutputs, 
-                                                    wtx, 
-                                                    reserveKey, 
-                                                    fee, 
-                                                    nChangePos, 
-                                                    nChangeOutput, 
-                                                    failReason, 
-                                                    NULL, 
-                                                    &chainDefSource) != pwalletMain->RPC_OK)
+        int errorRet;
+        if ((errorRet = pwalletMain->CreateReserveTransaction(vOutputs, 
+                                                              wtx, 
+                                                              reserveKey, 
+                                                              fee, 
+                                                              nChangePos, 
+                                                              nChangeOutput, 
+                                                              failReason, 
+                                                              NULL, 
+                                                              &chainDefSource)) != pwalletMain->RPC_OK)
         {
             throw JSONRPCError(RPC_TRANSACTION_ERROR, newChain.name + ": " + failReason);
         }
