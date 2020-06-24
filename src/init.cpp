@@ -1923,10 +1923,10 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 #ifdef ENABLE_MINING
  #ifndef ENABLE_WALLET
     if (GetBoolArg("-minetolocalwallet", false)) {
-        return InitError(_("Zcash was not built with wallet support. Set -minetolocalwallet=0 to use -mineraddress, or rebuild Zcash with wallet support."));
+        return InitError(_("Verus was not built with wallet support. Set -minetolocalwallet=0 to use -mineraddress, or rebuild Verus with wallet support."));
     }
     if (GetArg("-mineraddress", "").empty() && GetBoolArg("-gen", false)) {
-        return InitError(_("Zcash was not built with wallet support. Set -mineraddress, or rebuild Zcash with wallet support."));
+        return InitError(_("Verus was not built with wallet support. Set -mineraddress, or rebuild Verus with wallet support."));
     }
  #endif // !ENABLE_WALLET
 
@@ -1936,8 +1936,17 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         if (pwalletMain) {
             // Address has already been validated
             CTxDestination addr = DecodeDestination(mapArgs["-mineraddress"]);
-            CKeyID keyID = boost::get<CKeyID>(addr);
-            minerAddressInLocalWallet = pwalletMain->HaveKey(keyID);
+            if (addr.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+                minerAddressInLocalWallet = pwalletMain->GetIdentity(GetDestinationID(addr), keyAndIdentity) &&
+                                            keyAndIdentity.first.CanSpend();
+            }
+            else
+            {
+                CKeyID keyID = boost::get<CKeyID>(addr);
+                minerAddressInLocalWallet = pwalletMain->HaveKey(keyID);
+            }
         }
         if (GetBoolArg("-minetolocalwallet", true) && !minerAddressInLocalWallet) {
             return InitError(_("-mineraddress is not in the local wallet. Either use a local address, or set -minetolocalwallet=0"));

@@ -2079,8 +2079,6 @@ void GetScriptForMinerAddress(boost::shared_ptr<CReserveScript> &script)
     }
 
     boost::shared_ptr<MinerAddressScript> mAddr(new MinerAddressScript());
-    CKeyID keyID = boost::get<CKeyID>(addr);
-
     script = mAddr;
     script->reserveScript = GetScriptForDestination(addr);
 }

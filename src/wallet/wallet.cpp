@@ -7114,9 +7114,33 @@ void CWallet::UpdatedTransaction(const uint256 &hashTx)
     }
 }
 
+class MiningAddressScript : public CReserveScript
+{
+    // CReserveScript requires implementing this function, so that if an
+    // internal (not-visible) wallet address is used, the wallet can mark it as
+    // important when a block is mined (so it then appears to the user).
+    // If -mineraddress is set, the user already knows about and is managing the
+    // address, so we don't need to do anything here.
+    void KeepScript() {}
+};
+
+void GetScriptForMiningAddress(boost::shared_ptr<CReserveScript> &script)
+{
+    CTxDestination addr = DecodeDestination(GetArg("-mineraddress", ""));
+    if (!IsValidDestination(addr)) {
+        return;
+    }
+
+    boost::shared_ptr<MiningAddressScript> mAddr(new MiningAddressScript());
+    script = mAddr;
+    script->reserveScript = GetScriptForDestination(addr);
+}
+
 void CWallet::GetScriptForMining(boost::shared_ptr<CReserveScript> &script)
 {
-    if (!GetArg("-mineraddress", "").empty()) {
+    if (!GetArg("-mineraddress", "").empty())
+    {
+        GetScriptForMiningAddress(script);
         return;
     }
 
