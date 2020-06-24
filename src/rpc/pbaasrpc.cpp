@@ -3564,7 +3564,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     std::string failReason;
 
     UniValue ret;
-    if (pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, nFeesRet, nChangePosRet, nChangeOutputs, failReason, NULL, pSourceDest, true))
+    if (pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, nFeesRet, nChangePosRet, nChangeOutputs, failReason, NULL, pSourceDest, true) == CWallet::RPC_OK)
     {
         // now, we either return or commit the transaction
         if (returnTx)
@@ -5140,15 +5140,15 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
         CTxDestination chainDefSource = CIdentityID(newChainID);
 
-        if (!pwalletMain->CreateReserveTransaction(vOutputs, 
-                                                   wtx, 
-                                                   reserveKey, 
-                                                   fee, 
-                                                   nChangePos, 
-                                                   nChangeOutput, 
-                                                   failReason, 
-                                                   NULL, 
-                                                   &chainDefSource))
+        if (pwalletMain->CreateReserveTransaction(vOutputs, 
+                                                    wtx, 
+                                                    reserveKey, 
+                                                    fee, 
+                                                    nChangePos, 
+                                                    nChangeOutput, 
+                                                    failReason, 
+                                                    NULL, 
+                                                    &chainDefSource) != pwalletMain->RPC_OK)
         {
             throw JSONRPCError(RPC_TRANSACTION_ERROR, newChain.name + ": " + failReason);
         }

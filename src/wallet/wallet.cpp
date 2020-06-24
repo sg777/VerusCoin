@@ -6562,7 +6562,7 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
             }
         }
     }
-    return true;
+    return RPC_OK;
 }
 
 /**
