@@ -1399,6 +1399,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
     uint160 systemDestID = importCurrencyDef.systemID;     // native on destination system
     uint160 importCurrencyID = importCurrencyDef.GetID();
+    printf("%s\n", importCurrencyDef.ToUniValue().write(1,2).c_str());
 
     std::map<uint160, CAmount> preAllocMap;             // if this contains pre-allocations, only make the necessary map once
 
@@ -1425,7 +1426,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             }
             CReserveTransfer &curTransfer = *pCurTransfer;
 
-            //printf("currency transfer #%d:\n%s\n", i, curTransfer.ToUniValue().write(1,2).c_str());
+            printf("currency transfer #%d:\n%s\n", i, curTransfer.ToUniValue().write(1,2).c_str());
 
             CCurrencyDefinition currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID);
 
@@ -1898,8 +1899,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 if (newOut.nValue < 0)
                 {
                     LogPrintf("%s: failure to create valid output for import to %s\n", __func__, currencyDest.name.c_str());
-                    assert(false); // TODO: though this should never happen, we probably want to remove this, so as to catch
-                                   // rather than crash, if it ever does
+                    return false;
                 }
                 vOutputs.push_back(newOut);
             }
