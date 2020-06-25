@@ -4836,7 +4836,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         {
             if (newChain.contributions[i] <= 0)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserves must have non-zero initial contributions " + EncodeDestination(CKeyID(newChain.currencies[i])));
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserves must have non-zero initial contributions " + EncodeDestination(CIdentityID(newChain.currencies[i])));
             }
         }
         newChain.preconverted = newChain.contributions;
@@ -4846,17 +4846,17 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             if (!GetCurrencyDefinition(currency, reserveCurrencies.back()) ||
                 reserveCurrencies.back().startBlock >= height)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserve currencies of a fractional currency must be valid and past the start block " + EncodeDestination(CKeyID(currency)));
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserve currencies of a fractional currency must be valid and past the start block " + EncodeDestination(CIdentityID(currency)));
             }
 
             if (reserveCurrencies.back().endBlock && (!newChain.endBlock || reserveCurrencies.back().endBlock < newChain.endBlock))
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Reserve currency " + EncodeDestination(CKeyID(currency)) + " ends its life before the fractional currency's endblock");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Reserve currency " + EncodeDestination(CIdentityID(currency)) + " ends its life before the fractional currency's endblock");
             }
 
             if (!reserveCurrencies.back().CanBeReserve())
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + EncodeDestination(CKeyID(currency)) + " may not be used as a reserve");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + EncodeDestination(CIdentityID(currency)) + " may not be used as a reserve");
             }
 
             if (currency == VERUS_CHAINID)
