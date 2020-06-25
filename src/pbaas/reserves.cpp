@@ -1428,7 +1428,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             //printf("currency transfer #%d:\n%s\n", i, curTransfer.ToUniValue().write(1,2).c_str());
 
             CCurrencyDefinition currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID);
-            CAmount mintAmount = 0;
 
             if (!currencyDest.IsValid())
             {
