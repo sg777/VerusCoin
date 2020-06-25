@@ -1800,7 +1800,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_reward"] = "0,38400000000,2400000000";
         mapArgs["-ac_halving"] = "1,43200,1051920";
         mapArgs["-ac_decay"] = "100000000,0,0";
-        mapArgs["-ac_options"] = "8,0,0"; // OPTION_ID_REFERRALS
+        mapArgs["-ac_options"] = "72,0,0";      // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
         mapArgs["-ac_end"] = "10080,226080,0";
         mapArgs["-ac_timelockgte"] = "19200000000";
         mapArgs["-ac_timeunlockfrom"] = "129600";
@@ -1827,7 +1827,7 @@ void komodo_args(char *argv0)
         std::string halving = GetArg("-ac_halving", "225798"); // this assignment is required for an ARM compiler workaround
         mapArgs["-ac_halving"] = halving;    // allow testing easily with different values here
         mapArgs["-ac_decay"] = "0";
-        mapArgs["-ac_options"] = "8"; // OPTION_ID_REFERRALS
+        mapArgs["-ac_options"] = "72";       // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
         mapArgs["-ac_end"] = "0";
         mapArgs["-ac_veruspos"] = "50";
 
