@@ -268,7 +268,7 @@ bool SetThisChain(const UniValue &chainDefinition)
             notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
             notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
         }
-        notaryChainDef.options = notaryChainDef.OPTION_ID_REFERRALS;
+        notaryChainDef.options = notaryChainDef.OPTION_CANBERESERVE | notaryChainDef.OPTION_ID_REFERRALS;
         notaryChainDef.idRegistrationAmount = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
         notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
         notaryChainDef.systemID = notaryChainDef.GetID();
