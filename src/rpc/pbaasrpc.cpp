@@ -3012,7 +3012,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
         CAmount PreconvertedNative = cState.ReserveToNative(CCurrencyValueMap(chainDef.currencies, chainDef.preconverted));
         cState = CCurrencyState(chainDef.currencies, 
                                 std::vector<int32_t>(0), 
-                                conversions, 
+                                conversions,
                                 0, 
                                 PreconvertedNative,
                                 PreconvertedNative, 

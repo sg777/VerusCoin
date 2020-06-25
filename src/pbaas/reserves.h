@@ -374,7 +374,13 @@ public:
                       CAmount Emitted, 
                       CAmount Supply, 
                       uint32_t Flags=FLAG_VALID) : 
-        flags(Flags), supply(Supply), initialSupply(InitialSupply), emitted(Emitted), weights(Weights), reserves(Reserves)
+        flags(Flags),
+        currencies(Currencies), 
+        weights(Weights), 
+        reserves(Reserves),
+        initialSupply(InitialSupply), 
+        emitted(Emitted),
+        supply(Supply)
     {}
 
     CCurrencyState(const std::vector<unsigned char> &asVector)

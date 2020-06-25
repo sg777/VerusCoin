@@ -1503,7 +1503,7 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
                 return state.DoS(100, error("CheckTransaction(): this is a private chain, no public allowed"),REJECT_INVALID, "bad-txns-acprivacy-chain");
         }
         if ( txout.scriptPubKey.size() > IGUANA_MAXSCRIPTSIZE )
-            return state.DoS(100, error("CheckTransaction(): txout.scriptPubKey.size() too big"),REJECT_INVALID, "bad-txns-vout-negative");
+            return state.DoS(100, error("CheckTransaction(): txout.scriptPubKey.size() too big"),REJECT_INVALID, "bad-txns-script-too-big");
         nValueOut += txout.nValue;
         if (!MoneyRange(nValueOut))
             return state.DoS(100, error("CheckTransaction(): txout total out of range"),
