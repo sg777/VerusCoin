@@ -1895,6 +1895,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         }
                     }
                 }
+                if (newOut.nValue < 0)
+                {
+                    LogPrintf("%s: failure to create valid output for import to %s\n", __func__, currencyDest.name.c_str());
+                    assert(false); // TODO: though this should never happen, we probably want to remove this, so as to catch
+                                   // rather than crash, if it ever does
+                }
                 vOutputs.push_back(newOut);
             }
             else
