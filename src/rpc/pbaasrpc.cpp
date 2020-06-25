@@ -174,6 +174,21 @@ bool GetCurrencyDefinition(string &name, CCurrencyDefinition &chainDef)
     return GetCurrencyDefinition(CCrossChainRPCData::GetID(name), chainDef);
 }
 
+CTxDestination ValidateDestination(const std::string &destStr)
+{
+    CTxDestination destination = DecodeDestination(destStr);
+    CTransferDestination transferDestination;
+    if (destination.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        AssertLockHeld(cs_main);
+        if (!CIdentity::LookupIdentity(GetDestinationID(destination)).IsValid())
+        {
+            return CTxDestination();
+        }
+    }
+    return destination;
+}
+
 // set default peer nodes in the current connected chains
 bool SetPeerNodes(const UniValue &nodes)
 {
@@ -1043,14 +1058,14 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
             "\nResult:\n"
             "  {\n"
-            "    \"version\" : \"n\",             (int) version of this chain definition\n"
+            "    \"version\" : n,                 (int) version of this chain definition\n"
             "    \"name\" : \"string\",           (string) name or symbol of the chain, same as passed\n"
             "    \"address\" : \"string\",        (string) cryptocurrency address to send fee and non-converted premine\n"
             "    \"currencyid\" : \"i-address\",  (string) string that represents the currency ID, same as the ID behind the currency\n"
-            "    \"premine\" : \"n\",             (int) amount of currency paid out to the premine address in block #1, may be smart distribution\n"
+            "    \"premine\" : n,                 (int) amount of currency paid out to the premine address in block #1, may be smart distribution\n"
             "    \"convertible\" : \"xxxx\"       (bool) if this currency is a fractional reserve currency of Verus\n"
-            "    \"startblock\" : \"n\",          (int) block # on this chain, which must be notarized into block one of the chain\n"
-            "    \"endblock\" : \"n\",            (int) block # after which, this chain's useful life is considered to be over\n"
+            "    \"startblock\" : n,              (int) block # on this chain, which must be notarized into block one of the chain\n"
+            "    \"endblock\" : n,                (int) block # after which, this chain's useful life is considered to be over\n"
             "    \"eras\" : \"[obj, ...]\",       (objarray) different chain phases of rewards and convertibility\n"
             "    {\n"
             "      \"reward\" : \"[n, ...]\",     (int) reward start for each era in native coin\n"
@@ -1062,7 +1077,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             "    \"nodes\"      : \"[obj, ..]\",  (objectarray, optional) up to 8 nodes that can be used to connect to the blockchain"
             "      [{\n"
             "         \"nodeidentity\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
-            "         \"paymentaddress\" : \"n\", (int,     optional) rewards payment address\n"
+            "         \"paymentaddress\" : n,     (int,     optional) rewards payment address\n"
             "       }, .. ]\n"
             "    \"bestnotarization\" : {\n"
             "     }\n"
@@ -1443,14 +1458,14 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "[\n"
             "  {\n"
-            "    \"version\" : \"n\",             (int) version of this chain definition\n"
+            "    \"version\" : n,                 (int) version of this chain definition\n"
             "    \"name\" : \"string\",           (string) name or symbol of the chain, same as passed\n"
             "    \"address\" : \"string\",        (string) cryptocurrency address to send fee and non-converted premine\n"
             "    \"currencyid\" : \"hex-string\", (string) i-address that represents the chain ID, same as the ID that launched the chain\n"
-            "    \"premine\" : \"n\",             (int) amount of currency paid out to the premine address in block #1, may be smart distribution\n"
+            "    \"premine\" : n,                 (int) amount of currency paid out to the premine address in block #1, may be smart distribution\n"
             "    \"convertible\" : \"xxxx\"       (bool) if this currency is a fractional reserve currency of Verus\n"
-            "    \"startblock\" : \"n\",          (int) block # on this chain, which must be notarized into block one of the chain\n"
-            "    \"endblock\" : \"n\",            (int) block # after which, this chain's useful life is considered to be over\n"
+            "    \"startblock\" : n,              (int) block # on this chain, which must be notarized into block one of the chain\n"
+            "    \"endblock\" : n,                (int) block # after which, this chain's useful life is considered to be over\n"
             "    \"eras\" : \"[obj, ...]\",       (objarray) different chain phases of rewards and convertibility\n"
             "    {\n"
             "      \"reward\" : \"[n, ...]\",     (int) reward start for each era in native coin\n"
@@ -1462,7 +1477,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
             "    \"nodes\"      : \"[obj, ..]\",  (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
             "      [{\n"
             "         \"nodeaddress\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
-            "         \"paymentaddress\" : \"n\", (int,     optional) rewards payment address\n"
+            "         \"paymentaddress\" : n,     (int,     optional) rewards payment address\n"
             "       }, .. ]\n"
             "  }, ...\n"
             "]\n"
@@ -3032,9 +3047,9 @@ UniValue reserveexchange(const UniValue& params, bool fHelp)
             "       {\n"
             "           \"toreserve\"      : \"bool\",  (bool,   optional) if present, conversion is to the underlying reserve (Verus), if false, from Verus\n"
             "           \"recipient\"      : \"Rxxx\",  (string, required) recipient of converted funds or funds that failed to convert\n"
-            "           \"amount\"         : \"n\",     (int64,  required) amount of source coins that will be converted, depending on the toreserve flag, the rest is change\n"
-            "           \"limit\"          : \"n\",     (int64,  optional) price in reserve limit, below which for buys and above which for sells, execution will occur\n"
-            "           \"validbefore\"    : \"n\",     (int,    optional) block before which this can execute as a conversion, otherwise, it executes as a send with normal network fee\n"
+            "           \"amount\"         : n,         (int64,  required) amount of source coins that will be converted, depending on the toreserve flag, the rest is change\n"
+            "           \"limit\"          : n,         (int64,  optional) price in reserve limit, below which for buys and above which for sells, execution will occur\n"
+            "           \"validbefore\"    : n,         (int,    optional) block before which this can execute as a conversion, otherwise, it executes as a send with normal network fee\n"
             "           \"subtractfee\"    : \"bool\",  (bool,   optional) if true, reduce amount to destination by the fee amount, otherwise, add from inputs to cover fee"
             "       }\n"
 
@@ -3196,7 +3211,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Only the ID of a mintable currency can mint such a currency. Minting cannot be combined with conversion.");
             }
 
-            CTxDestination destination = DecodeDestination(destStr);
+            CTxDestination destination = ValidateDestination(destStr);
             CTransferDestination transferDestination;
             if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
             {
@@ -3211,18 +3226,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         rawDestBytes.insert(rawDestBytes.end(), subNames[i].begin(), subNames[i].end());
                     }
+                    if (!rawDestBytes.size())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
+                    }
                     transferDestination = CTransferDestination(CTransferDestination::DEST_RAW, rawDestBytes);
                 }
                 else
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
-                }
-            }
-            else if (destination.which() == COptCCParams::ADDRTYPE_ID)
-            {
-                if (!CIdentity::LookupIdentity(GetDestinationID(destination)).IsValid())
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "When sending to an ID, the ID must be valid.");
                 }
             }
 
@@ -3550,9 +3562,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     CAmount nFeesRet;
     int nChangePosRet, nChangeOutputs;
     std::string failReason;
+    int errorRet;
 
     UniValue ret;
-    if (pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, nFeesRet, nChangePosRet, nChangeOutputs, failReason, NULL, pSourceDest, true))
+    if ((errorRet = 
+         pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, nFeesRet, nChangePosRet, nChangeOutputs, failReason, NULL, pSourceDest, true))
+          == CWallet::RPC_OK)
     {
         // now, we either return or commit the transaction
         if (returnTx)
@@ -3575,7 +3590,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     }
     else
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, failReason);
+        throw JSONRPCError(errorRet, failReason);
     }
     return ret;
 }
@@ -4585,23 +4600,23 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "name and ID as the currency being defined.\n"
             "\nArguments\n"
             "      {\n"
-            "         \"options\" : \"n\",             (int,    optional) bits:\n"
+            "         \"options\" : n,                 (int,    optional) bits:\n"
             "                                                             1 = FRACTIONAL, 2 = IDRESTRICTED, 4 = IDSTAKING, 8 = IDREFERRALS\n"
             "                                                             0x10 = IDREFERRALSREQUIRED, 0x20 = TOKEN, 0x40 = CANBERESERVE\n"
             "         \"name\" : \"xxxx\",             (string, required) name of existing identity with no active or pending blockchain\n"
             "         \"idregistrationprice\" : \"xx.xx\", (value, required) price of an identity in native currency\n"
-            "         \"idreferrallevels\" : \"n\",    (int, required) how many levels ID referrals go back in reward\n"
+            "         \"idreferrallevels\" : n,        (int, required) how many levels ID referrals go back in reward\n"
 
             "         \"notaries\" : \"[identity,..]\", (list, optional) list of identities that are assigned as chain notaries\n"
-            "         \"minnotariesconfirm\" : \"n\",  (int, optional) unique notary signatures required to confirm an auto-notarization\n"
+            "         \"minnotariesconfirm\" : n,      (int, optional) unique notary signatures required to confirm an auto-notarization\n"
             "         \"notarizationreward\" : \"xx.xx\", (value,  required) default VRSC notarization reward total for first billing period\n"
-            "         \"billingperiod\" : \"n\",       (int,    optional) number of blocks in each billing period\n"
-            "         \"proofprotocol\" : \"n\",       (int,    optional) if 2, currency can be minted by whoever controls the ID\n"
+            "         \"billingperiod\" : n,           (int,    optional) number of blocks in each billing period\n"
+            "         \"proofprotocol\" : n,           (int,    optional) if 2, currency can be minted by whoever controls the ID\n"
 
-            "         \"startblock\"   : \"n\",        (int,    optional) VRSC block must be notarized into block 1 of PBaaS chain, default curheight + 100\n"
-            "         \"endblock\"     : \"n\",        (int,    optional) chain is considered inactive after this block height, and a new one may be started\n"
+            "         \"startblock\"   : n,            (int,    optional) VRSC block must be notarized into block 1 of PBaaS chain, default curheight + 100\n"
+            "         \"endblock\"     : n,            (int,    optional) chain is considered inactive after this block height, and a new one may be started\n"
 
-            "         \"reserveratio\" : \"n\",        (value, optional) total reserve ratio, divided among currencies\n"
+            "         \"reserveratio\" : n,            (value, optional) total reserve ratio, divided among currencies\n"
             "         \"currencies\" : \"[\"VRSC\",..]\", (list, optional) reserve currencies backing this chain in equal amounts\n"
             "         \"conversions\" : \"[\"xx.xx\",..]\", (list, optional) if present, must be same size as currencies. pre-launch conversion ratio overrides\n"
             "         \"minpreconversion\" : \"[\"xx.xx\",..]\", (list, optional) must be same size as currencies. minimum in each currency to launch\n"
@@ -4613,10 +4628,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     
             "         \"eras\"         : \"objarray\", (array, optional) data specific to each era, maximum 3\n"
             "         {\n"
-            "            \"reward\"    : \"n\",       (int64,  optional) native initial block rewards in each period\n"
-            "            \"decay\" : \"n\",           (int64,  optional) reward decay for each era\n"
-            "            \"halving\"   : \"n\",       (int,    optional) halving period for each era\n"
-            "            \"eraend\"    : \"n\",       (int,    optional) ending block of each era\n"
+            "            \"reward\"    : n,           (int64,  optional) native initial block rewards in each period\n"
+            "            \"decay\" : n,               (int64,  optional) reward decay for each era\n"
+            "            \"halving\"   : n,           (int,    optional) halving period for each era\n"
+            "            \"eraend\"    : n,           (int,    optional) ending block of each era\n"
             "         }\n"
             "         \"nodes\"      : \"[obj, ..]\", (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
             "         [{\n"
@@ -5128,15 +5143,16 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
         CTxDestination chainDefSource = CIdentityID(newChainID);
 
-        if (!pwalletMain->CreateReserveTransaction(vOutputs, 
-                                                   wtx, 
-                                                   reserveKey, 
-                                                   fee, 
-                                                   nChangePos, 
-                                                   nChangeOutput, 
-                                                   failReason, 
-                                                   NULL, 
-                                                   &chainDefSource))
+        int errorRet;
+        if ((errorRet = pwalletMain->CreateReserveTransaction(vOutputs, 
+                                                              wtx, 
+                                                              reserveKey, 
+                                                              fee, 
+                                                              nChangePos, 
+                                                              nChangeOutput, 
+                                                              failReason, 
+                                                              NULL, 
+                                                              &chainDefSource)) != pwalletMain->RPC_OK)
         {
             throw JSONRPCError(RPC_TRANSACTION_ERROR, newChain.name + ": " + failReason);
         }

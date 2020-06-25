@@ -134,7 +134,6 @@ public:
     {
         // search in the solution for this header index and return it if found
         CPBaaSSolutionDescriptor descr = CConstVerusSolutionVector::GetDescriptor(nSolution);
-        int pbType;
         if (nVersion == VERUS_V2 && CConstVerusSolutionVector::HasPBaaSHeader(nSolution) != 0 && idx < descr.numPBaaSHeaders)
         {
             pbh = *(CConstVerusSolutionVector::GetFirstPBaaSHeader(nSolution) + idx);

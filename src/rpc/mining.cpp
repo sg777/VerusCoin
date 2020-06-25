@@ -1066,7 +1066,7 @@ UniValue estimatefee(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "n :    (numeric) estimated fee-per-kilobyte\n"
             "\n"
-            "-1.0 is returned if not enough transactions and\n"
+            "minimum fee is returned if not enough transactions and\n"
             "blocks have been observed to make an estimate.\n"
             "\nExample:\n"
             + HelpExampleCli("estimatefee", "6")
@@ -1080,8 +1080,9 @@ UniValue estimatefee(const UniValue& params, bool fHelp)
 
     CFeeRate feeRate = mempool.estimateFee(nBlocks);
     if (feeRate == CFeeRate(0))
-        return -1.0;
-
+    {
+        feeRate = CFeeRate(DEFAULT_MIN_RELAY_TX_FEE);
+    }
     return ValueFromAmount(feeRate.GetFeePerK());
 }
 
