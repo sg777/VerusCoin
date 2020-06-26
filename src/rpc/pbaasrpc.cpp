@@ -279,7 +279,7 @@ bool SetThisChain(const UniValue &chainDefinition)
     }
     else
     {
-        ConnectedChains.ThisChain().options = (notaryChainDef.OPTION_CANBERESERVE | notaryChainDef.OPTION_ID_REFERRALS);
+        ConnectedChains.ThisChain().options = (CCurrencyDefinition::OPTION_CANBERESERVE | CCurrencyDefinition::OPTION_ID_REFERRALS);
         ConnectedChains.ThisChain().idRegistrationAmount = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
         ConnectedChains.ThisChain().idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
         ConnectedChains.ThisChain().systemID = ConnectedChains.ThisChain().GetID();   
