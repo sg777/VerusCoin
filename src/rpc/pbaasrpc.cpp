@@ -268,7 +268,7 @@ bool SetThisChain(const UniValue &chainDefinition)
             notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
             notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
         }
-        notaryChainDef.options = notaryChainDef.OPTION_CANBERESERVE | notaryChainDef.OPTION_ID_REFERRALS;
+        notaryChainDef.options = (notaryChainDef.OPTION_CANBERESERVE | notaryChainDef.OPTION_ID_REFERRALS);
         notaryChainDef.idRegistrationAmount = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
         notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
         notaryChainDef.systemID = notaryChainDef.GetID();
@@ -279,7 +279,7 @@ bool SetThisChain(const UniValue &chainDefinition)
     }
     else
     {
-        ConnectedChains.ThisChain().options = CCurrencyDefinition::OPTION_ID_REFERRALS;
+        ConnectedChains.ThisChain().options = (notaryChainDef.OPTION_CANBERESERVE | notaryChainDef.OPTION_ID_REFERRALS);
         ConnectedChains.ThisChain().idRegistrationAmount = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
         ConnectedChains.ThisChain().idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
         ConnectedChains.ThisChain().systemID = ConnectedChains.ThisChain().GetID();   
@@ -1016,6 +1016,10 @@ uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurr
     }
     if (CCurrencyDefinition::GetID(currencyStr) == ConnectedChains.ThisChain().GetID())
     {
+        if (pCurrencyDef)
+        {
+            *pCurrencyDef = ConnectedChains.ThisChain();
+        }
         return ConnectedChains.ThisChain().GetID();
     }
     CTxDestination currencyDest = DecodeDestination(currencyStr);
@@ -1661,7 +1665,7 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
                     CReserveTransfer rt;
                     if (::IsPayToCryptoCondition(coins.vout[it->first.index].scriptPubKey, p) && p.evalCode == EVAL_RESERVE_TRANSFER &&
                         p.vData.size() > 1 && 
-                        p.version == p.VERSION_V3 &&
+                        p.version >= p.VERSION_V3 &&
                         (m = COptCCParams(p.vData.back())).IsValid() &&
                         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
                         m.vKeys.size() > 1 &&

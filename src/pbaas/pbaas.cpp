@@ -1143,7 +1143,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                     if (GetUnspentChainExports(lastChain, exportOutputs) && exportOutputs.size())
                     {
-                        auto lastExport = *exportOutputs.begin();
+                        auto &lastExport = *exportOutputs.begin();
                         bool oneFullSize = txInputs.size() >= CCrossChainExport::MIN_INPUTS;
 
                         if (((nHeight - lastExport.second.first) >= CCrossChainExport::MIN_BLOCKS) || oneFullSize)
