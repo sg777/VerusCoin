@@ -446,6 +446,11 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
         UniValue initialContributionArr = find_value(obj, "initialcontributions");
         UniValue preConversionsArr = find_value(obj, "preconversions");
 
+        if ((!weightArr.isArray() || !weightArr.size()) && !totalReserveWeight && (options & OPTION_FRACTIONAL))
+        {
+            totalReserveWeight = SATOSHIDEN;
+        }
+
         bool convertible = false;
 
         if (currencyArr.isArray() && currencyArr.size())
@@ -474,8 +479,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
             }
             else if (totalReserveWeight)
             {
-                uint32_t oneWeight = totalReserveWeight / SATOSHIDEN;
-                uint32_t mod = totalReserveWeight % SATOSHIDEN;
+                uint32_t oneWeight = totalReserveWeight / currencyArr.size();
+                uint32_t mod = totalReserveWeight % currencyArr.size();
                 for (int i = 0; i < currencyArr.size(); i++)
                 {
                     // distribute remainder of weight among first come currencies
@@ -511,7 +516,12 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
             else
             {
                 // if we are not a reserve currency, we either have a conversion vector, or we are not convertible at all
-                if (conversionArr.isArray() && conversionArr.size() && conversionArr.size() != currencyArr.size())
+                if (options & OPTION_FRACTIONAL)
+                {
+                    LogPrintf("%s: reserve currencies must define currency weight\n", __func__);
+                    nVersion = PBAAS_VERSION_INVALID;
+                }
+                else if (conversionArr.isArray() && conversionArr.size() && conversionArr.size() != currencyArr.size())
                 {
                     LogPrintf("%s: non-reserve currencies must define all conversion rates for supported currencies if they define any\n", __func__);
                     nVersion = PBAAS_VERSION_INVALID;
