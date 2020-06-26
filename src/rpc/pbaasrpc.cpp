@@ -106,7 +106,7 @@ protected:
 bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight)
 {
     LOCK(cs_main);
-    /*
+
     if (chainID == ConnectedChains.ThisChain().GetID())
     {
         chainDef = ConnectedChains.ThisChain();
@@ -116,8 +116,7 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
         }
         return true;
     }
-
-    if (!IsVerusActive())
+    else if (!IsVerusActive())
     {
         if (ConnectedChains.NotaryChain().IsValid() && (chainID == ConnectedChains.NotaryChain().chainDefinition.GetID()))
         {
@@ -129,12 +128,11 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
             return true;
         }
     }
-    */
 
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
     bool found = false;
 
-    if (!ClosedPBaaSChains.count(chainID)  && GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CURRENCY_DEFINITION)), 1, addressIndex))
+    if (!ClosedPBaaSChains.count(chainID) && GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CURRENCY_DEFINITION)), 1, addressIndex))
     {
         for (auto txidx : addressIndex)
         {
