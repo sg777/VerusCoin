@@ -24,21 +24,6 @@ The wallet downloads and stores the block chain or asset chain of the coin you s
 - Whitepaper: [Komodo Whitepaper](https://komodoplatform.com/wp-content/uploads/2018/03/2018-03-12-Komodo-White-Paper-Full.pdf)
 - Komodo Platform public material: [Komodo Platform public material](https://docs.google.com/document/d/1AbhWrtagu4vYdkl-vsWz-HSNyNvK-W-ZasHCqe7CZy0)
 
-## List of Komodo Platform Technologies
-
-- Delayed Proof of Work (dPoW) - Additional security layer and Komodos own consensus algorithm.
-- zk-SNARKs - Komodo Platform's privacy technology for shielded transactions
-- Tokens/Assets Technology - create "colored coins" on the Komodo Platform and use them as a layer for securites
-- Reward API - Komodo CC technology for securities
-- CC - Crypto Conditions to realize "smart contract" logic on top of the Komodo Platform
-- Jumblr - Decentralized tumbler for KMD and other cryptocurrencies
-- Assetchains - Create your own Blockchain that inherits all Komodo Platform functionalities and blockchain interoperability
-- Pegged Assets - Chains that maintain a peg to fiat currencies
-- Peerchains - Scalability solution where sibling chains form a network of blockchains
-- More in depth covered [here](https://docs.google.com/document/d/1AbhWrtagu4vYdkl-vsWz-HSNyNvK-W-ZasHCqe7CZy0)
-- Also note you receive 5% APR on your holdings.
-[See this article for more details](https://komodoplatform.atlassian.net/wiki/spaces/KPSD/pages/20480015/Claim+KMD+Interest+in+Agama)
-
 ## Tech Specification
 - Launch Date May 21, 2018
 - Max Supply: 83,540,184 VRSC
