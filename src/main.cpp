@@ -4079,7 +4079,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
         if (logicalTS <= prevLogicalTS) {
             logicalTS = prevLogicalTS + 1;
-            LogPrintf("%s: Previous logical timestamp is newer Actual[%d] prevLogical[%d] Logical[%d]\n", __func__, pindex->nTime, prevLogicalTS, logicalTS);
+            //LogPrintf("%s: Previous logical timestamp is newer Actual[%d] prevLogical[%d] Logical[%d]\n", __func__, pindex->nTime, prevLogicalTS, logicalTS);
         }
 
         if (!pblocktree->WriteTimestampIndex(CTimestampIndexKey(logicalTS, pindex->GetBlockHash())))
@@ -4114,7 +4114,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
         if (logicalTS <= prevLogicalTS) {
             logicalTS = prevLogicalTS + 1;
-            LogPrintf("%s: Previous logical timestamp is newer Actual[%d] prevLogical[%d] Logical[%d]\n", __func__, pindex->nTime, prevLogicalTS, logicalTS);
+            //LogPrintf("%s: Previous logical timestamp is newer Actual[%d] prevLogical[%d] Logical[%d]\n", __func__, pindex->nTime, prevLogicalTS, logicalTS);
         }
 
         if (!pblocktree->WriteTimestampIndex(CTimestampIndexKey(logicalTS, pindex->GetBlockHash())))
@@ -7543,8 +7543,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                     vRecv >> hash;
                     ss << ": hash " << hash.ToString();
                 }
-                LogPrint("net", "Reject %s\n", SanitizeString(ss.str()));
-                //printf("Reject message %s\n", SanitizeString(ss.str()).c_str());
+                LogPrint("net", "Reject %s\n", SanitizeString(ss.str()), SanitizeString(strReason));
+                printf("Reject message %s\n%s\n", SanitizeString(ss.str()).c_str(), SanitizeString(strReason).c_str());
             } catch (const std::ios_base::failure&) {
                 // Avoid feedback loops by preventing reject messages from triggering a new reject message.
                 LogPrint("net", "Unparseable reject message received\n");
@@ -8419,7 +8419,13 @@ bool ProcessMessages(CNode* pfrom)
         try
         {
             //printf("processing message: %s, from %s\n", strCommand.c_str(), pfrom->addr.ToString().c_str());
+            std::vector<unsigned char> storedMessage(vRecv.begin(), vRecv.end());
             fRet = ProcessMessage(pfrom, strCommand, vRecv, msg.nTime);
+            if (!fRet)
+            {
+                printf("message error: %s, from %s\n---------------------\n%s\n", 
+                       strCommand.c_str(), pfrom->addr.ToString().c_str(), HexBytes(storedMessage.data(), storedMessage.size()).c_str());
+            }
             boost::this_thread::interruption_point();
         }
         catch (const std::ios_base::failure& e)
@@ -8448,10 +8454,12 @@ bool ProcessMessages(CNode* pfrom)
         } catch (...) {
             PrintExceptionContinue(NULL, "ProcessMessages()");
         }
-        
+
         if (!fRet)
+        {
             LogPrintf("%s(%s, %u bytes) FAILED peer=%d\n", __func__, SanitizeString(strCommand), nMessageSize, pfrom->id);
-        
+        }
+
         break;
     }
     

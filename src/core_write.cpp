@@ -423,9 +423,9 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("maxpreconversion", maxPreconvertArr));
     }
 
-    if (preAllocationRatio)
+    if (preLaunchDiscount)
     {
-        obj.push_back(Pair("preallocationratio", ValueFromAmount(preAllocationRatio)));
+        obj.push_back(Pair("preallocationratio", ValueFromAmount(preLaunchDiscount)));
     }
 
     if (preAllocation.size())

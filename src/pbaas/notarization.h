@@ -151,6 +151,8 @@ public:
 
     CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx=nullptr);
 
+    CPBaaSNotarization(const CScript &scriptPubKey);
+
     CPBaaSNotarization(const UniValue &obj);
 
     ADD_SERIALIZE_METHODS;

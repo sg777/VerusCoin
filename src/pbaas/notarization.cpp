@@ -27,8 +27,25 @@ extern string PBAAS_HOST;
 extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 
+CPBaaSNotarization::CPBaaSNotarization(const CScript &scriptPubKey) :
+                    nVersion(0),
+                    protocol(CCurrencyDefinition::NOTARIZATION_AUTO),
+                    notarizationHeight(0),
+                    prevHeight(0),
+                    crossHeight(0)
+{
+    COptCCParams p;
+    if (scriptPubKey.IsPayToCryptoCondition(p) && 
+        p.IsValid() &&
+        (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+        p.vData.size())
+    {
+        ::FromVector(p.vData[0], *this);
+    }
+}
+
 CPBaaSNotarization::CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx) :
-                    nVersion(CURRENT_VERSION),
+                    nVersion(0),
                     protocol(CCurrencyDefinition::NOTARIZATION_AUTO),
                     notarizationHeight(0),
                     prevHeight(0),

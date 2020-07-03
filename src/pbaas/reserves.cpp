@@ -292,13 +292,15 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
     nativeConversionFees = uni_get_int64(find_value(obj, "nativeconversionfees"));
 }
 
-CAmount CalculateFractionalOut(CAmount NormalizedReserveIn, CAmount Supply, CAmount NormalizedReserve, int32_t reserveRation)
+CAmount CalculateFractionalOut(CAmount NormalizedReserveIn, CAmount Supply, CAmount NormalizedReserve, int32_t reserveRatio)
 {
     cpp_dec_float_50 reservein(std::to_string(NormalizedReserveIn));
-    cpp_dec_float_50 supply(std::to_string((Supply)));
-    cpp_dec_float_50 reserve(std::to_string(NormalizedReserve));
-    cpp_dec_float_50 ratio(std::to_string(reserveRation));
+    cpp_dec_float_50 supply(std::to_string((Supply ? Supply : 1)));
+    cpp_dec_float_50 reserve(std::to_string(NormalizedReserve ? NormalizedReserve : 1));
+    cpp_dec_float_50 ratio(std::to_string(reserveRatio));
     cpp_dec_float_50 one("1");
+
+    printf("reservein: %s\nsupply: %s\nreserve: %s\nratio: %s\n\n", reservein.str().c_str(), supply.str().c_str(), reserve.str().c_str(), ratio.str().c_str());
 
     int64_t fractionalOut = 0;
 
@@ -315,13 +317,15 @@ CAmount CalculateFractionalOut(CAmount NormalizedReserveIn, CAmount Supply, CAmo
     return fractionalOut;
 }
 
-CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount NormalizedReserve, int32_t reserveRation)
+CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount NormalizedReserve, int32_t reserveRatio)
 {
     cpp_dec_float_50 fractionalin(std::to_string(FractionalIn));
-    cpp_dec_float_50 supply(std::to_string((Supply)));
-    cpp_dec_float_50 reserve(std::to_string(NormalizedReserve));
-    cpp_dec_float_50 ratio(std::to_string(reserveRation));
+    cpp_dec_float_50 supply(std::to_string((Supply ? Supply : 1)));
+    cpp_dec_float_50 reserve(std::to_string(NormalizedReserve ? NormalizedReserve : 1));
+    cpp_dec_float_50 ratio(std::to_string(reserveRatio));
     cpp_dec_float_50 one("1");
+
+    printf("fractionalin: %s\nsupply: %s\nreserve: %s\nratio: %s\n\n", fractionalin.str().c_str(), supply.str().c_str(), reserve.str().c_str(), ratio.str().c_str());
 
     int64_t reserveOut = 0;
 
@@ -343,8 +347,6 @@ CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount Normal
 // conversion prices of the fractional reserve in the reserve currency.
 std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &inputReserves, const std::vector<CAmount> &inputFractional, CCurrencyState &newState) const
 {
-    // we use indexes because transactions use indexes to refer to fractional currency, which means once
-    // a spot is used in a blockchain, it cannot be changed
     assert(inputReserves.size() == inputFractional.size() && inputReserves.size() == currencies.size());
 
     newState = *this;
@@ -430,7 +432,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
     // to be represented by a larger fractional percent impact of "normalized reserve" on the currency, 
     // which results in accurate pricing impact simulating a basket of currencies.
     //
-    // since we have all values sorted, the lowest value determines the first common layer, then next lowest, the next, etc.
+    // since we have all values sorted, the lowest non-zero value determines the first common layer, then next lowest, the next, etc.
     std::vector<std::pair<int32_t, std::pair<CAmount, std::vector<uint160>>>> fractionalLayersIn, fractionalLayersOut;
     auto reserveMap = GetReserveMap();
 

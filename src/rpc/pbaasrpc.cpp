@@ -129,42 +129,26 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
         }
     }
 
-    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-    bool found = false;
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+    CCurrencyDefinition foundDef;
 
-    if (!ClosedPBaaSChains.count(chainID) && GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CURRENCY_DEFINITION)), 1, addressIndex))
+    if (!ClosedPBaaSChains.count(chainID) &&
+        GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_CURRENCY_DEFINITION)), 1, unspentOutputs))
     {
-        for (auto txidx : addressIndex)
+        for (auto &currencyDefOut : unspentOutputs)
         {
-            CTransaction tx;
-            uint256 blkHash;
-
-            if (GetTransaction(txidx.first.txhash, tx, blkHash))
+            if ((foundDef = CCurrencyDefinition(currencyDefOut.second.script)).IsValid())
             {
-                std::vector<CCurrencyDefinition> chainDefs = CCurrencyDefinition::GetCurrencyDefinitions(tx);
-                for (auto &oneDef : chainDefs)
+                chainDef = foundDef;
+                if (pDefHeight)
                 {
-                    if (found = oneDef.GetID() == chainID)
-                    {
-                        chainDef = oneDef;
-                        // TODO: consider calculating the total contribution
-                        // we can get it from either a total of all exports, or the block 1 notarization if there is one
-                        if (pDefHeight)
-                        {
-                            auto it = mapBlockIndex.find(blkHash);
-                            *pDefHeight = it != mapBlockIndex.end() ? it->second->GetHeight() : 0;
-                        }
-                        break;
-                    }
+                    *pDefHeight = currencyDefOut.second.blockHeight;
                 }
-            }
-            if (found)
-            {
                 break;
             }
         }
     }
-    return found;
+    return foundDef.IsValid();
 }
 
 bool GetCurrencyDefinition(string &name, CCurrencyDefinition &chainDef)
@@ -338,6 +322,7 @@ bool SetThisChain(const UniValue &chainDefinition)
     PBAAS_ENDBLOCK = ConnectedChains.ThisChain().endBlock;
     mapArgs["-endblock"] = to_string(PBAAS_ENDBLOCK);
 
+    LOCK(cs_main);
     CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
 
     ASSETCHAINS_SUPPLY = currencyState.supply;
@@ -3002,10 +2987,13 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
     {
         cState = CCurrencyState(chainDef.currencies,
                                 chainDef.weights,
-                                std::vector<int64_t>(chainDef.currencies.size()), 0, 0, 0, CCurrencyState::FLAG_VALID + CCurrencyState::FLAG_FRACTIONAL);
-        CCurrencyState tmpState;
-        conversions = cState.ConvertAmounts(chainDef.preconverted, std::vector<int64_t>(chainDef.currencies.size()), tmpState);
-        cState = tmpState;
+                                chainDef.preconverted,
+                                chainDef.initialFractionalSupply,
+                                0,
+                                chainDef.initialFractionalSupply,
+                                CCurrencyState::FLAG_VALID + CCurrencyState::FLAG_FRACTIONAL);
+        cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
+        conversions = cState.PricesInReserve();
     }
     else
     {
@@ -3019,9 +3007,8 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
                                 PreconvertedNative,
                                 PreconvertedNative, 
                                 CCurrencyState::FLAG_VALID);
+        cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
     }
-
-    cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
 
     CCoinbaseCurrencyState retVal(cState, 
                                   0, 
@@ -4481,6 +4468,7 @@ UniValue getcurrencystate(const UniValue& params, bool fHelp)
 
     for (int i = start; i <= end; i += step)
     {
+        LOCK(cs_main);
         CCoinbaseCurrencyState currencyState = ConnectedChains.GetCurrencyState(i);
         UniValue entry(UniValue::VOBJ);
         entry.push_back(Pair("height", i));
@@ -4602,44 +4590,45 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "name and ID as the currency being defined.\n"
             "\nArguments\n"
             "      {\n"
-            "         \"options\" : n,                 (int,    optional) bits:\n"
+            "         \"options\" : n,                  (int,    optional) bits:\n"
             "                                                             1 = FRACTIONAL, 2 = IDRESTRICTED, 4 = IDSTAKING, 8 = IDREFERRALS\n"
             "                                                             0x10 = IDREFERRALSREQUIRED, 0x20 = TOKEN, 0x40 = CANBERESERVE\n"
-            "         \"name\" : \"xxxx\",             (string, required) name of existing identity with no active or pending blockchain\n"
+            "         \"name\" : \"xxxx\",              (string, required) name of existing identity with no active or pending blockchain\n"
             "         \"idregistrationprice\" : \"xx.xx\", (value, required) price of an identity in native currency\n"
-            "         \"idreferrallevels\" : n,        (int, required) how many levels ID referrals go back in reward\n"
+            "         \"idreferrallevels\" : n,         (int, required) how many levels ID referrals go back in reward\n"
 
             "         \"notaries\" : \"[identity,..]\", (list, optional) list of identities that are assigned as chain notaries\n"
-            "         \"minnotariesconfirm\" : n,      (int, optional) unique notary signatures required to confirm an auto-notarization\n"
+            "         \"minnotariesconfirm\" : n,       (int, optional) unique notary signatures required to confirm an auto-notarization\n"
             "         \"notarizationreward\" : \"xx.xx\", (value,  required) default VRSC notarization reward total for first billing period\n"
-            "         \"billingperiod\" : n,           (int,    optional) number of blocks in each billing period\n"
-            "         \"proofprotocol\" : n,           (int,    optional) if 2, currency can be minted by whoever controls the ID\n"
+            "         \"billingperiod\" : n,            (int,    optional) number of blocks in each billing period\n"
+            "         \"proofprotocol\" : n,            (int,    optional) if 2, currency can be minted by whoever controls the ID\n"
 
-            "         \"startblock\"   : n,            (int,    optional) VRSC block must be notarized into block 1 of PBaaS chain, default curheight + 100\n"
-            "         \"endblock\"     : n,            (int,    optional) chain is considered inactive after this block height, and a new one may be started\n"
+            "         \"startblock\"    : n,            (int,    optional) VRSC block must be notarized into block 1 of PBaaS chain, default curheight + 100\n"
+            "         \"endblock\"      : n,            (int,    optional) chain is considered inactive after this block height, and a new one may be started\n"
 
-            "         \"reserveratio\" : n,            (value, optional) total reserve ratio, divided among currencies\n"
-            "         \"currencies\" : \"[\"VRSC\",..]\", (list, optional) reserve currencies backing this chain in equal amounts\n"
-            "         \"conversions\" : \"[\"xx.xx\",..]\", (list, optional) if present, must be same size as currencies. pre-launch conversion ratio overrides\n"
+            "         \"currencies\"    : \"[\"VRSC\",..]\", (list, optional) reserve currencies backing this chain in equal amounts\n"
+            "         \"conversions\"   : \"[\"xx.xx\",..]\", (list, optional) if present, must be same size as currencies. pre-launch conversion ratio overrides\n"
             "         \"minpreconversion\" : \"[\"xx.xx\",..]\", (list, optional) must be same size as currencies. minimum in each currency to launch\n"
             "         \"maxpreconversion\" : \"[\"xx.xx\",..]\", (list, optional) maximum in each currency allowed\n"
 
-            "         \"preallocationratio\" : \"xx.xx\", (value, optional) if non-0, pre-allocation is a percentage after initial supply is determined\n"
-            "         \"preallocation\" : \"[{\"identity\":xx.xx}..]\", (list, optional) amount or % of from pre-allocation, depending on preallocationratio\n"
-            "         \"initialcontribution\" : \"[\"xx.xx\",..]\", (list, optional) initial contribution in each currency\n"
-    
-            "         \"eras\"         : \"objarray\", (array, optional) data specific to each era, maximum 3\n"
+            "         \"initialcontributions\" : \"[\"xx.xx\",..]\", (list, optional) initial contribution in each currency\n"
+            "         \"prelaunchdiscount\" : \"xx.xx\" (value, optional) for fractional reserve currencies less than 100%, discount on final price at launch"
+            "         \"initialsupply\" : \"xx.xx\"    (value, required for fractional) supply after conversion of contributions, before preallocation\n"
+            "         \"prelaunchcarveouts\" : \"[{\"identity\":xx.xx}..]\", (list, optional) identities and % of pre-converted amounts from each reserve currency\n"
+            "         \"preallocations\" : \"[{\"identity\":xx.xx}..]\", (list, optional) amount or % of from pre-allocation, depending on preallocationratio\n"
+
+            "         \"eras\"          : \"objarray\", (array, optional) data specific to each era, maximum 3\n"
             "         {\n"
-            "            \"reward\"    : n,           (int64,  optional) native initial block rewards in each period\n"
-            "            \"decay\" : n,               (int64,  optional) reward decay for each era\n"
-            "            \"halving\"   : n,           (int,    optional) halving period for each era\n"
-            "            \"eraend\"    : n,           (int,    optional) ending block of each era\n"
+            "            \"reward\"     : n,           (int64,  optional) native initial block rewards in each period\n"
+            "            \"decay\"      : n,           (int64,  optional) reward decay for each era\n"
+            "            \"halving\"    : n,           (int,    optional) halving period for each era\n"
+            "            \"eraend\"     : n,           (int,    optional) ending block of each era\n"
             "         }\n"
-            "         \"nodes\"      : \"[obj, ..]\", (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
+            "         \"nodes\"         : \"[obj, ..]\", (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
             "         [{\n"
             "            \"networkaddress\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
             "            \"nodeidentity\" : \"name@\",  (string, optional) rewards payment and identity\n"
-            "          }, .. ]\n"
+            "         }, .. ]\n"
             "      }\n"
 
             "\nResult:\n"
@@ -4664,6 +4653,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "JSON object required. see help.");
     }
+
     if (!pwalletMain)
     {
         throw JSONRPCError(RPC_WALLET_ERROR, "must have active wallet to define PBaaS chain");

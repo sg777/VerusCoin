@@ -1041,6 +1041,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             {
                 CBlock block;
                 assert(nHeight > 1);
+                LOCK(cs_main);
                 currencyState = ConnectedChains.GetCurrencyState(nHeight - 1);
                 currencyState.ClearForNextBlock();
 

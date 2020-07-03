@@ -432,6 +432,9 @@ public:
         }
     }
 
+    // in a fractional reserve with no reserve or supply, this will always return
+    // a price of the reciprocal (1/x) of the fractional reserve ratio of the indexed reserve,
+    // which will always be >= 1
     CAmount PriceInReserve(int32_t reserveIndex=0) const
     {
         if (reserveIndex >= reserves.size())
@@ -442,16 +445,14 @@ public:
         {
             return reserves[reserveIndex];
         }
-        if (supply == 0 || weights[reserveIndex] == 0)
+
+        if (!supply || weights[reserveIndex] == 0)
         {
             return weights[reserveIndex];
         }
         arith_uint256 Supply(supply);
-
-        arith_uint256 Reserve(reserves[reserveIndex]);
-
+        arith_uint256 Reserve(reserves[reserveIndex] ? reserves[reserveIndex] : SATOSHIDEN);
         arith_uint256 Ratio(weights[reserveIndex]);
-
         arith_uint256 BigSatoshi(SATOSHIDEN);
 
         return ((Reserve * arith_uint256(SATOSHIDEN) * arith_uint256(SATOSHIDEN)) / (Supply * Ratio)).GetLow64();

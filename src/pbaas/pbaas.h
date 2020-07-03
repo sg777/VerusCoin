@@ -901,6 +901,7 @@ public:
     bool SetLatestMiningOutputs(const std::vector<std::pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut);
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
+    CCurrencyDefinition UpdateCachedCurrency(const uint160 &currencyID, uint32_t height);
 
     bool NewImportNotarization(const CCurrencyDefinition &_curDef, 
                                uint32_t height, 
@@ -939,7 +940,8 @@ public:
 
     int GetThisChainPort() const;
 
-    CCoinbaseCurrencyState GetCurrencyState(int32_t height);
+    CCoinbaseCurrencyState GetCurrencyState(int32_t height);                                // gets current, non-VRSC currency state by block
+    CCoinbaseCurrencyState GetCurrencyState(CCurrencyDefinition &curDef, int32_t height);   // gets non-VRSC currency state by notarization
 
     bool CheckVerusPBaaSAvailable(UniValue &chainInfo, UniValue &chainDef);
     bool CheckVerusPBaaSAvailable();      // may use RPC to call Verus
