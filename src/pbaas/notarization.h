@@ -196,6 +196,9 @@ public:
         return !mmrRoot.IsNull();
     }
 
+    // if false, *this is unmodifed, otherwise, it is set to the last valid notarization in the requested range
+    bool GetLastNotarization(const uint160 &currencyID, uint32_t eCode, int32_t startHeight=0, int32_t endHeight=0);
+
     UniValue ToUniValue() const;
 };
 

@@ -504,6 +504,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 {
     uint160 systemID = currencyDef.systemID;
     uint160 thisChainID = thisChain.GetID();
+    uint160 currencyID = currencyDef.GetID();
     bool isTokenImport = currencyDef.IsToken() && systemID == thisChainID;
     bool isDefinition = false;
 
@@ -605,7 +606,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                     p.evalCode == EVAL_CURRENCY_DEFINITION && 
                     p.vData[0].size() && 
                     (localChainDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
-                    (localChainDef.GetID()) == currencyDef.GetID())
+                    (localChainDef.GetID()) == currencyID)
                 {
                     if (myGetTransaction(txidx.first.txhash, tx, blkHash))
                     {
@@ -636,7 +637,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
     // get all export transactions including and since this one up to the confirmed height
     if (blkHeight <= lastConfirmed.notarizationHeight && 
-        GetAddressIndex(CCrossChainRPCData::GetConditionID(systemID, EVAL_CROSSCHAIN_EXPORT), 1, addressIndex, blkHeight, lastConfirmed.notarizationHeight))
+        GetAddressIndex(CCrossChainRPCData::GetConditionID(isTokenImport ? currencyID : systemID, EVAL_CROSSCHAIN_EXPORT), 1, addressIndex, blkHeight, lastConfirmed.notarizationHeight))
     {
         // find this export, then check the next one that spends it and use it if also valid
         found = false;
@@ -5076,7 +5077,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
     indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_EXPORT))});
-    if (newChainID != newChain.systemID)
+    if (newChain.systemID != ASSETCHAINS_CHAINID)
     {
         indexDests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(newChain.systemID, EVAL_CROSSCHAIN_EXPORT)));
     }

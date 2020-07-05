@@ -448,6 +448,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
 
         if (currencyArr.isArray() && currencyArr.size())
         {
+            contributions = preconverted = std::vector<int64_t>(currencyArr.size());
+
             if (IsFractional())
             {
                 preLaunchDiscount = AmountFromValueNoErr(find_value(obj, "prelaunchdiscount"));
@@ -657,9 +659,9 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                         nVersion = PBAAS_VERSION_INVALID;
                         break;
                     }
-                    contributions.push_back(contrib);
-                    preconverted.push_back(contrib);
-                }
+                    contributions[i] = contrib;
+                    preconverted[i] = contrib;
+               }
 
                 int64_t minPre = 0;
                 if (isPreconvertMin)

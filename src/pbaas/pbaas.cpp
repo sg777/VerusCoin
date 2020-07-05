@@ -993,58 +993,32 @@ int CConnectedChains::GetThisChainPort() const
     return 0;
 }
 
-CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
-{
-    CCoinbaseCurrencyState currencyState;
-    CBlock block;
-    bool isVerusActive = IsVerusActive();
-    if (!isVerusActive && 
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::ACTIVATE_PBAAS &&
-        height != 0 && 
-        height <= chainActive.Height() && 
-        chainActive[height] && 
-        ReadBlockFromDisk(block, chainActive[height], Params().GetConsensus()) &&
-        (currencyState = CCoinbaseCurrencyState(block.vtx[0])).IsValid())
-    {
-        return currencyState;
-    }
-    else
-    {
-        return GetInitialCurrencyState(thisChain);
-    }
-}
-
-CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &curDef, int32_t height)
+CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &curDef, int32_t height, int32_t curDefHeight)
 {
     uint160 chainID = curDef.GetID();
     CCoinbaseCurrencyState currencyState;
-    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentNotarizations;
+    std::vector<CAddressIndexDbEntry> notarizationIndex;
 
     if (chainID == ASSETCHAINS_CHAINID)
     {
-        currencyState = GetCurrencyState(height);
+        CBlock block;
+        if (IsVerusActive() ||
+            CConstVerusSolutionVector::activationHeight.ActiveVersion(height) < CActivationHeight::ACTIVATE_PBAAS ||
+            height == 0 ||
+            height > chainActive.Height() ||
+            !chainActive[height] ||
+            !ReadBlockFromDisk(block, chainActive[height], Params().GetConsensus()) ||
+            !(currencyState = CCoinbaseCurrencyState(block.vtx[0])).IsValid())
+        {
+            currencyState = GetInitialCurrencyState(thisChain);
+        }
     }
     // if this is a token on this chain, it will be simply notarized
     else if (curDef.systemID == ASSETCHAINS_CHAINID)
     {
         // get the last unspent notarization for this currency, which is valid by definition for a token
         CPBaaSNotarization notarization;
-        CAddressUnspentDbEntry notarizationEntry;
-        if (GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, EVAL_ACCEPTEDNOTARIZATION), 1, unspentNotarizations))
-        {
-            // filter out all transactions that do not spend from the notarization thread, or originate as the
-            // chain definition
-            for (auto it = unspentNotarizations.begin(); it != unspentNotarizations.end(); it++)
-            {
-                // first unspent notarization that is valid is the one we want
-                if ((notarization = CPBaaSNotarization(it->second.script)).IsValid())
-                {
-                    notarizationEntry = *it;
-                    break;
-                }
-            }
-        }
-        if (notarization.IsValid())
+        if (notarization.GetLastNotarization(chainID, EVAL_ACCEPTEDNOTARIZATION, curDefHeight, height))
         {
             currencyState = notarization.currencyState;
             currencyState.ClearForNextBlock();
@@ -1114,7 +1088,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                     }
                     for (int i = 0; i < curDef.conversions.size(); i++)
                     {
-                        curDef.conversions[i] = currencyState.PriceInReserve(i);
+                        currencyState.conversionPrice[i] = curDef.conversions[i] = currencyState.PriceInReserve(i);
                     }
                 }
             }
@@ -1128,11 +1102,110 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                          (chainID == notaryChain.GetID() ? EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION);
         if (GetNotarizationData(chainID, ecode, cnd))
         {
-            std::pair<uint256, CPBaaSNotarization> notPair = cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed] : cnd.vtx[cnd.forks[cnd.bestChain][0]];
-            currencyState = notPair.second.currencyState;
+            int32_t transfersFrom = curDefHeight;
+            if (cnd.lastConfirmed != -1)
+            {
+                transfersFrom = cnd.vtx[cnd.lastConfirmed].second.notarizationHeight;
+            }
+            int32_t transfersUntil = cnd.lastConfirmed == -1 ? curDef.startBlock - 1 :
+                                       (cnd.vtx[cnd.lastConfirmed].second.notarizationHeight < curDef.startBlock ?
+                                        (height < curDef.startBlock ? height : curDef.startBlock - 1) :
+                                        cnd.vtx[cnd.lastConfirmed].second.notarizationHeight);
+            if (transfersUntil < curDef.startBlock)
+            {
+                // get chain transfers that should apply before the start block
+                // until there is a post-start block notarization, we always consider the
+                // currency state to be up to just before the start block
+                std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> unspentTransfers;
+                if (GetChainTransfers(unspentTransfers, chainID, transfersFrom, transfersUntil))
+                {
+                    // at this point, all pre-allocation, minted, and pre-converted currency are included
+                    // in the currency state before final notarization
+                    std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
+                    if (curDef.IsFractional())
+                    {
+                        currencyState.supply = curDef.initialFractionalSupply;
+                    }
+                    else
+                    {
+                        // supply is determined by purchases * current conversion rate
+                        currencyState.supply = currencyState.initialSupply;
+                    }
+
+                    for (auto &transfer : unspentTransfers)
+                    {
+                        if (transfer.second.second.flags & CReserveTransfer::PRECONVERT)
+                        {
+                            CAmount conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
+
+                            currencyState.reserveIn[currencyIndexes[transfer.second.second.currencyID]] += transfer.second.second.nValue;
+                            curDef.preconverted[currencyIndexes[transfer.second.second.currencyID]] += transfer.second.second.nValue;
+                            if (curDef.IsFractional())
+                            {
+                                currencyState.reserves[currencyIndexes[transfer.second.second.currencyID]] += transfer.second.second.nValue - conversionFee;
+                            }
+                            else
+                            {
+                                currencyState.supply += CCurrencyState::ReserveToNativeRaw(transfer.second.second.nValue - conversionFee, currencyState.PriceInReserve(currencyIndexes[transfer.second.second.currencyID]));
+                            }
+
+                            if (transfer.second.second.currencyID == curDef.systemID)
+                            {
+                                currencyState.nativeConversionFees += conversionFee;
+                                currencyState.nativeFees += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                            }
+                            else
+                            {
+                                currencyState.fees[currencyIndexes[transfer.second.second.currencyID]] += 
+                                            conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                                currencyState.conversionFees[currencyIndexes[transfer.second.second.currencyID]] += conversionFee;
+                            }
+                        }
+                        else if (transfer.second.second.flags & CReserveTransfer::PREALLOCATE)
+                        {
+                            currencyState.emitted += transfer.second.second.nValue;
+                        }
+                    }
+                    currencyState.supply += currencyState.emitted;
+                    if (curDef.conversions.size() != curDef.currencies.size())
+                    {
+                        curDef.conversions = std::vector<int64_t>(curDef.currencies.size());
+                    }
+                    for (int i = 0; i < curDef.conversions.size(); i++)
+                    {
+                        currencyState.conversionPrice[i] = curDef.conversions[i] = currencyState.PriceInReserve(i);
+                    }
+                }
+            }
+            else
+            {
+                std::pair<uint256, CPBaaSNotarization> notPair = cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed] : cnd.vtx[cnd.forks[cnd.bestChain][0]];
+                currencyState = notPair.second.currencyState;
+            }
         }
     }
     return currencyState;
+}
+
+CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(const uint160 &currencyID, int32_t height)
+{
+    int32_t curDefHeight;
+    CCurrencyDefinition curDef;
+    if (GetCurrencyDefinition(currencyID, curDef, &curDefHeight))
+    {
+        return GetCurrencyState(curDef, height, curDefHeight);
+    }
+    else
+    {
+        LogPrintf("%s: currency %s:%s not found\n", __func__, currencyID.GetHex().c_str(), EncodeDestination(CIdentityID(currencyID)).c_str());
+        printf("%s: currency %s:%s not found\n", __func__, currencyID.GetHex().c_str(), EncodeDestination(CIdentityID(currencyID)).c_str());
+    }
+    return CCoinbaseCurrencyState();
+}
+
+CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
+{
+    return GetCurrencyState(thisChain.GetID(), height);
 }
 
 bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut)
@@ -1213,9 +1286,35 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                 if (output.first != bookEnd)
                 {
+                    if (!output.second.second.IsValid())
+                    {
+                        printf("%s: invalid reserve transfer in index for currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
+                        LogPrintf("%s: invalid reserve transfer in index for currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
+                        continue;
+                    }
+
                     sourceDef = GetCachedCurrency(output.second.second.currencyID);
                     destDef = GetCachedCurrency(output.second.second.destCurrencyID);
                     systemDef = GetCachedCurrency(destDef.systemID);
+
+                    if (!sourceDef.IsValid())
+                    {
+                        printf("%s: cannot find source currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
+                        LogPrintf("%s: cannot find source currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
+                        continue;
+                    }
+                    if (!destDef.IsValid())
+                    {
+                        printf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.destCurrencyID)).c_str());
+                        LogPrintf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.destCurrencyID)).c_str());
+                        continue;
+                    }
+                    if (!systemDef.IsValid())
+                    {
+                        printf("%s: cannot find destination system definition %s\n", __func__, EncodeDestination(CIdentityID(destDef.systemID)).c_str());
+                        LogPrintf("%s: cannot find destination system definition %s\n", __func__, EncodeDestination(CIdentityID(destDef.systemID)).c_str());
+                        continue;
+                    }
 
                     // if destination is a token on the current chain, consider it its own system
                     if (destDef.systemID == thisChainID)
@@ -1235,7 +1334,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     // we need an unspent export output to export, or use the last one of it is an export to the same
                     // system
                     std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
-                    lastChainDef = UpdateCachedCurrency(output.second.second.destCurrencyID, nHeight);
+                    lastChainDef = UpdateCachedCurrency(lastChain, nHeight);
 
                     if (GetUnspentChainExports(lastChain, exportOutputs) && exportOutputs.size())
                     {
@@ -1466,7 +1565,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                     // send native amount of zero to a cross chain export output of the specific chain
                                     std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(lastChainDef.GetConditionID(EVAL_CROSSCHAIN_EXPORT))});
-                                    if (lastChain != lastChainDef.systemID)
+                                    if (lastChainDef.systemID != ASSETCHAINS_CHAINID)
                                     {
                                         indexDests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_CROSSCHAIN_EXPORT)));
                                     }
@@ -1482,7 +1581,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
                                     CTransactionFinalization finalization(0);
 
-                                    printf("%s: Finalizing export with index dest %s\n", __func__, CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT).GetHex().c_str());
+                                    printf("%s: Finalizing export with index dest %s\n", __func__, EncodeDestination(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))).c_str());
 
                                     indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))});
                                     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
@@ -1952,7 +2051,8 @@ void CConnectedChains::ProcessLocalImports()
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
     std::map<uint160, std::pair<uint32_t, CTransaction>> currenciesToImport;    // height of earliest tx
     CCurrencyDefinition oneCurrency;
-    //printf("%s: Searching for %s\n", __func__, ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT).GetHex().c_str());
+
+    printf("%s: Searching for %s\n", __func__, EncodeDestination(CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT))).c_str());
     if (GetAddressUnspent(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT), 1, unspentOutputs))
     {
         CCrossChainExport ccx, ccxDummy;

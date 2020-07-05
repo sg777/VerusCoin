@@ -940,8 +940,9 @@ public:
 
     int GetThisChainPort() const;
 
-    CCoinbaseCurrencyState GetCurrencyState(int32_t height);                                // gets current, non-VRSC currency state by block
-    CCoinbaseCurrencyState GetCurrencyState(CCurrencyDefinition &curDef, int32_t height);   // gets non-VRSC currency state by notarization
+    CCoinbaseCurrencyState GetCurrencyState(int32_t height);                                // gets this chain's native currency state by block height
+    CCoinbaseCurrencyState GetCurrencyState(CCurrencyDefinition &curDef, int32_t height, int32_t curDefHeight=0); // gets currency state
+    CCoinbaseCurrencyState GetCurrencyState(const uint160 &currencyID, int32_t height);     // gets currency state
 
     bool CheckVerusPBaaSAvailable(UniValue &chainInfo, UniValue &chainDef);
     bool CheckVerusPBaaSAvailable();      // may use RPC to call Verus

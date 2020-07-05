@@ -1227,8 +1227,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 else
                                 {
                                     CCoinbaseCurrencyState currencyState = importCurrencyDef.IsToken() ?
-                                                                           GetInitialCurrencyState(importCurrencyDef) :
-                                                                           importNotarization.currencyState;
+                                                                           importNotarization.currencyState :
+                                                                           GetInitialCurrencyState(importCurrencyDef);
 
                                     if (!currencyState.IsValid() ||
                                         !AddReserveTransferImportOutputs(cci.systemID, importCurrencyDef, currencyState, exportTransfers, checkOutputs))
@@ -1548,7 +1548,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // first time through with preconvert, initialize the starting currency state
                     if (!initialCurrencyState.IsValid())
                     {
-                        initialCurrencyState = GetInitialCurrencyState(currencyDest);
+                        initialCurrencyState = ConnectedChains.GetCurrencyState(currencyDest, currencyDest.startBlock);
                         if (!initialCurrencyState.IsValid())
                         {
                             printf("%s: Invalid currency for preconversion %s\n", __func__, curTransfer.ToUniValue().write().c_str());
