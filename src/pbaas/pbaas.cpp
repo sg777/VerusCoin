@@ -1581,7 +1581,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
                                     CTransactionFinalization finalization(0);
 
-                                    printf("%s: Finalizing export with index dest %s\n", __func__, EncodeDestination(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))).c_str());
+                                    //printf("%s: Finalizing export with index dest %s\n", __func__, EncodeDestination(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))).c_str());
 
                                     indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))});
                                     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});

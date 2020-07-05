@@ -1593,7 +1593,7 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                         (nofilter || (m.vKeys.size() > 1 && GetDestinationID(m.vKeys[1]) == chainFilter)) &&
                         (rt.flags & flags) == flags)
                     {
-                        inputDescriptors.insert(make_pair(GetDestinationID(p.vKeys[1]),
+                        inputDescriptors.insert(make_pair(GetDestinationID(m.vKeys[1]),
                                                     make_pair(CInputDescriptor(ntx.vout[i].scriptPubKey, ntx.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))), rt)));
                     }
                     else if (p.IsValid() &&
