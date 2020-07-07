@@ -3381,7 +3381,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
                     std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), 
-                                                                                            CKeyID(convertToCurrencyID)});
+                                                                                          CKeyID(convertToCurrencyID)});
 
                     CReserveTransfer rt = CReserveTransfer(flags, 
                                                             sourceCurrencyID, 
@@ -3418,7 +3418,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
                         std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), 
-                                                                                                CKeyID(sourceCurrencyID)});
+                                                                                              CKeyID(convertToCurrencyID)});
 
                         CReserveTransfer rt = CReserveTransfer(flags, 
                                                                thisChainID, 

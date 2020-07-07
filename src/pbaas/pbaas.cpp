@@ -1045,7 +1045,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                 // until there is a post-start block notarization, we always consider the
                 // currency state to be up to just before the start block
                 std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> unspentTransfers;
-                if (GetChainTransfers(unspentTransfers, chainID, notarization.notarizationHeight, 
+                if (GetChainTransfers(unspentTransfers, chainID, notarization.IsValid() ? notarization.notarizationHeight : curDefHeight, 
                                       height < curDef.startBlock ? height : curDef.startBlock - 1))
                 {
                     currencyState.ClearForNextBlock();
@@ -1117,8 +1117,8 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                     {
                         oneWeight = ((arith_uint256(oneWeight) * arith_uint256(CCurrencyDefinition::CalculateRatioOfValue((SATOSHIDEN - preLaunchCarveOutTotal), SATOSHIDEN - curDef.preLaunchDiscount))) / bigSatoshi).GetLow64();
                     }
+                    currencyState.UpdateWithEmission(toEmit);
                 }
-                currencyState.UpdateWithEmission(toEmit);
             }
         }
     }
@@ -2082,7 +2082,7 @@ void CConnectedChains::ProcessLocalImports()
     std::map<uint160, std::pair<uint32_t, CTransaction>> currenciesToImport;    // height of earliest tx
     CCurrencyDefinition oneCurrency;
 
-    printf("%s: Searching for %s\n", __func__, EncodeDestination(CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT))).c_str());
+    //printf("%s: Searching for %s\n", __func__, EncodeDestination(CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT))).c_str());
     if (GetAddressUnspent(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT), 1, unspentOutputs))
     {
         CCrossChainExport ccx, ccxDummy;

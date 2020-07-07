@@ -775,13 +775,28 @@ int64_t CCurrencyDefinition::CalculateRatioOfValue(int64_t value, int64_t ratio)
 // this will only return an accurate result after total preconversion has been updated and before any emission
 int64_t CCurrencyDefinition::GetTotalPreallocation() const
 {
-    CAmount totalPreconvertedNative = 0;
     CAmount totalPreallocatedNative = 0;
-    for (auto onePreallocation : preAllocation)
+    for (auto &onePreallocation : preAllocation)
     {
         totalPreallocatedNative += onePreallocation.second;
     }
     return totalPreallocatedNative;
+}
+
+// this will only return an accurate result after total preconversion has been updated and before any emission
+int32_t CCurrencyDefinition::GetTotalCarveOut() const
+{
+    int32_t totalCarveOut = 0;
+    for (auto &oneCarveOut : preLaunchCarveOuts)
+    {
+        totalCarveOut += oneCarveOut.second;
+        if (oneCarveOut.second < 0 || oneCarveOut.second > SATOSHIDEN || totalCarveOut > SATOSHIDEN)
+        {
+            LogPrintf("%s: invalid carve out amount specified %d\n", __func__, oneCarveOut.second);
+            return 0;
+        }
+    }
+    return totalCarveOut;
 }
 
 std::vector<std::pair<uint160, int64_t>> CCurrencyDefinition::GetPreAllocationAmounts() const

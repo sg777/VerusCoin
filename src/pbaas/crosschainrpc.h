@@ -547,6 +547,7 @@ public:
 
     static int64_t CalculateRatioOfValue(int64_t value, int64_t ratio);
     int64_t GetTotalPreallocation() const;
+    int32_t GetTotalCarveOut() const;
 
     std::vector<std::pair<uint160, int64_t>> GetPreAllocationAmounts() const;
 };

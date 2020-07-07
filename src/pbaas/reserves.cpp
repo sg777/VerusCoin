@@ -1409,6 +1409,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     bool feeOutputStart = false;                        // fee outputs must come after all others, this indicates they have started
     int nFeeOutputs = 0;                                // number of fee outputs
 
+    bool carveOutSet = false;
+    CAmount totalCarveOut;
+
     for (int i = 0; i < exportObjects.size(); i++)
     {
         if (exportObjects[i]->objectType == CHAINOBJ_RESERVETRANSFER)
@@ -1546,7 +1549,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // first time through with preconvert, initialize the starting currency state
                     if (!initialCurrencyState.IsValid())
                     {
-                        initialCurrencyState = ConnectedChains.GetCurrencyState(importCurrencyDef.GetID(), currencyDest.startBlock);
+                        initialCurrencyState = ConnectedChains.GetCurrencyState(currencyDest.GetID(), currencyDest.startBlock - 1);
                         if (!initialCurrencyState.IsValid())
                         {
                             printf("%s: Invalid currency for preconversion %s\n", __func__, curTransfer.ToUniValue().write().c_str());
@@ -1590,20 +1593,40 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         if ((currencyDest.ChainOptions() & currencyDest.OPTION_FEESASRESERVE) || currencyDest.IsToken())
                         {
                             AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
+                            CAmount reserveIn = (curTransfer.nValue + curTransfer.nFees) - totalReserveFee;
+                            if (!carveOutSet)
+                            {
+                                totalCarveOut = importCurrencyDef.GetTotalCarveOut();
+                            }
+                            if (totalCarveOut)
+                            {
+                                reserveIn = CCurrencyState::NativeToReserveRaw(reserveIn, SATOSHIDEN - totalCarveOut);
+                            }
+
                             if (curTransfer.currencyID != systemDestID)
                             {
-                                AddReserveOutput(curTransfer.currencyID, (curTransfer.nValue + curTransfer.nFees) - totalReserveFee);
-                                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CIdentityID(importCurrencyID)});
-                                CTokenOutput ro = CTokenOutput(curTransfer.currencyID, (curTransfer.nValue + curTransfer.nFees) - totalReserveFee);
-                                vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
+                                AddReserveOutput(curTransfer.currencyID, reserveIn);
+
+                                // if this is a fractional currency, everything but fees and carveouts stay in reserve deposit
+                                // else all that would be reserves is sent to chain ID
+                                std::vector<CTxDestination> dests;
+                                if (!importCurrencyDef.IsFractional())
+                                {
+                                    dests = std::vector<CTxDestination>({CIdentityID(importCurrencyID)});
+                                    CTokenOutput ro = CTokenOutput(curTransfer.currencyID, reserveIn);
+                                    vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
+                                }
                             }
                             else
                             {
                                 newConvertedFees = totalReserveFee;
                                 totalReserveFee = 0;
-                                CAmount oneNative = (curTransfer.nValue + curTransfer.nFees) - newConvertedFees;
-                                nativeOut += oneNative;
-                                vOutputs.push_back(CTxOut(oneNative, GetScriptForDestination(CIdentityID(importCurrencyID))));
+                                // leave it in reserve deposit
+                                if (!importCurrencyDef.IsFractional())
+                                {
+                                    nativeOut += reserveIn;
+                                    vOutputs.push_back(CTxOut(reserveIn, GetScriptForDestination(CIdentityID(importCurrencyID))));
+                                }
                             }
                         }
                         else
@@ -1851,7 +1874,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                                            DestinationToTransferDestination(sendBackAddr));
 
                     std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
-                                                            CKeyID(currencyDest.systemID)});
+                                                            CKeyID(currencyDest.systemID == ConnectedChains.ThisChain().GetID() ? 
+                                                                   currencyDest.GetID() : 
+                                                                   currencyDest.systemID)});
                     CScript sendBackScript = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), 
                                                               &indexDests);
 
@@ -2078,7 +2103,9 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
                 // cast object to the most derived class to avoid template errors to a least derived class
                 CTxDestination rtIndexDest(CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)));
                 std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
-                                                        CKeyID(reserveCurrencyIt->second.systemID)});
+                                                        CKeyID(reserveCurrencyIt->second.systemID == ConnectedChains.ThisChain().GetID() ? 
+                                                               reserveCurrencyIt->second.GetID() : 
+                                                               reserveCurrencyIt->second.systemID)});
                 conversionTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), 
                                                                        &rtIndexDest)));
             }
