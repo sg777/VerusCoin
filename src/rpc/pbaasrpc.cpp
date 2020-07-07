@@ -5093,10 +5093,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         {
             if (newChain.contributions[i] > 0)
             {
-                CAmount fee = CReserveTransactionDescriptor::CalculateAdditionalConversionFee(newChain.contributions[i]);
-                CAmount contribution = (newChain.contributions[i] + fee) - 
-                                        CReserveTransactionDescriptor::CalculateConversionFee(newChain.contributions[i] + fee);
-                fee += CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
+                CAmount contribution = newChain.contributions[i] + 
+                                        CReserveTransactionDescriptor::CalculateAdditionalConversionFee(newChain.contributions[i]);
+                CAmount fee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
 
                 CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT,
                                                        newChain.currencies[i],
@@ -5109,11 +5108,11 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 CPubKey pk(ParseHex(CC.CChexstr));
 
                 indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
-                                                          CKeyID(newChain.systemID)});
+                                                          CKeyID(newChain.GetID())});
                 dests = std::vector<CTxDestination>({pk});
 
                 vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 
-                                                     newChain.currencies[i] == thisChainID ? newChain.contributions[i] + fee : 0, 
+                                                     newChain.currencies[i] == thisChainID ? contribution + fee : 0, 
                                                      false});
                 
                 // TODO: send export and conversion fees to reserve deposit, as appropriate, to enable payment
