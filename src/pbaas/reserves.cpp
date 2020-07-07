@@ -1546,7 +1546,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // first time through with preconvert, initialize the starting currency state
                     if (!initialCurrencyState.IsValid())
                     {
-                        initialCurrencyState = ConnectedChains.GetCurrencyState(currencyDest, currencyDest.startBlock);
+                        initialCurrencyState = ConnectedChains.GetCurrencyState(importCurrencyDef.GetID(), currencyDest.startBlock);
                         if (!initialCurrencyState.IsValid())
                         {
                             printf("%s: Invalid currency for preconversion %s\n", __func__, curTransfer.ToUniValue().write().c_str());
