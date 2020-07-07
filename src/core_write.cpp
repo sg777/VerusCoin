@@ -425,7 +425,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
     if (preLaunchDiscount)
     {
-        obj.push_back(Pair("preallocationratio", ValueFromAmount(preLaunchDiscount)));
+        obj.push_back(Pair("prelaunchdiscount", ValueFromAmount(preLaunchDiscount)));
     }
 
     if (preAllocation.size())

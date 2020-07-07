@@ -115,7 +115,7 @@ public:
                        const uint256 &MMRRoot,
                        const uint256 &preHash,
                        const uint256 &compactpower,
-                       const CCurrencyState &currencystate,
+                       const CCoinbaseCurrencyState &currencystate,
                        const uint256 &prevnotarization,
                        int32_t prevheight,
                        const uint256 &crossnotarization,

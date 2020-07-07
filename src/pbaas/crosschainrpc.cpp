@@ -455,9 +455,16 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                 preLaunchDiscount = AmountFromValueNoErr(find_value(obj, "prelaunchdiscount"));
                 initialFractionalSupply = AmountFromValueNoErr(find_value(obj, "initialsupply"));
 
+                if (!initialFractionalSupply)
+                {
+                    LogPrintf("%s: cannot specify zero initial supply for fractional currency\n", __func__);
+                    printf("%s: cannot specify zero initial supply for fractional currency\n", __func__);
+                    nVersion = PBAAS_VERSION_INVALID;
+                }
+
                 UniValue preLaunchCarveoutsUni = find_value(obj, "prelaunchcarveouts");
-                CAmount preLaunchCarveOutTotal = 0;
-                if (preLaunchCarveoutsUni.isArray())
+                int32_t preLaunchCarveOutTotal = 0;
+                if (nVersion != PBAAS_VERSION_INVALID && preLaunchCarveoutsUni.isArray())
                 {
                     for (int i = 0; i < preLaunchCarveoutsUni.size(); i++)
                     {
@@ -499,10 +506,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                         preLaunchCarveOuts.push_back(make_pair(CIdentityID(GetDestinationID(carveOutDest)), preLaunchCarveOutTotal));
                     }
                 }
-
-                // first, directly remove the carveout from total reserve weight, then calculate the discount
-                // by multiplying the remaining total reserve ratio by (1 - discount)
-                totalReserveWeight = CCurrencyDefinition::CalculateRatioOfValue((totalReserveWeight - preLaunchCarveOutTotal), SATOSHIDEN - preLaunchDiscount);
 
                 // if weights are defined, use them as relative ratios of each member currency
                 if (weightArr.isArray() && weightArr.size())
@@ -661,7 +664,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                     }
                     contributions[i] = contrib;
                     preconverted[i] = contrib;
-               }
+                }
 
                 int64_t minPre = 0;
                 if (isPreconvertMin)
@@ -696,6 +699,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
                         break;
                     }
                     conversions.push_back(conversion);
+                }
+                else
+                {
+                    conversions.push_back(0);
                 }
             }
         }

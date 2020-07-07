@@ -34,8 +34,6 @@
 #include <univalue.h>
 
 #include "rpc/pbaasrpc.h"
-#include "pbaas/crosschainrpc.h"
-#include "pbaas/identity.h"
 #include "transaction_builder.h"
 
 using namespace std;
@@ -1097,62 +1095,69 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
     if (chainDef.IsValid())
     {
-        CChainNotarizationData cnd;
-        GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
-
         ret = chainDef.ToUniValue();
 
-        std::vector<CNodeData> vNNodes;
-        int32_t confirmedHeight = -1, bestHeight = -1;
-
-        if (cnd.forks.size())
+        if (chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID)
         {
-            // get all nodes from notarizations of the best chain into a vector
-            for (auto &oneNot : cnd.forks[cnd.bestChain])
-            {
-                vNNodes.insert(vNNodes.end(), cnd.vtx[oneNot].second.nodes.begin(), cnd.vtx[oneNot].second.nodes.end());
-            }
+            ret.push_back(Pair("bestcurrencystate", ConnectedChains.GetCurrencyState(chainID, chainActive.Height() + 1).ToUniValue()));
+        }
+        else
+        {
+            CChainNotarizationData cnd;
+            GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd);
 
-            confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
-            bestHeight = cnd.vtx.size() && cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : -1;
+            std::vector<CNodeData> vNNodes;
+            int32_t confirmedHeight = -1, bestHeight = -1;
 
-            // shuffle and take 8 nodes,
-            // up to two of which will be from the last confirmed notarization if present
-            std::random_shuffle(vNNodes.begin(), vNNodes.end());
-            int numConfirmedNodes = cnd.lastConfirmed == -1 ? 0 : cnd.vtx[cnd.lastConfirmed].second.nodes.size();
-            if (vNNodes.size() > (8 - numConfirmedNodes))
+            if (cnd.forks.size())
             {
-                vNNodes.resize(8);
-            }
-            if (numConfirmedNodes)
-            {
-                vNNodes.insert(vNNodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.end());
-            }
-            if (vNNodes.size())
-            {
-                UniValue nodeArr(UniValue::VARR);
-                for (auto &oneNode : vNNodes)
+                // get all nodes from notarizations of the best chain into a vector
+                for (auto &oneNot : cnd.forks[cnd.bestChain])
                 {
-                    nodeArr.push_back(oneNode.ToUniValue());
+                    vNNodes.insert(vNNodes.end(), cnd.vtx[oneNot].second.nodes.begin(), cnd.vtx[oneNot].second.nodes.end());
                 }
-                ret.push_back(Pair("nodes", nodeArr));
-            }
-        }
 
-        if (!chainDef.IsToken())
-        {
-            ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
-            if (confirmedHeight != -1)
-            {
-                ret.push_back(Pair("lastconfirmedtxid", cnd.vtx[cnd.lastConfirmed].first.GetHex().c_str()));
-                ret.push_back(Pair("lastconfirmedcurrencystate", cnd.vtx[cnd.lastConfirmed].second.currencyState.ToUniValue()));
+                confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
+                bestHeight = cnd.vtx.size() && cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : -1;
+
+                // shuffle and take 8 nodes,
+                // up to two of which will be from the last confirmed notarization if present
+                std::random_shuffle(vNNodes.begin(), vNNodes.end());
+                int numConfirmedNodes = cnd.lastConfirmed == -1 ? 0 : cnd.vtx[cnd.lastConfirmed].second.nodes.size();
+                if (vNNodes.size() > (8 - numConfirmedNodes))
+                {
+                    vNNodes.resize(8);
+                }
+                if (numConfirmedNodes)
+                {
+                    vNNodes.insert(vNNodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.end());
+                }
+                if (vNNodes.size())
+                {
+                    UniValue nodeArr(UniValue::VARR);
+                    for (auto &oneNode : vNNodes)
+                    {
+                        nodeArr.push_back(oneNode.ToUniValue());
+                    }
+                    ret.push_back(Pair("nodes", nodeArr));
+                }
             }
-        }
-        ret.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
-        if (bestHeight != -1)
-        {
-            ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.GetHex().c_str()));
-            ret.push_back(Pair("bestcurrencystate", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.ToUniValue()));
+
+            if (!chainDef.IsToken())
+            {
+                ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
+                if (confirmedHeight != -1)
+                {
+                    ret.push_back(Pair("lastconfirmedtxid", cnd.vtx[cnd.lastConfirmed].first.GetHex().c_str()));
+                    ret.push_back(Pair("lastconfirmedcurrencystate", cnd.vtx[cnd.lastConfirmed].second.currencyState.ToUniValue()));
+                }
+            }
+            ret.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
+            if (bestHeight != -1)
+            {
+                ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.GetHex().c_str()));
+                ret.push_back(Pair("bestcurrencystate", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.ToUniValue()));
+            }
         }
         return ret;
     }
@@ -2988,7 +2993,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
     {
         cState = CCurrencyState(chainDef.currencies,
                                 chainDef.weights,
-                                chainDef.preconverted,
+                                std::vector<int64_t>(chainDef.currencies.size(), 0),
                                 chainDef.initialFractionalSupply,
                                 0,
                                 chainDef.initialFractionalSupply,
@@ -3947,7 +3952,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
 
     // make sure the chain is qualified for a refund
     CCurrencyValueMap minPreMap, preConvertedMap;
-    CCoinbaseCurrencyState currencyState = GetInitialCurrencyState(chainDef);
+    CCoinbaseCurrencyState currencyState = ConnectedChains.GetCurrencyState(chainDef.GetID(), chainDef.startBlock - 1);
     if (!(chainDef.minPreconvert.size() &&
         (minPreMap = CCurrencyValueMap(chainDef.currencies, chainDef.minPreconvert)) > preConvertedMap &&
         chainDef.startBlock < nHeight && 
@@ -4382,11 +4387,7 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Chain " + params[0].get_str() + " not found");
     }
-
-    // get accurate preconversions
-    CCurrencyValueMap fees;
-    chainDef.preconverted = CalculatePreconversions(chainDef, definitionHeight, fees).AsCurrencyVector(chainDef.currencies);
-    return GetInitialCurrencyState(chainDef).ToUniValue();
+    return ConnectedChains.GetCurrencyState(chainDef.GetID(), chainDef.startBlock - 1).ToUniValue();
 }
 
 UniValue getcurrencystate(const UniValue& params, bool fHelp)
@@ -4616,7 +4617,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "         \"prelaunchdiscount\" : \"xx.xx\" (value, optional) for fractional reserve currencies less than 100%, discount on final price at launch"
             "         \"initialsupply\" : \"xx.xx\"    (value, required for fractional) supply after conversion of contributions, before preallocation\n"
             "         \"prelaunchcarveouts\" : \"[{\"identity\":xx.xx}..]\", (list, optional) identities and % of pre-converted amounts from each reserve currency\n"
-            "         \"preallocations\" : \"[{\"identity\":xx.xx}..]\", (list, optional) amount or % of from pre-allocation, depending on preallocationratio\n"
+            "         \"preallocations\" : \"[{\"identity\":xx.xx}..]\", (list, optional)  list of identities and amounts from pre-allocation\n"
 
             "         \"eras\"          : \"objarray\", (array, optional) data specific to each era, maximum 3\n"
             "         {\n"
@@ -4673,6 +4674,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency definition. see help.");
     }
 
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
     CCurrencyDefinition checkDef;
     if (GetCurrencyDefinition(newChain.name, checkDef))
     {
@@ -4724,7 +4727,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // This also has the effect of piggybacking on the ID protocol's deconfliction between mined blocks to avoid name conflicts, 
     // as the ID can only have its bit set or unset by one transaction at any time and only as part of a transaction that changes the
     // the state of a potentially active currency.
-    LOCK2(cs_main, pwalletMain->cs_wallet);
 
     if (newChain.IsToken())
     {
@@ -4894,8 +4896,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                          CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
                                          false});
 
-    // get initial currency state
-    CCoinbaseCurrencyState newCurrencyState = GetInitialCurrencyState(newChain);
+    // get initial currency state at this height
+    CCoinbaseCurrencyState newCurrencyState = ConnectedChains.GetCurrencyState(newChain, chainActive.Height());
 
     // we need to make a notarization, notarize this information and block 0, which is the same as out block 0
     // our authorization will be that we are the chain definition
@@ -4931,7 +4933,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                 mmvRoot, 
                                                 nodePreHash, 
                                                 mmr.GetNode(0).power,
-                                                static_cast<CCurrencyState>(newCurrencyState),
+                                                newCurrencyState,
                                                 uint256(),
                                                 0,
                                                 uint256(),

@@ -343,7 +343,8 @@ public:
     enum FLAGS {
         FLAG_VALID = 1,
         FLAG_FRACTIONAL = 2,
-        FLAG_REFUNDING = 4
+        FLAG_REFUNDING = 4,
+        FLAG_PRELAUNCH = 8
     };
     enum CONSTANTS {
         MIN_RESERVE_RATIO = 1000000,        // we will not start a chain with less than 1% reserve ratio in any single currency
@@ -543,6 +544,23 @@ public:
         return flags & FLAG_REFUNDING;
     }
 
+    bool IsPrelaunch() const
+    {
+        return flags & FLAG_PRELAUNCH;
+    }
+
+    void SetPrelaunch(bool newState=true)
+    {
+        if (newState)
+        {
+            flags |= FLAG_PRELAUNCH;
+        }
+        else
+        {
+            flags &= ~FLAG_PRELAUNCH;
+        }
+    }
+
     void SetRefunding(bool newState=true)
     {
         if (newState)
@@ -637,6 +655,7 @@ public:
 
     void ClearForNextBlock()
     {
+        emitted = 0;
         nativeFees = 0;
         nativeConversionFees = 0;
         reserveIn = std::vector<CAmount>(currencies.size());

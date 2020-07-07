@@ -1018,15 +1018,29 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     {
         // get the last unspent notarization for this currency, which is valid by definition for a token
         CPBaaSNotarization notarization;
-        if (notarization.GetLastNotarization(chainID, EVAL_ACCEPTEDNOTARIZATION, curDefHeight, height))
+        if ((notarization.GetLastNotarization(chainID, EVAL_ACCEPTEDNOTARIZATION, curDefHeight, height) &&
+             (currencyState = notarization.currencyState).IsValid()) ||
+            (currencyState = GetInitialCurrencyState(curDef)).IsValid())
         {
-            currencyState = notarization.currencyState;
-            currencyState.ClearForNextBlock();
-
-            // if notarization is earlier than start block, get the transactions between this notarization and
-            // current height to add to currency totals
-            if (notarization.notarizationHeight < curDef.startBlock)
+            if (!(notarization.IsValid() && notarization.notarizationHeight >= curDef.startBlock))
             {
+                // pre-launch
+                currencyState.SetPrelaunch(true);
+
+                if (curDef.IsFractional())
+                {
+                    currencyState.supply = curDef.initialFractionalSupply;
+                    currencyState.reserves = std::vector<int64_t>(currencyState.reserves.size(), 0);
+                    currencyState.weights = curDef.weights;
+                }
+                else
+                {
+                    // supply is determined by purchases * current conversion rate
+                    currencyState.supply = currencyState.initialSupply;
+                }
+
+                CAmount toEmit = curDef.GetTotalPreallocation();
+
                 // get chain transfers that should apply before the start block
                 // until there is a post-start block notarization, we always consider the
                 // currency state to be up to just before the start block
@@ -1034,18 +1048,11 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                 if (GetChainTransfers(unspentTransfers, chainID, notarization.notarizationHeight, 
                                       height < curDef.startBlock ? height : curDef.startBlock - 1))
                 {
+                    currencyState.ClearForNextBlock();
+
                     // at this point, all pre-allocation, minted, and pre-converted currency are included
                     // in the currency state before final notarization
                     std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
-                    if (curDef.IsFractional())
-                    {
-                        currencyState.supply = curDef.initialFractionalSupply;
-                    }
-                    else
-                    {
-                        // supply is determined by purchases * current conversion rate
-                        currencyState.supply = currencyState.initialSupply;
-                    }
 
                     for (auto &transfer : unspentTransfers)
                     {
@@ -1053,8 +1060,8 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                         {
                             CAmount conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
 
-                            currencyState.reserveIn[currencyIndexes[transfer.second.second.currencyID]] += transfer.second.second.nValue;
-                            curDef.preconverted[currencyIndexes[transfer.second.second.currencyID]] += transfer.second.second.nValue;
+                            currencyState.reserveIn[currencyIndexes[transfer.second.second.currencyID]] += (transfer.second.second.nValue - conversionFee);
+                            curDef.preconverted[currencyIndexes[transfer.second.second.currencyID]] += (transfer.second.second.nValue - conversionFee);
                             if (curDef.IsFractional())
                             {
                                 currencyState.reserves[currencyIndexes[transfer.second.second.currencyID]] += transfer.second.second.nValue - conversionFee;
@@ -1068,6 +1075,9 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                             {
                                 currencyState.nativeConversionFees += conversionFee;
                                 currencyState.nativeFees += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                                currencyState.fees[currencyIndexes[transfer.second.second.currencyID]] += 
+                                            conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                                currencyState.conversionFees[currencyIndexes[transfer.second.second.currencyID]] += conversionFee;
                             }
                             else
                             {
@@ -1076,21 +1086,39 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                                 currencyState.conversionFees[currencyIndexes[transfer.second.second.currencyID]] += conversionFee;
                             }
                         }
-                        else if (transfer.second.second.flags & CReserveTransfer::PREALLOCATE)
-                        {
-                            currencyState.emitted += transfer.second.second.nValue;
-                        }
-                    }
-                    currencyState.supply += currencyState.emitted;
-                    if (curDef.conversions.size() != curDef.currencies.size())
-                    {
-                        curDef.conversions = std::vector<int64_t>(curDef.currencies.size());
-                    }
-                    for (int i = 0; i < curDef.conversions.size(); i++)
-                    {
-                        currencyState.conversionPrice[i] = curDef.conversions[i] = currencyState.PriceInReserve(i);
                     }
                 }
+
+                if (curDef.conversions.size() != curDef.currencies.size())
+                {
+                    curDef.conversions = std::vector<int64_t>(curDef.currencies.size());
+                }
+                for (int i = 0; i < curDef.conversions.size(); i++)
+                {
+                    currencyState.conversionPrice[i] = curDef.conversions[i] = currencyState.PriceInReserve(i);
+                }
+
+                if (curDef.IsFractional() && currencyState.IsPrelaunch())
+                {
+                    // now, remove carveout percentage from each weight & reserve
+                    // for currency state
+                    int32_t preLaunchCarveOutTotal = 0;
+                    for (auto &carveout : curDef.preLaunchCarveOuts)
+                    {
+                        preLaunchCarveOutTotal += carveout.second;
+                        
+                    }
+                    static arith_uint256 bigSatoshi(SATOSHIDEN);
+                    for (auto &oneReserve : currencyState.reserves)
+                    {
+                        oneReserve = ((arith_uint256(oneReserve) * arith_uint256(SATOSHIDEN - preLaunchCarveOutTotal)) / bigSatoshi).GetLow64();
+                    }
+                    for (auto &oneWeight : currencyState.weights)
+                    {
+                        oneWeight = ((arith_uint256(oneWeight) * arith_uint256(CCurrencyDefinition::CalculateRatioOfValue((SATOSHIDEN - preLaunchCarveOutTotal), SATOSHIDEN - curDef.preLaunchDiscount))) / bigSatoshi).GetLow64();
+                    }
+                }
+                currencyState.UpdateWithEmission(toEmit);
             }
         }
     }
@@ -1841,6 +1869,10 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
 
     int32_t definitionHeight = exportHeight;
     CChainNotarizationData cnd;
+
+    // TODO: right now, there is no notarization made until after the launch
+    // we should roll up preiodic notarizations and pay miners to do it, making
+    // long pre-launch periods possible
     if (isDefinition)
     {
         CTransaction dummyTx;
@@ -1863,6 +1895,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
         return false;
     }
     
+    CCoinbaseCurrencyState initialCur = GetCurrencyState(curDef, height, definitionHeight);
 
     CBlockIndex *pindex;
     CTxDestination notarizationID = VERUS_DEFAULTID.IsNull() ? CTxDestination(CIdentityID(currencyID)) : CTxDestination(VERUS_DEFAULTID);
@@ -1876,11 +1909,8 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
         pindex = chainActive[curDef.startBlock];
 
         // check if the chain is qualified for a refund
-        CCurrencyValueMap minPreMap, preConvertedMap, fees;
-        preConvertedMap = CalculatePreconversions(curDef, definitionHeight, fees).CanonicalMap();
-        curDef.preconverted = preConvertedMap.AsCurrencyVector(curDef.currencies);
-
-        CCoinbaseCurrencyState initialCur = GetInitialCurrencyState(curDef);
+        CCurrencyValueMap minPreMap, fees;
+        CCurrencyValueMap preConvertedMap = CCurrencyValueMap(curDef.currencies, curDef.preconverted).CanonicalMap();
         newCurState = initialCur;
 
         if (curDef.minPreconvert.size() && curDef.minPreconvert.size() == curDef.currencies.size())
@@ -1891,7 +1921,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
         if (minPreMap.valueMap.size() && preConvertedMap < minPreMap)
         {
             // we force the supply to zero
-            // in any case where there was a minimum participation,
+            // in any case where there was less than minimum participation,
             // the result of the supply cannot be zero, enabling us to easily determine that this
             // represents a failed launch
             newCurState.supply = 0;

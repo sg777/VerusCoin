@@ -1229,6 +1229,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                     CCoinbaseCurrencyState currencyState = importCurrencyDef.IsToken() ?
                                                                            importNotarization.currencyState :
                                                                            GetInitialCurrencyState(importCurrencyDef);
+                                    importCurrencyDef.conversions = currencyState.conversionPrice;
 
                                     if (!currencyState.IsValid() ||
                                         !AddReserveTransferImportOutputs(cci.systemID, importCurrencyDef, currencyState, exportTransfers, checkOutputs))
@@ -1304,22 +1305,19 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     {
         CAmount nValueIn = 0;
 
-        if (!(flags & IS_IMPORT))
+        // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
+        // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
+        auto reservesIn = view.GetReserveValueIn(nHeight, tx);
+        for (auto &oneIn : reservesIn.valueMap)
         {
-            // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
-            // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
-            auto reservesIn = view.GetReserveValueIn(nHeight, tx);
-            for (auto &oneIn : reservesIn.valueMap)
+            auto it = currencies.find(oneIn.first);
+            if (it == currencies.end())
             {
-                auto it = currencies.find(oneIn.first);
-                if (it == currencies.end())
-                {
-                    currencies[oneIn.first] = CReserveInOuts(oneIn.second, 0, 0, 0, 0);
-                }
-                else
-                {
-                    it->second.reserveIn += oneIn.second;
-                }
+                currencies[oneIn.first] = CReserveInOuts(oneIn.second, 0, 0, 0, 0);
+            }
+            else
+            {
+                it->second.reserveIn += oneIn.second;
             }
         }
 
@@ -1641,7 +1639,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     }
                     else
                     {
-                        // input comes from non-fee outputs
+                        // input comes from fees
                         newCurrencyConverted = initialCurrencyState.ReserveToNativeRaw(curTransfer.nValue, initialCurrencyState.conversionPrice[curIdx]);
                         if (curTransfer.destCurrencyID == systemDestID)
                         {
@@ -2227,7 +2225,7 @@ std::vector<CAmount> CReserveTransactionDescriptor::ReserveConversionFeesVec(con
 
 // this should be done no more than once to prepare a currency state to be updated to the next state
 // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
-CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount Emitted)
+CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount toEmit)
 {
     initialSupply = supply;
     emitted = 0;
@@ -2237,17 +2235,17 @@ CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount Emitted)
     {
         if (supply < 0)
         {
-            emitted = supply = Emitted;
+            emitted = supply = toEmit;
         }
         else
         {
-            emitted = Emitted;
-            supply += Emitted;
+            emitted = toEmit;
+            supply += toEmit;
         }
         return *this;
     }
 
-    if (Emitted)
+    if (toEmit)
     {
         // first determine current ratio by adding up all currency weights
         CAmount InitialRatio = 0;
@@ -2259,7 +2257,7 @@ CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount Emitted)
         // to balance rounding with truncation, we statistically add a satoshi to the initial ratio
         static arith_uint256 bigSatoshi(SATOSHIDEN);
         arith_uint256 bigInitial(InitialRatio);
-        arith_uint256 bigEmission(emitted);
+        arith_uint256 bigEmission(toEmit);
         arith_uint256 bigSupply(supply);
 
         arith_uint256 bigScratch = (bigInitial * bigSupply * bigSatoshi) / (bigSupply + bigEmission);
@@ -2323,7 +2321,7 @@ CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount Emitted)
         }
 
         // update initial supply from what we currently have
-        emitted = Emitted;
+        emitted = toEmit;
         supply = initialSupply + emitted;
     }
     return *this; 
