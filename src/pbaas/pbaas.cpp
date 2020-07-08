@@ -1075,16 +1075,11 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                             {
                                 currencyState.nativeConversionFees += conversionFee;
                                 currencyState.nativeFees += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                                currencyState.fees[currencyIndexes[transfer.second.second.currencyID]] += 
-                                            conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                                currencyState.conversionFees[currencyIndexes[transfer.second.second.currencyID]] += conversionFee;
                             }
-                            else
-                            {
-                                currencyState.fees[currencyIndexes[transfer.second.second.currencyID]] += 
-                                            conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                                currencyState.conversionFees[currencyIndexes[transfer.second.second.currencyID]] += conversionFee;
-                            }
+
+                            currencyState.fees[currencyIndexes[transfer.second.second.currencyID]] += 
+                                        conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                            currencyState.conversionFees[currencyIndexes[transfer.second.second.currencyID]] += conversionFee;
                         }
                     }
                 }
@@ -1111,7 +1106,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                     static arith_uint256 bigSatoshi(SATOSHIDEN);
                     for (auto &oneReserve : currencyState.reserves)
                     {
-                        oneReserve = ((arith_uint256(oneReserve) * arith_uint256(SATOSHIDEN - preLaunchCarveOutTotal)) / bigSatoshi).GetLow64();
+                        oneReserve =  ((arith_uint256(oneReserve) * arith_uint256(SATOSHIDEN - preLaunchCarveOutTotal)) / bigSatoshi).GetLow64();
                     }
                     for (auto &oneWeight : currencyState.weights)
                     {
