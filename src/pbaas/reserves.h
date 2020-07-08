@@ -436,7 +436,7 @@ public:
     // in a fractional reserve with no reserve or supply, this will always return
     // a price of the reciprocal (1/x) of the fractional reserve ratio of the indexed reserve,
     // which will always be >= 1
-    CAmount PriceInReserve(int32_t reserveIndex=0) const;
+    CAmount PriceInReserve(int32_t reserveIndex=0, bool roundUp=false) const;
 
     // return the current price of the fractional reserve in the reserve currency in Satoshis
     cpp_dec_float_50 PriceInReserveDecFloat50(int32_t reserveIndex=0) const;

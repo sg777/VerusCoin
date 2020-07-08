@@ -993,6 +993,116 @@ int CConnectedChains::GetThisChainPort() const
     return 0;
 }
 
+CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefinition &curDef,
+                                                                 const CCoinbaseCurrencyState &_currencyState,
+                                                                 int32_t fromHeight,
+                                                                 int32_t height,
+                                                                 int32_t curDefHeight)
+{
+    CCoinbaseCurrencyState currencyState = _currencyState;
+    bool firstUpdate = fromHeight <= curDefHeight;
+    if (firstUpdate)
+    {
+        if (curDef.IsFractional())
+        {
+            currencyState.supply = curDef.initialFractionalSupply;
+            currencyState.reserves = std::vector<int64_t>(currencyState.reserves.size(), 0);
+            currencyState.weights = curDef.weights;
+        }
+        else
+        {
+            // supply is determined by purchases * current conversion rate
+            currencyState.supply = currencyState.initialSupply;
+        }
+    }
+
+    // get chain transfers that should apply before the start block
+    // until there is a post-start block notarization, we always consider the
+    // currency state to be up to just before the start block
+    std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> unspentTransfers;
+    std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
+    if (GetChainTransfers(unspentTransfers, curDef.GetID(), fromHeight, height < curDef.startBlock ? height : curDef.startBlock - 1))
+    {
+        currencyState.ClearForNextBlock();
+
+        for (auto &transfer : unspentTransfers)
+        {
+            if (transfer.second.second.flags & CReserveTransfer::PRECONVERT)
+            {
+                CAmount conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
+
+                currencyState.reserveIn[currencyIndexes[transfer.second.second.currencyID]] += (transfer.second.second.nValue - conversionFee);
+                curDef.preconverted[currencyIndexes[transfer.second.second.currencyID]] += (transfer.second.second.nValue - conversionFee);
+                if (curDef.IsFractional())
+                {
+                    currencyState.reserves[currencyIndexes[transfer.second.second.currencyID]] += transfer.second.second.nValue - conversionFee;
+                }
+                else
+                {
+                    currencyState.supply += CCurrencyState::ReserveToNativeRaw(transfer.second.second.nValue - conversionFee, currencyState.PriceInReserve(currencyIndexes[transfer.second.second.currencyID]));
+                }
+
+                if (transfer.second.second.currencyID == curDef.systemID)
+                {
+                    currencyState.nativeConversionFees += conversionFee;
+                    currencyState.nativeFees += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                }
+
+                currencyState.fees[currencyIndexes[transfer.second.second.currencyID]] += 
+                            conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                currencyState.conversionFees[currencyIndexes[transfer.second.second.currencyID]] += conversionFee;
+            }
+        }
+    }
+
+    if (curDef.conversions.size() != curDef.currencies.size())
+    {
+        curDef.conversions = std::vector<int64_t>(curDef.currencies.size());
+    }
+    for (int i = 0; i < curDef.conversions.size(); i++)
+    {
+        currencyState.conversionPrice[i] = curDef.conversions[i] = currencyState.PriceInReserve(i, true);
+    }
+
+    // set initial supply from actual conversions if this is first update
+    if (firstUpdate && curDef.IsFractional())
+    {
+        currencyState.supply = 0;
+        for (auto &transfer : unspentTransfers)
+        {
+            if (transfer.second.second.flags & CReserveTransfer::PRECONVERT)
+            {
+                CAmount toConvert = transfer.second.second.nValue - CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
+                currencyState.supply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
+            }
+        }
+    }
+
+    if (firstUpdate && curDef.IsFractional())
+    {
+        // now, remove carveout percentage from each weight & reserve
+        // for currency state
+        int32_t preLaunchCarveOutTotal = 0;
+        for (auto &carveout : curDef.preLaunchCarveOuts)
+        {
+            preLaunchCarveOutTotal += carveout.second;
+            
+        }
+        static arith_uint256 bigSatoshi(SATOSHIDEN);
+        for (auto &oneReserve : currencyState.reserves)
+        {
+            oneReserve =  ((arith_uint256(oneReserve) * arith_uint256(SATOSHIDEN - preLaunchCarveOutTotal)) / bigSatoshi).GetLow64();
+        }
+        for (auto &oneWeight : currencyState.weights)
+        {
+            oneWeight = ((arith_uint256(oneWeight) * arith_uint256(CCurrencyDefinition::CalculateRatioOfValue((SATOSHIDEN - preLaunchCarveOutTotal), SATOSHIDEN - curDef.preLaunchDiscount))) / bigSatoshi).GetLow64();
+        }
+        currencyState.UpdateWithEmission(curDef.GetTotalPreallocation());
+    }
+
+    return currencyState;
+}
+
 CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &curDef, int32_t height, int32_t curDefHeight)
 {
     uint160 chainID = curDef.GetID();
@@ -1026,94 +1136,15 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
             {
                 // pre-launch
                 currencyState.SetPrelaunch(true);
-
-                if (curDef.IsFractional())
-                {
-                    currencyState.supply = curDef.initialFractionalSupply;
-                    currencyState.reserves = std::vector<int64_t>(currencyState.reserves.size(), 0);
-                    currencyState.weights = curDef.weights;
-                }
-                else
-                {
-                    // supply is determined by purchases * current conversion rate
-                    currencyState.supply = currencyState.initialSupply;
-                }
-
-                CAmount toEmit = curDef.GetTotalPreallocation();
-
-                // get chain transfers that should apply before the start block
-                // until there is a post-start block notarization, we always consider the
-                // currency state to be up to just before the start block
-                std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> unspentTransfers;
-                if (GetChainTransfers(unspentTransfers, chainID, notarization.IsValid() ? notarization.notarizationHeight : curDefHeight, 
-                                      height < curDef.startBlock ? height : curDef.startBlock - 1))
-                {
-                    currencyState.ClearForNextBlock();
-
-                    // at this point, all pre-allocation, minted, and pre-converted currency are included
-                    // in the currency state before final notarization
-                    std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
-
-                    for (auto &transfer : unspentTransfers)
-                    {
-                        if (transfer.second.second.flags & CReserveTransfer::PRECONVERT)
-                        {
-                            CAmount conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
-
-                            currencyState.reserveIn[currencyIndexes[transfer.second.second.currencyID]] += (transfer.second.second.nValue - conversionFee);
-                            curDef.preconverted[currencyIndexes[transfer.second.second.currencyID]] += (transfer.second.second.nValue - conversionFee);
-                            if (curDef.IsFractional())
-                            {
-                                currencyState.reserves[currencyIndexes[transfer.second.second.currencyID]] += transfer.second.second.nValue - conversionFee;
-                            }
-                            else
-                            {
-                                currencyState.supply += CCurrencyState::ReserveToNativeRaw(transfer.second.second.nValue - conversionFee, currencyState.PriceInReserve(currencyIndexes[transfer.second.second.currencyID]));
-                            }
-
-                            if (transfer.second.second.currencyID == curDef.systemID)
-                            {
-                                currencyState.nativeConversionFees += conversionFee;
-                                currencyState.nativeFees += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                            }
-
-                            currencyState.fees[currencyIndexes[transfer.second.second.currencyID]] += 
-                                        conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                            currencyState.conversionFees[currencyIndexes[transfer.second.second.currencyID]] += conversionFee;
-                        }
-                    }
-                }
-
-                if (curDef.conversions.size() != curDef.currencies.size())
-                {
-                    curDef.conversions = std::vector<int64_t>(curDef.currencies.size());
-                }
-                for (int i = 0; i < curDef.conversions.size(); i++)
-                {
-                    currencyState.conversionPrice[i] = curDef.conversions[i] = currencyState.PriceInReserve(i);
-                }
-
-                if (curDef.IsFractional() && currencyState.IsPrelaunch())
-                {
-                    // now, remove carveout percentage from each weight & reserve
-                    // for currency state
-                    int32_t preLaunchCarveOutTotal = 0;
-                    for (auto &carveout : curDef.preLaunchCarveOuts)
-                    {
-                        preLaunchCarveOutTotal += carveout.second;
-                        
-                    }
-                    static arith_uint256 bigSatoshi(SATOSHIDEN);
-                    for (auto &oneReserve : currencyState.reserves)
-                    {
-                        oneReserve =  ((arith_uint256(oneReserve) * arith_uint256(SATOSHIDEN - preLaunchCarveOutTotal)) / bigSatoshi).GetLow64();
-                    }
-                    for (auto &oneWeight : currencyState.weights)
-                    {
-                        oneWeight = ((arith_uint256(oneWeight) * arith_uint256(CCurrencyDefinition::CalculateRatioOfValue((SATOSHIDEN - preLaunchCarveOutTotal), SATOSHIDEN - curDef.preLaunchDiscount))) / bigSatoshi).GetLow64();
-                    }
-                    currencyState.UpdateWithEmission(toEmit);
-                }
+                currencyState = AddPrelaunchConversions(curDef, 
+                                                        currencyState, 
+                                                        notarization.IsValid() ? notarization.notarizationHeight : curDefHeight, 
+                                                        height, 
+                                                        curDefHeight);
+            }
+            else
+            {
+                currencyState.SetPrelaunch(false);
             }
         }
     }

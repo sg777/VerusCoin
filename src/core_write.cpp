@@ -260,7 +260,7 @@ UniValue CCurrencyState::ToUniValue() const
     return ret;
 }
 
-CAmount CCurrencyState::PriceInReserve(int32_t reserveIndex) const
+CAmount CCurrencyState::PriceInReserve(int32_t reserveIndex, bool roundUp) const
 {
     if (reserveIndex >= reserves.size())
     {
@@ -278,10 +278,27 @@ CAmount CCurrencyState::PriceInReserve(int32_t reserveIndex) const
     arith_uint256 Supply(supply);
     arith_uint256 Reserve(reserves[reserveIndex] ? reserves[reserveIndex] : SATOSHIDEN);
     arith_uint256 Ratio(weights[reserveIndex]);
+    static arith_uint256 bigZero(0);
     static arith_uint256 BigSatoshi(SATOSHIDEN);
     static arith_uint256 BigSatoshiSquared = BigSatoshi * BigSatoshi;
 
-    return ((Reserve * BigSatoshiSquared) / (Supply * Ratio)).GetLow64();
+    if (roundUp)
+    {
+        arith_uint256 denominator = Supply * Ratio;
+        arith_uint256 numerator = Reserve * BigSatoshiSquared;
+        arith_uint256 bigAnswer = numerator / denominator;
+        int64_t remainder = (numerator - (bigAnswer * denominator)).GetLow64();
+        CAmount answer = bigAnswer.GetLow64();
+        if (remainder && (answer + 1) > 0)
+        {
+            answer++;
+        }
+        return answer;
+    }
+    else
+    {
+        return ((Reserve * BigSatoshiSquared) / (Supply * Ratio)).GetLow64();
+    }
 }
 
 cpp_dec_float_50 CCurrencyState::PriceInReserveDecFloat50(int32_t reserveIndex) const
