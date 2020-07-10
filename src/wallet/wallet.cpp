@@ -3483,8 +3483,19 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
 
 bool CWallet::IsFromMe(const CTransaction& tx) const
 {
-    if (GetDebit(tx, ISMINE_ALL) > 0) {
-        return true;
+    {
+        LOCK(cs_wallet);
+        for (auto &txin : tx.vin)
+        {
+            map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(txin.prevout.hash);
+            if (mi != mapWallet.end())
+            {
+                const CWalletTx& prev = (*mi).second;
+                if (txin.prevout.n < prev.vout.size())
+                    if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey) & ISMINE_ALL)
+                        return true;
+            }
+        }
     }
     for (const JSDescription& jsdesc : tx.vJoinSplit) {
         for (const uint256& nullifier : jsdesc.nullifiers) {

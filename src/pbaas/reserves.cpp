@@ -305,7 +305,7 @@ CAmount CalculateFractionalOut(CAmount NormalizedReserveIn, CAmount Supply, CAmo
     cpp_dec_float_50 ratio(std::to_string(reserveRatio));
     ratio = ratio / bigSatoshi;
 
-    printf("reservein: %s\nsupply: %s\nreserve: %s\nratio: %s\n\n", reservein.str().c_str(), supply.str().c_str(), reserve.str().c_str(), ratio.str().c_str());
+    //printf("reservein: %s\nsupply: %s\nreserve: %s\nratio: %s\n\n", reservein.str().c_str(), supply.str().c_str(), reserve.str().c_str(), ratio.str().c_str());
 
     int64_t fractionalOut = 0;
 
@@ -313,7 +313,7 @@ CAmount CalculateFractionalOut(CAmount NormalizedReserveIn, CAmount Supply, CAmo
     if (NormalizedReserveIn)
     {
         cpp_dec_float_50 supplyout = bigSatoshi * (supply * (pow((reservein / reserve) + one, ratio) - one));
-        printf("supplyout: %s\n", supplyout.str(0, std::ios_base::fmtflags::_S_fixed).c_str());
+        //printf("supplyout: %s\n", supplyout.str(0, std::ios_base::fmtflags::_S_fixed).c_str());
 
         if (!CCurrencyState::to_int64(supplyout, fractionalOut))
         {
@@ -336,7 +336,7 @@ CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount Normal
     cpp_dec_float_50 ratio(std::to_string(reserveRatio));
     ratio = ratio / bigSatoshi;
 
-    printf("fractionalin: %s\nsupply: %s\nreserve: %s\nratio: %s\n\n", fractionalin.str().c_str(), supply.str().c_str(), reserve.str().c_str(), ratio.str().c_str());
+    //printf("fractionalin: %s\nsupply: %s\nreserve: %s\nratio: %s\n\n", fractionalin.str().c_str(), supply.str().c_str(), reserve.str().c_str(), ratio.str().c_str());
 
     int64_t reserveOut = 0;
 
@@ -344,7 +344,7 @@ CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount Normal
     if (FractionalIn)
     {
         cpp_dec_float_50 reserveout = bigSatoshi * (reserve * (one - pow(one - (fractionalin / supply), (one / ratio))));
-        printf("reserveout: %s\n", reserveout.str(0, std::ios_base::fmtflags::_S_fixed).c_str());
+        //printf("reserveout: %s\n", reserveout.str(0, std::ios_base::fmtflags::_S_fixed).c_str());
 
         if (!CCurrencyState::to_int64(reserveout, reserveOut))
         {
@@ -454,7 +454,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
     for (int64_t i = 0; i < currencies.size(); i++)
     {
         arith_uint256 weight(weights[i]);
-        printf("%s: %ld\n", __func__, ReserveToNative(inputReserves[i], i));
+        //printf("%s: %ld\n", __func__, ReserveToNative(inputReserves[i], i));
         CAmount netFractional = inputFractional[i] - ReserveToNative(inputReserves[i], i);
         int64_t deltaRatio;
         if (netFractional > 0)

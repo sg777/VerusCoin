@@ -1542,8 +1542,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 }
 
                                 //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
-
-                                CCrossChainExport ccx(lastChain, numInputs, totalAmounts, totalTxFees);
+                                CCrossChainExport ccx(lastChain, numInputs, totalAmounts.CanonicalMap(), totalTxFees.CanonicalMap());
 
                                 // make extra outputs for fees in each currency
                                 for (auto &outPair : ccx.CalculateExportFee().CanonicalMap().valueMap)
