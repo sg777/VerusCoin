@@ -593,8 +593,8 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
         for (auto &id : layer.second.second)
         {
             auto idIT = fractionalInMap.find(id);
-            CAmount newReservesForCurrencyBB = ((newNormalizedReserveBB * weights[reserveMap[id]]) / bigLayerWeight).GetLow64();
-            CAmount newReservesForCurrencyAB = ((newNormalizedReserveAB * weights[reserveMap[id]]) / bigLayerWeight).GetLow64();
+            CAmount newReservesForCurrencyBB = ((arith_uint256(newNormalizedReserveBB) * arith_uint256(weights[reserveMap[id]])) / bigLayerWeight).GetLow64();
+            CAmount newReservesForCurrencyAB = ((arith_uint256(newNormalizedReserveAB) * arith_uint256(weights[reserveMap[id]])) / bigLayerWeight).GetLow64();
 
             // initialize or add to the new supply for this currency
             if (idIT == fractionalInMap.end())
