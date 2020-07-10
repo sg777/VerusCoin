@@ -1601,9 +1601,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     {
                                         CCurrencyDefinition oneDef = currencyDefCache[oneCurrencyOut.first];
 
-                                        // if the destination is the not the source currency, and
-                                        // the destination is not another blockchain that controls the source currency, store in reserve
-                                        if (lastChainDef.systemID != ASSETCHAINS_CHAINID || oneDef.systemID != lastChainDef.systemID)
+                                        // if the destination is this chain, or
+                                        // the destination is another blockchain that does not control source currency, store in reserve
+                                        if (oneDef.systemID == ASSETCHAINS_CHAINID || oneDef.systemID != lastChainDef.systemID)
                                         {
                                             CAmount nativeOut = oneDef.GetID() == ASSETCHAINS_CHAINID ? oneCurrencyOut.second : 0;
 

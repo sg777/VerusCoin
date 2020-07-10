@@ -563,7 +563,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
     }
 
     supplyAfterBuy = supply + addSupply;
-    assert(supplyAfterSell >= 0);
+    assert(supplyAfterBuy >= 0);
 
     reserveAfterBuy = bigSupply.GetLow64() + addNormalizedReserves;
     assert(reserveAfterBuy >= 0);
@@ -676,8 +676,8 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
         }
         else if (fractionalInIT != fractionalInMap.end())
         {
-            arith_uint256 bigReserveDelta(fractionalOutIT->second.first);
-            reserveDelta = ((bigReserveDelta + arith_uint256(fractionalOutIT->second.second)) >> 1).GetLow64();
+            arith_uint256 bigReserveDelta(fractionalInIT->second.first);
+            reserveDelta = ((bigReserveDelta + arith_uint256(fractionalInIT->second.second)) >> 1).GetLow64();
             assert(inputFraction > 0);
             rates[i] = ((arith_uint256(inputReserve + reserveDelta) * bigSatoshi) / arith_uint256(inputFraction)).GetLow64();
 
@@ -1551,8 +1551,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     }
                     else
                     {
-                        // when minting currency, we source fees from source native coin
-                        if (curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE))
+                        // when minting new currency or burning a fractional for conversion to a reserve,
+                        // we only add fees
+                        if ((curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
                         {
                             nativeIn += curTransfer.nFees;
                         }
@@ -1561,7 +1562,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
                         }
                     }
-                    if (!(curTransfer.flags & curTransfer.PRECONVERT))
+                    if (!(curTransfer.flags & (curTransfer.PRECONVERT)))
                     {
                         transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
                     }
@@ -1764,7 +1765,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         LogPrintf("%s: Conversion must be between a fractional currency and one of its reserves\n", __func__);
                         return false;
                     }
-                    
+
                     CCurrencyDefinition &fractionalCurrency = toFractional ? currencyDest : sourceCurrency;
                     CCurrencyDefinition &reserveCurrency = toFractional ? sourceCurrency : currencyDest;
                     int reserveIdx = currencyIndexMap[reserveCurrency.GetID()];
@@ -1834,16 +1835,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     }
                     else
                     {
-                        // input comes from non-fee outputs
+                        valueOut = curTransfer.nValue;
+
                         if (toFractional)
                         {
-                            reserveConverted.valueMap[curTransfer.currencyID] += curTransfer.nValue;
-                            newCurrencyConverted = importCurrencyState.ReserveToNativeRaw(curTransfer.nValue, importCurrencyState.conversionPrice[reserveIdx]);
+                            reserveConverted.valueMap[curTransfer.currencyID] += valueOut;
+                            newCurrencyConverted = importCurrencyState.ReserveToNativeRaw(valueOut, importCurrencyState.conversionPrice[reserveIdx]);
                         }
                         else
                         {
-                            fractionalConverted.valueMap[curTransfer.destCurrencyID] += curTransfer.nValue;
-                            newCurrencyConverted = importCurrencyState.NativeToReserveRaw(curTransfer.nValue, importCurrencyState.conversionPrice[reserveIdx]);
+                            fractionalConverted.valueMap[curTransfer.destCurrencyID] += valueOut;
+                            newCurrencyConverted = importCurrencyState.NativeToReserveRaw(valueOut, importCurrencyState.conversionPrice[reserveIdx]);
                         }
                         
                         if (curTransfer.destCurrencyID == systemDestID)
@@ -1869,6 +1871,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         else
                         {
                             AddReserveOutConverted(curTransfer.destCurrencyID, newCurrencyConverted + feesConverted);
+
+                            // we need to consider our source currency as burned
+                            if (curTransfer.currencyID == systemDestID)
+                            {
+                                nativeIn -= valueOut;
+                            }
+                            else
+                            {
+                                AddReserveInput(curTransfer.currencyID, -valueOut);
+                            }
                         }
 
                         if ((newCurrencyConverted | feesConverted) && curTransfer.destCurrencyID == systemDestID)
@@ -2040,8 +2052,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             ReserveOutputs.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
         }
     }
-    ReserveInputs.valueMap[importCurrencyDef.systemID] += nativeIn;
-    ReserveOutputs.valueMap[importCurrencyDef.systemID] += nativeOut;
+    if (nativeIn)
+    {
+        ReserveInputs.valueMap[importCurrencyDef.systemID] += nativeIn;
+    }
+    if (nativeOut)
+    {
+        ReserveOutputs.valueMap[importCurrencyDef.systemID] += nativeOut;
+    }
     CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs, transferFees);
     if (ReserveInputs - ReserveOutputs < ccx.CalculateImportFee())
     {
