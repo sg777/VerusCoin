@@ -565,7 +565,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
     supplyAfterBuy = supply + addSupply;
     assert(supplyAfterBuy >= 0);
 
-    reserveAfterBuy = bigSupply.GetLow64() + addNormalizedReserves;
+    reserveAfterBuy = supply + addNormalizedReserves;
     assert(reserveAfterBuy >= 0);
 
     addSupply = 0;
@@ -615,10 +615,10 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
     supplyAfterBuySell = supplyAfterBuy + addSupply;
     assert(supplyAfterBuySell >= 0);
 
-    reserveAfterSell = bigSupply.GetLow64() + addNormalizedReservesBB;
+    reserveAfterSell = supply + addNormalizedReservesBB;
     assert(reserveAfterSell >= 0);
 
-    reserveAfterBuySell = bigSupply.GetLow64() + addNormalizedReservesAB;
+    reserveAfterBuySell = supply + addNormalizedReservesAB;
     assert(reserveAfterBuySell >= 0);
 
     addSupply = 0;
@@ -678,7 +678,18 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
         {
             arith_uint256 bigReserveDelta(fractionalInIT->second.first);
             reserveDelta = ((bigReserveDelta + arith_uint256(fractionalInIT->second.second)) >> 1).GetLow64();
+
+            cpp_dec_float_50 floatSupply(std::to_string(supply));
+            cpp_dec_float_50 floatReserveDelta(std::to_string(reserveDelta));
+            cpp_dec_float_50 floatReserve(std::to_string(reserves[i]));
+
+            floatReserveDelta = (floatReserveDelta / floatSupply) * floatReserve;
+            if (!to_int64(floatReserveDelta, reserveDelta))
+            {
+                assert(false);
+            }
             assert(inputFraction > 0);
+
             rates[i] = ((arith_uint256(inputReserve + reserveDelta) * bigSatoshi) / arith_uint256(inputFraction)).GetLow64();
 
             // subtract the fractional and reserve that has left the currency
