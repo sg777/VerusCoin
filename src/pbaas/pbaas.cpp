@@ -1603,15 +1603,14 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                         // if the destination is the not the source currency, and
                                         // the destination is not another blockchain that controls the source currency, store in reserve
-                                        if (!(oneCurrencyOut.first == lastChain ||
-                                            (lastChainDef.systemID != ASSETCHAINS_CHAINID && oneDef.systemID == lastChainDef.systemID)))
+                                        if (lastChainDef.systemID != ASSETCHAINS_CHAINID || oneDef.systemID != lastChainDef.systemID)
                                         {
                                             CAmount nativeOut = oneDef.GetID() == ASSETCHAINS_CHAINID ? oneCurrencyOut.second : 0;
 
                                             // send the entire amount to a reserve deposit output of the specific chain
                                             // we receive our fee on the other chain, when it comes back, or if a token,
                                             // when it gets imported back to the chain
-                                            std::vector<CTxDestination> indexDests({CKeyID(lastChainDef.GetConditionID(EVAL_RESERVE_DEPOSIT)), CKeyID(lastChainDef.GetID())});
+                                            std::vector<CTxDestination> indexDests({CKeyID(lastChainDef.GetConditionID(EVAL_RESERVE_DEPOSIT))});
                                             std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
 
                                             CTokenOutput ro = CTokenOutput(oneCurrencyOut.first, nativeOut ? 0 : oneCurrencyOut.second);
