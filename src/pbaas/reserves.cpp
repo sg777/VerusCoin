@@ -677,17 +677,8 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
         else if (fractionalInIT != fractionalInMap.end())
         {
             arith_uint256 bigReserveDelta(fractionalInIT->second.first);
-            reserveDelta = ((bigReserveDelta + arith_uint256(fractionalInIT->second.second)) >> 1).GetLow64();
+            reserveDelta = NativeToReserve(((bigReserveDelta + arith_uint256(fractionalInIT->second.second)) >> 1).GetLow64(), i);
 
-            cpp_dec_float_50 floatSupply(std::to_string(supply));
-            cpp_dec_float_50 floatReserveDelta(std::to_string(reserveDelta));
-            cpp_dec_float_50 floatReserve(std::to_string(reserves[i]));
-
-            floatReserveDelta = (floatReserveDelta / floatSupply) * floatReserve;
-            if (!to_int64(floatReserveDelta, reserveDelta))
-            {
-                assert(false);
-            }
             assert(inputFraction > 0);
 
             rates[i] = ((arith_uint256(inputReserve + reserveDelta) * bigSatoshi) / arith_uint256(inputFraction)).GetLow64();
