@@ -684,7 +684,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
             rates[i] = ((arith_uint256(inputReserve + adjustedReserveDelta) * bigSatoshi) / arith_uint256(inputFraction)).GetLow64();
 
             // subtract the fractional and reserve that has left the currency
-            newState.supply -= reserveDelta;
+            newState.supply -= inputFraction;
             newState.reserves[i] -= adjustedReserveDelta;
         }
         else
