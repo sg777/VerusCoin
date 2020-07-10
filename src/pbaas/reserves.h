@@ -421,7 +421,7 @@ public:
     template<typename cpp_dec_float_type>
     static bool to_int64(const cpp_dec_float_type &input, int64_t &outval)
     {
-        std::stringstream ss(input.str(0));
+        std::stringstream ss(input.str(0, std::ios_base::fmtflags::_S_fixed));
         try
         {
             ss >> outval;

@@ -744,7 +744,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCurrencyValueMap importFees = ccx.CalculateImportFee();
             CAmount feesOut = 0;
 
-            CCoinbaseCurrencyState currencyState;
+            CCoinbaseCurrencyState _currencyState, currencyState;
             if (isTokenImport)
             {
                 // spend export finalization if there is one
@@ -756,7 +756,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                     newImportTx.vin.push_back(CTxIn(aixIt->second.second.GetHash(), finalizeOutNum));
                 }
 
-                if (!NewImportNotarization(currencyDef, nHeight, lastImport, aixIt->second.first.blockHeight, aixIt->second.second, newImportTx, currencyState))
+                if (!NewImportNotarization(currencyDef, nHeight, lastImport, aixIt->second.first.blockHeight, aixIt->second.second, newImportTx, _currencyState))
                 {
                     LogPrintf("%s: cannot create notarization for transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                     printf("%s:  cannot create notarization for transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
@@ -766,14 +766,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             else
             {
                 // TODO: confirm that for non-tokens, we don't have to calculate initial state
-                currencyState = lastConfirmed.currencyState;
+                _currencyState = lastConfirmed.currencyState;
             }
 
             CReserveTransactionDescriptor rtxd;
             std::vector<CBaseChainObject *> exportOutputs = RetrieveOpRetArray(aixIt->second.second.vout.back().scriptPubKey);
 
-            if (!currencyState.IsValid() ||
-                !rtxd.AddReserveTransferImportOutputs(thisChainID, currencyDef, currencyState, exportOutputs, newImportTx.vout))
+            if (!_currencyState.IsValid() ||
+                !rtxd.AddReserveTransferImportOutputs(thisChainID, currencyDef, _currencyState, exportOutputs, newImportTx.vout, &currencyState))
             {
                 LogPrintf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                 printf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
@@ -861,7 +861,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
             CCrossChainImport cci = CCrossChainImport(ccx.systemID, 
                                                       rtxd.ReserveOutConvertedMap() + 
-                                                      CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>(nativeOutConverted)),
+                                                      CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({nativeOutConverted})),
                                                       leftoverCurrency.CanonicalMap());
 
             newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
@@ -2993,7 +2993,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
     {
         cState = CCurrencyState(chainDef.currencies,
                                 chainDef.weights,
-                                std::vector<int64_t>(chainDef.currencies.size(), 0),
+                                chainDef.contributions.size() ? chainDef.contributions : std::vector<int64_t>(chainDef.currencies.size(), 0),
                                 chainDef.initialFractionalSupply,
                                 0,
                                 chainDef.initialFractionalSupply,

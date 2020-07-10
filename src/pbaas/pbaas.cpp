@@ -1067,14 +1067,20 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
     // set initial supply from actual conversions if this is first update
     if (firstUpdate && curDef.IsFractional())
     {
-        currencyState.supply = 0;
+        CAmount lowSupply = 0, highSupply = 0;
         for (auto &transfer : unspentTransfers)
         {
             if (transfer.second.second.flags & CReserveTransfer::PRECONVERT)
             {
                 CAmount toConvert = transfer.second.second.nValue - CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
-                currencyState.supply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
+                lowSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
+                highSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.PriceInReserve(currencyIndexes[transfer.second.second.currencyID]));
             }
+        }
+        if (lowSupply > currencyState.supply || highSupply < currencyState.supply)
+        {
+            LogPrintf("%s: incorrect reserve currency supply low: %lu, high: %lu, current supply: %lu\n", __func__, lowSupply, highSupply, currencyState.supply);
+            printf("%s: incorrect reserve currency supply low: %lu, high: %lu, current supply: %lu\n", __func__, lowSupply, highSupply, currencyState.supply);
         }
     }
 
@@ -1866,13 +1872,29 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
 
     uint160 currencyID = _curDef.GetID();
 
-    CCurrencyDefinition curDef = _curDef;
+    CCurrencyDefinition curDef;
+    int32_t curDefHeight;
+    if (!GetCurrencyDefinition(currencyID, curDef, &curDefHeight))
+    {
+        LogPrintf("%s: cannot create import notarization - currency not found\n", __func__);
+        return false;
+    }
 
     CPBaaSNotarization lastNotarization(lastImportTx);
-    if (!lastNotarization.IsValid())
+    if (curDef.systemID == ASSETCHAINS_CHAINID && !lastNotarization.IsValid())
     {
         LogPrintf("%s: error getting notarization transaction %s\n", __func__, lastImportTx.GetHash().GetHex().c_str());
         return false;
+    }
+
+    CCoinbaseCurrencyState initialCurrencyState = lastNotarization.currencyState;
+
+    // if our last notarization is prior to the start block, then we need to get our
+    // initial currency state from a new start
+    if (lastNotarization.notarizationHeight < curDef.startBlock)
+    {
+        initialCurrencyState = ConnectedChains.GetCurrencyState(curDef, curDef.startBlock - 1, curDefHeight);
+        initialCurrencyState.SetPrelaunch(false);
     }
 
     CCrossChainExport ccx(exportTx);
@@ -1893,35 +1915,23 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
         }
     }
 
-    int32_t definitionHeight = exportHeight;
-    CChainNotarizationData cnd;
-
-    // TODO: right now, there is no notarization made until after the launch
-    // we should roll up preiodic notarizations and pay miners to do it, making
-    // long pre-launch periods possible
-    if (isDefinition)
+    if (!lastNotarization.IsValid())
     {
-        CTransaction dummyTx;
-        uint256 blkHash;
-
-        if (!myGetTransaction(lastImportTx.GetHash(), dummyTx, blkHash) || blkHash.IsNull())
+        CChainNotarizationData cnd;
+        // TODO: right now, there is no notarization made until after the launch
+        // we should roll up periodic notarizations and pay miners to do it, making
+        // long pre-launch periods possible
+        if (GetNotarizationData(curDef.GetID(), EVAL_ACCEPTEDNOTARIZATION, cnd) && cnd.vtx.size() && cnd.lastConfirmed >= 0)
         {
-            LogPrintf("%s: invalid last import transaction for %s\n", __func__, curDef.name.c_str());
+            lastNotarization = cnd.vtx[cnd.lastConfirmed].second;
+            initialCurrencyState = lastNotarization.currencyState;
+        }
+        else
+        {
+            LogPrintf("%s: cannot get last notarization for %s\n", __func__, curDef.name.c_str());
             return false;
         }
-        definitionHeight = mapBlockIndex[blkHash]->GetHeight();
     }
-    else if (GetNotarizationData(curDef.GetID(), EVAL_ACCEPTEDNOTARIZATION, cnd) && cnd.vtx.size())
-    {
-        lastNotarization = cnd.vtx[cnd.forks[cnd.bestChain].back()].second;
-    }
-    else
-    {
-        LogPrintf("%s: cannot get last notarization for %s\n", __func__, curDef.name.c_str());
-        return false;
-    }
-    
-    CCoinbaseCurrencyState initialCur = GetCurrencyState(curDef, height, definitionHeight);
 
     CBlockIndex *pindex;
     CTxDestination notarizationID = VERUS_DEFAULTID.IsNull() ? CTxDestination(CIdentityID(currencyID)) : CTxDestination(VERUS_DEFAULTID);
@@ -1937,7 +1947,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
         // check if the chain is qualified for a refund
         CCurrencyValueMap minPreMap, fees;
         CCurrencyValueMap preConvertedMap = CCurrencyValueMap(curDef.currencies, curDef.preconverted).CanonicalMap();
-        newCurState = initialCur;
+        newCurState = initialCurrencyState;
 
         if (curDef.minPreconvert.size() && curDef.minPreconvert.size() == curDef.currencies.size())
         {
@@ -1967,7 +1977,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
 
             exportObjects = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
 
-            bool isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, initialCur, exportObjects, vOutputs, &newCurState);
+            bool isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, initialCurrencyState, exportObjects, vOutputs, &newCurState);
             DeleteOpRetObjects(exportObjects);
             if (!isValidExport)
             {
@@ -1988,8 +1998,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
         // this is not the first notarization, so the last notarization will let us know if this is a refund or not
         CCurrencyValueMap minPreMap;
 
-        CCoinbaseCurrencyState initialCur = lastNotarization.currencyState;
-        newCurState = initialCur;
+        newCurState = initialCurrencyState;
 
         if (curDef.minPreconvert.size() && curDef.minPreconvert.size() == curDef.currencies.size())
         {
@@ -2009,7 +2018,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
 
             exportObjects = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
 
-            bool isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, initialCur, exportObjects, vOutputs, &newCurState);
+            bool isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, initialCurrencyState, exportObjects, vOutputs, &newCurState);
             DeleteOpRetObjects(exportObjects);
             if (!isValidExport)
             {
