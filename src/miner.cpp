@@ -1158,11 +1158,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         }
         else
         {
+            totalEmission = GetBlockSubsidy(nHeight, consensusParams);
             if (nHeight == 1)
             {
-                SetBlockOnePremine(thisChain.GetTotalPreallocation());
+                CAmount blockOneAllocation = thisChain.GetTotalPreallocation();
+                totalEmission += blockOneAllocation;
+                SetBlockOnePremine(totalEmission);
             }
-            totalEmission = GetBlockSubsidy(nHeight, consensusParams);
             blockSubsidy = totalEmission;
             currencyState.UpdateWithEmission(totalEmission);
 

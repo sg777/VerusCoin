@@ -1565,7 +1565,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
                         }
                     }
-                    if (!(curTransfer.flags & (curTransfer.PRECONVERT)))
+                    if (!(curTransfer.flags & (curTransfer.PRECONVERT | curTransfer.CONVERT)))
                     {
                         transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
                     }
@@ -1804,7 +1804,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             newCurrencyConverted = importCurrencyState.NativeToReserveRaw(valueOut, importCurrencyState.conversionPrice[reserveIdx]);
                         }
 
-                        CAmount totalSourceFee = preConversionFee + curTransfer.CalculateTransferFee(curTransfer.destination);
+                        CAmount totalSourceFee = preConversionFee + curTransfer.nFees;
 
                         // see if fees should be converted or not
                         if ((currencyDest.ChainOptions() & currencyDest.OPTION_FEESASRESERVE) || currencyDest.IsToken())

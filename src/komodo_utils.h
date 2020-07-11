@@ -1686,7 +1686,7 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
             }
         }
     }
-    if ( nHeight == 1 )
+    if ( nHeight == 1 && IsVerusActive() )
     {
         subsidy += ASSETCHAINS_SUPPLY + (ASSETCHAINS_MAGIC & 0xffffff);
     }
