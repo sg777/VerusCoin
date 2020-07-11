@@ -1459,6 +1459,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
     bool carveOutSet = false;
     int32_t totalCarveOut;
+    CCurrencyValueMap totalCarveOuts;
     CAmount totalMinted = 0;
 
     for (int i = 0; i < exportObjects.size(); i++)
@@ -1640,9 +1641,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             {
                                 totalCarveOut = importCurrencyDef.GetTotalCarveOut();
                             }
-                            if (totalCarveOut)
+                            if (totalCarveOut > 0 && totalCarveOut < SATOSHIDEN)
                             {
-                                reserveIn = CCurrencyState::NativeToReserveRaw(reserveIn, SATOSHIDEN - totalCarveOut);
+                                CAmount newReserveIn = CCurrencyState::NativeToReserveRaw(reserveIn, SATOSHIDEN - totalCarveOut);
+                                totalCarveOuts.valueMap[curTransfer.currencyID] += reserveIn - newReserveIn;
+                                reserveIn = newReserveIn;
                             }
 
                             if (curTransfer.currencyID != systemDestID)
@@ -2005,6 +2008,29 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 printf("%s: Invalid reserve transfer on export\n", __func__);
                 LogPrintf("%s: Invalid reserve transfer on export\n", __func__);
                 return false;
+            }
+        }
+    }
+
+    if ((totalCarveOuts = totalCarveOuts.CanonicalMap()).valueMap.size())
+    {
+        // add carveout outputs
+        for (auto &oneCur : totalCarveOuts.valueMap)
+        {
+            // if we are creating a reserve import for native currency, it must be spent from native inputs on the destination system
+            if (oneCur.first == systemDestID)
+            {
+                nativeOut += oneCur.second;
+                CTxOut(oneCur.second, GetScriptForDestination(CIdentityID(importCurrencyID)));
+            }
+            else
+            {
+                // generate a reserve output of the amount indicated, less fees
+                // we will send using a reserve output, fee will be paid through coinbase by converting from reserve or not, depending on currency settings
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CIdentityID(importCurrencyID)});
+                CTokenOutput ro = CTokenOutput(oneCur.first, oneCur.second);
+                AddReserveOutput(oneCur.first, oneCur.second);
+                CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
             }
         }
     }
