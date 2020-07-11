@@ -1694,7 +1694,7 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
         }
         else
         {
-            subsidy = ASSETCHAINS_SUPPLY;
+            subsidy += ASSETCHAINS_SUPPLY;
         }
     }
     return(subsidy);
