@@ -256,6 +256,10 @@ bool SetThisChain(const UniValue &chainDefinition)
         ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
         ASSETCHAINS_TIMEUNLOCKFROM = 0;
         ASSETCHAINS_TIMEUNLOCKTO = 0;
+
+        LOCK(cs_main);
+        CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
+        ASSETCHAINS_SUPPLY = currencyState.supply;
     }
     else
     {
@@ -319,11 +323,6 @@ bool SetThisChain(const UniValue &chainDefinition)
     mapArgs["-startblock"] = to_string(PBAAS_STARTBLOCK);
     PBAAS_ENDBLOCK = ConnectedChains.ThisChain().endBlock;
     mapArgs["-endblock"] = to_string(PBAAS_ENDBLOCK);
-
-    LOCK(cs_main);
-    CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
-
-    ASSETCHAINS_SUPPLY = currencyState.supply;
     mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
     return true;
 }

@@ -1686,9 +1686,13 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
             }
         }
     }
-    if ( nHeight == 1 && _IsVerusActive() )
+    if (nHeight == 1)
     {
-        subsidy += ASSETCHAINS_SUPPLY + (ASSETCHAINS_MAGIC & 0xffffff);
+        subsidy = ASSETCHAINS_SUPPLY;
+        if (_IsVerusActive() && !PBAAS_TESTMODE)
+        {
+            subsidy += (ASSETCHAINS_MAGIC & 0xffffff);
+        }
     }
     return(subsidy);
 }
