@@ -270,7 +270,6 @@ CAmount CCurrencyState::PriceInReserve(int32_t reserveIndex, bool roundUp) const
     {
         return reserves[reserveIndex];
     }
-
     if (!supply || weights[reserveIndex] == 0)
     {
         return weights[reserveIndex];
@@ -303,11 +302,23 @@ CAmount CCurrencyState::PriceInReserve(int32_t reserveIndex, bool roundUp) const
 
 cpp_dec_float_50 CCurrencyState::PriceInReserveDecFloat50(int32_t reserveIndex) const
 {
+    static cpp_dec_float_50 BigSatoshiSquared("10000000000000000");
+    static cpp_dec_float_50 BigZero("0");
+    if (reserveIndex >= reserves.size())
+    {
+        return BigZero;
+    }
+    if (!IsFractional())
+    {
+        return cpp_dec_float_50(std::to_string(reserves[reserveIndex]));
+    }
+    if (!supply || weights[reserveIndex] == 0)
+    {
+        return cpp_dec_float_50(std::to_string(weights[reserveIndex]));
+    }
     cpp_dec_float_50 Supply(std::to_string((supply ? supply : 1)));
     cpp_dec_float_50 Reserve(std::to_string(reserves[reserveIndex] ? reserves[reserveIndex] : SATOSHIDEN));
     cpp_dec_float_50 Ratio(std::to_string(weights[reserveIndex]));
-    static cpp_dec_float_50 BigSatoshi(std::to_string(SATOSHIDEN));
-    static cpp_dec_float_50 BigSatoshiSquared = BigSatoshi * BigSatoshi;
     return (Reserve * BigSatoshiSquared) / (Supply * Ratio);
 }
 
