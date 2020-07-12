@@ -1162,6 +1162,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             blockSubsidy = totalEmission;
             currencyState.UpdateWithEmission(totalEmission);
 
+            /*
             if (CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight))
             {
                 // at activation height for PBaaS on VRSC or VRSCTEST, add currency definition, import, and export outputs to the coinbase
@@ -1179,6 +1180,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                                                              &ConnectedChains.ThisChain()),
                                             &indexDests)));
             }
+            */
         }
 
         // process any imports from the current chain to itself, to suport token launches, etc.
