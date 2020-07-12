@@ -1976,6 +1976,15 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
             exportObjects = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
 
             bool isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, initialCurrencyState, exportObjects, vOutputs, &newCurState);
+            if (isValidExport)
+            {
+                // we want the new price and the old state as a starting point to ensure no rounding error impact
+                // on reserves
+                CCoinbaseCurrencyState tempCurState = initialCurrencyState;
+                tempCurState.conversionPrice = newCurState.conversionPrice;
+                vOutputs.resize(0);
+                isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, tempCurState, exportObjects, vOutputs, &newCurState);
+            }
             DeleteOpRetObjects(exportObjects);
             if (!isValidExport)
             {

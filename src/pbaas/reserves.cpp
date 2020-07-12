@@ -2044,9 +2044,20 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 importCurrencyState.ConvertAmounts(reserveConverted.AsCurrencyVector(importCurrencyState.currencies),
                                                    fractionalConverted.AsCurrencyVector(importCurrencyState.currencies),
                                                    newCurrencyState);
-            newCurrencyState.reserveIn = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
-            newCurrencyState.reserveOut = ReserveOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
-            newCurrencyState.nativeIn = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
+
+            std::vector<CAmount> vResConverted = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
+            std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
+            std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
+            std::vector<CAmount> vFracOutConverted = NativeOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
+
+            for (int i = 0; i < newCurrencyState.currencies.size(); i++)
+            {
+                newCurrencyState.reserveIn[i] = vResConverted[i];
+                newCurrencyState.reserveOut[i] = vResOutConverted[i];
+                newCurrencyState.reserves[i] += vResConverted[i] - vResOutConverted[i];
+                newCurrencyState.nativeIn[i] = vFracConverted[i];
+                newCurrencyState.supply += vFracOutConverted[i] - vFracConverted[i];
+            }
         }
 
         if (totalMinted)
@@ -2060,7 +2071,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             CReserveInOuts fractionalInOuts = currencies[systemDestID];
             newCurrencyState.nativeConversionFees = fractionalInOuts.reserveConversionFees;
         }
-
         newCurrencyState.fees = (transferFees + ReserveConversionFeesMap()).AsCurrencyVector(newCurrencyState.currencies);
         newCurrencyState.conversionFees = ReserveConversionFeesMap().AsCurrencyVector(newCurrencyState.currencies);
     }
