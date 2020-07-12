@@ -372,7 +372,9 @@ uint160 CurrencyNameToChainID(std::string currencyStr)
     return retVal;
 }
 
-CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj)
+CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
+    preLaunchDiscount(0),
+    initialFractionalSupply(0)
 {
     try
     {
