@@ -672,7 +672,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
             newState.supply += fractionDelta;
 
             // all reserves have been calculated using a substituted value, which was 1:1 for native initially
-            newState.reserves[i] += NativeToReserveRaw(fractionDelta, rates[i]);
+            newState.reserves[i] += inputFractional[i] ? NativeToReserveRaw(fractionDelta, rates[i]) : inputReserves[i];
         }
         else if (fractionalInIT != fractionalInMap.end())
         {
@@ -692,7 +692,6 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
             rates[i] = PriceInReserve(i);
         }
     }
-
     return rates;
 }
 
