@@ -2028,6 +2028,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
                 CCoinbaseCurrencyState tempCurState = initialCurrencyState;
                 tempCurState.conversionPrice = newCurState.conversionPrice;
                 vOutputs.resize(0);
+                rtxd = CReserveTransactionDescriptor();
                 isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, tempCurState, exportObjects, vOutputs, &newCurState);
             }
             else if (!curDef.IsFractional())
