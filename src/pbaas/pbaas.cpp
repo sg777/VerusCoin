@@ -1074,7 +1074,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
             {
                 CAmount toConvert = transfer.second.second.nValue - CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
                 lowSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
-                highSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.PriceInReserve(currencyIndexes[transfer.second.second.currencyID]));
+                highSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.PriceInReserve(currencyIndexes[transfer.second.second.currencyID], true));
             }
         }
         if (lowSupply > currencyState.supply || highSupply < currencyState.supply)
