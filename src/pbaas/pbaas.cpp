@@ -1697,6 +1697,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             }
                         }
                     }
+                    txInputs.clear();
                 }
                 lastChain = output.first;
             }
