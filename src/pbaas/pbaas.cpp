@@ -2029,6 +2029,10 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
                 vOutputs.resize(0);
                 isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, tempCurState, exportObjects, vOutputs, &newCurState);
             }
+            else if (!curDef.IsFractional())
+            {
+                newCurState = initialCurrencyState;
+            }
             DeleteOpRetObjects(exportObjects);
             if (!isValidExport)
             {
