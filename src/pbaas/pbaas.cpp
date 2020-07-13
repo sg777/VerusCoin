@@ -1976,7 +1976,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
             exportObjects = RetrieveOpRetArray(exportTx.vout.back().scriptPubKey);
 
             bool isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, initialCurrencyState, exportObjects, vOutputs, &newCurState);
-            if (isValidExport)
+            if (isValidExport && curDef.IsFractional())
             {
                 // we want the new price and the old state as a starting point to ensure no rounding error impact
                 // on reserves

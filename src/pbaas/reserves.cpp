@@ -2040,10 +2040,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     {
         if (reserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size())
         {
-            newCurrencyState.conversionPrice = 
-                importCurrencyState.ConvertAmounts(reserveConverted.AsCurrencyVector(importCurrencyState.currencies),
-                                                   fractionalConverted.AsCurrencyVector(importCurrencyState.currencies),
-                                                   newCurrencyState);
+            if (importCurrencyDef.IsFractional())
+            {
+                CCurrencyState dummyCurState;
+                newCurrencyState.conversionPrice = 
+                    importCurrencyState.ConvertAmounts(reserveConverted.AsCurrencyVector(importCurrencyState.currencies),
+                                                       fractionalConverted.AsCurrencyVector(importCurrencyState.currencies),
+                                                       dummyCurState);
+            }
 
             std::vector<CAmount> vResConverted = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
             std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
