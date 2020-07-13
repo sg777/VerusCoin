@@ -1787,7 +1787,7 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
 
             if (!AcceptToMemoryPool(mempool, state, signedTx, false, &fMissingInputs)) {
                 if (state.IsInvalid()) {
-                    fprintf(stderr,"%s: rejected by memory pool for %s\n", __func__, state.GetRejectReason().c_str());
+                    //fprintf(stderr,"%s: rejected by memory pool for %s\n", __func__, state.GetRejectReason().c_str());
                     LogPrintf("%s: rejected by memory pool for %s\n", __func__, state.GetRejectReason().c_str());
                 } else {
                     if (fMissingInputs) {
