@@ -1733,6 +1733,27 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentFinalizations;
     CCurrencyDefinition chainDef;
+    int32_t chainDefHeight;
+
+    if (GetCurrencyDefinition(chainID, chainDef, &chainDefHeight) && chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID)
+    {
+        CPBaaSNotarization notarization;
+        uint256 notarizationTxID;
+        CTransaction notarizationTx;
+        if (!notarization.GetLastNotarization(chainID, EVAL_EARNEDNOTARIZATION, chainDefHeight, 0, &notarizationTxID, &notarizationTx))
+        {
+            return false;
+        }
+        notarizationData.vtx.push_back(make_pair(notarizationTxID, notarization));
+        if (optionalTxOut)
+        {
+            optionalTxOut->push_back(make_pair(notarizationTx, notarizationTxID));
+        }
+        notarizationData.forks.push_back(vector<int32_t>(0));
+        notarizationData.forks.back().push_back(0);
+        notarizationData.bestChain = 0;
+        return true;
+    }
 
     bool isEarned = ecode == EVAL_EARNEDNOTARIZATION;
     bool allFinalized = false;
@@ -1797,8 +1818,6 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
 
         if (!sorted.size())
         {
-            allFinalized = true;
-
             if (GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, ecode), 1, unspentOutputs))
             {
                 // filter out all transactions that do not spend from the notarization thread, or originate as the

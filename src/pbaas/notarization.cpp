@@ -130,7 +130,10 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
 
 bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
                                              uint32_t eCode, 
-                                             int32_t startHeight, int32_t endHeight)
+                                             int32_t startHeight,
+                                             int32_t endHeight,
+                                             uint256 *txIDOut,
+                                             CTransaction *txOut)
 {
     CPBaaSNotarization notarization;
     std::vector<CAddressIndexDbEntry> notarizationIndex;
@@ -154,6 +157,14 @@ bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
                 if ((notarization = CPBaaSNotarization(oneTx.vout[it->first.index].scriptPubKey)).IsValid())
                 {
                     *this = notarization;
+                    if (txIDOut)
+                    {
+                        *txIDOut = it->first.txhash;
+                    }
+                    if (txOut)
+                    {
+                        *txOut = oneTx;
+                    }
                     break;
                 }
             }
