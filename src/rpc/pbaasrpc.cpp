@@ -1752,6 +1752,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
         notarizationData.forks.push_back(vector<int32_t>(0));
         notarizationData.forks.back().push_back(0);
         notarizationData.bestChain = 0;
+        notarizationData.lastConfirmed = 0;
         return true;
     }
 
