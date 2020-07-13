@@ -1740,7 +1740,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
         CPBaaSNotarization notarization;
         uint256 notarizationTxID;
         CTransaction notarizationTx;
-        if (!notarization.GetLastNotarization(chainID, EVAL_EARNEDNOTARIZATION, chainDefHeight, 0, &notarizationTxID, &notarizationTx))
+        if (!notarization.GetLastNotarization(chainID, EVAL_ACCEPTEDNOTARIZATION, chainDefHeight, 0, &notarizationTxID, &notarizationTx))
         {
             return false;
         }
