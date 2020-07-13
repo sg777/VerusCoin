@@ -1082,10 +1082,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
             LogPrintf("%s: incorrect reserve currency supply low: %lu, high: %lu, current supply: %lu\n", __func__, lowSupply, highSupply, currencyState.supply);
             printf("%s: incorrect reserve currency supply low: %lu, high: %lu, current supply: %lu\n", __func__, lowSupply, highSupply, currencyState.supply);
         }
-    }
 
-    if (firstUpdate && curDef.IsFractional())
-    {
         // now, remove carveout percentage from each weight & reserve
         // for currency state
         int32_t preLaunchCarveOutTotal = 0;
@@ -1103,8 +1100,9 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         {
             oneWeight = ((arith_uint256(oneWeight) * arith_uint256(CCurrencyDefinition::CalculateRatioOfValue((SATOSHIDEN - preLaunchCarveOutTotal), SATOSHIDEN - curDef.preLaunchDiscount))) / bigSatoshi).GetLow64();
         }
-        currencyState.UpdateWithEmission(curDef.GetTotalPreallocation());
     }
+
+    currencyState.UpdateWithEmission(curDef.GetTotalPreallocation());
 
     return currencyState;
 }
