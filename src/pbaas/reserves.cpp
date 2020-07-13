@@ -2069,7 +2069,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         CReserveInOuts fractionalInOuts = currencies[systemDestID];
         newCurrencyState.nativeConversionFees = fractionalInOuts.reserveConversionFees;
     }
-    newCurrencyState.fees = (transferFees + ReserveConversionFeesMap()).AsCurrencyVector(newCurrencyState.currencies);
+    newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
     newCurrencyState.conversionFees = ReserveConversionFeesMap().AsCurrencyVector(newCurrencyState.currencies);
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
