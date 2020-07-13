@@ -1041,6 +1041,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             {
                 CBlock block;
                 assert(nHeight > 1);
+                LOCK(cs_main);
                 currencyState = ConnectedChains.GetCurrencyState(nHeight - 1);
                 currencyState.ClearForNextBlock();
 
@@ -1157,14 +1158,11 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         }
         else
         {
-            if (nHeight == 1)
-            {
-                SetBlockOnePremine(thisChain.GetTotalPreallocation());
-            }
             totalEmission = GetBlockSubsidy(nHeight, consensusParams);
             blockSubsidy = totalEmission;
             currencyState.UpdateWithEmission(totalEmission);
 
+            /*
             if (CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight))
             {
                 // at activation height for PBaaS on VRSC or VRSCTEST, add currency definition, import, and export outputs to the coinbase
@@ -1182,30 +1180,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                                                              &ConnectedChains.ThisChain()),
                                             &indexDests)));
             }
-        }
-
-        // on all chains, we add an export and import to ourselves at PBaaS activation height (1 for PBaaS chains)
-        if (CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight))
-        {
-            // create the import thread output
-            cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
-            pkCC = CPubKey(ParseHex(CC.CChexstr));
-
-            // import thread from self
-            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CROSSCHAIN_IMPORT))});
-            std::vector<CTxDestination> dests = std::vector<CTxDestination>({pkCC});
-
-            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().GetID(), CCurrencyValueMap());
-            coinbaseTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests)));
-
-            // export thread to self
-            cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
-            pkCC = CPubKey(ParseHex(CC.CChexstr));
-            indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CROSSCHAIN_EXPORT))});
-            dests = std::vector<CTxDestination>({pkCC});
-
-            CCrossChainExport ccx(ConnectedChains.ThisChain().GetID(), 0, CCurrencyValueMap(), CCurrencyValueMap());
-            coinbaseTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx), &indexDests)));
+            */
         }
 
         // process any imports from the current chain to itself, to suport token launches, etc.

@@ -1435,8 +1435,8 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     // add Verus Coin Foundation sponsored testnet nodes
                     if (PBAAS_TESTMODE)
                     {
-                        //fprintf(fp,"addnode=%s\n", "185.25.48.72:18969");
-                        //fprintf(fp,"addnode=%s\n", "185.64.105.111:18969");
+                        fprintf(fp,"addnode=%s\n", "185.25.48.72:18267");
+                        fprintf(fp,"addnode=%s\n", "185.64.105.111:18267");
                     }
                 }
                 else
@@ -1686,9 +1686,16 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
             }
         }
     }
-    if ( nHeight == 1 )
+    if (nHeight == 1)
     {
-        subsidy += ASSETCHAINS_SUPPLY + (ASSETCHAINS_MAGIC & 0xffffff);
+        if (_IsVerusActive() && !PBAAS_TESTMODE)
+        {
+            subsidy += ASSETCHAINS_SUPPLY + (ASSETCHAINS_MAGIC & 0xffffff);
+        }
+        else
+        {
+            subsidy += ASSETCHAINS_SUPPLY;
+        }
     }
     return(subsidy);
 }
@@ -1800,7 +1807,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_reward"] = "0,38400000000,2400000000";
         mapArgs["-ac_halving"] = "1,43200,1051920";
         mapArgs["-ac_decay"] = "100000000,0,0";
-        mapArgs["-ac_options"] = "8,0,0"; // OPTION_ID_REFERRALS
+        mapArgs["-ac_options"] = "72,0,0";      // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
         mapArgs["-ac_end"] = "10080,226080,0";
         mapArgs["-ac_timelockgte"] = "19200000000";
         mapArgs["-ac_timeunlockfrom"] = "129600";
@@ -1824,10 +1831,10 @@ void komodo_args(char *argv0)
         mapArgs["-ac_supply"] = "5000000000000000";
         mapArgs["-ac_eras"] = "1";
         mapArgs["-ac_reward"] = "2400000000";
-        std::string halving = GetArg("-ac_halving", "225798"); // this assignment is required for an ARM compiler workaround
+        std::string halving = GetArg("-ac_halving", "277911"); // this assignment is required for an ARM compiler workaround
         mapArgs["-ac_halving"] = halving;    // allow testing easily with different values here
         mapArgs["-ac_decay"] = "0";
-        mapArgs["-ac_options"] = "8"; // OPTION_ID_REFERRALS
+        mapArgs["-ac_options"] = "72";       // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
         mapArgs["-ac_end"] = "0";
         mapArgs["-ac_veruspos"] = "50";
 
