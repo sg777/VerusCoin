@@ -1449,7 +1449,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     //printf("%s\n", importCurrencyDef.ToUniValue().write(1,2).c_str());
 
     std::map<uint160, CAmount> preAllocMap;             // if this contains pre-allocations, only make the necessary map once
-
     CCurrencyValueMap transferFees;                     // calculated fees based on all transfers/conversions, etc.
     CCurrencyValueMap feeOutputs;                       // actual fee output amounts
 
@@ -2034,50 +2033,44 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         }
     }
 
-    if (reserveConverted.valueMap.size() ||
-        fractionalConverted.valueMap.size() ||
-        totalMinted)
+    if (reserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size())
     {
-        if (reserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size())
+        if (importCurrencyDef.IsFractional())
         {
-            if (importCurrencyDef.IsFractional())
-            {
-                CCurrencyState dummyCurState;
-                newCurrencyState.conversionPrice = 
-                    importCurrencyState.ConvertAmounts(reserveConverted.AsCurrencyVector(importCurrencyState.currencies),
-                                                       fractionalConverted.AsCurrencyVector(importCurrencyState.currencies),
-                                                       dummyCurState);
-            }
-
-            std::vector<CAmount> vResConverted = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
-            std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
-            std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
-            std::vector<CAmount> vFracOutConverted = NativeOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
-
-            for (int i = 0; i < newCurrencyState.currencies.size(); i++)
-            {
-                newCurrencyState.reserveIn[i] = vResConverted[i];
-                newCurrencyState.reserveOut[i] = vResOutConverted[i];
-                newCurrencyState.reserves[i] += vResConverted[i] - vResOutConverted[i];
-                newCurrencyState.nativeIn[i] = vFracConverted[i];
-                newCurrencyState.supply += vFracOutConverted[i] - vFracConverted[i];
-            }
+            CCurrencyState dummyCurState;
+            newCurrencyState.conversionPrice = 
+                importCurrencyState.ConvertAmounts(reserveConverted.AsCurrencyVector(importCurrencyState.currencies),
+                                                    fractionalConverted.AsCurrencyVector(importCurrencyState.currencies),
+                                                    dummyCurState);
         }
-
-        if (totalMinted)
-        {
-            newCurrencyState.UpdateWithEmission(totalMinted);
-        }
-
-        // now, pull out all fractional data and sort out native vs. fractional
-        if (currencies.count(systemDestID))
-        {
-            CReserveInOuts fractionalInOuts = currencies[systemDestID];
-            newCurrencyState.nativeConversionFees = fractionalInOuts.reserveConversionFees;
-        }
-        newCurrencyState.fees = (transferFees + ReserveConversionFeesMap()).AsCurrencyVector(newCurrencyState.currencies);
-        newCurrencyState.conversionFees = ReserveConversionFeesMap().AsCurrencyVector(newCurrencyState.currencies);
     }
+    std::vector<CAmount> vResConverted = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
+    std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
+    std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
+    std::vector<CAmount> vFracOutConverted = NativeOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
+
+    for (int i = 0; i < newCurrencyState.currencies.size(); i++)
+    {
+        newCurrencyState.reserveIn[i] = vResConverted[i];
+        newCurrencyState.reserveOut[i] = vResOutConverted[i];
+        newCurrencyState.reserves[i] += vResConverted[i] - vResOutConverted[i];
+        newCurrencyState.nativeIn[i] = vFracConverted[i];
+        newCurrencyState.supply += vFracOutConverted[i] - vFracConverted[i];
+    }
+
+    if (totalMinted)
+    {
+        newCurrencyState.UpdateWithEmission(totalMinted);
+    }
+
+    // now, pull out all fractional data and sort out native vs. fractional
+    if (currencies.count(systemDestID))
+    {
+        CReserveInOuts fractionalInOuts = currencies[systemDestID];
+        newCurrencyState.nativeConversionFees = fractionalInOuts.reserveConversionFees;
+    }
+    newCurrencyState.fees = (transferFees + ReserveConversionFeesMap()).AsCurrencyVector(newCurrencyState.currencies);
+    newCurrencyState.conversionFees = ReserveConversionFeesMap().AsCurrencyVector(newCurrencyState.currencies);
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
     CCurrencyValueMap ReserveInputs;
