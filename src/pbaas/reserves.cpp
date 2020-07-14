@@ -48,7 +48,7 @@ CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transfe
                                     ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
 
     // add conversion fees in source currency for preconvert
-    if (flags & CReserveTransfer::PRECONVERT)
+    if (flags & (CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT))
     {
         feeMap.valueMap[currencyID] += CReserveTransactionDescriptor::CalculateConversionFee(transferTotal);
     }
