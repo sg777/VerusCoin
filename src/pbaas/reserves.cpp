@@ -1563,7 +1563,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
                         }
                     }
-                    if (!(curTransfer.flags & (curTransfer.PRECONVERT)))
+                    if (!(curTransfer.flags & (curTransfer.PRECONVERT | curTransfer.CONVERT)))
                     {
                         transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
                     }

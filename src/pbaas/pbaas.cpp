@@ -576,7 +576,7 @@ CCurrencyValueMap CCrossChainExport::CalculateExportFee(const CCurrencyValueMap 
     {
         retVal.valueMap[feePair.first] = (((arith_uint256(feePair.second) * ratio)) / satoshis).GetLow64();
     }
-    return retVal;
+    return retVal.CanonicalMap();
 }
 
 CCurrencyValueMap CCrossChainExport::CalculateExportFee() const
@@ -1519,7 +1519,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     else
                                     {
                                         CAmount valueOut = isMint ? 0 : txInputs[j].second.nValue;
-                                        CCurrencyValueMap newFees;
+
                                         totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, valueOut);
                                         totalAmounts += newTransferInput;
                                         chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
