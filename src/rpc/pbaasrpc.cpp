@@ -508,7 +508,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     CCurrencyValueMap availableTokenInput(AvailableTokenInput);
     CAmount totalNativeInput(TotalNativeInput);
 
-    // printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
+    CCurrencyValueMap availableCurrencyInput(AvailableTokenInput);
+    availableCurrencyInput.valueMap[currencyDef.systemID] = TotalNativeInput;
+
+    // printf("totalNativeInput: %ld, availableCurrencyInput:%s\n", totalNativeInput, availableCurrencyInput.ToUniValue().write().c_str());
 
     CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
     if ((isTokenImport && chainActive.LastTip() == NULL) ||
@@ -788,8 +791,18 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
             pk = CPubKey(ParseHex(CC.CChexstr));
 
-            CCurrencyValueMap leftoverCurrency = ((availableTokenInput - rtxd.ReserveInputMap()) +
-                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({totalNativeInput - rtxd.nativeIn})));
+            CAmount nativeOutConverted = 0;
+            for (auto &oneCur : rtxd.NativeOutConvertedMap().valueMap)
+            {
+                nativeOutConverted += oneCur.second;
+            }
+
+            // import fees go to miner, reserve outputs, native or otherwise, always come from available
+            // input whether converted or not, and fractional out converted is new currency
+            CCurrencyValueMap spentCurrencyOut = rtxd.ReserveOutputMap() + 
+                                                 CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut}));
+            spentCurrencyOut.valueMap[currencyID] -= nativeOutConverted;
+            CCurrencyValueMap leftoverCurrency = availableCurrencyInput - spentCurrencyOut;
 
             /*
             printf("%s: leftoverCurrency:\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\nexportfees:\n%s\nccx.totalFees - exportFees:\n%s\n\n", 
