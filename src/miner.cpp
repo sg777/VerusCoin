@@ -1428,7 +1428,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             CReserveTransactionDescriptor txDesc;
             bool isReserve = mempool.IsKnownReserveTransaction(hash, txDesc);
 
-            nTxFees = view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime)-tx.GetValueOut();
+            nTxFees = view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime) - tx.GetValueOut();
             
             nTxSigOps += GetP2SHSigOpCount(tx, view);
             if (nBlockSigOps + nTxSigOps >= MAX_BLOCK_SIGOPS-1)
@@ -1452,7 +1452,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
 
             if (isReserve)
             {
-                nTxFees = 0;            // we will adjust all reserve transaction fees when we get an accurate conversion rate
                 reservePositions.push_back(nBlockTx);
                 haveReserveTransactions = true;
             }
@@ -1499,7 +1498,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         // 3. match orders to include all limit transactions that qualify and will fit
         CAmount conversionFees = 0;
 
-        if (haveReserveTransactions)
+        if (!IsVerusActive() && haveReserveTransactions)
         {
             std::vector<CReserveTransactionDescriptor> reserveFills;
             std::vector<CReserveTransactionDescriptor> noFills;

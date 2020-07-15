@@ -2758,7 +2758,7 @@ namespace Consensus {
         if (cci.IsValid())
         {
             ReserveValueIn = rtxd.ReserveInputMap() + rtxd.ReserveOutConvertedMap();
-            //printf("cci.importValue:\n%s\n rtxd.ReserveInputMap():\n%s, rtxd.ReserveOutConvertedMap():\n%s\n", cci.importValue.ToUniValue().write(1, 2).c_str(), 
+            //printf("cci:\n%s\n rtxd.ReserveInputMap():\n%s, rtxd.ReserveOutConvertedMap():\n%s\n", cci.ToUniValue().write(1, 2).c_str(), 
             //    rtxd.ReserveInputMap().ToUniValue().write(1, 2).c_str(), rtxd.ReserveOutConvertedMap().ToUniValue().write(1, 2).c_str());
         }
         else
