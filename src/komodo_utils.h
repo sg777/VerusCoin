@@ -1435,8 +1435,8 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     // add Verus Coin Foundation sponsored testnet nodes
                     if (PBAAS_TESTMODE)
                     {
-                        fprintf(fp,"addnode=%s\n", "185.25.48.72:18267");
-                        fprintf(fp,"addnode=%s\n", "185.64.105.111:18267");
+                        fprintf(fp,"addnode=%s\n", "185.25.48.72:19424");
+                        fprintf(fp,"addnode=%s\n", "185.64.105.111:19424");
                     }
                 }
                 else
