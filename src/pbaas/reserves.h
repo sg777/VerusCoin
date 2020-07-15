@@ -725,7 +725,7 @@ public:
     static CAmount CalculateConversionFee(CAmount inputAmount);
     static CAmount CalculateAdditionalConversionFee(CAmount inputAmount);
 
-    CAmount TotalANativeOutConverted() const
+    CAmount TotalNativeOutConverted() const
     {
         CAmount nativeOutConverted = 0;
         for (auto &one : currencies)
@@ -737,7 +737,7 @@ public:
 
     CAmount NativeFees() const
     {
-        return nativeIn - (nativeOut - TotalANativeOutConverted());     // native out converted does not include conversion
+        return nativeIn - (nativeOut - TotalNativeOutConverted());     // native out converted does not include conversion
     }
 
     CCurrencyValueMap ReserveFees() const
