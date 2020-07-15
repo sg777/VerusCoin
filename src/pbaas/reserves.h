@@ -725,9 +725,19 @@ public:
     static CAmount CalculateConversionFee(CAmount inputAmount);
     static CAmount CalculateAdditionalConversionFee(CAmount inputAmount);
 
+    CAmount TotalNativeOutConverted() const
+    {
+        CAmount nativeOutConverted = 0;
+        for (auto &one : currencies)
+        {
+            nativeOutConverted += one.second.nativeOutConverted;
+        }
+        return nativeOutConverted;
+    }
+
     CAmount NativeFees() const
     {
-        return nativeIn - nativeOut;                                // native out converted does not include conversion
+        return nativeIn - (nativeOut - TotalNativeOutConverted());     // native out converted does not include conversion
     }
 
     CCurrencyValueMap ReserveFees() const
@@ -735,7 +745,7 @@ public:
         CCurrencyValueMap retFees;
         for (auto &one : currencies)
         {
-            CAmount oneFee = one.second.reserveIn - one.second.reserveOut;
+            CAmount oneFee = one.second.reserveIn - (one.second.reserveOut - one.second.reserveOutConverted);
             if (oneFee)
             {
                 retFees.valueMap[one.first] = oneFee;

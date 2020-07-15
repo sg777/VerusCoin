@@ -48,7 +48,7 @@ CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transfe
                                     ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
 
     // add conversion fees in source currency for preconvert
-    if (flags & CReserveTransfer::PRECONVERT)
+    if (flags & (CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT))
     {
         feeMap.valueMap[currencyID] += CReserveTransactionDescriptor::CalculateConversionFee(transferTotal);
     }
@@ -1563,7 +1563,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
                         }
                     }
-                    if (!(curTransfer.flags & (curTransfer.PRECONVERT)))
+                    if (!(curTransfer.flags & (curTransfer.PRECONVERT | curTransfer.CONVERT)))
                     {
                         transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
                     }
@@ -1705,29 +1705,20 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     {
                         // input comes from fees
                         newCurrencyConverted = initialCurrencyState.ReserveToNativeRaw(curTransfer.nValue, initialCurrencyState.conversionPrice[curIdx]);
-                        if (curTransfer.destCurrencyID == systemDestID)
-                        {
-                            nativeOut += newCurrencyConverted;
-                        }
-                        else
-                        {
-                            AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
-                        }
                     }
 
                     if (newCurrencyConverted | feesConverted)
                     {
                         AddNativeOutConverted(curTransfer.currencyID, newCurrencyConverted + feesConverted);
-                        if (curTransfer.destCurrencyID != systemDestID)
-                        {
-                            AddReserveOutConverted(curTransfer.destCurrencyID, newCurrencyConverted + feesConverted);
-                        }
                         if (curTransfer.destCurrencyID == systemDestID)
                         {
+                            nativeOut += newCurrencyConverted;
                             newOut = CTxOut(newCurrencyConverted, GetScriptForDestination(TransferDestinationToDestination(curTransfer.destination)));
                         }
                         else
                         {
+                            AddReserveOutConverted(curTransfer.destCurrencyID, newCurrencyConverted + feesConverted);
+                            AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
                             std::vector<CTxDestination> dests = std::vector<CTxDestination>({TransferDestinationToDestination(curTransfer.destination)});
                             CTokenOutput ro = CTokenOutput(curTransfer.destCurrencyID, newCurrencyConverted);
                             newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
@@ -1866,14 +1857,27 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         if (toFractional)
                         {
                             AddNativeOutConverted(curTransfer.currencyID, newCurrencyConverted + feesConverted);
-                            if (curTransfer.destCurrencyID != systemDestID)
+                            if (curTransfer.destCurrencyID == systemDestID)
+                            {
+                                nativeOut += newCurrencyConverted;
+                            }
+                            else
                             {
                                 AddReserveOutConverted(curTransfer.destCurrencyID, newCurrencyConverted + feesConverted);
+                                AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
                             }
                         }
                         else
                         {
                             AddReserveOutConverted(curTransfer.destCurrencyID, newCurrencyConverted + feesConverted);
+                            if (curTransfer.destCurrencyID == systemDestID)
+                            {
+                                nativeOut += newCurrencyConverted;
+                            }
+                            else
+                            {
+                                AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
+                            }
 
                             // we need to consider our source currency as burned
                             if (curTransfer.currencyID == systemDestID)
@@ -1985,13 +1989,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             {
                                 AddReserveOutConverted(curTransfer.destCurrencyID, ro.nValue);
                             }
-                            newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                         }
-                        else if (!(curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
-                        {
-                            AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);
-                            newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
-                        }
+                        AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);
+                        newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                     }
                 }
                 if (newOut.nValue < 0)
@@ -2095,6 +2095,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         ReserveOutputs.valueMap[importCurrencyDef.systemID] += nativeOut;
     }
     CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs, transferFees);
+    // printf("ReserveInputs: %s\nReserveOutputs: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), ReserveOutputs.ToUniValue().write(1,2).c_str());
     if (ReserveInputs - ReserveOutputs < ccx.CalculateImportFee())
     {
         printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\nccx.CalculateImportFee(): %s\nccx: %s\n", __func__,

@@ -508,7 +508,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     CCurrencyValueMap availableTokenInput(AvailableTokenInput);
     CAmount totalNativeInput(TotalNativeInput);
 
-    // printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
+    CCurrencyValueMap availableCurrencyInput(AvailableTokenInput);
+    availableCurrencyInput.valueMap[currencyDef.systemID] = TotalNativeInput;
+
+    // printf("totalNativeInput: %ld, availableCurrencyInput:%s\n", totalNativeInput, availableCurrencyInput.ToUniValue().write().c_str());
 
     CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
     if ((isTokenImport && chainActive.LastTip() == NULL) ||
@@ -788,16 +791,27 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
             pk = CPubKey(ParseHex(CC.CChexstr));
 
-            CCurrencyValueMap leftoverCurrency = ((availableTokenInput - rtxd.ReserveInputMap()) +
-                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({totalNativeInput - rtxd.nativeIn})));
+            CAmount nativeOutConverted = 0;
+            for (auto &oneCur : rtxd.NativeOutConvertedMap().valueMap)
+            {
+                nativeOutConverted += oneCur.second;
+            }
+
+            // import fees go to miner, reserve outputs, native or otherwise, always come from available
+            // input whether converted or not, and fractional out converted is new currency
+            CCurrencyValueMap spentCurrencyOut = rtxd.ReserveOutputMap() + 
+                                                 CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut}));
+            spentCurrencyOut.valueMap[currencyID] -= nativeOutConverted;
+            CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - (spentCurrencyOut + importFees)).CanonicalMap();
 
             /*
-            printf("%s: leftoverCurrency:\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\nexportfees:\n%s\nccx.totalFees - exportFees:\n%s\n\n", 
+            printf("%s: leftoverCurrency:\n%s\nnativeOutConverted\n%ld\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\nexportfees:\n%s\nccx.totalFees - exportFees:\n%s\n\n", 
                         __func__, 
                         leftoverCurrency.ToUniValue().write().c_str(),
+                        nativeOutConverted,
                         rtxd.ReserveInputMap().ToUniValue().write().c_str(),
                         ValueFromAmount(rtxd.nativeIn).write().c_str(),
-                        (rtxd.ReserveConversionFeesMap() + CCurrencyValueMap(std::vector<uint160>({thisChainID}), std::vector<CAmount>({rtxd.nativeConversionFees}))).ToUniValue().write().c_str(),
+                        rtxd.ReserveOutputMap().ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
                         rtxd.NativeFees(),
                         ccx.totalFees.ToUniValue().write().c_str(),
@@ -821,7 +835,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 return false;
             }
 
-            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ccx.systemID, EVAL_CROSSCHAIN_IMPORT)))});
+            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(currencyID, EVAL_CROSSCHAIN_IMPORT)))});
             std::vector<CTxDestination> dests;
 
             if (currencyDef.proofProtocol == CCurrencyDefinition::PROOF_PBAASMMR ||
@@ -834,12 +848,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 LogPrintf("%s: ERROR - invalid proof protocol\n", __func__);
                 printf("%s: ERROR - invalid proof protocol\n", __func__);
                 return false;
-            }
-
-            CAmount nativeOutConverted = 0;
-            for (auto &oneNativeConversion : rtxd.NativeOutConvertedMap().valueMap)
-            {
-                nativeOutConverted += oneNativeConversion.second;
             }
 
             /*
@@ -858,12 +866,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             printf("DEBUGOUT: rtxd.nativeIn: %ld, rtxd.ReserveInputMap():%s\n", rtxd.nativeIn, rtxd.ReserveInputMap().ToUniValue().write().c_str());
             */
 
-            CCurrencyValueMap importMap = rtxd.ReserveOutConvertedMap();
+            CCurrencyValueMap importMap = rtxd.ReserveInputMap();
             if (ccx.systemID == systemID)
             {
-                importMap.valueMap.erase(ccx.systemID);
-                importMap += CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({nativeOutConverted}));
+                importMap.valueMap[systemID] = rtxd.nativeIn;
             }
+
             CCrossChainImport cci = CCrossChainImport(ccx.systemID, importMap, leftoverCurrency.CanonicalMap());
 
             newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
@@ -938,7 +946,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 }
                 */
 
-                printf("%s: invalid partial transaction proof, hash is\n%s, should be\n%s\n", __func__, checkTxID.GetHex().c_str(), mmv.GetRoot().GetHex().c_str());
+                //printf("%s: invalid partial transaction proof, hash is\n%s, should be\n%s\n", __func__, checkTxID.GetHex().c_str(), mmv.GetRoot().GetHex().c_str());
                 LogPrintf("%s: invalid partial transaction proof, hash is\n%s, should be\n%s\n", __func__, checkTxID.GetHex().c_str(), mmv.GetRoot().GetHex().c_str());
                 return false;
             }
