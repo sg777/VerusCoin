@@ -2183,11 +2183,11 @@ void CConnectedChains::ProcessLocalImports()
             {
                 nativeImportAvailable += oneOut.second.satoshis;
                 tokenImportAvailable += oneOut.second.script.ReserveOutValue();
-                printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
+                //printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
             }
             nativeImportAvailable += oneIT.second.second.vout[importOutNum].nValue;
             tokenImportAvailable += oneIT.second.second.vout[importOutNum].ReserveOutValue();
-            printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
+            //printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
             if (CreateLatestImports(currencyDefCache[oneIT.first], oneIT.second.second, txTemplate, CTransaction(), tokenImportAvailable, nativeImportAvailable, importTxes))
             {
                 // fund the first import transaction with all reserveDeposits
