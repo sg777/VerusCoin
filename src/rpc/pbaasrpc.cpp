@@ -802,7 +802,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCurrencyValueMap spentCurrencyOut = rtxd.ReserveOutputMap() + 
                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut}));
             spentCurrencyOut.valueMap[currencyID] -= nativeOutConverted;
-            CCurrencyValueMap leftoverCurrency = availableCurrencyInput - spentCurrencyOut;
+            CCurrencyValueMap leftoverCurrency = availableCurrencyInput - (spentCurrencyOut + importFees);
 
             /*
             printf("%s: leftoverCurrency:\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\nexportfees:\n%s\nccx.totalFees - exportFees:\n%s\n\n", 
@@ -868,8 +868,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCurrencyValueMap importMap = rtxd.ReserveInputMap();
             if (ccx.systemID == systemID)
             {
-                importMap.valueMap.erase(ccx.systemID);
-                importMap += CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn}));
+                importMap.valueMap[systemID] = rtxd.nativeIn;
             }
 
             CCrossChainImport cci = CCrossChainImport(ccx.systemID, importMap, leftoverCurrency.CanonicalMap());
