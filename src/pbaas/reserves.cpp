@@ -34,6 +34,12 @@ CTokenOutput::CTokenOutput(const UniValue &obj)
     }
 }
 
+CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination)
+{
+    return CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 +
+                ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
+}
+
 CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transferTotal) const
 {
     CCurrencyValueMap feeMap;
@@ -44,8 +50,7 @@ CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transfe
         return feeMap;
     }
 
-    feeMap.valueMap[currencyID] = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 +
-                                    ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
+    feeMap.valueMap[currencyID] = CalculateTransferFee(destination);
 
     // add conversion fees in source currency for preconvert
     if (flags & (CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT))
@@ -54,12 +59,6 @@ CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transfe
     }
 
     return feeMap;
-}
-
-CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination)
-{
-    return CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 +
-                ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
 }
 
 CAmount CReserveTransfer::CalculateTransferFee() const
@@ -1466,6 +1465,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         {
             CReserveTransfer _curTransfer;
             CReserveTransfer *pCurTransfer;
+
             if (importCurrencyState.IsRefunding())
             {
                 _curTransfer = RefundExport(exportObjects[i]);
@@ -1813,6 +1813,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             }
                             else
                             {
+                                fractionalConverted.valueMap[curTransfer.currencyID] += totalSourceFee;
                                 AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
                             }
                         }
@@ -1879,14 +1880,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                 AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
                             }
 
-                            // we need to consider our source currency as burned
-                            if (curTransfer.currencyID == systemDestID)
+                            // we need to consider our source currency as burned if it is the fractional currency
+                            if (curTransfer.currencyID == importCurrencyID)
                             {
-                                nativeIn -= valueOut;
-                            }
-                            else
-                            {
-                                AddReserveInput(curTransfer.currencyID, -valueOut);
+                                if (curTransfer.currencyID == systemDestID)
+                                {
+                                    nativeIn -= valueOut;
+                                }
+                                else
+                                {
+                                    AddReserveInput(curTransfer.currencyID, -valueOut);
+                                }
                             }
                         }
 
@@ -2075,11 +2079,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
     CCurrencyValueMap ReserveInputs;
     CCurrencyValueMap ReserveOutputs;
+    CAmount nativeOutConverted = 0;
     for (auto &oneInOut : currencies)
     {
-        if (oneInOut.second.reserveIn)
+        nativeOutConverted += oneInOut.second.nativeOutConverted;
+        if (oneInOut.second.reserveIn || oneInOut.second.reserveOutConverted)
         {
-            ReserveInputs.valueMap[oneInOut.first] = oneInOut.second.reserveIn;
+            ReserveInputs.valueMap[oneInOut.first] = oneInOut.second.reserveIn + oneInOut.second.reserveOutConverted;
         }
         if (oneInOut.second.reserveOut)
         {
@@ -2088,14 +2094,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     }
     if (nativeIn)
     {
-        ReserveInputs.valueMap[importCurrencyDef.systemID] += nativeIn;
+        ReserveInputs.valueMap[importCurrencyDef.systemID] = nativeIn + nativeOutConverted;
     }
     if (nativeOut)
     {
-        ReserveOutputs.valueMap[importCurrencyDef.systemID] += nativeOut;
+        ReserveOutputs.valueMap[importCurrencyDef.systemID] = nativeOut;
     }
     CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs, transferFees);
-    // printf("ReserveInputs: %s\nReserveOutputs: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), ReserveOutputs.ToUniValue().write(1,2).c_str());
+    //printf("ReserveInputs: %s\nReserveOutputs: %s\nReserveInputs - ReserveOutputs: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), ReserveOutputs.ToUniValue().write(1,2).c_str(), (ReserveInputs - ReserveOutputs).ToUniValue().write(1,2).c_str());
     if (ReserveInputs - ReserveOutputs < ccx.CalculateImportFee())
     {
         printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\nccx.CalculateImportFee(): %s\nccx: %s\n", __func__,
