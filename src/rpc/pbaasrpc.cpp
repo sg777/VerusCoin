@@ -849,12 +849,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 return false;
             }
 
-            CAmount nativeOutConverted = 0;
-            for (auto &oneNativeConversion : rtxd.NativeOutConvertedMap().valueMap)
-            {
-                nativeOutConverted += oneNativeConversion.second;
-            }
-
             /*
             printf("DEBUGOUT: nativeOutConverted: %ld, rtxd.ReserveOutConvertedMap():%s\n", nativeOutConverted, rtxd.ReserveOutConvertedMap().ToUniValue().write().c_str());
             printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
