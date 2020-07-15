@@ -865,12 +865,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             printf("DEBUGOUT: rtxd.nativeIn: %ld, rtxd.ReserveInputMap():%s\n", rtxd.nativeIn, rtxd.ReserveInputMap().ToUniValue().write().c_str());
             */
 
-            CCurrencyValueMap importMap = rtxd.ReserveOutConvertedMap();
+            CCurrencyValueMap importMap = rtxd.ReserveInputMap();
             if (ccx.systemID == systemID)
             {
                 importMap.valueMap.erase(ccx.systemID);
-                importMap += CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({nativeOutConverted}));
+                importMap += CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn}));
             }
+
             CCrossChainImport cci = CCrossChainImport(ccx.systemID, importMap, leftoverCurrency.CanonicalMap());
 
             newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
