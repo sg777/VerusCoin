@@ -742,8 +742,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CPubKey pk;
 
             CCurrencyValueMap availableReserveFees = ccx.totalFees;
-            CCurrencyValueMap exportFees = ccx.CalculateExportFee();
-            CCurrencyValueMap importFees = ccx.CalculateImportFee();
             CAmount feesOut = 0;
 
             CCoinbaseCurrencyState _currencyState, currencyState;
@@ -802,10 +800,15 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCurrencyValueMap spentCurrencyOut = rtxd.ReserveOutputMap() + 
                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut}));
             spentCurrencyOut.valueMap[currencyID] -= nativeOutConverted;
-            CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - (spentCurrencyOut + importFees)).CanonicalMap();
+            CCrossChainExport adjustedCCX = ccx;
+            adjustedCCX.totalFees = CCurrencyValueMap(currencyState.currencies, currencyState.fees) + 
+                                                   CCurrencyValueMap({systemID}, {currencyState.nativeFees});
+            CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - 
+                                                  (spentCurrencyOut + 
+                                                   adjustedCCX.CalculateExportFee())).CanonicalMap();
 
             /*
-            printf("%s: leftoverCurrency:\n%s\nnativeOutConverted\n%ld\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\nexportfees:\n%s\nccx.totalFees - exportFees:\n%s\n\n", 
+            printf("%s: leftoverCurrency:\n%s\nnativeOutConverted\n%ld\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\n\n", 
                         __func__, 
                         leftoverCurrency.ToUniValue().write().c_str(),
                         nativeOutConverted,
@@ -814,14 +817,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                         rtxd.ReserveOutputMap().ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
                         rtxd.NativeFees(),
-                        ccx.totalFees.ToUniValue().write().c_str(),
-                        exportFees.ToUniValue().write().c_str(),
-                        (ccx.totalFees - exportFees).ToUniValue().write().c_str());
+                        ccx.totalFees.ToUniValue().write().c_str());
             */
 
             if (leftoverCurrency.HasNegative())
             {
-                LogPrintf("%s: ERROR - fees do not match. leftoverCurrency:\n%s\nReserveInputMap():\n%s\nspentCurrencyOut:\n%s\nrtxd.nativeIn:\n%s\nnativeOutConverted:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\nexportfees:\n%s\nccx.totalFees - exportFees:\n%s\n\n", 
+                LogPrintf("%s: ERROR - fees do not match. leftoverCurrency:\n%s\nReserveInputMap():\n%s\nspentCurrencyOut:\n%s\nrtxd.nativeIn:\n%s\nnativeOutConverted:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\n\n", 
                         __func__, 
                         leftoverCurrency.ToUniValue().write().c_str(),
                         rtxd.ReserveInputMap().ToUniValue().write().c_str(),
@@ -831,9 +832,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                         (rtxd.ReserveConversionFeesMap() + CCurrencyValueMap(std::vector<uint160>({thisChainID}), std::vector<CAmount>({rtxd.nativeConversionFees}))).ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
                         rtxd.NativeFees(),
-                        ccx.totalFees.ToUniValue().write().c_str(),
-                        exportFees.ToUniValue().write().c_str(),
-                        (ccx.totalFees - exportFees).ToUniValue().write().c_str());
+                        ccx.totalFees.ToUniValue().write().c_str());
                 return false;
             }
 
