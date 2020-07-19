@@ -821,11 +821,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
             if (leftoverCurrency.HasNegative())
             {
-                LogPrintf("%s: ERROR - fees do not match. leftoverCurrency:\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\nexportfees:\n%s\nccx.totalFees - exportFees:\n%s\n\n", 
+                LogPrintf("%s: ERROR - fees do not match. leftoverCurrency:\n%s\nReserveInputMap():\n%s\nspentCurrencyOut:\n%s\nrtxd.nativeIn:\n%s\nnativeOutConverted:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\nexportfees:\n%s\nccx.totalFees - exportFees:\n%s\n\n", 
                         __func__, 
                         leftoverCurrency.ToUniValue().write().c_str(),
                         rtxd.ReserveInputMap().ToUniValue().write().c_str(),
+                        spentCurrencyOut.ToUniValue().write().c_str(),
                         ValueFromAmount(rtxd.nativeIn).write().c_str(),
+                        ValueFromAmount(nativeOutConverted).write().c_str(),
                         (rtxd.ReserveConversionFeesMap() + CCurrencyValueMap(std::vector<uint160>({thisChainID}), std::vector<CAmount>({rtxd.nativeConversionFees}))).ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
                         rtxd.NativeFees(),
