@@ -798,8 +798,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             // import fees go to miner, reserve outputs, native or otherwise, always come from available
             // input whether converted or not, and fractional out converted is new currency
             CCurrencyValueMap spentCurrencyOut = (rtxd.ReserveOutputMap() + 
-                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut}))) -
-                                                  rtxd.ReserveOutConvertedMap();
+                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut})));
             spentCurrencyOut.valueMap[currencyID] -= nativeOutConverted;
             CCrossChainExport adjustedCCX = ccx;
             adjustedCCX.totalFees = CCurrencyValueMap(currencyState.currencies, currencyState.fees) + 
