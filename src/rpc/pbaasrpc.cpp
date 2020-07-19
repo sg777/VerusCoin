@@ -797,15 +797,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
             // import fees go to miner, reserve outputs, native or otherwise, always come from available
             // input whether converted or not, and fractional out converted is new currency
-            CCurrencyValueMap spentCurrencyOut = rtxd.ReserveOutputMap() + 
-                                                 CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut}));
+            CCurrencyValueMap spentCurrencyOut = (rtxd.ReserveOutputMap() + 
+                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut}))) -
+                                                  rtxd.ReserveOutConvertedMap();
             spentCurrencyOut.valueMap[currencyID] -= nativeOutConverted;
             CCrossChainExport adjustedCCX = ccx;
             adjustedCCX.totalFees = CCurrencyValueMap(currencyState.currencies, currencyState.fees) + 
                                                    CCurrencyValueMap({systemID}, {currencyState.nativeFees});
-            CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - 
-                                                  (spentCurrencyOut + 
-                                                   adjustedCCX.CalculateExportFee())).CanonicalMap();
+            CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - spentCurrencyOut).CanonicalMap();
 
             /*
             printf("%s: leftoverCurrency:\n%s\nnativeOutConverted\n%ld\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\n\n", 
@@ -832,7 +831,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                         (rtxd.ReserveConversionFeesMap() + CCurrencyValueMap(std::vector<uint160>({thisChainID}), std::vector<CAmount>({rtxd.nativeConversionFees}))).ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
                         rtxd.NativeFees(),
-                        ccx.totalFees.ToUniValue().write().c_str());
+                        adjustedCCX.totalFees.ToUniValue().write().c_str());
                 return false;
             }
 
