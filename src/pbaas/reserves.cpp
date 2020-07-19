@@ -389,6 +389,26 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
         return PricesInReserve();
     }
 
+    // DEBUG ONLY
+    for (auto oneIn : inputReserves)
+    {
+        if (oneIn < 0)
+        {
+            printf("%s: invalid reserve input amount for conversion %ld\n", __func__, oneIn);
+            break;
+        }
+    }
+    for (auto oneIn : inputFractional)
+    {
+        if (oneIn < 0)
+        {
+            printf("%s: invalid fractional input amount for conversion %ld\n", __func__, oneIn);
+            haveConversion = true;
+            break;
+        }
+    }
+    // END DEBUG ONLY
+
     // Create corresponding fractions of the supply for each currency to be used as starting calculation of that currency's value
     // Determine the equivalent amount of input and output based on current values. Balance each such that each currency has only
     // input or output, denominated in supply at the starting value.
@@ -442,7 +462,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
         return rates;
     }
 
-    std::vector<CAmount> normalizedReserveIn;
+
 
     arith_uint256 bigMaxReserveRatio = arith_uint256(maxReserveRatio);
     arith_uint256 bigTotalReserveWeight = arith_uint256(totalReserveWeight);
@@ -617,7 +637,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
     reserveAfterSell = supply + addNormalizedReservesBB;
     assert(reserveAfterSell >= 0);
 
-    reserveAfterBuySell = supply + addNormalizedReservesAB;
+    reserveAfterBuySell = reserveAfterBuy + addNormalizedReservesAB;
     assert(reserveAfterBuySell >= 0);
 
     addSupply = 0;
@@ -1478,7 +1498,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             CReserveTransfer &curTransfer = *pCurTransfer;
 
             //printf("currency transfer #%d:\n%s\n", i, curTransfer.ToUniValue().write(1,2).c_str());
-
             CCurrencyDefinition currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID);
 
             if (!currencyDest.IsValid())
@@ -1510,6 +1529,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                     if (curTransfer.nValue > feeOutputs.valueMap[curTransfer.currencyID])
                     {
+                        // TODO: we are going to allow rewriting of the fee out value for now
+                        // to accomodate prior versions that calculated too much fee. we may or may not want to keep this
+                        // behavior, in favor of the more restricted, refund-only rewriting that is
+                        // commented out below
+                        curTransfer.nValue = feeOutputs.valueMap[curTransfer.currencyID];
+                        if (curTransfer.nValue == 0)
+                        {
+                            // this currency will not have a fee output at all
+                            continue;
+                        }
+                        /*
                         // if this is a refund, we will adjust the output, otherwise, reject the transaction
                         if (importCurrencyState.IsRefunding())
                         {
@@ -1527,6 +1557,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             LogPrintf("%s: Too much fee taken %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                             return false;
                         }
+                        */
                     }
                     // erase so any repeats will be caught
                     feeOutputs.valueMap.erase(curTransfer.currencyID);
@@ -1623,6 +1654,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     CAmount feesConverted = 0;
 
                     preConversionFee = CalculateConversionFee(curTransfer.nValue);
+                    if (preConversionFee > curTransfer.nValue)
+                    {
+                        preConversionFee = curTransfer.nValue;
+                    }
                     CAmount valueOut = curTransfer.nValue - preConversionFee;
 
                     if (!(curTransfer.flags & curTransfer.FEE_OUTPUT))
@@ -1780,6 +1815,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     if (!(curTransfer.flags & curTransfer.FEE_OUTPUT))
                     {
                         preConversionFee = CalculateConversionFee(curTransfer.nValue);
+                        if (preConversionFee > curTransfer.nValue)
+                        {
+                            preConversionFee = curTransfer.nValue;
+                        }
                         valueOut = curTransfer.nValue - preConversionFee;
 
                         if (toFractional)
@@ -1796,7 +1835,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         CAmount totalSourceFee = preConversionFee + curTransfer.nFees;
 
                         // see if fees should be converted or not
-                        if ((currencyDest.ChainOptions() & currencyDest.OPTION_FEESASRESERVE) || currencyDest.IsToken())
+                        if ((currencyDest.ChainOptions() & currencyDest.OPTION_FEESASRESERVE) || importCurrencyDef.IsToken())
                         {
                             AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
                         }
@@ -2000,10 +2039,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 }
                 if (newOut.nValue < 0)
                 {
+                    // if we get here, we have absorbed the entire transfer
+                    // TODO: prevent from getting here, but blocking such a transaction as something no one would want
+                    // to do.
                     LogPrintf("%s: failure to create valid output for import to %s\n", __func__, currencyDest.name.c_str());
-                    return false;
+                    //return false;
                 }
-                vOutputs.push_back(newOut);
+                else
+                {
+                    vOutputs.push_back(newOut);
+                }
             }
             else
             {

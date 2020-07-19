@@ -1557,6 +1557,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 if (!currencyState.IsValid() ||
                                     !rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs))
                                 {
+                                    vOutputs = std::vector<CTxOut>();
+                                    rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs);
                                     DeleteOpRetObjects(chainObjects);
 
                                     printf("%s: failed to create valid exports\n", __func__);
