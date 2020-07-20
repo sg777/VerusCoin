@@ -1557,6 +1557,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 if (!currencyState.IsValid() ||
                                     !rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs))
                                 {
+                                    vOutputs = std::vector<CTxOut>();
+                                    rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs);
                                     DeleteOpRetObjects(chainObjects);
 
                                     printf("%s: failed to create valid exports\n", __func__);
@@ -1888,12 +1890,18 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
 
     CCoinbaseCurrencyState initialCurrencyState = lastNotarization.currencyState;
 
+    bool isDefinition = false;
+
     // if our last notarization is prior to the start block, then we need to get our
     // initial currency state from a new start
     if (lastNotarization.notarizationHeight < curDef.startBlock)
     {
         initialCurrencyState = ConnectedChains.GetCurrencyState(curDef, curDef.startBlock - 1, curDefHeight);
-        initialCurrencyState.SetPrelaunch(false);
+        isDefinition = true;
+        if (height >= curDef.startBlock)
+        {
+            initialCurrencyState.SetPrelaunch(false);
+        }
     }
 
     CCrossChainExport ccx(exportTx);
@@ -1901,17 +1909,6 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
     {
         LogPrintf("%s: invalid export transaction %s\n", __func__, lastImportTx.GetHash().GetHex().c_str());
         return false;
-    }
-
-    std::vector<CCurrencyDefinition> txCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(lastImportTx);
-
-    bool isDefinition = false;
-    for (auto &oneCur : txCurrencies)
-    {
-        if (oneCur.GetID() == currencyID)
-        {
-            isDefinition = true;
-        }
     }
 
     if (!lastNotarization.IsValid())
@@ -1937,7 +1934,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
 
     // if this is the first notarization after start, make the notarization and determine if we should
     // launch or refund
-    if (isDefinition)
+    if (isDefinition || height == curDef.startBlock -1)
     {
         bool refunding = false;
 
