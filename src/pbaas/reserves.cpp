@@ -1443,7 +1443,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     CCurrencyValueMap reserveConverted;
 
     // fractional currency amount and the reserve it is converted to
-    CCurrencyValueMap fractionalConverted;    
+    CCurrencyValueMap fractionalConverted;
+
+    // used to keep track of burned fractional currency. this currency is subtracted from the
+    // currency supply, but not converted. In doing so, it can either raise the price of the fractional
+    // currency in all other currencies, or increase the reserve ratio of all currencies by some slight amount.
+    CAmount burnedChangePrice;
 
     // this is cached here, but only used for pre-conversions
     CCoinbaseCurrencyState initialCurrencyState;
@@ -2004,8 +2009,28 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 }
                 else
                 {
-                    // if we are creating a reserve import for native currency, it must be spent from native inputs on the destination system
-                    if (systemDestID == curTransfer.destCurrencyID)
+                    // if we are supposed to burn a currency, it must be the import currency, and it
+                    // is removed from the supply, which would change all calculations for price
+                    if (curTransfer.flags & (curTransfer.BURN_CHANGE_PRICE | curTransfer.BURN_CHANGE_WEIGHT))
+                    {
+                        // if the source is fractional currency, it is burned
+                        if (!(importCurrencyDef.IsFractional() && curTransfer.currencyID == importCurrencyID))
+                        {
+                            CCurrencyDefinition sourceCurrency = ConnectedChains.GetCachedCurrency(curTransfer.currencyID);
+                            printf("%s: Attempting to burn %s, which is either not a fractional currency or not the import currency %s\n", __func__, sourceCurrency.name.c_str(), importCurrencyDef.name.c_str());
+                            LogPrintf("%s: Invalid to burn currency that is neither fractional nor reserve of fractional\n", __func__);
+                            return false;
+                        }
+                        if (curTransfer.flags & curTransfer.BURN_CHANGE_WEIGHT)
+                        {
+                            printf("%s: burning %s to change weight is not supported\n", __func__, importCurrencyDef.name.c_str());
+                            LogPrintf("%s: burning %s to change weight is not supported\n", __func__, importCurrencyDef.name.c_str());
+                            return false;
+                        }
+                        AddReserveOutput(curTransfer.currencyID, curTransfer.nValue);
+                        burnedChangePrice += curTransfer.nValue;
+                    }
+                    else if (systemDestID == curTransfer.destCurrencyID)
                     {
                         nativeOut += curTransfer.nValue;
                         newOut = CTxOut(curTransfer.nValue, GetScriptForDestination(TransferDestinationToDestination(curTransfer.destination)));
@@ -2040,10 +2065,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 if (newOut.nValue < 0)
                 {
                     // if we get here, we have absorbed the entire transfer
-                    // TODO: prevent from getting here, but blocking such a transaction as something no one would want
-                    // to do.
-                    LogPrintf("%s: failure to create valid output for import to %s\n", __func__, currencyDest.name.c_str());
-                    //return false;
+                    LogPrintf("%s: skip creating output for import to %s\n", __func__, currencyDest.name.c_str());
                 }
                 else
                 {
@@ -2080,6 +2102,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
             }
         }
+    }
+
+    // remove burned currency from supply
+    if (burnedChangePrice > 0)
+    {
+        if (!(burnedChangePrice <= newCurrencyState.supply))
+        {
+            printf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice);
+            LogPrintf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice);
+            return false;
+        }
+        newCurrencyState.supply -= burnedChangePrice;
     }
 
     if (reserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size())

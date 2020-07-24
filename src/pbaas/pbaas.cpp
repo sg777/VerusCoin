@@ -1396,7 +1396,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                     if (GetUnspentChainExports(lastChain, exportOutputs) && exportOutputs.size())
                     {
-                        auto &lastExport = *exportOutputs.begin();
+                        std::pair<uint160, std::pair<int, CInputDescriptor>> lastExport = *exportOutputs.begin();
+
                         bool oneFullSize = txInputs.size() >= CCrossChainExport::MIN_INPUTS;
 
                         if (((nHeight - lastExport.second.first) >= CCrossChainExport::MIN_BLOCKS) || oneFullSize)
@@ -1456,7 +1457,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     int j;
                                     for (j = 0; j < tx.vout.size(); j++)
                                     {
-                                        if (::IsPayToCryptoCondition(tx.vout[j].scriptPubKey, p) && p.evalCode == EVAL_CROSSCHAIN_EXPORT)
+                                        if (::IsPayToCryptoCondition(tx.vout[j].scriptPubKey, p) && 
+                                            p.IsValid() &&
+                                            p.evalCode == EVAL_CROSSCHAIN_EXPORT)
                                         {
                                             break;
                                         }
@@ -1467,12 +1470,47 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                     tb.AddTransparentInput(COutPoint(tx.GetHash(), j), tx.vout[j].scriptPubKey, tx.vout[j].nValue);
                                     exportOutVal = tx.vout[j].nValue;
+                                    lastExport.second.first = nHeight;
+                                    lastExport.second.second = CInputDescriptor(tx.vout[j].scriptPubKey, tx.vout[j].nValue, CTxIn(tx.GetHash(), j));
                                 }
                                 else
                                 {
                                     // spend the recentExportIt output
                                     tb.AddTransparentInput(lastExport.second.second.txIn.prevout, lastExport.second.second.scriptPubKey, lastExport.second.second.nValue);
                                     exportOutVal = lastExport.second.second.nValue;
+                                    uint256 blkHash;
+                                    CTransaction lastExportTx;
+                                    // we must find the export, or it doesn't exist
+                                    if (!myGetTransaction(lastExport.second.second.txIn.prevout.hash, lastExportTx, blkHash))
+                                    {
+                                        break;
+                                    }
+                                    oneExport = lastExportTx;
+                                }
+
+                                // combine any reserve deposits from the last export
+                                // into the reserve deposit outputs for this export and spend them
+                                // TODO: allow reserve deposits to hold multiple reserve token types
+                                // to make this more efficient for multi-reserves
+                                CCurrencyValueMap currentReserveDeposits;
+                                CTransaction &lastExportTx = oneExport.get();
+                                for (int i = 0; i < lastExportTx.vout.size(); i++)
+                                {
+                                    auto &oneOut = lastExportTx.vout[i];
+                                    COptCCParams p;
+                                    if (::IsPayToCryptoCondition(oneOut.scriptPubKey, p) &&
+                                        p.IsValid() &&
+                                        p.evalCode == EVAL_RESERVE_DEPOSIT)
+                                    {
+                                        // only reserve deposits for the export currency will be present on an export transaction
+                                        currentReserveDeposits += oneOut.scriptPubKey.ReserveOutValue();
+                                        if (oneOut.nValue)
+                                        {
+                                            tb.AddTransparentInput(COutPoint(lastExport.second.second.txIn.prevout.hash, i), 
+                                                                   oneOut.scriptPubKey, oneOut.nValue);
+                                            currentReserveDeposits.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
+                                        }
+                                    }
                                 }
 
                                 COptCCParams p;
@@ -1597,7 +1635,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     // now send transferred currencies to a reserve deposit
                                     cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
 
-                                    for (auto &oneCurrencyOut : ccx.totalAmounts.valueMap)
+                                    currentReserveDeposits += ccx.totalAmounts;
+
+                                    for (auto &oneCurrencyOut : currentReserveDeposits.valueMap)
                                     {
                                         CCurrencyDefinition oneDef = currencyDefCache[oneCurrencyOut.first];
 
@@ -1672,6 +1712,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         //LogPrintf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
                                         if (myAddtomempool(tx))
                                         {
+                                            oneExport = tx;
                                             uint256 hash = tx.GetHash();
                                             CAmount nativeExportFees = ccx.totalFees.valueMap[ASSETCHAINS_CHAINID];
                                             mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(nativeExportFees << 1), nativeExportFees);
