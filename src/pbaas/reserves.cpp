@@ -1448,7 +1448,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     // used to keep track of burned fractional currency. this currency is subtracted from the
     // currency supply, but not converted. In doing so, it can either raise the price of the fractional
     // currency in all other currencies, or increase the reserve ratio of all currencies by some slight amount.
-    CAmount burnedChangePrice;
+    CAmount burnedChangePrice = 0;
 
     // this is cached here, but only used for pre-conversions
     CCoinbaseCurrencyState initialCurrencyState;
