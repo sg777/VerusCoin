@@ -3167,6 +3167,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
+            bool burnCurrency = uni_get_bool(find_value(uniOutputs[i], "burn"));
             bool subtractFee = uni_get_bool(find_value(uniOutputs[i], "subtractfee"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
 
@@ -3175,7 +3176,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 refundToStr.size() ||
                 memoStr.size() ||
                 preConvert ||
-                mintNew)
+                mintNew ||
+                burnCurrency)
             {
                 CheckPBaaSAPIsValid();
             }
@@ -3207,6 +3209,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 if (convertToCurrencyID.IsNull())
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency conversion is requested, destination currency must be valid.");
+                }
+                if (burnCurrency)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
                 }
             }
 
@@ -3286,6 +3292,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             // send a reserve transfer preconvert
             uint32_t flags = CReserveTransfer::VALID;
+            if (burnCurrency)
+            {
+                if (mintNew)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
+                }
+                flags |= CReserveTransfer::BURN_CHANGE_PRICE;
+            }
+
             if (preConvert)
             {
                 flags |= CReserveTransfer::PRECONVERT;

@@ -1338,6 +1338,15 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             transferOutputs.insert(std::make_pair(bookEnd, std::make_pair(CInputDescriptor(), CReserveTransfer())));
             CCurrencyDefinition lastChainDef;
 
+            CCoins coins;
+            CCoinsView dummy;
+            CCoinsViewCache view(&dummy);
+
+            LOCK(mempool.cs);
+
+            CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+            view.SetBackend(viewMemPool);
+
             for (auto &output : transferOutputs)
             {
                 CCurrencyDefinition sourceDef, destDef, systemDef;
@@ -1493,22 +1502,32 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 // TODO: allow reserve deposits to hold multiple reserve token types
                                 // to make this more efficient for multi-reserves
                                 CCurrencyValueMap currentReserveDeposits;
-                                CTransaction &lastExportTx = oneExport.get();
-                                for (int i = 0; i < lastExportTx.vout.size(); i++)
+                                if (!view.GetCoins(lastExport.second.second.txIn.prevout.hash, coins))
                                 {
-                                    auto &oneOut = lastExportTx.vout[i];
-                                    COptCCParams p;
-                                    if (::IsPayToCryptoCondition(oneOut.scriptPubKey, p) &&
-                                        p.IsValid() &&
-                                        p.evalCode == EVAL_RESERVE_DEPOSIT)
+                                    break;
+                                }
+                                CTransaction &lastExportTx = oneExport.get();
+
+                                for (int i = 0; i < coins.vout.size(); i++)
+                                {
+                                    // import on same chain spends reserve deposits as well, so only spend them if they are not
+                                    // already spent
+                                    if (coins.IsAvailable(i))
                                     {
-                                        // only reserve deposits for the export currency will be present on an export transaction
-                                        currentReserveDeposits += oneOut.scriptPubKey.ReserveOutValue();
-                                        if (oneOut.nValue)
+                                        auto &oneOut = lastExportTx.vout[i];
+                                        COptCCParams p;
+                                        if (::IsPayToCryptoCondition(oneOut.scriptPubKey, p) &&
+                                            p.IsValid() &&
+                                            p.evalCode == EVAL_RESERVE_DEPOSIT)
                                         {
-                                            tb.AddTransparentInput(COutPoint(lastExport.second.second.txIn.prevout.hash, i), 
-                                                                   oneOut.scriptPubKey, oneOut.nValue);
-                                            currentReserveDeposits.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
+                                            // only reserve deposits for the export currency will be present on an export transaction
+                                            currentReserveDeposits += oneOut.scriptPubKey.ReserveOutValue();
+                                            if (oneOut.nValue)
+                                            {
+                                                tb.AddTransparentInput(COutPoint(lastExport.second.second.txIn.prevout.hash, i), 
+                                                                    oneOut.scriptPubKey, oneOut.nValue);
+                                                currentReserveDeposits.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
+                                            }
                                         }
                                     }
                                 }
