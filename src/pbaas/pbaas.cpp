@@ -1520,9 +1520,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                             p.IsValid() &&
                                             p.evalCode == EVAL_RESERVE_DEPOSIT)
                                         {
-                                            // only reserve deposits for the export currency will be present on an export transaction
-                                            currentReserveDeposits += oneOut.scriptPubKey.ReserveOutValue();
-                                            if (oneOut.nValue)
+                                            // only reserve deposits for the export currency/system will be present on an export transaction
+                                            CCurrencyValueMap reserveOut = oneOut.scriptPubKey.ReserveOutValue().CanonicalMap();
+                                            currentReserveDeposits += reserveOut;
+                                            if (oneOut.nValue || reserveOut.valueMap.size())
                                             {
                                                 tb.AddTransparentInput(COutPoint(lastExport.second.second.txIn.prevout.hash, i), 
                                                                     oneOut.scriptPubKey, oneOut.nValue);

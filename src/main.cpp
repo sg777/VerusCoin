@@ -2757,9 +2757,10 @@ namespace Consensus {
 
         if (cci.IsValid())
         {
-            ReserveValueIn = rtxd.ReserveInputMap() + rtxd.ReserveOutConvertedMap();
-            //printf("cci:\n%s\n rtxd.ReserveInputMap():\n%s, rtxd.ReserveOutConvertedMap():\n%s\n", cci.ToUniValue().write(1, 2).c_str(), 
-            //    rtxd.ReserveInputMap().ToUniValue().write(1, 2).c_str(), rtxd.ReserveOutConvertedMap().ToUniValue().write(1, 2).c_str());
+            ReserveValueIn = rtxd.ReserveInputMap() + CCurrencyValueMap({cci.systemID}, {rtxd.TotalNativeOutConverted()});
+            //printf("cci:\n%s\n rtxd.ReserveInputMap():\n%s, rtxd.ReserveOutConvertedMap():\n%s\nReserveValueIn:\n%s\n", cci.ToUniValue().write(1, 2).c_str(), 
+            //    rtxd.ReserveInputMap().ToUniValue().write(1, 2).c_str(), rtxd.ReserveOutConvertedMap().ToUniValue().write(1, 2).c_str(),
+            //    ReserveValueIn.ToUniValue().write(1, 2).c_str());
         }
         else
         {
