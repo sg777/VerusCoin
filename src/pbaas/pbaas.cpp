@@ -2049,7 +2049,15 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
     }
     else
     {
-        pindex = chainActive.LastTip();
+        if (chainActive.Height() > height)
+        {
+            pindex = chainActive[height];
+        }
+        else
+        {
+            pindex = chainActive.LastTip();
+        }
+        
         if (!pindex)
         {
             LogPrintf("%s: invalid active chain\n", __func__);

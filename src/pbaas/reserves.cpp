@@ -1843,6 +1843,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         if ((currencyDest.ChainOptions() & currencyDest.OPTION_FEESASRESERVE) || importCurrencyDef.IsToken())
                         {
                             AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
+                            if (curTransfer.currencyID == systemDestID)
+                            {
+                                nativeConversionFees += preConversionFee;
+                            }
                         }
                         else
                         {
@@ -1862,7 +1866,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             }
                         }
 
-                        // add reserve fees, if any as input funds to be taken by fee outputs
+                        // add reserve fees, if any as input funds to validate fee outputs
                         if (totalSourceFee)
                         {
                             transferFees.valueMap[curTransfer.currencyID] += totalSourceFee;
@@ -1885,15 +1889,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         {
                             fractionalConverted.valueMap[curTransfer.destCurrencyID] += valueOut;
                             newCurrencyConverted = importCurrencyState.NativeToReserveRaw(valueOut, importCurrencyState.conversionPrice[reserveIdx]);
-                        }
-                        
-                        if (curTransfer.destCurrencyID == systemDestID)
-                        {
-                            nativeOut += newCurrencyConverted;
-                        }
-                        else
-                        {
-                            AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
                         }
                     }
 
@@ -2152,16 +2147,27 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         CReserveInOuts fractionalInOuts = currencies[systemDestID];
         newCurrencyState.nativeConversionFees = fractionalInOuts.reserveConversionFees;
     }
-    newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
     newCurrencyState.conversionFees = ReserveConversionFeesMap().AsCurrencyVector(newCurrencyState.currencies);
+    newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
     CCurrencyValueMap ReserveInputs;
     CCurrencyValueMap ReserveOutputs;
-    CAmount nativeOutConverted = 0;
+    CAmount systemOutConverted = 0;
     for (auto &oneInOut : currencies)
     {
-        nativeOutConverted += oneInOut.second.nativeOutConverted;
+        ReserveInputs.valueMap[importCurrencyID] += oneInOut.second.nativeOutConverted;
+        if (oneInOut.first == systemDestID)
+        {
+            if (systemDestID == importCurrencyID)
+            {
+                systemOutConverted += oneInOut.second.nativeOutConverted;
+            }
+            else
+            {
+                systemOutConverted += oneInOut.second.reserveOutConverted;
+            }
+        }
         if (oneInOut.second.reserveIn || oneInOut.second.reserveOutConverted)
         {
             ReserveInputs.valueMap[oneInOut.first] = oneInOut.second.reserveIn + oneInOut.second.reserveOutConverted;
@@ -2171,9 +2177,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             ReserveOutputs.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
         }
     }
-    if (nativeIn)
+    if (nativeIn || systemOutConverted)
     {
-        ReserveInputs.valueMap[importCurrencyDef.systemID] = nativeIn + nativeOutConverted;
+        ReserveInputs.valueMap[importCurrencyDef.systemID] = nativeIn + systemOutConverted;
     }
     if (nativeOut)
     {

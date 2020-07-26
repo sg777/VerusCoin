@@ -739,7 +739,7 @@ public:
 
     CAmount NativeFees() const
     {
-        return nativeIn - (nativeOut - TotalNativeOutConverted());     // native out converted does not include conversion
+        return nativeIn - nativeOut;     // native out converted does not include conversion
     }
 
     CCurrencyValueMap ReserveFees() const
