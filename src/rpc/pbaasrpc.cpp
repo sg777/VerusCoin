@@ -3309,7 +3309,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             {
                 flags |= CReserveTransfer::PRECONVERT;
             }
-            if (!convertToCurrencyID.IsNull())
+            if (!burnCurrency && !convertToCurrencyID.IsNull())
             {
                 flags |= CReserveTransfer::CONVERT;
             }
@@ -3456,7 +3456,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
                     if (mintNew || burnCurrency)
                     {
-                        // we onnly allow minting of tokens right now
+                        // we onnly allow minting/burning of tokens right now
                         // TODO: support centralized minting of native AND fractional currency
                         // minting of fractional currency should emit coins without changing price by
                         // adjusting reserve ratio
@@ -3469,7 +3469,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                                               CKeyID(convertToCurrencyID)});
 
                         CReserveTransfer rt = CReserveTransfer(flags, 
-                                                               thisChainID, 
+                                                               burnCurrency ? sourceCurrencyID : thisChainID, 
                                                                sourceAmount,
                                                                0,
                                                                convertToCurrencyID,
