@@ -3222,7 +3222,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint32_t flags = CReserveTransfer::VALID;
             if (burnCurrency)
             {
-                if (mintNew || !convertToCurrencyID.IsNull())
+                if (mintNew ||
+                    !convertToCurrencyID.IsNull() ||
+                    !(sourceCurrencyDef.IsFractional() || sourceCurrencyDef.IsToken()))
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
                 }
