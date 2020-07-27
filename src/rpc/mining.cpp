@@ -439,7 +439,7 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
         arith_uint256 bigTotalFees(0);
         arith_uint256 totalChainStake(0);
         arith_uint256 bnStakeTarget;
-        int posCount = 0;
+        int posCount = 0, blockCount = 0;
 
         for (int i = first; i < height; i++)
         {
@@ -459,9 +459,9 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
 
             // if POS block, add stake
             uint256 posWinVal;
-            if (i > 100 && index.IsVerusPOSBlock())
+            if (i > 100)
             {
-                bnStakeTarget.SetCompact(index.GetVerusPOSTarget());
+                bnStakeTarget.SetCompact(lwmaGetNextPOSRequired(&index, consensus));
 
                 if (bnStakeTarget == 0)
                 {
@@ -476,15 +476,19 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
                 // as bnTarget+1, it is equal to ((2**256 - bnTarget - 1) / (bnTarget+1)) + 1,
                 // or ~bnTarget / (nTarget+1) + 1.
                 totalChainStake = totalChainStake + (~bnStakeTarget / (bnStakeTarget + 1)) + 1;
-                posCount++;
+                blockCount++;
+                if (index.IsVerusPOSBlock())
+                {
+                    posCount++;
+                }
             }
         }
 
         avgBlockFees = avgBlockFeesValid ? (bigTotalFees / arith_uint256(height - first)).GetLow64() : 0;
 
-        if (posCount > 5)
+        if (posCount > 0)
         {
-            totalChainStake = totalChainStake / arith_uint256(height - first);
+            totalChainStake = ((totalChainStake * arith_uint256(posCount)) / arith_uint256(blockCount * blockCount));
         }
 
         if (totalChainStake > arith_uint256(INT64_MAX))

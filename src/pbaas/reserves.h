@@ -100,7 +100,9 @@ public:
         FEE_OUTPUT = 8,                     // one per import, amount must match total percentage of fees for exporter, no pre-convert allowed
         SEND_BACK = 0x10,                   // fee is sent back immediately to destination on exporting chain
         MINT_CURRENCY = 0x20,               // set when this output is being minted on import
-        PREALLOCATE = 0x40                  // combined with minting for pre-allocation of currency
+        PREALLOCATE = 0x40,                 // combined with minting for pre-allocation of currency
+        BURN_CHANGE_PRICE = 0x80,           // set when this output is being minted on import
+        BURN_CHANGE_WEIGHT = 0x100          // set when this output is being minted on import
     };
 
     enum EConstants
@@ -737,7 +739,7 @@ public:
 
     CAmount NativeFees() const
     {
-        return nativeIn - (nativeOut - TotalNativeOutConverted());     // native out converted does not include conversion
+        return nativeIn - nativeOut;     // native out converted does not include conversion
     }
 
     CCurrencyValueMap ReserveFees() const
