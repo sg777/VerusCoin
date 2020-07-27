@@ -103,8 +103,6 @@ protected:
 
 bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight)
 {
-    LOCK(cs_main);
-
     if (chainID == ConnectedChains.ThisChain().GetID())
     {
         chainDef = ConnectedChains.ThisChain();
@@ -1017,10 +1015,11 @@ uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurr
     {
         // make sure there is such a currency defined on this chain
         CCurrencyDefinition currencyDef;
-        if (GetCurrencyDefinition(GetDestinationID(currencyDest), currencyDef))
+        if (!GetCurrencyDefinition(GetDestinationID(currencyDest), currencyDef) || !currencyDef.IsValid())
         {
-            retVal = currencyDef.GetID();
+            return retVal;
         }
+        retVal = currencyDef.GetID();
         if (pCurrencyDef)
         {
             *pCurrencyDef = currencyDef;
@@ -1194,6 +1193,8 @@ UniValue getpendingtransfers(const UniValue& params, bool fHelp)
 
     CheckPBaaSAPIsValid();
 
+    LOCK(cs_main);
+
     uint160 chainID = GetChainIDFromParam(params[0]);
 
     if (chainID.IsNull())
@@ -1203,8 +1204,6 @@ UniValue getpendingtransfers(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition chainDef;
     int32_t defHeight;
-
-    LOCK(cs_main);
 
     if ((IsVerusActive() && GetCurrencyDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetID() == chainID)
     {
@@ -1356,6 +1355,8 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
     CheckPBaaSAPIsValid();
 
+    LOCK(cs_main);
+
     uint160 chainID = GetChainIDFromParam(params[0]);
 
     if (chainID.IsNull())
@@ -1365,8 +1366,6 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition chainDef;
     int32_t defHeight;
-
-    LOCK(cs_main);
 
     if (GetCurrencyDefinition(chainID, chainDef, &defHeight))
     {
@@ -2935,6 +2934,9 @@ UniValue paynotarizationrewards(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Paying notarization rewards requires an active wallet");
     }
 
+    // create the transaction with native coin as input
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
     chainID = GetChainIDFromParam(params[0]);
     if (chainID.IsNull())
     {
@@ -2961,9 +2963,6 @@ UniValue paynotarizationrewards(const UniValue& params, bool fHelp)
 
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{MakeCC1of1Vout(EVAL_SERVICEREWARD, amount, pk, dests, sr).scriptPubKey, amount}});
     CWalletTx wtx;
-
-    // create the transaction with native coin as input
-    LOCK2(cs_main, pwalletMain->cs_wallet);
 
     CReserveKey reserveKey(pwalletMain);
     CAmount fee;
@@ -3201,14 +3200,35 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             if (convertToStr != "")
             {
                 convertToCurrencyID = ValidateCurrencyName(convertToStr, &convertToCurrencyDef);
-                if (convertToCurrencyID.IsNull())
+                if (convertToCurrencyID == sourceCurrencyID)
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency conversion is requested, destination currency must be valid.");
+                    convertToCurrencyID.SetNull();
+                    convertToCurrencyDef = CCurrencyDefinition();
                 }
-                if (burnCurrency)
+                else
+                {
+                    if (convertToCurrencyID.IsNull())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency conversion is requested, destination currency must be valid.");
+                    }
+                    if (burnCurrency)
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
+                    }
+                }
+            }
+
+            // send a reserve transfer preconvert
+            uint32_t flags = CReserveTransfer::VALID;
+            if (burnCurrency)
+            {
+                if (mintNew || !convertToCurrencyID.IsNull())
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
                 }
+                flags |= CReserveTransfer::BURN_CHANGE_PRICE;
+                convertToCurrencyID = sourceCurrencyID;
+                convertToCurrencyDef = sourceCurrencyDef;
             }
 
             std::string systemDestStr;
@@ -3284,17 +3304,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             // make one output
             CRecipient oneOutput;
-
-            // send a reserve transfer preconvert
-            uint32_t flags = CReserveTransfer::VALID;
-            if (burnCurrency)
-            {
-                if (mintNew)
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
-                }
-                flags |= CReserveTransfer::BURN_CHANGE_PRICE;
-            }
 
             if (preConvert)
             {
@@ -3433,27 +3442,27 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
                 }
                 else if (!preConvert &&
-                         (mintNew ||
+                         (mintNew || burnCurrency ||
                           (toFractional = convertToCurrencyDef.IsFractional() && convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID)) ||
                           (sourceCurrencyDef.IsFractional() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID))))
                 {
                     // the following cases end up here:
-                    //   1. we are minting currency
+                    //   1. we are minting or burning currency
                     //   2. we are converting from a fractional currency to its reserve or back
 
                     CCcontract_info CC;
                     CCcontract_info *cp;
                     cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                     CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-                    if (mintNew)
+                    if (mintNew || burnCurrency)
                     {
                         // we onnly allow minting of tokens right now
                         // TODO: support centralized minting of native AND fractional currency
                         // minting of fractional currency should emit coins without changing price by
                         // adjusting reserve ratio
-                        if (!convertToCurrencyDef.IsToken() || convertToCurrencyDef.IsFractional())
+                        if (!convertToCurrencyDef.IsToken())
                         {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot mint native or fractional currency " + convertToCurrencyDef.name);
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot mint or burn native currency " + convertToCurrencyDef.name);
                         }
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
                         std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), 
@@ -3722,20 +3731,20 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
     // import transactions using the importtxtemplate as a template
     CheckPBaaSAPIsValid();
 
-    uint160 chainID = GetChainIDFromParam(params[0]);
-
-    if (chainID.IsNull())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
-    }
-
+    uint160 chainID;
     CTransaction lastImportTx, lastConfirmedTx;
-
     CChainNotarizationData cnd;
     std::vector<std::pair<CTransaction, uint256>> txesOut;
 
     {
         LOCK2(cs_main, mempool.cs);
+
+        chainID = GetChainIDFromParam(params[0]);
+
+        if (chainID.IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
+        }
 
         if (!GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd, &txesOut))
         {
@@ -3839,6 +3848,8 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     CheckPBaaSAPIsValid();
 
     bool isVerusActive = IsVerusActive();
+
+    LOCK(cs_main);
 
     uint160 chainID = GetChainIDFromParam(find_value(params[0], "name"));
 
@@ -4274,7 +4285,10 @@ UniValue refundfailedlaunch(const UniValue& params, bool fHelp)
 
     uint160 chainID;
 
-    chainID = GetChainIDFromParam(params[0]);
+    {
+        LOCK(cs_main);
+        chainID = GetChainIDFromParam(params[0]);
+    }
     if (chainID.IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid PBaaS name or currencyid");
@@ -4411,14 +4425,14 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
     }
     CheckPBaaSAPIsValid();
 
+    LOCK(cs_main);
+
     uint160 chainID = GetChainIDFromParam(params[0]);
 
     if (chainID.IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
-
-    LOCK(cs_main);
 
     CCurrencyDefinition chainDef;
     int32_t definitionHeight;
