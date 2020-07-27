@@ -1919,18 +1919,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                 AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
                             }
 
-                            // we need to consider our source currency as burned if it is the fractional currency
-                            if (curTransfer.currencyID == importCurrencyID)
-                            {
-                                if (curTransfer.currencyID == systemDestID)
-                                {
-                                    nativeIn -= valueOut;
-                                }
-                                else
-                                {
-                                    AddReserveInput(curTransfer.currencyID, -valueOut);
-                                }
-                            }
+                            // burn the input fractional currency
+                            AddNativeOutConverted(curTransfer.currencyID, -valueOut);
                         }
 
                         if ((newCurrencyConverted | feesConverted) && curTransfer.destCurrencyID == systemDestID)
@@ -2022,7 +2012,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             LogPrintf("%s: burning %s to change weight is not supported\n", __func__, importCurrencyDef.name.c_str());
                             return false;
                         }
-                        AddReserveOutput(curTransfer.currencyID, curTransfer.nValue);
+                        // burn the input fractional currency
+                        AddNativeOutConverted(curTransfer.currencyID, -curTransfer.nValue);
                         burnedChangePrice += curTransfer.nValue;
                     }
                     else if (systemDestID == curTransfer.destCurrencyID)
@@ -2133,7 +2124,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         newCurrencyState.reserveOut[i] = vResOutConverted[i];
         newCurrencyState.reserves[i] += vResConverted[i] - vResOutConverted[i];
         newCurrencyState.nativeIn[i] = vFracConverted[i];
-        newCurrencyState.supply += vFracOutConverted[i] - vFracConverted[i];
+        newCurrencyState.supply += vFracOutConverted[i];
     }
 
     if (totalMinted)

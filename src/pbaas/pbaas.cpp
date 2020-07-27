@@ -1547,6 +1547,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     // if source is same currency
                                     CCurrencyValueMap newTransferOutput;
                                     bool isMint = (txInputs[j].second.flags & (CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY));
+
                                     if (isMint)
                                     {
                                         newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nFees;
