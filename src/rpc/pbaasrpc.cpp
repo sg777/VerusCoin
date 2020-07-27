@@ -103,8 +103,6 @@ protected:
 
 bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight)
 {
-    LOCK(cs_main);
-
     if (chainID == ConnectedChains.ThisChain().GetID())
     {
         chainDef = ConnectedChains.ThisChain();
@@ -505,7 +503,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     bool isTokenImport = currencyDef.IsToken() && systemID == thisChainID;
     bool isDefinition = false;
 
-    CCurrencyValueMap availableTokenInput(AvailableTokenInput);
     CAmount totalNativeInput(TotalNativeInput);
 
     CCurrencyValueMap availableCurrencyInput(AvailableTokenInput);
@@ -803,24 +800,26 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCrossChainExport adjustedCCX = ccx;
             adjustedCCX.totalFees = CCurrencyValueMap(currencyState.currencies, currencyState.fees) + 
                                                    CCurrencyValueMap({systemID}, {currencyState.nativeFees});
+
             CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - spentCurrencyOut).CanonicalMap();
 
-            /*
-            printf("%s: leftoverCurrency:\n%s\nnativeOutConverted\n%ld\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\n\n", 
+            /* printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\nccx.totalfees:\n%s\n\n", 
                         __func__, 
+                        availableCurrencyInput.ToUniValue().write().c_str(),
                         leftoverCurrency.ToUniValue().write().c_str(),
-                        nativeOutConverted,
+                        spentCurrencyOut.ToUniValue().write().c_str(),
+                        ValueFromAmount(nativeOutConverted).write().c_str(),
                         rtxd.ReserveInputMap().ToUniValue().write().c_str(),
                         ValueFromAmount(rtxd.nativeIn).write().c_str(),
+                        ValueFromAmount(rtxd.nativeOut).write().c_str(),
                         rtxd.ReserveOutputMap().ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
-                        rtxd.NativeFees(),
-                        ccx.totalFees.ToUniValue().write().c_str());
-            */
+                        ValueFromAmount(rtxd.NativeFees()).write().c_str(),
+                        ccx.totalFees.ToUniValue().write().c_str()); */
 
             if (leftoverCurrency.HasNegative())
             {
-                LogPrintf("%s: ERROR - fees do not match. leftoverCurrency:\n%s\nReserveInputMap():\n%s\nspentCurrencyOut:\n%s\nrtxd.nativeIn:\n%s\nnativeOutConverted:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%ld\nccx.totalfees:\n%s\n\n", 
+                LogPrintf("%s: ERROR - fees do not match. leftoverCurrency:\n%s\nReserveInputMap():\n%s\nspentCurrencyOut:\n%s\nrtxd.nativeIn:\n%s\nnativeOutConverted:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%%s\nccx.totalfees:\n%s\n\n", 
                         __func__, 
                         leftoverCurrency.ToUniValue().write().c_str(),
                         rtxd.ReserveInputMap().ToUniValue().write().c_str(),
@@ -829,7 +828,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                         ValueFromAmount(nativeOutConverted).write().c_str(),
                         (rtxd.ReserveConversionFeesMap() + CCurrencyValueMap(std::vector<uint160>({thisChainID}), std::vector<CAmount>({rtxd.nativeConversionFees}))).ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
-                        rtxd.NativeFees(),
+                        ValueFromAmount(rtxd.NativeFees()).write().c_str(),
                         adjustedCCX.totalFees.ToUniValue().write().c_str());
                 return false;
             }
@@ -849,21 +848,17 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 return false;
             }
 
-            /*
-            printf("DEBUGOUT: nativeOutConverted: %ld, rtxd.ReserveOutConvertedMap():%s\n", nativeOutConverted, rtxd.ReserveOutConvertedMap().ToUniValue().write().c_str());
-            printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
-            printf("rtxd.ReserveInputMap(): %s, ccx.totalAmounts: %s\n", rtxd.ReserveInputMap().ToUniValue().write().c_str(), ccx.totalAmounts.ToUniValue().write().c_str());
-            printf("leftoverCurrency: %s\n", leftoverCurrency.ToUniValue().write().c_str());
-            */
+            //printf("DEBUGOUT: nativeOutConverted: %s, rtxd.ReserveOutConvertedMap():%s\n", ValueFromAmount(nativeOutConverted).write().c_str(), rtxd.ReserveOutConvertedMap().ToUniValue().write().c_str());
+            //printf("rtxd.ReserveInputMap(): %s, ccx.totalAmounts: %s\n", rtxd.ReserveInputMap().ToUniValue().write().c_str(), ccx.totalAmounts.ToUniValue().write().c_str());
+            //printf("leftoverCurrency: %s\n", leftoverCurrency.ToUniValue().write().c_str());
 
             // breakout native from leftover currency
+            availableCurrencyInput = leftoverCurrency;
             totalNativeInput = leftoverCurrency.valueMap[systemID];
             leftoverCurrency.valueMap.erase(systemID);
 
-            /*
-            printf("DEBUGOUT: totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
-            printf("DEBUGOUT: rtxd.nativeIn: %ld, rtxd.ReserveInputMap():%s\n", rtxd.nativeIn, rtxd.ReserveInputMap().ToUniValue().write().c_str());
-            */
+            //printf("DEBUGOUT: availableCurrencyInput:%s\n", availableCurrencyInput.ToUniValue().write().c_str());
+            //printf("DEBUGOUT: rtxd.nativeIn: %s, rtxd.ReserveInputMap():%s\n", ValueFromAmount(rtxd.nativeIn).write().c_str(), rtxd.ReserveInputMap().ToUniValue().write().c_str());
 
             CCurrencyValueMap importMap = rtxd.ReserveInputMap();
             if (ccx.systemID == systemID)
@@ -875,17 +870,15 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
             newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
 
-            //printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
-            if (totalNativeInput < 0 || (availableTokenInput - rtxd.ReserveInputMap()).HasNegative())
+            //printf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
+            if (totalNativeInput < 0 || (leftoverCurrency - rtxd.ReserveInputMap()).HasNegative())
             {
                 LogPrintf("%s: ERROR - importing more currency than available for %s\n", __func__, currencyDef.name.c_str());
-                LogPrintf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
+                LogPrintf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
                 printf("%s: ERROR - importing more currency than available for %s\n", __func__, currencyDef.name.c_str());
-                printf("totalNativeInput: %ld, availableTokenInput:%s\n", totalNativeInput, availableTokenInput.ToUniValue().write().c_str());
+                printf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
                 return false;
             }
-
-            availableTokenInput = leftoverCurrency;
 
             // add a proof of the export transaction at the notarization height
             CBlock block;
@@ -1022,10 +1015,11 @@ uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurr
     {
         // make sure there is such a currency defined on this chain
         CCurrencyDefinition currencyDef;
-        if (GetCurrencyDefinition(GetDestinationID(currencyDest), currencyDef))
+        if (!GetCurrencyDefinition(GetDestinationID(currencyDest), currencyDef) || !currencyDef.IsValid())
         {
-            retVal = currencyDef.GetID();
+            return retVal;
         }
+        retVal = currencyDef.GetID();
         if (pCurrencyDef)
         {
             *pCurrencyDef = currencyDef;
@@ -1199,6 +1193,8 @@ UniValue getpendingtransfers(const UniValue& params, bool fHelp)
 
     CheckPBaaSAPIsValid();
 
+    LOCK(cs_main);
+
     uint160 chainID = GetChainIDFromParam(params[0]);
 
     if (chainID.IsNull())
@@ -1208,8 +1204,6 @@ UniValue getpendingtransfers(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition chainDef;
     int32_t defHeight;
-
-    LOCK(cs_main);
 
     if ((IsVerusActive() && GetCurrencyDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetID() == chainID)
     {
@@ -1361,6 +1355,8 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
     CheckPBaaSAPIsValid();
 
+    LOCK(cs_main);
+
     uint160 chainID = GetChainIDFromParam(params[0]);
 
     if (chainID.IsNull())
@@ -1370,8 +1366,6 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition chainDef;
     int32_t defHeight;
-
-    LOCK(cs_main);
 
     if (GetCurrencyDefinition(chainID, chainDef, &defHeight))
     {
@@ -2940,6 +2934,9 @@ UniValue paynotarizationrewards(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Paying notarization rewards requires an active wallet");
     }
 
+    // create the transaction with native coin as input
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
     chainID = GetChainIDFromParam(params[0]);
     if (chainID.IsNull())
     {
@@ -2966,9 +2963,6 @@ UniValue paynotarizationrewards(const UniValue& params, bool fHelp)
 
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{MakeCC1of1Vout(EVAL_SERVICEREWARD, amount, pk, dests, sr).scriptPubKey, amount}});
     CWalletTx wtx;
-
-    // create the transaction with native coin as input
-    LOCK2(cs_main, pwalletMain->cs_wallet);
 
     CReserveKey reserveKey(pwalletMain);
     CAmount fee;
@@ -3167,6 +3161,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
+            bool burnCurrency = uni_get_bool(find_value(uniOutputs[i], "burn"));
             bool subtractFee = uni_get_bool(find_value(uniOutputs[i], "subtractfee"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
 
@@ -3175,7 +3170,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 refundToStr.size() ||
                 memoStr.size() ||
                 preConvert ||
-                mintNew)
+                mintNew ||
+                burnCurrency)
             {
                 CheckPBaaSAPIsValid();
             }
@@ -3204,10 +3200,35 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             if (convertToStr != "")
             {
                 convertToCurrencyID = ValidateCurrencyName(convertToStr, &convertToCurrencyDef);
-                if (convertToCurrencyID.IsNull())
+                if (convertToCurrencyID == sourceCurrencyID)
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency conversion is requested, destination currency must be valid.");
+                    convertToCurrencyID.SetNull();
+                    convertToCurrencyDef = CCurrencyDefinition();
                 }
+                else
+                {
+                    if (convertToCurrencyID.IsNull())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency conversion is requested, destination currency must be valid.");
+                    }
+                    if (burnCurrency)
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
+                    }
+                }
+            }
+
+            // send a reserve transfer preconvert
+            uint32_t flags = CReserveTransfer::VALID;
+            if (burnCurrency)
+            {
+                if (mintNew || !convertToCurrencyID.IsNull())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
+                }
+                flags |= CReserveTransfer::BURN_CHANGE_PRICE;
+                convertToCurrencyID = sourceCurrencyID;
+                convertToCurrencyDef = sourceCurrencyDef;
             }
 
             std::string systemDestStr;
@@ -3284,8 +3305,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // make one output
             CRecipient oneOutput;
 
-            // send a reserve transfer preconvert
-            uint32_t flags = CReserveTransfer::VALID;
             if (preConvert)
             {
                 flags |= CReserveTransfer::PRECONVERT;
@@ -3423,27 +3442,27 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
                 }
                 else if (!preConvert &&
-                         (mintNew ||
+                         (mintNew || burnCurrency ||
                           (toFractional = convertToCurrencyDef.IsFractional() && convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID)) ||
                           (sourceCurrencyDef.IsFractional() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID))))
                 {
                     // the following cases end up here:
-                    //   1. we are minting currency
+                    //   1. we are minting or burning currency
                     //   2. we are converting from a fractional currency to its reserve or back
 
                     CCcontract_info CC;
                     CCcontract_info *cp;
                     cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                     CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-                    if (mintNew)
+                    if (mintNew || burnCurrency)
                     {
                         // we onnly allow minting of tokens right now
                         // TODO: support centralized minting of native AND fractional currency
                         // minting of fractional currency should emit coins without changing price by
                         // adjusting reserve ratio
-                        if (!convertToCurrencyDef.IsToken() || convertToCurrencyDef.IsFractional())
+                        if (!convertToCurrencyDef.IsToken())
                         {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot mint native or fractional currency " + convertToCurrencyDef.name);
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot mint or burn native currency " + convertToCurrencyDef.name);
                         }
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
                         std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), 
@@ -3712,20 +3731,20 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
     // import transactions using the importtxtemplate as a template
     CheckPBaaSAPIsValid();
 
-    uint160 chainID = GetChainIDFromParam(params[0]);
-
-    if (chainID.IsNull())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
-    }
-
+    uint160 chainID;
     CTransaction lastImportTx, lastConfirmedTx;
-
     CChainNotarizationData cnd;
     std::vector<std::pair<CTransaction, uint256>> txesOut;
 
     {
         LOCK2(cs_main, mempool.cs);
+
+        chainID = GetChainIDFromParam(params[0]);
+
+        if (chainID.IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
+        }
 
         if (!GetNotarizationData(chainID, IsVerusActive() ? EVAL_ACCEPTEDNOTARIZATION : EVAL_EARNEDNOTARIZATION, cnd, &txesOut))
         {
@@ -3829,6 +3848,8 @@ UniValue getlatestimportsout(const UniValue& params, bool fHelp)
     CheckPBaaSAPIsValid();
 
     bool isVerusActive = IsVerusActive();
+
+    LOCK(cs_main);
 
     uint160 chainID = GetChainIDFromParam(find_value(params[0], "name"));
 
@@ -4264,7 +4285,10 @@ UniValue refundfailedlaunch(const UniValue& params, bool fHelp)
 
     uint160 chainID;
 
-    chainID = GetChainIDFromParam(params[0]);
+    {
+        LOCK(cs_main);
+        chainID = GetChainIDFromParam(params[0]);
+    }
     if (chainID.IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid PBaaS name or currencyid");
@@ -4401,14 +4425,14 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
     }
     CheckPBaaSAPIsValid();
 
+    LOCK(cs_main);
+
     uint160 chainID = GetChainIDFromParam(params[0]);
 
     if (chainID.IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
-
-    LOCK(cs_main);
 
     CCurrencyDefinition chainDef;
     int32_t definitionHeight;
