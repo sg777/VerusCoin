@@ -1999,11 +1999,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     if (curTransfer.flags & (curTransfer.BURN_CHANGE_PRICE | curTransfer.BURN_CHANGE_WEIGHT))
                     {
                         // if the source is fractional currency, it is burned
-                        if (!(importCurrencyDef.IsFractional() && curTransfer.currencyID == importCurrencyID))
+                        if (curTransfer.currencyID != importCurrencyID || !(importCurrencyDef.IsFractional() || importCurrencyDef.IsToken()))
                         {
                             CCurrencyDefinition sourceCurrency = ConnectedChains.GetCachedCurrency(curTransfer.currencyID);
-                            printf("%s: Attempting to burn %s, which is either not a fractional currency or not the import currency %s\n", __func__, sourceCurrency.name.c_str(), importCurrencyDef.name.c_str());
-                            LogPrintf("%s: Invalid to burn currency that is neither fractional nor reserve of fractional\n", __func__);
+                            printf("%s: Attempting to burn %s, which is either not a token or fractional currency or not the import currency %s\n", __func__, sourceCurrency.name.c_str(), importCurrencyDef.name.c_str());
+                            LogPrintf("%s: Attempting to burn %s, which is either not a token or fractional currency or not the import currency %s\n", __func__, sourceCurrency.name.c_str(), importCurrencyDef.name.c_str());
                             return false;
                         }
                         if (curTransfer.flags & curTransfer.BURN_CHANGE_WEIGHT)
