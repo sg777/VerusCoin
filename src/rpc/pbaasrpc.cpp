@@ -852,6 +852,16 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             //printf("rtxd.ReserveInputMap(): %s, ccx.totalAmounts: %s\n", rtxd.ReserveInputMap().ToUniValue().write().c_str(), ccx.totalAmounts.ToUniValue().write().c_str());
             //printf("leftoverCurrency: %s\n", leftoverCurrency.ToUniValue().write().c_str());
 
+            //printf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
+            if ((availableCurrencyInput - (rtxd.ReserveInputMap() + CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn})))).HasNegative())
+            {
+                LogPrintf("%s: ERROR - importing more currency than available for %s\n", __func__, currencyDef.name.c_str());
+                LogPrintf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
+                printf("%s: ERROR - importing more currency than available for %s\n", __func__, currencyDef.name.c_str());
+                printf("totalNativeInput: %s, rtxd.ReserveInputMap(): %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), rtxd.ReserveInputMap().ToUniValue().write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
+                return false;
+            }
+
             // breakout native from leftover currency
             availableCurrencyInput = leftoverCurrency;
             totalNativeInput = leftoverCurrency.valueMap[systemID];
@@ -869,16 +879,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCrossChainImport cci = CCrossChainImport(ccx.systemID, importMap, leftoverCurrency.CanonicalMap());
 
             newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
-
-            //printf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
-            if (totalNativeInput < 0 || (leftoverCurrency - rtxd.ReserveInputMap()).HasNegative())
-            {
-                LogPrintf("%s: ERROR - importing more currency than available for %s\n", __func__, currencyDef.name.c_str());
-                LogPrintf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
-                printf("%s: ERROR - importing more currency than available for %s\n", __func__, currencyDef.name.c_str());
-                printf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
-                return false;
-            }
 
             // add a proof of the export transaction at the notarization height
             CBlock block;
