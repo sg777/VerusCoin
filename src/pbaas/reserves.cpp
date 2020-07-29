@@ -1452,6 +1452,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
     // this is cached here, but only used for pre-conversions
     CCoinbaseCurrencyState initialCurrencyState;
+    CCurrencyValueMap preConvertedOutput;
 
     // we do not change native in or conversion fees, but we define all of these members
     nativeIn = 0;
@@ -1632,7 +1633,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // first time through with preconvert, initialize the starting currency state
                     if (!initialCurrencyState.IsValid())
                     {
-                        initialCurrencyState = ConnectedChains.GetCurrencyState(currencyDest.GetID(), currencyDest.startBlock - 1);
+                        initialCurrencyState = ConnectedChains.GetCurrencyState(importCurrencyID, currencyDest.startBlock - 1);
                         if (!initialCurrencyState.IsValid())
                         {
                             printf("%s: Invalid currency for preconversion %s\n", __func__, curTransfer.ToUniValue().write().c_str());
@@ -1749,6 +1750,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                     if (newCurrencyConverted | feesConverted)
                     {
+                        preConvertedOutput.valueMap[curTransfer.currencyID] += newCurrencyConverted + feesConverted;
                         AddNativeOutConverted(curTransfer.currencyID, newCurrencyConverted + feesConverted);
                         if (curTransfer.destCurrencyID == systemDestID)
                         {
@@ -2116,7 +2118,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     std::vector<CAmount> vResConverted = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
     std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
     std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
-    std::vector<CAmount> vFracOutConverted = NativeOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
+    std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
 
     for (int i = 0; i < newCurrencyState.currencies.size(); i++)
     {
