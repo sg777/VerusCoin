@@ -463,23 +463,18 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
             {
                 bnStakeTarget.SetCompact(lwmaGetNextPOSRequired(&index, consensus));
 
-                if (bnStakeTarget == 0)
+                if (bnStakeTarget != 0)
                 {
-                    totalChainStake = 0;
-                    avgBlockFees = false;
-                    LogPrintf("%s: failed to estimate staking supply\n", __func__);
-                    break;
-                }
-
-                // We need to compute 2**256 / (bnTarget+1), but we can't represent 2**256
-                // as it's too large for a arith_uint256. However, as 2**256 is at least as large
-                // as bnTarget+1, it is equal to ((2**256 - bnTarget - 1) / (bnTarget+1)) + 1,
-                // or ~bnTarget / (nTarget+1) + 1.
-                totalChainStake = totalChainStake + (~bnStakeTarget / (bnStakeTarget + 1)) + 1;
-                blockCount++;
-                if (index.IsVerusPOSBlock())
-                {
-                    posCount++;
+                    // We need to compute 2**256 / (bnTarget+1), but we can't represent 2**256
+                    // as it's too large for a arith_uint256. However, as 2**256 is at least as large
+                    // as bnTarget+1, it is equal to ((2**256 - bnTarget - 1) / (bnTarget+1)) + 1,
+                    // or ~bnTarget / (nTarget+1) + 1.
+                    totalChainStake = totalChainStake + (~bnStakeTarget / (bnStakeTarget + 1)) + 1;
+                    blockCount++;
+                    if (index.IsVerusPOSBlock())
+                    {
+                        posCount++;
+                    }
                 }
             }
         }
