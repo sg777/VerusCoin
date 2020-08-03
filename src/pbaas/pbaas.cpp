@@ -1874,8 +1874,8 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
                     }
                     else
                     {
-                        fprintf(stderr,"%s: rejected by memory pool for\n", __func__);
-                        LogPrintf("%s: rejected by memory pool for\n", __func__);
+                        fprintf(stderr,"%s: rejected by memory pool for %s\n", __func__, state.GetRejectReason().c_str());
+                        LogPrintf("%s: rejected by memory pool for %s\n", __func__, state.GetRejectReason().c_str());
                     }
                 }
                 break;
