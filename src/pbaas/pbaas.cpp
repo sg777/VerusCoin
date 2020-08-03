@@ -1612,7 +1612,19 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 // do a preliminary check
                                 CReserveTransactionDescriptor rtxd;
                                 std::vector<CTxOut> vOutputs;
-                                CCoinbaseCurrencyState currencyState = GetInitialCurrencyState(lastChainDef);
+                                CChainNotarizationData cnd;
+                                CCoinbaseCurrencyState currencyState;
+                                if (!GetNotarizationData(lastChain,
+                                                    !lastChainDef.IsToken() && lastChainDef.systemID == lastChain ? EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION,
+                                                    cnd))
+                                {
+                                    printf("%s: failed to create valid exports\n", __func__);
+                                    LogPrintf("%s: failed to create valid exports\n", __func__);
+                                }
+                                else
+                                {
+                                    currencyState = cnd.vtx[cnd.lastConfirmed].second.currencyState;
+                                }
                                 if (!currencyState.IsValid() ||
                                     !rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs))
                                 {
