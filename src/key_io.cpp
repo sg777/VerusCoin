@@ -819,7 +819,7 @@ CScript CIdentity::TransparentOutput(const CIdentityID &destinationID)
     return MakeMofNCCScript(ccObj);
 }
 
-CScript CIdentity::IdentityUpdateOutputScript() const
+CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
 {
     CScript ret;
 
@@ -830,12 +830,37 @@ CScript CIdentity::IdentityUpdateOutputScript() const
 
     std::vector<CTxDestination> dests1({CTxDestination(CIdentityID(GetID()))});
     CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
-    std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
-    CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
-    std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
-    CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
 
-    ret = MakeMofNCCScript(1, primary, revocation, recovery);
+    // when PBaaS activates, we no longer need redundant entries, so reduce the size a bit
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        if (IsRevoked())
+        {
+            std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
+            CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
+            ret = MakeMofNCCScript(1, primary, recovery);
+        }
+        else
+        {
+            std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
+            CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
+            ret = MakeMofNCCScript(1, primary, revocation);
+        }
+    }
+    else
+    {
+        std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
+        CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
+        std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
+        CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
+
+        std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetID(), EVAL_IDENTITY_PRIMARY))),
+                                                IsRevoked() ? CTxDestination(CIdentityID(recoveryAuthority)) : CTxDestination(CIdentityID(revocationAuthority)),
+                                                primaryAddresses.size() ? primaryAddresses[0] : CKeyID()});
+
+        ret = MakeMofNCCScript(1, primary, revocation, recovery);
+    }
+
     return ret;
 }
 

@@ -4936,7 +4936,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     // first, we need the identity output with currency activated
     launchIdentity.ActivateCurrency();
-    vOutputs.push_back({launchIdentity.IdentityUpdateOutputScript(), 0, false});
+    vOutputs.push_back({launchIdentity.IdentityUpdateOutputScript(height), 0, false});
 
     // now, create the currency definition output
     CCcontract_info CC;
@@ -5398,11 +5398,13 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // lookup commitment to be sure that we can register this identity
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
+    uint32_t height = chainActive.Height();
     uint256 hashBlk;
-    uint32_t commitmentHeight;
     CTransaction txOut;
     CCommitmentHash ch;
     int commitmentOutput;
+
+    uint32_t commitmentHeight;
 
     // must be present and in a mined block
     {
@@ -5471,7 +5473,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // create the identity definition transaction & reservation key output
     CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), 1, &reservation);
     CTxDestination resIndexDest = CKeyID(CCrossChainRPCData::GetConditionID(newID.GetID(), EVAL_IDENTITY_RESERVATION));
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(height), 0, false}});
 
     // add referrals, Verus supports referrals
     if ((ConnectedChains.ThisChain().IDReferrals() || IsVerusActive()) && !reservation.referral.IsNull())
@@ -5633,7 +5635,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     }
 
     // create the identity definition transaction
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(chainActive.Height()), 0, false}});
     CWalletTx wtx;
 
     CReserveKey reserveKey(pwalletMain);
@@ -5741,7 +5743,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
     newID.Revoke();
 
     // create the identity definition transaction
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(chainActive.Height()), 0, false}});
     CWalletTx wtx;
 
     CReserveKey reserveKey(pwalletMain);
@@ -5853,7 +5855,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     newID.flags &= ~CIdentity::FLAG_REVOKED;
 
     // create the identity definition transaction
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(), 0, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(chainActive.Height()), 0, false}});
     CWalletTx wtx;
 
     CReserveKey reserveKey(pwalletMain);

@@ -448,7 +448,7 @@ public:
     static CScript TransparentOutput(const CIdentityID &destinationID);
 
     // creates an output script to control updates to this identity
-    CScript IdentityUpdateOutputScript() const;
+    CScript IdentityUpdateOutputScript(uint32_t height) const;
 
     bool IsInvalidMutation(const CIdentity &newIdentity, uint32_t height) const
     {
