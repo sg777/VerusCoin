@@ -372,7 +372,7 @@ std::vector<CBaseChainObject *> RetrieveOpRetArray(const CScript &opRetScript)
     return vRet;
 }
 
-CServiceReward::CServiceReward(const CTransaction &tx, bool validate)
+CServiceReward::CServiceReward(const CTransaction &tx)
 {
     nVersion = PBAAS_VERSION_INVALID;
     for (auto out : tx.vout)
@@ -387,11 +387,6 @@ CServiceReward::CServiceReward(const CTransaction &tx, bool validate)
                 break;
             }
         }
-    }
-
-    if (validate)
-    {
-        
     }
 }
 
@@ -1516,6 +1511,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     {
                                         auto &oneOut = lastExportTx.vout[i];
                                         COptCCParams p;
+
                                         if (::IsPayToCryptoCondition(oneOut.scriptPubKey, p) &&
                                             p.IsValid() &&
                                             p.evalCode == EVAL_RESERVE_DEPOSIT)
@@ -1669,6 +1665,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
 
                                     currentReserveDeposits += ccx.totalAmounts;
+                                    CCurrencyValueMap reserveDepositOut;
+                                    CAmount nativeOut = 0;
 
                                     for (auto &oneCurrencyOut : currentReserveDeposits.valueMap)
                                     {
@@ -1676,33 +1674,33 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                                         // if the destination is this chain, or
                                         // the destination is another blockchain that does not control source currency, store in reserve
-                                        if (oneDef.systemID == ASSETCHAINS_CHAINID || oneDef.systemID != lastChainDef.systemID)
+                                        if ((oneDef.systemID == ASSETCHAINS_CHAINID || oneDef.systemID != lastChainDef.systemID) &&
+                                            oneCurrencyOut.second)
                                         {
-                                            CAmount nativeOut = oneDef.GetID() == ASSETCHAINS_CHAINID ? oneCurrencyOut.second : 0;
-
-                                            // send the entire amount to a reserve deposit output of the specific chain
-                                            // we receive our fee on the other chain, when it comes back, or if a token,
-                                            // when it gets imported back to the chain
-                                            std::vector<CTxDestination> indexDests({CKeyID(lastChainDef.GetConditionID(EVAL_RESERVE_DEPOSIT))});
-                                            std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
-
-                                            CTokenOutput ro = CTokenOutput(oneCurrencyOut.first, nativeOut ? 0 : oneCurrencyOut.second);
-                                            tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_DEPOSIT, dests, 1, &ro), &indexDests), 
-                                                                    nativeOut);
+                                            reserveDepositOut.valueMap[oneCurrencyOut.first] = oneCurrencyOut.second;
+                                            if (oneCurrencyOut.first == ASSETCHAINS_CHAINID)
+                                            {
+                                                nativeOut = oneCurrencyOut.second;
+                                            }
                                         }
+                                    }
+                                    if (reserveDepositOut.valueMap.size())
+                                    {
+                                        // send the entire amount to a reserve deposit output of the specific chain
+                                        // we receive our fee on the other chain, when it comes back, or if a token,
+                                        // when it gets imported back to the chain
+                                        std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
+                                        CReserveDeposit rd = CReserveDeposit(lastChain, reserveDepositOut);
+                                        tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), 
+                                                                nativeOut);
                                     }
 
                                     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
 
                                     // send native amount of zero to a cross chain export output of the specific chain
-                                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(lastChainDef.GetConditionID(EVAL_CROSSCHAIN_EXPORT))});
-                                    if (lastChainDef.systemID != ASSETCHAINS_CHAINID)
-                                    {
-                                        indexDests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_CROSSCHAIN_EXPORT)));
-                                    }
                                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
 
-                                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx), &indexDests),
+                                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx)),
                                                             exportOutVal);
 
                                     // when exports are confirmed as having been imported, they are finalized
@@ -1710,13 +1708,12 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     // that have work to complete on this chain, or have not had their cross-chain import 
                                     // acknowledged
                                     cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
-                                    CTransactionFinalization finalization(0);
+                                    CTransactionFinalization finalization(CTransactionFinalization::FINALIZE_EXPORT, lastChain, 0);
 
                                     //printf("%s: Finalizing export with index dest %s\n", __func__, EncodeDestination(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))).c_str());
 
-                                    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))});
                                     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
-                                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_EXPORT, dests, 1, &finalization), &indexDests), 0);
+                                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_EXPORT, dests, 1, &finalization)), 0);
 
                                     tb.AddOpRet(opRet);
                                     tb.SetFee(0);
@@ -2187,13 +2184,11 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
     mnewTx.vin.push_back(CTxIn(COutPoint(lastImportTxHash, finalizeOut)));
 
     // we need to store the input that we confirmed if we spent finalization outputs
-    CTransactionFinalization nf(mnewTx.vin.size() - 1);
-
-    indexDests = std::vector<CTxDestination>({CKeyID(curDef.GetConditionID(EVAL_FINALIZE_NOTARIZATION))});
+    CTransactionFinalization nf(CTransactionFinalization::FINALIZE_NOTARIZATION, pbn.currencyID, mnewTx.vin.size() - 1);
 
     // update crypto condition with final notarization output data
     mnewTx.vout.push_back(CTxOut(0, 
-            MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests)));
+            MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf))));
 
     return true;
 }

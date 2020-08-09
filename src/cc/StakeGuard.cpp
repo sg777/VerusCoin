@@ -232,9 +232,6 @@ bool MakeGuardedOutput(CAmount value, CTxDestination &dest, CTransaction &stakeT
             CConditionObj<CStakeInfo> primary(EVAL_STAKEGUARD, dests1, 1, &stakeInfo);
             std::vector<CTxDestination> dests2({CTxDestination(CPubKey(ParseHex(cp->CChexstr)))});
             CConditionObj<CStakeInfo> cheatCatcher(EVAL_STAKEGUARD, dests2, 1);
-
-            std::vector<CTxDestination> indexDests;
-
             vout = CTxOut(value, MakeMofNCCScript(1, primary, cheatCatcher));
         }
         else if (dest.which() == COptCCParams::ADDRTYPE_PK)

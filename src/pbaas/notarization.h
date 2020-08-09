@@ -211,10 +211,17 @@ class CTransactionFinalization
 {
 public:
     static const int64_t DEFAULT_OUTPUT_VALUE = 100000;
+    enum FINALIZATION_TYPE {
+        FINALIZE_INVALID = 0,
+        FINALIZE_NOTARIZATION = 1,
+        FINALIZE_EXPORT = 2
+    };
+    uint8_t finalizationType;
+    uint160 currencyID;
     int32_t confirmedInput;
 
-    CTransactionFinalization() : confirmedInput(-1) {}
-    CTransactionFinalization(int32_t nIn) : confirmedInput(nIn) {}
+    CTransactionFinalization() : finalizationType(FINALIZE_INVALID), confirmedInput(-1) {}
+    CTransactionFinalization(uint8_t fType, uint160 curID, int32_t nIn) : finalizationType(fType), currencyID(curID), confirmedInput(nIn) {}
     CTransactionFinalization(std::vector<unsigned char> vch)
     {
         ::FromVector(vch, *this);
@@ -225,12 +232,14 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(finalizationType);
+        READWRITE(currencyID);
         READWRITE(confirmedInput);
     }
 
     bool IsValid() const
     {
-        return confirmedInput != -1;
+        return finalizationType != FINALIZE_INVALID && confirmedInput != -1;
     }
 
     std::vector<unsigned char> AsVector()
@@ -238,12 +247,7 @@ public:
         return ::AsVector(*this);
     }
 
-    UniValue ToUniValue() const
-    {
-        UniValue ret(UniValue::VOBJ);
-        ret.push_back(Pair("confirmedinput", confirmedInput));
-        return ret;
-    }
+    UniValue ToUniValue() const;
 };
 
 class CChainNotarizationData

@@ -833,7 +833,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 return false;
             }
 
-            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(currencyID, EVAL_CROSSCHAIN_IMPORT)))});
             std::vector<CTxDestination> dests;
 
             if (currencyDef.proofProtocol == CCurrencyDefinition::PROOF_PBAASMMR ||
@@ -876,9 +875,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 importMap.valueMap[systemID] = rtxd.nativeIn;
             }
 
-            CCrossChainImport cci = CCrossChainImport(ccx.systemID, importMap, leftoverCurrency.CanonicalMap());
+            CCrossChainImport cci = CCrossChainImport(ccx.systemID, currencyID, importMap, leftoverCurrency.CanonicalMap());
 
-            newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
+            newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)));
 
             // add a proof of the export transaction at the notarization height
             CBlock block;
@@ -2303,7 +2302,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
 
             // use public key of cc
             CPubKey pk(ParseHex(CC.CChexstr));
-            std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(pbn.currencyID, EVAL_FINALIZE_NOTARIZATION))});
 
             std::vector<CTxDestination> dests;
             if (chainDef.notarizationProtocol == chainDef.NOTARIZATION_NOTARY_CHAINID)
@@ -2315,11 +2313,11 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 dests = std::vector<CTxDestination>({pk});
             }
 
-            CTransactionFinalization nf(confirmedInput);
+            CTransactionFinalization nf(CTransactionFinalization::FINALIZE_NOTARIZATION, pbn.currencyID, confirmedInput);
 
             mnewTx.vout.insert(mnewTx.vout.begin() + (mnewTx.vout.size() - 1), 
                                 CTxOut(CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
-                                       MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests)));
+                                       MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf))));
         }
 
         if (notarizationInputs.size() && GetNotarizationAndFinalization(EVAL_ACCEPTEDNOTARIZATION, mnewTx, dummy, &notarizationIdx, &finalizationIdx))
@@ -2951,7 +2949,7 @@ UniValue paynotarizationrewards(const UniValue& params, bool fHelp)
         uint32_t billingPeriod = uni_get_int(params[2]);
     }
 
-    CServiceReward sr = CServiceReward(SERVICE_NOTARIZATION, billingPeriod);
+    CServiceReward sr = CServiceReward(chainID, SERVICE_NOTARIZATION, billingPeriod);
     
     CCcontract_info CC;
     CCcontract_info *cp;
@@ -2959,7 +2957,7 @@ UniValue paynotarizationrewards(const UniValue& params, bool fHelp)
 
     CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-    std::vector<CTxDestination> dests({CKeyID(CCrossChainRPCData::GetConditionID(CCrossChainRPCData::GetConditionID(chainID, SERVICE_NOTARIZATION), EVAL_SERVICEREWARD))});
+    std::vector<CTxDestination> dests({pk.GetID()});
 
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{MakeCC1of1Vout(EVAL_SERVICEREWARD, amount, pk, dests, sr).scriptPubKey, amount}});
     CWalletTx wtx;
@@ -3006,6 +3004,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
 {
     bool isFractional = chainDef.IsFractional();
     CCurrencyState cState;
+    uint160 cID = chainDef.GetID();
 
     // calculate contributions and conversions
     const std::vector<CAmount> reserveFees(chainDef.currencies.size());
@@ -3014,7 +3013,8 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
     CAmount nativeFees = 0;
     if (isFractional)
     {
-        cState = CCurrencyState(chainDef.currencies,
+        cState = CCurrencyState(cID,
+                                chainDef.currencies,
                                 chainDef.weights,
                                 chainDef.contributions.size() ? chainDef.contributions : std::vector<int64_t>(chainDef.currencies.size(), 0),
                                 chainDef.initialFractionalSupply,
@@ -3029,7 +3029,8 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
         cState.currencies = chainDef.currencies;
         cState.reserves = conversions;
         CAmount PreconvertedNative = cState.ReserveToNative(CCurrencyValueMap(chainDef.currencies, chainDef.preconverted));
-        cState = CCurrencyState(chainDef.currencies, 
+        cState = CCurrencyState(cID,
+                                chainDef.currencies, 
                                 std::vector<int32_t>(0), 
                                 conversions,
                                 0, 
@@ -4204,7 +4205,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                     return false;
                 }
 
-                CCrossChainImport cci = CCrossChainImport(ccx.systemID, CCurrencyValueMap(), CCurrencyValueMap());
+                CCrossChainImport cci = CCrossChainImport(ASSETCHAINS_CHAINID, ccx.systemID, CCurrencyValueMap(), CCurrencyValueMap());
 
                 newImportTx.vout[0] = CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
 
@@ -5110,36 +5111,27 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
     pk = CPubKey(ParseHex(CC.CChexstr));
 
-    CTxDestination proofDest;
-
     if (newChain.proofProtocol == newChain.PROOF_PBAASMMR || newChain.proofProtocol == newChain.PROOF_CHAINID)
     {
-        proofDest = CPubKey(ParseHex(CC.CChexstr));
+        dests = std::vector<CTxDestination>({pk.GetID()});
     }
     else
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
     }
 
-    // import thread is specific to the chain importing from
-    dests = std::vector<CTxDestination>({proofDest});
-    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_IMPORT))});
     // if this is a token on this chain, the transfer that is output here is burned through the export 
     // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
     // and the reserve transfer outputs.
-    CCrossChainImport cci(newChainID, CCurrencyValueMap(), CCurrencyValueMap());
-    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests), 0, false});
+    CCrossChainImport cci(newChain.systemID, newChainID, CCurrencyValueMap(), CCurrencyValueMap());
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)), 0, false});
 
     // export thread
     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(newChainID, EVAL_CROSSCHAIN_EXPORT))});
-    if (newChain.systemID != ASSETCHAINS_CHAINID)
-    {
-        indexDests.push_back(CKeyID(CCrossChainRPCData::GetConditionID(newChain.systemID, EVAL_CROSSCHAIN_EXPORT)));
-    }
+
     CCrossChainExport ccx = CCrossChainExport(newChainID, 0, CCurrencyValueMap(), CCurrencyValueMap());
-    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx), &indexDests), 0, false});
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx)), 0, false});
 
     // make the outputs for initial contributions
     if (newChain.contributions.size() && newChain.contributions.size() == newChain.currencies.size())
@@ -5162,11 +5154,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                 CPubKey pk(ParseHex(CC.CChexstr));
 
-                indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
-                                                          CKeyID(newChain.GetID())});
                 dests = std::vector<CTxDestination>({pk});
 
-                vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 
+                vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), 
                                                      newChain.currencies[i] == thisChainID ? contribution + fee : 0, 
                                                      false});
                 

@@ -740,13 +740,11 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
     }
 
     // we need to store the input that we confirmed if we spent finalization outputs
-    CTransactionFinalization nf(*pConfirmedInput);
-
-    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_FINALIZE_NOTARIZATION))});
+    CTransactionFinalization nf(CTransactionFinalization::FINALIZE_NOTARIZATION, VERUS_CHAINID, *pConfirmedInput);
 
     // update crypto condition with final notarization output data
     mnewTx.vout[finalizeOutIndex] = CTxOut(PBAAS_MINNOTARIZATIONOUTPUT, 
-                                           MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests));
+                                           MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf)));
 
     // if this is block 1, add chain definition output with updated currency numbers
 

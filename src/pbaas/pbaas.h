@@ -45,14 +45,6 @@ static const int64_t PBAAS_MINNOTARIZATIONOUTPUT = 10000;   // enough for one fe
 static const int32_t PBAAS_MINSTARTBLOCKDELTA = 50;         // minimum number of blocks to wait for starting a chain after definition
 static const int32_t PBAAS_MAXPRIORBLOCKS = 16;             // maximum prior block commitments to include in prior blocks chain object
 
-// we wil uncomment service types as they are implemented
-// commented service types are here as guidance and reminders
-enum PBAAS_SERVICE_TYPES {
-    SERVICE_INVALID = 0,
-    SERVICE_NOTARIZATION = 1,
-    SERVICE_LAST = 1
-};
-
 // these are object types that can be stored and recognized in an opret array
 enum CHAIN_OBJECT_TYPES
 {
@@ -695,62 +687,6 @@ public:
     bool IsValid() const
     {
         return nBits != 0;
-    }
-};
-
-// Additional data for an output pool used for a PBaaS chain's reward for service, such as mining, staking, node or electrum service
-class CServiceReward
-{
-public:
-    uint32_t nVersion;                      // version of this chain definition data structure to allow for extensions (not daemon version)
-    uint16_t serviceType;                   // type of service
-    int32_t billingPeriod;                  // this is used to identify to which billing period of a chain, this reward applies
-
-    CServiceReward() : nVersion(PBAAS_VERSION_INVALID), serviceType(SERVICE_INVALID) {}
-
-    CServiceReward(PBAAS_SERVICE_TYPES ServiceType, int32_t period) : nVersion(PBAAS_VERSION), serviceType(ServiceType), billingPeriod(period) {}
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(serviceType);
-        READWRITE(billingPeriod);
-    }
-
-    CServiceReward(const std::vector<unsigned char> &asVector)
-    {
-        FromVector(asVector, *this);
-    }
-
-    CServiceReward(const UniValue &obj) : nVersion(PBAAS_VERSION)
-    {
-        serviceType = uni_get_str(find_value(obj, "servicetype")) == "notarization" ? SERVICE_NOTARIZATION : SERVICE_INVALID;
-        billingPeriod = uni_get_int(find_value(obj, "billingperiod"));
-        if (!billingPeriod)
-        {
-            serviceType = SERVICE_INVALID;
-        }
-    }
-
-    CServiceReward(const CTransaction &tx, bool validate = false);
-
-    UniValue ToUniValue() const
-    {
-        UniValue obj(UniValue::VOBJ);
-        obj.push_back(Pair("servicetype", serviceType == SERVICE_NOTARIZATION ? "notarization" : "unknown"));
-        obj.push_back(Pair("billingperiod", billingPeriod));
-        return obj;
-    }
-
-    std::vector<unsigned char> AsVector()
-    {
-        return ::AsVector(*this);
-    }
-
-    bool IsValid() const
-    {
-        return serviceType != SERVICE_INVALID;
     }
 };
 

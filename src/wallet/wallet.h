@@ -1564,6 +1564,10 @@ public:
         return CPubKey();
     }
 
+    CPubKey operator()(const CIndexID &iid) const {
+        return CPubKey();
+    }
+
     CPubKey operator()(const CNoDestination &no) const {
         return CPubKey();
     }
@@ -1588,6 +1592,14 @@ public:
 
     std::string operator()(const CIdentityID &idID) const {
         return "identity hash: " + idID.ToString();
+    }
+
+    std::string operator()(const CQuantumID &qID) const {
+        return "quantum address hash: " + qID.ToString();
+    }
+
+    std::string operator()(const CIndexID &idxID) const {
+        return "index hash: " + idxID.ToString();
     }
 };
 

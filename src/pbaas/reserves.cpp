@@ -16,8 +16,6 @@
 #include "key_io.h"
 #include <random>
 
-std::vector<uint160> *CTokenOutput::reserveIDs = nullptr;
-
 CTokenOutput::CTokenOutput(const UniValue &obj)
 {
     nVersion = (uint32_t)uni_get_int(find_value(obj, "version"), VERSION_CURRENT);
@@ -135,7 +133,7 @@ CCrossChainImport::CCrossChainImport(const CTransaction &tx, int32_t *pOutNum)
     for (int i = 0; i < tx.vout.size(); i++)
     {
         COptCCParams p;
-        if (IsPayToCryptoCondition(tx.vout[i].scriptPubKey, p))
+        if (IsPayToCryptoCondition(tx.vout[i].scriptPubKey, p) && p.IsValid())
         {
             // always take the first for now
             if (p.evalCode == EVAL_CROSSCHAIN_IMPORT && p.vData.size())
@@ -154,6 +152,13 @@ CCrossChainImport::CCrossChainImport(const CTransaction &tx, int32_t *pOutNum)
 CCurrencyState::CCurrencyState(const UniValue &obj)
 {
     flags = uni_get_int(find_value(obj, "flags"));
+
+    std::string cIDStr = uni_get_str(find_value(obj, "currencyid"));
+    if (cIDStr != "")
+    {
+        CTxDestination currencyDest = DecodeDestination(cIDStr);
+        currencyID = GetDestinationID(currencyDest);
+    }
 
     if (flags & FLAG_FRACTIONAL)
     {
@@ -1177,6 +1182,24 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 break;
 
                 case EVAL_RESERVE_DEPOSIT:
+                {
+                    CReserveDeposit rd;
+                    if (!p.vData.size() || !(rd = CReserveDeposit(p.vData[0])).IsValid())
+                    {
+                        flags &= ~IS_VALID;
+                        flags |= IS_REJECT;
+                        return;
+                    }
+                    for (auto &oneCur : rd.reserveValues.valueMap)
+                    {
+                        if (oneCur.first != ASSETCHAINS_CHAINID)
+                        {
+                            AddReserveOutput(oneCur.first, oneCur.second);
+                        }
+                    }
+                }
+                break;
+
                 case EVAL_RESERVE_OUTPUT:
                 {
                     CTokenOutput ro;

@@ -180,11 +180,11 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
             case EVAL_RESERVE_DEPOSIT:
             {
-                CTokenOutput ro;
+                CReserveDeposit rd;
 
-                if (p.vData.size() && (ro = CTokenOutput(p.vData[0])).IsValid())
+                if (p.vData.size() && (rd = CReserveDeposit(p.vData[0])).IsValid())
                 {
-                    out.push_back(Pair("reservedeposit", ro.ToUniValue()));
+                    out.push_back(Pair("reservedeposit", rd.ToUniValue()));
                 }
                 else
                 {

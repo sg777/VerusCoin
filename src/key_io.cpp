@@ -67,6 +67,13 @@ public:
         return EncodeBase58Check(data);
     }
 
+    std::string operator()(const CIndexID& id) const
+    {
+        std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::INDEX_ADDRESS);
+        data.insert(data.end(), id.begin(), id.end());
+        return EncodeBase58Check(data);
+    }
+
     std::string operator()(const CQuantumID& id) const
     {
         std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::QUANTUM_ADDRESS);
@@ -98,6 +105,11 @@ public:
     }
 
     std::vector<unsigned char> operator()(const CIdentityID& id) const
+    {
+        return std::vector<unsigned char>(id.begin(), id.end());
+    }
+
+    std::vector<unsigned char> operator()(const CIndexID& id) const
     {
         return std::vector<unsigned char>(id.begin(), id.end());
     }
@@ -135,6 +147,11 @@ public:
         return (uint160)id;
     }
 
+    uint160 operator()(const CIndexID& id) const
+    {
+        return (uint160)id;
+    }
+
     uint160 operator()(const CQuantumID& id) const
     {
         return (uint160)id;
@@ -167,6 +184,12 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
         if (data.size() == hash.size() + identity_prefix.size() && std::equal(identity_prefix.begin(), identity_prefix.end(), data.begin())) {
             std::copy(data.begin() + identity_prefix.size(), data.end(), hash.begin());
             return CIdentityID(hash);
+        }
+
+        const std::vector<unsigned char>& index_prefix = params.Base58Prefix(CChainParams::INDEX_ADDRESS);
+        if (data.size() == hash.size() + index_prefix.size() && std::equal(index_prefix.begin(), index_prefix.end(), data.begin())) {
+            std::copy(data.begin() + index_prefix.size(), data.end(), hash.begin());
+            return CIndexID(hash);
         }
 
         const std::vector<unsigned char>& quantum_prefix = params.Base58Prefix(CChainParams::QUANTUM_ADDRESS);
@@ -812,11 +835,7 @@ CScript CIdentity::IdentityUpdateOutputScript() const
     std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
     CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
 
-    std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetID(), EVAL_IDENTITY_PRIMARY))),
-                                            IsRevoked() ? CTxDestination(CIdentityID(recoveryAuthority)) : CTxDestination(CIdentityID(revocationAuthority)),
-                                            primaryAddresses.size() ? primaryAddresses[0] : CKeyID()});
-
-    ret = MakeMofNCCScript(1, primary, revocation, recovery, &indexDests);
+    ret = MakeMofNCCScript(1, primary, revocation, recovery);
     return ret;
 }
 

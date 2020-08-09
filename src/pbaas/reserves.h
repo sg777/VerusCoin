@@ -13,7 +13,7 @@
 #define PBAAS_RESERVES_H
 
 #include <sstream>
-#include <univalue/include/univalue.h>
+#include <univalue.h>
 #include "pbaas/crosschainrpc.h"
 #include "arith_uint256.h"
 #include <boost/multiprecision/cpp_dec_float.hpp>
@@ -49,9 +49,7 @@ public:
         VERSION_LASTVALID = 1,
     };
 
-    static std::vector<uint160> *reserveIDs;
-
-    uint32_t nVersion;              // information about this currency
+    uint32_t nVersion;              // version of the token output class
     uint160 currencyID;             // currency ID
     CAmount nValue;                 // amount of input reserve coins this UTXO represents before any conversion
 
@@ -157,6 +155,52 @@ public:
     }
 };
 
+class CReserveDeposit
+{
+public:
+    enum
+    {
+        VERSION_INVALID = 0,
+        VERSION_CURRENT = 1,
+        VERSION_FIRSTVALID = 1,
+        VERSION_LASTVALID = 1,
+    };
+
+    uint32_t nVersion;
+    uint160 controllingCurrencyID;          // system to export to, which may represent a PBaaS chain or external bridge
+    CCurrencyValueMap reserveValues;        // all outputs of this reserve deposit
+
+    CReserveDeposit(const std::vector<unsigned char> &asVector)
+    {
+        FromVector(asVector, *this);
+    }
+
+    CReserveDeposit() : nVersion(VERSION_CURRENT) {}
+
+    CReserveDeposit(const uint160 &controllingID, const CCurrencyValueMap &reserveOut) : 
+        controllingCurrencyID(controllingID), reserveValues(reserveOut) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(controllingCurrencyID);
+        READWRITE(reserveValues);
+    }
+
+    std::vector<unsigned char> AsVector()
+    {
+        return ::AsVector(*this);
+    }
+
+    UniValue ToUniValue() const;
+
+    bool IsValid() const
+    {
+        return nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID;
+    }
+};
+
 // convert from $VRSC to fractional reserve coin or vice versa. coinID determines which
 // in either direction, this is burned in the block. if burned, the block must contain less than a
 // maximum reasonable number of exchange outputs, which must be sorted, hashed, and used to validate
@@ -242,13 +286,18 @@ public:
     static const uint32_t VERSION_CURRENT = 1;
     static const uint32_t VERSION_LAST = 1;
     uint32_t nVersion;
-    uint160 systemID;                                   // the blockchain or currency system source from where these transactions come
+    uint160 systemID;                                   // the source currency system from where these transactions are being imported
+    uint160 importCurrencyID;                           // the import currency ID
     CCurrencyValueMap importValue;                      // total amount of coins imported from chain with or without conversion, including fees
     CCurrencyValueMap totalReserveOutMap;               // all non-native currencies being held in this thread and released on import
 
     CCrossChainImport() : nVersion(VERSION_INVALID) {}
-    CCrossChainImport(const uint160 &cID, const CCurrencyValueMap &ImportValue, const CCurrencyValueMap &InitialReserveOutput=CCurrencyValueMap()) : 
-                        nVersion(VERSION_CURRENT), systemID(cID), importValue(ImportValue), totalReserveOutMap(InitialReserveOutput) { }
+    CCrossChainImport(const uint160 &sysID, const uint160 &importCID, const CCurrencyValueMap &ImportValue, const CCurrencyValueMap &InitialReserveOutput=CCurrencyValueMap()) : 
+                        nVersion(VERSION_CURRENT),
+                        systemID(sysID),
+                        importCurrencyID(importCID),
+                        importValue(ImportValue),
+                        totalReserveOutMap(InitialReserveOutput) { }
 
     CCrossChainImport(const std::vector<unsigned char> &asVector)
     {
@@ -263,6 +312,7 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(nVersion);
         READWRITE(systemID);
+        READWRITE(importCurrencyID);
         READWRITE(importValue);
         READWRITE(totalReserveOutMap);
     }
@@ -356,28 +406,30 @@ public:
         MAX_RESERVE_CURRENCIES = 10         // maximum number of reserve currencies that can underly a fractional reserve
     };
 
-    uint32_t flags;         // currency flags (valid, reserve currency, etc.)
+    uint32_t flags;                         // currency flags (valid, reserve currency, etc.)
+    uint160 currencyID;                     // ID of this currency
+    std::vector<uint160> currencies;        // the ID in uin160 form (maps to CIdentityID) if each currency in the reserve
+    std::vector<int32_t> weights;           // current, individual weights for all currencies to use in calculations
+    std::vector<int64_t> reserves;          // total amount of reserves in each currency
 
-    std::vector<uint160> currencies;    // the ID in uin160 form (maps to CIdentityID) if each currency in the reserve
-    std::vector<int32_t> weights;       // current, individual weights for all currencies to use in calculations
-    std::vector<int64_t> reserves;      // total amount of reserves in each currency
-
-    int64_t initialSupply;              // initial premine + pre-converted coins
-    int64_t emitted;                    // emitted coins reduce the reserve ratio and are used to calculate current ratio
-    CAmount supply;                     // current supply: total of initial, all emitted, and all purchased coins
+    int64_t initialSupply;                  // initial premine + pre-converted coins
+    int64_t emitted;                        // emitted coins reduce the reserve ratio and are used to calculate current ratio
+    CAmount supply;                         // current supply: total of initial, all emitted, and all purchased coins
 
     //std::vector<CAmount> Reserves; // reserve currencies amounts controlled by this fractional chain - only present for reserve currencies, currency IDs are in chain definition
 
     CCurrencyState() : flags(0), initialSupply(0), emitted(0), supply(0) {}
 
-    CCurrencyState(const std::vector<uint160> &Currencies, 
-                      const std::vector<int32_t> &Weights, 
-                      const std::vector<int64_t> &Reserves, 
-                      CAmount InitialSupply, 
-                      CAmount Emitted, 
-                      CAmount Supply, 
-                      uint32_t Flags=FLAG_VALID) : 
+    CCurrencyState(const uint160 &cID,
+                   const std::vector<uint160> &Currencies, 
+                   const std::vector<int32_t> &Weights, 
+                   const std::vector<int64_t> &Reserves, 
+                   CAmount InitialSupply, 
+                   CAmount Emitted, 
+                   CAmount Supply, 
+                   uint32_t Flags=FLAG_VALID) : 
         flags(Flags),
+        currencyID(cID),
         currencies(Currencies), 
         weights(Weights), 
         reserves(Reserves),
@@ -398,6 +450,7 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(flags);
+        READWRITE(currencyID);        
         READWRITE(currencies);        
         READWRITE(weights);        
         READWRITE(reserves);        
@@ -474,9 +527,11 @@ public:
 
     UniValue ToUniValue() const;
 
+    uint160 GetID() const { return currencyID; }
+
     bool IsValid() const
     {
-        return flags & FLAG_VALID;
+        return !currencyID.IsNull() && flags & FLAG_VALID;
     }
 
     bool IsFractional() const

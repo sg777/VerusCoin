@@ -30,6 +30,18 @@ int32_t ASSETCHAINS_SAPLING = 227520;
 
 unsigned int MAX_BLOCK_SIGOPS = 20000;
 
+#include "pbaas/pbaas.h"
+
+struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
+{
+    return NULL;
+}
+CConnectedChains ConnectedChains;
+CCurrencyDefinition CConnectedChains::GetCachedCurrency(const uint160 &currencyID)
+{
+    return CCurrencyDefinition();
+}
+
 void show_help()
 {
     std::cout <<

@@ -1662,29 +1662,9 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                                             ccp.IsValid() &&
                                             ccp.evalCode == EVAL_RESERVE_DEPOSIT)
                                         {
-                                            COptCCParams m;
-                                            // get index addresses from the master ccp
-                                            if (ccp.vData.size() >= 2 &&
-                                                (m = COptCCParams(ccp.vData[1])).IsValid() &&
-                                                m.IsValid() &&
-                                                m.evalCode == EVAL_NONE &&
-                                                m.vKeys.size() == 2)
-                                            {
-                                                reserveDepositCurrencyID = GetDestinationID(m.vKeys[1]);
-                                                if (!reserveDepositCurrencyID.IsNull() &&
-                                                    GetCurrencyDefinition(reserveDepositCurrencyID, reserveDepositCurrency) &&
-                                                    reserveDepositCurrency.IsValid() &&
-                                                    reserveDepositCurrency.IsFractional())
-                                                {
-                                                    reserveDepositReserves = reserveDepositCurrency.GetCurrenciesMap();
-                                                }
-                                            }
-                                            if (!reserveDepositReserves.size())
-                                            {
-                                                printf("ERROR: in staking block %s - invalid reserve deposit stake\n", blkHash.ToString().c_str());
-                                                LogPrintf("ERROR: in staking block %s - invalid reserve deposit stake\n", blkHash.ToString().c_str());
-                                                return false;
-                                            }
+                                            printf("ERROR: in staking block %s - invalid reserve deposit stake\n", blkHash.ToString().c_str());
+                                            LogPrintf("ERROR: in staking block %s - invalid reserve deposit stake\n", blkHash.ToString().c_str());
+                                            return false;
                                         }
 
                                         for (auto &oneOut : pblock->vtx[0].vout)

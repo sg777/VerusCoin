@@ -10,7 +10,7 @@
 #include "script/standard.h"
 #include "serialize.h"
 #include "streams.h"
-#include <univalue.h>
+#include "univalue.h"
 #include "util.h"
 #include "utilmoneystr.h"
 #include "utilstrencodings.h"
@@ -239,6 +239,7 @@ UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("flags", (int32_t)flags));
+    ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
 
     if (IsValid() && IsFractional())
     {
@@ -686,6 +687,15 @@ UniValue CTokenOutput::ToUniValue() const
     return ret;
 }
 
+UniValue CReserveDeposit::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("version", (int64_t)nVersion));
+    ret.push_back(Pair("controllingcurrencyid", controllingCurrencyID.IsNull() ? "NULL" : EncodeDestination(CIdentityID(controllingCurrencyID))));
+    ret.push_back(Pair("reserveValues", reserveValues.ToUniValue()));
+    return ret;
+}
+
 UniValue CReserveTransfer::ToUniValue() const
 {
     UniValue ret(((CTokenOutput *)this)->ToUniValue());
@@ -756,7 +766,7 @@ UniValue CCrossChainExport::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int)nVersion));
-    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("exportcurrencyid", EncodeDestination(CIdentityID(systemID))));
     obj.push_back(Pair("numinputs", numInputs));
     obj.push_back(Pair("totalamounts", totalAmounts.ToUniValue()));
     obj.push_back(Pair("totalfees", totalFees.ToUniValue()));
@@ -767,10 +777,22 @@ UniValue CCrossChainImport::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int)nVersion));
-    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("sourcesystemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("importcurrencyid", EncodeDestination(CIdentityID(importCurrencyID))));
     obj.push_back(Pair("valuein", importValue.ToUniValue()));
     obj.push_back(Pair("tokensout", totalReserveOutMap.ToUniValue()));
     return obj;
+}
+
+UniValue CTransactionFinalization::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("finalizationtype", (finalizationType == FINALIZE_NOTARIZATION) ? 
+                                                "finalizenotarization" : finalizationType == FINALIZE_EXPORT ? 
+                                                "finalizeexport" : "invalid"));
+    ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
+    ret.push_back(Pair("confirmedinput", confirmedInput));
+    return ret;
 }
 
 UniValue CPrincipal::ToUniValue() const
@@ -1004,11 +1026,11 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
             case EVAL_RESERVE_DEPOSIT:
             {
-                CTokenOutput ro;
+                CReserveDeposit rd;
 
-                if (p.vData.size() && (ro = CTokenOutput(p.vData[0])).IsValid())
+                if (p.vData.size() && (rd = CReserveDeposit(p.vData[0])).IsValid())
                 {
-                    out.push_back(Pair("reservedeposit", ro.ToUniValue()));
+                    out.push_back(Pair("reservedeposit", rd.ToUniValue()));
                 }
                 else
                 {

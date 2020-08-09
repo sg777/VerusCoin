@@ -533,10 +533,11 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
     {
         prealloc += onePair.second;
     }
-    CCoinbaseCurrencyState currencyState = CCoinbaseCurrencyState(CCurrencyState(thisChain.currencies,
-                                                                                    thisChain.weights,
-                                                                                    thisChain.contributions,
-                                                                                    prealloc, 0, 0));
+    CCoinbaseCurrencyState currencyState = CCoinbaseCurrencyState(CCurrencyState(thisChain.GetID(),
+                                                                                 thisChain.currencies,
+                                                                                 thisChain.weights,
+                                                                                 thisChain.contributions,
+                                                                                 prealloc, 0, 0));
 
     std::vector<CAmount> exchangeRate(thisChain.currencies.size());
 
@@ -1021,12 +1022,11 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 pkCC = CPubKey(ParseHex(CC.CChexstr));
 
                 // import thread from PBaaS parent
-                indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.notaryChain.GetID(), EVAL_CROSSCHAIN_IMPORT))});
                 dests = std::vector<CTxDestination>({pkCC});
 
-                CCrossChainImport cci = CCrossChainImport(ConnectedChains.notaryChain.GetID(), CCurrencyValueMap());
+                CCrossChainImport cci = CCrossChainImport(ASSETCHAINS_CHAINID, ConnectedChains.notaryChain.GetID(), CCurrencyValueMap());
                 coinbaseTx.vout.push_back(CTxOut(currencyState.ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted), thisChain.conversions),
-                                                 MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests)));
+                                                 MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci))));
 
                 // export thread to PBaaS parent
                 cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
