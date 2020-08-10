@@ -81,7 +81,7 @@ public:
 }
 
 // uses blockchain lookup
-std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> ServerTransactionSignatureChecker::ExtractIDMap(const CScript &scriptPubKeyIn, uint32_t spendHeight)
+std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> ServerTransactionSignatureChecker::ExtractIDMap(const CScript &scriptPubKeyIn, uint32_t spendHeight, bool isStake)
 {
     // create an ID map here, which late binds to the IDs on the blockchain as of the spend height, 
     // and substitute the correct addresses when checking signatures
@@ -122,7 +122,7 @@ std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> Serve
                         {
                             id = CIdentity::LookupIdentity(destId, spendHeight);
                         }
-                        if (id.IsValidUnrevoked())
+                        if (id.IsValidUnrevoked() && (isStake || !id.IsLocked(spendHeight)))
                         {
                             std::vector<std::vector<unsigned char>> idAddrBytes;
                             for (auto &oneAddr : id.primaryAddresses)

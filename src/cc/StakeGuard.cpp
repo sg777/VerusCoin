@@ -190,7 +190,7 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
                         std::map<uint160, pair<int, std::vector<std::vector<unsigned char>>>> idAddressMap;
                         if (validateSig)
                         {
-                            idAddressMap = ServerTransactionSignatureChecker::ExtractIDMap(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, stakeParams.blkHeight);
+                            idAddressMap = ServerTransactionSignatureChecker::ExtractIDMap(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, stakeParams.blkHeight, true);
                         }
 
                         if (!validateSig || VerifyScript(stakeTx.vin[0].scriptSig, 
