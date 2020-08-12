@@ -211,6 +211,7 @@ class CTransactionFinalization
 {
 public:
     static const int64_t DEFAULT_OUTPUT_VALUE = 100000;
+    static const int32_t UNCONFIRMED_INPUT = -1;
     enum FINALIZATION_TYPE {
         FINALIZE_INVALID = 0,
         FINALIZE_NOTARIZATION = 1,

@@ -128,6 +128,19 @@ CReserveExchange::CReserveExchange(const CTransaction &tx)
     }
 }
 
+CCrossChainImport::CCrossChainImport(const CScript &script)
+{
+    COptCCParams p;
+    if (IsPayToCryptoCondition(script, p) && p.IsValid())
+    {
+        // always take the first for now
+        if (p.evalCode == EVAL_CROSSCHAIN_IMPORT && p.vData.size())
+        {
+            FromVector(p.vData[0], *this);
+        }
+    }
+}
+
 CCrossChainImport::CCrossChainImport(const CTransaction &tx, int32_t *pOutNum)
 {
     for (int i = 0; i < tx.vout.size(); i++)
@@ -1998,12 +2011,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                                            curTransfer.currencyID,
                                                            DestinationToTransferDestination(sendBackAddr));
 
-                    std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
-                                                            CKeyID(currencyDest.systemID == ConnectedChains.ThisChain().GetID() ? 
-                                                                   currencyDest.GetID() : 
-                                                                   currencyDest.systemID)});
-                    CScript sendBackScript = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), 
-                                                              &indexDests);
+                    CScript sendBackScript = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
 
                     // if this is sending back to the same chain as its native currency, make it a native output
                     if (systemDestID == nativeSourceCurrencyID)
@@ -2335,12 +2343,7 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
 
                 // cast object to the most derived class to avoid template errors to a least derived class
                 CTxDestination rtIndexDest(CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)));
-                std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
-                                                        CKeyID(reserveCurrencyIt->second.systemID == ConnectedChains.ThisChain().GetID() ? 
-                                                               reserveCurrencyIt->second.GetID() : 
-                                                               reserveCurrencyIt->second.systemID)});
-                conversionTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), 
-                                                                       &rtIndexDest)));
+                conversionTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt))));
             }
         }
         else if (indexRex.second.flags & indexRex.second.TO_RESERVE)

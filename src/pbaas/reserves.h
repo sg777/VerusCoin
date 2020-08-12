@@ -305,6 +305,7 @@ public:
     }
 
     CCrossChainImport(const CTransaction &tx, int32_t *pOutNum=nullptr);
+    CCrossChainImport(const CScript &script);
 
     ADD_SERIALIZE_METHODS;
 

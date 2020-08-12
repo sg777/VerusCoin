@@ -2143,7 +2143,6 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
     CCcontract_info *cp;
 
     std::vector<CTxDestination> dests;
-    std::vector<CTxDestination> indexDests;
 
     // make the accepted notarization output
     cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
@@ -2160,8 +2159,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
     {
         return false;
     }
-    indexDests = std::vector<CTxDestination>({CKeyID(curDef.GetConditionID(EVAL_ACCEPTEDNOTARIZATION))});
-    mnewTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn), &indexDests)));
+    mnewTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn))));
 
     // make the finalization output
     cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
@@ -2250,7 +2248,7 @@ void CConnectedChains::ProcessLocalImports()
         if (oneImportInput.IsValid())
         {
             std::vector<CAddressUnspentDbEntry> reserveDeposits;
-            GetAddressUnspent(currencyDefCache[oneIT.first].GetConditionID(EVAL_RESERVE_DEPOSIT), CScript::P2CC, reserveDeposits);
+            GetAddressUnspent(currencyDefCache[oneIT.first].GetConditionID(EVAL_RESERVE_DEPOSIT), CScript::P2IDX, reserveDeposits);
             CCurrencyValueMap tokenImportAvailable;
             CAmount nativeImportAvailable = 0;
             for (auto &oneOut : reserveDeposits)

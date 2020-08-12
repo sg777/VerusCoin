@@ -129,7 +129,7 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
     CCurrencyDefinition foundDef;
 
     if (!ClosedPBaaSChains.count(chainID) &&
-        GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_CURRENCY_DEFINITION)), 1, unspentOutputs))
+        GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_CURRENCY_DEFINITION)), CScript::P2IDX, unspentOutputs))
     {
         for (auto &currencyDefOut : unspentOutputs)
         {
@@ -332,7 +332,7 @@ void GetCurrencyDefinitions(vector<CCurrencyDefinition> &chains, bool includeExp
 
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
-    if (GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CURRENCY_DEFINITION)), 1, addressIndex))
+    if (GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CURRENCY_DEFINITION)), CScript::P2IDX, addressIndex))
     {
         for (auto txidx : addressIndex)
         {
@@ -418,7 +418,7 @@ bool CConnectedChains::GetLastImport(const uint160 &systemID,
     LOCK2(cs_main, mempool.cs);
 
     // get last import from the specified chain
-    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(systemID, EVAL_CROSSCHAIN_IMPORT), 1, unspentOutputs))
+    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(systemID, EVAL_CROSSCHAIN_IMPORT), CScript::P2IDX, unspentOutputs))
     {
         return false;
     }
@@ -589,7 +589,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
         // if the chain definition is spent, a chain is inactive
         // TODO:PBAAS this check needs to be lifted one level out to any loop that processes multiple 
         // import/exports at a time to prevent complexity
-        if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(thisChainID, EVAL_CURRENCY_DEFINITION)), 1, unspentOutputs) && unspentOutputs.size())
+        if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(thisChainID, EVAL_CURRENCY_DEFINITION)), CScript::P2IDX, unspentOutputs) &&
+            unspentOutputs.size())
         {
             CCurrencyDefinition localChainDef;
             CTransaction tx;
@@ -634,7 +635,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
     // get all export transactions including and since this one up to the confirmed height
     if (blkHeight <= lastConfirmed.notarizationHeight && 
-        GetAddressIndex(CCrossChainRPCData::GetConditionID(isTokenImport ? currencyID : systemID, EVAL_CROSSCHAIN_EXPORT), 1, addressIndex, blkHeight, lastConfirmed.notarizationHeight))
+        GetAddressIndex(CCrossChainRPCData::GetConditionID(isTokenImport ? currencyID : systemID, EVAL_CROSSCHAIN_EXPORT), CScript::P2IDX, addressIndex, blkHeight, lastConfirmed.notarizationHeight))
     {
         // find this export, then check the next one that spends it and use it if also valid
         found = false;
@@ -1283,7 +1284,7 @@ UniValue getexports(const UniValue& params, bool fHelp)
         {
             // get all export transactions including and since this one up to the confirmed height
             if (GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT), 
-                                1, addressIndex, cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.crossHeight : defHeight))
+                                CScript::P2IDX, addressIndex, cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.crossHeight : defHeight))
             {
                 UniValue ret(UniValue::VARR);
 
@@ -1375,7 +1376,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
         CChainNotarizationData cnd;
         // get all import transactions including and since this one up to the confirmed height
-        if (GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT), 1, addressIndex))
+        if (GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT), CScript::P2IDX, addressIndex))
         {
             UniValue ret(UniValue::VARR);
 
@@ -1545,7 +1546,7 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressIndex(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER), 1, addressIndex, start, end))
+    if (!GetAddressIndex(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER), CScript::P2IDX, addressIndex, start, end))
     {
         return false;
     }
@@ -1633,7 +1634,7 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressUnspent(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER), 1, unspentOutputs))
+    if (!GetAddressUnspent(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER), CScript::P2IDX, unspentOutputs))
     {
         return false;
     }
@@ -1686,7 +1687,7 @@ bool GetUnspentChainExports(uint160 chainID, multimap<uint160, pair<int, CInputD
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT), 1, unspentOutputs))
+    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT), CScript::P2IDX, unspentOutputs))
     {
         return false;
     }
@@ -1760,7 +1761,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
     bool allFinalized = false;
 
     // get the last unspent notarization for this currency
-    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZE_NOTARIZATION), 1, unspentFinalizations))
+    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZE_NOTARIZATION), CScript::P2IDX, unspentFinalizations))
     {
         return false;
     }
@@ -1819,7 +1820,7 @@ bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData
 
         if (!sorted.size())
         {
-            if (GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, ecode), 1, unspentOutputs))
+            if (GetAddressUnspent(CCrossChainRPCData::GetConditionID(chainID, ecode), CScript::P2IDX, unspentOutputs))
             {
                 // filter out all transactions that do not spend from the notarization thread, or originate as the
                 // chain definition
@@ -2093,7 +2094,7 @@ CAmount GetUnspentRewardInputs(const CCurrencyDefinition &chainDef, vector<CInpu
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
-    if (GetAddressUnspent(keyID, 1, unspentOutputs))
+    if (GetAddressUnspent(keyID, CScript::P2IDX, unspentOutputs))
     {
         // spend all billing periods prior or equal to this one
         int billingPeriod = height / chainDef.billingPeriod;
@@ -2460,7 +2461,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             CPubKey pk(ParseHex(CC.CChexstr));
             std::vector<CTxDestination> dests;
 
-            std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(pbn.currencyID, EVAL_ACCEPTEDNOTARIZATION))});
             if (chainDef.notarizationProtocol == chainDef.NOTARIZATION_NOTARY_CHAINID)
             {
                 dests = std::vector<CTxDestination>({CIdentityID(chainDef.GetID())});
@@ -2470,7 +2470,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
                 dests = std::vector<CTxDestination>({pk});
             }
             
-            mnewTx.vout[notarizationIdx] = CTxOut(notaryValueOut, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn), &indexDests));
+            mnewTx.vout[notarizationIdx] = CTxOut(notaryValueOut, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn)));
 
             CTransaction ntx(mnewTx);
 
@@ -2700,7 +2700,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             // which transaction are we in this block?
             std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
-            if (!GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZE_NOTARIZATION), 1, addressIndex, prevHeight, prevHeight))
+            if (!GetAddressIndex(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZE_NOTARIZATION), CScript::P2IDX, addressIndex, prevHeight, prevHeight))
             {
                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Address index read error - possible corruption in address index");
             }
@@ -2872,7 +2872,6 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             cp = CCinit(&CC, crosscode);
 
             std::vector<CTxDestination> dests;
-            std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, crosscode))});
             if (chainDef.notarizationProtocol == chainDef.NOTARIZATION_NOTARY_CHAINID)
             {
                 dests = std::vector<CTxDestination>({CIdentityID(chainDef.GetID())});
@@ -2882,7 +2881,7 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
             }
             newNotarization.vout.push_back(CTxOut(CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
-                                                  MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(crosscode, dests, 1, &notarization), &indexDests)));
+                                                  MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(crosscode, dests, 1, &notarization))));
 
             // make the unspent finalization output
             cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
@@ -2890,11 +2889,10 @@ UniValue getcrossnotarization(const UniValue& params, bool fHelp)
             {
                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
             }
-            indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_FINALIZE_NOTARIZATION))});
 
-            CTransactionFinalization nf;
+            CTransactionFinalization nf(CTransactionFinalization::FINALIZE_NOTARIZATION, chainDef.GetID(), CTransactionFinalization::UNCONFIRMED_INPUT);
             newNotarization.vout.push_back(CTxOut(DEFAULT_TRANSACTION_FEE, 
-                                                  MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests)));
+                                                  MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf))));
 
             newNotarization.vout.push_back(CTxOut(0, StoreOpRetArray(chainObjects)));
 
@@ -3357,10 +3355,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     rt.nFees = rt.CalculateTransferFee();
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(destSystemID)});
 
                     oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : 0;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                 }
                 // only valid conversion for a cross-chain send is to the native currency of the chain
                 else if (convertToCurrencyID == destSystemID)
@@ -3383,10 +3380,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                            dest);
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(destSystemID)});
 
                     oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : fees;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                 }
                 else if (convertToCurrencyID.IsNull())
                 {
@@ -3400,10 +3396,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                            dest);
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(destSystemID)});
 
                     oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : fees;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                 }
             }
             // a currency conversion without transfer?
@@ -3431,9 +3426,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-                    std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), 
-                                                                                          CKeyID(convertToCurrencyID)});
-
                     CReserveTransfer rt = CReserveTransfer(flags, 
                                                             sourceCurrencyID, 
                                                             sourceAmount,
@@ -3442,7 +3434,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                             DestinationToTransferDestination(destination));
                     rt.nFees = rt.CalculateTransferFee();
                     oneOutput.nAmount = (sourceCurrencyID == thisChainID) ? sourceAmount + rt.nFees : 0;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                 }
                 else if (!preConvert &&
                          (mintNew || burnCurrency ||
@@ -3468,8 +3460,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot mint or burn native currency " + convertToCurrencyDef.name);
                         }
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
-                        std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), 
-                                                                                              CKeyID(convertToCurrencyID)});
 
                         CReserveTransfer rt = CReserveTransfer(flags, 
                                                                burnCurrency ? sourceCurrencyID : thisChainID, 
@@ -3479,7 +3469,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                DestinationToTransferDestination(destination));
                         rt.nFees = rt.CalculateTransferFee();
                         oneOutput.nAmount = rt.CalculateTransferFee();
-                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                     else
                     {
@@ -3536,10 +3526,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                dest);
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-                        std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CKeyID(thisChain.GetConditionID(EVAL_RESERVE_TRANSFER)), CKeyID(pFractionalCurrency->GetID())});
 
                         oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : 0;
-                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests);
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
 
                         /*
                         // TODO: must be integrated into the functions above
@@ -3644,13 +3633,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 bool GetLastImportIn(uint160 chainID, CTransaction &lastImportTx)
 {
     // look for unspent chain transfer outputs for all chains
-    CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT);
+    CIndexID idxID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT);
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
     LOCK(cs_main);
 
-    if (!GetAddressUnspent(keyID, 1, unspentOutputs))
+    if (!GetAddressUnspent(idxID, CScript::P2IDX, unspentOutputs))
     {
         return false;
     }
@@ -3789,7 +3778,7 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
 
                 LOCK2(cs_main, mempool.cs);
 
-                if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_DEPOSIT)), 1, reserveDeposits))
+                if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_RESERVE_DEPOSIT)), CScript::P2IDX, reserveDeposits))
                 {
                     for (auto deposit : reserveDeposits)
                     {
@@ -4023,14 +4012,14 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
         std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
         // get all exports for the chain
-        CKeyID keyID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
+        CIndexID idxID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_EXPORT);
 
         CBlockIndex *pIndex;
 
         // get all export transactions that were posted to the chain, since none can be sent
         // TODO:PBAAS - all sends to a failed chain after start block should fail. this may not want to
         // refund all exports, in case we decide to reuse chain names
-        if (GetAddressIndex(keyID, 1, addressIndex, defHeight, nHeight))
+        if (GetAddressIndex(idxID, CScript::P2IDX, addressIndex, defHeight, nHeight))
         {
             // get all exports from first to last, and make sure they spend from the export thread consecutively
             bool found = false;
@@ -4190,7 +4179,6 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
                 CCcontract_info *cpcp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
                 CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                std::vector<CTxDestination> indexDests = std::vector<CTxDestination>({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(ccx.systemID, EVAL_CROSSCHAIN_IMPORT)))});
                 std::vector<CTxDestination> dests;
 
                 if (ConnectedChains.ThisChain().proofProtocol == CCurrencyDefinition::PROOF_PBAASMMR ||
@@ -4207,7 +4195,7 @@ bool RefundFailedLaunch(uint160 currencyID, CTransaction &lastImportTx, std::vec
 
                 CCrossChainImport cci = CCrossChainImport(ASSETCHAINS_CHAINID, ccx.systemID, CCurrencyValueMap(), CCurrencyValueMap());
 
-                newImportTx.vout[0] = CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests));
+                newImportTx.vout[0] = CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)));
 
                 // now add unspent reserve deposit that came from this export as input to return it back to senders, less transfer fees
                 // based on consensus rules, this should provide the necessary funds by definition
@@ -4944,11 +4932,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
     CPubKey pk(ParseHex(CC.CChexstr));
 
-    std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION)),
-                                            CKeyID(newChain.GetConditionID(EVAL_CURRENCY_DEFINITION))});
     std::vector<CTxDestination> dests({pk});
 
-    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newChain), &indexDests), 
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newChain)), 
                                          CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
                                          false});
 
@@ -5014,10 +5000,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
     }
 
-    indexDests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_ACCEPTEDNOTARIZATION))});
     dests = std::vector<CTxDestination>({notarizationDest});
 
-    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn), &indexDests), 
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn)), 
                                          newChain.notarizationReward, 
                                          false});
 
@@ -5025,12 +5010,11 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
     pk = CPubKey(ParseHex(CC.CChexstr));
 
-    indexDests = std::vector<CTxDestination>({CKeyID(newChain.GetConditionID(EVAL_FINALIZE_NOTARIZATION))});
     dests = std::vector<CTxDestination>({pk});
 
-    CTransactionFinalization nf;
+    CTransactionFinalization nf(CTransactionFinalization::FINALIZE_NOTARIZATION, newChainID, CTransactionFinalization::UNCONFIRMED_INPUT);
 
-    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests), 
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf)), 
                                          CTransactionFinalization::DEFAULT_OUTPUT_VALUE, 
                                          false});
 
@@ -5065,8 +5049,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
             // send a zero output to this ID and pass the full ID to do so
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
-            indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
-                                                      CKeyID(newChain.systemID)});
 
             CTransferDestination transferDest = IdentityToTransferDestination(oneIdentity);
             CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, 
@@ -5076,7 +5058,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                    newChain.GetID(),
                                                    transferDest);
 
-            vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 
+            vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), 
                                                  rt.nFees, 
                                                  false});
         }
@@ -5091,8 +5073,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
-            indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)),
-                                                      CKeyID(newChainID)});
 
             CTransferDestination transferDest = DestinationToTransferDestination(CIdentityID(oneAlloc.first));
             CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE, 
@@ -5102,7 +5082,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                    newChainID,
                                                    transferDest);
 
-            vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt), &indexDests), 
+            vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), 
                                 CReserveTransfer::CalculateTransferFee(transferDest), false});
         }
     }
@@ -5472,7 +5452,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     // create the identity definition transaction & reservation key output
     CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), 1, &reservation);
-    CTxDestination resIndexDest = CKeyID(CCrossChainRPCData::GetConditionID(newID.GetID(), EVAL_IDENTITY_RESERVATION));
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(height), 0, false}});
 
     // add referrals, Verus supports referrals
@@ -5523,7 +5502,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         }
     }
 
-    CScript reservationOutScript = MakeMofNCCScript(condObj, &resIndexDest);
+    CScript reservationOutScript = MakeMofNCCScript(condObj);
     outputs.push_back({reservationOutScript, CNameReservation::DEFAULT_OUTPUT_AMOUNT, false});
 
     // make one dummy output, which CreateTransaction will leave as last, and we will remove to add its output to the fee

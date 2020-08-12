@@ -508,10 +508,10 @@ bool CScript::IsInstantSpend() const
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
         // TODO: fix this check
-        if ((p.evalCode == EVAL_EARNEDNOTARIZATION && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)) || 
-            (p.evalCode == EVAL_CURRENCYSTATE && GetDestinationID(p.vKeys[0]) == GetConditionID(ASSETCHAINS_CHAINID, p.evalCode)) || 
-            (p.evalCode == EVAL_CROSSCHAIN_IMPORT && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)) ||
-            (p.evalCode == EVAL_CROSSCHAIN_EXPORT && GetDestinationID(p.vKeys[0]) == GetConditionID(VERUS_CHAINID, p.evalCode)))
+        if ((p.evalCode == EVAL_EARNEDNOTARIZATION) || 
+            (p.evalCode == EVAL_CURRENCYSTATE) || 
+            (p.evalCode == EVAL_CROSSCHAIN_IMPORT) ||
+            (p.evalCode == EVAL_CROSSCHAIN_EXPORT))
         {
             isInstantSpend = true;
         }
@@ -1114,18 +1114,6 @@ std::vector<CTxDestination> COptCCParams::GetIndexKeysOnly() const
             if (vData.size() && (identity = CIdentity(vData[0])).IsValid())
             {
                 destinations.push_back(CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode)));
-                if (identity.IsRevoked())
-                {
-                    destinations.push_back(CIdentityID(identity.recoveryAuthority));
-                }
-                else
-                {
-                    destinations.push_back(CIdentityID(identity.recoveryAuthority));
-                }
-                if (identity.primaryAddresses.size())
-                {
-                    destinations.push_back(identity.primaryAddresses[0]);
-                }
             }
             break;
         }

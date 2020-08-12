@@ -193,12 +193,14 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
     }
     CTxIn &idTxIn = *pIdTxIn;
 
-    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs, unspentNewIDX;
 
     CKeyID keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
 
-    if (GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
+    if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) || GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
+        // combine searches into 1 vector
+        unspentOutputs.insert(unspentOutputs.begin(), unspentNewIDX.begin(), unspentNewIDX.end());
         CCoinsViewCache view(pcoinsTip);
 
         for (auto it = unspentOutputs.begin(); !ret.IsValid() && it != unspentOutputs.end(); it++)
@@ -307,12 +309,14 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
     }
     CTxIn &idTxIn = *pIdTxIn;
 
-    std::vector<CAddressUnspentDbEntry> unspentOutputs;
+    std::vector<CAddressUnspentDbEntry> unspentOutputs, unspentNewIDX;
 
     CKeyID keyID(CCrossChainRPCData::GetConditionID(idID, EVAL_IDENTITY_RESERVATION));
 
-    if (GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
+    if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) || GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
+        // combine searches into 1 vector
+        unspentOutputs.insert(unspentOutputs.begin(), unspentNewIDX.begin(), unspentNewIDX.end());
         CCoinsViewCache view(pcoinsTip);
 
         for (auto it = unspentOutputs.begin(); !ret.IsValid() && it != unspentOutputs.end(); it++)

@@ -324,15 +324,15 @@ void ProcessNewImports(const uint160 &sourceChainID, const CTransaction &lastCon
 
     bool found = false;
 
-    if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
+    if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, EVAL_CROSSCHAIN_IMPORT)), CScript::P2IDX, unspentOutputs))
     {
         // if one spends the prior one, get the one that is not spent
-        for (auto txidx : unspentOutputs)
+        for (auto &txidx : unspentOutputs)
         {
             uint256 blkHash;
             CTransaction itx;
             if (myGetTransaction(txidx.first.txhash, lastImportTx, blkHash) &&
-                CCrossChainImport(lastImportTx).IsValid() &&
+                CCrossChainImport(txidx.second.script).IsValid() &&
                 (lastImportTx.IsCoinBase() ||
                 (myGetTransaction(lastImportTx.vin[0].prevout.hash, itx, blkHash) &&
                 CCrossChainImport(itx).IsValid())))
@@ -990,31 +990,23 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
                 pkCC = CPubKey(ParseHex(CC.CChexstr));
 
-                std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION))});
                 std::vector<CTxDestination> dests({pkCC});
 
                 coinbaseTx.vout.push_back(CTxOut(0,
                                             MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, 
-                                                             &ConnectedChains.ThisChain()),
-                                            &indexDests)));
+                                                             &ConnectedChains.ThisChain()))));
 
                 for (auto &oneCur : ConnectedChains.reserveCurrencies)
                 {
-                    indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION)),
-                                                            CKeyID(oneCur.second.GetConditionID(EVAL_CURRENCY_DEFINITION))});
                     coinbaseTx.vout.push_back(CTxOut(0,
-                                              MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &oneCur.second),
-                                              &indexDests)));
+                                              MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &oneCur.second))));
                 }
 
                 if (!ConnectedChains.reserveCurrencies.count(ConnectedChains.NotaryChain().GetID()))
                 {
-                    indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION)),
-                                                            CKeyID(ConnectedChains.NotaryChain().chainDefinition.GetConditionID(EVAL_CURRENCY_DEFINITION))});
                     coinbaseTx.vout.push_back(CTxOut(0,
                                               MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, 
-                                                               &ConnectedChains.NotaryChain().chainDefinition),
-                                              &indexDests)));
+                                                               &ConnectedChains.NotaryChain().chainDefinition))));
                 }
 
                 // create the import thread output
@@ -1031,11 +1023,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 // export thread to PBaaS parent
                 cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
                 pkCC = CPubKey(ParseHex(CC.CChexstr));
-                indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.notaryChain.GetID(), EVAL_CROSSCHAIN_EXPORT))});
                 dests = std::vector<CTxDestination>({pkCC});
 
                 CCrossChainExport ccx(ConnectedChains.NotaryChain().GetID(), 0, CCurrencyValueMap(), CCurrencyValueMap());
-                coinbaseTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx), &indexDests)));
+                coinbaseTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx))));
             }
             else
             {
@@ -1063,14 +1054,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             cp = CCinit(&CC, EVAL_CURRENCYSTATE);
 
             CPubKey currencyOutPK(ParseHex(cp->CChexstr));
-            std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(thisChainID, EVAL_CURRENCYSTATE))});
             std::vector<CTxDestination> dests({currencyOutPK});
 
             // pre-conversions go to the import thread
             // conversions for this block, if any, will be processed
             // below
             coinbaseTx.vout.push_back(CTxOut(currencyState.ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted), thisChain.conversions),
-                                                MakeMofNCCScript(CConditionObj<CCoinbaseCurrencyState>(EVAL_CURRENCYSTATE, dests, 1, &currencyState), &indexDests)));
+                                                MakeMofNCCScript(CConditionObj<CCoinbaseCurrencyState>(EVAL_CURRENCYSTATE, dests, 1, &currencyState))));
 
             currencyStateOutNum = coinbaseTx.vout.size() - 1;
 
@@ -1122,17 +1112,21 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                     vKeys.clear();
                     cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
 
-                    // send this to EVAL_EARNEDNOTARIZATION address as a destination, locked by the default pubkey
-                    pkCC = CPubKey(ParseHex(cp->CChexstr));
-                    vKeys.push_back(CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION))));
-
-                    int64_t needed = nHeight == 1 ? PBAAS_MINNOTARIZATIONOUTPUT << 1 : PBAAS_MINNOTARIZATIONOUTPUT;
+                    if (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_NOTARY_CHAINID)
+                    {
+                        dests = std::vector<CTxDestination>({CIdentityID(ConnectedChains.ThisChain().GetID())});
+                    }
+                    else
+                    {
+                        dests = std::vector<CTxDestination>({CPubKey(ParseHex(cp->CChexstr))});
+                    }
 
                     // output duplicate notarization as coinbase output for instant spend to notarization
                     // the output amount is considered part of the total value of this coinbase
                     CPBaaSNotarization pbn(newNotarizationTx);
-                    notarizationOut = MakeCC1of1Vout(EVAL_EARNEDNOTARIZATION, needed, pkCC, vKeys, pbn);
-                    coinbaseTx.vout.push_back(notarizationOut);
+                    coinbaseTx.vout.push_back(CTxOut(nHeight == 1 ? PBAAS_MINNOTARIZATIONOUTPUT << 1 : PBAAS_MINNOTARIZATIONOUTPUT, 
+                                           MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &pbn))));
+    
                     notarizationOutNum = coinbaseTx.vout.size() - 1;
 
                     // place the notarization
@@ -1161,26 +1155,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             totalEmission = GetBlockSubsidy(nHeight, consensusParams);
             blockSubsidy = totalEmission;
             currencyState.UpdateWithEmission(totalEmission);
-
-            /*
-            if (CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight))
-            {
-                // at activation height for PBaaS on VRSC or VRSCTEST, add currency definition, import, and export outputs to the coinbase
-                // create a currency definition output for this currency, the notary currency, and all reserves
-                CCcontract_info CC;
-                CCcontract_info *cp;
-                cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
-                pkCC = CPubKey(ParseHex(CC.CChexstr));
-
-                std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION))});
-                std::vector<CTxDestination> dests({pkCC});
-
-                coinbaseTx.vout.push_back(CTxOut(0,
-                                            MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, 
-                                                             &ConnectedChains.ThisChain()),
-                                            &indexDests)));
-            }
-            */
         }
 
         // process any imports from the current chain to itself, to suport token launches, etc.
