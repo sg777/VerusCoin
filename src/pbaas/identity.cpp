@@ -56,9 +56,18 @@ UniValue CNameReservation::ToUniValue() const
 CPrincipal::CPrincipal(const UniValue &uni)
 {
     nVersion = uni_get_int(find_value(uni, "version"));
-    if (nVersion == VERSION_INVALID)
+    // upgrade new or updated IDs when we update to PBaaS
+    if (nVersion == VERSION_INVALID || nVersion == VERSION_VERUSID)
     {
-        nVersion = VERSION_VERUSID;
+        LOCK(cs_main);
+        if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
+        {
+            nVersion = VERSION_PBAAS;
+        }
+        else
+        {
+            nVersion = VERSION_VERUSID;
+        }
     }
     flags = uni_get_int(find_value(uni, "flags"));
     UniValue primaryAddressesUni = find_value(uni, "primaryaddresses");
