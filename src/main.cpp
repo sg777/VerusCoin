@@ -3182,6 +3182,8 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
     std::vector<CAddressUnspentDbEntry> addressUnspentIndex;
     std::vector<CSpentIndexDbEntry> spentIndex;
 
+    uint32_t nHeight = pindex->GetHeight();
+
     // undo transactions in reverse order
     for (int i = block.vtx.size() - 1; i >= 0; i--) {
         const CTransaction &tx = block.vtx[i];
@@ -3203,19 +3205,39 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                     {
                         dests = out.scriptPubKey.GetDestinations();
                     }
-                    
+
+                    std::map<uint160, uint32_t> heightOffsets = p.GetIndexHeightOffsets(nHeight);
+
                     for (auto dest : dests)
                     {
                         if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                         {
-                            // undo receiving activity
-                            addressIndex.push_back(make_pair(
-                                CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, k, false),
-                                out.nValue));
+                            uint160 destID = GetDestinationID(dest);
+                            if (dest.which() == COptCCParams::ADDRTYPE_INDEX &&
+                                heightOffsets.count(destID))
+                            {
+                                // undo receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), 
+                                                     destID, 
+                                                     heightOffsets[destID], 
+                                                     i, 
+                                                     hash, 
+                                                     k, 
+                                                     false),
+                                    out.nValue));
+                            }
+                            else
+                            {
+                                // undo receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), destID, nHeight, i, hash, k, false),
+                                    out.nValue));
+                            }
 
                             // undo unspent index
                             addressUnspentIndex.push_back(make_pair(
-                                CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), hash, k),
+                                CAddressUnspentKey(AddressTypeFromDest(dest), destID, hash, k),
                                 CAddressUnspentValue()));
                         }
                     }
@@ -3229,7 +3251,7 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                         {
                             // undo receiving activity
                             addressIndex.push_back(make_pair(
-                                CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, k, false),
+                                CAddressIndexKey(scriptType, addrHash, nHeight, i, hash, k, false),
                                 out.nValue));
 
                             // undo unspent index
@@ -3248,7 +3270,7 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
             CCoinsModifier outs = view.ModifyCoins(hash);
             outs->ClearUnspendable();
             
-            CCoins outsBlock(tx, pindex->GetHeight());
+            CCoins outsBlock(tx, nHeight);
             // The CCoins serialization does not serialize negative numbers.
             // No network rules currently depend on the version here, so an inconsistency is harmless
             // but it must be corrected before txout nversion ever influences a network rule.
@@ -3293,18 +3315,33 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                         {
                             dests = prevout.scriptPubKey.GetDestinations();
                         }
+
+                        std::map<uint160, uint32_t> heightOffsets = p.GetIndexHeightOffsets(nHeight);
+
                         for (auto dest : dests)
                         {
                             if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                             {
-                                // undo spending activity
-                                addressIndex.push_back(make_pair(
-                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, j, true),
-                                    prevout.nValue * -1));
+                                uint160 destID = GetDestinationID(dest);
+                                if (dest.which() == COptCCParams::ADDRTYPE_INDEX &&
+                                    heightOffsets.count(destID))
+                                {
+                                    // undo spending activity
+                                    addressIndex.push_back(make_pair(
+                                        CAddressIndexKey(AddressTypeFromDest(dest), destID, heightOffsets[destID], i, hash, j, true),
+                                        prevout.nValue * -1));
+                                }
+                                else
+                                {
+                                    // undo spending activity
+                                    addressIndex.push_back(make_pair(
+                                        CAddressIndexKey(AddressTypeFromDest(dest), destID, nHeight, i, hash, j, true),
+                                        prevout.nValue * -1));
+                                }
 
                                 // restore unspent index
                                 addressUnspentIndex.push_back(make_pair(
-                                    CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
+                                    CAddressUnspentKey(AddressTypeFromDest(dest), destID, input.prevout.hash, input.prevout.n),
                                     CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undo.nHeight)));
                             }
                         }
@@ -3705,18 +3742,32 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     {
                         dests = prevout.scriptPubKey.GetDestinations();
                     }
+
+                    std::map<uint160, uint32_t> heightOffsets = p.GetIndexHeightOffsets(nHeight);
+
                     for (auto dest : dests)
                     {
                         if (dest.which() != COptCCParams::ADDRTYPE_INVALID) 
                         {
                             // record spending activity
-                            addressIndex.push_back(make_pair(
-                                CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, j, true),
-                                prevout.nValue * -1));
+                            uint160 destID = GetDestinationID(dest);
+                            if (dest.which() == COptCCParams::ADDRTYPE_INDEX &&
+                                heightOffsets.count(destID))
+                            {
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), heightOffsets[destID], i, txhash, j, true),
+                                    prevout.nValue * -1));
+                            }
+                            else
+                            {
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), nHeight, i, txhash, j, true),
+                                    prevout.nValue * -1));
+                            }
 
                             // remove address from unspent index
                             addressUnspentIndex.push_back(make_pair(
-                                CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
+                                CAddressUnspentKey(AddressTypeFromDest(dest), destID, input.prevout.hash, input.prevout.n),
                                 CAddressUnspentValue()));
                         }
                     }
@@ -3844,6 +3895,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 if (out.scriptPubKey.IsPayToCryptoCondition(p))
                 {
                     std::vector<CTxDestination> dests;
+                    std::map<uint160, uint32_t> offsets;
                     if (p.IsValid())
                     {
                         dests = p.GetDestinations();
@@ -3852,26 +3904,40 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     {
                         dests = out.scriptPubKey.GetDestinations();
                     }
+
+                    std::map<uint160, uint32_t> heightOffsets = p.GetIndexHeightOffsets(nHeight);
+
                     for (auto dest : dests)
                     {
                         if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                         {
-                            // record receiving activity
-                            addressIndex.push_back(make_pair(
-                                CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, k, false),
-                                out.nValue));
-
-                            /*
-                            if (dest.which() == COptCCParams::ADDRTYPE_PKH)
+                            // record spending activity
+                            uint160 destID = GetDestinationID(dest);
+                            if (dest.which() == COptCCParams::ADDRTYPE_INDEX &&
+                                heightOffsets.count(destID))
                             {
-                                printf("%s: adding unspent index for address %s\n", __func__, GetDestinationID(dest).GetHex().c_str());
-                            }
-                            */
+                                // record receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), destID, heightOffsets[destID], i, txhash, k, false),
+                                    out.nValue));
 
-                            // record unspent output
-                            addressUnspentIndex.push_back(make_pair(
-                                CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), txhash, k),
-                                CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->GetHeight())));
+                                // record unspent output
+                                addressUnspentIndex.push_back(make_pair(
+                                    CAddressUnspentKey(AddressTypeFromDest(dest), destID, txhash, k),
+                                    CAddressUnspentValue(out.nValue, out.scriptPubKey, heightOffsets[destID])));
+                            }
+                            else
+                            {
+                                // record receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), destID, nHeight, i, txhash, k, false),
+                                    out.nValue));
+
+                                // record unspent output
+                                addressUnspentIndex.push_back(make_pair(
+                                    CAddressUnspentKey(AddressTypeFromDest(dest), destID, txhash, k),
+                                    CAddressUnspentValue(out.nValue, out.scriptPubKey, nHeight)));
+                            }
                         }
                     }
                 }

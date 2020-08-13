@@ -1012,23 +1012,26 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
         }
 
         case EVAL_FINALIZE_NOTARIZATION:
+        {
+            CTransactionFinalization finalization;
+
+            if (vData.size() && (finalization = CTransactionFinalization(vData[0])).IsValid())
+            {
+                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalization.currencyID, evalCode)));
+            }
+            break;
+        }
+
         case EVAL_FINALIZE_EXPORT:
         {
             CTransactionFinalization finalization;
 
             if (vData.size() && (finalization = CTransactionFinalization(vData[0])).IsValid())
             {
-                if (finalization.finalizationType == finalization.FINALIZE_EXPORT)
+                CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(finalization.currencyID);
+                if (curDef.IsValid())
                 {
-                    CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(finalization.currencyID);
-                    if (curDef.IsValid())
-                    {
-                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(curDef.systemID, evalCode)));
-                    }
-                }
-                else if (finalization.finalizationType == finalization.FINALIZE_NOTARIZATION)
-                {
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalization.currencyID, evalCode)));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(curDef.systemID, evalCode)));
                 }
             }
             break;
@@ -1119,6 +1122,26 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
         }
     }
     return destinations;
+}
+
+std::map<uint160, uint32_t> COptCCParams::GetIndexHeightOffsets(uint32_t height) const
+{
+    // export finalization index keys, which are used when creating imports to determine
+    // what work needs to be done, are offset to have a height of the start block, ensuring
+    // that they are not considered for import until the start block is reached
+    std::map<uint160, uint32_t> offsets;
+    CTransactionFinalization ef;
+    if (evalCode == EVAL_FINALIZE_EXPORT &&
+        vData.size() &&
+        (ef = CTransactionFinalization(vData[0])).IsValid())
+    {
+        CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(ef.currencyID);
+        if (curDef.IsValid() && curDef.startBlock > height)
+        {
+            offsets.insert(make_pair(CCrossChainRPCData::GetConditionID(curDef.systemID, evalCode), (uint32_t)curDef.startBlock));
+        }
+    }
+    return offsets;
 }
 
 bool IsIndexCollision(const std::set<CIndexID> &indexKeys, const CTxDestination &dest)

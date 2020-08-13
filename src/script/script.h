@@ -470,6 +470,7 @@ public:
     std::vector<unsigned char> AsVector() const;
 
     std::set<CIndexID> GetIndexKeys() const;
+    std::map<uint160, uint32_t> GetIndexHeightOffsets(uint32_t height) const;
     std::vector<CTxDestination> GetDestinations() const;
 };
 
