@@ -469,7 +469,7 @@ public:
 
     std::vector<unsigned char> AsVector() const;
 
-    std::vector<CTxDestination> GetIndexKeysOnly() const;
+    std::set<CIndexID> GetIndexKeys() const;
     std::vector<CTxDestination> GetDestinations() const;
 };
 
