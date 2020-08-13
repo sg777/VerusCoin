@@ -2208,7 +2208,7 @@ void CConnectedChains::ProcessLocalImports()
     CCurrencyDefinition oneCurrency;
 
     //printf("%s: Searching for %s\n", __func__, EncodeDestination(CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT))).c_str());
-    if (GetAddressUnspent(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT), 1, unspentOutputs))
+    if (GetAddressUnspent(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT), CScript::P2IDX, unspentOutputs))
     {
         CCrossChainExport ccx, ccxDummy;
         CTransaction txOut, txImport;
