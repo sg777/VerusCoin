@@ -1144,11 +1144,15 @@ std::vector<CTxDestination> COptCCParams::GetDestinations() const
                     dests.insert(dest);
                 }
             }
-            for (auto dest : vKeys)
+            if (vKeys[0].which() != COptCCParams::ADDRTYPE_INDEX && !IsIndexCollision(indexKeys, vKeys[0]))
             {
-                if (dest.which() == COptCCParams::ADDRTYPE_ID)
+                dests.insert(vKeys[0]);
+            }
+            for (int i = 1; i < vKeys.size(); i++)
+            {
+                if (vKeys[i].which() == COptCCParams::ADDRTYPE_ID)
                 {
-                    dests.insert(dest);
+                    dests.insert(vKeys[i]);
                 }
             }
             for (int i = 1; i < (int)(vData.size() - 1); i++)
