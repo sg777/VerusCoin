@@ -2218,7 +2218,8 @@ void CConnectedChains::ProcessLocalImports()
         for (auto &oneOut : unspentOutputs)
         {
             COptCCParams p;
-            if (oneOut.second.script.IsPayToCryptoCondition(p) &&
+            if (oneOut.second.blockHeight <= nHeight &&
+                oneOut.second.script.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_FINALIZE_EXPORT &&
                 p.vData.size() &&
