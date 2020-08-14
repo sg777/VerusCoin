@@ -1153,6 +1153,7 @@ std::vector<CTxDestination> COptCCParams::GetDestinations() const
 {
     std::set<CIndexID> indexKeys = GetIndexKeys();
     std::vector<CTxDestination> destinations;
+    destinations.insert(destinations.begin(), indexKeys.begin(), indexKeys.end());
     if (IsValid() && (vKeys.size()))
     {
         COptCCParams master;
