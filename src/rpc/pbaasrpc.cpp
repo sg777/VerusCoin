@@ -101,7 +101,7 @@ protected:
     };
 };
 
-bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight)
+bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight, bool checkMempool)
 {
     if (chainID == ConnectedChains.ThisChain().GetID())
     {
@@ -126,10 +126,12 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
     }
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+    uint160 lookupKey = CCrossChainRPCData::GetConditionID(chainID, EVAL_CURRENCY_DEFINITION);
+    std::vector<std::pair<uint160, int>> addresses = {{lookupKey, CScript::P2IDX}};
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> > results;
     CCurrencyDefinition foundDef;
 
-    if (!ClosedPBaaSChains.count(chainID) &&
-        GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, EVAL_CURRENCY_DEFINITION)), CScript::P2IDX, unspentOutputs))
+    if (!ClosedPBaaSChains.count(chainID) && GetAddressUnspent(lookupKey, CScript::P2IDX, unspentOutputs) && unspentOutputs.size())
     {
         for (auto &currencyDefOut : unspentOutputs)
         {
@@ -139,6 +141,24 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
                 if (pDefHeight)
                 {
                     *pDefHeight = currencyDefOut.second.blockHeight;
+                }
+                break;
+            }
+        }
+    }
+    else if (checkMempool && !ClosedPBaaSChains.count(chainID) && mempool.getAddressIndex(addresses, results) && results.size())
+    {
+        for (auto &currencyDefOut : results)
+        {
+            CTransaction tx;
+
+            if (mempool.lookup(currencyDefOut.first.txhash, tx) &&
+                (foundDef = CCurrencyDefinition(tx.vout[currencyDefOut.first.index].scriptPubKey)).IsValid())
+            {
+                chainDef = foundDef;
+                if (pDefHeight)
+                {
+                    *pDefHeight = 0;
                 }
                 break;
             }
@@ -5608,9 +5628,30 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
+    uint32_t nHeight = chainActive.Height() + 1;
+
     if (!(oldID = CIdentity::LookupIdentity(newID.GetID(), 0, &idHeight, &idTxIn)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
+    }
+
+    CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
+
+    if (oldID.IsLocked() != newID.IsLocked())
+    {
+        bool newLocked = newID.IsLocked();
+        uint32_t unlockAfter = newID.unlockAfter;
+        newID.flags = (newID.flags & ~newID.FLAG_LOCKED) | (newID.IsRevoked() ? 0 : (oldID.flags & oldID.FLAG_LOCKED));
+        newID.unlockAfter = oldID.unlockAfter;
+
+        if (!newLocked)
+        {
+            newID.Unlock(nHeight, txNew.nExpiryHeight);
+        }
+        else
+        {
+            newID.Lock(unlockAfter);
+        }
     }
 
     // create the identity definition transaction

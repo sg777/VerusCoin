@@ -1244,7 +1244,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(const uint160 &currenc
 {
     int32_t curDefHeight;
     CCurrencyDefinition curDef;
-    if (GetCurrencyDefinition(currencyID, curDef, &curDefHeight))
+    if (GetCurrencyDefinition(currencyID, curDef, &curDefHeight, true))
     {
         return GetCurrencyState(curDef, height, curDefHeight);
     }
@@ -1277,9 +1277,10 @@ bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScrip
 CCurrencyDefinition CConnectedChains::GetCachedCurrency(const uint160 &currencyID)
 {
     CCurrencyDefinition currencyDef;
+    int32_t defHeight;
     auto it = currencyDefCache.find(currencyID);
     if ((it != currencyDefCache.end() && !(currencyDef = it->second).IsValid()) ||
-        (it == currencyDefCache.end() && !GetCurrencyDefinition(currencyID, currencyDef)))
+        (it == currencyDefCache.end() && !GetCurrencyDefinition(currencyID, currencyDef, &defHeight, true)))
     {
         printf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
         LogPrintf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
