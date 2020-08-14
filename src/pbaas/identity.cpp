@@ -139,6 +139,8 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     recoveryAuthority = uint160(GetDestinationID(DecodeDestination(recoveryStr == "" ? name + "@" : recoveryStr)));
     libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
 
+    unlockAfter = uni_get_int(find_value(uni, "timelock"));
+
     if (revocationAuthority.IsNull() || recoveryAuthority.IsNull())
     {
         printf("%s: invalid address\n", __func__);

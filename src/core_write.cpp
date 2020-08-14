@@ -832,6 +832,9 @@ UniValue CIdentity::ToUniValue() const
     {
         obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddresses[0])));
     }
+
+    obj.push_back(Pair("timelock", (int32_t)unlockAfter));
+
     return obj;
 }
 
