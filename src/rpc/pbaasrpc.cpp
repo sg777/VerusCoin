@@ -1618,7 +1618,7 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                         p.evalCode == EVAL_RESERVE_TRANSFER &&
                         p.vData.size() > 1 && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
                         (m = COptCCParams(p.vData[1])).IsValid() &&
-                        (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID) == chainFilter)) &&
+                        (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID) == chainFilter) &&
                         (rt.flags & flags) == flags)
                     {
                         inputDescriptors.insert(make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID),
