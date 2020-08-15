@@ -206,7 +206,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs, unspentNewIDX;
 
-    CKeyID keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
+    uint160 keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
 
     if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) || GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
@@ -252,10 +252,16 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
             *pHeightOut = 0;
 
             // if we must check up to a specific height that is less than the latest height, do so
-            std::vector<CAddressIndexDbEntry> addressIndex;
+            std::vector<CAddressIndexDbEntry> addressIndex, addressIndex2;
 
-            if (GetAddressIndex(keyID, 1, addressIndex, 0, height) && addressIndex.size())
+            if (GetAddressIndex(keyID, CScript::P2PKH, addressIndex, 0, height) &&
+                GetAddressIndex(keyID, CScript::P2IDX, addressIndex2, 0, height) &&
+                (addressIndex.size() || addressIndex2.size()))
             {
+                if (addressIndex2.size())
+                {
+                    addressIndex.insert(addressIndex.begin(), addressIndex2.begin(), addressIndex2.end())
+                }
                 int txIndex = 0;
                 // look from last backward to find the first valid ID
                 for (int i = addressIndex.size() - 1; i >= 0; i--)
