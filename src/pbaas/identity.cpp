@@ -260,7 +260,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
             {
                 if (addressIndex2.size())
                 {
-                    addressIndex.insert(addressIndex.begin(), addressIndex2.begin(), addressIndex2.end())
+                    addressIndex.insert(addressIndex.begin(), addressIndex2.begin(), addressIndex2.end());
                 }
                 int txIndex = 0;
                 // look from last backward to find the first valid ID
