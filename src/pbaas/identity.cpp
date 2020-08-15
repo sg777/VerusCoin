@@ -208,7 +208,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
 
     uint160 keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
 
-    if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) || GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
+    if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
         // combine searches into 1 vector
         unspentOutputs.insert(unspentOutputs.begin(), unspentNewIDX.begin(), unspentNewIDX.end());
@@ -330,7 +330,7 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
 
     CKeyID keyID(CCrossChainRPCData::GetConditionID(idID, EVAL_IDENTITY_RESERVATION));
 
-    if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) || GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
+    if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
         // combine searches into 1 vector
         unspentOutputs.insert(unspentOutputs.begin(), unspentNewIDX.begin(), unspentNewIDX.end());
