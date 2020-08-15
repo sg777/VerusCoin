@@ -100,7 +100,8 @@ public:
         MINT_CURRENCY = 0x20,               // set when this output is being minted on import
         PREALLOCATE = 0x40,                 // combined with minting for pre-allocation of currency
         BURN_CHANGE_PRICE = 0x80,           // set when this output is being minted on import
-        BURN_CHANGE_WEIGHT = 0x100          // set when this output is being minted on import
+        BURN_CHANGE_WEIGHT = 0x100,         // set when this output is being minted on import
+        IMPORT_TO_SOURCE = 0x200            // set when the source currency, not destination is the import currency
     };
 
     enum EConstants
@@ -148,6 +149,11 @@ public:
     static CAmount CalculateTransferFee(const CTransferDestination &destination);
 
     CAmount CalculateTransferFee() const;
+
+    uint160 GetImportCurrency() const
+    {
+        return (flags & IMPORT_TO_SOURCE) ? currencyID : destCurrencyID;
+    }
 
     bool IsValid() const
     {

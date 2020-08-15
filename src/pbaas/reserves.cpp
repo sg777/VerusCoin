@@ -1539,6 +1539,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             }
             CReserveTransfer &curTransfer = *pCurTransfer;
 
+            if (((importCurrencyID != curTransfer.currencyID) && (curTransfer.flags & curTransfer.IMPORT_TO_SOURCE)) ||
+                ((importCurrencyID == curTransfer.currencyID) && !((curTransfer.flags & curTransfer.IMPORT_TO_SOURCE))))
+            {
+                printf("%s: Importing to source currency without flag or importing to destination with source flag\n", __func__);
+                LogPrintf("%s: Importing to source currency without flag or importing to destination with source flag\n", __func__);
+                return false;
+            }
+
             //printf("currency transfer #%d:\n%s\n", i, curTransfer.ToUniValue().write(1,2).c_str());
             CCurrencyDefinition currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID);
 

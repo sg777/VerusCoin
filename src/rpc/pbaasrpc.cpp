@@ -1618,10 +1618,10 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                         p.evalCode == EVAL_RESERVE_TRANSFER &&
                         p.vData.size() > 1 && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
                         (m = COptCCParams(p.vData[1])).IsValid() &&
-                        (nofilter || (m.vKeys.size() > 1 && GetDestinationID(m.vKeys[1]) == chainFilter)) &&
+                        (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID) == chainFilter)) &&
                         (rt.flags & flags) == flags)
                     {
-                        inputDescriptors.insert(make_pair(GetDestinationID(m.vKeys[1]),
+                        inputDescriptors.insert(make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID),
                                                     make_pair(CInputDescriptor(ntx.vout[i].scriptPubKey, ntx.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))), rt)));
                     }
                     else if (p.IsValid() &&
@@ -1680,10 +1680,9 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
                         p.version >= p.VERSION_V3 &&
                         (m = COptCCParams(p.vData.back())).IsValid() &&
                         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
-                        m.vKeys.size() > 1 &&
-                        (nofilter || GetDestinationID(m.vKeys[1]) == chainFilter))
+                        (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID) == chainFilter))
                     {
-                        inputDescriptors.insert(make_pair(GetDestinationID(m.vKeys[1]),
+                        inputDescriptors.insert(make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID),
                                                 make_pair(CInputDescriptor(coins.vout[it->first.index].scriptPubKey, 
                                                                            coins.vout[it->first.index].nValue, 
                                                                            CTxIn(COutPoint(it->first.txhash, it->first.index))), rt)));
@@ -3481,6 +3480,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
+                        if (burnCurrency)
+                        {
+                            flags |= CReserveTransfer::IMPORT_TO_SOURCE;
+                        }
+
                         CReserveTransfer rt = CReserveTransfer(flags, 
                                                                burnCurrency ? sourceCurrencyID : thisChainID, 
                                                                sourceAmount,
@@ -3510,6 +3514,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             pReserveCurrency = pFractionalCurrency;
                             pFractionalCurrency = &convertToCurrencyDef;
                         }
+                        else
+                        {
+                            flags |= CReserveTransfer::IMPORT_TO_SOURCE;
+                        }
+                        
 
                         if (pFractionalCurrency->startBlock > height)
                         {
