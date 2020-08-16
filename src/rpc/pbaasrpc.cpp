@@ -1720,19 +1720,17 @@ bool GetUnspentChainExports(uint160 chainID, multimap<uint160, pair<int, CInputD
 
             if (view.GetCoins(it->first.txhash, coins))
             {
-                for (int i = 0; i < coins.vout.size(); i++)
+                int i = it->first.index;
+                if (coins.IsAvailable(i))
                 {
-                    if (coins.IsAvailable(i))
+                    // if this is an export output, optionally to this chain, add it to the input vector
+                    COptCCParams p;
+                    CCrossChainExport cx;
+                    if (coins.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                        p.vData.size() && (cx = CCrossChainExport(p.vData[0])).IsValid())
                     {
-                        // if this is an export output, optionally to this chain, add it to the input vector
-                        COptCCParams p;
-                        CCrossChainExport cx;
-                        if (coins.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                            p.vData.size() && (cx = CCrossChainExport(p.vData[0])).IsValid())
-                        {
-                            exportOutputs.insert(make_pair(cx.systemID,
-                                                     make_pair(coins.nHeight, CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))))));
-                        }
+                        exportOutputs.insert(make_pair(cx.systemID,
+                                                    make_pair(coins.nHeight, CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))))));
                     }
                 }
             }

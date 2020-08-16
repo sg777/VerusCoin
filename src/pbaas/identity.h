@@ -536,6 +536,7 @@ public:
             GetID() != newIdentity.GetID() ||
             ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
             ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
+            (IsLocked(height) && ((!newIdentity.IsRevoked() && !newIdentity.IsLocked(height)) || unlockAfter != newIdentity.unlockAfter)) ||
             ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
             newIdentity.nVersion < VERSION_FIRSTVALID ||
             newIdentity.nVersion > VERSION_LASTVALID)
@@ -549,11 +550,7 @@ public:
         {
             if (IsLocked(height))
             {
-                if (!newIdentity.IsLocked(height) && !newIdentity.IsRevoked())
-                {
-                    return true;
-                }
-                else if (!newIdentity.IsRevoked())
+                if (!newIdentity.IsRevoked())
                 {
                     if (IsLocked() && !newIdentity.IsLocked())
                     {
@@ -565,8 +562,8 @@ public:
                     }
                     else if (!IsLocked())
                     {
-                        // only revocation can change unlock after time, and we don't allow re-lock until unlock either, which
-                        // can change the new unlock time
+                        // only revocation can change unlock after time, and we don't allow re-lock to an earlier time until unlock either, 
+                        // which can change the new unlock time
                         if (newIdentity.IsLocked())
                         {
                             if ((expiryHeight + newIdentity.unlockAfter < unlockAfter))

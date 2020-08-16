@@ -1508,24 +1508,22 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 {
                                     // import on same chain spends reserve deposits as well, so only spend them if they are not
                                     // already spent
-                                    if (coins.IsAvailable(i))
-                                    {
-                                        auto &oneOut = lastExportTx.vout[i];
-                                        COptCCParams p;
+                                    auto &oneOut = lastExportTx.vout[i];
+                                    COptCCParams p;
 
-                                        if (::IsPayToCryptoCondition(oneOut.scriptPubKey, p) &&
-                                            p.IsValid() &&
-                                            p.evalCode == EVAL_RESERVE_DEPOSIT)
+                                    if (::IsPayToCryptoCondition(oneOut.scriptPubKey, p) &&
+                                        p.IsValid() &&
+                                        p.evalCode == EVAL_RESERVE_DEPOSIT &&
+                                        coins.IsAvailable(i))
+                                    {
+                                        // only reserve deposits for the export currency/system will be present on an export transaction
+                                        CCurrencyValueMap reserveOut = oneOut.scriptPubKey.ReserveOutValue().CanonicalMap();
+                                        currentReserveDeposits += reserveOut;
+                                        if (oneOut.nValue || reserveOut.valueMap.size())
                                         {
-                                            // only reserve deposits for the export currency/system will be present on an export transaction
-                                            CCurrencyValueMap reserveOut = oneOut.scriptPubKey.ReserveOutValue().CanonicalMap();
-                                            currentReserveDeposits += reserveOut;
-                                            if (oneOut.nValue || reserveOut.valueMap.size())
-                                            {
-                                                tb.AddTransparentInput(COutPoint(lastExport.second.second.txIn.prevout.hash, i), 
-                                                                    oneOut.scriptPubKey, oneOut.nValue);
-                                                currentReserveDeposits.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
-                                            }
+                                            tb.AddTransparentInput(COutPoint(lastExport.second.second.txIn.prevout.hash, i), 
+                                                                oneOut.scriptPubKey, oneOut.nValue);
+                                            currentReserveDeposits.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
                                         }
                                     }
                                 }
