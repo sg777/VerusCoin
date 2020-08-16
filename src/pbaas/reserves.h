@@ -184,7 +184,7 @@ public:
     CReserveDeposit() : nVersion(VERSION_CURRENT) {}
 
     CReserveDeposit(const uint160 &controllingID, const CCurrencyValueMap &reserveOut) : 
-        controllingCurrencyID(controllingID), reserveValues(reserveOut) {}
+        nVersion(VERSION_CURRENT), controllingCurrencyID(controllingID), reserveValues(reserveOut) {}
 
     ADD_SERIALIZE_METHODS;
 
