@@ -367,6 +367,10 @@ public:
         {
             READWRITE(unlockAfter);
         }
+        else if (ser_action.ForRead())
+        {
+            REF(unlockAfter) = 0;
+        }
     }
 
     UniValue ToUniValue() const;
@@ -536,7 +540,7 @@ public:
             GetID() != newIdentity.GetID() ||
             ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
             ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
-            (IsLocked(height) && ((!newIdentity.IsRevoked() && !newIdentity.IsLocked(height)) || unlockAfter != newIdentity.unlockAfter)) ||
+            (IsLocked(height) && (!newIdentity.IsRevoked() && !newIdentity.IsLocked(height))) ||
             ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
             newIdentity.nVersion < VERSION_FIRSTVALID ||
             newIdentity.nVersion > VERSION_LASTVALID)
