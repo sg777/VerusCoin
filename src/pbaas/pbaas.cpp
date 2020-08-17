@@ -1720,9 +1720,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     tb.AddOpRet(opRet);
                                     tb.SetFee(0);
 
-                                    UniValue uni(UniValue::VOBJ);
+                                    /* UniValue uni(UniValue::VOBJ);
                                     TxToUniv(tb.mtx, uint256(), uni);
-                                    printf("%s: about to send reserve deposits with tx:\n%s\n", __func__, uni.write(1,2).c_str());
+                                    printf("%s: about to send reserve deposits with tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
 
                                     TransactionBuilderResult buildResult(tb.Build());
 
@@ -1731,9 +1731,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         // replace the last one only if we have a valid new one
                                         CTransaction tx = buildResult.GetTxOrThrow();
 
-                                        uni = UniValue(UniValue::VOBJ);
+                                        /* uni = UniValue(UniValue::VOBJ);
                                         TxToUniv(tx, uint256(), uni);
-                                        printf("%s: successfully built tx:\n%s\n", __func__, uni.write(1,2).c_str());
+                                        printf("%s: successfully built tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
 
                                         LOCK2(cs_main, mempool.cs);
                                         static int lastHeight = 0;
