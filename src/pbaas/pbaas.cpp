@@ -1686,7 +1686,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                             }
                                         }
                                     }
-                                    if (reserveDepositOut.valueMap.size())
+                                    if (reserveDepositOut.valueMap.size() || nativeOut)
                                     {
                                         // send the entire amount to a reserve deposit output of the specific chain
                                         // we receive our fee on the other chain, when it comes back, or if a token,
