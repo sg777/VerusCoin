@@ -1676,10 +1676,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                         if ((oneDef.systemID == ASSETCHAINS_CHAINID || oneDef.systemID != lastChainDef.systemID) &&
                                             oneCurrencyOut.second)
                                         {
-                                            reserveDepositOut.valueMap[oneCurrencyOut.first] = oneCurrencyOut.second;
                                             if (oneCurrencyOut.first == ASSETCHAINS_CHAINID)
                                             {
                                                 nativeOut = oneCurrencyOut.second;
+                                            }
+                                            else
+                                            {
+                                                reserveDepositOut.valueMap[oneCurrencyOut.first] = oneCurrencyOut.second;
                                             }
                                         }
                                     }
@@ -1717,11 +1720,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     tb.AddOpRet(opRet);
                                     tb.SetFee(0);
 
-                                    /* {
-                                        UniValue uni(UniValue::VOBJ);
-                                        TxToUniv(tb.mtx, uint256(), uni);
-                                        printf("%s: about to send reserve deposits with tx:\n%s\n", __func__, uni.write(1,2).c_str());
-                                    } */
+                                    UniValue uni(UniValue::VOBJ);
+                                    TxToUniv(tb.mtx, uint256(), uni);
+                                    printf("%s: about to send reserve deposits with tx:\n%s\n", __func__, uni.write(1,2).c_str());
 
                                     TransactionBuilderResult buildResult(tb.Build());
 
@@ -1729,6 +1730,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     {
                                         // replace the last one only if we have a valid new one
                                         CTransaction tx = buildResult.GetTxOrThrow();
+
+                                        uni = UniValue(UniValue::VOBJ);
+                                        TxToUniv(tx, uint256(), uni);
+                                        printf("%s: successfully built tx:\n%s\n", __func__, uni.write(1,2).c_str());
 
                                         LOCK2(cs_main, mempool.cs);
                                         static int lastHeight = 0;
