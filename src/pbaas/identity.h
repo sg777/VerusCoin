@@ -584,8 +584,14 @@ public:
             }
             else if (newIdentity.IsLocked(height))
             {
-                if (newIdentity.unlockAfter > MAX_UNLOCK_DELAY)
+                if (newIdentity.IsLocked() && newIdentity.unlockAfter > MAX_UNLOCK_DELAY)
                 {
+                    return true;
+                }
+                else if (!newIdentity.IsLocked() && newIdentity.unlockAfter <= expiryHeight)
+                {
+                    // we never set the locked bit, but we are counting down to the block set to unlock
+                    // cannot lock with unlock before the expiry height
                     return true;
                 }
             }
