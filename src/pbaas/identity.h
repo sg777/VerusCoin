@@ -99,7 +99,7 @@ public:
 
     CNameReservation(const CTransaction &tx, int *pNumOut=nullptr);
 
-    CNameReservation(std::vector<unsigned char> &asVector)
+    CNameReservation(const std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);
         if (name.size() > MAX_NAME_SIZE)
