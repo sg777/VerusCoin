@@ -1401,30 +1401,35 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
     // if we don't have a reserve transaction, we're done
     // don't try to replace basic transaction validation
-    if (IsReserve())
+    CAmount nValueIn = 0;
+
+    // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
+    // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
+    auto reservesIn = view.GetReserveValueIn(nHeight, tx);
+    for (auto &oneIn : reservesIn.valueMap)
     {
-        CAmount nValueIn = 0;
-
-        // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
-        // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
-        auto reservesIn = view.GetReserveValueIn(nHeight, tx);
-        for (auto &oneIn : reservesIn.valueMap)
+        if (oneIn.second)
         {
-            auto it = currencies.find(oneIn.first);
-            if (it == currencies.end())
-            {
-                currencies[oneIn.first] = CReserveInOuts(oneIn.second, 0, 0, 0, 0);
-            }
-            else
-            {
-                it->second.reserveIn += oneIn.second;
-            }
+            flags |= IS_RESERVE;
         }
-
-        // TODO:PBAAS hardening total minimum required fees as we build the descriptor and
-        // reject if not correct
-        ptx = &tx;
+        auto it = currencies.find(oneIn.first);
+        if (it == currencies.end())
+        {
+            currencies[oneIn.first] = CReserveInOuts(oneIn.second, 0, 0, 0, 0);
+        }
+        else
+        {
+            it->second.reserveIn += oneIn.second;
+        }
     }
+    if (!IsReserve() && ReserveOutputMap().valueMap.size())
+    {
+        flags |= IS_RESERVE;
+    }
+
+    // TODO:PBAAS hardening total minimum required fees as we build the descriptor and
+    // reject if not correct
+    ptx = &tx;
 }
 
 CReserveTransfer RefundExport(const CBaseChainObject *objPtr)
