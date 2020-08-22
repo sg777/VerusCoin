@@ -70,7 +70,7 @@ public:
         UniValue uni(UniValue::VOBJ);
         uni.pushKV("lambda", lambda);
         uni.pushKV("mean", mean);
-        uni.pushKV("variancesquared", variance2.ToString());
+        uni.pushKV("variance", StdDev());
     }
 
     CEWMA AddSample(int64_t nValue)
@@ -91,12 +91,12 @@ public:
         }
     }
 
-    int64_t Mean()
+    int64_t Mean() const
     {
         return mean;
     }
 
-    int64_t StdDev()
+    int64_t StdDev() const
     {
         // Newton Rhapson square root
         if (!variance2)
