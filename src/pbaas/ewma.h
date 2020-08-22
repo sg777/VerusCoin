@@ -80,13 +80,36 @@ public:
         {
             arith_uint256 bigMean(mean);
             mean = ((bigMean * lambda) + (bigValue * arith_uint256(SATOSHIDEN - lambda)) / SATOSHIDEN).GetLow64();
-            variance2 = ((variance2 * lambda) + ((bigValue * bigValue) * arith_uint256(SATOSHIDEN - lambda)) / SATOSHIDEN);
+            arith_uint256 variance = arith_uint256(nValue - mean);
+            variance *= variance;
+            variance2 = ((variance2 * lambda) + (variance * arith_uint256(SATOSHIDEN - lambda)) / SATOSHIDEN);
         }
         else
         {
             mean = nValue;
-            variance2 = bigValue * bigValue;
+            variance2 = 0;
         }
+    }
+
+    int64_t Mean()
+    {
+        return mean;
+    }
+
+    int64_t StdDev()
+    {
+        // Newton Rhapson square root
+        if (!variance2)
+        {
+            return 0;
+        }
+        arith_uint256 x((variance2 >> 1) + 1);
+        arith_uint256 y((x + (variance2 / x)) / 2);
+        while (y < x) {
+            x = y;
+            y = (x + (variance2 / x)) / 2;
+        } // end while
+        return x.GetLow64();
     }
 };
 
