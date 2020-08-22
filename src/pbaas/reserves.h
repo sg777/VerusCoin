@@ -737,7 +737,7 @@ public:
 class CReserveTransactionDescriptor
 {
 public:
-    enum {
+    enum EFlagBits {
         IS_VALID=1,                             // known to be valid
         IS_REJECT=2,                            // if set, tx is known to be invalid
         IS_RESERVE=4,                           // if set, this transaction affects reserves and/or price if mined
@@ -750,6 +750,10 @@ public:
         IS_IDENTITY=0x200,                      // If set, this is an identity definition or update
         IS_IDENTITY_DEFINITION=0x400,           // If set, this is an identity definition
         IS_HIGH_FEE=0x800                       // If set, this may have "absurdly high fees"
+    };
+
+    enum ESubIndexCodes {
+        ONE_RESERVE_IDX = 1                     // used to create a condition code that indexed reserves of a fractional currency
     };
 
     const CTransaction *ptx;                    // pointer to the actual transaction if valid
