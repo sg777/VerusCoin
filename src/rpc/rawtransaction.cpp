@@ -270,6 +270,18 @@ void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 break;
             }
 
+            case EVAL_FEE_POOL:
+            {
+                CFeePool feePool;
+
+                if (p.vData.size())
+                {
+                    feePool = CFeePool(p.vData[0]);
+                    out.push_back(Pair("feepool", feePool.ToUniValue()));
+                }
+                break;
+            }
+
             default:
                 out.push_back(Pair("unknown", ""));
         }

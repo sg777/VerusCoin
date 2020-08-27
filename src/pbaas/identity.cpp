@@ -1426,8 +1426,8 @@ bool IsQuantumKeyOutInput(const CScript &scriptSig)
 
 bool PrecheckQuantumKeyOut(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
-    // need to ensure that the output is used for a signature in the tx before authorizing it
-    return true;
+    // inactive for now
+    return false;
 }
 
 bool IsIdentityInput(const CScript &scriptSig)

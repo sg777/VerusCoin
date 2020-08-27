@@ -73,6 +73,13 @@ public:
         uni.pushKV("variance", StdDev());
     }
 
+    void Clear()
+    {
+        flags &= ~FLAGS_STARTED;
+        mean = 0;
+        variance2 = 0;
+    }
+
     CEWMA AddSample(int64_t nValue)
     {
         arith_uint256 bigValue(nValue);
@@ -98,17 +105,18 @@ public:
 
     int64_t StdDev() const
     {
-        // Newton Rhapson square root
+        // Newton-Rhapson square root
         if (!variance2)
         {
             return 0;
         }
         arith_uint256 x((variance2 >> 1) + 1);
         arith_uint256 y((x + (variance2 / x)) / 2);
-        while (y < x) {
+        while (y < x)
+        {
             x = y;
             y = (x + (variance2 / x)) / 2;
-        } // end while
+        }
         return x.GetLow64();
     }
 };

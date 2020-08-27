@@ -85,9 +85,15 @@ public:
     static const int CURRENT_VERSION = PBAAS_VERSION;
     static const int MAX_NODES = 2;
 
+    enum FLAGS
+    {
+        FLAG_TOKEN = 1
+    };
+
     uint32_t nVersion;                      // PBAAS version
+    uint32_t flags;                         // notarization options
     int32_t protocol;                       // notarization protocol
-    uint160 currencyID;                       // currency being notarized
+    uint160 currencyID;                     // currency being notarized
     CTxDestination notaryDest;              // confirmed notary rewards are spent to this address when this notarization is confirmed
 
     uint32_t notarizationHeight;            // height (or sequence) of the notarization we certify
@@ -122,8 +128,10 @@ public:
                        int32_t crossheight,
                        const COpRetProof &orp,
                        const std::vector<CNodeData> &Nodes=std::vector<CNodeData>(),
-                       uint32_t version = CURRENT_VERSION) : 
+                       uint32_t version=CURRENT_VERSION,
+                       uint32_t Flags=FLAG_TOKEN) : 
                        nVersion(version),
+                       flags(Flags),
                        currencyID(currencyid),
                        protocol(Protocol),
                        notaryDest(notaryDestination),
@@ -160,6 +168,7 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(VARINT(nVersion));
+        READWRITE(VARINT(flags));
         READWRITE(currencyID);
         READWRITE(protocol);
         if (ser_action.ForRead())
@@ -194,6 +203,11 @@ public:
     bool IsValid() const
     {
         return !mmrRoot.IsNull();
+    }
+
+    bool IsToken() const
+    {
+        return flags & FLAG_TOKEN;
     }
 
     // if false, *this is unmodifed, otherwise, it is set to the last valid notarization in the requested range

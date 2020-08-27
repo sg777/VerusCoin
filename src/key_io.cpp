@@ -640,20 +640,34 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 
     int numRetNames = retNames.size();
 
+    std::string verusChainName = boost::to_lower_copy(VERUS_CHAINNAME);
+
     if (addVerus)
     {
         if (explicitChain)
         {
             std::vector<std::string> chainOutNames;
             boost::split(chainOutNames, ChainOut, boost::is_any_of("."));
-            if (boost::to_lower_copy(chainOutNames.back()) != boost::to_lower_copy(VERUS_CHAINNAME))
+            std::string lastChainOut = boost::to_lower_copy(chainOutNames.back());
+            
+            if (lastChainOut != "" && lastChainOut != verusChainName)
             {
-                chainOutNames.push_back(VERUS_CHAINNAME);
+                chainOutNames.push_back(verusChainName);
+            }
+            else if (lastChainOut == "")
+            {
+                chainOutNames.pop_back();
             }
         }
-        if (boost::to_lower_copy(retNames.back()) != boost::to_lower_copy(VERUS_CHAINNAME))
+
+        std::string lastRetName = boost::to_lower_copy(retNames.back());
+        if (lastRetName != "" && lastRetName != verusChainName)
         {
-            retNames.push_back(VERUS_CHAINNAME);
+            retNames.push_back(verusChainName);
+        }
+        else if (lastRetName == "")
+        {
+            retNames.pop_back();
         }
     }
 
@@ -673,13 +687,21 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
     // if no explicit chain is specified, default to chain of the ID
     if (!explicitChain && retNames.size())
     {
-        for (int i = 1; i < retNames.size(); i++)
+        if (retNames.size() == 1 && retNames.back() != verusChainName)
         {
-            if (ChainOut.size())
+            // we are referring to an external root blockchain
+            ChainOut = retNames[0];
+        }
+        else
+        {
+            for (int i = 1; i < retNames.size(); i++)
             {
-                ChainOut = ChainOut + ".";
+                if (ChainOut.size())
+                {
+                    ChainOut = ChainOut + ".";
+                }
+                ChainOut = ChainOut + retNames[i];
             }
-            ChainOut = ChainOut + retNames[i];
         }
     }
 

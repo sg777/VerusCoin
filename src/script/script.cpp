@@ -967,6 +967,17 @@ uint160 CScript::AddressHash() const
     return addressHash;
 }
 
+std::set<uint160> COptCCParams::feeCurrencies;
+
+// we only add these at initialization time
+void COptCCParams::AddFeeCurrency(const uint160 &feeCurrency)
+{
+    if (!feeCurrency.IsNull())
+    {
+        feeCurrencies.insert(feeCurrency);
+    }
+}
+
 std::set<CIndexID> COptCCParams::GetIndexKeys() const
 {
     std::set<CIndexID> destinations;
@@ -1007,6 +1018,43 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (notarization = CPBaaSNotarization(vData[0])).IsValid())
             {
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, evalCode)));
+                // determine if we can be used as a fee converter, and if so, add an index destination, so this
+                // currency can be quickly found and used
+                CCoinbaseCurrencyState &curState = notarization.currencyState;
+                int32_t nativeReserveIdx;
+                std::map<uint160, int32_t> reserveIdxMap;
+                if (evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+                    curState.IsValid() &&
+                    curState.IsFractional() &&
+                    notarization.IsToken() &&
+                    !(curState.IsPrelaunch() || curState.IsRefunding()) &&
+                    (reserveIdxMap = curState.GetReserveMap()).count(ASSETCHAINS_CHAINID) &&
+                    curState.weights[nativeReserveIdx = reserveIdxMap[ASSETCHAINS_CHAINID]] > (SATOSHIDEN / 10) &&
+                    curState.reserves[nativeReserveIdx] > ConnectedChains.MinimumConverterReserves())
+                {
+                    bool isValid = true;
+                    for (auto &one : reserveIdxMap)
+                    {
+                        if (!feeCurrencies.count(one.first))
+                        {
+                            // we only use converters where all currencies in the token
+                            // are valid fee currencies
+                            isValid = false;
+                            break;
+                        }
+                    }
+                    if (isValid)
+                    {
+                        // go through all currencies and add an index entry for each
+                        // when looking for a fee converter, we will look through all indexed options
+                        // for the best conversion rate from a source fee currency to the native coin
+                        for (auto &one : reserveIdxMap)
+                        {
+                            uint160 indexCode = CCrossChainRPCData::GetConditionID(one.first, evalCode);
+                            destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(indexCode, INDEX_NOTARIZATION_CONVERTER)));
+                        }
+                    }
+                }
             }
             break;
         }

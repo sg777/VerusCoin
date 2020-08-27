@@ -87,6 +87,50 @@ public:
     }
 };
 
+class CMultiOutput
+{
+public:
+    enum
+    {
+        VERSION_INVALID = 0,
+        VERSION_CURRENT = 1,
+        VERSION_FIRSTVALID = 1,
+        VERSION_LASTVALID = 1,
+    };
+
+    uint32_t nVersion;
+    CCurrencyValueMap reserveValues;        // all outputs of this reserve deposit
+
+    CMultiOutput(const std::vector<unsigned char> &asVector)
+    {
+        FromVector(asVector, *this);
+    }
+
+    CMultiOutput() : nVersion(VERSION_CURRENT) {}
+
+    CMultiOutput(const CCurrencyValueMap &reserveOut) : nVersion(VERSION_CURRENT), reserveValues(reserveOut) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(nVersion);
+        READWRITE(reserveValues);
+    }
+
+    std::vector<unsigned char> AsVector()
+    {
+        return ::AsVector(*this);
+    }
+
+    UniValue ToUniValue() const;
+
+    bool IsValid() const
+    {
+        return nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID;
+    }
+};
+
 class CReserveTransfer : public CTokenOutput
 {
 public:
@@ -99,9 +143,10 @@ public:
         SEND_BACK = 0x10,                   // fee is sent back immediately to destination on exporting chain
         MINT_CURRENCY = 0x20,               // set when this output is being minted on import
         PREALLOCATE = 0x40,                 // combined with minting for pre-allocation of currency
-        BURN_CHANGE_PRICE = 0x80,           // set when this output is being minted on import
-        BURN_CHANGE_WEIGHT = 0x100,         // set when this output is being minted on import
-        IMPORT_TO_SOURCE = 0x200            // set when the source currency, not destination is the import currency
+        BURN_CHANGE_PRICE = 0x80,           // this output is being burned on import and will change the price
+        BURN_CHANGE_WEIGHT = 0x100,         // this output is being burned on import and will change the reserve ratio
+        IMPORT_TO_SOURCE = 0x200,           // set when the source currency, not destination is the import currency
+        RESERVE_TO_RESERVE = 0x400          // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
     };
 
     enum EConstants
@@ -114,7 +159,7 @@ public:
     uint32_t flags;                         // type of transfer and options
     CAmount nFees;                          // cross-chain network fees only, separated out to enable market conversions, conversion fees are additional
     uint160 destCurrencyID;                 // system to export to, which may represent a PBaaS chain or external bridge
-    CTransferDestination destination;       // system specific address to send funds to on the target chain
+    CTransferDestination destination;       // system specific address to send funds to on the target system
 
     CReserveTransfer(const std::vector<unsigned char> &asVector)
     {
@@ -161,38 +206,27 @@ public:
     }
 };
 
-class CReserveDeposit
+class CReserveDeposit : public CMultiOutput
 {
 public:
-    enum
-    {
-        VERSION_INVALID = 0,
-        VERSION_CURRENT = 1,
-        VERSION_FIRSTVALID = 1,
-        VERSION_LASTVALID = 1,
-    };
-
-    uint32_t nVersion;
     uint160 controllingCurrencyID;          // system to export to, which may represent a PBaaS chain or external bridge
-    CCurrencyValueMap reserveValues;        // all outputs of this reserve deposit
+
+    CReserveDeposit() : CMultiOutput() {}
 
     CReserveDeposit(const std::vector<unsigned char> &asVector)
     {
         FromVector(asVector, *this);
     }
 
-    CReserveDeposit() : nVersion(VERSION_CURRENT) {}
-
     CReserveDeposit(const uint160 &controllingID, const CCurrencyValueMap &reserveOut) : 
-        nVersion(VERSION_CURRENT), controllingCurrencyID(controllingID), reserveValues(reserveOut) {}
+        CMultiOutput(reserveOut), controllingCurrencyID(controllingID) {}
 
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(nVersion);
+        READWRITE(*(CMultiOutput *)this);
         READWRITE(controllingCurrencyID);
-        READWRITE(reserveValues);
     }
 
     std::vector<unsigned char> AsVector()
@@ -205,6 +239,26 @@ public:
     bool IsValid() const
     {
         return nVersion >= VERSION_FIRSTVALID && nVersion <= VERSION_LASTVALID;
+    }
+};
+
+class CFeePool : public CMultiOutput
+{
+public:
+    CFeePool() : CMultiOutput() {}
+
+    CFeePool(const std::vector<unsigned char> &asVector)
+    {
+        FromVector(asVector, *this);
+    }
+
+    CFeePool(const CCurrencyValueMap &reserveOut) : CMultiOutput(reserveOut) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(*(CMultiOutput *)this);
     }
 };
 
@@ -882,5 +936,13 @@ public:
                                          std::vector<CTxOut> &vOutputs,
                                          CCoinbaseCurrencyState *pNewCurrencyState=nullptr);
 };
+
+struct CCcontract_info;
+struct Eval;
+class CValidationState;
+
+bool ValidateFeePool(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool IsFeePoolInput(const CScript &scriptSig);
+bool PrecheckFeePool(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 
 #endif // PBAAS_RESERVES_H

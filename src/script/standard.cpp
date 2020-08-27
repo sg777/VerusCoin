@@ -278,7 +278,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     EVAL_IDENTITY_RECOVER,
                     EVAL_IDENTITY_COMMITMENT,
                     EVAL_IDENTITY_RESERVATION,
-                    EVAL_FINALIZE_EXPORT
+                    EVAL_FINALIZE_EXPORT,
+                    EVAL_FEE_POOL
                 });
                 if (VALID_EVAL_CODES.count(cp.evalCode))
                 {

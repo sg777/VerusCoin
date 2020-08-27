@@ -747,119 +747,6 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
     return retVal[reserveIndex];
 }
 
-/*
-// This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it 
-// takes both input amounts of the reserve and the fractional currency to merge the conversion into one calculation
-// with the same price for all transactions in the block. It returns the newly calculated conversion price of the fractional 
-// reserve in the reserve currency.
-CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState) const
-{
-    newState = *this;
-    CAmount conversionPrice = PriceInReserve();
-
-    int64_t totalFractionalOut = 0;     // how much fractional goes to buyers
-    int64_t totalReserveOut = 0;        // how much reserve goes to sellers
-
-    // if both conversions are zero, nothing to do but return current price
-    if ((!inputReserve && !inputFractional) || !(flags & FLAG_FRACTIONAL))
-    {
-        return conversionPrice;
-    }
-
-    // first, cancel out all parity at the current price, leaving one or the other amount to be converted, but not both
-    // that results in consistently minimum slippage in either direction
-    CAmount reserveOffset = NativeToReserve(inputFractional, conversionPrice);
-    CAmount convertFractional = 0, convertReserve = 0;
-    if (inputReserve >= reserveOffset)
-    {
-        convertReserve = inputReserve - reserveOffset;
-        totalFractionalOut += inputFractional;
-    }
-    else
-    {
-        CAmount fractionalOffset = ReserveToNative(inputReserve, conversionPrice);
-        convertFractional = inputFractional - fractionalOffset;
-        if (convertFractional < 0)
-        {
-            convertFractional = 0;
-        }
-        totalReserveOut += inputReserve;
-    }
-
-    if (!convertReserve && !convertFractional)
-    {
-        return conversionPrice;
-    }
-
-    cpp_dec_float_50 reservein(std::to_string(convertReserve));
-    cpp_dec_float_50 fractionalin(std::to_string(convertFractional));
-    cpp_dec_float_50 supply(std::to_string((Supply)));
-    cpp_dec_float_50 reserve(std::to_string(Reserve));
-    cpp_dec_float_50 ratio = GetReserveRatio();
-    cpp_dec_float_50 one("1");
-    cpp_dec_float_50 dec_satoshi(std::to_string(CReserveExchange::SATOSHIDEN));
-
-    // first check if anything to buy
-    if (convertReserve)
-    {
-        cpp_dec_float_50 supplyout;
-        supplyout = (supply * (pow((reservein / reserve) + one, ratio) - one));
-
-        int64_t supplyOut;
-        if (!to_int64(supplyout, supplyOut))
-        {
-            assert(false);
-        }
-        totalFractionalOut += supplyOut;
-
-        cpp_dec_float_50 dec_price = cpp_dec_float_50(std::to_string(inputReserve)) / cpp_dec_float_50(std::to_string(totalFractionalOut));
-        cpp_dec_float_50 reserveFromFractional = cpp_dec_float_50(std::to_string(inputFractional)) * dec_price;
-        dec_price = dec_price * dec_satoshi;
-
-        if (!to_int64(reserveFromFractional, totalReserveOut))
-        {
-            assert(false);
-        }
-
-        if (!to_int64(dec_price, conversionPrice))
-        {
-            assert(false);
-        }
-    }
-    else
-    { 
-        cpp_dec_float_50 reserveout;
-        int64_t reserveOut;
-        reserveout = reserve * (one - pow(one - (fractionalin / supply), (one / ratio)));
-        if (!to_int64(reserveout, reserveOut))
-        {
-            assert(false);
-        }
-
-        totalReserveOut += reserveOut;
-
-        cpp_dec_float_50 dec_price = cpp_dec_float_50(std::to_string(totalReserveOut)) / cpp_dec_float_50(std::to_string(inputFractional));
-        cpp_dec_float_50 fractionalFromReserve = cpp_dec_float_50(std::to_string(inputReserve)) / dec_price;
-        dec_price = dec_price * dec_satoshi;
-
-        if (!to_int64(fractionalFromReserve, totalFractionalOut))
-        {
-            assert(false);
-        }
-
-        if (!to_int64(dec_price, conversionPrice))
-        {
-            assert(false);
-        }
-    }
-
-    newState.Supply += totalFractionalOut - inputFractional;
-    newState.Reserve += inputReserve - totalReserveOut;
-
-    return conversionPrice;
-}
-*/
-
 void CReserveTransactionDescriptor::AddReserveInput(const uint160 &currency, CAmount value)
 {
     //printf("adding %ld:%s reserve input\n", value, EncodeDestination(CIdentityID(currency)).c_str());
@@ -1486,6 +1373,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     // fractional currency amount and the reserve it is converted to
     CCurrencyValueMap fractionalConverted;
 
+    // keep track of secondary currency destinations for amounts of each reserve
+    // when a currency is converted directly from one reserve to another, it goes
+    // through the fractional currency as a transient step, after the second stage of
+    // conversion, where the resulting fractional currencies from first stage are 
+    // converted back to potentially different reserves, the final prices of all
+    // conversions are averaged. based on those calculations, one can determine
+    // one direction as well as two.
+    std::map<uint160,int32_t> currencyIndexMap = importCurrencyDef.GetCurrenciesMap();
+    //std::vector<std::vector<CAmount>> secondaryOutputs(currencyIndexMap.size(), std::vector<CAmount>(currencyIndexMap.size(), 0));
+
     // used to keep track of burned fractional currency. this currency is subtracted from the
     // currency supply, but not converted. In doing so, it can either raise the price of the fractional
     // currency in all other currencies, or increase the reserve ratio of all currencies by some slight amount.
@@ -1511,7 +1408,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
     uint160 systemDestID = importCurrencyDef.systemID;     // native on destination system
     uint160 importCurrencyID = importCurrencyDef.GetID();
-    std::map<uint160, int32_t> currencyIndexMap = importCurrencyDef.GetCurrenciesMap();
     //printf("%s\n", importCurrencyDef.ToUniValue().write(1,2).c_str());
 
     std::map<uint160, CAmount> preAllocMap;             // if this contains pre-allocations, only make the necessary map once
@@ -3113,5 +3009,21 @@ CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFee(CAmount 
     fee = CalculateConversionFee(newAmount);            // again to account for minimum fee
     fee += inputAmount - (newAmount - fee);             // add any additional difference
     return fee;
+}
+
+
+bool ValidateFeePool(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
+{
+    return false;
+}
+
+bool IsFeePoolInput(const CScript &scriptSig)
+{
+    return false;
+}
+
+bool PrecheckFeePool(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    return true;
 }
 

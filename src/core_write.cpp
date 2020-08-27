@@ -687,12 +687,18 @@ UniValue CTokenOutput::ToUniValue() const
     return ret;
 }
 
-UniValue CReserveDeposit::ToUniValue() const
+UniValue CMultiOutput::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("version", (int64_t)nVersion));
+    ret.push_back(Pair("currencyvalues", reserveValues.ToUniValue()));
+    return ret;
+}
+
+UniValue CReserveDeposit::ToUniValue() const
+{
+    UniValue ret = ((CMultiOutput *)this)->ToUniValue();
     ret.push_back(Pair("controllingcurrencyid", controllingCurrencyID.IsNull() ? "NULL" : EncodeDestination(CIdentityID(controllingCurrencyID))));
-    ret.push_back(Pair("reserveValues", reserveValues.ToUniValue()));
     return ret;
 }
 
@@ -1115,6 +1121,18 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 {
                     finalization = CTransactionFinalization(p.vData[0]);
                     out.push_back(Pair("finalizeexport", finalization.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_FEE_POOL:
+            {
+                CFeePool feePool;
+
+                if (p.vData.size())
+                {
+                    feePool = CFeePool(p.vData[0]);
+                    out.push_back(Pair("feepool", feePool.ToUniValue()));
                 }
                 break;
             }
