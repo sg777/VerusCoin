@@ -160,16 +160,34 @@ public:
     CAmount nFees;                          // cross-chain network fees only, separated out to enable market conversions, conversion fees are additional
     uint160 destCurrencyID;                 // system to export to, which may represent a PBaaS chain or external bridge
     CTransferDestination destination;       // system specific address to send funds to on the target system
+    uint160 secondReserveID;                // set if this is a reserve to reserve conversion
 
     CReserveTransfer(const std::vector<unsigned char> &asVector)
     {
-        FromVector(asVector, *this);
+        bool success;
+        FromVector(asVector, *this, &success);
+        if (!success)
+        {
+            nVersion = VERSION_INVALID;
+        }
     }
 
     CReserveTransfer() : CTokenOutput(), flags(0), nFees(0) { }
 
-    CReserveTransfer(uint32_t Flags, const uint160 &cID, CAmount value, CAmount fees, const uint160 &destCurID, const CTransferDestination &dest) : 
-        CTokenOutput(cID, value), flags(Flags), nFees(fees), destCurrencyID(destCurID), destination(dest) { }
+    CReserveTransfer(uint32_t Flags,
+                     const uint160 &cID,
+                     CAmount value,
+                     CAmount fees,
+                     const uint160 &destCurID,
+                     const CTransferDestination &dest,
+                     const uint160 &secondCID=uint160()) : 
+        CTokenOutput(cID, value), flags(Flags), nFees(fees), destCurrencyID(destCurID), destination(dest), secondReserveID(secondCID)
+    {
+        if (!secondReserveID.IsNull())
+        {
+            flags |= RESERVE_TO_RESERVE;
+        }
+    }
 
     ADD_SERIALIZE_METHODS;
 
@@ -180,6 +198,10 @@ public:
         READWRITE(VARINT(nFees));
         READWRITE(destCurrencyID);
         READWRITE(destination);
+        if (flags & RESERVE_TO_RESERVE)
+        {
+            READWRITE(secondReserveID);
+        }
     }
 
     std::vector<unsigned char> AsVector()
@@ -202,7 +224,52 @@ public:
 
     bool IsValid() const
     {
-        return CTokenOutput::IsValid() && (nFees > 0 || flags & FEE_OUTPUT) && destination.destination.size();
+        return CTokenOutput::IsValid() && (nFees > 0 || flags & (FEE_OUTPUT | CONVERT)) && destination.destination.size();
+    }
+
+    bool IsConversion()
+    {
+        return flags & CONVERT;
+    }
+
+    bool IsPreConversion()
+    {
+        return flags & PRECONVERT;
+    }
+
+    bool IsFeeOutput()
+    {
+        return flags & FEE_OUTPUT;
+    }
+
+    bool IsBurn()
+    {
+        return flags & (BURN_CHANGE_PRICE | BURN_CHANGE_WEIGHT);
+    }
+
+    bool IsBurnChangePrice()
+    {
+        return flags & BURN_CHANGE_PRICE;
+    }
+
+    bool IsBurnChangeWeight()
+    {
+        return flags & BURN_CHANGE_WEIGHT;
+    }
+
+    bool IsMint()
+    {
+        return flags & MINT_CURRENCY;
+    }
+
+    bool IsPreallocate()
+    {
+        return flags & PREALLOCATE;
+    }
+
+    bool IsReserveToReserve()
+    {
+        return flags & RESERVE_TO_RESERVE;
     }
 };
 
@@ -399,6 +466,13 @@ public:
     static const int MIN_BLOCKS = 10;
     static const int MIN_INPUTS = 10;
     static const int MAX_EXPORT_INPUTS = 50;
+
+    enum
+    {
+        MIN_FEES_BEFORE_FEEPOOL = 20000,            // MAX(MIN(this, max avail), RATIO_OF_EXPORT_FEE of export fees) is sent to exporter
+        RATIO_OF_EXPORT_FEE = 10000000,
+    };
+
     static const uint32_t VERSION_INVALID = 0;
     static const uint32_t VERSION_CURRENT = 1;
     static const uint32_t VERSION_LAST = 1;
@@ -444,10 +518,11 @@ public:
     }
 
     static CCurrencyValueMap CalculateExportFee(const CCurrencyValueMap &fees, int numIn);
+    static CAmount CalculateExportFeeRaw(CAmount fee, int numIn);
     CCurrencyValueMap CalculateExportFee() const;
-
     CCurrencyValueMap CalculateImportFee() const;
-    
+    static CAmount ExportReward(int64_t exportFee);
+
     UniValue ToUniValue() const;
 };
 
@@ -566,7 +641,10 @@ public:
     // convert amounts for multi-reserve fractional reserve currencies
     // one entry in the vector for each currency in and one fractional input for each
     // currency expected as output
-    std::vector<CAmount> ConvertAmounts(const std::vector<CAmount> &inputReserve, const std::vector<CAmount> &inputFractional, CCurrencyState &newState) const;
+    std::vector<CAmount> ConvertAmounts(const std::vector<CAmount> &inputReserve,                   // reserves to convert to fractional
+                                        const std::vector<CAmount> &inputFractional,                // fractional to convert to each reserve
+                                        CCurrencyState &newState,
+                                        const std::vector<std::vector<CAmount>> *pCrossConversions=nullptr) const;
 
     CAmount CalculateConversionFee(CAmount inputAmount, bool convertToNative = false, int32_t reserveIndex=0) const;
     CAmount ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount, int32_t reserveIndex=0) const;
@@ -846,6 +924,7 @@ public:
     bool IsHighFee() const { return flags & IS_HIGH_FEE; }
 
     static CAmount CalculateConversionFee(CAmount inputAmount);
+    static CAmount CalculateConversionFeeNoMin(CAmount inputAmount);
     static CAmount CalculateAdditionalConversionFee(CAmount inputAmount);
 
     CAmount TotalNativeOutConverted() const

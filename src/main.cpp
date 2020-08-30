@@ -4011,6 +4011,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     std::vector<CAmount> conversionPrices;
     if (reserveIn.valueMap.size() || nativeIn.valueMap.size())
     {
+        int32_t numCurrencies = prevCurrencyState.currencies.size();
         conversionPrices = prevCurrencyState.ConvertAmounts(reserveIn.AsCurrencyVector(prevCurrencyState.currencies), 
                                                             nativeIn.AsCurrencyVector(prevCurrencyState.currencies),
                                                             checkState);
@@ -4024,7 +4025,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             // do it again for debugging only
             //conversionPrices = prevCurrencyState.ConvertAmounts(reserveIn.AsCurrencyVector(prevCurrencyState.currencies), 
             //                                                    nativeIn.AsCurrencyVector(prevCurrencyState.currencies),
-            //                                                    checkState);
+            //                                                    checkState, nullptr);
             return state.DoS(100, error("ConnectBlock(): currency state does not match block transactions"), REJECT_INVALID, "bad-blk-currency");
         }
     }

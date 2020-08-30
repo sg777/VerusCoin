@@ -79,12 +79,20 @@ std::vector<unsigned char> AsVector(const SERIALIZABLE &obj)
 }
 
 template <typename SERIALIZABLE>
-void FromVector(const std::vector<unsigned char> &vch, SERIALIZABLE &obj)
+void FromVector(const std::vector<unsigned char> &vch, SERIALIZABLE &obj, bool *pSuccess=nullptr)
 {
     CDataStream s(vch, SER_NETWORK, PROTOCOL_VERSION);
+    if (pSuccess)
+    {
+        *pSuccess = false;
+    }
     try
     {
         obj.Unserialize(s);
+        if (pSuccess)
+        {
+            *pSuccess = true;
+        }
     }
     catch(const std::exception& e)
     {

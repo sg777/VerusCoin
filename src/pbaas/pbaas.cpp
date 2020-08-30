@@ -574,6 +574,29 @@ CCurrencyValueMap CCrossChainExport::CalculateExportFee(const CCurrencyValueMap 
     return retVal.CanonicalMap();
 }
 
+CAmount CCrossChainExport::CalculateExportFeeRaw(CAmount fee, int numIn)
+{
+    if (numIn > MAX_EXPORT_INPUTS)
+    {
+        numIn = MAX_EXPORT_INPUTS;
+    }
+    static const arith_uint256 satoshis(100000000);
+
+    arith_uint256 ratio(50000000 + ((25000000 / MAX_EXPORT_INPUTS) * (numIn - 1)));
+
+    return (((arith_uint256(fee) * ratio)) / satoshis).GetLow64();
+}
+
+CAmount CCrossChainExport::ExportReward(int64_t exportFee)
+{
+    int64_t individualExportFee = ((arith_uint256(exportFee) * 10000000) / SATOSHIDEN).GetLow64();
+    if (individualExportFee < MIN_FEES_BEFORE_FEEPOOL)
+    {
+        individualExportFee = exportFee > MIN_FEES_BEFORE_FEEPOOL ? MIN_FEES_BEFORE_FEEPOOL : exportFee;
+    }
+    return individualExportFee;
+}
+
 CCurrencyValueMap CCrossChainExport::CalculateExportFee() const
 {
     return CalculateExportFee(totalFees, numInputs);

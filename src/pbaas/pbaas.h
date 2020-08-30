@@ -51,7 +51,7 @@ enum CHAIN_OBJECT_TYPES
     CHAINOBJ_INVALID = 0,
     CHAINOBJ_HEADER = 1,            // serialized full block header w/proof
     CHAINOBJ_HEADER_REF = 2,        // equivalent to header, but only includes non-canonical data
-    CHAINOBJ_TRANSACTION_PROOF = 3,       // serialized transaction or partial transaction with proof
+    CHAINOBJ_TRANSACTION_PROOF = 3, // serialized transaction or partial transaction with proof
     CHAINOBJ_PROOF_ROOT = 4,        // merkle proof of preceding block or transaction
     CHAINOBJ_PRIORBLOCKS = 5,       // prior block commitments to ensure recognition of overlapping notarizations
     CHAINOBJ_RESERVETRANSFER = 6,   // serialized transaction, sometimes without an opret, which will be reconstructed
