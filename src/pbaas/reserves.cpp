@@ -3072,9 +3072,59 @@ CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFee(CAmount 
     return fee;
 }
 
+bool CFeePool::GetFeePool(CFeePool &feePool, uint32_t height)
+{
+    CBlock block;
+    CTransaction coinbaseTx;
+    feePool.SetInvalid();
+    if (!height || chainActive.Height() < height)
+    {
+        height = chainActive.Height();
+    }
+    if (!height)
+    {
+        return true;
+    }
+    if (ReadBlockFromDisk(block, chainActive[height], Params().GetConsensus()))
+    {
+        coinbaseTx = block.vtx[0];
+    }
+    else
+    {
+        return false;
+    }
+    
+    for (auto &txOut : coinbaseTx.vout)
+    {
+        COptCCParams p;
+        if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_FEE_POOL && p.vData.size())
+        {
+            feePool = CFeePool(p.vData[0]);
+        }
+    }
+    return true;
+}
+
+bool CFeePool::GetCoinbaseFeePool(const CTransaction &coinbaseTx, CFeePool &feePool)
+{
+    if (coinbaseTx.IsCoinBase())
+    {
+        for (auto &txOut : coinbaseTx.vout)
+        {
+            COptCCParams p;
+            if (txOut.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_FEE_POOL && p.vData.size())
+            {
+                feePool = CFeePool(p.vData[0]);
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 bool ValidateFeePool(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
+    // fee pool output is unspendable
     return false;
 }
 

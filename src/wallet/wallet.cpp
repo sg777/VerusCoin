@@ -1887,7 +1887,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     return false;
 }
 
-int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &bnTarget, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CPubKey pk) const
+int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &bnTarget, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CTxDestination &rewardDest) const
 {
     CTransaction stakeSource;
     int32_t voutNum, siglen = 0;
@@ -1897,11 +1897,7 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
 
     CBlockIndex *tipindex = chainActive.LastTip();
     uint32_t stakeHeight = tipindex->GetHeight() + 1;
-    bool saplingStake = stakeHeight >= Params().GetConsensus().vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight;
     bool extendedStake = CConstVerusSolutionVector::GetVersionByHeight(stakeHeight) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
-
-    if (!saplingStake)
-        pk = CPubKey();
 
     bnTarget = lwmaGetNextPOSRequired(tipindex, Params().GetConsensus());
 
@@ -1926,35 +1922,37 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
     COptCCParams p;
     if (stakeSource.vout[voutNum].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
     {
+        if (!p.vKeys.size())
+        {
+            LogPrintf("%s: Please report - no destination on stake source\n");
+            return 0;
+        }
+
         // send output to same destination as source, convert stakeguard into normal output, since
         // that is a spendable output that only works in coinbases. preserve all recipients and
         // min sigs
         if (p.evalCode == EVAL_STAKEGUARD)
         {
-            txNew.vout[0].scriptPubKey = MakeMofNCCScript(CConditionObj<CIdentity>(0, {p.vKeys[0]}, 1));
+            // "CIdentity" is a dummy object type since an obj is not passed, and it does not make this an identity output
+            txNew.vout[0].scriptPubKey = MakeMofNCCScript(CConditionObj<CIdentity>(0, p.vKeys, p.m));
         }
         else
         {
             txNew.vout[0].scriptPubKey = stakeSource.vout[voutNum].scriptPubKey;
         }
+        rewardDest = p.vKeys[0];
     }
     else if (Solver(stakeSource.vout[voutNum].scriptPubKey, whichType, vSolutions))
     {
         if (whichType == TX_PUBKEY)
         {
             txNew.vout[0].scriptPubKey << ToByteVector(vSolutions[0]) << OP_CHECKSIG;
-            if (!pk.IsValid())
-                pk = CPubKey(vSolutions[0]);
+            rewardDest = CPubKey(vSolutions[0]);
         }
         else if (whichType == TX_PUBKEYHASH)
         {
             txNew.vout[0].scriptPubKey << OP_DUP << OP_HASH160 << ToByteVector(vSolutions[0]) << OP_EQUALVERIFY << OP_CHECKSIG;
-            if (saplingStake && !pk.IsValid())
-            {
-                // we need a pubkey, so try to get one from the key ID, if not there, fail
-                if (!keystore.GetPubKey(CKeyID(uint160(vSolutions[0])), pk))
-                    return 0;
-            }
+            rewardDest = CKeyID(uint160(vSolutions[0]));
         }
         else
         {
@@ -1967,80 +1965,62 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
         return 0;
     }
 
-    // if we are staking with the extended format, add the opreturn data required
-    if (saplingStake)
+    // set expiry to time out after 100 blocks, so we can remove the transaction if it orphans
+    txNew.nExpiryHeight = stakeHeight + 100;
+
+    uint256 srcBlock = uint256();
+    CBlockIndex *pSrcIndex;
+
+    txNew.vout.push_back(CTxOut());
+    CTxOut &txOut1 = txNew.vout[1];
+    txOut1.nValue = 0;
+    if (!GetTransaction(stakeSource.GetHash(), stakeSource, srcBlock))
+        return 0;
+    
+    BlockMap::const_iterator it = mapBlockIndex.find(srcBlock);
+    if (it == mapBlockIndex.end() || (pSrcIndex = it->second) == 0)
+        return 0;
+
+    // !! DISABLE THIS FOR RELEASE: THIS MAKES A CHEAT TRANSACTION FOR EVERY STAKE FOR TESTING
+    //CMutableTransaction cheat;
+    //cheat = CMutableTransaction(txNew);
+    //printf("TESTING ONLY: THIS SHOULD NOT BE ENABLED FOR RELEASE - MAKING CHEAT TRANSACTION FOR TESTING\n");
+    //cheat.vout[1].scriptPubKey << OP_RETURN 
+    //    << CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, pSrcIndex->GetBlockHash(), pk).AsVector();
+    // !! DOWN TO HERE
+
+    if (USE_EXTERNAL_PUBKEY)
     {
-        // set expiry to time out after 100 blocks, so we can remove the transaction if it orphans
-        txNew.nExpiryHeight = stakeHeight + 100;
-
-        uint256 srcBlock = uint256();
-        CBlockIndex *pSrcIndex;
-
-        txNew.vout.push_back(CTxOut());
-        CTxOut &txOut1 = txNew.vout[1];
-        txOut1.nValue = 0;
-        if (!GetTransaction(stakeSource.GetHash(), stakeSource, srcBlock))
-            return 0;
-        
-        BlockMap::const_iterator it = mapBlockIndex.find(srcBlock);
-        if (it == mapBlockIndex.end() || (pSrcIndex = it->second) == 0)
-            return 0;
-
-        // !! DISABLE THIS FOR RELEASE: THIS MAKES A CHEAT TRANSACTION FOR EVERY STAKE FOR TESTING
-        //CMutableTransaction cheat;
-        //cheat = CMutableTransaction(txNew);
-        //printf("TESTING ONLY: THIS SHOULD NOT BE ENABLED FOR RELEASE - MAKING CHEAT TRANSACTION FOR TESTING\n");
-        //cheat.vout[1].scriptPubKey << OP_RETURN 
-        //    << CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, pSrcIndex->GetBlockHash(), pk).AsVector();
-        // !! DOWN TO HERE
-
-        if (extendedStake)
-        {
-            CTxDestination dest;
-            if (VERUS_DEFAULTID.IsNull() || USE_EXTERNAL_PUBKEY)
-            {
-                if (USE_EXTERNAL_PUBKEY)
-                {
-                    dest = CPubKey(ParseHex(NOTARY_PUBKEY));
-                }
-                else
-                {
-                    ExtractDestination(txNew.vout[0].scriptPubKey, dest, true);
-                }
-            }
-            else
-            {
-                dest = VERUS_DEFAULTID;
-            }
-            if (dest.which() == COptCCParams::ADDRTYPE_INVALID)
-            {
-                return 0;
-            }
-            
-            txOut1.scriptPubKey << OP_RETURN 
-                << CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, tipindex->GetBlockHash(), dest).AsVector();
-        }
-        else
-        {
-            txOut1.scriptPubKey << OP_RETURN 
-                << CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, tipindex->GetBlockHash(), pk).AsVector();
-        }
-
-        // !! DISABLE THIS FOR RELEASE: REMOVE THIS TOO
-        //nValue = cheat.vout[0].nValue = stakeSource.vout[voutNum].nValue - txfee;
-        //cheat.nLockTime = 0;
-        //CTransaction cheatConst(cheat);
-        //SignatureData cheatSig;
-        //if (!ProduceSignature(TransactionSignatureCreator(&keystore, &cheatConst, 0, nValue, SIGHASH_ALL), stakeSource.vout[voutNum].scriptPubKey, cheatSig, consensusBranchId))
-        //    fprintf(stderr,"failed to create cheat test signature\n");
-        //else
-        //{
-        //    uint8_t *ptr;
-        //    UpdateTransaction(cheat,0,cheatSig);
-        //    cheatList.Add(CTxHolder(CTransaction(cheat), tipindex->GetHeight() + 1));
-        //}
-        // !! DOWN TO HERE
+        rewardDest = CPubKey(ParseHex(NOTARY_PUBKEY));
     }
+    else if (!VERUS_DEFAULTID.IsNull())
+    {
+        rewardDest = VERUS_DEFAULTID;
+    }
+
+    if (rewardDest.which() == COptCCParams::ADDRTYPE_INVALID)
+    {
+        printf("%s: Invalid reward destinaton for stake\n", __func__);
+        return 0;
+    }
+
+    txOut1.scriptPubKey << OP_RETURN 
+        << CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, tipindex->GetBlockHash(), rewardDest).AsVector();
+
+    // !! DISABLE THIS FOR RELEASE: REMOVE THIS TOO
+    //nValue = cheat.vout[0].nValue = stakeSource.vout[voutNum].nValue - txfee;
+    //cheat.nLockTime = 0;
+    //CTransaction cheatConst(cheat);
+    //SignatureData cheatSig;
+    //if (!ProduceSignature(TransactionSignatureCreator(&keystore, &cheatConst, 0, nValue, SIGHASH_ALL), stakeSource.vout[voutNum].scriptPubKey, cheatSig, consensusBranchId))
+    //    fprintf(stderr,"failed to create cheat test signature\n");
+    //else
+    //{
+    //    uint8_t *ptr;
+    //    UpdateTransaction(cheat,0,cheatSig);
+    //    cheatList.Add(CTxHolder(CTransaction(cheat), tipindex->GetHeight() + 1));
+    //}
+    // !! DOWN TO HERE
 
     nValue = txNew.vout[0].nValue = stakeSource.vout[voutNum].nValue - txfee;
 

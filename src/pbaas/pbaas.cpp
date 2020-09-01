@@ -1284,16 +1284,10 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(int32_t height)
     return GetCurrencyState(thisChain.GetID(), height);
 }
 
-bool CConnectedChains::SetLatestMiningOutputs(const std::vector<pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut)
+bool CConnectedChains::SetLatestMiningOutputs(const std::vector<CTxOut> &minerOutputs)
 {
     LOCK(cs_mergemining);
-
-    if (!minerOutputs.size() || !ExtractDestination(minerOutputs[0].second, firstDestinationOut))
-    {
-        return false;
-    }
     latestMiningOutputs = minerOutputs;
-    latestDestination = firstDestinationOut;
     return true;
 }
 

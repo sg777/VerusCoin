@@ -787,8 +787,7 @@ public:
     CCurrencyDefinition thisChain;
     bool readyToStart;
     std::vector<CNodeData> defaultPeerNodes;    // updated by notarizations
-    std::vector<std::pair<int, CScript>> latestMiningOutputs; // accessible from all merge miners - can be invalid
-    CTxDestination  latestDestination;          // latest destination from miner output 0 - can be invalid
+    std::vector<CTxOut> latestMiningOutputs;    // accessible from all merge miners - can be invalid
     int64_t lastAggregation = 0;                // adjusted time of last aggregation
 
     int32_t earnedNotarizationHeight;           // zero or the height of one or more potential submissions
@@ -834,7 +833,7 @@ public:
     uint32_t CombineBlocks(CBlockHeader &bh);
 
     // returns false if destinations are empty or first is not either pubkey or pubkeyhash
-    bool SetLatestMiningOutputs(const std::vector<std::pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut);
+    bool SetLatestMiningOutputs(const std::vector<CTxOut> &minerOutputs);
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
     CCurrencyDefinition UpdateCachedCurrency(const uint160 &currencyID, uint32_t height);

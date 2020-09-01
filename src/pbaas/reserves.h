@@ -312,6 +312,10 @@ public:
 class CFeePool : public CMultiOutput
 {
 public:
+    enum
+    {
+        PER_BLOCK_RATIO = 1000000
+    };
     CFeePool() : CMultiOutput() {}
 
     CFeePool(const std::vector<unsigned char> &asVector)
@@ -326,6 +330,30 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CMultiOutput *)this);
+    }
+
+    // returns false if fails to get block, otherwise, CFeePool if present
+    // invalid CFeePool if not
+    static bool GetFeePool(CFeePool &feePool, uint32_t height=0);
+    static bool GetCoinbaseFeePool(const CTransaction &coinbaseTx, CFeePool &feePool);
+
+    CFeePool OneFeeShare()
+    {
+        CFeePool retVal;
+        for (auto &oneCur : reserveValues.valueMap)
+        {
+            CAmount share = CCurrencyDefinition::CalculateRatioOfValue(oneCur.second, PER_BLOCK_RATIO);
+            if (share)
+            {
+                retVal.reserveValues.valueMap[oneCur.first] = share;
+            }
+        }
+        return retVal;
+    }
+
+    void SetInvalid()
+    {
+        nVersion = VERSION_INVALID;
     }
 };
 

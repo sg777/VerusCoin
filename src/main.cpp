@@ -1121,9 +1121,8 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
                 }
             }
 
-            // TODO: check total preallocation
-
-            if (counted.size() != preAllocations.size())
+            if (counted.size() != preAllocations.size() ||
+                totalPreAlloc != ConnectedChains.ThisChain().GetTotalPreallocation())
             {
                 valid = false;
             }
@@ -1370,13 +1369,12 @@ bool ContextualCheckTransaction(
             }
         }
     }
-    if (invalid)
+    /* if (invalid)
     {
-        // TODO: reenable on testnet reset - testnet disable for update
-        //UniValue jsonTx(UniValue::VOBJ);
-        //TxToUniv(tx, uint256(), jsonTx);
-        //printf("INVALID transaction:\n%s\n", jsonTx.write(1,2).c_str());
-    }
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(tx, uint256(), jsonTx);
+        printf("INVALID transaction:\n%s\n", jsonTx.write(1,2).c_str());
+    } */
     return true;
 }
 
@@ -3683,9 +3681,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     auto consensus = Params().GetConsensus();
     auto consensusBranchId = CurrentEpochBranchId(nHeight, consensus);
     bool isVerusActive = IsVerusActive();
+    uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
 
     // on non-Verus reserve chains, we'll want a block-wide currency state for calculations
-    // TODO:PBAAS - add the ability to pay native fees in reserve
     CReserveTransactionDescriptor rtxd;
     CCoinbaseCurrencyState prevCurrencyState = ConnectedChains.GetCurrencyState(nHeight ? nHeight - 1 : 0);
     CCurrencyDefinition thisChain = ConnectedChains.ThisChain();
@@ -3827,7 +3825,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         {
             // we get the currency state, and if reserve, add any appropriate converted fees that are the difference between
             // reserve in and native in converted to reserve and native out on the currency state output.
-            // TODO:PBAAS we currently convert to native, support converting to reserve
             if (tx.IsCoinBase())
             {
                 int outIdx;
@@ -3842,41 +3839,48 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (!tx.IsCoinBase())
         {
             rtxd = CReserveTransactionDescriptor(tx, view, nHeight);
-
-            if (rtxd.IsValid() && !isVerusActive)
+            if (rtxd.IsReject())
             {
-                CCurrencyValueMap unconvertedReserves = rtxd.ReserveFees() + rtxd.ReserveConversionFeesMap();
-                if (!currencyState.IsFractional() || thisChain.ChainOptions() & thisChain.OPTION_FEESASRESERVE)
+                return state.DoS(100, error("ConnectBlock(): Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reserve");
+            }
+
+            if (rtxd.IsValid())
+            {
+                if (isVerusActive)
                 {
-                    if (currencyState.IsFractional())
-                    {
-                        reserveIn += rtxd.ReserveOutConvertedMap();
-                        nativeIn += rtxd.NativeOutConvertedMap();
-                    }
-                    totalReserveTxFees += unconvertedReserves;
-                    nFees += rtxd.NativeFees() + rtxd.nativeConversionFees;
+                    nFees += rtxd.NativeFees();
                 }
                 else
                 {
-                    if (currencyState.IsFractional())
+                    CCurrencyValueMap unconvertedReserves = rtxd.ReserveFees() + rtxd.ReserveConversionFeesMap();
+                    if (!currencyState.IsFractional() || thisChain.ChainOptions() & thisChain.OPTION_FEESASRESERVE)
                     {
-                        reserveIn += rtxd.ReserveOutConvertedMap() + rtxd.ReserveConversionFeesMap() + rtxd.ReserveFees();
-                        nativeIn += rtxd.NativeOutConvertedMap();
+                        if (currencyState.IsFractional())
+                        {
+                            reserveIn += rtxd.ReserveOutConvertedMap();
+                            nativeIn += rtxd.NativeOutConvertedMap();
+                        }
+                        totalReserveTxFees += unconvertedReserves;
+                        nFees += rtxd.NativeFees() + rtxd.nativeConversionFees;
                     }
-                    // remove convertible reserves from our reserves, so we retain fees that
-                    // cannot be converted as their original reserves
-                    totalReserveTxFees += CCurrencyValueMap(thisChain.currencies, 
-                                                            std::vector<CAmount>(thisChain.currencies.size(), 1)).NonIntersectingValues(unconvertedReserves);
-                    nFees += rtxd.AllFeesAsNative(currencyState, currencyState.conversionPrice) + 
-                                                  rtxd.nativeConversionFees + 
-                                                  currencyState.ReserveToNativeRaw(rtxd.ReserveConversionFeesMap(), currencyState.conversionPrice);
+                    else
+                    {
+                        if (currencyState.IsFractional())
+                        {
+                            reserveIn += rtxd.ReserveOutConvertedMap() + rtxd.ReserveConversionFeesMap() + rtxd.ReserveFees();
+                            nativeIn += rtxd.NativeOutConvertedMap();
+                        }
+                        // remove convertible reserves from our reserves, so we retain fees that
+                        // cannot be converted as their original reserves
+                        totalReserveTxFees += CCurrencyValueMap(thisChain.currencies, 
+                                                                std::vector<CAmount>(thisChain.currencies.size(), 1)).NonIntersectingValues(unconvertedReserves);
+                        nFees += rtxd.AllFeesAsNative(currencyState, currencyState.conversionPrice) + 
+                                                    rtxd.nativeConversionFees + 
+                                                    currencyState.ReserveToNativeRaw(rtxd.ReserveConversionFeesMap(), currencyState.conversionPrice);
+                    }
                 }
             } else
             {
-                if (rtxd.IsReject())
-                {
-                    return state.DoS(100, error("ConnectBlock(): Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reserve");
-                }
                 nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut();
             }
             sum += interest;
@@ -4030,26 +4034,61 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         }
     }
 
-    CAmount nativeBlockReward = nFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus()) + sum;
+    // enforce fee pooling if we are at PBAAS or past
+    CAmount rewardFees = nFees;
+    if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        // all fees must be taken and no more
+        CFeePool feePoolCheck;
+        if (CConstVerusSolutionVector::GetVersionByHeight(nHeight - 1) < CActivationHeight::ACTIVATE_PBAAS ||
+            (CFeePool::GetFeePool(feePoolCheck, nHeight - 1) && feePoolCheck.IsValid()))
+        {
+            CAmount feePoolCheckVal = 
+                feePoolCheck.reserveValues.valueMap[ASSETCHAINS_CHAINID] = 
+                    feePoolCheck.reserveValues.valueMap[ASSETCHAINS_CHAINID] + nFees;
+
+            rewardFees = feePoolCheck.OneFeeShare().reserveValues.valueMap[ASSETCHAINS_CHAINID];
+
+            CFeePool feePool;
+            CAmount feePoolVal;
+            if (!CFeePool::GetCoinbaseFeePool(block.vtx[0], feePool) ||
+                !feePool.IsValid() ||
+                (feePoolVal = feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID]) < (feePoolCheckVal - rewardFees) ||
+                feePoolVal > feePoolCheckVal)
+            {
+                return state.DoS(100, error("ConnectBlock(): invalid fee pool usage in block"), REJECT_INVALID, "bad-blk-fees");
+            }
+            rewardFees = feePoolCheckVal - feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID];
+        }
+        else 
+        {
+            return state.DoS(100, error("ConnectBlock(): valid fee state required in prior block"), REJECT_INVALID, "fee-pool-not-found");
+        }
+    }
+
+    CAmount nativeBlockReward = rewardFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus()) + sum;
     // reserve reward is in totalReserveTxFees
 
-    bool isBlock1 = pindex->GetHeight() == 1;
-    if (isBlock1 && thisChain.preconverted.size() && thisChain.conversions.size())
+    if (!isVerusActive)
     {
-        // if we can have a pre-conversion output on block 1, add pre-conversion
-        nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted),
-                                                                   thisChain.currencies,
-                                                                   thisChain.conversions) + currencyState.nativeFees;
-    }
-    else
-    {
-        if (!isBlock1 && totalReserveTxFees.AsCurrencyVector(currencyState.currencies) != currencyState.fees)
+        bool isBlock1 = pindex->GetHeight() == 1;
+        if (isBlock1 && thisChain.preconverted.size() && thisChain.conversions.size())
         {
-            return state.DoS(100, error(("ConnectBlock(): invalid currency state fee does not match block total of " + totalReserveTxFees.ToUniValue().write()).c_str()), REJECT_INVALID, "bad-blk-currency-fee");
+            // if we can have a pre-conversion output on block 1, add pre-conversion
+            nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted),
+                                                                    thisChain.currencies,
+                                                                    thisChain.conversions) + currencyState.nativeFees;
         }
-        nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn),
-                                                                   currencyState.currencies,
-                                                                   currencyState.conversionPrice) + currencyState.nativeFees;
+        else
+        {
+            if (!isBlock1 && totalReserveTxFees.AsCurrencyVector(currencyState.currencies) != currencyState.fees)
+            {
+                return state.DoS(100, error(("ConnectBlock(): invalid currency state fee does not match block total of " + totalReserveTxFees.ToUniValue().write()).c_str()), REJECT_INVALID, "bad-blk-currency-fee");
+            }
+            nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn),
+                                                                    currencyState.currencies,
+                                                                    currencyState.conversionPrice) + currencyState.nativeFees;
+        }
     }
 
     if ( ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 && ASSETCHAINS_COMMISSION != 0 )
