@@ -3643,7 +3643,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTimeStart = GetTimeMicros();
     CAmount nFees = 0;
     int nInputs = 0;
-    int64_t interest,sum = 0;
     unsigned int nSigOps = 0;
     CDiskTxPos pos(pindex->GetBlockPos(), GetSizeOfCompactSize(block.vtx.size()));
     std::vector<std::pair<uint256, CDiskTxPos> > vPos;
@@ -3844,7 +3843,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 return state.DoS(100, error("ConnectBlock(): Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reserve");
             }
 
-            if (rtxd.IsReserve() && rtxd.IsValid())
+            //if (rtxd.IsReserve() && rtxd.IsValid())
+            if (rtxd.IsValid())
             {
                 if (isVerusActive)
                 {
@@ -3881,9 +3881,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 }
             } else
             {
+                CAmount interest;
                 nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut();
             }
-            sum += interest;
 
             std::vector<CScriptCheck> vChecks;
             bool fCacheResults = fJustCheck; /* Don't cache results if we're actually connecting blocks (still consult the cache, though) */
@@ -4066,7 +4066,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         }
     }
 
-    CAmount nativeBlockReward = rewardFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus()) + sum;
+    CAmount nativeBlockReward = rewardFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus());
     // reserve reward is in totalReserveTxFees
 
     if (!isVerusActive)
@@ -4117,7 +4117,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                    block.vtx[0].GetValueOut(), nativeBlockReward),
                              REJECT_INVALID, "bad-cb-amount");
         } else if ( IS_KOMODO_NOTARY != 0 )
-            fprintf(stderr,"allow nHeight.%d coinbase %.8f vs %.8f interest %.8f\n",(int32_t)pindex->GetHeight(),dstr(block.vtx[0].GetValueOut()),dstr(nativeBlockReward),dstr(sum));
+            fprintf(stderr,"allow nHeight.%d coinbase %.8f vs %.8f\n",(int32_t)pindex->GetHeight(),dstr(block.vtx[0].GetValueOut()),dstr(nativeBlockReward));
     }
 
     if (!control.Wait())
