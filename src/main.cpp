@@ -3844,7 +3844,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 return state.DoS(100, error("ConnectBlock(): Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reserve");
             }
 
-            if (rtxd.IsValid())
+            if (rtxd.IsReserve() && rtxd.IsValid())
             {
                 if (isVerusActive)
                 {
