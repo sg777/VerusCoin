@@ -455,11 +455,6 @@ public:
     static const uint8_t ADDRTYPE_QUANTUM = 6;
     static const uint8_t ADDRTYPE_LAST = 6;
 
-    enum EIndexCodes
-    {
-        INDEX_NOTARIZATION_CONVERTER = 1
-    };
-
     uint8_t version;
     uint8_t evalCode;
     uint8_t m, n; // for m of n sigs required, n pub keys for sigs will follow

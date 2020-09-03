@@ -1029,30 +1029,15 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                     notarization.IsToken() &&
                     !(curState.IsPrelaunch() || curState.IsRefunding()) &&
                     (reserveIdxMap = curState.GetReserveMap()).count(ASSETCHAINS_CHAINID) &&
-                    curState.weights[nativeReserveIdx = reserveIdxMap[ASSETCHAINS_CHAINID]] > (SATOSHIDEN / 10) &&
-                    curState.reserves[nativeReserveIdx] > ConnectedChains.MinimumConverterReserves())
+                    curState.weights[nativeReserveIdx = reserveIdxMap[ASSETCHAINS_CHAINID]] > curState.IndexConverterReserveRatio() &&
+                    curState.reserves[nativeReserveIdx] > curState.IndexConverterReserveMinimum())
                 {
-                    bool isValid = true;
+                    // go through all currencies and add an index entry for each
+                    // when looking for a fee converter, we will look through all indexed options
+                    // for the best conversion rate from a source fee currency to the native coin
                     for (auto &one : reserveIdxMap)
                     {
-                        if (!feeCurrencies.count(one.first))
-                        {
-                            // we only use converters where all currencies in the token
-                            // are valid fee currencies
-                            isValid = false;
-                            break;
-                        }
-                    }
-                    if (isValid)
-                    {
-                        // go through all currencies and add an index entry for each
-                        // when looking for a fee converter, we will look through all indexed options
-                        // for the best conversion rate from a source fee currency to the native coin
-                        for (auto &one : reserveIdxMap)
-                        {
-                            uint160 indexCode = CCrossChainRPCData::GetConditionID(one.first, evalCode);
-                            destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(indexCode, INDEX_NOTARIZATION_CONVERTER)));
-                        }
+                        destinations.insert(CIndexID(curState.IndexConverterKey(one.first, evalCode)));
                     }
                 }
             }

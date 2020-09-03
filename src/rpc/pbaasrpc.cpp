@@ -840,7 +840,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
             if (leftoverCurrency.HasNegative())
             {
-                LogPrintf("%s: ERROR - fees do not match. leftoverCurrency:\n%s\nReserveInputMap():\n%s\nspentCurrencyOut:\n%s\nrtxd.nativeIn:\n%s\nnativeOutConverted:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%%s\nccx.totalfees:\n%s\n\n", 
+                LogPrintf("%s: ERROR - fees do not match. leftoverCurrency:\n%s\nReserveInputMap():\n%s\nspentCurrencyOut:\n%s\nrtxd.nativeIn:\n%s\nnativeOutConverted:\n%s\nconversionfees:\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\nccx.totalfees:\n%s\n\n", 
                         __func__, 
                         leftoverCurrency.ToUniValue().write().c_str(),
                         rtxd.ReserveInputMap().ToUniValue().write().c_str(),
@@ -3117,7 +3117,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "    [{\n"
             "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
             "      \"amount\":amount        (numeric, required) The numeric amount of currency, denominated in source currency\n"
-            "      \"convertto\":\"name\",  (string, optional) Valid currency to convert to, either a reserve of a native source, or fractional of reserve\n"
+            "      \"convertto\":\"name\",  (string, optional) Valid currency to convert to, either a reserve of a fractional, or fractional\n"
+            "      \"via\":\"name\",        (string, optional) If source and destination currency are reserves, via is a common fractional to convert through\n"
             "      \"address\":\"dest\"     (string, required) The address and optionally chain/system after the \"@\" as a system specific destination\n"
             "      \"refundto\":\"dest\"    (string, optional) For pre-conversions, this is where refunds will go, defaults to fromaddress\n"
             "      \"memo\":memo            (string, optional) If destination is a zaddr (not supported on testnet), a string message (not hexadecimal) to include.\n"
@@ -3173,6 +3174,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             auto currencyStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "currency")));
             CAmount sourceAmount = AmountFromValue(find_value(uniOutputs[i], "amount"));
             auto convertToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "convertto")));
+            auto viaStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "via")));
             auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "address")));
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
@@ -3232,6 +3234,34 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
                     }
                 }
+            }
+
+            CCurrencyDefinition secondCurrencyDef;
+            uint160 secondCurrencyID;
+            if (viaStr != "")
+            {
+                secondCurrencyID = ValidateCurrencyName(convertToStr, &secondCurrencyDef);
+                std::map<uint160, int32_t> viaIdxMap = secondCurrencyDef.GetCurrenciesMap();
+                if (secondCurrencyID.IsNull() ||
+                    sourceCurrencyID.IsNull() ||
+                    convertToCurrencyID.IsNull() ||
+                    secondCurrencyID == sourceCurrencyID || 
+                    secondCurrencyID == convertToCurrencyID ||
+                    sourceCurrencyID == convertToCurrencyID ||
+                    !viaIdxMap.count(sourceCurrencyID) ||
+                    !viaIdxMap.count(convertToCurrencyID))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "To specify a fractional currency converter, \"currency\" and \"convertto\" must both be reserves of \"via\"");
+                }
+                if (burnCurrency || mintNew || preConvert)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot combine reserve to reserve conversion with burning, minting, or preconversion");
+                }
+                CCurrencyDefinition tempDef = convertToCurrencyDef;
+                convertToCurrencyDef = secondCurrencyDef;
+                secondCurrencyDef = tempDef;
+                convertToCurrencyID = convertToCurrencyDef.GetID();
+                secondCurrencyID = secondCurrencyDef.GetID();
             }
 
             // send a reserve transfer preconvert
@@ -3456,11 +3486,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 else if (!preConvert &&
                          (mintNew || burnCurrency ||
                           (toFractional = convertToCurrencyDef.IsFractional() && convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID)) ||
-                          (sourceCurrencyDef.IsFractional() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID))))
+                          (sourceCurrencyDef.IsFractional() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID)) ||
+                          !secondCurrencyID.IsNull()))
                 {
                     // the following cases end up here:
                     //   1. we are minting or burning currency
                     //   2. we are converting from a fractional currency to its reserve or back
+                    //   3. we are converting from one reserve of a fractional currency to another reserve of the same fractional
 
                     CCcontract_info CC;
                     CCcontract_info *cp;
@@ -3516,7 +3548,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             flags |= CReserveTransfer::IMPORT_TO_SOURCE;
                         }
-                        
 
                         if (pFractionalCurrency->startBlock > height)
                         {
@@ -3550,32 +3581,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                sourceAmount, 
                                                                fees, 
                                                                convertToCurrencyID, 
-                                                               dest);
+                                                               dest,
+                                                               secondCurrencyID);
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
                         oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : 0;
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
-
-                        /*
-                        // TODO: must be integrated into the functions above
-                        if (sourceCurrencyDef.IsFractional())
-                        {
-                            // native currency must be the currency we are converting to, and the source must be a fractional with that as a reserve
-                            auto reserveMap = sourceCurrencyDef.GetCurrenciesMap();
-                            if (!reserveMap.count(convertToCurrencyID))
-                            {
-                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 3");
-                            }
-                            // converting from reserve to a fractional of that reserve
-
-                            CReserveExchange re(flags, convertToCurrencyID, sourceAmount);
-                            std::vector<CTxDestination> dests = std::vector<CTxDestination>({destination});
-                            oneOutput.nAmount = 0;
-                            oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveExchange>(EVAL_RESERVE_EXCHANGE, dests, 1, &re));
-
-                        }
-                        */
                     }
                 }
                 else

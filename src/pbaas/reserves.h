@@ -755,6 +755,11 @@ public:
 class CCoinbaseCurrencyState : public CCurrencyState
 {
 public:
+    enum EIndexCodes
+    {
+        INDEX_CURRENCY_CONVERTER = 1
+    };
+
     CAmount nativeFees;
     CAmount nativeConversionFees;
     std::vector<CAmount> reserveIn;         // reserve currency converted to native
@@ -874,6 +879,26 @@ public:
             ret[i] = (*longVec)[i];
         }
         return ret;
+    }
+
+    inline static int64_t IndexConverterReserveMinimum()
+    {
+        // TODO: this needs to be specific to the current blockchain
+        // on Verus, we will consider any currency with 1000 or more in Verus reserves and >= 10% reserve a possible
+        // converter
+        return 1000; 
+    }
+
+    inline static int32_t IndexConverterReserveRatio()
+    {
+        // currencies must have at least 10% native reserve to be considered a converter
+        return 1000000; 
+    }
+
+    inline static uint160 IndexConverterKey(uint160 currencyID, uint32_t evalCode)
+    {
+        uint160 indexCode = CCrossChainRPCData::GetConditionID(currencyID, evalCode);
+        return CCrossChainRPCData::GetConditionID(indexCode, INDEX_CURRENCY_CONVERTER);
     }
 };
 

@@ -1621,7 +1621,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     CAmount exportFee = CCrossChainExport::CalculateExportFeeRaw(totalNativeFee, numTransfers);
                     CAmount exporterReward = CCrossChainExport::ExportReward(exportFee);
                     curTransfer = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT,
-                                                   systemDestID, exporterReward, 0, uint160(), curTransfer.destination);
+                                                   systemDestID, exporterReward, 0, systemDestID, curTransfer.destination);
                 }
                 else if (feeOutputStart)
                 {

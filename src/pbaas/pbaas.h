@@ -909,14 +909,6 @@ public:
     }
 
     bool LoadReserveCurrencies();
-
-    int64_t MinimumConverterReserves()
-    {
-        // TODO: this needs to be specific to the current blockchain
-        // on Verus, we will consider any currency with 1000 or more in Verus reserves and >= 10% reserve a possible
-        // converter
-        return 1000; 
-    }
 };
 
 template <typename TOBJ>
