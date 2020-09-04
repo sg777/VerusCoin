@@ -346,31 +346,7 @@ CNodeData::CNodeData(std::string netAddr, std::string paymentAddr) :
     nodeIdentity = GetDestinationID(DecodeDestination(paymentAddr));
 }
 
-uint160 CurrencyNameToChainID(std::string currencyStr)
-{
-    std::string extraName;
-    uint160 retVal;
-    currencyStr = TrimSpaces(currencyStr);
-    if (!currencyStr.size())
-    {
-        return retVal;
-    }
-    ParseSubNames(currencyStr, extraName, true);
-    if (currencyStr.back() == '@' || (extraName != VERUS_CHAINNAME && extraName != ""))
-    {
-        return retVal;
-    }
-    CTxDestination currencyDest = DecodeDestination(currencyStr);
-    if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
-    {
-        currencyDest = DecodeDestination(currencyStr + "@");
-    }
-    if (currencyDest.which() != COptCCParams::ADDRTYPE_INVALID)
-    {
-        retVal = GetDestinationID(currencyDest);
-    }
-    return retVal;
-}
+uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurrencyDef=NULL);
 
 CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     preLaunchDiscount(0),
@@ -643,7 +619,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
             for (int i = 0; nVersion != PBAAS_VERSION_INVALID && i < currencyArr.size(); i++)
             {
-                uint160 currencyID = CurrencyNameToChainID(uni_get_str(currencyArr[i]));
+                uint160 currencyID = ValidateCurrencyName(uni_get_str(currencyArr[i]));
                 // if we have a destination, but it is invalid, the json for this definition cannot be valid
                 if (currencyID.IsNull())
                 {

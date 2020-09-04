@@ -3081,7 +3081,7 @@ std::vector<CAddressUnspentDbEntry> GetFractionalNotarizationsForReserve(const u
 
 UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > CCurrencyState::MAX_RESERVE_CURRENCIES)
     {
         throw runtime_error(
             "getcurrencyconverters [\"currency1\",\"currency2\",...]'\n"
@@ -3165,7 +3165,7 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
 
 UniValue reserveexchange(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > CCurrencyState::MAX_RESERVE_CURRENCIES)
+    if (fHelp || params.size() != 1)
     {
         throw runtime_error(
             "reserveexchange '[{\"toreserve\": 1, \"recipient\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'\n"
