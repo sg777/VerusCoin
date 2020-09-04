@@ -3068,9 +3068,104 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
     return retVal;
 }
 
-UniValue reserveexchange(const UniValue& params, bool fHelp)
+std::vector<CAddressUnspentDbEntry> GetFractionalNotarizationsForReserve(const uint160 &currencyID)
+{
+    std::vector<CAddressUnspentDbEntry> fractionalNotarizations;
+    CIndexID indexKey = CCoinbaseCurrencyState::IndexConverterKey(currencyID, currencyID == ASSETCHAINS_CHAINID ? EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION);
+    if (!GetAddressUnspent(indexKey, CScript::P2IDX, fractionalNotarizations))
+    {
+        LogPrintf("%s: Error reading unspent index\n", __func__);
+    }
+    return fractionalNotarizations;
+}
+
+UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getcurrencyconverters [\"currency1\",\"currency2\",...]'\n"
+            "\nRetrieves all currencies that have at least 1000 VRSC in reserve, are >10% VRSC reserve ratio, and have all listed currencies as reserves\n"
+            "\nArguments\n"
+            "       [\"currencyname\"    : \"string\", ...]  (string list, one or more) all selected currencies are returned with their current state"
+
+            "\nResult:\n"
+            "       \"txid\" : \"transactionid\" (string) The transaction id.\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("reserveexchange", "'[{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'")
+            + HelpExampleRpc("reserveexchange", "'[{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+
+    std::map<uint160, CCurrencyDefinition> reserves;
+    std::map<uint160, std::pair<CCurrencyDefinition, CPBaaSNotarization>> fractionalsFound;
+    std::set<uint160> fractionalsRemoved;
+
+    for (int i = 0; i < params.size(); i++)
+    {
+        std::string oneName = uni_get_str(params[i]);
+        CCurrencyDefinition oneCurrency;
+        uint160 oneCurrencyID;
+        if (!oneName.size() ||
+            (oneCurrencyID = ValidateCurrencyName(oneName, &oneCurrency)).IsNull() ||
+            reserves.count(oneCurrencyID))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMS, "Each reserve currency specified must be a valid, unique currency");
+        }
+        reserves[oneCurrencyID] = oneCurrency;
+    }
+
+    // now we have only the currencies that contain all specified reserves in our fractionalsFound set
+    // these are all notarizations of the currencies
+    for (auto &oneReserve : reserves)
+    {
+        std::vector<CAddressUnspentDbEntry> activeFractionals = GetFractionalNotarizationsForReserve(oneReserve.first);
+        if (!activeFractionals.size())
+        {
+            fractionalsFound.clear();
+            break;
+        }
+        // first time through, add all currencies to the map
+        if (!fractionalsFound.size() && !fractionalsRemoved.size())
+        {
+            for (auto &oneFractional : activeFractionals)
+            {
+                CPBaaSNotarization fractionalNotarization(oneFractional.second.script);
+                fractionalsFound[oneFractional.first.hashBytes] = make_pair(CCurrencyDefinition(), fractionalNotarization);
+            }
+        }
+        else if (!fractionalsFound.count(oneReserve.first))
+        {
+            fractionalsFound.erase(oneReserve.first);
+            fractionalsRemoved.insert(oneReserve.first);
+        }
+    }
+
+    UniValue ret(UniValue::VOBJ);
+    for (auto &oneFractionalNotarization : fractionalsFound)
+    {
+        if (!GetCurrencyDefinition(oneFractionalNotarization.first, oneFractionalNotarization.second.first))
+        {
+            LogPrintf("%s: notarized currency not found - likely local corruption\n", __func__);
+            fractionalsFound.clear();
+            break;
+        }
+        UniValue oneCurrency(UniValue::VOBJ);
+        oneCurrency.push_back(Pair(oneFractionalNotarization.second.first.name, oneFractionalNotarization.second.first.ToUniValue()));
+        oneCurrency.push_back(Pair("lastnotarization", oneFractionalNotarization.second.first.ToUniValue()));
+        
+        oneFractionalNotarization.second.second.ToUniValue();
+        ret.push_back(Pair("currency", oneCurrency));
+    }
+    return ret;
+}
+
+UniValue reserveexchange(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > CCurrencyState::MAX_RESERVE_CURRENCIES)
     {
         throw runtime_error(
             "reserveexchange '[{\"toreserve\": 1, \"recipient\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'\n"
@@ -6625,6 +6720,7 @@ static const CRPCCommand commands[] =
     { "identity",     "listidentities",               &listidentities,         true  },
     { "multichain",   "definecurrency",               &definecurrency,         true  },
     { "multichain",   "listcurrencies",               &listcurrencies,         true  },
+    { "multichain",   "getcurrencyconverters",        &getcurrencyconverters,  true  },
     { "multichain",   "getcurrency",                  &getcurrency,            true  },
     { "multichain",   "getnotarizationdata",          &getnotarizationdata,    true  },
     { "multichain",   "getcrossnotarization",         &getcrossnotarization,   true  },
