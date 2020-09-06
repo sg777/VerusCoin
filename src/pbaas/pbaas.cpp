@@ -1613,13 +1613,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
                                 CCrossChainExport ccx(lastChain, numInputs, totalAmounts.CanonicalMap(), totalTxFees.CanonicalMap());
 
-                                // make extra outputs for fees in each currency
-                                for (auto &outPair : ccx.CalculateExportFee().CanonicalMap().valueMap)
-                                {
-                                    CReserveTransfer feeOut(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT, 
-                                                            outPair.first, outPair.second, 0, outPair.first, DestinationToTransferDestination(feeOutput));
-                                    chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
-                                }
+                                // make a fee output
+                                CReserveTransfer feeOut(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT, 
+                                                        lastChainDef.systemID, 0, 0, lastChainDef.systemID, DestinationToTransferDestination(feeOutput));
+                                chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
 
                                 // do a preliminary check
                                 CReserveTransactionDescriptor rtxd;

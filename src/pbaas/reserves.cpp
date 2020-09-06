@@ -1578,7 +1578,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             {
                                 crossConversions[currencyIndexMap[oneFee.first]][systemDestIdx] += oneFee.second;
                                 convertFees.valueMap[oneFee.first] = oneFee.second;
-                                AddReserveInput(oneFee.first, oneFee.second);
                                 CAmount fractionalOutConverted = 
                                     importCurrencyState.ReserveToNativeRaw(oneFee.second,
                                                                            importCurrencyState.conversionPrice[currencyIndexMap[oneFee.first]]);
