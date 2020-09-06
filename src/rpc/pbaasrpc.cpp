@@ -3335,7 +3335,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint160 secondCurrencyID;
             if (viaStr != "")
             {
-                secondCurrencyID = ValidateCurrencyName(convertToStr, &secondCurrencyDef);
+                secondCurrencyID = ValidateCurrencyName(viaStr, &secondCurrencyDef);
                 std::map<uint160, int32_t> viaIdxMap = secondCurrencyDef.GetCurrenciesMap();
                 if (secondCurrencyID.IsNull() ||
                     sourceCurrencyID.IsNull() ||
