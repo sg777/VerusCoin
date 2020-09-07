@@ -3090,7 +3090,7 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
             "       [\"currencyname\"    : \"string\", ...]  (string list, one or more) all selected currencies are returned with their current state"
 
             "\nResult:\n"
-            "       \"txid\" : \"transactionid\" (string) The transaction id.\n"
+            "       \"[{currency1}, {currency2}]\" : \"array of objects\" (string) All currencies and the last notarization, which are valid converters.\n"
 
             "\nExamples:\n"
             + HelpExampleCli("getcurrencyconverters", "'[\"currency1\",\"currency2\",...]'")
@@ -3148,7 +3148,7 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
         }
     }
 
-    UniValue ret(UniValue::VOBJ);
+    UniValue ret(UniValue::VARR);
     for (int i = 0; i < activeFractionals.size(); i++)
     {
         CPBaaSNotarization pbn(activeFractionals[i].second.script);
@@ -3160,7 +3160,7 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
         UniValue oneCurrency(UniValue::VOBJ);
         oneCurrency.push_back(Pair(oneCur.name, oneCur.ToUniValue()));
         oneCurrency.push_back(Pair("lastnotarization", pbn.ToUniValue()));
-        ret.push_back(Pair("currency", oneCurrency));
+        ret.push_back(Pair(oneCurrency));
     }
     return ret;
 }
