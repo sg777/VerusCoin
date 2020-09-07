@@ -3093,8 +3093,8 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
             "       \"txid\" : \"transactionid\" (string) The transaction id.\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("reserveexchange", "'[{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'")
-            + HelpExampleRpc("reserveexchange", "'[{\"name\": \"PBAASCHAIN\", \"paymentaddress\": \"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\", \"amount\": 5.0}]'")
+            + HelpExampleCli("getcurrencyconverters", "'[\"currency1\",\"currency2\",...]'")
+            + HelpExampleRpc("getcurrencyconverters", "'[\"currency1\",\"currency2\",...]'")
         );
     }
 
@@ -3255,6 +3255,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
     uint160 thisChainID = thisChain.GetID();
     bool toFractional = false;
+    bool fromFractional = false;
 
     std::vector<CRecipient> outputs;
 
@@ -3376,15 +3377,37 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             std::string systemDestStr;
             uint160 destSystemID = thisChainID;
-            CCurrencyDefinition destSystemDef = thisChain;
-            std::vector<std::string> subNames = ParseSubNames(destStr, systemDestStr, true);
-            if (systemDestStr != "")
+            CCurrencyDefinition destSystemDef;
+            std::vector<std::string> subNames;
+
+            toFractional = convertToCurrencyDef.IsFractional() && convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID);
+            fromFractional = !toFractional &&
+                             sourceCurrencyDef.IsFractional() && !convertToCurrencyID.IsNull() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID);
+            if (toFractional || preConvert)
             {
-                destSystemID = ValidateCurrencyName(systemDestStr, &destSystemDef);
-                if (destSystemID.IsNull() || destSystemDef.IsToken() || destSystemDef.systemID != destSystemDef.GetID())
+                destSystemID = convertToCurrencyDef.systemID;
+            }
+            else if (fromFractional)
+            {
+                destSystemID = sourceCurrencyDef.systemID;
+            }
+            else
+            {
+                // check for explicit system name specified
+                subNames = ParseSubNames(destStr, systemDestStr, true);
+                if (systemDestStr != "")
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If destination system is specified, destination system or chain must be valid.");
+                    destSystemID = ValidateCurrencyName(systemDestStr, &destSystemDef);
+                    if (destSystemID.IsNull() || destSystemDef.IsToken() || destSystemDef.systemID != destSystemDef.GetID())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "If destination system is specified, destination system or chain must be registered.");
+                    }
                 }
+            }
+
+            if (!destSystemDef.IsValid())
+            {
+                destSystemDef = ConnectedChains.GetCachedCurrency(destSystemID);
             }
 
             if (mintNew && 
@@ -3578,11 +3601,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     oneOutput.nAmount = (sourceCurrencyID == thisChainID) ? sourceAmount + rt.nFees : 0;
                     oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                 }
-                else if (!preConvert &&
-                         (mintNew || burnCurrency ||
-                          (toFractional = convertToCurrencyDef.IsFractional() && convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID)) ||
-                          (sourceCurrencyDef.IsFractional() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID)) ||
-                          !secondCurrencyID.IsNull()))
+                else if (!preConvert && (mintNew || burnCurrency || toFractional || fromFractional))
                 {
                     // the following cases end up here:
                     //   1. we are minting or burning currency
@@ -3622,7 +3641,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     }
                     else
                     {
-                        // we are only 
                         flags |= CReserveTransfer::CONVERT;
 
                         // determine the currency that is the fractional currency, whether that is the source
@@ -3643,6 +3661,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             flags |= CReserveTransfer::IMPORT_TO_SOURCE;
                         }
+                        if (!secondCurrencyID.IsNull())
+                        {
+                            flags |= CReserveTransfer::RESERVE_TO_RESERVE;
+                        }
 
                         if (pFractionalCurrency->startBlock > height)
                         {
@@ -3655,7 +3677,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". Must have reserve<->fractional relationship.");
                         }
-                        int reserveIndex = reserveIndexIt->second;
 
                         // converting from reserve to a fractional of that reserve
                         auto dest = DestinationToTransferDestination(destination);

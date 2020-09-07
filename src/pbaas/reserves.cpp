@@ -34,39 +34,32 @@ CTokenOutput::CTokenOutput(const UniValue &obj)
 
 CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination)
 {
-    return CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 +
-                ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
-}
-
-CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transferTotal) const
-{
-    CCurrencyValueMap feeMap;
-
-    // determine fee for this send
-    if (flags & FEE_OUTPUT)
-    {
-        return feeMap;
-    }
-
-    feeMap.valueMap[currencyID] = CalculateTransferFee(destination);
-
-    // add conversion fees in source currency for preconvert
-    if (flags & (CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT))
-    {
-        feeMap.valueMap[currencyID] += CReserveTransactionDescriptor::CalculateConversionFee(transferTotal);
-    }
-
-    return feeMap;
+    return CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 + ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
 }
 
 CAmount CReserveTransfer::CalculateTransferFee() const
 {
     // determine fee for this send
-    if (flags & FEE_OUTPUT)
+    if (IsFeeOutput() || (!IsPreConversion() && IsConversion()))
     {
         return 0;
     }
     return CalculateTransferFee(destination);
+}
+
+CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transferTotal, const uint160 &systemID) const
+{
+    CCurrencyValueMap feeMap;
+
+    feeMap.valueMap[systemID] = CalculateTransferFee();
+
+    // add conversion fees in source currency for conversions or pre-conversions
+    if (IsConversion() || IsPreConversion())
+    {
+        feeMap.valueMap[currencyID] += CReserveTransactionDescriptor::CalculateConversionFee(transferTotal);
+    }
+
+    return feeMap;
 }
 
 CReserveExchange::CReserveExchange(const UniValue &uni) : CTokenOutput(uni)
@@ -1630,7 +1623,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 }
                 else
                 {
-                    if (curTransfer.nFees < curTransfer.CalculateTransferFee(curTransfer.destination))
+                    if (curTransfer.nFees < curTransfer.CalculateTransferFee())
                     {
                         printf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         LogPrintf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
@@ -1656,12 +1649,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     }
 
                     // only conversion fees can be paid in any valid conversion currency
-                    // since preconverts may be refunded, fees are always collected in native
+                    // since preconverts may be refunded, transfer fees are always collected in destination system native
                     // to prevent a dead-end with no option for conversion
-                    if (!(curTransfer.flags & curTransfer.CONVERT))
-                    {
-                        transferFees.valueMap[systemDestID] += curTransfer.nFees;
-                    }
+                    transferFees.valueMap[systemDestID] += curTransfer.nFees;
 
                     if (curTransfer.flags & curTransfer.PREALLOCATE)
                     {
@@ -1673,7 +1663,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             {
                                 preAllocMap.insert(onePreAlloc);
                             }
-                            // TODO: this is where we should add percentage based pre-allocation calculations
                         }
 
                         auto it = preAllocMap.find(GetDestinationID(TransferDestinationToDestination(curTransfer.destination)));
@@ -1686,7 +1675,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     }
                 }
 
-                if (curTransfer.flags & curTransfer.PRECONVERT)
+                if (curTransfer.IsPreConversion())
                 {
                     // first time through with preconvert, initialize the starting currency state
                     if (!initialCurrencyState.IsValid())
@@ -1792,7 +1781,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         }
                     }
                 }
-                else if (curTransfer.flags & curTransfer.CONVERT)
+                else if (curTransfer.IsConversion())
                 {
                     if (curTransfer.currencyID == curTransfer.destCurrencyID)
                     {
@@ -1969,7 +1958,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // naturally compress a full ID to an ID destination, since it is going back where it came from
                     CTxDestination sendBackAddr = TransferDestinationToDestination(curTransfer.destination);
 
-                    CAmount fees = curTransfer.CalculateFee(curTransfer.flags, curTransfer.nValue).valueMap.begin()->second;
+                    CAmount fees = curTransfer.CalculateTransferFee();
 
                     CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, 
                                                            curTransfer.currencyID, 

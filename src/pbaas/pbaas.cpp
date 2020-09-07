@@ -1591,7 +1591,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     {
                                         CAmount valueOut = isMint ? 0 : txInputs[j].second.nValue;
 
-                                        totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, valueOut);
+                                        totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, valueOut, lastChainDef.systemID);
                                         totalAmounts += newTransferInput;
                                         chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
                                     }

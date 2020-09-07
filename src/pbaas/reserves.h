@@ -211,7 +211,7 @@ public:
 
     UniValue ToUniValue() const;
 
-    CCurrencyValueMap CalculateFee(uint32_t flags, CAmount transferTotal) const;
+    CCurrencyValueMap CalculateFee(uint32_t flags, CAmount transferTotal, const uint160 &systemID) const;
 
     static CAmount CalculateTransferFee(const CTransferDestination &destination);
 
@@ -227,47 +227,47 @@ public:
         return CTokenOutput::IsValid() && (nFees > 0 || flags & (FEE_OUTPUT | CONVERT)) && destination.destination.size();
     }
 
-    bool IsConversion()
+    bool IsConversion() const
     {
         return flags & CONVERT;
     }
 
-    bool IsPreConversion()
+    bool IsPreConversion() const
     {
         return flags & PRECONVERT;
     }
 
-    bool IsFeeOutput()
+    bool IsFeeOutput() const
     {
         return flags & FEE_OUTPUT;
     }
 
-    bool IsBurn()
+    bool IsBurn() const
     {
         return flags & (BURN_CHANGE_PRICE | BURN_CHANGE_WEIGHT);
     }
 
-    bool IsBurnChangePrice()
+    bool IsBurnChangePrice() const
     {
         return flags & BURN_CHANGE_PRICE;
     }
 
-    bool IsBurnChangeWeight()
+    bool IsBurnChangeWeight() const
     {
         return flags & BURN_CHANGE_WEIGHT;
     }
 
-    bool IsMint()
+    bool IsMint() const
     {
         return flags & MINT_CURRENCY;
     }
 
-    bool IsPreallocate()
+    bool IsPreallocate() const
     {
         return flags & PREALLOCATE;
     }
 
-    bool IsReserveToReserve()
+    bool IsReserveToReserve() const
     {
         return flags & RESERVE_TO_RESERVE;
     }
