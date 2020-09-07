@@ -3149,7 +3149,7 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
     }
 
     UniValue ret(UniValue::VOBJ);
-    for (int i = 1; i < activeFractionals.size(); i++)
+    for (int i = 0; i < activeFractionals.size(); i++)
     {
         CPBaaSNotarization pbn(activeFractionals[i].second.script);
         CCurrencyDefinition oneCur;
