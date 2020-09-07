@@ -3160,7 +3160,7 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
         UniValue oneCurrency(UniValue::VOBJ);
         oneCurrency.push_back(Pair(oneCur.name, oneCur.ToUniValue()));
         oneCurrency.push_back(Pair("lastnotarization", pbn.ToUniValue()));
-        ret.push_back(Pair(oneCurrency));
+        ret.push_back(oneCurrency);
     }
     return ret;
 }
