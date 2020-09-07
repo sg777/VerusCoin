@@ -3101,8 +3101,6 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
     CheckPBaaSAPIsValid();
 
     std::map<uint160, CCurrencyDefinition> reserves;
-    std::map<uint160, std::pair<CCurrencyDefinition, CPBaaSNotarization>> fractionalsFound;
-    std::set<uint160> fractionalsRemoved;
 
     for (int i = 0; i < params.size(); i++)
     {
@@ -3118,46 +3116,50 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
         reserves[oneCurrencyID] = oneCurrency;
     }
 
-    // now we have only the currencies that contain all specified reserves in our fractionalsFound set
-    // these are all notarizations of the currencies
-    for (auto &oneReserve : reserves)
+    // get all currencies that contain all specified reserves in our fractionalsFound set
+    // use latest notarizations of the currencies to do so
+    std::vector<CAddressUnspentDbEntry> activeFractionals;
+    std::set<int32_t> toRemove;
+    auto resIt = reserves.begin();
+    if (reserves.size() &&
+        (activeFractionals = GetFractionalNotarizationsForReserve(resIt->first)).size())
     {
-        std::vector<CAddressUnspentDbEntry> activeFractionals = GetFractionalNotarizationsForReserve(oneReserve.first);
-        if (!activeFractionals.size())
+        for (int i = 1; i < activeFractionals.size(); i++)
         {
-            fractionalsFound.clear();
-            break;
-        }
-        // first time through, add all currencies to the map
-        if (!fractionalsFound.size() && !fractionalsRemoved.size())
-        {
-            for (auto &oneFractional : activeFractionals)
+            CPBaaSNotarization pbn(activeFractionals[i].second.script);
+            if (!pbn.IsValid())
             {
-                CPBaaSNotarization fractionalNotarization(oneFractional.second.script);
-                fractionalsFound[oneFractional.first.hashBytes] = make_pair(CCurrencyDefinition(), fractionalNotarization);
+                throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Cannot read currency notarization in transaction " + activeFractionals[i].first.txhash.GetHex());
+            }
+            auto curMap = pbn.currencyState.GetReserveMap();
+            resIt++;
+            for (auto it = resIt; it != reserves.end(); it++)
+            {
+                if (!curMap.count(it->first))
+                {
+                    toRemove.insert(i);
+                    break;
+                }
             }
         }
-        else if (!fractionalsFound.count(oneReserve.first))
+        for (auto oneIdx = toRemove.rbegin(); oneIdx != toRemove.rend(); oneIdx++)
         {
-            fractionalsFound.erase(oneReserve.first);
-            fractionalsRemoved.insert(oneReserve.first);
+            activeFractionals.erase(activeFractionals.begin() + *oneIdx);
         }
     }
 
     UniValue ret(UniValue::VOBJ);
-    for (auto &oneFractionalNotarization : fractionalsFound)
+    for (int i = 1; i < activeFractionals.size(); i++)
     {
-        if (!GetCurrencyDefinition(oneFractionalNotarization.first, oneFractionalNotarization.second.first))
+        CPBaaSNotarization pbn(activeFractionals[i].second.script);
+        CCurrencyDefinition oneCur;
+        if (!GetCurrencyDefinition(pbn.currencyID, oneCur))
         {
-            LogPrintf("%s: notarized currency not found - likely local corruption\n", __func__);
-            fractionalsFound.clear();
-            break;
+            throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Cannot get currency definition for currency " + EncodeDestination(CIdentityID(pbn.currencyID)));
         }
         UniValue oneCurrency(UniValue::VOBJ);
-        oneCurrency.push_back(Pair(oneFractionalNotarization.second.first.name, oneFractionalNotarization.second.first.ToUniValue()));
-        oneCurrency.push_back(Pair("lastnotarization", oneFractionalNotarization.second.first.ToUniValue()));
-        
-        oneFractionalNotarization.second.second.ToUniValue();
+        oneCurrency.push_back(Pair(oneCur.name, oneCur.ToUniValue()));
+        oneCurrency.push_back(Pair("lastnotarization", pbn.ToUniValue()));
         ret.push_back(Pair("currency", oneCurrency));
     }
     return ret;
