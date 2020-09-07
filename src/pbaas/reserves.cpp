@@ -1641,17 +1641,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         if ((curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
                         {
                             nativeIn += curTransfer.nFees;
+                            transferFees.valueMap[systemDestID] += curTransfer.nFees;
                         }
                         else
                         {
                             AddReserveInput(curTransfer.currencyID, curTransfer.nValue + curTransfer.nFees);
+                            transferFees.valueMap[curTransfer.currencyID] += curTransfer.nFees;
                         }
                     }
-
-                    // only conversion fees can be paid in any valid conversion currency
-                    // since preconverts may be refunded, transfer fees are always collected in destination system native
-                    // to prevent a dead-end with no option for conversion
-                    transferFees.valueMap[systemDestID] += curTransfer.nFees;
 
                     if (curTransfer.flags & curTransfer.PREALLOCATE)
                     {
@@ -1881,10 +1878,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             // must have 2x conversion fee, divided equally
                             if (valueOut > preConversionFee)
                             {
-                                secondaryBurned = CalculateAdditionalConversionFee(newCurrencyConverted);
-                                newCurrencyConverted = CCurrencyState::ReserveToNativeRaw(newCurrencyConverted - secondaryBurned,
-                                                            importCurrencyState.conversionPrice[currencyIndexMap[outputCurrencyID]]);
+                                secondaryBurned = importCurrencyState.ReserveToNativeRaw(preConversionFee, importCurrencyState.conversionPrice[reserveIdx]);
                                 outputCurrencyID = curTransfer.secondReserveID;
+                                newCurrencyConverted = CCurrencyState::NativeToReserveRaw(newCurrencyConverted - secondaryBurned,
+                                                            importCurrencyState.conversionPrice[currencyIndexMap[outputCurrencyID]]);
                                 crossConversions[reserveIdx][systemDestIdx] += valueOut - preConversionFee;
                             }
                             else
@@ -3053,6 +3050,10 @@ CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFee(CAmount 
     arith_uint256 conversionFee(CReserveExchange::SUCCESS_FEE);
 
     CAmount newAmount = ((bigAmount * bigSatoshi) / (bigSatoshi - conversionFee)).GetLow64();
+    if (newAmount - inputAmount < CReserveExchange::MIN_SUCCESS_FEE)
+    {
+        newAmount = inputAmount + CReserveExchange::MIN_SUCCESS_FEE;
+    }
     CAmount fee = CalculateConversionFee(newAmount);
     newAmount = inputAmount + fee;
     fee = CalculateConversionFee(newAmount);            // again to account for minimum fee
