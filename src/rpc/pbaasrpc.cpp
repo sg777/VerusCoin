@@ -3124,6 +3124,7 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
     if (reserves.size() &&
         (activeFractionals = GetFractionalNotarizationsForReserve(resIt->first)).size())
     {
+        resIt++;
         for (int i = 1; i < activeFractionals.size(); i++)
         {
             CPBaaSNotarization pbn(activeFractionals[i].second.script);
@@ -3132,7 +3133,6 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Cannot read currency notarization in transaction " + activeFractionals[i].first.txhash.GetHex());
             }
             auto curMap = pbn.currencyState.GetReserveMap();
-            resIt++;
             for (auto it = resIt; it != reserves.end(); it++)
             {
                 if (!curMap.count(it->first))
