@@ -244,7 +244,7 @@ public:
         FLAG_REVOKED = 0x8000,              // set when this identity is revoked
         FLAG_ACTIVECURRENCY = 0x1,          // flag that is set when this ID is being used as an active currency name
         FLAG_LOCKED = 0x2,                  // set when this identity is revoked
-        MAX_UNLOCK_DELAY = 60 * 24 * 3      // 3 day maximum unlock time for an ID
+        MAX_UNLOCK_DELAY = 60 * 24 * 22 * 365 // 21+ year maximum unlock time for an ID
     };
 
     static const int MAX_NAME_LEN = 64;
