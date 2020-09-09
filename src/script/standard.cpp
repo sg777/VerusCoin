@@ -751,6 +751,14 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     }
                 }
 
+                if (!ccValid)
+                {
+                    UniValue errOutUni(UniValue::VOBJ);
+                    ScriptPubKeyToUniv(scriptPubKey, errOutUni, false);
+                    LogPrintf("Invalid smart transaction %s\n", errOutUni.write(1,2).c_str());
+                    // return false;
+                }
+
                 // if this is a compound cc, the master m of n is the top level as an m of n of the sub-conditions
                 nRequiredRet = p.vData.size() > 2 ? master.m : p.m;
                 if (canSpendCount >= nRequiredRet && pCanSpend)

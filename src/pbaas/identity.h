@@ -243,7 +243,7 @@ public:
     {
         FLAG_REVOKED = 0x8000,              // set when this identity is revoked
         FLAG_ACTIVECURRENCY = 0x1,          // flag that is set when this ID is being used as an active currency name
-        FLAG_LOCKED = 0x2,                  // set when this identity is revoked
+        FLAG_LOCKED = 0x2,                  // set when this identity is locked
         MAX_UNLOCK_DELAY = 60 * 24 * 22 * 365 // 21+ year maximum unlock time for an ID
     };
 
@@ -470,7 +470,12 @@ public:
 
     bool IsValid() const
     {
-        return CPrincipal::IsValid() && name.size() > 0 && (name.size() <= MAX_NAME_LEN);
+        return CPrincipal::IsValid() && name.size() > 0 && 
+               (name.size() <= MAX_NAME_LEN) &&
+               primaryAddresses.size() &&
+               (nVersion < VERSION_PBAAS ||
+               (!revocationAuthority.IsNull() &&
+                !recoveryAuthority.IsNull()));
     }
 
     bool IsValidUnrevoked() const
