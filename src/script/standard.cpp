@@ -683,12 +683,6 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     COptCCParams _oneP;
                     COptCCParams &oneP = (i == 0) ? p : (_oneP = COptCCParams(p.vData[i]));
 
-                    ccValid = oneP.IsValid();
-                    if (!ccValid)
-                    {
-                        _oneP = COptCCParams(p.vData[i]);
-                    }
-
                     if (ccValid = oneP.IsValid())
                     {
                         int canSpendOneCount = 0;
