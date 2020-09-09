@@ -677,11 +677,17 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     }
                 }
 
-                for (int i = -1; ccValid && i < (int)(p.vData.size() - 1); i++)
+                for (int i = 0; ccValid && i < (int)(p.vData.size() - 1); i++)
                 {
                     // first, process P, then any sub-conditions
                     COptCCParams _oneP;
-                    COptCCParams &oneP = (i == -1) ? p : (_oneP = COptCCParams(p.vData[i]));
+                    COptCCParams &oneP = (i == 0) ? p : (_oneP = COptCCParams(p.vData[i]));
+
+                    ccValid = oneP.IsValid();
+                    if (!ccValid)
+                    {
+                        _oneP = COptCCParams(p.vData[i]);
+                    }
 
                     if (ccValid = oneP.IsValid())
                     {
