@@ -677,7 +677,9 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     }
                 }
 
-                for (int i = 0; ccValid && i < (int)(p.vData.size() - 1); i++)
+                // handle the case where we have no object in the params, but a valid transaction
+                int loopEnd = p.vData.size() == 1 ? 1 : p.vData.size() - 1;
+                for (int i = 0; ccValid && i < loopEnd; i++)
                 {
                     // first, process P, then any sub-conditions
                     COptCCParams _oneP;
