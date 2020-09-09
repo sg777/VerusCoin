@@ -754,7 +754,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                 if (!ccValid)
                 {
                     LogPrintf("Invalid smart transaction %d\n", p.evalCode);
-                    return false;
+                    //return false;
                 }
 
                 // if this is a compound cc, the master m of n is the top level as an m of n of the sub-conditions
