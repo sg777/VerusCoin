@@ -1139,7 +1139,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (advanced)
     {
         // if not fulfilled, neither recovery data nor its spend condition may be modified
-        if (!fulfilled)
+        if (!fulfilled && !oldIdentity.IsRevoked())
         {
             if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height))
             {
@@ -1180,7 +1180,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     }
 
     // if not fulfilled, neither revocation data nor its spend condition may be modified
-    if (!fulfilled && (oldIdentity.nVersion < oldIdentity.VERSION_PBAAS || !oldIdentity.IsRevoked()))
+    if (!fulfilled)
     {
         sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
 
