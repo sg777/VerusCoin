@@ -1660,6 +1660,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         // we only add fees
                         if (curTransfer.IsMint() || curTransfer.IsPreallocate())
                         {
+                            AddReserveInput(curTransfer.destCurrencyID, curTransfer.nValue);
                             nativeIn += curTransfer.nFees;
                             transferFees.valueMap[systemDestID] += curTransfer.nFees;
                         }
@@ -2059,18 +2060,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                         // if this is a minting of currency
                         // this is used for both pre-allocation and also centrally, algorithmically, or externally controlled currencies
-                        if (curTransfer.IsMint() && curTransfer.destCurrencyID == importCurrencyID)
+                        if ((curTransfer.IsMint() || curTransfer.IsPreallocate()) && curTransfer.destCurrencyID == importCurrencyID)
                         {
                             // pre-allocation is accounted for outside of this
                             // minting is emitted in new currency state
                             if (curTransfer.IsMint())
                             {
                                 totalMinted += ro.nValue;
-                                AddNativeOutConverted(curTransfer.destCurrencyID, ro.nValue);
-                                if (curTransfer.destCurrencyID != systemDestID)
-                                {
-                                    AddReserveOutConverted(curTransfer.destCurrencyID, ro.nValue);
-                                }
+                            }
+                            AddNativeOutConverted(curTransfer.destCurrencyID, ro.nValue);
+                            if (curTransfer.destCurrencyID != systemDestID)
+                            {
+                                AddReserveOutConverted(curTransfer.destCurrencyID, ro.nValue);
                             }
                         }
                         AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);

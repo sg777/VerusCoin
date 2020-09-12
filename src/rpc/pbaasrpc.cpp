@@ -821,7 +821,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                                                   CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn})));
             CCurrencyValueMap generatedImportCurrency = rtxd.GeneratedImportCurrency(sourceSystemID, systemID, currencyID);
             availableCurrencyInput += generatedImportCurrency;
-            CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - spentCurrencyOut).CanonicalMap();
+            CCurrencyValueMap leftoverCurrency = availableCurrencyInput - (rtxd.ReserveInputMap() + CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn}))).CanonicalMap();
             CAmount totalImportFees = rtxd.NativeFees();
 
             printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\ntotalImportFees:\n%s\n\n", 
@@ -873,7 +873,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             //printf("leftoverCurrency: %s\n", leftoverCurrency.ToUniValue().write().c_str());
 
             //printf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
-            if ((availableCurrencyInput - (rtxd.ReserveInputMap() + CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn})))).HasNegative())
+            if (leftoverCurrency.HasNegative())
             {
                 LogPrintf("%s: ERROR - importing more currency than available for %s\n", __func__, currencyDef.name.c_str());
                 LogPrintf("totalNativeInput: %s, leftoverCurrency:%s\n", ValueFromAmount(totalNativeInput).write().c_str(), leftoverCurrency.ToUniValue().write().c_str());
