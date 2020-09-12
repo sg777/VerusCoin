@@ -1263,7 +1263,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 std::vector<CTxOut> checkOutputs;
 
                                 CPBaaSNotarization importNotarization;
-                                importCurrencyDef = ConnectedChains.GetCachedCurrency(cci.systemID);
+                                importCurrencyDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID);
                                 if (importCurrencyDef.IsToken() && !(importNotarization = CPBaaSNotarization(tx)).IsValid())
                                 {
                                     flags |= IS_REJECT;
