@@ -146,7 +146,9 @@ public:
         BURN_CHANGE_PRICE = 0x80,           // this output is being burned on import and will change the price
         BURN_CHANGE_WEIGHT = 0x100,         // this output is being burned on import and will change the reserve ratio
         IMPORT_TO_SOURCE = 0x200,           // set when the source currency, not destination is the import currency
-        RESERVE_TO_RESERVE = 0x400          // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
+        RESERVE_TO_RESERVE = 0x400,         // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
+        FEE_SOURCE_NATIVE = 0x800,          // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
+        FEE_DEST_NATIVE = 0x1000            // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
     };
 
     enum EConstants
@@ -235,6 +237,16 @@ public:
     bool IsPreConversion() const
     {
         return flags & PRECONVERT;
+    }
+
+    bool IsFeeSourceNative() const
+    {
+        return flags & FEE_SOURCE_NATIVE;
+    }
+
+    bool IsFeeDestNative() const
+    {
+        return flags & FEE_DEST_NATIVE;
     }
 
     bool IsFeeOutput() const
@@ -990,24 +1002,8 @@ public:
         return nativeOutConverted;
     }
 
-    CAmount NativeFees() const
-    {
-        return nativeIn - nativeOut;     // native out converted does not include conversion
-    }
-
-    CCurrencyValueMap ReserveFees() const
-    {
-        CCurrencyValueMap retFees;
-        for (auto &one : currencies)
-        {
-            CAmount oneFee = one.second.reserveIn - (one.second.reserveOut - one.second.reserveOutConverted);
-            if (oneFee)
-            {
-                retFees.valueMap[one.first] = oneFee;
-            }
-        }
-        return retFees;
-    }
+    CCurrencyValueMap ReserveFees(const uint160 &nativeID=uint160()) const;
+    CAmount NativeFees() const;
 
     CAmount AllFeesAsNative(const CCurrencyState &currencyState) const;
     CAmount AllFeesAsNative(const CCurrencyState &currencyState, const std::vector<CAmount> &exchangeRates) const;
@@ -1021,11 +1017,12 @@ public:
     void AddNativeOutConverted(const uint160 &currency, CAmount value);
     void AddReserveConversionFees(const uint160 &currency, CAmount value);
 
-    CCurrencyValueMap ReserveInputMap() const;
-    CCurrencyValueMap ReserveOutputMap() const;
-    CCurrencyValueMap ReserveOutConvertedMap() const;
+    CCurrencyValueMap ReserveInputMap(const uint160 &nativeID=uint160()) const;
+    CCurrencyValueMap ReserveOutputMap(const uint160 &nativeID=uint160()) const;
+    CCurrencyValueMap ReserveOutConvertedMap(const uint160 &nativeID=uint160()) const;
     CCurrencyValueMap NativeOutConvertedMap() const;
     CCurrencyValueMap ReserveConversionFeesMap() const;
+    CCurrencyValueMap GeneratedImportCurrency(const uint160 &fromSystemID, const uint160 &importSystemID, const uint160 &importCurrencyID) const;
 
     // returns vectors in same size and order as reserve currencies
     std::vector<CAmount> ReserveInputVec(const CCurrencyState &cState) const;

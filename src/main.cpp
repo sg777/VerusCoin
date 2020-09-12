@@ -2753,18 +2753,7 @@ namespace Consensus {
 
         CReserveTransactionDescriptor rtxd(tx, inputs, nSpendHeight);
 
-        if (cci.IsValid())
-        {
-            ReserveValueIn = rtxd.ReserveInputMap() + CCurrencyValueMap({cci.systemID}, {rtxd.TotalNativeOutConverted()});
-            //printf("cci:\n%s\n rtxd.ReserveInputMap():\n%s, rtxd.ReserveOutConvertedMap():\n%s\nReserveValueIn:\n%s\n", cci.ToUniValue().write(1, 2).c_str(), 
-            //    rtxd.ReserveInputMap().ToUniValue().write(1, 2).c_str(), rtxd.ReserveOutConvertedMap().ToUniValue().write(1, 2).c_str(),
-            //    ReserveValueIn.ToUniValue().write(1, 2).c_str());
-        }
-        else
-        {
-            ReserveValueIn = rtxd.ReserveInputMap();
-            //fprintf(stderr,"cci invalid ReserveValueIn: %s\n", ReserveValueIn.ToUniValue().write(1, 2).c_str());
-        }
+        ReserveValueIn = rtxd.ReserveInputMap();
 
         CAmount nFees = 0;
         for (unsigned int i = 0; i < tx.vin.size(); i++)
@@ -3852,32 +3841,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 }
                 else
                 {
-                    CCurrencyValueMap unconvertedReserves = rtxd.ReserveFees() + rtxd.ReserveConversionFeesMap();
-                    if (!currencyState.IsFractional() || thisChain.ChainOptions() & thisChain.OPTION_FEESASRESERVE)
-                    {
-                        if (currencyState.IsFractional())
-                        {
-                            reserveIn += rtxd.ReserveOutConvertedMap();
-                            nativeIn += rtxd.NativeOutConvertedMap();
-                        }
-                        totalReserveTxFees += unconvertedReserves;
-                        nFees += rtxd.NativeFees() + rtxd.nativeConversionFees;
-                    }
-                    else
-                    {
-                        if (currencyState.IsFractional())
-                        {
-                            reserveIn += rtxd.ReserveOutConvertedMap() + rtxd.ReserveConversionFeesMap() + rtxd.ReserveFees();
-                            nativeIn += rtxd.NativeOutConvertedMap();
-                        }
-                        // remove convertible reserves from our reserves, so we retain fees that
-                        // cannot be converted as their original reserves
-                        totalReserveTxFees += CCurrencyValueMap(thisChain.currencies, 
-                                                                std::vector<CAmount>(thisChain.currencies.size(), 1)).NonIntersectingValues(unconvertedReserves);
-                        nFees += rtxd.AllFeesAsNative(currencyState, currencyState.conversionPrice) + 
-                                                    rtxd.nativeConversionFees + 
-                                                    currencyState.ReserveToNativeRaw(rtxd.ReserveConversionFeesMap(), currencyState.conversionPrice);
-                    }
+                    // TODO : complete for PBaaS chain
                 }
             } else
             {

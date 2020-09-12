@@ -528,7 +528,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     CCurrencyValueMap availableCurrencyInput(AvailableTokenInput);
     availableCurrencyInput.valueMap[currencyDef.systemID] = TotalNativeInput;
 
-    // printf("totalNativeInput: %ld, availableCurrencyInput:%s\n", totalNativeInput, availableCurrencyInput.ToUniValue().write().c_str());
+    printf("totalNativeInput: %ld, availableCurrencyInput:%s\n", totalNativeInput, availableCurrencyInput.ToUniValue().write().c_str());
 
     CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
     if ((isTokenImport && chainActive.LastTip() == NULL) ||
@@ -546,6 +546,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
         printf("%s: Invalid lastCrossChainImport transaction\n", __func__);
         return false;
     }
+
+    uint160 sourceSystemID = lastCCI.systemID;
 
     std::vector<CBaseChainObject *> chainObjs;
 
@@ -759,9 +761,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCcontract_info *cp;
             CPubKey pk;
 
-            CCurrencyValueMap availableReserveFees = ccx.totalFees;
-            CAmount feesOut = 0;
-
             CCoinbaseCurrencyState _currencyState, currencyState;
             if (isTokenImport)
             {
@@ -773,6 +772,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 {
                     newImportTx.vin.push_back(CTxIn(aixIt->second.second.GetHash(), finalizeOutNum));
                 }
+
+                lastConfirmed = CPBaaSNotarization(lastImport);
+                lastConfirmed.notarizationHeight = chainActive.Height();
 
                 if (!NewImportNotarization(currencyDef, nHeight, lastImport, aixIt->second.first.blockHeight, aixIt->second.second, newImportTx, _currencyState))
                 {
@@ -815,16 +817,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
             // import fees go to miner, reserve outputs, native or otherwise, always come from available
             // input whether converted or not, and fractional out converted is new currency
-            CCurrencyValueMap spentCurrencyOut = (rtxd.ReserveOutputMap() + 
-                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut})));
-            spentCurrencyOut.valueMap[currencyID] -= nativeOutConverted;
-            CCrossChainExport adjustedCCX = ccx;
-            adjustedCCX.totalFees = CCurrencyValueMap(currencyState.currencies, currencyState.fees) + 
-                                                   CCurrencyValueMap({systemID}, {currencyState.nativeFees});
-
+            CCurrencyValueMap spentCurrencyOut = (rtxd.ReserveInputMap() + 
+                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn})));
+            CCurrencyValueMap generatedImportCurrency = rtxd.GeneratedImportCurrency(sourceSystemID, systemID, currencyID);
+            availableCurrencyInput += generatedImportCurrency;
             CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - spentCurrencyOut).CanonicalMap();
+            CAmount totalImportFees = rtxd.NativeFees();
 
-            /* printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\nccx.totalfees:\n%s\n\n", 
+            printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\ntotalImportFees:\n%s\n\n", 
                         __func__, 
                         availableCurrencyInput.ToUniValue().write().c_str(),
                         leftoverCurrency.ToUniValue().write().c_str(),
@@ -836,7 +836,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                         rtxd.ReserveOutputMap().ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
                         ValueFromAmount(rtxd.NativeFees()).write().c_str(),
-                        ccx.totalFees.ToUniValue().write().c_str()); */
+                        ValueFromAmount(totalImportFees).write().c_str());
 
             if (leftoverCurrency.HasNegative())
             {
@@ -850,7 +850,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                         (rtxd.ReserveConversionFeesMap() + CCurrencyValueMap(std::vector<uint160>({thisChainID}), std::vector<CAmount>({rtxd.nativeConversionFees}))).ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
                         ValueFromAmount(rtxd.NativeFees()).write().c_str(),
-                        adjustedCCX.totalFees.ToUniValue().write().c_str());
+                        ValueFromAmount(totalImportFees).write().c_str());
                 return false;
             }
 
@@ -887,16 +887,15 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             totalNativeInput = leftoverCurrency.valueMap[systemID];
             leftoverCurrency.valueMap.erase(systemID);
 
-            //printf("DEBUGOUT: availableCurrencyInput:%s\n", availableCurrencyInput.ToUniValue().write().c_str());
-            //printf("DEBUGOUT: rtxd.nativeIn: %s, rtxd.ReserveInputMap():%s\n", ValueFromAmount(rtxd.nativeIn).write().c_str(), rtxd.ReserveInputMap().ToUniValue().write().c_str());
+            printf("DEBUGOUT: availableCurrencyInput:%s\n", availableCurrencyInput.ToUniValue().write().c_str());
+            printf("DEBUGOUT: rtxd.nativeIn: %s, rtxd.ReserveInputMap():%s\n", ValueFromAmount(rtxd.nativeIn).write().c_str(), rtxd.ReserveInputMap().ToUniValue().write().c_str());
 
             CCurrencyValueMap importMap = rtxd.ReserveInputMap();
-            if (ccx.systemID == systemID)
+            if (rtxd.nativeIn)
             {
-                importMap.valueMap[systemID] = rtxd.nativeIn;
+                importMap += CCurrencyValueMap({systemID}, {rtxd.nativeIn});
             }
-
-            CCrossChainImport cci = CCrossChainImport(ccx.systemID, currencyID, importMap, leftoverCurrency.CanonicalMap());
+            CCrossChainImport cci = CCrossChainImport(sourceSystemID, currencyID, importMap, leftoverCurrency.CanonicalMap());
 
             newImportTx.vout[0] = CTxOut(totalNativeInput, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)));
 
@@ -3476,12 +3475,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             if (preConvert)
             {
                 flags |= CReserveTransfer::PRECONVERT;
+                flags |= CReserveTransfer::FEE_DEST_NATIVE;
             }
             if (!burnCurrency && !convertToCurrencyID.IsNull())
             {
                 flags |= CReserveTransfer::CONVERT;
             }
-            if (mintNew)
+            else if (mintNew)
             {
                 flags |= CReserveTransfer::MINT_CURRENCY;
                 convertToCurrencyID = sourceCurrencyID;
@@ -3600,7 +3600,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                             convertToCurrencyID,
                                                             DestinationToTransferDestination(destination));
                     rt.nFees = rt.CalculateTransferFee();
-                    oneOutput.nAmount = (sourceCurrencyID == thisChainID) ? sourceAmount + rt.nFees : 0;
+                    oneOutput.nAmount = (sourceCurrencyID == thisChainID) ? sourceAmount + rt.nFees : rt.nFees;
                     oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                 }
                 else if (!preConvert && (mintNew || burnCurrency || toFractional || fromFractional))

@@ -824,70 +824,28 @@ CAmount CCurrencyState::ConvertAmounts(CAmount inputReserve, CAmount inputFracti
 void CReserveTransactionDescriptor::AddReserveInput(const uint160 &currency, CAmount value)
 {
     //printf("adding %ld:%s reserve input\n", value, EncodeDestination(CIdentityID(currency)).c_str());
-
-    auto it = currencies.find(currency);
-    if (it != currencies.end())
-    {
-        it->second.reserveIn += value;
-    }
-    else
-    {
-        currencies[currency] = CReserveInOuts(value, 0, 0, 0, 0);
-    }
+    currencies[currency].reserveIn += value;
 }
 
 void CReserveTransactionDescriptor::AddReserveOutput(const uint160 &currency, CAmount value)
 {
     //printf("adding %ld:%s reserve output\n", value, EncodeDestination(CIdentityID(currency)).c_str());
-
-    auto it = currencies.find(currency);
-    if (it != currencies.end())
-    {
-        it->second.reserveOut += value;
-    }
-    else
-    {
-        currencies[currency] = CReserveInOuts(0, value, 0, 0, 0);
-    }
+    currencies[currency].reserveOut += value;
 }
 
 void CReserveTransactionDescriptor::AddReserveOutConverted(const uint160 &currency, CAmount value)
 {
-    auto it = currencies.find(currency);
-    if (it != currencies.end())
-    {
-        it->second.reserveOutConverted += value;
-    }
-    else
-    {
-        currencies[currency] = CReserveInOuts(0, 0, value, 0, 0);
-    }
+    currencies[currency].reserveOutConverted += value;
 }
 
 void CReserveTransactionDescriptor::AddNativeOutConverted(const uint160 &currency, CAmount value)
 {
-    auto it = currencies.find(currency);
-    if (it != currencies.end())
-    {
-        it->second.nativeOutConverted += value;
-    }
-    else
-    {
-        currencies[currency] = CReserveInOuts(0, 0, 0, value, 0);
-    }
+    currencies[currency].nativeOutConverted += value;
 }
 
 void CReserveTransactionDescriptor::AddReserveConversionFees(const uint160 &currency, CAmount value)
 {
-    auto it = currencies.find(currency);
-    if (it != currencies.end())
-    {
-        it->second.reserveConversionFees += value;
-    }
-    else
-    {
-        currencies[currency] = CReserveInOuts(0, 0, 0, 0, value);
-    }
+    currencies[currency].reserveConversionFees += value;
 }
 
 void CReserveTransactionDescriptor::AddReserveExchange(const CReserveExchange &rex, int32_t outputIndex, int32_t nHeight)
@@ -1017,6 +975,30 @@ CAmount CReserveTransactionDescriptor::AllFeesAsNative(const CCurrencyState &cur
     return nativeFees;
 }
 
+CCurrencyValueMap CReserveTransactionDescriptor::ReserveFees(const uint160 &nativeID) const
+{
+    uint160 id = nativeID.IsNull() ? ASSETCHAINS_CHAINID : nativeID;
+    CCurrencyValueMap retFees;
+    for (auto &one : currencies)
+    {
+        // skip native
+        if (one.first != id)
+        {
+            CAmount oneFee = one.second.reserveIn - (one.second.reserveOut - one.second.reserveOutConverted);
+            if (oneFee)
+            {
+                retFees.valueMap[one.first] = oneFee;
+            }
+        }
+    }
+    return retFees;
+}
+
+CAmount CReserveTransactionDescriptor::NativeFees() const
+{
+    return nativeIn - nativeOut;
+}
+
 CCurrencyValueMap CReserveTransactionDescriptor::AllFeesAsReserve(const CCurrencyState &currencyState, int defaultReserve) const
 {
     CCurrencyValueMap reserveFees = ReserveFees();
@@ -1087,6 +1069,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     bool isVerusActive = IsVerusActive();
     bool isPBaaSActivation = CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight);
 
+    CCurrencyDefinition importCurrencyDef;
     CCrossChainImport cci;
     CCrossChainExport ccx;
 
@@ -1280,7 +1263,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 std::vector<CTxOut> checkOutputs;
 
                                 CPBaaSNotarization importNotarization;
-                                CCurrencyDefinition importCurrencyDef = ConnectedChains.GetCachedCurrency(cci.systemID);
+                                importCurrencyDef = ConnectedChains.GetCachedCurrency(cci.systemID);
                                 if (importCurrencyDef.IsToken() && !(importNotarization = CPBaaSNotarization(tx)).IsValid())
                                 {
                                     flags |= IS_REJECT;
@@ -1360,29 +1343,45 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     nativeOut = tx.GetValueOut();
     nativeIn = view.GetValueIn(nHeight, &dummyInterest, tx);
 
-    // if we don't have a reserve transaction, we're done
-    // don't try to replace basic transaction validation
-    CAmount nValueIn = 0;
+    CCurrencyValueMap importGeneratedCurrency;
+    if (cci.IsValid())
+    {
+        importGeneratedCurrency = GeneratedImportCurrency(cci.systemID, importCurrencyDef.systemID, cci.importCurrencyID);
+    }
+
+    if (importGeneratedCurrency.valueMap.count(ASSETCHAINS_CHAINID))
+    {
+        nativeIn += importGeneratedCurrency.valueMap[ASSETCHAINS_CHAINID];
+        importGeneratedCurrency.valueMap.erase(ASSETCHAINS_CHAINID);
+    }
 
     // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
     // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
-    auto reservesIn = view.GetReserveValueIn(nHeight, tx);
-    for (auto &oneIn : reservesIn.valueMap)
+    auto reservesIn = (view.GetReserveValueIn(nHeight, tx) + importGeneratedCurrency).CanonicalMap();
+    if (reservesIn.valueMap.size())
     {
-        if (oneIn.second)
+        flags |= IS_RESERVE;
+        for (auto &oneCur : currencies)
         {
-            flags |= IS_RESERVE;
-        }
-        auto it = currencies.find(oneIn.first);
-        if (it == currencies.end())
-        {
-            currencies[oneIn.first] = CReserveInOuts(oneIn.second, 0, 0, 0, 0);
-        }
-        else
-        {
-            it->second.reserveIn += oneIn.second;
+            auto it = reservesIn.valueMap.find(oneCur.first);
+            if (it == reservesIn.valueMap.end())
+            {
+                oneCur.second.reserveIn = 0;
+            }
+            else
+            {
+                oneCur.second.reserveIn = it->second;
+            }
         }
     }
+    else
+    {
+        for (auto &oneCur : currencies)
+        {
+            oneCur.second.reserveIn = 0;
+        }
+    }
+    
     if (!IsReserve() && ReserveOutputMap().valueMap.size())
     {
         flags |= IS_RESERVE;
@@ -1391,6 +1390,27 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     // TODO:PBAAS hardening total minimum required fees as we build the descriptor and
     // reject if not correct
     ptx = &tx;
+}
+
+// this is only valid when used after AddReserveTransferImports on an empty CReserveTransactionDwescriptor
+CCurrencyValueMap CReserveTransactionDescriptor::GeneratedImportCurrency(const uint160 &fromSystemID, const uint160 &importSystemID, const uint160 &importCurrencyID) const
+{
+    // only currencies that are controlled by the exporting chain or created in conversion by the importing currency
+    // can be created from nothing
+    // add newly created currency here that meets those criteria
+    CCurrencyValueMap retVal;
+    for (auto one : currencies)
+    {
+        bool isImportID;
+        if (one.second.reserveOutConverted &&
+            ((isImportID = (one.first == importCurrencyID)) ||
+                (fromSystemID != ASSETCHAINS_CHAINID &&
+                ConnectedChains.GetCachedCurrency(one.first).systemID == importSystemID)))
+        {
+            retVal.valueMap[one.first] = isImportID ? one.second.nativeOutConverted : one.second.reserveIn;
+        }
+    }
+    return retVal;
 }
 
 CReserveTransfer RefundExport(const CBaseChainObject *objPtr)
@@ -1471,6 +1491,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     // this is cached here, but only used for pre-conversions
     CCoinbaseCurrencyState initialCurrencyState;
     CCurrencyValueMap preConvertedOutput;
+    CCurrencyValueMap preConvertedReserves;
 
     // we do not change native in or conversion fees, but we define all of these members
     // EVAL_CROSSCHAIN_IMPORT must be the first output of an actual import transaction with any reserve
@@ -1498,6 +1519,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     int32_t totalCarveOut;
     CCurrencyValueMap totalCarveOuts;
     CAmount totalMinted = 0;
+    CAmount exporterReward = 0;
 
     for (int i = 0; i < exportObjects.size(); i++)
     {
@@ -1610,7 +1632,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // export fee is sent to the export pool of the sending
                     // system, exporter reward directly to the exporter
                     CAmount exportFee = CCrossChainExport::CalculateExportFeeRaw(totalNativeFee, numTransfers);
-                    CAmount exporterReward = CCrossChainExport::ExportReward(exportFee);
+                    exporterReward = CCrossChainExport::ExportReward(exportFee);
+
                     curTransfer = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT,
                                                    systemDestID, exporterReward, 0, systemDestID, curTransfer.destination);
                 }
@@ -1637,10 +1660,15 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     {
                         // when minting new currency or burning a fractional for conversion to a reserve,
                         // we only add fees
-                        if ((curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
+                        if ((curTransfer.flags & (curTransfer.IsMint() | curTransfer.IsPreallocate())))
                         {
                             nativeIn += curTransfer.nFees;
                             transferFees.valueMap[systemDestID] += curTransfer.nFees;
+                        }
+                        else if (curTransfer.IsFeeDestNative())
+                        {
+                            nativeIn += curTransfer.nFees;
+                            AddReserveInput(curTransfer.currencyID, curTransfer.nValue);
                         }
                         else
                         {
@@ -1716,14 +1744,32 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         preConversionFee = curTransfer.nValue;
                     }
 
-                    AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
-                    transferFees.valueMap[curTransfer.currencyID] += preConversionFee;
-
                     valueOut -= preConversionFee;
+
+                    AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
+
+                    // convert to native currency according to the initial currency prices, where that was calculated,
+                    // and add it to the fees already converted, so it won't affect later prices
+                    if (curTransfer.currencyID != systemDestID)
+                    {
+                        CAmount intermediate = initialCurrencyState.ReserveToNativeRaw(preConversionFee, initialCurrencyState.conversionPrice[curIdx]);
+                        preConversionFee = initialCurrencyState.NativeToReserveRaw(intermediate, initialCurrencyState.conversionPrice[systemDestIdx]);
+                        if (systemDestID == importCurrencyID)
+                        {
+                            AddNativeOutConverted(curTransfer.currencyID, preConversionFee);
+                            preConvertedOutput.valueMap[curTransfer.currencyID] += preConversionFee;
+                        }
+                        else
+                        {
+                            AddReserveOutConverted(systemDestID, preConversionFee);
+                            preConvertedReserves.valueMap[systemDestID] += preConversionFee;
+                        }
+                    }
+                    // preConversionFee is always native when we get here
+                    transferFees.valueMap[systemDestID] += preConversionFee;
 
                     newCurrencyConverted = initialCurrencyState.ReserveToNativeRaw(valueOut, initialCurrencyState.conversionPrice[curIdx]);
 
-                    CAmount reserveIn = valueOut;
                     if (!carveOutSet)
                     {
                         totalCarveOut = importCurrencyDef.GetTotalCarveOut();
@@ -1731,9 +1777,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     }
                     if (totalCarveOut > 0 && totalCarveOut < SATOSHIDEN)
                     {
-                        CAmount newReserveIn = CCurrencyState::NativeToReserveRaw(reserveIn, SATOSHIDEN - totalCarveOut);
-                        totalCarveOuts.valueMap[curTransfer.currencyID] += reserveIn - newReserveIn;
-                        reserveIn = newReserveIn;
+                        CAmount newReserveIn = CCurrencyState::NativeToReserveRaw(valueOut, SATOSHIDEN - totalCarveOut);
+                        totalCarveOuts.valueMap[curTransfer.currencyID] += valueOut - newReserveIn;
+                        valueOut = newReserveIn;
                     }
 
                     if (curTransfer.currencyID != systemDestID)
@@ -1742,9 +1788,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         // else all that would be reserves is sent to chain ID
                         if (!isFractional)
                         {
-                            AddReserveOutput(curTransfer.currencyID, reserveIn);
+                            AddReserveOutput(curTransfer.currencyID, valueOut);
                             std::vector<CTxDestination> dests({CIdentityID(importCurrencyID)});
-                            CTokenOutput ro = CTokenOutput(curTransfer.currencyID, reserveIn);
+                            CTokenOutput ro = CTokenOutput(curTransfer.currencyID, valueOut);
                             vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
                         }
                     }
@@ -1753,8 +1799,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         // if it is not fractional, send to currency ID, else leave it in reserve deposit
                         if (!isFractional)
                         {
-                            nativeOut += reserveIn;
-                            vOutputs.push_back(CTxOut(reserveIn, GetScriptForDestination(CIdentityID(importCurrencyID))));
+                            nativeOut += valueOut;
+                            vOutputs.push_back(CTxOut(valueOut, GetScriptForDestination(CIdentityID(importCurrencyID))));
                         }
                     }
 
@@ -2098,7 +2144,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     }
 
     std::vector<CAmount> vResConverted = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
-    std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
+    std::vector<CAmount> vResOutConverted = (ReserveOutConvertedMap() - preConvertedReserves).AsCurrencyVector(newCurrencyState.currencies);
     std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
     std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
 
@@ -2121,6 +2167,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     {
         CReserveInOuts fractionalInOuts = currencies[systemDestID];
         newCurrencyState.nativeConversionFees = fractionalInOuts.reserveConversionFees;
+        newCurrencyState.nativeFees = (transferFees.valueMap[systemDestID] + newCurrencyState.nativeConversionFees);
     }
     newCurrencyState.conversionFees = ReserveConversionFeesMap().AsCurrencyVector(newCurrencyState.currencies);
     newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
@@ -2131,30 +2178,39 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     CAmount systemOutConverted = 0;
     for (auto &oneInOut : currencies)
     {
-        ReserveInputs.valueMap[importCurrencyID] += oneInOut.second.nativeOutConverted;
-        if (oneInOut.first == systemDestID)
+        if (oneInOut.first == importCurrencyID)
         {
-            if (systemDestID == importCurrencyID)
+            if (oneInOut.first == systemDestID)
             {
                 systemOutConverted += oneInOut.second.nativeOutConverted;
             }
-            else
+        }
+        else
+        {
+            ReserveInputs.valueMap[importCurrencyID] += oneInOut.second.nativeOutConverted;
+            if (oneInOut.first == systemDestID)
             {
                 systemOutConverted += oneInOut.second.reserveOutConverted;
             }
+            if (oneInOut.second.reserveIn || oneInOut.second.reserveOutConverted)
+            {
+                ReserveInputs.valueMap[oneInOut.first] = oneInOut.second.reserveIn + oneInOut.second.reserveOutConverted;
+            }
+            if (oneInOut.second.reserveOut)
+            {
+                ReserveOutputs.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
+            }
         }
-        if (oneInOut.second.reserveIn || oneInOut.second.reserveOutConverted)
-        {
-            ReserveInputs.valueMap[oneInOut.first] = oneInOut.second.reserveIn + oneInOut.second.reserveOutConverted;
-        }
-        if (oneInOut.second.reserveOut)
-        {
-            ReserveOutputs.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
-        }
+    }
+    if (systemOutConverted)
+    {
+        // this does not have meaning besides a store of the system currency output that was converted
+        currencies[importCurrencyID].reserveOutConverted = systemOutConverted;
     }
     if (nativeIn || systemOutConverted)
     {
         ReserveInputs.valueMap[importCurrencyDef.systemID] = nativeIn + systemOutConverted;
+        nativeIn += systemOutConverted;
     }
     if (nativeOut)
     {
@@ -2317,40 +2373,55 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
     return conversionTx;
 }
 
-CCurrencyValueMap CReserveTransactionDescriptor::ReserveInputMap() const
+CCurrencyValueMap CReserveTransactionDescriptor::ReserveInputMap(const uint160 &nativeID) const
 {
     CCurrencyValueMap retVal;
+    uint160 id = nativeID.IsNull() ? ASSETCHAINS_CHAINID : nativeID;
     for (auto &oneInOut : currencies)
     {
-        if (oneInOut.second.reserveIn)
+        // skip native
+        if (oneInOut.first != id)
         {
-            retVal.valueMap[oneInOut.first] = oneInOut.second.reserveIn;
+            if (oneInOut.second.reserveIn)
+            {
+                retVal.valueMap[oneInOut.first] = oneInOut.second.reserveIn;
+            }
         }
     }
     return retVal;
 }
 
-CCurrencyValueMap CReserveTransactionDescriptor::ReserveOutputMap() const
+CCurrencyValueMap CReserveTransactionDescriptor::ReserveOutputMap(const uint160 &nativeID) const
 {
     CCurrencyValueMap retVal;
+    uint160 id = nativeID.IsNull() ? ASSETCHAINS_CHAINID : nativeID;
     for (auto &oneInOut : currencies)
     {
-        if (oneInOut.second.reserveOut)
+        // skip native
+        if (oneInOut.first != id)
         {
-            retVal.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
+            if (oneInOut.second.reserveOut)
+            {
+                retVal.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
+            }
         }
     }
     return retVal;
 }
 
-CCurrencyValueMap CReserveTransactionDescriptor::ReserveOutConvertedMap() const
+CCurrencyValueMap CReserveTransactionDescriptor::ReserveOutConvertedMap(const uint160 &nativeID) const
 {
     CCurrencyValueMap retVal;
+    uint160 id = nativeID.IsNull() ? ASSETCHAINS_CHAINID : nativeID;
     for (auto &oneInOut : currencies)
     {
-        if (oneInOut.second.reserveOutConverted)
+        // skip native
+        if (oneInOut.first != id)
         {
-            retVal.valueMap[oneInOut.first] = oneInOut.second.reserveOutConverted;
+            if (oneInOut.second.reserveOutConverted)
+            {
+                retVal.valueMap[oneInOut.first] = oneInOut.second.reserveOutConverted;
+            }
         }
     }
     return retVal;

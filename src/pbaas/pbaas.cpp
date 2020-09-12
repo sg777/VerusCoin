@@ -1039,47 +1039,86 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
     // currency state to be up to just before the start block
     std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> unspentTransfers;
     std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
+    int32_t nativeIdx = -1;
     if (GetChainTransfers(unspentTransfers, curDef.GetID(), fromHeight, height < curDef.startBlock ? height : curDef.startBlock - 1))
     {
         currencyState.ClearForNextBlock();
 
         for (auto &transfer : unspentTransfers)
         {
-            if (transfer.second.second.flags & CReserveTransfer::PRECONVERT)
+            if (transfer.second.second.IsPreConversion())
             {
                 CAmount conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
+                CAmount valueIn = transfer.second.second.nValue - conversionFee;
+                int32_t curIdx = currencyIndexes[transfer.second.second.currencyID];
 
-                currencyState.reserveIn[currencyIndexes[transfer.second.second.currencyID]] += (transfer.second.second.nValue - conversionFee);
-                curDef.preconverted[currencyIndexes[transfer.second.second.currencyID]] += (transfer.second.second.nValue - conversionFee);
+                currencyState.reserveIn[curIdx] += valueIn;
+                curDef.preconverted[curIdx] += valueIn;
                 if (curDef.IsFractional())
                 {
-                    currencyState.reserves[currencyIndexes[transfer.second.second.currencyID]] += transfer.second.second.nValue - conversionFee;
+                    currencyState.reserves[curIdx] += valueIn;
                 }
                 else
                 {
-                    currencyState.supply += CCurrencyState::ReserveToNativeRaw(transfer.second.second.nValue - conversionFee, currencyState.PriceInReserve(currencyIndexes[transfer.second.second.currencyID]));
+                    currencyState.supply += CCurrencyState::ReserveToNativeRaw(valueIn, currencyState.PriceInReserve(curIdx));
                 }
 
                 if (transfer.second.second.currencyID == curDef.systemID)
                 {
                     currencyState.nativeConversionFees += conversionFee;
                     currencyState.nativeFees += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                    nativeIdx = curIdx;
                 }
 
-                currencyState.fees[currencyIndexes[transfer.second.second.currencyID]] += 
-                            conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                currencyState.conversionFees[currencyIndexes[transfer.second.second.currencyID]] += conversionFee;
+                currencyState.fees[curIdx] += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                currencyState.conversionFees[curIdx] += conversionFee;
             }
         }
     }
 
-    if (curDef.conversions.size() != curDef.currencies.size())
+    if (curDef.IsFractional())
     {
-        curDef.conversions = std::vector<int64_t>(curDef.currencies.size());
-    }
-    for (int i = 0; i < curDef.conversions.size(); i++)
-    {
-        currencyState.conversionPrice[i] = curDef.conversions[i] = currencyState.PriceInReserve(i, true);
+        // convert all non-native fees to native and update the price as a result
+        bool isFeeConversion = false;
+        std::vector<int64_t> reservesToConvert;
+        std::vector<int64_t> fractionalToConvert;
+        std::vector<std::vector<int64_t>> crossConversions = std::vector<std::vector<int64_t>>(curDef.currencies.size(), std::vector<int64_t>(curDef.currencies.size()));
+
+        for (int i = 0; i < curDef.currencies.size(); i++)
+        {
+            currencyState.conversionPrice[i] = currencyState.PriceInReserve(i, true);
+
+            // all currencies except the native currency of the system will be converted to the native currency
+            if (curDef.currencies[i] != curDef.systemID)
+            {
+                if (currencyState.fees[i])
+                {
+                    reservesToConvert.push_back(currencyState.fees[i] + currencyState.reserves[i]);
+                    fractionalToConvert.push_back(currencyState.ReserveToNative(currencyState.reserves[i], i));
+                    if (nativeIdx != -1)
+                    {
+                        crossConversions[i][nativeIdx] = currencyState.fees[i];
+                        isFeeConversion = true;
+                    }
+                }
+                else
+                {
+                    reservesToConvert.push_back(0);
+                    fractionalToConvert.push_back(0);
+                }
+            }
+        }
+
+        // convert all non-native fee currencies to native and adjust prices
+        if (isFeeConversion)
+        {
+            CCurrencyState converterState = static_cast<CCurrencyState>(currencyState);
+            curDef.conversions = converterState.ConvertAmounts(reservesToConvert, fractionalToConvert, currencyState, &crossConversions);
+        }
+        else
+        {
+            curDef.conversions = currencyState.PricesInReserve();
+        }
     }
 
     // set initial supply from actual conversions if this is first update
@@ -1088,7 +1127,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         CAmount lowSupply = 0, highSupply = 0;
         for (auto &transfer : unspentTransfers)
         {
-            if (transfer.second.second.flags & CReserveTransfer::PRECONVERT)
+            if (transfer.second.second.IsPreConversion())
             {
                 CAmount toConvert = transfer.second.second.nValue - CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
                 lowSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
@@ -1210,7 +1249,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
 
                     for (auto &transfer : unspentTransfers)
                     {
-                        if (transfer.second.second.flags & CReserveTransfer::PRECONVERT)
+                        if (transfer.second.second.IsPreConversion())
                         {
                             CAmount conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
 
@@ -1700,6 +1739,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                             }
                                         }
                                     }
+
                                     if (reserveDepositOut.valueMap.size() || nativeOut)
                                     {
                                         // send the entire amount to a reserve deposit output of the specific chain
@@ -2267,7 +2307,7 @@ void CConnectedChains::ProcessLocalImports()
         if (oneImportInput.IsValid())
         {
             std::vector<CAddressUnspentDbEntry> reserveDeposits;
-            GetAddressUnspent(currencyDefCache[oneIT.first].GetConditionID(EVAL_RESERVE_DEPOSIT), CScript::P2IDX, reserveDeposits);
+            GetAddressUnspent(ConnectedChains.GetCachedCurrency(oneIT.first).GetConditionID(EVAL_RESERVE_DEPOSIT), CScript::P2IDX, reserveDeposits);
             CCurrencyValueMap tokenImportAvailable;
             CAmount nativeImportAvailable = 0;
             for (auto &oneOut : reserveDeposits)
@@ -2278,7 +2318,7 @@ void CConnectedChains::ProcessLocalImports()
             }
             nativeImportAvailable += oneIT.second.second.vout[importOutNum].nValue;
             tokenImportAvailable += oneIT.second.second.vout[importOutNum].ReserveOutValue();
-            //printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
+            printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
             if (CreateLatestImports(currencyDefCache[oneIT.first], oneIT.second.second, txTemplate, CTransaction(), tokenImportAvailable, nativeImportAvailable, importTxes))
             {
                 // fund the first import transaction with all reserveDeposits

@@ -715,10 +715,9 @@ UniValue CReserveTransfer::ToUniValue() const
     }
     else
     {
-        ret.push_back(Pair("convert", (bool)(flags & CONVERT)));
-        ret.push_back(Pair("preconvert", (bool)(flags & PRECONVERT)));
-        ret.push_back(Pair("feeoutput", (bool)(flags & FEE_OUTPUT)));
-        ret.push_back(Pair("sendback", (bool)(flags & SEND_BACK)));
+        ret.push_back(Pair("convert", IsConversion()));
+        ret.push_back(Pair("preconvert", IsPreConversion()));
+        ret.push_back(Pair("feeoutput", IsFeeOutput()));
     }
     ret.push_back(Pair("fees", ValueFromAmount(nFees)));
     ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
