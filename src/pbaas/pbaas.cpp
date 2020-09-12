@@ -2314,7 +2314,7 @@ void CConnectedChains::ProcessLocalImports()
             {
                 nativeImportAvailable += oneOut.second.satoshis;
                 tokenImportAvailable += oneOut.second.script.ReserveOutValue();
-                //printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
+                printf("nativeImportAvailable:%ld, tokenImportAvailable:%s\n", nativeImportAvailable, tokenImportAvailable.ToUniValue().write().c_str());
             }
             nativeImportAvailable += oneIT.second.second.vout[importOutNum].nValue;
             tokenImportAvailable += oneIT.second.second.vout[importOutNum].ReserveOutValue();

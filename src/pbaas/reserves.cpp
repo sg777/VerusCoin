@@ -1182,8 +1182,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
-                    // on a PBaaS reserve chain, a reserve transfer is always denominated in reserve, as exchange must happen before it is
-                    // created. explicit fees in transfer object are for export and import, not initial mining
                     AddReserveTransfer(rt);
                 }
                 break;
@@ -1392,7 +1390,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     ptx = &tx;
 }
 
-// this is only valid when used after AddReserveTransferImports on an empty CReserveTransactionDwescriptor
+// this is only valid when used after AddReserveTransferImportOutputs on an empty CReserveTransactionDwescriptor
 CCurrencyValueMap CReserveTransactionDescriptor::GeneratedImportCurrency(const uint160 &fromSystemID, const uint160 &importSystemID, const uint160 &importCurrencyID) const
 {
     // only currencies that are controlled by the exporting chain or created in conversion by the importing currency
@@ -1652,7 +1650,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         return false;
                     }
 
-                    if (curTransfer.currencyID == systemDestID && !(curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)))
+                    if (curTransfer.currencyID == systemDestID && !(curTransfer.IsMint() || curTransfer.IsPreallocate()))
                     {
                         nativeIn += (curTransfer.nValue + curTransfer.nFees);
                     }
@@ -1660,7 +1658,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     {
                         // when minting new currency or burning a fractional for conversion to a reserve,
                         // we only add fees
-                        if ((curTransfer.flags & (curTransfer.IsMint() | curTransfer.IsPreallocate())))
+                        if (curTransfer.IsMint() || curTransfer.IsPreallocate())
                         {
                             nativeIn += curTransfer.nFees;
                             transferFees.valueMap[systemDestID] += curTransfer.nFees;
@@ -1677,7 +1675,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         }
                     }
 
-                    if (curTransfer.flags & curTransfer.PREALLOCATE)
+                    if (curTransfer.flags & curTransfer.IsPreallocate())
                     {
                         // look up preallocation in the currency definition based on ID, add the correct amount to input
                         // and to the transfer for output
@@ -2027,7 +2025,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 {
                     // if we are supposed to burn a currency, it must be the import currency, and it
                     // is removed from the supply, which would change all calculations for price
-                    if (curTransfer.flags & (curTransfer.BURN_CHANGE_PRICE | curTransfer.BURN_CHANGE_WEIGHT))
+                    if (curTransfer.IsBurn())
                     {
                         // if the source is fractional currency, it is burned
                         if (curTransfer.currencyID != importCurrencyID || !(isFractional || importCurrencyDef.IsToken()))
@@ -2037,7 +2035,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             LogPrintf("%s: Attempting to burn %s, which is either not a token or fractional currency or not the import currency %s\n", __func__, sourceCurrency.name.c_str(), importCurrencyDef.name.c_str());
                             return false;
                         }
-                        if (curTransfer.flags & curTransfer.BURN_CHANGE_WEIGHT)
+                        if (curTransfer.flags & curTransfer.IsBurnChangeWeight())
                         {
                             printf("%s: burning %s to change weight is not supported\n", __func__, importCurrencyDef.name.c_str());
                             LogPrintf("%s: burning %s to change weight is not supported\n", __func__, importCurrencyDef.name.c_str());
@@ -2061,18 +2059,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                         // if this is a minting of currency
                         // this is used for both pre-allocation and also centrally, algorithmically, or externally controlled currencies
-                        if ((curTransfer.flags & (curTransfer.MINT_CURRENCY | curTransfer.PREALLOCATE)) && curTransfer.destCurrencyID == importCurrencyID)
+                        if (curTransfer.IsMint() && curTransfer.destCurrencyID == importCurrencyID)
                         {
                             // pre-allocation is accounted for outside of this
                             // minting is emitted in new currency state
-                            if (curTransfer.flags & curTransfer.MINT_CURRENCY)
+                            if (curTransfer.IsMint())
                             {
                                 totalMinted += ro.nValue;
-                            }
-                            AddNativeOutConverted(curTransfer.destCurrencyID, ro.nValue);
-                            if (curTransfer.destCurrencyID != systemDestID)
-                            {
-                                AddReserveOutConverted(curTransfer.destCurrencyID, ro.nValue);
+                                AddNativeOutConverted(curTransfer.destCurrencyID, ro.nValue);
+                                if (curTransfer.destCurrencyID != systemDestID)
+                                {
+                                    AddReserveOutConverted(curTransfer.destCurrencyID, ro.nValue);
+                                }
                             }
                         }
                         AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);

@@ -1049,7 +1049,6 @@ public:
         if (!(flags & IS_IMPORT))
         {
             AddReserveOutput(rt.currencyID, rt.nValue + rt.nFees);
-            numTransfers++;
         }
     }
 
