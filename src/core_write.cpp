@@ -715,12 +715,33 @@ UniValue CReserveTransfer::ToUniValue() const
     }
     else
     {
-        ret.push_back(Pair("convert", IsConversion()));
-        ret.push_back(Pair("preconvert", IsPreConversion()));
-        ret.push_back(Pair("feeoutput", IsFeeOutput()));
+        if (IsConversion())
+            ret.push_back(Pair("convert", true));
+        if (IsPreConversion())
+            ret.push_back(Pair("preconvert", true));
+        if (IsFeeOutput())
+            ret.push_back(Pair("feeoutput", true));
+        if (IsReserveToReserve())
+            ret.push_back(Pair("reservetoreserve", true));
+        if (IsBurnChangePrice())
+            ret.push_back(Pair("burnchangeprice", true));
+        if (IsBurnChangeWeight())
+            ret.push_back(Pair("burnchangeweight", true));
+        if (IsMint())
+            ret.push_back(Pair("mint", true));
+        if (IsPreallocate())
+            ret.push_back(Pair("preallocate", true));
     }
     ret.push_back(Pair("fees", ValueFromAmount(nFees)));
-    ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
+    if (IsReserveToReserve())
+    {
+        ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(secondReserveID))));
+        ret.push_back(Pair("via", EncodeDestination(CIdentityID(destCurrencyID))));
+    }
+    else
+    {
+        ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
+    }
     std::string destStr;
     switch (destination.type)
     {
