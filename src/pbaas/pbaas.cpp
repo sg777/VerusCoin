@@ -1590,47 +1590,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                     CCurrencyValueMap newTransferInput = txInputs[j].first.scriptPubKey.ReserveOutValue();
                                     newTransferInput.valueMap[ASSETCHAINS_CHAINID] = txInputs[j].first.nValue;
 
-                                    // TODO: make fee currency calculation more flexible on conversion
-                                    // rules should be pay fee in native currency of destination system
-                                    // if source is same currency
-                                    CCurrencyValueMap newTransferOutput;
-                                    bool isMint = (txInputs[j].second.flags & (CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY));
-
-                                    if (isMint)
-                                    {
-                                        newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nFees;
-                                    }
-                                    else
-                                    {
-                                        newTransferOutput.valueMap[txInputs[j].second.currencyID] = txInputs[j].second.nValue + txInputs[j].second.nFees;
-                                    }
-
-                                    //printf("input:\n%s\n", newTransferInput.ToUniValue().write().c_str());
-                                    //printf("output:\n%s\n", newTransferOutput.ToUniValue().write().c_str());
-
-                                    if ((newTransferInput - newTransferOutput).HasNegative())
-                                    {
-                                        // if this transfer is invalid and claims to carry more funds than it does, we consume it since it won't properly verify as a transfer, and
-                                        // it is too expensive to let it force evaluation repeatedly. this condition should not get by normal checks, but just in case, don't let it slow transfers
-                                        // we should formalize this into a chain contribution or amount adjustment.
-                                        printf("%s: transaction %s claims incorrect value:\n%s\nactual:\n%s\n", __func__, 
-                                                    txInputs[j].first.txIn.prevout.hash.GetHex().c_str(),
-                                                    newTransferInput.ToUniValue().write().c_str(),
-                                                    newTransferOutput.ToUniValue().write().c_str());
-                                        LogPrintf("%s: transaction %s claims incorrect value:\n%s\nactual:\n%s\n", __func__, 
-                                                    txInputs[j].first.txIn.prevout.hash.GetHex().c_str(),
-                                                    newTransferInput.ToUniValue().write().c_str(),
-                                                    newTransferOutput.ToUniValue().write().c_str());
-                                        toRemove.push_back(j);
-                                    }
-                                    else
-                                    {
-                                        CAmount valueOut = isMint ? 0 : txInputs[j].second.nValue;
-
-                                        totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, valueOut, lastChainDef.systemID);
-                                        totalAmounts += newTransferInput;
-                                        chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
-                                    }
+                                    totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, txInputs[j].second.nValue, lastChainDef.systemID);
+                                    totalAmounts += newTransferInput;
+                                    chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
                                 }
 
                                 // remove in reverse order so one removal does not affect the position of the next

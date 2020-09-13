@@ -57,6 +57,10 @@ CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transfe
     if (IsConversion() || IsPreConversion())
     {
         feeMap.valueMap[currencyID] += CReserveTransactionDescriptor::CalculateConversionFee(transferTotal);
+        if (IsReserveToReserve())
+        {
+            feeMap.valueMap[currencyID] <<= 1;
+        }
     }
 
     return feeMap;
