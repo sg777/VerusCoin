@@ -669,13 +669,16 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p, bool spendableOnly) 
                 // this currency can only be present as native
                 if (!(rt.flags & (rt.MINT_CURRENCY | rt.PREALLOCATE)))
                 {
-                    if (rt.IsPreConversion())
+                    if (rt.currencyID != ASSETCHAINS_CHAINID)
                     {
-                        retVal.valueMap[rt.currencyID] = rt.nValue;
-                    }
-                    else
-                    {
-                        retVal.valueMap[rt.currencyID] = rt.nValue + rt.nFees;
+                        if (rt.IsPreConversion())
+                        {
+                            retVal.valueMap[rt.currencyID] = rt.nValue;
+                        }
+                        else
+                        {
+                            retVal.valueMap[rt.currencyID] = rt.nValue + rt.nFees;
+                        }
                     }
                 }
                 break;
