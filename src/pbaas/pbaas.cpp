@@ -1089,23 +1089,20 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
             currencyState.conversionPrice[i] = currencyState.PriceInReserve(i, true);
 
             // all currencies except the native currency of the system will be converted to the native currency
-            if (curDef.currencies[i] != curDef.systemID)
+            if (currencyState.fees[i] && curDef.currencies[i] != curDef.systemID)
             {
-                if (currencyState.fees[i])
+                reservesToConvert.push_back(currencyState.fees[i] + currencyState.reserves[i]);
+                fractionalToConvert.push_back(currencyState.ReserveToNative(currencyState.reserves[i], i));
+                if (nativeIdx != -1)
                 {
-                    reservesToConvert.push_back(currencyState.fees[i] + currencyState.reserves[i]);
-                    fractionalToConvert.push_back(currencyState.ReserveToNative(currencyState.reserves[i], i));
-                    if (nativeIdx != -1)
-                    {
-                        crossConversions[i][nativeIdx] = currencyState.fees[i];
-                        isFeeConversion = true;
-                    }
+                    crossConversions[i][nativeIdx] = currencyState.fees[i];
+                    isFeeConversion = true;
                 }
-                else
-                {
-                    reservesToConvert.push_back(0);
-                    fractionalToConvert.push_back(0);
-                }
+            }
+            else
+            {
+                reservesToConvert.push_back(0);
+                fractionalToConvert.push_back(0);
             }
         }
 

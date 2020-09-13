@@ -1642,6 +1642,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     if (curTransfer.currencyID == systemDestID && !(curTransfer.IsMint() || curTransfer.IsPreallocate()))
                     {
                         nativeIn += (curTransfer.nValue + curTransfer.nFees);
+                        transferFees.valueMap[systemDestID] += curTransfer.nFees;
                     }
                     else
                     {
@@ -1649,13 +1650,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         // we only add fees
                         if (curTransfer.IsMint() || curTransfer.IsPreallocate())
                         {
-                            AddReserveInput(curTransfer.destCurrencyID, curTransfer.nValue);
                             nativeIn += curTransfer.nFees;
                             transferFees.valueMap[systemDestID] += curTransfer.nFees;
+                            AddReserveInput(curTransfer.destCurrencyID, curTransfer.nValue);
                         }
                         else if (curTransfer.IsFeeDestNative())
                         {
                             nativeIn += curTransfer.nFees;
+                            transferFees.valueMap[systemDestID] += curTransfer.nFees;
                             AddReserveInput(curTransfer.currencyID, curTransfer.nValue);
                         }
                         else
@@ -1741,18 +1743,20 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     if (curTransfer.currencyID != systemDestID)
                     {
                         CAmount intermediate = initialCurrencyState.ReserveToNativeRaw(preConversionFee, initialCurrencyState.conversionPrice[curIdx]);
-                        preConversionFee = initialCurrencyState.NativeToReserveRaw(intermediate, initialCurrencyState.conversionPrice[systemDestIdx]);
                         if (systemDestID == importCurrencyID)
                         {
+                            preConversionFee = intermediate;
                             AddNativeOutConverted(curTransfer.currencyID, preConversionFee);
                             preConvertedOutput.valueMap[curTransfer.currencyID] += preConversionFee;
                         }
                         else
                         {
+                            preConversionFee = initialCurrencyState.NativeToReserveRaw(intermediate, initialCurrencyState.conversionPrice[systemDestIdx]);
                             AddReserveOutConverted(systemDestID, preConversionFee);
                             preConvertedReserves.valueMap[systemDestID] += preConversionFee;
                         }
                     }
+                    
                     // preConversionFee is always native when we get here
                     transferFees.valueMap[systemDestID] += preConversionFee;
 
@@ -2198,7 +2202,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     if (nativeIn || systemOutConverted)
     {
         ReserveInputs.valueMap[importCurrencyDef.systemID] = nativeIn + systemOutConverted;
-        nativeIn += systemOutConverted;
     }
     if (nativeOut)
     {

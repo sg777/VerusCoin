@@ -5281,7 +5281,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                         CReserveTransactionDescriptor::CalculateAdditionalConversionFee(newChain.contributions[i]);
                 CAmount fee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
 
-                CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT,
+                CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT + CReserveTransfer::FEE_DEST_NATIVE,
                                                        newChain.currencies[i],
                                                        contribution,
                                                        fee,

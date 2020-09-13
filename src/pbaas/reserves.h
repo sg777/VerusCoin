@@ -246,7 +246,7 @@ public:
 
     bool IsFeeDestNative() const
     {
-        return flags & FEE_DEST_NATIVE;
+        return flags & FEE_DEST_NATIVE || IsPreConversion();
     }
 
     bool IsFeeOutput() const
