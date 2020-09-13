@@ -1752,11 +1752,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         else
                         {
                             preConversionFee = initialCurrencyState.NativeToReserveRaw(intermediate, initialCurrencyState.conversionPrice[systemDestIdx]);
+                            AddReserveInput(systemDestID, preConversionFee);
                             AddReserveOutConverted(systemDestID, preConversionFee);
                             preConvertedReserves.valueMap[systemDestID] += preConversionFee;
                         }
                     }
-                    
+
                     // preConversionFee is always native when we get here
                     transferFees.valueMap[systemDestID] += preConversionFee;
 
