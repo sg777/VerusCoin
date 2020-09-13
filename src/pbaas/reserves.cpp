@@ -1342,7 +1342,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     nativeIn = view.GetValueIn(nHeight, &dummyInterest, tx);
 
     CCurrencyValueMap importGeneratedCurrency;
-    if (cci.IsValid())
+    if (flags & IS_IMPORT)
     {
         importGeneratedCurrency = GeneratedImportCurrency(cci.systemID, importCurrencyDef.systemID, cci.importCurrencyID);
     }
@@ -1356,27 +1356,16 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     // if it is a conversion to reserve, the amount in is accurate, since it is from the native coin, if converting to
     // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
     auto reservesIn = (view.GetReserveValueIn(nHeight, tx) + importGeneratedCurrency).CanonicalMap();
+    for (auto &oneCur : currencies)
+    {
+        oneCur.second.reserveIn = 0;
+    }
     if (reservesIn.valueMap.size())
     {
         flags |= IS_RESERVE;
-        for (auto &oneCur : currencies)
+        for (auto &oneCur : reservesIn.valueMap)
         {
-            auto it = reservesIn.valueMap.find(oneCur.first);
-            if (it == reservesIn.valueMap.end())
-            {
-                oneCur.second.reserveIn = 0;
-            }
-            else
-            {
-                oneCur.second.reserveIn = it->second;
-            }
-        }
-    }
-    else
-    {
-        for (auto &oneCur : currencies)
-        {
-            oneCur.second.reserveIn = 0;
+            currencies[oneCur.first].reserveIn = oneCur.second;
         }
     }
     
