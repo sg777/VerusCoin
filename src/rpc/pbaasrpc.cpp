@@ -824,11 +824,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCurrencyValueMap leftoverCurrency = availableCurrencyInput - (rtxd.ReserveInputMap() + CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn}))).CanonicalMap();
             CAmount totalImportFees = rtxd.NativeFees();
 
-            printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\ntotalImportFees:\n%s\n\n", 
+            printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\ngeneratedImportCurrency:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\ntotalImportFees:\n%s\n\n", 
                         __func__, 
                         availableCurrencyInput.ToUniValue().write().c_str(),
                         leftoverCurrency.ToUniValue().write().c_str(),
                         spentCurrencyOut.ToUniValue().write().c_str(),
+                        generatedImportCurrency.ToUniValue().write().c_str(),
                         ValueFromAmount(nativeOutConverted).write().c_str(),
                         rtxd.ReserveInputMap().ToUniValue().write().c_str(),
                         ValueFromAmount(rtxd.nativeIn).write().c_str(),

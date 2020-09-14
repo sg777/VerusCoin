@@ -1392,13 +1392,11 @@ CCurrencyValueMap CReserveTransactionDescriptor::GeneratedImportCurrency(const u
     CCurrencyValueMap retVal;
     for (auto one : currencies)
     {
-        bool isImportID;
-        if (one.second.reserveOutConverted &&
-            ((isImportID = (one.first == importCurrencyID)) ||
-                (fromSystemID != ASSETCHAINS_CHAINID &&
-                ConnectedChains.GetCachedCurrency(one.first).systemID == importSystemID)))
+        bool isImportCurrency = one.first == importCurrencyID;
+        if ((one.second.nativeOutConverted && isImportCurrency) || 
+              (one.second.reserveIn && fromSystemID != ASSETCHAINS_CHAINID && ConnectedChains.GetCachedCurrency(one.first).systemID == fromSystemID))
         {
-            retVal.valueMap[one.first] = isImportID ? one.second.nativeOutConverted : one.second.reserveIn;
+            retVal.valueMap[one.first] = isImportCurrency ? one.second.nativeOutConverted : one.second.reserveIn;
         }
     }
     return retVal;
@@ -1589,6 +1587,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                                 if (systemDestID == importCurrencyID)
                                 {
                                     AddNativeOutConverted(oneFee.first, oneFeeValue);
+                                    nativeIn += oneFeeValue;
                                     totalNativeFee += oneFeeValue;
                                 }
                             }
@@ -1751,6 +1750,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         {
                             preConversionFee = intermediate;
                             AddNativeOutConverted(curTransfer.currencyID, preConversionFee);
+                            nativeIn += preConversionFee;
                             preConvertedOutput.valueMap[curTransfer.currencyID] += preConversionFee;
                         }
                         else
@@ -1805,15 +1805,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     {
                         preConvertedOutput.valueMap[curTransfer.currencyID] += newCurrencyConverted;
                         AddNativeOutConverted(curTransfer.currencyID, newCurrencyConverted);
+                        AddNativeOutConverted(curTransfer.destCurrencyID, newCurrencyConverted);
                         if (curTransfer.destCurrencyID == systemDestID)
                         {
                             nativeOut += newCurrencyConverted;
+                            nativeIn += newCurrencyConverted;
                             newOut = CTxOut(newCurrencyConverted, GetScriptForDestination(TransferDestinationToDestination(curTransfer.destination)));
                         }
                         else
                         {
                             AddReserveOutConverted(curTransfer.destCurrencyID, newCurrencyConverted);
                             AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
+                            AddReserveInput(curTransfer.destCurrencyID, newCurrencyConverted);
                             std::vector<CTxDestination> dests = std::vector<CTxDestination>({TransferDestinationToDestination(curTransfer.destination)});
                             CTokenOutput ro = CTokenOutput(curTransfer.destCurrencyID, newCurrencyConverted);
                             newOut = CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
@@ -1940,13 +1943,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         if (toFractional && !curTransfer.IsReserveToReserve())
                         {
                             AddNativeOutConverted(curTransfer.currencyID, newCurrencyConverted);
+                            AddNativeOutConverted(curTransfer.destCurrencyID, newCurrencyConverted);
                             if (curTransfer.destCurrencyID == systemDestID)
                             {
                                 nativeOut += newCurrencyConverted;
+                                nativeIn += newCurrencyConverted;
                             }
                             else
                             {
                                 AddReserveOutConverted(curTransfer.destCurrencyID, newCurrencyConverted);
+                                AddReserveInput(curTransfer.destCurrencyID, newCurrencyConverted);
                                 AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
                             }
                         }
