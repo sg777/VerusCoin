@@ -2224,12 +2224,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     }
     CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs, transferFees);
     //printf("ReserveInputs: %s\nReserveOutputs: %s\nReserveInputs - ReserveOutputs: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), ReserveOutputs.ToUniValue().write(1,2).c_str(), (ReserveInputs - ReserveOutputs).ToUniValue().write(1,2).c_str());
-    if (ReserveInputs - ReserveOutputs < ccx.CalculateImportFee())
+    if ((ReserveInputs - ReserveOutputs).HasNegative())
     {
-        printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\nccx.CalculateImportFee(): %s\nccx: %s\n", __func__,
+        printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\nccx: %s\n", __func__,
                 ReserveInputs.ToUniValue().write(1,2).c_str(), 
                 ReserveOutputs.ToUniValue().write(1,2).c_str(), 
-                ccx.CalculateImportFee().ToUniValue().write(1,2).c_str(), 
                 ccx.ToUniValue().write(1,2).c_str());
         LogPrintf("%s: Too much fee taken by export\n", __func__);
         return false;
