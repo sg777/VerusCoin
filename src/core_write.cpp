@@ -350,7 +350,7 @@ CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, const cpp_dec_
 
 CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, CAmount exchangeRate)
 {
-    return ReserveToNativeRaw(reserveAmount, cpp_dec_float_50(std::to_string(exchangeRate)));
+    //return ReserveToNativeRaw(reserveAmount, cpp_dec_float_50(std::to_string(exchangeRate)));
 
     static arith_uint256 bigSatoshi(SATOSHIDEN);
     static arith_uint256 bigZero(0);
@@ -364,6 +364,7 @@ CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, CAmount exchan
     }
     else
     {
+        // return -1 on overflow
         return -1;
     }
 }
@@ -399,8 +400,8 @@ CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmoun
 }
 
 CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, 
-                                              const std::vector<uint160> &currencies, 
-                                              const std::vector<CAmount> &exchangeRates)
+                                           const std::vector<uint160> &currencies, 
+                                           const std::vector<CAmount> &exchangeRates)
 {
     CAmount nativeOut = 0;
     for (int i = 0; i < currencies.size(); i++)
@@ -434,7 +435,21 @@ CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, const cpp_dec_f
 
 CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, CAmount exchangeRate)
 {
-    return NativeToReserveRaw(nativeAmount, cpp_dec_float_50(std::to_string(exchangeRate)));
+    //return NativeToReserveRaw(nativeAmount, cpp_dec_float_50(std::to_string(exchangeRate)));
+
+    static arith_uint256 bigSatoshi(SATOSHIDEN);
+    arith_uint256 bigAmount(nativeAmount);
+    arith_uint256 bigReserves = (bigAmount * exchangeRate) / bigSatoshi;
+    int64_t retVal = bigReserves.GetLow64();
+    if ((bigReserves - retVal) == 0)
+    {
+        return retVal;
+    }
+    else
+    {
+        // return -1 on overflow
+        return -1;
+    }
 }
 
 CAmount CCurrencyState::NativeToReserve(CAmount nativeAmount, int32_t reserveIndex) const
