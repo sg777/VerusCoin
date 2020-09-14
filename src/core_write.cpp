@@ -351,6 +351,21 @@ CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, const cpp_dec_
 CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, CAmount exchangeRate)
 {
     return ReserveToNativeRaw(reserveAmount, cpp_dec_float_50(std::to_string(exchangeRate)));
+
+    static arith_uint256 bigSatoshi(SATOSHIDEN);
+    static arith_uint256 bigZero(0);
+    arith_uint256 bigAmount(reserveAmount);
+
+    arith_uint256 bigRetVal = (exchangeRate != bigZero ? (bigAmount * bigSatoshi) / exchangeRate : bigZero);
+    int64_t retVal = bigRetVal.GetLow64();
+    if ((bigRetVal - retVal) == 0)
+    {
+        return retVal;
+    }
+    else
+    {
+        return -1;
+    }
 }
 
 CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, const std::vector<CAmount> &exchangeRates) const
@@ -629,6 +644,17 @@ UniValue CCurrencyDefinition::ToUniValue() const
     if (preLaunchDiscount)
     {
         obj.push_back(Pair("prelaunchdiscount", ValueFromAmount(preLaunchDiscount)));
+    }
+
+    if (IsFractional())
+    {
+        obj.push_back(Pair("initialsupply", ValueFromAmount(initialFractionalSupply)));
+        CAmount carveOut = 0;
+        for (auto oneCarveOut : preLaunchCarveOuts)
+        {
+            carveOut += preLaunchCarveOuts.begin()->second;
+        }
+        obj.push_back(Pair("prelaunchcarveout", ValueFromAmount(carveOut)));
     }
 
     if (preAllocation.size())

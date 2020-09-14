@@ -101,7 +101,7 @@ protected:
     };
 };
 
-bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight, bool checkMempool)
+bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight, bool checkMempool, uint256 *pTxid)
 {
     if (chainID == ConnectedChains.ThisChain().GetID())
     {
@@ -109,6 +109,10 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
         if (pDefHeight)
         {
             *pDefHeight = 0;
+        }
+        if (pTxid)
+        {
+            *pTxid = uint256();
         }
         return true;
     }
@@ -120,6 +124,10 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
             if (pDefHeight)
             {
                 *pDefHeight = 0;
+            }
+            if (pTxid)
+            {
+                *pTxid = uint256();
             }
             return true;
         }
@@ -142,6 +150,10 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
                 {
                     *pDefHeight = currencyDefOut.second.blockHeight;
                 }
+                if (pTxid)
+                {
+                    *pTxid = currencyDefOut.first.txhash;
+                }
                 break;
             }
         }
@@ -159,6 +171,10 @@ bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32
                 if (pDefHeight)
                 {
                     *pDefHeight = 0;
+                }
+                if (pTxid)
+                {
+                    *pTxid = currencyDefOut.first.txhash;
                 }
                 break;
             }
@@ -1113,12 +1129,20 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
     if (chainID.IsNull())
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency name or ID");
     }
 
     if (chainDef.IsValid())
     {
         ret = chainDef.ToUniValue();
+
+        int32_t defHeight;
+        uint256 defTxId;
+        if (!GetCurrencyDefinition(chainID, chainDef, &defHeight, false, &defTxId))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency not found");
+        }
+        ret.push_back(Pair("definitiontxid", defTxId.GetHex()));
 
         if (chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID)
         {

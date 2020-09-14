@@ -18,7 +18,7 @@
 #include <univalue.h>
 
 bool GetCurrencyDefinition(std::string &name, CCurrencyDefinition &chainDef);
-bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight = NULL, bool checkMempool=false);
+bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight=nullptr, bool checkMempool=false, uint256 *pTxid=nullptr);
 bool GetNotarizationData(uint160 chainID, uint32_t ecode, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut = NULL);
 bool GetChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, 
                             uint160 chainFilter = uint160(), int start=0, int end=0, uint32_t flags=CReserveTransfer::VALID);
