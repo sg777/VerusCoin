@@ -2847,6 +2847,7 @@ namespace Consensus {
                                         tx.GetHash().ToString(), FormatMoney(nValueIn), FormatMoney(tx.GetValueOut()),((double)nValueIn - tx.GetValueOut())/COIN),REJECT_INVALID, "bad-txns-in-belowout");
         }
 
+        //printf("NativeValueIn: %s\nNativeValueOut: %s\n", std::to_string(nValueIn).c_str(), std::to_string(tx.GetValueOut()).c_str());
         //printf("ReserveValueIn: %s\nGetReserveValueOut: %s\n", ReserveValueIn.ToUniValue().write(1, 2).c_str(), tx.GetReserveValueOut().ToUniValue().write(1, 2).c_str());
 
         if (ReserveValueIn < tx.GetReserveValueOut())

@@ -528,7 +528,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     CCurrencyValueMap availableCurrencyInput(AvailableTokenInput);
     availableCurrencyInput.valueMap[currencyDef.systemID] = TotalNativeInput;
 
-    printf("totalNativeInput: %ld, availableCurrencyInput:%s\n", totalNativeInput, availableCurrencyInput.ToUniValue().write().c_str());
+    //printf("totalNativeInput: %ld, availableCurrencyInput:%s\n", totalNativeInput, availableCurrencyInput.ToUniValue().write().c_str());
 
     CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
     if ((isTokenImport && chainActive.LastTip() == NULL) ||
@@ -817,14 +817,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
 
             // import fees go to miner, reserve outputs, native or otherwise, always come from available
             // input whether converted or not, and fractional out converted is new currency
-            CCurrencyValueMap spentCurrencyOut = (rtxd.ReserveInputMap() + 
-                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn})));
             CCurrencyValueMap generatedImportCurrency = rtxd.GeneratedImportCurrency(sourceSystemID, systemID, currencyID);
+            CCurrencyValueMap spentCurrencyOut = (rtxd.ReserveOutputMap() +
+                                                  CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeOut})));
             availableCurrencyInput += generatedImportCurrency;
-            CCurrencyValueMap leftoverCurrency = availableCurrencyInput - (rtxd.ReserveInputMap() + CCurrencyValueMap(std::vector<uint160>({systemID}), std::vector<CAmount>({rtxd.nativeIn}))).CanonicalMap();
+            CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - spentCurrencyOut).CanonicalMap();
             CAmount totalImportFees = rtxd.NativeFees();
 
-            printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\ngeneratedImportCurrency:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\ntotalImportFees:\n%s\n\n", 
+            /* printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\ngeneratedImportCurrency:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\ntotalImportFees:\n%s\n\n", 
                         __func__, 
                         availableCurrencyInput.ToUniValue().write().c_str(),
                         leftoverCurrency.ToUniValue().write().c_str(),
@@ -837,7 +837,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                         rtxd.ReserveOutputMap().ToUniValue().write().c_str(),
                         rtxd.ReserveFees().ToUniValue().write().c_str(),
                         ValueFromAmount(rtxd.NativeFees()).write().c_str(),
-                        ValueFromAmount(totalImportFees).write().c_str());
+                        ValueFromAmount(totalImportFees).write().c_str()); */
 
             if (leftoverCurrency.HasNegative())
             {
