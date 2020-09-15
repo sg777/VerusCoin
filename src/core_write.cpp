@@ -417,7 +417,7 @@ CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmoun
 
 CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount, int32_t reserveIndex) const
 {
-    return ReserveToNativeRaw(reserveAmount, PriceInReserveDecFloat50(reserveIndex));
+    return ReserveToNativeRaw(reserveAmount, PriceInReserve(reserveIndex));
 }
 
 CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, const cpp_dec_float_50 &price)
@@ -454,7 +454,7 @@ CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, CAmount exchang
 
 CAmount CCurrencyState::NativeToReserve(CAmount nativeAmount, int32_t reserveIndex) const
 {
-    return NativeToReserveRaw(nativeAmount, PriceInReserveDecFloat50(reserveIndex));
+    return NativeToReserveRaw(nativeAmount, PriceInReserve(reserveIndex));
 }
 
 CCurrencyValueMap CCurrencyState::NativeToReserveRaw(const std::vector<CAmount> &nativeAmount, const std::vector<CAmount> &exchangeRates) const

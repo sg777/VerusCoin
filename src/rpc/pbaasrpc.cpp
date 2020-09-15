@@ -789,15 +789,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                     newImportTx.vin.push_back(CTxIn(aixIt->second.second.GetHash(), finalizeOutNum));
                 }
 
-                lastConfirmed = CPBaaSNotarization(lastImport);
-                lastConfirmed.notarizationHeight = chainActive.Height();
-
                 if (!NewImportNotarization(currencyDef, nHeight, lastImport, aixIt->second.first.blockHeight, aixIt->second.second, newImportTx, _currencyState))
                 {
                     LogPrintf("%s: cannot create notarization for transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                     printf("%s:  cannot create notarization for transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                     return false;
                 }
+                lastConfirmed = CPBaaSNotarization(newImportTx);
             }
             else
             {

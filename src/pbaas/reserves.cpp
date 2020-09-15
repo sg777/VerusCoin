@@ -1745,7 +1745,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                     AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
 
-                    // convert to native currency according to the initial currency prices, where that was calculated,
+                    // convert fee to native currency according to the initial currency prices, where that was calculated,
                     // and add it to the fees already converted, so it won't affect later prices
                     if (curTransfer.currencyID != systemDestID)
                     {
