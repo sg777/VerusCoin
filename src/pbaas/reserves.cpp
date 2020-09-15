@@ -1623,7 +1623,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // system, exporter reward directly to the exporter
                     CAmount exportFee = CCrossChainExport::CalculateExportFeeRaw(totalNativeFee, numTransfers);
                     exporterReward = CCrossChainExport::ExportReward(exportFee);
-                    if (totalNativeFee > exporterReward && systemDestID != importCurrencyID)
+                    if (totalNativeFee > exporterReward)
                     {
                         nativeOut += (totalNativeFee - exporterReward);
                     }
@@ -2151,7 +2151,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     }
 
     std::vector<CAmount> vResConverted = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
-    std::vector<CAmount> vResOutConverted = (ReserveOutConvertedMap() - preConvertedReserves).AsCurrencyVector(newCurrencyState.currencies);
+    std::vector<CAmount> vResOutConverted = (ReserveOutConvertedMap(importCurrencyID) - preConvertedReserves).AsCurrencyVector(newCurrencyState.currencies);
     std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
     std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
 
