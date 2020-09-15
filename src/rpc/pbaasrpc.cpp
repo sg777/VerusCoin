@@ -904,8 +904,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             totalNativeInput = leftoverCurrency.valueMap[systemID];
             leftoverCurrency.valueMap.erase(systemID);
 
-            printf("DEBUGOUT: availableCurrencyInput:%s\n", availableCurrencyInput.ToUniValue().write().c_str());
-            printf("DEBUGOUT: rtxd.nativeIn: %s, rtxd.ReserveInputMap():%s\n", ValueFromAmount(rtxd.nativeIn).write().c_str(), rtxd.ReserveInputMap().ToUniValue().write().c_str());
+            //printf("DEBUGOUT: availableCurrencyInput:%s\n", availableCurrencyInput.ToUniValue().write().c_str());
+            //printf("DEBUGOUT: rtxd.nativeIn: %s, rtxd.ReserveInputMap():%s\n", ValueFromAmount(rtxd.nativeIn).write().c_str(), rtxd.ReserveInputMap().ToUniValue().write().c_str());
 
             CCurrencyValueMap importMap = rtxd.ReserveInputMap();
             if (rtxd.nativeIn)

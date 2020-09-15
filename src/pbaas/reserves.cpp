@@ -2222,7 +2222,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     {
         ReserveOutputs.valueMap[importCurrencyDef.systemID] = nativeOut;
     }
-    CCrossChainExport ccx(systemDestID, numTransfers, ReserveInputs, transferFees);
+
     //printf("ReserveInputs: %s\nReserveOutputs: %s\nReserveInputs - ReserveOutputs: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), ReserveOutputs.ToUniValue().write(1,2).c_str(), (ReserveInputs - ReserveOutputs).ToUniValue().write(1,2).c_str());
     if ((ReserveInputs - ReserveOutputs).HasNegative())
     {
