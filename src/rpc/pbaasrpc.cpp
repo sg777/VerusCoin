@@ -940,7 +940,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             exportProof.txProof << block.MMRProofBridge();
 
             // TODO: don't include chain MMR proof for exports from the same chain
-            ChainMerkleMountainView mmv(chainActive.GetMMR(), lastConfirmed.notarizationHeight);
+            ChainMerkleMountainView mmv(chainActive.GetMMR(), lastConfirmed.notarizationHeight + 1);
             mmv.GetProof(exportProof.txProof, aixIt->second.first.blockHeight);
 
             CChainObject<CPartialTransactionProof> exportXProof(CHAINOBJ_TRANSACTION_PROOF, exportProof);
