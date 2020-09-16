@@ -1110,7 +1110,8 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         if (isFeeConversion)
         {
             CCurrencyState converterState = static_cast<CCurrencyState>(currencyState);
-            curDef.conversions = currencyState.conversionPrice = converterState.ConvertAmounts(reservesToConvert, fractionalToConvert, currencyState, &crossConversions);
+            auto tempPrices = converterState.ConvertAmounts(reservesToConvert, fractionalToConvert, currencyState, &crossConversions);
+            curDef.conversions = currencyState.conversionPrice = currencyState.PricesInReserve();
         }
         else
         {
