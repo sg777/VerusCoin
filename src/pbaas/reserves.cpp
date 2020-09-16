@@ -1593,7 +1593,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             }
                             else if (oneFee.first == systemDestID)
                             {
-                                totalNativeFee = oneFee.second;
+                                totalNativeFee += oneFee.second;
                             }
                             else
                             {
@@ -1760,7 +1760,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         else
                         {
                             preConversionFee = initialCurrencyState.NativeToReserveRaw(intermediate, initialCurrencyState.conversionPrice[systemDestIdx]);
-                            AddReserveInput(systemDestID, preConversionFee);
+                            nativeIn += preConversionFee;
                             AddReserveOutConverted(systemDestID, preConversionFee);
                             preConvertedReserves.valueMap[systemDestID] += preConversionFee;
                         }
@@ -1888,9 +1888,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     CAmount valueOut = curTransfer.nValue;
                     CAmount preConversionFee = 0;
                     CAmount newCurrencyConverted = 0;
+
                     if (!(curTransfer.flags & curTransfer.FEE_OUTPUT))
                     {
                         preConversionFee = CalculateConversionFee(curTransfer.nValue);
+                        if (curTransfer.IsReserveToReserve())
+                        {
+                            preConversionFee <<= 1;
+                        }
                         if (preConversionFee > curTransfer.nValue)
                         {
                             preConversionFee = curTransfer.nValue;
@@ -1923,21 +1928,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             // we burn 0.025% of the fractional that was converted, and convert the rest to
                             // the specified reserve. since the burn depends on the first conversion, which
                             // it is not involved in, it is tracked separately and applied after the first conversion
-
-                            // must have 2x conversion fee, divided equally
-                            if (valueOut > preConversionFee)
-                            {
-                                secondaryBurned = importCurrencyState.ReserveToNativeRaw(preConversionFee, importCurrencyState.conversionPrice[reserveIdx]);
-                                outputCurrencyID = curTransfer.secondReserveID;
-                                newCurrencyConverted = CCurrencyState::NativeToReserveRaw(newCurrencyConverted - secondaryBurned,
-                                                            importCurrencyState.conversionPrice[currencyIndexMap[outputCurrencyID]]);
-                                crossConversions[reserveIdx][systemDestIdx] += valueOut - preConversionFee;
-                            }
-                            else
-                            {
-                                secondaryBurned = newCurrencyConverted;
-                                newCurrencyConverted = 0;
-                            }
+                            int32_t outputCurrencIdx = currencyIndexMap[outputCurrencyID];
+                            outputCurrencyID = curTransfer.secondReserveID;
+                            newCurrencyConverted = CCurrencyState::NativeToReserveRaw(newCurrencyConverted, importCurrencyState.conversionPrice[outputCurrencIdx]);
+                            crossConversions[reserveIdx][outputCurrencIdx] += valueOut;
                         }
                         else
                         {

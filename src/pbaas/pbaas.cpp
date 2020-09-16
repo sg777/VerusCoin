@@ -1382,10 +1382,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             }
 
             std::vector<pair<CInputDescriptor, CReserveTransfer>> txInputs;
-            uint160 bookEnd({uint160(ParseHex("ffffffffffffffffffffffffffffffffffffffff"))});
-            uint160 lastChain = bookEnd;
-            transferOutputs.insert(std::make_pair(bookEnd, std::make_pair(CInputDescriptor(), CReserveTransfer())));
-            CCurrencyDefinition lastChainDef;
+            uint160 lastChain = transferOutputs.begin()->first;
 
             CCoins coins;
             CCoinsView dummy;
@@ -1396,400 +1393,390 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
             view.SetBackend(viewMemPool);
 
-            for (auto &output : transferOutputs)
+            auto outputIt = transferOutputs.begin();
+            for (int outputsDone = 0; outputsDone <= transferOutputs.size(); outputIt++, outputsDone++)
             {
-                CCurrencyDefinition sourceDef, destDef, systemDef;
-
-                if (output.first != bookEnd)
+                if (outputIt != transferOutputs.end())
                 {
-                    if (!output.second.second.IsValid())
+                    auto &output = *outputIt;
+                    if (output.first == lastChain)
                     {
-                        printf("%s: invalid reserve transfer in index for currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
-                        LogPrintf("%s: invalid reserve transfer in index for currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
+                        txInputs.push_back(output.second);
                         continue;
-                    }
-
-                    sourceDef = GetCachedCurrency(output.second.second.currencyID);
-                    destDef = GetCachedCurrency(output.second.second.destCurrencyID);
-                    systemDef = GetCachedCurrency(destDef.systemID);
-
-                    if (!sourceDef.IsValid())
-                    {
-                        printf("%s: cannot find source currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
-                        LogPrintf("%s: cannot find source currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.currencyID)).c_str());
-                        continue;
-                    }
-                    if (!destDef.IsValid())
-                    {
-                        printf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.destCurrencyID)).c_str());
-                        LogPrintf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(output.second.second.destCurrencyID)).c_str());
-                        continue;
-                    }
-                    if (!systemDef.IsValid())
-                    {
-                        printf("%s: cannot find destination system definition %s\n", __func__, EncodeDestination(CIdentityID(destDef.systemID)).c_str());
-                        LogPrintf("%s: cannot find destination system definition %s\n", __func__, EncodeDestination(CIdentityID(destDef.systemID)).c_str());
-                        continue;
-                    }
-
-                    // if destination is a token on the current chain, consider it its own system
-                    if (destDef.systemID == thisChainID)
-                    {
-                        systemDef = destDef;
                     }
                 }
 
-                // get chain target and see if it is the same
-                if (lastChain == bookEnd || output.first == lastChain)
+                CCurrencyDefinition destDef, systemDef;
+
+                destDef = GetCachedCurrency(lastChain);
+                systemDef = GetCachedCurrency(destDef.systemID);
+
+                if (!destDef.IsValid())
                 {
-                    txInputs.push_back(output.second);
+                    printf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(lastChain)).c_str());
+                    LogPrintf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(lastChain)).c_str());
+                    continue;
                 }
-                else
+                if (!systemDef.IsValid())
                 {
-                    // when we get here, we have a consecutive number of transfer outputs to consume in txInputs
-                    // we need an unspent export output to export, or use the last one of it is an export to the same
-                    // system
-                    std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
-                    lastChainDef = UpdateCachedCurrency(lastChain, nHeight);
+                    printf("%s: cannot find destination system definition %s\n", __func__, EncodeDestination(CIdentityID(destDef.systemID)).c_str());
+                    LogPrintf("%s: cannot find destination system definition %s\n", __func__, EncodeDestination(CIdentityID(destDef.systemID)).c_str());
+                    continue;
+                }
 
-                    if (GetUnspentChainExports(lastChain, exportOutputs) && exportOutputs.size())
+                // if destination is a token on the current chain, consider it its own system
+                if (destDef.systemID == thisChainID)
+                {
+                    systemDef = destDef;
+                }
+
+                // when we get here, we have a consecutive number of transfer outputs to consume in txInputs
+                // we need an unspent export output to export, or use the last one of it is an export to the same
+                // system
+                std::multimap<uint160, pair<int, CInputDescriptor>> exportOutputs;
+                CCurrencyDefinition lastChainDef = UpdateCachedCurrency(lastChain, nHeight);
+
+                if (GetUnspentChainExports(lastChain, exportOutputs) && exportOutputs.size())
+                {
+                    std::pair<uint160, std::pair<int, CInputDescriptor>> lastExport = *exportOutputs.begin();
+
+                    bool oneFullSize = txInputs.size() >= CCrossChainExport::MIN_INPUTS;
+
+                    if (((nHeight - lastExport.second.first) >= CCrossChainExport::MIN_BLOCKS) || oneFullSize)
                     {
-                        std::pair<uint160, std::pair<int, CInputDescriptor>> lastExport = *exportOutputs.begin();
+                        boost::optional<CTransaction> oneExport;
 
-                        bool oneFullSize = txInputs.size() >= CCrossChainExport::MIN_INPUTS;
-
-                        if (((nHeight - lastExport.second.first) >= CCrossChainExport::MIN_BLOCKS) || oneFullSize)
+                        // make one or more transactions that spends the last export and all possible cross chain transfers
+                        while (txInputs.size())
                         {
-                            boost::optional<CTransaction> oneExport;
+                            TransactionBuilder tb(Params().GetConsensus(), nHeight);
 
-                            // make one or more transactions that spends the last export and all possible cross chain transfers
-                            while (txInputs.size())
+                            int inputsLeft = txInputs.size();
+                            int numInputs = inputsLeft > CCrossChainExport::MAX_EXPORT_INPUTS ? CCrossChainExport::MAX_EXPORT_INPUTS : inputsLeft;
+
+                            if (numInputs > CCrossChainExport::MAX_EXPORT_INPUTS)
                             {
-                                TransactionBuilder tb(Params().GetConsensus(), nHeight);
+                                numInputs = CCrossChainExport::MAX_EXPORT_INPUTS;
+                            }
+                            inputsLeft = txInputs.size() - numInputs;
 
-                                int inputsLeft = txInputs.size();
-                                int numInputs = inputsLeft > CCrossChainExport::MAX_EXPORT_INPUTS ? CCrossChainExport::MAX_EXPORT_INPUTS : inputsLeft;
+                            // if we have already made one and don't have enough to make another
+                            // without going under the input minimum, wait until next time for the others
+                            if (numInputs > 0 && numInputs < CCrossChainExport::MIN_INPUTS && oneFullSize)
+                            {
+                                break;
+                            }
 
-                                if (numInputs > CCrossChainExport::MAX_EXPORT_INPUTS)
+                            // each time through, we make one export transaction with the remainder or a subset of the
+                            // reserve transfer inputs. inputs can be:
+                            // 1. transfers of reserve for fractional reserve chains
+                            // 2. pre-conversions for pre-launch participation in the premine
+                            // 3. reserve market conversions to send between Verus and a fractional reserve chain and always output the native coin
+                            //
+                            // If we are on the Verus chain, all inputs will include native coins. On a PBaaS chain, inputs can either be native
+                            // or reserve token inputs.
+                            //
+                            // On the Verus chain, total native amount, minus the fee, must be sent to the reserve address of the specific chain
+                            // as reserve deposit with native coin equivalent. Pre-conversions and conversions will be realized on the PBaaS chain
+                            // as part of the import process
+                            // 
+                            // If we are on the PBaaS chain, conversions must happen before coins are sent this way back to the reserve chain. 
+                            // Verus reserve outputs can be directly aggregated and transferred, with fees paid through conversion and the 
+                            // remaining Verus reserve coin will be burned on the PBaaS chain as spending it is allowed, once notarized, on the
+                            // Verus chain.
+                            //
+                            CCurrencyValueMap totalTxFees;
+                            CCurrencyValueMap totalAmounts;
+                            CAmount exportOutVal = 0;
+                            std::vector<CBaseChainObject *> chainObjects;
+
+                            // first, we must add the export output from the current export thread to this chain
+                            if (oneExport.is_initialized())
+                            {
+                                // spend the last export transaction output
+                                CTransaction &tx = oneExport.get();
+                                COptCCParams p;
+                                int j;
+                                for (j = 0; j < tx.vout.size(); j++)
                                 {
-                                    numInputs = CCrossChainExport::MAX_EXPORT_INPUTS;
-                                }
-                                inputsLeft = txInputs.size() - numInputs;
-
-                                // if we have already made one and don't have enough to make another
-                                // without going under the input minimum, wait until next time for the others
-                                if (numInputs > 0 && numInputs < CCrossChainExport::MIN_INPUTS && oneFullSize)
-                                {
-                                    break;
-                                }
-
-                                // each time through, we make one export transaction with the remainder or a subset of the
-                                // reserve transfer inputs. inputs can be:
-                                // 1. transfers of reserve for fractional reserve chains
-                                // 2. pre-conversions for pre-launch participation in the premine
-                                // 3. reserve market conversions to send between Verus and a fractional reserve chain and always output the native coin
-                                //
-                                // If we are on the Verus chain, all inputs will include native coins. On a PBaaS chain, inputs can either be native
-                                // or reserve token inputs.
-                                //
-                                // On the Verus chain, total native amount, minus the fee, must be sent to the reserve address of the specific chain
-                                // as reserve deposit with native coin equivalent. Pre-conversions and conversions will be realized on the PBaaS chain
-                                // as part of the import process
-                                // 
-                                // If we are on the PBaaS chain, conversions must happen before coins are sent this way back to the reserve chain. 
-                                // Verus reserve outputs can be directly aggregated and transferred, with fees paid through conversion and the 
-                                // remaining Verus reserve coin will be burned on the PBaaS chain as spending it is allowed, once notarized, on the
-                                // Verus chain.
-                                //
-                                CCurrencyValueMap totalTxFees;
-                                CCurrencyValueMap totalAmounts;
-                                CAmount exportOutVal = 0;
-                                std::vector<CBaseChainObject *> chainObjects;
-
-                                // first, we must add the export output from the current export thread to this chain
-                                if (oneExport.is_initialized())
-                                {
-                                    // spend the last export transaction output
-                                    CTransaction &tx = oneExport.get();
-                                    COptCCParams p;
-                                    int j;
-                                    for (j = 0; j < tx.vout.size(); j++)
-                                    {
-                                        if (::IsPayToCryptoCondition(tx.vout[j].scriptPubKey, p) && 
-                                            p.IsValid() &&
-                                            p.evalCode == EVAL_CROSSCHAIN_EXPORT)
-                                        {
-                                            break;
-                                        }
-                                    }
-
-                                    // had to be found and valid if we made the tx
-                                    assert(j < tx.vout.size() && p.IsValid());
-
-                                    tb.AddTransparentInput(COutPoint(tx.GetHash(), j), tx.vout[j].scriptPubKey, tx.vout[j].nValue);
-                                    exportOutVal = tx.vout[j].nValue;
-                                    lastExport.second.first = nHeight;
-                                    lastExport.second.second = CInputDescriptor(tx.vout[j].scriptPubKey, tx.vout[j].nValue, CTxIn(tx.GetHash(), j));
-                                }
-                                else
-                                {
-                                    // spend the recentExportIt output
-                                    tb.AddTransparentInput(lastExport.second.second.txIn.prevout, lastExport.second.second.scriptPubKey, lastExport.second.second.nValue);
-                                    exportOutVal = lastExport.second.second.nValue;
-                                    uint256 blkHash;
-                                    CTransaction lastExportTx;
-                                    // we must find the export, or it doesn't exist
-                                    if (!myGetTransaction(lastExport.second.second.txIn.prevout.hash, lastExportTx, blkHash))
+                                    if (::IsPayToCryptoCondition(tx.vout[j].scriptPubKey, p) && 
+                                        p.IsValid() &&
+                                        p.evalCode == EVAL_CROSSCHAIN_EXPORT)
                                     {
                                         break;
                                     }
-                                    oneExport = lastExportTx;
                                 }
 
-                                // combine any reserve deposits from the last export
-                                // into the reserve deposit outputs for this export and spend them
-                                // TODO: allow reserve deposits to hold multiple reserve token types
-                                // to make this more efficient for multi-reserves
-                                CCurrencyValueMap currentReserveDeposits;
-                                if (!view.GetCoins(lastExport.second.second.txIn.prevout.hash, coins))
+                                // had to be found and valid if we made the tx
+                                assert(j < tx.vout.size() && p.IsValid());
+
+                                tb.AddTransparentInput(COutPoint(tx.GetHash(), j), tx.vout[j].scriptPubKey, tx.vout[j].nValue);
+                                exportOutVal = tx.vout[j].nValue;
+                                lastExport.second.first = nHeight;
+                                lastExport.second.second = CInputDescriptor(tx.vout[j].scriptPubKey, tx.vout[j].nValue, CTxIn(tx.GetHash(), j));
+                            }
+                            else
+                            {
+                                // spend the recentExportIt output
+                                tb.AddTransparentInput(lastExport.second.second.txIn.prevout, lastExport.second.second.scriptPubKey, lastExport.second.second.nValue);
+                                exportOutVal = lastExport.second.second.nValue;
+                                uint256 blkHash;
+                                CTransaction lastExportTx;
+                                // we must find the export, or it doesn't exist
+                                if (!myGetTransaction(lastExport.second.second.txIn.prevout.hash, lastExportTx, blkHash))
                                 {
                                     break;
                                 }
-                                CTransaction &lastExportTx = oneExport.get();
+                                oneExport = lastExportTx;
+                            }
 
-                                for (int i = 0; i < coins.vout.size(); i++)
-                                {
-                                    // import on same chain spends reserve deposits as well, so only spend them if they are not
-                                    // already spent
-                                    auto &oneOut = lastExportTx.vout[i];
-                                    COptCCParams p;
+                            // combine any reserve deposits from the last export
+                            // into the reserve deposit outputs for this export and spend them
+                            // TODO: allow reserve deposits to hold multiple reserve token types
+                            // to make this more efficient for multi-reserves
+                            CCurrencyValueMap currentReserveDeposits;
+                            if (!view.GetCoins(lastExport.second.second.txIn.prevout.hash, coins))
+                            {
+                                break;
+                            }
+                            CTransaction &lastExportTx = oneExport.get();
 
-                                    if (::IsPayToCryptoCondition(oneOut.scriptPubKey, p) &&
-                                        p.IsValid() &&
-                                        p.evalCode == EVAL_RESERVE_DEPOSIT &&
-                                        coins.IsAvailable(i))
-                                    {
-                                        // only reserve deposits for the export currency/system will be present on an export transaction
-                                        CCurrencyValueMap reserveOut = oneOut.scriptPubKey.ReserveOutValue().CanonicalMap();
-                                        currentReserveDeposits += reserveOut;
-                                        if (oneOut.nValue || reserveOut.valueMap.size())
-                                        {
-                                            tb.AddTransparentInput(COutPoint(lastExport.second.second.txIn.prevout.hash, i), 
-                                                                oneOut.scriptPubKey, oneOut.nValue);
-                                            currentReserveDeposits.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
-                                        }
-                                    }
-                                }
-
+                            for (int i = 0; i < coins.vout.size(); i++)
+                            {
+                                // import on same chain spends reserve deposits as well, so only spend them if they are not
+                                // already spent
+                                auto &oneOut = lastExportTx.vout[i];
                                 COptCCParams p;
-                                std::vector<int> toRemove;
 
-                                for (int j = 0; j < numInputs; j++)
+                                if (::IsPayToCryptoCondition(oneOut.scriptPubKey, p) &&
+                                    p.IsValid() &&
+                                    p.evalCode == EVAL_RESERVE_DEPOSIT &&
+                                    coins.IsAvailable(i))
                                 {
-                                    tb.AddTransparentInput(txInputs[j].first.txIn.prevout, txInputs[j].first.scriptPubKey, txInputs[j].first.nValue, txInputs[j].first.txIn.nSequence);
-                                    CCurrencyValueMap newTransferInput = txInputs[j].first.scriptPubKey.ReserveOutValue();
-                                    newTransferInput.valueMap[ASSETCHAINS_CHAINID] = txInputs[j].first.nValue;
-
-                                    totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, txInputs[j].second.nValue, lastChainDef.systemID);
-                                    totalAmounts += newTransferInput;
-                                    chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
-                                }
-
-                                // remove in reverse order so one removal does not affect the position of the next
-                                for (int j = toRemove.size() - 1; j >= 0; j--)
-                                {
-                                    txInputs.erase(txInputs.begin() + toRemove[j]);
-                                    numInputs--;
-                                }
-
-                                // this logic may cause us to create a tx that will get rejected, but we will never wait too long
-                                if (!numInputs || (oneFullSize && (nHeight - lastExport.second.first) < CCrossChainExport::MIN_BLOCKS && numInputs < CCrossChainExport::MIN_INPUTS))
-                                {
-                                    continue;
-                                }
-
-                                //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
-                                CCrossChainExport ccx(lastChain, numInputs, totalAmounts.CanonicalMap(), totalTxFees.CanonicalMap());
-
-                                // make a fee output
-                                CReserveTransfer feeOut(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT, 
-                                                        lastChainDef.systemID, 0, 0, lastChainDef.systemID, DestinationToTransferDestination(feeOutput));
-                                chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
-
-                                // do a preliminary check
-                                CReserveTransactionDescriptor rtxd;
-                                std::vector<CTxOut> vOutputs;
-                                CChainNotarizationData cnd;
-                                CCoinbaseCurrencyState currencyState;
-                                if (!GetNotarizationData(lastChain,
-                                                    !lastChainDef.IsToken() && lastChainDef.systemID == lastChain ? EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION,
-                                                    cnd))
-                                {
-                                    printf("%s: failed to create valid exports\n", __func__);
-                                    LogPrintf("%s: failed to create valid exports\n", __func__);
-                                }
-                                else
-                                {
-                                    currencyState = cnd.vtx[cnd.lastConfirmed].second.currencyState;
-                                }
-                                if (!currencyState.IsValid() ||
-                                    !rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs))
-                                {
-                                    vOutputs = std::vector<CTxOut>();
-                                    rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs);
-                                    DeleteOpRetObjects(chainObjects);
-
-                                    printf("%s: failed to create valid exports\n", __func__);
-                                    LogPrintf("%s: failed to create valid exports\n", __func__);
-
-                                    // debugging output
-                                    printf("%s: failed to export outputs:\n", __func__);
-                                    for (auto oneout : vOutputs)
+                                    // only reserve deposits for the export currency/system will be present on an export transaction
+                                    CCurrencyValueMap reserveOut = oneOut.scriptPubKey.ReserveOutValue().CanonicalMap();
+                                    currentReserveDeposits += reserveOut;
+                                    if (oneOut.nValue || reserveOut.valueMap.size())
                                     {
-                                        UniValue uniOut;
-                                        ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
-                                        printf("%s\n", uniOut.write(true, 2).c_str());
+                                        tb.AddTransparentInput(COutPoint(lastExport.second.second.txIn.prevout.hash, i), 
+                                                            oneOut.scriptPubKey, oneOut.nValue);
+                                        currentReserveDeposits.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
                                     }
                                 }
-                                else
-                                {
-                                    CCcontract_info CC;
-                                    CCcontract_info *cp;
+                            }
 
-                                    /*
-                                    // debugging out
-                                    printf("%s: exported outputs:\n", __func__);
-                                    for (auto &oneout : chainObjects)
+                            COptCCParams p;
+                            std::vector<int> toRemove;
+
+                            for (int j = 0; j < numInputs; j++)
+                            {
+                                tb.AddTransparentInput(txInputs[j].first.txIn.prevout, txInputs[j].first.scriptPubKey, txInputs[j].first.nValue, txInputs[j].first.txIn.nSequence);
+                                CCurrencyValueMap newTransferInput = txInputs[j].first.scriptPubKey.ReserveOutValue();
+                                newTransferInput.valueMap[ASSETCHAINS_CHAINID] = txInputs[j].first.nValue;
+
+                                totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, txInputs[j].second.nValue, lastChainDef.systemID);
+                                totalAmounts += newTransferInput;
+                                chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
+                            }
+
+                            // remove in reverse order so one removal does not affect the position of the next
+                            for (int j = toRemove.size() - 1; j >= 0; j--)
+                            {
+                                txInputs.erase(txInputs.begin() + toRemove[j]);
+                                numInputs--;
+                            }
+
+                            // this logic may cause us to create a tx that will get rejected, but we will never wait too long
+                            if (!numInputs || (oneFullSize && (nHeight - lastExport.second.first) < CCrossChainExport::MIN_BLOCKS && numInputs < CCrossChainExport::MIN_INPUTS))
+                            {
+                                continue;
+                            }
+
+                            //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
+                            CCrossChainExport ccx(lastChain, numInputs, totalAmounts.CanonicalMap(), totalTxFees.CanonicalMap());
+
+                            // make a fee output
+                            CReserveTransfer feeOut(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT, 
+                                                    lastChainDef.systemID, 0, 0, lastChainDef.systemID, DestinationToTransferDestination(feeOutput));
+                            chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
+
+                            // do a preliminary check
+                            CReserveTransactionDescriptor rtxd;
+                            std::vector<CTxOut> vOutputs;
+                            CChainNotarizationData cnd;
+                            CCoinbaseCurrencyState currencyState;
+                            if (!GetNotarizationData(lastChain,
+                                                !lastChainDef.IsToken() && lastChainDef.systemID == lastChain ? EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION,
+                                                cnd))
+                            {
+                                printf("%s: failed to create valid exports\n", __func__);
+                                LogPrintf("%s: failed to create valid exports\n", __func__);
+                            }
+                            else
+                            {
+                                currencyState = cnd.vtx[cnd.lastConfirmed].second.currencyState;
+                            }
+                            if (!currencyState.IsValid() ||
+                                !rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs))
+                            {
+                                vOutputs = std::vector<CTxOut>();
+                                rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain().GetID(), lastChainDef, currencyState, chainObjects, vOutputs);
+                                DeleteOpRetObjects(chainObjects);
+
+                                printf("%s: failed to create valid exports\n", __func__);
+                                LogPrintf("%s: failed to create valid exports\n", __func__);
+
+                                // debugging output
+                                printf("%s: failed to export outputs:\n", __func__);
+                                for (auto oneout : vOutputs)
+                                {
+                                    UniValue uniOut;
+                                    ScriptPubKeyToJSON(oneout.scriptPubKey, uniOut, false);
+                                    printf("%s\n", uniOut.write(true, 2).c_str());
+                                }
+                            }
+                            else
+                            {
+                                CCcontract_info CC;
+                                CCcontract_info *cp;
+
+                                /*
+                                // debugging out
+                                printf("%s: exported outputs:\n", __func__);
+                                for (auto &oneout : chainObjects)
+                                {
+                                    if (oneout->objectType == CHAINOBJ_RESERVETRANSFER)
                                     {
-                                        if (oneout->objectType == CHAINOBJ_RESERVETRANSFER)
+                                        CReserveTransfer &rt = ((CChainObject<CReserveTransfer> *)(oneout))->object;
+                                        printf("%s\n", rt.ToUniValue().write(true, 2).c_str());
+                                    }
+                                }
+                                */
+
+                                CScript opRet = StoreOpRetArray(chainObjects);
+                                DeleteOpRetObjects(chainObjects);
+
+                                // now send transferred currencies to a reserve deposit
+                                cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
+
+                                currentReserveDeposits += ccx.totalAmounts;
+                                CCurrencyValueMap reserveDepositOut;
+                                CAmount nativeOut = 0;
+
+                                for (auto &oneCurrencyOut : currentReserveDeposits.valueMap)
+                                {
+                                    CCurrencyDefinition oneDef = currencyDefCache[oneCurrencyOut.first];
+
+                                    // if the destination is this chain, or
+                                    // the destination is another blockchain that does not control source currency, store in reserve
+                                    if ((oneDef.systemID == ASSETCHAINS_CHAINID || oneDef.systemID != lastChainDef.systemID) &&
+                                        oneCurrencyOut.second)
+                                    {
+                                        if (oneCurrencyOut.first == ASSETCHAINS_CHAINID)
                                         {
-                                            CReserveTransfer &rt = ((CChainObject<CReserveTransfer> *)(oneout))->object;
-                                            printf("%s\n", rt.ToUniValue().write(true, 2).c_str());
-                                        }
-                                    }
-                                    */
-
-                                    CScript opRet = StoreOpRetArray(chainObjects);
-                                    DeleteOpRetObjects(chainObjects);
-
-                                    // now send transferred currencies to a reserve deposit
-                                    cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
-
-                                    currentReserveDeposits += ccx.totalAmounts;
-                                    CCurrencyValueMap reserveDepositOut;
-                                    CAmount nativeOut = 0;
-
-                                    for (auto &oneCurrencyOut : currentReserveDeposits.valueMap)
-                                    {
-                                        CCurrencyDefinition oneDef = currencyDefCache[oneCurrencyOut.first];
-
-                                        // if the destination is this chain, or
-                                        // the destination is another blockchain that does not control source currency, store in reserve
-                                        if ((oneDef.systemID == ASSETCHAINS_CHAINID || oneDef.systemID != lastChainDef.systemID) &&
-                                            oneCurrencyOut.second)
-                                        {
-                                            if (oneCurrencyOut.first == ASSETCHAINS_CHAINID)
-                                            {
-                                                nativeOut = oneCurrencyOut.second;
-                                            }
-                                            else
-                                            {
-                                                reserveDepositOut.valueMap[oneCurrencyOut.first] = oneCurrencyOut.second;
-                                            }
-                                        }
-                                    }
-
-                                    if (reserveDepositOut.valueMap.size() || nativeOut)
-                                    {
-                                        // send the entire amount to a reserve deposit output of the specific chain
-                                        // we receive our fee on the other chain, when it comes back, or if a token,
-                                        // when it gets imported back to the chain
-                                        std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
-                                        CReserveDeposit rd = CReserveDeposit(lastChain, reserveDepositOut);
-                                        tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), 
-                                                                nativeOut);
-                                    }
-
-                                    cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
-
-                                    // send native amount of zero to a cross chain export output of the specific chain
-                                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
-
-                                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx)),
-                                                            exportOutVal);
-
-                                    // when exports are confirmed as having been imported, they are finalized
-                                    // until then, a finalization UTXO enables an index search to only find transactions
-                                    // that have work to complete on this chain, or have not had their cross-chain import 
-                                    // acknowledged
-                                    cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
-                                    CTransactionFinalization finalization(CTransactionFinalization::FINALIZE_EXPORT, lastChain, 0);
-
-                                    //printf("%s: Finalizing export with index dest %s\n", __func__, EncodeDestination(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))).c_str());
-
-                                    dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
-                                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_EXPORT, dests, 1, &finalization)), 0);
-
-                                    tb.AddOpRet(opRet);
-                                    tb.SetFee(0);
-
-                                    /* UniValue uni(UniValue::VOBJ);
-                                    TxToUniv(tb.mtx, uint256(), uni);
-                                    printf("%s: about to send reserve deposits with tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
-
-                                    TransactionBuilderResult buildResult(tb.Build());
-
-                                    if (!buildResult.IsError() && buildResult.IsTx())
-                                    {
-                                        // replace the last one only if we have a valid new one
-                                        CTransaction tx = buildResult.GetTxOrThrow();
-
-                                        /* uni = UniValue(UniValue::VOBJ);
-                                        TxToUniv(tx, uint256(), uni);
-                                        printf("%s: successfully built tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
-
-                                        LOCK2(cs_main, mempool.cs);
-                                        static int lastHeight = 0;
-                                        // remove conflicts, so that we get in
-                                        std::list<CTransaction> removed;
-                                        mempool.removeConflicts(tx, removed);
-
-                                        // add to mem pool, prioritize according to the fee we will get, and relay
-                                        //printf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
-                                        //LogPrintf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
-                                        if (myAddtomempool(tx))
-                                        {
-                                            oneExport = tx;
-                                            uint256 hash = tx.GetHash();
-                                            CAmount nativeExportFees = ccx.totalFees.valueMap[ASSETCHAINS_CHAINID];
-                                            mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(nativeExportFees << 1), nativeExportFees);
+                                            nativeOut = oneCurrencyOut.second;
                                         }
                                         else
                                         {
-                                            UniValue uni(UniValue::VOBJ);
-                                            TxToUniv(tx, uint256(), uni);
-                                            //printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
-                                            LogPrintf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
-                                            break;
+                                            reserveDepositOut.valueMap[oneCurrencyOut.first] = oneCurrencyOut.second;
                                         }
-                                    }
-                                    else
-                                    {
-                                        // we can't do any more useful work for this chain if we failed here
-                                        printf("Failed to create export transaction: %s\n", buildResult.GetError().c_str());
-                                        LogPrintf("Failed to create export transaction: %s\n", buildResult.GetError().c_str());
-                                        break;
                                     }
                                 }
 
-                                // erase the inputs we've attempted to spend
-                                txInputs.erase(txInputs.begin(), txInputs.begin() + numInputs);
+                                if (reserveDepositOut.valueMap.size() || nativeOut)
+                                {
+                                    // send the entire amount to a reserve deposit output of the specific chain
+                                    // we receive our fee on the other chain, when it comes back, or if a token,
+                                    // when it gets imported back to the chain
+                                    std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
+                                    CReserveDeposit rd = CReserveDeposit(lastChain, reserveDepositOut);
+                                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), 
+                                                            nativeOut);
+                                }
+
+                                cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
+
+                                // send native amount of zero to a cross chain export output of the specific chain
+                                std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
+
+                                tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx)),
+                                                        exportOutVal);
+
+                                // when exports are confirmed as having been imported, they are finalized
+                                // until then, a finalization UTXO enables an index search to only find transactions
+                                // that have work to complete on this chain, or have not had their cross-chain import 
+                                // acknowledged
+                                cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
+                                CTransactionFinalization finalization(CTransactionFinalization::FINALIZE_EXPORT, lastChain, 0);
+
+                                //printf("%s: Finalizing export with index dest %s\n", __func__, EncodeDestination(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))).c_str());
+
+                                dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
+                                tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_EXPORT, dests, 1, &finalization)), 0);
+
+                                tb.AddOpRet(opRet);
+                                tb.SetFee(0);
+
+                                /* UniValue uni(UniValue::VOBJ);
+                                TxToUniv(tb.mtx, uint256(), uni);
+                                printf("%s: about to send reserve deposits with tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
+
+                                TransactionBuilderResult buildResult(tb.Build());
+
+                                if (!buildResult.IsError() && buildResult.IsTx())
+                                {
+                                    // replace the last one only if we have a valid new one
+                                    CTransaction tx = buildResult.GetTxOrThrow();
+
+                                    /* uni = UniValue(UniValue::VOBJ);
+                                    TxToUniv(tx, uint256(), uni);
+                                    printf("%s: successfully built tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
+
+                                    LOCK2(cs_main, mempool.cs);
+                                    static int lastHeight = 0;
+                                    // remove conflicts, so that we get in
+                                    std::list<CTransaction> removed;
+                                    mempool.removeConflicts(tx, removed);
+
+                                    // add to mem pool, prioritize according to the fee we will get, and relay
+                                    //printf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
+                                    //LogPrintf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
+                                    if (myAddtomempool(tx))
+                                    {
+                                        oneExport = tx;
+                                        uint256 hash = tx.GetHash();
+                                        CAmount nativeExportFees = ccx.totalFees.valueMap[ASSETCHAINS_CHAINID];
+                                        mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(nativeExportFees << 1), nativeExportFees);
+                                    }
+                                    else
+                                    {
+                                        UniValue uni(UniValue::VOBJ);
+                                        TxToUniv(tx, uint256(), uni);
+                                        //printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
+                                        LogPrintf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    // we can't do any more useful work for this chain if we failed here
+                                    printf("Failed to create export transaction: %s\n", buildResult.GetError().c_str());
+                                    LogPrintf("Failed to create export transaction: %s\n", buildResult.GetError().c_str());
+                                    break;
+                                }
                             }
+
+                            // erase the inputs we've attempted to spend
+                            txInputs.erase(txInputs.begin(), txInputs.begin() + numInputs);
                         }
                     }
-                    txInputs.clear();
                 }
-                lastChain = output.first;
+                txInputs.clear();
+                if (outputIt != transferOutputs.end())
+                {
+                    lastChain = outputIt->first;
+                    txInputs.push_back(outputIt->second);
+                }
             }
             CheckImports();
         }
