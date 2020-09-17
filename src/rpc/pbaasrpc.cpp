@@ -3497,8 +3497,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             if (preConvert)
             {
-                flags |= CReserveTransfer::PRECONVERT;
-                flags |= CReserveTransfer::FEE_DEST_NATIVE;
+                flags |= (CReserveTransfer::PRECONVERT + CReserveTransfer::FEE_DEST_NATIVE);
             }
             if (!burnCurrency && !convertToCurrencyID.IsNull())
             {
@@ -3506,7 +3505,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             }
             else if (mintNew)
             {
-                flags |= CReserveTransfer::MINT_CURRENCY;
+                flags |= (CReserveTransfer::MINT_CURRENCY + CReserveTransfer::FEE_DEST_NATIVE);
                 convertToCurrencyID = sourceCurrencyID;
                 convertToCurrencyDef = sourceCurrencyDef;
             }
