@@ -1066,7 +1066,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                 if (transfer.second.second.currencyID == curDef.systemID)
                 {
                     currencyState.nativeConversionFees += conversionFee;
-                    currencyState.nativeFees += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                    currencyState.nativeFees += conversionFee;
                     nativeIdx = curIdx;
                 }
 
