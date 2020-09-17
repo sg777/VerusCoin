@@ -1070,7 +1070,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                     nativeIdx = curIdx;
                 }
 
-                currencyState.fees[curIdx] += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                currencyState.fees[curIdx] += conversionFee;
                 currencyState.conversionFees[curIdx] += conversionFee;
             }
         }
