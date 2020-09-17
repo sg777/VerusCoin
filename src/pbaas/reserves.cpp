@@ -1864,9 +1864,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                     if (curTransfer.IsReserveToReserve() &&
                         (!toFractional ||
-                         curTransfer.secondReserveID.IsNull()) ||
+                         curTransfer.secondReserveID.IsNull() ||
                          curTransfer.secondReserveID == curTransfer.currencyID ||
-                         !currencyIndexMap.count(curTransfer.secondReserveID))
+                         !currencyIndexMap.count(curTransfer.secondReserveID)))
                     {
                         printf("%s: Invalid reserve to reserve transaction %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         LogPrintf("%s: Invalid reserve to reserve transaction %s\n", __func__, curTransfer.ToUniValue().write().c_str());

@@ -746,33 +746,28 @@ UniValue CReserveDeposit::ToUniValue() const
 UniValue CReserveTransfer::ToUniValue() const
 {
     UniValue ret(((CTokenOutput *)this)->ToUniValue());
-    if (flags & PREALLOCATE)
-    {
+
+    ret.push_back(Pair("flags", (int32_t)flags));
+
+    if (IsPreallocate())
         ret.push_back(Pair("preallocation", true));
-    }
-    else if (flags & MINT_CURRENCY)
-    {
-        ret.push_back(Pair("mintedcurrency", true));
-    }
-    else
-    {
-        if (IsConversion())
-            ret.push_back(Pair("convert", true));
-        if (IsPreConversion())
-            ret.push_back(Pair("preconvert", true));
-        if (IsFeeOutput())
-            ret.push_back(Pair("feeoutput", true));
-        if (IsReserveToReserve())
-            ret.push_back(Pair("reservetoreserve", true));
-        if (IsBurnChangePrice())
-            ret.push_back(Pair("burnchangeprice", true));
-        if (IsBurnChangeWeight())
-            ret.push_back(Pair("burnchangeweight", true));
-        if (IsMint())
-            ret.push_back(Pair("mint", true));
-        if (IsPreallocate())
-            ret.push_back(Pair("preallocate", true));
-    }
+    if (IsConversion())
+        ret.push_back(Pair("convert", true));
+    if (IsPreConversion())
+        ret.push_back(Pair("preconvert", true));
+    if (IsFeeOutput())
+        ret.push_back(Pair("feeoutput", true));
+    if (IsReserveToReserve())
+        ret.push_back(Pair("reservetoreserve", true));
+    if (IsBurnChangePrice())
+        ret.push_back(Pair("burnchangeprice", true));
+    if (IsBurnChangeWeight())
+        ret.push_back(Pair("burnchangeweight", true));
+    if (IsMint())
+        ret.push_back(Pair("mint", true));
+    if (IsPreallocate())
+        ret.push_back(Pair("preallocate", true));
+
     ret.push_back(Pair("fees", ValueFromAmount(nFees)));
     if (IsReserveToReserve())
     {
