@@ -838,7 +838,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCurrencyValueMap leftoverCurrency = (availableCurrencyInput - spentCurrencyOut).CanonicalMap();
             CAmount totalImportFees = rtxd.NativeFees();
 
-            /* printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\ngeneratedImportCurrency:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\ntotalImportFees:\n%s\n\n", 
+            /*printf("%s: availableCurrencyInput:\n%s\nleftoverCurrency:\n%s\nspentCurrencyOut:\n%s\ngeneratedImportCurrency:\n%s\nnativeOutConverted\n%s\nReserveInputMap():\n%s\nrtxd.nativeIn:\n%s\nrtxd.nativeOut:\n%s\nrtxd.ReserveOutputMap():\n%s\ntxreservefees:\n%s\ntxnativefees:\n%s\ntotalImportFees:\n%s\n\n", 
                         __func__, 
                         availableCurrencyInput.ToUniValue().write().c_str(),
                         leftoverCurrency.ToUniValue().write().c_str(),
@@ -3394,7 +3394,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
                 }
-                flags |= CReserveTransfer::BURN_CHANGE_PRICE;
+                flags |= (CReserveTransfer::BURN_CHANGE_PRICE + CReserveTransfer::FEE_DEST_NATIVE);
                 convertToCurrencyID = sourceCurrencyID;
                 convertToCurrencyDef = sourceCurrencyDef;
             }
