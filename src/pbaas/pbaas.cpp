@@ -1938,6 +1938,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
                                              uint32_t exportHeight, 
                                              const CTransaction &exportTx, 
                                              CMutableTransaction &mnewTx,
+                                             CCoinbaseCurrencyState &oldCurState,
                                              CCoinbaseCurrencyState &newCurState)
 {
     if (!_curDef.IsValid() || !_curDef.IsToken())
@@ -2003,6 +2004,8 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
             return false;
         }
     }
+
+    oldCurState = initialCurrencyState;
 
     CBlockIndex *pindex;
     CTxDestination notarizationID = VERUS_DEFAULTID.IsNull() ? CTxDestination(CIdentityID(currencyID)) : CTxDestination(VERUS_DEFAULTID);
@@ -2230,9 +2233,9 @@ void CConnectedChains::ProcessLocalImports()
                 CTransactionFinalization(p.vData[0]).IsValid() &&
                 myGetTransaction(oneOut.first.txhash, txOut, blkHash) &&
                 (ccx = CCrossChainExport(txOut)).IsValid() &&
+                !currenciesToImport.count(ccx.systemID) &&
                 (oneCurrency = GetCachedCurrency(ccx.systemID)).IsValid() &&
                 oneCurrency.startBlock <= nHeight &&
-                !currenciesToImport.count(ccx.systemID) &&
                 GetLastImport(ccx.systemID, txImport, lastExport, cci, ccxDummy))
             {
                 auto blockIt = mapBlockIndex.find(blkHash);
@@ -2249,6 +2252,7 @@ void CConnectedChains::ProcessLocalImports()
     {
         std::vector<CTransaction> importTxes;
         int32_t importOutNum = 0;
+
         CCrossChainImport oneImportInput(oneIT.second.second, &importOutNum);
         if (oneImportInput.IsValid())
         {

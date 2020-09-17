@@ -777,7 +777,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             CCcontract_info *cp;
             CPubKey pk;
 
-            CCoinbaseCurrencyState _currencyState, currencyState;
+            CCoinbaseCurrencyState oldCurrencyState, currencyState;
             if (isTokenImport)
             {
                 // spend export finalization if there is one
@@ -789,25 +789,33 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                     newImportTx.vin.push_back(CTxIn(aixIt->second.second.GetHash(), finalizeOutNum));
                 }
 
-                if (!NewImportNotarization(currencyDef, nHeight, lastImport, aixIt->second.first.blockHeight, aixIt->second.second, newImportTx, _currencyState))
+                if (!NewImportNotarization(currencyDef, 
+                                           nHeight, 
+                                           lastImport, 
+                                           aixIt->second.first.blockHeight, 
+                                           aixIt->second.second, 
+                                           newImportTx,
+                                           oldCurrencyState,
+                                           currencyState))
                 {
                     LogPrintf("%s: cannot create notarization for transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                     printf("%s:  cannot create notarization for transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                     return false;
                 }
                 lastConfirmed = CPBaaSNotarization(newImportTx);
+                oldCurrencyState.conversionPrice = currencyState.conversionPrice;
             }
             else
             {
-                // TODO: confirm that for non-tokens, we don't have to calculate initial state
-                _currencyState = lastConfirmed.currencyState;
+                // for non-tokens, we don't have to calculate initial state
+                oldCurrencyState = lastConfirmed.currencyState;
             }
 
             CReserveTransactionDescriptor rtxd;
             std::vector<CBaseChainObject *> exportOutputs = RetrieveOpRetArray(aixIt->second.second.vout.back().scriptPubKey);
 
-            if (!_currencyState.IsValid() ||
-                !rtxd.AddReserveTransferImportOutputs(thisChainID, currencyDef, _currencyState, exportOutputs, newImportTx.vout, &currencyState))
+            if (!oldCurrencyState.IsValid() ||
+                !rtxd.AddReserveTransferImportOutputs(thisChainID, currencyDef, oldCurrencyState, exportOutputs, newImportTx.vout, &currencyState))
             {
                 LogPrintf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());
                 printf("%s: POSSIBLE CORRUPTION bad export opret in transaction %s\n", __func__, aixIt->second.second.GetHash().GetHex().c_str());

@@ -844,6 +844,7 @@ public:
                                uint32_t exportHeight, 
                                const CTransaction &exportTx, 
                                CMutableTransaction &mnewTx,
+                               CCoinbaseCurrencyState &oldCurState,
                                CCoinbaseCurrencyState &newCurState);
 
     bool GetLastImport(const uint160 &systemID, 
