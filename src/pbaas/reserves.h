@@ -215,7 +215,7 @@ public:
 
     CCurrencyValueMap CalculateFee(uint32_t flags, CAmount transferTotal, const uint160 &systemID) const;
 
-    static CAmount CalculateTransferFee(const CTransferDestination &destination);
+    static CAmount CalculateTransferFee(const CTransferDestination &destination, uint32_t flags=VALID);
 
     CAmount CalculateTransferFee() const;
 
@@ -393,7 +393,7 @@ public:
     // failure fee, meaning the valid before block is past but it is not expired is the difference between input and output and must follow those rules
     // it is deducted in the success case from the success fee, so there is no fee beyond the success fee paid
     static const CAmount SUCCESS_FEE = 25000;
-    static const CAmount MIN_SUCCESS_FEE = 50000;
+    static const CAmount MIN_SUCCESS_FEE = 20000;
     static const CAmount MIN_PARTIAL = 10000000;        // making partial fill minimum the number at which minimum fee meets standard percent fee,
     static const CAmount MIN_NET_CONVERSION = 10000000; // minimum conversion for input
     static const CAmount FILL_OR_KILL_FEE = 10000;

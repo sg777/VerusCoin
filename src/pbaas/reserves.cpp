@@ -32,7 +32,7 @@ CTokenOutput::CTokenOutput(const UniValue &obj)
     }
 }
 
-CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination)
+CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination, uint32_t flags)
 {
     return CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 + ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
 }
