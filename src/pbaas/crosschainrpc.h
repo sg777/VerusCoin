@@ -17,7 +17,7 @@
 
 #include "version.h"
 #include "uint256.h"
-#include <univalue/include/univalue.h>
+#include <univalue.h>
 #include <sstream>
 #include "streams.h"
 #include "boost/algorithm/string.hpp"
@@ -79,12 +79,20 @@ std::vector<unsigned char> AsVector(const SERIALIZABLE &obj)
 }
 
 template <typename SERIALIZABLE>
-void FromVector(const std::vector<unsigned char> &vch, SERIALIZABLE &obj)
+void FromVector(const std::vector<unsigned char> &vch, SERIALIZABLE &obj, bool *pSuccess=nullptr)
 {
     CDataStream s(vch, SER_NETWORK, PROTOCOL_VERSION);
+    if (pSuccess)
+    {
+        *pSuccess = false;
+    }
     try
     {
         obj.Unserialize(s);
+        if (pSuccess)
+        {
+            *pSuccess = true;
+        }
     }
     catch(const std::exception& e)
     {
@@ -555,5 +563,75 @@ public:
 extern int64_t AmountFromValue(const UniValue& value);
 extern int64_t AmountFromValueNoErr(const UniValue& value);
 extern UniValue ValueFromAmount(const int64_t& amount);
+
+// we wil uncomment service types as they are implemented
+// commented service types are here as guidance and reminders
+enum PBAAS_SERVICE_TYPES {
+    SERVICE_INVALID = 0,
+    SERVICE_NOTARIZATION = 1,
+    SERVICE_LAST = 1
+};
+
+// Additional data for an output pool used for a PBaaS chain's reward for service, such as mining, staking, node or electrum service
+// TODO: this class needs to include currency ID controlling the service and a service ID based on the naming system
+class CServiceReward
+{
+public:
+    uint32_t nVersion;                      // version of this chain definition data structure to allow for extensions (not daemon version)
+    uint160 currencyID;                     // currency this service is for
+    uint16_t serviceType;                   // type of service
+    int32_t billingPeriod;                  // this is used to identify to which billing period of a chain, this reward applies
+
+    CServiceReward() : nVersion(PBAAS_VERSION_INVALID), serviceType(SERVICE_INVALID) {}
+
+    CServiceReward(const uint160 &curID, PBAAS_SERVICE_TYPES ServiceType, int32_t period) : 
+        nVersion(PBAAS_VERSION), currencyID(curID), serviceType(ServiceType), billingPeriod(period) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(nVersion);
+        READWRITE(currencyID);
+        READWRITE(serviceType);
+        READWRITE(billingPeriod);
+    }
+
+    CServiceReward(const std::vector<unsigned char> &asVector)
+    {
+        FromVector(asVector, *this);
+    }
+
+    // TODO: complete these
+    CServiceReward(const UniValue &obj) : nVersion(PBAAS_VERSION)
+    {
+        serviceType = uni_get_str(find_value(obj, "servicetype")) == "notarization" ? SERVICE_NOTARIZATION : SERVICE_INVALID;
+        billingPeriod = uni_get_int(find_value(obj, "billingperiod"));
+        if (!billingPeriod)
+        {
+            serviceType = SERVICE_INVALID;
+        }
+    }
+
+    CServiceReward(const CTransaction &tx);
+
+    UniValue ToUniValue() const
+    {
+        UniValue obj(UniValue::VOBJ);
+        obj.push_back(Pair("servicetype", serviceType == SERVICE_NOTARIZATION ? "notarization" : "unknown"));
+        obj.push_back(Pair("billingperiod", billingPeriod));
+        return obj;
+    }
+
+    std::vector<unsigned char> AsVector()
+    {
+        return ::AsVector(*this);
+    }
+
+    bool IsValid() const
+    {
+        return serviceType != SERVICE_INVALID;
+    }
+};
 
 #endif

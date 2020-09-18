@@ -163,6 +163,18 @@ COptCCParams::COptCCParams(const std::vector<unsigned char> &vch)
                                     }
                                     break;
                                 }
+                                case ADDRTYPE_INDEX:
+                                {
+                                    if (keyVec.size() == 21)
+                                    {
+                                        vKeys.push_back(CIndexID(uint160(std::vector<unsigned char>(keyVec.begin() + 1, keyVec.end()))));
+                                    }
+                                    else
+                                    {
+                                        version = 0;
+                                    }
+                                    break;
+                                }
                                 default:
                                     version = 0;
                             }
@@ -195,7 +207,7 @@ std::vector<unsigned char> COptCCParams::AsVector() const
     for (auto k : vKeys)
     {
         std::vector<unsigned char> keyBytes = GetDestinationBytes(k);
-        if (version > VERSION_V2 && (k.which() == ADDRTYPE_SH || k.which() == ADDRTYPE_ID))
+        if (version > VERSION_V2 && k.which() != ADDRTYPE_PK && k.which() != ADDRTYPE_PKH)
         {
             keyBytes.insert(keyBytes.begin(), (uint8_t)k.which());
         }
@@ -266,7 +278,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     EVAL_IDENTITY_RECOVER,
                     EVAL_IDENTITY_COMMITMENT,
                     EVAL_IDENTITY_RESERVATION,
-                    EVAL_FINALIZE_EXPORT
+                    EVAL_FINALIZE_EXPORT,
+                    EVAL_FEE_POOL
                 });
                 if (VALID_EVAL_CODES.count(cp.evalCode))
                 {
@@ -664,11 +677,13 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     }
                 }
 
-                for (int i = -1; ccValid && i < (int)(p.vData.size() - 1); i++)
+                // handle the case where we have no object in the params, but a valid transaction
+                int loopEnd = p.vData.size() == 1 ? 1 : p.vData.size() - 1;
+                for (int i = 0; ccValid && i < loopEnd; i++)
                 {
                     // first, process P, then any sub-conditions
                     COptCCParams _oneP;
-                    COptCCParams &oneP = (i == -1) ? p : (_oneP = COptCCParams(p.vData[i]));
+                    COptCCParams &oneP = (i == 0) ? p : (_oneP = COptCCParams(p.vData[i]));
 
                     if (ccValid = oneP.IsValid())
                     {
@@ -736,6 +751,12 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                             canSpendCount++;
                         }
                     }
+                }
+
+                if (!ccValid)
+                {
+                    LogPrintf("Invalid smart transaction %d\n", p.evalCode);
+                    //return false;
                 }
 
                 // if this is a compound cc, the master m of n is the top level as an m of n of the sub-conditions
@@ -824,6 +845,11 @@ public:
         return false;
     }
 
+    bool operator()(const CIndexID &dest) const {
+        script->clear();
+        return false;
+    }
+
     bool operator()(const CQuantumID &dest) const {
         script->clear();
         return false;
@@ -890,6 +916,10 @@ CTxDestination DestFromAddressHash(int scriptType, uint160& addressHash)
         return CTxDestination(CIdentityID(addressHash));
     case CScript::P2SH:
         return CTxDestination(CScriptID(addressHash));
+    case CScript::P2IDX:
+        return CTxDestination(CIndexID(addressHash));
+    case CScript::P2QRK:
+        return CTxDestination(CQuantumID(addressHash));
     default:
         // This probably won't ever happen, because it would mean that
         // the addressindex contains a type (say, 3) that we (currently)
@@ -909,6 +939,8 @@ CScript::ScriptType AddressTypeFromDest(const CTxDestination &dest)
         return CScript::P2SH;
     case COptCCParams::ADDRTYPE_ID:
         return CScript::P2ID;
+    case COptCCParams::ADDRTYPE_INDEX:
+        return CScript::P2IDX;
     case COptCCParams::ADDRTYPE_QUANTUM:
         return CScript::P2QRK;
     default:

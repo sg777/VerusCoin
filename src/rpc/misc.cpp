@@ -314,6 +314,15 @@ public:
         CScript subscript;
         obj.push_back(Pair("isscript", false));
         obj.push_back(Pair("isquantumkey", true));
+        obj.push_back(Pair("address", EncodeDestination(qID)));
+        return obj;
+    }
+
+    UniValue operator()(const CIndexID &idxID) const {
+        UniValue obj(UniValue::VOBJ);
+        obj.push_back(Pair("isscript", false));
+        obj.push_back(Pair("isindexkey", true));
+        obj.push_back(Pair("address", EncodeDestination(idxID)));
         return obj;
     }
 };
@@ -1293,7 +1302,9 @@ bool getAddressFromIndex(
         address = EncodeDestination(CScriptID(hash));
     } else if (type == CScript::P2PKH) {
         address = EncodeDestination(CKeyID(hash));
-    } else if (type == CScript::P2PKH) {
+    } else if (type == CScript::P2IDX) {
+        address = EncodeDestination(CIndexID(hash));
+    } else if (type == CScript::P2QRK) {
         address = EncodeDestination(CQuantumID(hash));
     } else {
         return false;

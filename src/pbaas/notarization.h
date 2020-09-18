@@ -85,9 +85,15 @@ public:
     static const int CURRENT_VERSION = PBAAS_VERSION;
     static const int MAX_NODES = 2;
 
+    enum FLAGS
+    {
+        FLAG_TOKEN = 1
+    };
+
     uint32_t nVersion;                      // PBAAS version
+    uint32_t flags;                         // notarization options
     int32_t protocol;                       // notarization protocol
-    uint160 currencyID;                       // currency being notarized
+    uint160 currencyID;                     // currency being notarized
     CTxDestination notaryDest;              // confirmed notary rewards are spent to this address when this notarization is confirmed
 
     uint32_t notarizationHeight;            // height (or sequence) of the notarization we certify
@@ -122,8 +128,10 @@ public:
                        int32_t crossheight,
                        const COpRetProof &orp,
                        const std::vector<CNodeData> &Nodes=std::vector<CNodeData>(),
-                       uint32_t version = CURRENT_VERSION) : 
+                       uint32_t version=CURRENT_VERSION,
+                       uint32_t Flags=FLAG_TOKEN) : 
                        nVersion(version),
+                       flags(Flags),
                        currencyID(currencyid),
                        protocol(Protocol),
                        notaryDest(notaryDestination),
@@ -160,6 +168,7 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(VARINT(nVersion));
+        READWRITE(VARINT(flags));
         READWRITE(currencyID);
         READWRITE(protocol);
         if (ser_action.ForRead())
@@ -196,6 +205,11 @@ public:
         return !mmrRoot.IsNull();
     }
 
+    bool IsToken() const
+    {
+        return flags & FLAG_TOKEN;
+    }
+
     // if false, *this is unmodifed, otherwise, it is set to the last valid notarization in the requested range
     bool GetLastNotarization(const uint160 &currencyID, 
                              uint32_t eCode, 
@@ -211,10 +225,18 @@ class CTransactionFinalization
 {
 public:
     static const int64_t DEFAULT_OUTPUT_VALUE = 100000;
+    static const int32_t UNCONFIRMED_INPUT = -1;
+    enum FINALIZATION_TYPE {
+        FINALIZE_INVALID = 0,
+        FINALIZE_NOTARIZATION = 1,
+        FINALIZE_EXPORT = 2
+    };
+    uint8_t finalizationType;
+    uint160 currencyID;
     int32_t confirmedInput;
 
-    CTransactionFinalization() : confirmedInput(-1) {}
-    CTransactionFinalization(int32_t nIn) : confirmedInput(nIn) {}
+    CTransactionFinalization() : finalizationType(FINALIZE_INVALID), confirmedInput(-1) {}
+    CTransactionFinalization(uint8_t fType, uint160 curID, int32_t nIn) : finalizationType(fType), currencyID(curID), confirmedInput(nIn) {}
     CTransactionFinalization(std::vector<unsigned char> vch)
     {
         ::FromVector(vch, *this);
@@ -225,12 +247,14 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(finalizationType);
+        READWRITE(currencyID);
         READWRITE(confirmedInput);
     }
 
     bool IsValid() const
     {
-        return confirmedInput != -1;
+        return finalizationType != FINALIZE_INVALID && confirmedInput != -1;
     }
 
     std::vector<unsigned char> AsVector()
@@ -238,12 +262,7 @@ public:
         return ::AsVector(*this);
     }
 
-    UniValue ToUniValue() const
-    {
-        UniValue ret(UniValue::VOBJ);
-        ret.push_back(Pair("confirmedinput", confirmedInput));
-        return ret;
-    }
+    UniValue ToUniValue() const;
 };
 
 class CChainNotarizationData
