@@ -34,6 +34,10 @@ CTokenOutput::CTokenOutput(const UniValue &obj)
 
 CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination, uint32_t flags)
 {
+    if ((flags & FEE_OUTPUT) || (!(flags & PRECONVERT) && (flags & CONVERT)))
+    {
+        return 0;
+    }
     return CReserveTransfer::DEFAULT_PER_STEP_FEE << 1 + ((CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) * (destination.destination.size() / DESTINATION_BYTE_DIVISOR));
 }
 

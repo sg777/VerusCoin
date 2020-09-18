@@ -3568,7 +3568,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     }
                     // converting from reserve to a fractional of that reserve
                     auto dest = DestinationToTransferDestination(destination);
-                    auto fees = CReserveTransfer::CalculateTransferFee(dest);
+                    auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
                     CReserveTransfer rt = CReserveTransfer(flags,
                                                            sourceCurrencyID, 
                                                            sourceAmount, 
@@ -3584,7 +3584,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 else if (convertToCurrencyID.IsNull())
                 {
                     auto dest = DestinationToTransferDestination(destination);
-                    auto fees = CReserveTransfer::CalculateTransferFee(dest);
+                    auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
                     CReserveTransfer rt = CReserveTransfer(flags,
                                                            sourceCurrencyID, 
                                                            sourceAmount, 
@@ -3712,7 +3712,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         // converting from reserve to a fractional of that reserve
                         auto dest = DestinationToTransferDestination(destination);
-                        auto fees = CReserveTransfer::CalculateTransferFee(dest);
+                        auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
 
                         // since this is conversion to a reserve token, which must be fungible with Verus, we will take the fee from
                         // source currency, in an amount we calculate to be equivalent to the expected fee amount in Verus + some buffer,
@@ -5241,7 +5241,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             CReserveTransfer rt = CReserveTransfer(CReserveExchange::VALID, 
                                                    ASSETCHAINS_CHAINID, 
                                                    0, 
-                                                   CReserveTransfer::CalculateTransferFee(transferDest), 
+                                                   CReserveTransfer::CalculateTransferFee(transferDest, CReserveExchange::VALID), 
                                                    newChain.GetID(),
                                                    transferDest);
 
@@ -5265,12 +5265,12 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE, 
                                                    newChain.systemID, 
                                                    oneAlloc.second,
-                                                   CReserveTransfer::CalculateTransferFee(transferDest), 
+                                                   CReserveTransfer::CalculateTransferFee(transferDest, CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE), 
                                                    newChainID,
                                                    transferDest);
 
             vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), 
-                                CReserveTransfer::CalculateTransferFee(transferDest), false});
+                                CReserveTransfer::CalculateTransferFee(transferDest, CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE), false});
         }
     }
 
