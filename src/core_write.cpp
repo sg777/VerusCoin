@@ -10,7 +10,7 @@
 #include "script/standard.h"
 #include "serialize.h"
 #include "streams.h"
-#include <univalue.h>
+#include "univalue.h"
 #include "util.h"
 #include "utilmoneystr.h"
 #include "utilstrencodings.h"
@@ -239,6 +239,7 @@ UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("flags", (int32_t)flags));
+    ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
 
     if (IsValid() && IsFractional())
     {
@@ -349,7 +350,23 @@ CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, const cpp_dec_
 
 CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, CAmount exchangeRate)
 {
-    return ReserveToNativeRaw(reserveAmount, cpp_dec_float_50(std::to_string(exchangeRate)));
+    //return ReserveToNativeRaw(reserveAmount, cpp_dec_float_50(std::to_string(exchangeRate)));
+
+    static arith_uint256 bigSatoshi(SATOSHIDEN);
+    static arith_uint256 bigZero(0);
+    arith_uint256 bigAmount(reserveAmount);
+
+    arith_uint256 bigRetVal = (exchangeRate != bigZero ? (bigAmount * bigSatoshi) / exchangeRate : bigZero);
+    int64_t retVal = bigRetVal.GetLow64();
+    if ((bigRetVal - retVal) == 0)
+    {
+        return retVal;
+    }
+    else
+    {
+        // return -1 on overflow
+        return -1;
+    }
 }
 
 CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, const std::vector<CAmount> &exchangeRates) const
@@ -383,8 +400,8 @@ CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmoun
 }
 
 CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, 
-                                              const std::vector<uint160> &currencies, 
-                                              const std::vector<CAmount> &exchangeRates)
+                                           const std::vector<uint160> &currencies, 
+                                           const std::vector<CAmount> &exchangeRates)
 {
     CAmount nativeOut = 0;
     for (int i = 0; i < currencies.size(); i++)
@@ -400,7 +417,7 @@ CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmoun
 
 CAmount CCurrencyState::ReserveToNative(CAmount reserveAmount, int32_t reserveIndex) const
 {
-    return ReserveToNativeRaw(reserveAmount, PriceInReserveDecFloat50(reserveIndex));
+    return ReserveToNativeRaw(reserveAmount, PriceInReserve(reserveIndex));
 }
 
 CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, const cpp_dec_float_50 &price)
@@ -418,12 +435,26 @@ CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, const cpp_dec_f
 
 CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, CAmount exchangeRate)
 {
-    return NativeToReserveRaw(nativeAmount, cpp_dec_float_50(std::to_string(exchangeRate)));
+    //return NativeToReserveRaw(nativeAmount, cpp_dec_float_50(std::to_string(exchangeRate)));
+
+    static arith_uint256 bigSatoshi(SATOSHIDEN);
+    arith_uint256 bigAmount(nativeAmount);
+    arith_uint256 bigReserves = (bigAmount * exchangeRate) / bigSatoshi;
+    int64_t retVal = bigReserves.GetLow64();
+    if ((bigReserves - retVal) == 0)
+    {
+        return retVal;
+    }
+    else
+    {
+        // return -1 on overflow
+        return -1;
+    }
 }
 
 CAmount CCurrencyState::NativeToReserve(CAmount nativeAmount, int32_t reserveIndex) const
 {
-    return NativeToReserveRaw(nativeAmount, PriceInReserveDecFloat50(reserveIndex));
+    return NativeToReserveRaw(nativeAmount, PriceInReserve(reserveIndex));
 }
 
 CCurrencyValueMap CCurrencyState::NativeToReserveRaw(const std::vector<CAmount> &nativeAmount, const std::vector<CAmount> &exchangeRates) const
@@ -630,6 +661,17 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("prelaunchdiscount", ValueFromAmount(preLaunchDiscount)));
     }
 
+    if (IsFractional())
+    {
+        obj.push_back(Pair("initialsupply", ValueFromAmount(initialFractionalSupply)));
+        CAmount carveOut = 0;
+        for (auto oneCarveOut : preLaunchCarveOuts)
+        {
+            carveOut += preLaunchCarveOuts.begin()->second;
+        }
+        obj.push_back(Pair("prelaunchcarveout", ValueFromAmount(carveOut)));
+    }
+
     if (preAllocation.size())
     {
         UniValue preAllocationArr(UniValue::VARR);
@@ -686,26 +728,56 @@ UniValue CTokenOutput::ToUniValue() const
     return ret;
 }
 
+UniValue CMultiOutput::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("version", (int64_t)nVersion));
+    ret.push_back(Pair("currencyvalues", reserveValues.ToUniValue()));
+    return ret;
+}
+
+UniValue CReserveDeposit::ToUniValue() const
+{
+    UniValue ret = ((CMultiOutput *)this)->ToUniValue();
+    ret.push_back(Pair("controllingcurrencyid", controllingCurrencyID.IsNull() ? "NULL" : EncodeDestination(CIdentityID(controllingCurrencyID))));
+    return ret;
+}
+
 UniValue CReserveTransfer::ToUniValue() const
 {
     UniValue ret(((CTokenOutput *)this)->ToUniValue());
-    if (flags & PREALLOCATE)
-    {
+
+    ret.push_back(Pair("flags", (int32_t)flags));
+
+    if (IsPreallocate())
         ret.push_back(Pair("preallocation", true));
-    }
-    else if (flags & MINT_CURRENCY)
+    if (IsConversion())
+        ret.push_back(Pair("convert", true));
+    if (IsPreConversion())
+        ret.push_back(Pair("preconvert", true));
+    if (IsFeeOutput())
+        ret.push_back(Pair("feeoutput", true));
+    if (IsReserveToReserve())
+        ret.push_back(Pair("reservetoreserve", true));
+    if (IsBurnChangePrice())
+        ret.push_back(Pair("burnchangeprice", true));
+    if (IsBurnChangeWeight())
+        ret.push_back(Pair("burnchangeweight", true));
+    if (IsMint())
+        ret.push_back(Pair("mint", true));
+    if (IsPreallocate())
+        ret.push_back(Pair("preallocate", true));
+
+    ret.push_back(Pair("fees", ValueFromAmount(nFees)));
+    if (IsReserveToReserve())
     {
-        ret.push_back(Pair("mintedcurrency", true));
+        ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(secondReserveID))));
+        ret.push_back(Pair("via", EncodeDestination(CIdentityID(destCurrencyID))));
     }
     else
     {
-        ret.push_back(Pair("convert", (bool)(flags & CONVERT)));
-        ret.push_back(Pair("preconvert", (bool)(flags & PRECONVERT)));
-        ret.push_back(Pair("feeoutput", (bool)(flags & FEE_OUTPUT)));
-        ret.push_back(Pair("sendback", (bool)(flags & SEND_BACK)));
+        ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
     }
-    ret.push_back(Pair("fees", ValueFromAmount(nFees)));
-    ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
     std::string destStr;
     switch (destination.type)
     {
@@ -756,7 +828,7 @@ UniValue CCrossChainExport::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int)nVersion));
-    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("exportcurrencyid", EncodeDestination(CIdentityID(systemID))));
     obj.push_back(Pair("numinputs", numInputs));
     obj.push_back(Pair("totalamounts", totalAmounts.ToUniValue()));
     obj.push_back(Pair("totalfees", totalFees.ToUniValue()));
@@ -767,10 +839,22 @@ UniValue CCrossChainImport::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int)nVersion));
-    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("sourcesystemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("importcurrencyid", EncodeDestination(CIdentityID(importCurrencyID))));
     obj.push_back(Pair("valuein", importValue.ToUniValue()));
     obj.push_back(Pair("tokensout", totalReserveOutMap.ToUniValue()));
     return obj;
+}
+
+UniValue CTransactionFinalization::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("finalizationtype", (finalizationType == FINALIZE_NOTARIZATION) ? 
+                                                "finalizenotarization" : finalizationType == FINALIZE_EXPORT ? 
+                                                "finalizeexport" : "invalid"));
+    ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
+    ret.push_back(Pair("confirmedinput", confirmedInput));
+    return ret;
 }
 
 UniValue CPrincipal::ToUniValue() const
@@ -810,6 +894,9 @@ UniValue CIdentity::ToUniValue() const
     {
         obj.push_back(Pair("privateaddress", EncodePaymentAddress(privateAddresses[0])));
     }
+
+    obj.push_back(Pair("timelock", (int32_t)unlockAfter));
+
     return obj;
 }
 
@@ -1004,11 +1091,11 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
             case EVAL_RESERVE_DEPOSIT:
             {
-                CTokenOutput ro;
+                CReserveDeposit rd;
 
-                if (p.vData.size() && (ro = CTokenOutput(p.vData[0])).IsValid())
+                if (p.vData.size() && (rd = CReserveDeposit(p.vData[0])).IsValid())
                 {
-                    out.push_back(Pair("reservedeposit", ro.ToUniValue()));
+                    out.push_back(Pair("reservedeposit", rd.ToUniValue()));
                 }
                 else
                 {
@@ -1090,6 +1177,18 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 {
                     finalization = CTransactionFinalization(p.vData[0]);
                     out.push_back(Pair("finalizeexport", finalization.ToUniValue()));
+                }
+                break;
+            }
+
+            case EVAL_FEE_POOL:
+            {
+                CFeePool feePool;
+
+                if (p.vData.size())
+                {
+                    feePool = CFeePool(p.vData[0]);
+                    out.push_back(Pair("feepool", feePool.ToUniValue()));
                 }
                 break;
             }

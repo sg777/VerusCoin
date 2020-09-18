@@ -1438,7 +1438,7 @@ public:
 
     // staking functions
     bool VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, CTransaction &stakeSource, int32_t &voutNum, int32_t nHeight, uint32_t &bnTarget) const;
-    int32_t VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &bnTarget, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CPubKey pk) const;
+    int32_t VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &bnTarget, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CTxDestination &rewardDest) const;
 };
 
 /** A key allocated from the key pool. */
@@ -1564,6 +1564,10 @@ public:
         return CPubKey();
     }
 
+    CPubKey operator()(const CIndexID &iid) const {
+        return CPubKey();
+    }
+
     CPubKey operator()(const CNoDestination &no) const {
         return CPubKey();
     }
@@ -1588,6 +1592,14 @@ public:
 
     std::string operator()(const CIdentityID &idID) const {
         return "identity hash: " + idID.ToString();
+    }
+
+    std::string operator()(const CQuantumID &qID) const {
+        return "quantum address hash: " + qID.ToString();
+    }
+
+    std::string operator()(const CIndexID &idxID) const {
+        return "index hash: " + idxID.ToString();
     }
 };
 

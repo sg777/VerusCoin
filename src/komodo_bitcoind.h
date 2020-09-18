@@ -1460,7 +1460,7 @@ int32_t komodo_is_PoSblock(int32_t slowflag,int32_t height,CBlock *pblock,arith_
 bool GetStakeParams(const CTransaction &stakeTx, CStakeParams &stakeParams);
 bool ValidateMatchingStake(const CTransaction &ccTx, uint32_t voutNum, const CTransaction &stakeTx, bool &cheating);
 bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakeParams, bool validateSig = true);
-bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight = NULL);
+bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight = NULL, bool checkMempool=false);
 
 // for now, we will ignore slowFlag in the interest of keeping success/fail simpler for security purposes
 bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
@@ -1662,29 +1662,9 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                                             ccp.IsValid() &&
                                             ccp.evalCode == EVAL_RESERVE_DEPOSIT)
                                         {
-                                            COptCCParams m;
-                                            // get index addresses from the master ccp
-                                            if (ccp.vData.size() >= 2 &&
-                                                (m = COptCCParams(ccp.vData[1])).IsValid() &&
-                                                m.IsValid() &&
-                                                m.evalCode == EVAL_NONE &&
-                                                m.vKeys.size() == 2)
-                                            {
-                                                reserveDepositCurrencyID = GetDestinationID(m.vKeys[1]);
-                                                if (!reserveDepositCurrencyID.IsNull() &&
-                                                    GetCurrencyDefinition(reserveDepositCurrencyID, reserveDepositCurrency) &&
-                                                    reserveDepositCurrency.IsValid() &&
-                                                    reserveDepositCurrency.IsFractional())
-                                                {
-                                                    reserveDepositReserves = reserveDepositCurrency.GetCurrenciesMap();
-                                                }
-                                            }
-                                            if (!reserveDepositReserves.size())
-                                            {
-                                                printf("ERROR: in staking block %s - invalid reserve deposit stake\n", blkHash.ToString().c_str());
-                                                LogPrintf("ERROR: in staking block %s - invalid reserve deposit stake\n", blkHash.ToString().c_str());
-                                                return false;
-                                            }
+                                            printf("ERROR: in staking block %s - invalid reserve deposit stake\n", blkHash.ToString().c_str());
+                                            LogPrintf("ERROR: in staking block %s - invalid reserve deposit stake\n", blkHash.ToString().c_str());
+                                            return false;
                                         }
 
                                         for (auto &oneOut : pblock->vtx[0].vout)

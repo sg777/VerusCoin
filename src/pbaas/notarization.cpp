@@ -138,7 +138,7 @@ bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
     CPBaaSNotarization notarization;
     std::vector<CAddressIndexDbEntry> notarizationIndex;
     // get the last unspent notarization for this currency, which is valid by definition for a token
-    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(currencyID, eCode), 1, notarizationIndex, startHeight, endHeight))
+    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(currencyID, eCode), CScript::P2IDX, notarizationIndex, startHeight, endHeight))
     {
         // filter out all transactions that do not spend from the notarization thread, or originate as the
         // chain definition
@@ -712,7 +712,6 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
     CCcontract_info CC;
     CCcontract_info *cp;
     std::vector<CTxDestination> dests;
-    std::vector<CTxDestination> indexDests;
 
     // make the earned notarization output
     cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
@@ -726,9 +725,8 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
     }
 
-    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION))});
     mnewTx.vout[notarizeOutIndex] = CTxOut(PBAAS_MINNOTARIZATIONOUTPUT, 
-                                           MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &pbn), &indexDests));
+                                           MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &pbn)));
     
     // make the finalization output
     cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
@@ -740,13 +738,11 @@ bool CreateEarnedNotarization(CMutableTransaction &mnewTx, vector<CInputDescript
     }
 
     // we need to store the input that we confirmed if we spent finalization outputs
-    CTransactionFinalization nf(*pConfirmedInput);
-
-    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_FINALIZE_NOTARIZATION))});
+    CTransactionFinalization nf(CTransactionFinalization::FINALIZE_NOTARIZATION, VERUS_CHAINID, *pConfirmedInput);
 
     // update crypto condition with final notarization output data
     mnewTx.vout[finalizeOutIndex] = CTxOut(PBAAS_MINNOTARIZATIONOUTPUT, 
-                                           MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf), &indexDests));
+                                           MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf)));
 
     // if this is block 1, add chain definition output with updated currency numbers
 
@@ -1093,9 +1089,8 @@ uint256 CreateAcceptedNotarization(const CBlock &blk, int32_t txIndex, int32_t h
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
     }
 
-    indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, EVAL_ACCEPTEDNOTARIZATION))});
     mnewTx.vout.push_back(CTxOut(PBAAS_MINNOTARIZATIONOUTPUT, 
-                                 MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &pbn), &indexDests)));
+                                 MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &pbn))));
 
     mnewTx.vout.push_back(CTxOut(0, opRet));
 

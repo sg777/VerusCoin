@@ -149,7 +149,7 @@ int32_t komodo_validate_interest(const CTransaction &tx,int32_t txheight,uint32_
 int64_t komodo_block_unlocktime(uint32_t nHeight);
 uint64_t komodo_commission(const CBlock *block);
 int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blocktimep,uint32_t *txtimep,uint256 *utxotxidp,int32_t *utxovoutp,uint64_t *utxovaluep,uint8_t *utxosig);
-int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CPubKey &pk);
+int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CTxDestination &rewardDest);
 int32_t komodo_notaryvin(CMutableTransaction &txNew,uint8_t *notarypub33);
 
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &nExtraNonce, bool buildMerkle, uint32_t *pSaveBits)
@@ -324,15 +324,15 @@ void ProcessNewImports(const uint160 &sourceChainID, const CTransaction &lastCon
 
     bool found = false;
 
-    if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, EVAL_CROSSCHAIN_IMPORT)), 1, unspentOutputs))
+    if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, EVAL_CROSSCHAIN_IMPORT)), CScript::P2IDX, unspentOutputs))
     {
         // if one spends the prior one, get the one that is not spent
-        for (auto txidx : unspentOutputs)
+        for (auto &txidx : unspentOutputs)
         {
             uint256 blkHash;
             CTransaction itx;
             if (myGetTransaction(txidx.first.txhash, lastImportTx, blkHash) &&
-                CCrossChainImport(lastImportTx).IsValid() &&
+                CCrossChainImport(txidx.second.script).IsValid() &&
                 (lastImportTx.IsCoinBase() ||
                 (myGetTransaction(lastImportTx.vin[0].prevout.hash, itx, blkHash) &&
                 CCrossChainImport(itx).IsValid())))
@@ -436,43 +436,40 @@ void ProcessNewImports(const uint160 &sourceChainID, const CTransaction &lastCon
     }
 }
 
-CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _scriptPubKeyIn, int32_t gpucount, bool isStake)
+CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vector<CTxOut> &minerOutputs, bool isStake)
 {
-    CScript scriptPubKeyIn(_scriptPubKeyIn);
-
     // instead of one scriptPubKeyIn, we take a vector of them along with relative weight. each is assigned a percentage of the block subsidy and
     // mining reward based on its weight relative to the total
-    std::vector<pair<int, CScript>> minerOutputs = scriptPubKeyIn.size() ? std::vector<pair<int, CScript>>({make_pair((int)1, scriptPubKeyIn)}) : std::vector<pair<int, CScript>>();
-
-    CTxDestination firstDestination;
-    if (!(scriptPubKeyIn.size() && ConnectedChains.SetLatestMiningOutputs(minerOutputs, firstDestination) || isStake))
+    if (!(minerOutputs.size() && ConnectedChains.SetLatestMiningOutputs(minerOutputs) || isStake))
     {
         fprintf(stderr,"%s: Must have valid miner outputs, including script with valid PK, PKH, or Verus ID destination.\n", __func__);
         return NULL;
     }
 
-    CPubKey pk;
+    CTxDestination firstDestination;
 
     if (minerOutputs.size())
     {
         int64_t shareCheck = 0;
-        for (auto output : minerOutputs)
+        CTxDestination checkDest;
+        for (auto &output : minerOutputs)
         {
-            shareCheck += output.first;
-            if (shareCheck < 0 || shareCheck > INT_MAX)
+            shareCheck += output.nValue;
+            if (shareCheck < 0 || 
+                shareCheck > INT_MAX || 
+                !ExtractDestination(output.scriptPubKey, checkDest) || 
+                (checkDest.which() == COptCCParams::ADDRTYPE_INVALID))
             {
                 fprintf(stderr,"Invalid miner outputs share specifications\n");
                 return NULL;
             }
         }
-        pk = GetScriptPublicKey(minerOutputs[0].second);
+        ExtractDestination(minerOutputs[0].scriptPubKey, firstDestination);
     }
 
-    uint64_t deposits; int32_t isrealtime,kmdheight; uint32_t blocktime;
+    uint32_t blocktime;
     //fprintf(stderr,"create new block\n");
     // Create new block
-    if ( gpucount < 0 )
-        gpucount = KOMODO_MAXGPUCOUNT;
     std::unique_ptr<CBlockTemplate> pblocktemplate(new CBlockTemplate());
     if(!pblocktemplate.get())
     {
@@ -481,16 +478,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
     }
     CBlock *pblock = &pblocktemplate->block; // pointer for convenience
 
-    // set version according to the current tip height, add solution if it is
-    // VerusHash
-    if (ASSETCHAINS_ALGO == ASSETCHAINS_VERUSHASH)
-    {
-        pblock->nSolution.resize(Eh200_9.SolutionWidth);
-    }
-    else
-    {
-        pblock->nSolution.clear();
-    }
+    pblock->nSolution.resize(Eh200_9.SolutionWidth);
+
     pblock->SetVersionByHeight(chainActive.LastTip()->GetHeight() + 1);
 
     // -regtest only: allow overriding block.nVersion with
@@ -506,6 +495,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
     
     // Largest block you're willing to create:
     unsigned int nBlockMaxSize = GetArg("-blockmaxsize", DEFAULT_BLOCK_MAX_SIZE);
+
     // Limit to betweeen 1K and MAX_BLOCK_SIZE-1K for sanity:
     nBlockMaxSize = std::max((unsigned int)1000, std::min((unsigned int)(MAX_BLOCK_SIZE-1000), nBlockMaxSize));
 
@@ -524,19 +514,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
     
     // Collect memory pool transactions into the block
     CAmount nFees = 0;
+    CAmount takenFees = 0;
 
-    // if this is a reserve currency, update the currency state from the coinbase of the last block
     bool isVerusActive = IsVerusActive();
     CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
-    CAmount prealloc = 0;
-    for (auto &onePair : thisChain.preAllocation)
-    {
-        prealloc += onePair.second;
-    }
-    CCoinbaseCurrencyState currencyState = CCoinbaseCurrencyState(CCurrencyState(thisChain.currencies,
-                                                                                    thisChain.weights,
-                                                                                    thisChain.contributions,
-                                                                                    prealloc, 0, 0));
 
     std::vector<CAmount> exchangeRate(thisChain.currencies.size());
 
@@ -553,7 +534,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         int nHeight;
         const Consensus::Params &consensusParams = chainparams.GetConsensus();
         uint32_t consensusBranchId;
-        bool sapling = true;
         int64_t nMedianTimePast = 0;
         uint32_t proposedTime = 0;
 
@@ -568,7 +548,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 pindexPrev = chainActive.LastTip();
                 nHeight = pindexPrev->GetHeight() + 1;
                 consensusBranchId = CurrentEpochBranchId(nHeight, consensusParams);
-                sapling = consensusParams.NetworkUpgradeActive(nHeight, Consensus::UPGRADE_SAPLING);
                 nMedianTimePast = pindexPrev->GetMedianTimePast();
                 proposedTime = GetAdjustedTime();
 
@@ -587,6 +566,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             continue;
         }
         pblock->nTime = GetAdjustedTime();
+
+        CCoinbaseCurrencyState currencyState = ConnectedChains.GetCurrencyState(nHeight);
 
         CCoinsViewCache view(pcoinsTip);
         uint32_t expired; uint64_t commission;
@@ -608,7 +589,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         CTransaction cb;
         int cheatHeight = nHeight - COINBASE_MATURITY < 1 ? 1 : nHeight - COINBASE_MATURITY;
         if (defaultSaplingDest &&
-            sapling && chainActive.Height() > 100 && 
+            chainActive.Height() > 100 && 
             (ppast = chainActive[cheatHeight]) && 
             ppast->IsVerusPOSBlock() && 
             cheatList.IsHeightOrGreaterInList(cheatHeight))
@@ -711,7 +692,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         CMutableTransaction txStaked;           // if this is a stake operation, the staking transaction that goes at the end
         uint32_t nStakeTxSize = 0;              // serialized size of the stake transaction
 
-        // if this is not for mining, first determine if we have a right to bother
+        // if this is not for mining, first determine if we have a right to make a block
         if (isStake)
         {
             uint64_t txfees, utxovalue;
@@ -722,20 +703,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
 
             txStaked = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
 
-            //if ( blocktime > pindexPrev->GetMedianTimePast()+60 )
-            //    blocktime = pindexPrev->GetMedianTimePast() + 60;
             if (ASSETCHAINS_LWMAPOS != 0)
             {
                 uint32_t nBitsPOS;
                 arith_uint256 posHash;
 
-                siglen = verus_staked(pblock, txStaked, nBitsPOS, posHash, utxosig, pk);
+                siglen = verus_staked(pblock, txStaked, nBitsPOS, posHash, utxosig, firstDestination);
                 blocktime = GetAdjustedTime();
-
-                // change the default scriptPubKeyIn to the same output script exactly as the staking transaction
-                // TODO: improve this and just implement stake guard here rather than keeping this legacy
-                if (siglen > 0)
-                    scriptPubKeyIn = CScript(txStaked.vout[0].scriptPubKey);
             }
 
             if (siglen <= 0)
@@ -746,9 +720,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             pblock->nTime = blocktime;
             nStakeTxSize = GetSerializeSize(txStaked, SER_NETWORK, PROTOCOL_VERSION);
             nBlockSize += nStakeTxSize;
-
-            pk = GetScriptPublicKey(txStaked.vout[0].scriptPubKey);
-            ExtractDestination(txStaked.vout[0].scriptPubKey, firstDestination);
         }
 
         ConnectedChains.AggregateChainTransfers(firstDestination, nHeight);
@@ -884,10 +855,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             // default outputs for mining and before stake guard or fee calculation
             // store the relative weight in the amount output to convert later to a relative portion
             // of the reward + fees
-            for (auto &spk : minerOutputs)
-            {
-                coinbaseTx.vout.push_back(CTxOut(spk.first, spk.second));
-            }
+            coinbaseTx.vout.insert(coinbaseTx.vout.end(), minerOutputs.begin(), minerOutputs.end());
         }
 
         CAmount totalEmission = blockSubsidy;
@@ -989,31 +957,23 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
                 pkCC = CPubKey(ParseHex(CC.CChexstr));
 
-                std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION))});
                 std::vector<CTxDestination> dests({pkCC});
 
                 coinbaseTx.vout.push_back(CTxOut(0,
                                             MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, 
-                                                             &ConnectedChains.ThisChain()),
-                                            &indexDests)));
+                                                             &ConnectedChains.ThisChain()))));
 
                 for (auto &oneCur : ConnectedChains.reserveCurrencies)
                 {
-                    indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION)),
-                                                            CKeyID(oneCur.second.GetConditionID(EVAL_CURRENCY_DEFINITION))});
                     coinbaseTx.vout.push_back(CTxOut(0,
-                                              MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &oneCur.second),
-                                              &indexDests)));
+                                              MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &oneCur.second))));
                 }
 
                 if (!ConnectedChains.reserveCurrencies.count(ConnectedChains.NotaryChain().GetID()))
                 {
-                    indexDests = std::vector<CTxDestination>({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION)),
-                                                            CKeyID(ConnectedChains.NotaryChain().chainDefinition.GetConditionID(EVAL_CURRENCY_DEFINITION))});
                     coinbaseTx.vout.push_back(CTxOut(0,
                                               MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, 
-                                                               &ConnectedChains.NotaryChain().chainDefinition),
-                                              &indexDests)));
+                                                               &ConnectedChains.NotaryChain().chainDefinition))));
                 }
 
                 // create the import thread output
@@ -1021,21 +981,19 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                 pkCC = CPubKey(ParseHex(CC.CChexstr));
 
                 // import thread from PBaaS parent
-                indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.notaryChain.GetID(), EVAL_CROSSCHAIN_IMPORT))});
                 dests = std::vector<CTxDestination>({pkCC});
 
-                CCrossChainImport cci = CCrossChainImport(ConnectedChains.notaryChain.GetID(), CCurrencyValueMap());
+                CCrossChainImport cci = CCrossChainImport(ASSETCHAINS_CHAINID, ConnectedChains.notaryChain.GetID(), CCurrencyValueMap());
                 coinbaseTx.vout.push_back(CTxOut(currencyState.ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted), thisChain.conversions),
-                                                 MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci), &indexDests)));
+                                                 MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci))));
 
                 // export thread to PBaaS parent
                 cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
                 pkCC = CPubKey(ParseHex(CC.CChexstr));
-                indexDests = std::vector<CTxDestination>({CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.notaryChain.GetID(), EVAL_CROSSCHAIN_EXPORT))});
                 dests = std::vector<CTxDestination>({pkCC});
 
                 CCrossChainExport ccx(ConnectedChains.NotaryChain().GetID(), 0, CCurrencyValueMap(), CCurrencyValueMap());
-                coinbaseTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx), &indexDests)));
+                coinbaseTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx))));
             }
             else
             {
@@ -1063,14 +1021,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             cp = CCinit(&CC, EVAL_CURRENCYSTATE);
 
             CPubKey currencyOutPK(ParseHex(cp->CChexstr));
-            std::vector<CTxDestination> indexDests({CKeyID(CCrossChainRPCData::GetConditionID(thisChainID, EVAL_CURRENCYSTATE))});
             std::vector<CTxDestination> dests({currencyOutPK});
 
             // pre-conversions go to the import thread
             // conversions for this block, if any, will be processed
             // below
             coinbaseTx.vout.push_back(CTxOut(currencyState.ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted), thisChain.conversions),
-                                                MakeMofNCCScript(CConditionObj<CCoinbaseCurrencyState>(EVAL_CURRENCYSTATE, dests, 1, &currencyState), &indexDests)));
+                                                MakeMofNCCScript(CConditionObj<CCoinbaseCurrencyState>(EVAL_CURRENCYSTATE, dests, 1, &currencyState))));
 
             currencyStateOutNum = coinbaseTx.vout.size() - 1;
 
@@ -1122,17 +1079,21 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
                     vKeys.clear();
                     cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
 
-                    // send this to EVAL_EARNEDNOTARIZATION address as a destination, locked by the default pubkey
-                    pkCC = CPubKey(ParseHex(cp->CChexstr));
-                    vKeys.push_back(CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(VERUS_CHAINID, EVAL_EARNEDNOTARIZATION))));
-
-                    int64_t needed = nHeight == 1 ? PBAAS_MINNOTARIZATIONOUTPUT << 1 : PBAAS_MINNOTARIZATIONOUTPUT;
+                    if (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_NOTARY_CHAINID)
+                    {
+                        dests = std::vector<CTxDestination>({CIdentityID(ConnectedChains.ThisChain().GetID())});
+                    }
+                    else
+                    {
+                        dests = std::vector<CTxDestination>({CPubKey(ParseHex(cp->CChexstr))});
+                    }
 
                     // output duplicate notarization as coinbase output for instant spend to notarization
                     // the output amount is considered part of the total value of this coinbase
                     CPBaaSNotarization pbn(newNotarizationTx);
-                    notarizationOut = MakeCC1of1Vout(EVAL_EARNEDNOTARIZATION, needed, pkCC, vKeys, pbn);
-                    coinbaseTx.vout.push_back(notarizationOut);
+                    coinbaseTx.vout.push_back(CTxOut(nHeight == 1 ? PBAAS_MINNOTARIZATIONOUTPUT << 1 : PBAAS_MINNOTARIZATIONOUTPUT, 
+                                           MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &pbn))));
+    
                     notarizationOutNum = coinbaseTx.vout.size() - 1;
 
                     // place the notarization
@@ -1162,30 +1123,26 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             blockSubsidy = totalEmission;
             currencyState.UpdateWithEmission(totalEmission);
 
-            /*
-            if (CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight))
-            {
-                // at activation height for PBaaS on VRSC or VRSCTEST, add currency definition, import, and export outputs to the coinbase
-                // create a currency definition output for this currency, the notary currency, and all reserves
-                CCcontract_info CC;
-                CCcontract_info *cp;
-                cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
-                pkCC = CPubKey(ParseHex(CC.CChexstr));
-
-                std::vector<CTxDestination> indexDests({CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_CURRENCY_DEFINITION))});
-                std::vector<CTxDestination> dests({pkCC});
-
-                coinbaseTx.vout.push_back(CTxOut(0,
-                                            MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, 
-                                                             &ConnectedChains.ThisChain()),
-                                            &indexDests)));
-            }
-            */
+            // process any imports from the current chain to itself
+            ProcessNewImports(ConnectedChains.ThisChain().GetID(), CTransaction(), nHeight);
         }
 
-        // process any imports from the current chain to itself, to suport token launches, etc.
-        // TODO: should also add refund checking here
-        ProcessNewImports(ConnectedChains.ThisChain().GetID(), CTransaction(), nHeight);
+        CFeePool feePool;
+        if (!CFeePool::GetFeePool(feePool, nHeight - 1) ||
+            (!feePool.IsValid() && CConstVerusSolutionVector::GetVersionByHeight(nHeight - 1) >= CActivationHeight::ACTIVATE_PBAAS))
+        {
+            // we should be able to get a valid currency state, if not, fail
+            LogPrintf("Failure to get fee pool information for blockchain height #%d\n", nHeight - 1);
+            printf("Failure to get fee pool information for blockchain height #%d\n", nHeight - 1);
+            return NULL;
+        }
+
+        uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+        if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && !feePool.IsValid())
+        {
+            // first block with a fee pool, so make it valid and empty
+            feePool = CFeePool();
+        }
 
         // coinbase should have all necessary outputs (TODO: timelock is not supported yet)
         uint32_t nCoinbaseSize = GetSerializeSize(coinbaseTx, SER_NETWORK, PROTOCOL_VERSION);
@@ -1600,11 +1557,23 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
 
         // first calculate and distribute block rewards, including fees in the minerOutputs vector
         CAmount rewardTotalShareAmount = 0;
+        CAmount rewardFees = nFees;
+        if (feePool.IsValid())
+        {
+            // we currently only support the current native currency in the fee pool
+            feePool.reserveValues.valueMap[thisChainID] += nFees;
+            rewardFees = feePool.OneFeeShare().reserveValues.valueMap[thisChainID];
+            feePool.reserveValues.valueMap[thisChainID] -= rewardFees;
+
+            cp = CCinit(&CC, EVAL_FEE_POOL);
+            pkCC = CPubKey(ParseHex(CC.CChexstr));
+            coinbaseTx.vout.push_back(CTxOut(0,MakeMofNCCScript(CConditionObj<CFeePool>(EVAL_FEE_POOL,{pkCC.GetID()},1,&feePool))));
+        }
         CAmount rewardTotal = blockSubsidy + 
                               currencyState.nativeConversionFees + 
                               currencyState.ReserveToNativeRaw(CCurrencyValueMap(currencyState.currencies, currencyState.conversionFees), exchangeRate) + 
                               currencyState.ReserveToNativeRaw(CCurrencyValueMap(currencyState.currencies, currencyState.fees), exchangeRate) + 
-                              nFees;
+                              rewardFees;
 
         CAmount rewardLeft = notarizationTxIndex ? rewardTotal - notarizationOut.nValue : rewardTotal;
 
@@ -1617,13 +1586,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
         {
             for (auto &outputShare : minerOutputs)
             {
-                rewardTotalShareAmount += outputShare.first;
+                rewardTotalShareAmount += outputShare.nValue;
             }
 
             int cbOutIdx;
             for (cbOutIdx = 0; cbOutIdx < minerOutputs.size(); cbOutIdx++)
             {
-                CAmount amount = (arith_uint256(rewardTotal) * arith_uint256(minerOutputs[cbOutIdx].first) / arith_uint256(rewardTotalShareAmount)).GetLow64();
+                CAmount amount = (arith_uint256(rewardTotal) * arith_uint256(minerOutputs[cbOutIdx].nValue) / arith_uint256(rewardTotalShareAmount)).GetLow64();
                 if (rewardLeft <= amount || (cbOutIdx + 1) == minerOutputs.size())
                 {
                     amount = rewardLeft;
@@ -1711,55 +1680,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
 
         coinbaseTx.nExpiryHeight = 0;
         coinbaseTx.nLockTime = blocktime;
-
-        if ( ASSETCHAINS_SYMBOL[0] == 0 && IS_KOMODO_NOTARY != 0 && My_notaryid >= 0 )
-            coinbaseTx.vout[0].nValue += 5000;
-
-        /*
-        // check if coinbase transactions must be time locked at current subsidy and prepend the time lock
-        // to transaction if so, cast for GTE operator
-        CAmount cbValueOut = 0;
-        for (auto txout : coinbaseTx.vout)
-        {
-            cbValueOut += txout.nValue;
-        }
-        if (cbValueOut >= ASSETCHAINS_TIMELOCKGTE)
-        {
-            int32_t opretlen, p2shlen, scriptlen;
-            CScriptExt opretScript = CScriptExt();
-
-            coinbaseTx.vout.push_back(CTxOut());
-
-            // prepend time lock to original script unless original script is P2SH, in which case, we will leave the coins
-            // protected only by the time lock rather than 100% inaccessible
-            opretScript.AddCheckLockTimeVerify(komodo_block_unlocktime(nHeight));
-            if (scriptPubKeyIn.IsPayToScriptHash() || scriptPubKeyIn.IsPayToCryptoCondition())
-            {
-                LogPrintf("CreateNewBlock: attempt to add timelock to pay2sh or pay2cc\n");
-                fprintf(stderr,"CreateNewBlock: attempt to add timelock to pay2sh or pay2cc\n");
-                return 0;
-            }
-            
-            opretScript += scriptPubKeyIn;
-
-            coinbaseTx.vout[0].scriptPubKey = CScriptExt().PayToScriptHash(CScriptID(opretScript));
-            coinbaseTx.vout.back().scriptPubKey = CScriptExt().OpReturnScript(opretScript, OPRETTYPE_TIMELOCK);
-            coinbaseTx.vout.back().nValue = 0;
-        } // timelocks and commissions are currently incompatible due to validation complexity of the combination
-        else if ( nHeight > 1 && ASSETCHAINS_SYMBOL[0] != 0 && ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 && ASSETCHAINS_COMMISSION != 0 && (commission= komodo_commission((CBlock*)&pblocktemplate->block)) != 0 )
-        {
-            int32_t i; uint8_t *ptr;
-            coinbaseTx.vout.resize(2);
-            coinbaseTx.vout[1].nValue = commission;
-            coinbaseTx.vout[1].scriptPubKey.resize(35);
-            ptr = (uint8_t *)&coinbaseTx.vout[1].scriptPubKey[0];
-            ptr[0] = 33;
-            for (i=0; i<33; i++)
-                ptr[i+1] = ASSETCHAINS_OVERRIDE_PUBKEY33[i];
-            ptr[34] = OP_CHECKSIG;
-            //printf("autocreate commision vout\n");
-        }
-        */
 
         // finalize input of coinbase
         coinbaseTx.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(0)) + COINBASE_FLAGS;
@@ -1938,16 +1858,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
             CMutableTransaction txNotary = CreateNewContextualCMutableTransaction(Params().GetConsensus(), chainActive.Height() + 1);
             if ( pblock->nTime < pindexPrev->nTime+60 )
                 pblock->nTime = pindexPrev->nTime + 60;
-            if ( gpucount < 33 )
-            {
-                uint8_t tmpbuffer[40]; uint32_t r; int32_t n=0; uint256 randvals;
-                memcpy(&tmpbuffer[n],&My_notaryid,sizeof(My_notaryid)), n += sizeof(My_notaryid);
-                memcpy(&tmpbuffer[n],&Mining_height,sizeof(Mining_height)), n += sizeof(Mining_height);
-                memcpy(&tmpbuffer[n],&pblock->hashPrevBlock,sizeof(pblock->hashPrevBlock)), n += sizeof(pblock->hashPrevBlock);
-                vcalc_sha256(0,(uint8_t *)&randvals,tmpbuffer,n);
-                memcpy(&r,&randvals,sizeof(r));
-                pblock->nTime += (r % (33 - gpucount)*(33 - gpucount));
-            }
+
             if ( komodo_notaryvin(txNotary,NOTARY_PUBKEY33) > 0 )
             {
                 CAmount txfees = 5000;
@@ -1985,48 +1896,11 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _
     return pblocktemplate.release();
 }
  
-/*
- #ifdef ENABLE_WALLET
- boost::optional<CScript> GetMinerScriptPubKey(CReserveKey& reservekey)
- #else
- boost::optional<CScript> GetMinerScriptPubKey()
- #endif
- {
- CKeyID keyID;
- CBitcoinAddress addr;
- if (addr.SetString(GetArg("-mineraddress", ""))) {
- addr.GetKeyID(keyID);
- } else {
- #ifdef ENABLE_WALLET
- CPubKey pubkey;
- if (!reservekey.GetReservedKey(pubkey)) {
- return boost::optional<CScript>();
- }
- keyID = pubkey.GetID();
- #else
- return boost::optional<CScript>();
- #endif
- }
- 
- CScript scriptPubKey = CScript() << OP_DUP << OP_HASH160 << ToByteVector(keyID) << OP_EQUALVERIFY << OP_CHECKSIG;
- return scriptPubKey;
- }
- 
- #ifdef ENABLE_WALLET
- CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey)
- {
- boost::optional<CScript> scriptPubKey = GetMinerScriptPubKey(reservekey);
- #else
- CBlockTemplate* CreateNewBlockWithKey()
- {
- boost::optional<CScript> scriptPubKey = GetMinerScriptPubKey();
- #endif
- 
- if (!scriptPubKey) {
- return NULL;
- }
- return CreateNewBlock(*scriptPubKey);
- }*/
+CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _scriptPubKeyIn, bool isStake)
+{
+    std::vector<CTxOut> minerOutputs = _scriptPubKeyIn.size() ? std::vector<CTxOut>({CTxOut(1, _scriptPubKeyIn)}) : std::vector<CTxOut>();
+    return CreateNewBlock(chainparams, minerOutputs, isStake);
+}
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -2063,7 +1937,7 @@ void GetScriptForMinerAddress(boost::shared_ptr<CReserveScript> &script)
 // Internal miner
 //
 
-CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, int32_t gpucount, bool isStake)
+CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, bool isStake)
 {
     CPubKey pubkey; 
     CScript scriptPubKey; 
@@ -2088,16 +1962,10 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
             {
                 return NULL;
             }
-            scriptPubKey.resize(35);
-            ptr = (uint8_t *)pubkey.begin();
-            scriptPubKey[0] = 33;
-            for (i=0; i<33; i++)
-                scriptPubKey[i+1] = ptr[i];
-            scriptPubKey[34] = OP_CHECKSIG;
-            //scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
+            scriptPubKey = GetScriptForDestination(pubkey);
         }
     }
-    return CreateNewBlock(Params(), scriptPubKey, gpucount, isStake);
+    return CreateNewBlock(Params(), scriptPubKey, isStake);
 }
 
 void komodo_broadcast(const CBlock *pblock,int32_t limit)
@@ -2324,7 +2192,7 @@ void static VerusStaker(CWallet *pwallet)
             int32_t newHeight = Mining_height;
 
             if (newHeight > VERUS_MIN_STAKEAGE)
-                ptr = CreateNewBlockWithKey(reservekey, newHeight, 0, true);
+                ptr = CreateNewBlockWithKey(reservekey, newHeight, true);
 
             // TODO - putting this output here tends to help mitigate announcing a staking height earlier than
             // announcing the last block win when we start staking before a block's acceptance has been
@@ -2537,7 +2405,7 @@ void static BitcoinMiner_noeq()
             miningTimer.start();
 
 #ifdef ENABLE_WALLET
-            CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, Mining_height, 0);
+            CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, Mining_height);
 #else
             CBlockTemplate *ptr = CreateNewBlockWithKey();
 #endif
@@ -2938,467 +2806,6 @@ void static BitcoinMiner_noeq()
     miningTimer.clear();
 }
 
-void static BitcoinMiner(CWallet *pwallet)
-{
-    LogPrintf("KomodoMiner started\n");
-    SetThreadPriority(THREAD_PRIORITY_LOWEST);
-    RenameThread("komodo-miner");
-
-    const CChainParams& chainparams = Params();
-
-#ifdef ENABLE_WALLET
-    // Each thread has its own key
-    CReserveKey reservekey(pwallet);
-#endif
-    
-    // Each thread has its own counter
-    unsigned int nExtraNonce = 0;
-    
-    unsigned int n = chainparams.GetConsensus().EquihashN();
-    unsigned int k = chainparams.GetConsensus().EquihashK();
-    uint8_t *script; uint64_t total,checktoshis; int32_t i,j,gpucount=KOMODO_MAXGPUCOUNT,notaryid = -1;
-    while ( (ASSETCHAIN_INIT == 0 || KOMODO_INITDONE == 0) )
-    {
-        sleep(1);
-        if ( komodo_baseid(ASSETCHAINS_SYMBOL) < 0 )
-            break;
-    }
-    if ( ASSETCHAINS_SYMBOL[0] == 0 )
-        komodo_chosennotary(&notaryid,chainActive.LastTip()->GetHeight(),NOTARY_PUBKEY33,(uint32_t)chainActive.LastTip()->GetBlockTime());
-    if ( notaryid != My_notaryid )
-        My_notaryid = notaryid;
-    std::string solver;
-    //if ( notaryid >= 0 || ASSETCHAINS_SYMBOL[0] != 0 )
-    solver = "tromp";
-    //else solver = "default";
-    assert(solver == "tromp" || solver == "default");
-    LogPrint("pow", "Using Equihash solver \"%s\" with n = %u, k = %u\n", solver, n, k);
-    if ( ASSETCHAINS_SYMBOL[0] != 0 )
-        fprintf(stderr,"notaryid.%d Mining.%s with %s\n",notaryid,ASSETCHAINS_SYMBOL,solver.c_str());
-    std::mutex m_cs;
-    bool cancelSolver = false;
-    boost::signals2::connection c = uiInterface.NotifyBlockTip.connect(
-                                                                       [&m_cs, &cancelSolver](const uint256& hashNewTip) mutable {
-                                                                           std::lock_guard<std::mutex> lock{m_cs};
-                                                                           cancelSolver = true;
-                                                                       }
-                                                                       );
-    miningTimer.start();
-    
-    try {
-        if ( ASSETCHAINS_SYMBOL[0] != 0 )
-            fprintf(stderr,"try %s Mining with %s\n",ASSETCHAINS_SYMBOL,solver.c_str());
-        while (true)
-        {
-            if (chainparams.MiningRequiresPeers()) //chainActive.LastTip()->GetHeight() != 235300 &&
-            {
-                //if ( ASSETCHAINS_SEED != 0 && chainActive.LastTip()->GetHeight() < 100 )
-                //    break;
-                // Busy-wait for the network to come online so we don't waste time mining
-                // on an obsolete chain. In regtest mode we expect to fly solo.
-                miningTimer.stop();
-                do {
-                    bool fvNodesEmpty;
-                    {
-                        //LOCK(cs_vNodes);
-                        fvNodesEmpty = vNodes.empty();
-                    }
-                    if (!fvNodesEmpty && !IsInitialBlockDownload(chainparams))
-                        break;
-                    MilliSleep(15000);
-                    //fprintf(stderr,"fvNodesEmpty %d IsInitialBlockDownload(%s) %d\n",(int32_t)fvNodesEmpty,ASSETCHAINS_SYMBOL,(int32_t)IsInitialBlockDownload());
-                    
-                } while (true);
-                //fprintf(stderr,"%s Found peers\n",ASSETCHAINS_SYMBOL);
-                miningTimer.start();
-            }
-            //
-            // Create new block
-            //
-            unsigned int nTransactionsUpdatedLast = mempool.GetTransactionsUpdated();
-            CBlockIndex* pindexPrev = chainActive.LastTip();
-            if ( Mining_height != pindexPrev->GetHeight()+1 )
-            {
-                Mining_height = pindexPrev->GetHeight()+1;
-                Mining_start = (uint32_t)time(NULL);
-            }
-            if ( ASSETCHAINS_SYMBOL[0] != 0 && ASSETCHAINS_STAKED == 0 )
-            {
-                //fprintf(stderr,"%s create new block ht.%d\n",ASSETCHAINS_SYMBOL,Mining_height);
-                //sleep(3);
-            }
-
-#ifdef ENABLE_WALLET
-            // notaries always default to staking
-            CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, pindexPrev->GetHeight()+1, gpucount, ASSETCHAINS_STAKED != 0 && GetArg("-genproclimit", 0) == 0);
-#else
-            CBlockTemplate *ptr = CreateNewBlockWithKey();
-#endif
-            if ( ptr == 0 )
-            {
-                static uint32_t counter;
-                if ( counter++ < 100 && ASSETCHAINS_STAKED == 0 )
-                    fprintf(stderr,"created illegal block, retry\n");
-                sleep(1);
-                continue;
-            }
-            //fprintf(stderr,"get template\n");
-            unique_ptr<CBlockTemplate> pblocktemplate(ptr);
-            if (!pblocktemplate.get())
-            {
-                if (GetArg("-mineraddress", "").empty()) {
-                    LogPrintf("Error in KomodoMiner: Keypool ran out, please call keypoolrefill before restarting the mining thread\n");
-                } else {
-                    // Should never reach here, because -mineraddress validity is checked in init.cpp
-                    LogPrintf("Error in KomodoMiner: Invalid -mineraddress\n");
-                }
-                return;
-            }
-            CBlock *pblock = &pblocktemplate->block;
-            if ( ASSETCHAINS_SYMBOL[0] != 0 )
-            {
-                if ( ASSETCHAINS_REWARD[0] == 0 && !ASSETCHAINS_LASTERA )
-                {
-                    if ( pblock->vtx.size() == 1 && pblock->vtx[0].vout.size() == 1 && Mining_height > ASSETCHAINS_MINHEIGHT )
-                    {
-                        static uint32_t counter;
-                        if ( counter++ < 10 )
-                            fprintf(stderr,"skip generating %s on-demand block, no tx avail\n",ASSETCHAINS_SYMBOL);
-                        sleep(10);
-                        continue;
-                    } else fprintf(stderr,"%s vouts.%d mining.%d vs %d\n",ASSETCHAINS_SYMBOL,(int32_t)pblock->vtx[0].vout.size(),Mining_height,ASSETCHAINS_MINHEIGHT);
-                }
-            }
-            IncrementExtraNonce(pblock, pindexPrev, nExtraNonce);
-            //fprintf(stderr,"Running KomodoMiner.%s with %u transactions in block\n",solver.c_str(),(int32_t)pblock->vtx.size());
-            LogPrintf("Running KomodoMiner.%s with %u transactions in block (%u bytes)\n",solver.c_str(),pblock->vtx.size(),::GetSerializeSize(*pblock,SER_NETWORK,PROTOCOL_VERSION));
-            //
-            // Search
-            //
-            uint8_t pubkeys[66][33]; arith_uint256 bnMaxPoSdiff; uint32_t blocktimes[66]; int mids[256],nonzpkeys,i,j,externalflag; uint32_t savebits; int64_t nStart = GetTime();
-            pblock->nBits         = GetNextWorkRequired(pindexPrev, pblock, Params().GetConsensus());
-            savebits = pblock->nBits;
-            HASHTarget = arith_uint256().SetCompact(savebits);
-            roundrobin_delay = ROUNDROBIN_DELAY;
-            if ( ASSETCHAINS_SYMBOL[0] == 0 && notaryid >= 0 )
-            {
-                j = 65;
-                if ( (Mining_height >= 235300 && Mining_height < 236000) || (Mining_height % KOMODO_ELECTION_GAP) > 64 || (Mining_height % KOMODO_ELECTION_GAP) == 0 || Mining_height > 1000000 )
-                {
-                    int32_t dispflag = 0;
-                    if ( notaryid <= 3 || notaryid == 32 || (notaryid >= 43 && notaryid <= 45) &&notaryid == 51 || notaryid == 52 || notaryid == 56 || notaryid == 57 )
-                        dispflag = 1;
-                    komodo_eligiblenotary(pubkeys,mids,blocktimes,&nonzpkeys,pindexPrev->GetHeight());
-                    if ( nonzpkeys > 0 )
-                    {
-                        for (i=0; i<33; i++)
-                            if( pubkeys[0][i] != 0 )
-                                break;
-                        if ( i == 33 )
-                            externalflag = 1;
-                        else externalflag = 0;
-                        if ( IS_KOMODO_NOTARY != 0 )
-                        {
-                            for (i=1; i<66; i++)
-                                if ( memcmp(pubkeys[i],pubkeys[0],33) == 0 )
-                                    break;
-                            if ( externalflag == 0 && i != 66 && mids[i] >= 0 )
-                                printf("VIOLATION at %d, notaryid.%d\n",i,mids[i]);
-                            for (j=gpucount=0; j<65; j++)
-                            {
-                                if ( dispflag != 0 )
-                                {
-                                    if ( mids[j] >= 0 )
-                                        fprintf(stderr,"%d ",mids[j]);
-                                    else fprintf(stderr,"GPU ");
-                                }
-                                if ( mids[j] == -1 )
-                                    gpucount++;
-                            }
-                            if ( dispflag != 0 )
-                                fprintf(stderr," <- prev minerids from ht.%d notary.%d gpucount.%d %.2f%% t.%u\n",pindexPrev->GetHeight(),notaryid,gpucount,100.*(double)gpucount/j,(uint32_t)time(NULL));
-                        }
-                        for (j=0; j<65; j++)
-                            if ( mids[j] == notaryid )
-                                break;
-                        if ( j == 65 )
-                            KOMODO_LASTMINED = 0;
-                    } else fprintf(stderr,"no nonz pubkeys\n");
-                    if ( (Mining_height >= 235300 && Mining_height < 236000) || (j == 65 && Mining_height > KOMODO_MAYBEMINED+1 && Mining_height > KOMODO_LASTMINED+64) )
-                    {
-                        HASHTarget = arith_uint256().SetCompact(KOMODO_MINDIFF_NBITS);
-                        fprintf(stderr,"I am the chosen one for %s ht.%d\n",ASSETCHAINS_SYMBOL,pindexPrev->GetHeight()+1);
-                    } //else fprintf(stderr,"duplicate at j.%d\n",j);
-                } else Mining_start = 0;
-            } else Mining_start = 0;
-            if ( ASSETCHAINS_STAKED != 0 )
-            {
-                int32_t percPoS,z; bool fNegative,fOverflow;
-                HASHTarget_POW = komodo_PoWtarget(&percPoS,HASHTarget,Mining_height,ASSETCHAINS_STAKED);
-                HASHTarget.SetCompact(KOMODO_MINDIFF_NBITS,&fNegative,&fOverflow);
-                if ( ASSETCHAINS_STAKED < 100 )
-                {
-                    for (z=31; z>=0; z--)
-                        fprintf(stderr,"%02x",((uint8_t *)&HASHTarget_POW)[z]);
-                    fprintf(stderr," PoW for staked coin PoS %d%% vs target %d%%\n",percPoS,(int32_t)ASSETCHAINS_STAKED);
-                }
-            }
-            while (true)
-            {
-                if ( KOMODO_INSYNC == 0 )
-                {
-                    fprintf(stderr,"Mining when blockchain might not be in sync longest.%d vs %d\n",KOMODO_LONGESTCHAIN,Mining_height);
-                    if ( KOMODO_LONGESTCHAIN != 0 && Mining_height >= KOMODO_LONGESTCHAIN )
-                        KOMODO_INSYNC = 1;
-                    sleep(3);
-                }
-                // Hash state
-                KOMODO_CHOSEN_ONE = 0;
-                
-                crypto_generichash_blake2b_state state;
-                EhInitialiseState(n, k, state);
-                // I = the block header minus nonce and solution.
-                CEquihashInput I{*pblock};
-                CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
-                ss << I;
-                // H(I||...
-                crypto_generichash_blake2b_update(&state, (unsigned char*)&ss[0], ss.size());
-                // H(I||V||...
-                crypto_generichash_blake2b_state curr_state;
-                curr_state = state;
-                crypto_generichash_blake2b_update(&curr_state,pblock->nNonce.begin(),pblock->nNonce.size());
-                // (x_1, x_2, ...) = A(I, V, n, k)
-                LogPrint("pow", "Running Equihash solver \"%s\" with nNonce = %s\n",solver, pblock->nNonce.ToString());
-                arith_uint256 hashTarget;
-                if ( KOMODO_MININGTHREADS > 0 && ASSETCHAINS_STAKED > 0 && ASSETCHAINS_STAKED < 100 && Mining_height > 10 )
-                    hashTarget = HASHTarget_POW;
-                else hashTarget = HASHTarget;
-                std::function<bool(std::vector<unsigned char>)> validBlock =
-#ifdef ENABLE_WALLET
-                [&pblock, &hashTarget, &pwallet, &reservekey, &m_cs, &cancelSolver, &chainparams]
-#else
-                [&pblock, &hashTarget, &m_cs, &cancelSolver, &chainparams]
-#endif
-                (std::vector<unsigned char> soln) {
-                    int32_t z; arith_uint256 h; CBlock B;
-                    // Write the solution to the hash and compute the result.
-                    LogPrint("pow", "- Checking solution against target\n");
-                    pblock->nSolution = soln;
-                    solutionTargetChecks.increment();
-                    B = *pblock;
-                    h = UintToArith256(B.GetHash());
-                    /*for (z=31; z>=16; z--)
-                        fprintf(stderr,"%02x",((uint8_t *)&h)[z]);
-                    fprintf(stderr," mined ");
-                    for (z=31; z>=16; z--)
-                        fprintf(stderr,"%02x",((uint8_t *)&HASHTarget)[z]);
-                    fprintf(stderr," hashTarget ");
-                    for (z=31; z>=16; z--)
-                        fprintf(stderr,"%02x",((uint8_t *)&HASHTarget_POW)[z]);
-                    fprintf(stderr," POW\n");*/
-                    if ( h > hashTarget )
-                    {
-                        //if ( ASSETCHAINS_STAKED != 0 && KOMODO_MININGTHREADS == 0 )
-                        //    sleep(1);
-                        return false;
-                    }
-                    if ( IS_KOMODO_NOTARY != 0 && B.nTime > GetAdjustedTime() )
-                    {
-                        //fprintf(stderr,"need to wait %d seconds to submit block\n",(int32_t)(B.nTime - GetAdjustedTime()));
-                        while ( GetAdjustedTime() < B.nTime-2 )
-                        {
-                            sleep(1);
-                            if ( chainActive.LastTip()->GetHeight() >= Mining_height )
-                            {
-                                fprintf(stderr,"new block arrived\n");
-                                return(false);
-                            }
-                        }
-                    }
-                    if ( ASSETCHAINS_STAKED == 0 )
-                    {
-                        if ( IS_KOMODO_NOTARY != 0 )
-                        {
-                            int32_t r;
-                            if ( (r= ((Mining_height + NOTARY_PUBKEY33[16]) % 64) / 8) > 0 )
-                                MilliSleep((rand() % (r * 1000)) + 1000);
-                        }
-                    }
-                    else
-                    {
-                        while ( B.nTime-57 > GetAdjustedTime() )
-                        {
-                            sleep(1);
-                            if ( chainActive.LastTip()->GetHeight() >= Mining_height )
-                                return(false);
-                        }
-                        uint256 tmp = B.GetHash();
-                        int32_t z; for (z=31; z>=0; z--)
-                            fprintf(stderr,"%02x",((uint8_t *)&tmp)[z]);
-                        fprintf(stderr," mined %s block %d!\n",ASSETCHAINS_SYMBOL,Mining_height);
-                    }
-                    CValidationState state;
-                    if ( !TestBlockValidity(state, Params(), B, chainActive.LastTip(), true, false))
-                    {
-                        h = UintToArith256(B.GetHash());
-                        for (z=31; z>=0; z--)
-                            fprintf(stderr,"%02x",((uint8_t *)&h)[z]);
-                        fprintf(stderr," Invalid block mined, try again\n");
-                        return(false);
-                    }
-                    KOMODO_CHOSEN_ONE = 1;
-                    // Found a solution
-                    SetThreadPriority(THREAD_PRIORITY_NORMAL);
-                    LogPrintf("KomodoMiner:\n");
-                    LogPrintf("proof-of-work found  \n  hash: %s  \ntarget: %s\n", B.GetHash().GetHex(), HASHTarget.GetHex());
-#ifdef ENABLE_WALLET
-                    if (ProcessBlockFound(&B, *pwallet, reservekey)) {
-#else
-                        if (ProcessBlockFound(&B)) {
-#endif
-                            // Ignore chain updates caused by us
-                            std::lock_guard<std::mutex> lock{m_cs};
-                            cancelSolver = false;
-                        }
-                        KOMODO_CHOSEN_ONE = 0;
-                        SetThreadPriority(THREAD_PRIORITY_LOWEST);
-                        // In regression test mode, stop mining after a block is found.
-                        if (chainparams.MineBlocksOnDemand()) {
-                            // Increment here because throwing skips the call below
-                            ehSolverRuns.increment();
-                            throw boost::thread_interrupted();
-                        }
-                        return true;
-                    };
-                    std::function<bool(EhSolverCancelCheck)> cancelled = [&m_cs, &cancelSolver](EhSolverCancelCheck pos) {
-                        std::lock_guard<std::mutex> lock{m_cs};
-                        return cancelSolver;
-                    };
-                    
-                    // TODO: factor this out into a function with the same API for each solver.
-                    if (solver == "tromp" ) { //&& notaryid >= 0 ) {
-                        // Create solver and initialize it.
-                        equi eq(1);
-                        eq.setstate(&curr_state);
-                        
-                        // Initialization done, start algo driver.
-                        eq.digit0(0);
-                        eq.xfull = eq.bfull = eq.hfull = 0;
-                        eq.showbsizes(0);
-                        for (u32 r = 1; r < WK; r++) {
-                            (r&1) ? eq.digitodd(r, 0) : eq.digiteven(r, 0);
-                            eq.xfull = eq.bfull = eq.hfull = 0;
-                            eq.showbsizes(r);
-                        }
-                        eq.digitK(0);
-                        ehSolverRuns.increment();
-                        
-                        // Convert solution indices to byte array (decompress) and pass it to validBlock method.
-                        for (size_t s = 0; s < eq.nsols; s++) {
-                            LogPrint("pow", "Checking solution %d\n", s+1);
-                            std::vector<eh_index> index_vector(PROOFSIZE);
-                            for (size_t i = 0; i < PROOFSIZE; i++) {
-                                index_vector[i] = eq.sols[s][i];
-                            }
-                            std::vector<unsigned char> sol_char = GetMinimalFromIndices(index_vector, DIGITBITS);
-                            
-                            if (validBlock(sol_char)) {
-                                // If we find a POW solution, do not try other solutions
-                                // because they become invalid as we created a new block in blockchain.
-                                break;
-                            }
-                        }
-                    } else {
-                        try {
-                            // If we find a valid block, we rebuild
-                            bool found = EhOptimisedSolve(n, k, curr_state, validBlock, cancelled);
-                            ehSolverRuns.increment();
-                            if (found) {
-                                int32_t i; uint256 hash = pblock->GetHash();
-                                for (i=0; i<32; i++)
-                                    fprintf(stderr,"%02x",((uint8_t *)&hash)[i]);
-                                fprintf(stderr," <- %s Block found %d\n",ASSETCHAINS_SYMBOL,Mining_height);
-                                FOUND_BLOCK = 1;
-                                KOMODO_MAYBEMINED = Mining_height;
-                                break;
-                            }
-                        } catch (EhSolverCancelledException&) {
-                            LogPrint("pow", "Equihash solver cancelled\n");
-                            std::lock_guard<std::mutex> lock{m_cs};
-                            cancelSolver = false;
-                        }
-                    }
-                    
-                    // Check for stop or if block needs to be rebuilt
-                    boost::this_thread::interruption_point();
-                    // Regtest mode doesn't require peers
-                    if ( FOUND_BLOCK != 0 )
-                    {
-                        FOUND_BLOCK = 0;
-                        fprintf(stderr,"FOUND_BLOCK!\n");
-                        //sleep(2000);
-                    }
-                    if (vNodes.empty() && chainparams.MiningRequiresPeers())
-                    {
-                        if ( ASSETCHAINS_SYMBOL[0] == 0 || Mining_height > ASSETCHAINS_MINHEIGHT )
-                        {
-                            fprintf(stderr,"no nodes, break\n");
-                            break;
-                        }
-                    }
-                    if ((UintToArith256(pblock->nNonce) & 0xffff) == 0xffff)
-                    {
-                        //if ( 0 && ASSETCHAINS_SYMBOL[0] != 0 )
-                        fprintf(stderr,"0xffff, break\n");
-                        break;
-                    }
-                    if (mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && GetTime() - nStart > 60)
-                    {
-                        if ( 0 && ASSETCHAINS_SYMBOL[0] != 0 )
-                            fprintf(stderr,"timeout, break\n");
-                        break;
-                    }
-                    if ( pindexPrev != chainActive.LastTip() )
-                    {
-                        if ( 0 && ASSETCHAINS_SYMBOL[0] != 0 )
-                            fprintf(stderr,"Tip advanced, break\n");
-                        break;
-                    }
-                    // Update nNonce and nTime
-                    pblock->nNonce = ArithToUint256(UintToArith256(pblock->nNonce) + 1);
-                    pblock->nBits = savebits;
-                    /*if ( NOTARY_PUBKEY33[0] == 0 )
-                    {
-                        int32_t percPoS;
-                        UpdateTime(pblock, consensusParams, pindexPrev);
-                        if (consensusParams.fPowAllowMinDifficultyBlocks)
-                        {
-                            // Changing pblock->nTime can change work required on testnet:
-                            HASHTarget.SetCompact(pblock->nBits);
-                            HASHTarget_POW = komodo_PoWtarget(&percPoS,HASHTarget,Mining_height,ASSETCHAINS_STAKED);
-                        }
-                    }*/
-                }
-            }
-        }
-        catch (const boost::thread_interrupted&)
-        {
-            miningTimer.stop();
-            c.disconnect();
-            LogPrintf("KomodoMiner terminated\n");
-            throw;
-        }
-        catch (const std::runtime_error &e)
-        {
-            miningTimer.stop();
-            c.disconnect();
-            LogPrintf("KomodoMiner runtime error: %s\n", e.what());
-            return;
-        }
-        miningTimer.stop();
-        c.disconnect();
-    }
-
 #ifdef ENABLE_WALLET
     void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads)
 #else
@@ -3467,17 +2874,10 @@ void static BitcoinMiner(CWallet *pwallet)
 #endif
 
         for (int i = 0; i < nThreads; i++) {
-
 #ifdef ENABLE_WALLET
-            if (ASSETCHAINS_ALGO == ASSETCHAINS_EQUIHASH)
-                minerThreads->create_thread(boost::bind(&BitcoinMiner, pwallet));
-            else
-                minerThreads->create_thread(boost::bind(&BitcoinMiner_noeq, pwallet));
+            minerThreads->create_thread(boost::bind(&BitcoinMiner_noeq, pwallet));
 #else
-            if (ASSETCHAINS_ALGO == ASSETCHAINS_EQUIHASH)
-                minerThreads->create_thread(&BitcoinMiner);
-            else
-                minerThreads->create_thread(&BitcoinMiner_noeq);
+            minerThreads->create_thread(&BitcoinMiner_noeq);
 #endif
         }
     }
