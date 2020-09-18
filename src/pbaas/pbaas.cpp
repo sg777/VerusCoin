@@ -1122,20 +1122,31 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
     // set initial supply from actual conversions if this is first update
     if (firstUpdate && curDef.IsFractional())
     {
-        CAmount lowSupply = 0, highSupply = 0;
+        CAmount calculatedSupply = 0;
         for (auto &transfer : unspentTransfers)
         {
             if (transfer.second.second.IsPreConversion())
             {
                 CAmount toConvert = transfer.second.second.nValue - CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
-                lowSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
-                //highSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.PriceInReserve(currencyIndexes[transfer.second.second.currencyID], true));
+                calculatedSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
             }
         }
-        if (lowSupply > curDef.initialFractionalSupply)
-        {
-            LogPrintf("%s: incorrect reserve currency supply low: %lu, high: %lu, current supply: %lu\n", __func__, lowSupply, highSupply, currencyState.supply);
-            printf("%s: incorrect reserve currency supply low: %lu, high: %lu, current supply: %lu\n", __func__, lowSupply, highSupply, currencyState.supply);
+
+        if (calculatedSupply > curDef.initialFractionalSupply)
+        {            
+            // get a ratio and reduce all prices by that ratio
+            static arith_uint256 bigSatoshi(SATOSHIDEN);
+            arith_uint256 newRatio((calculatedSupply * bigSatoshi) / currencyState.supply);
+            for (auto &rate : currencyState.conversionPrice)
+            {
+                arith_uint256 numerator = rate * newRatio;
+                rate = (numerator / bigSatoshi).GetLow64();
+                // truncate up, not down, to prevent any overflow at all
+                if (((numerator / bigSatoshi) >> 1) > 0)
+                {
+                    rate++;
+                }
+            }
         }
 
         // now, remove carveout percentage from each weight & reserve
