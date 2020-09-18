@@ -99,7 +99,7 @@ public:
 
     CNameReservation(const CTransaction &tx, int *pNumOut=nullptr);
 
-    CNameReservation(std::vector<unsigned char> &asVector)
+    CNameReservation(const std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);
         if (name.size() > MAX_NAME_SIZE)
@@ -239,8 +239,14 @@ public:
 class CIdentity : public CPrincipal
 {
 public:
-    static const uint32_t FLAG_REVOKED = 0x8000;
-    static const uint32_t FLAG_ACTIVECURRENCY = 0x0001;     // flag that is set when this ID is being used as an active currency name
+    enum
+    {
+        FLAG_REVOKED = 0x8000,              // set when this identity is revoked
+        FLAG_ACTIVECURRENCY = 0x1,          // flag that is set when this ID is being used as an active currency name
+        FLAG_LOCKED = 0x2,                  // set when this identity is locked
+        MAX_UNLOCK_DELAY = 60 * 24 * 22 * 365 // 21+ year maximum unlock time for an ID
+    };
+
     static const int MAX_NAME_LEN = 64;
 
     uint160 parent;
@@ -273,7 +279,9 @@ public:
     // z-addresses for contact and privately made attestations that can be proven to others
     std::vector<libzcash::SaplingPaymentAddress> privateAddresses;
 
-    CIdentity() : CPrincipal() {}
+    uint32_t unlockAfter;
+
+    CIdentity() : CPrincipal(), unlockAfter(0) {}
 
     CIdentity(uint32_t Version,
               uint32_t Flags,
@@ -284,13 +292,15 @@ public:
               const std::vector<std::pair<uint160, uint256>> &hashes,
               const uint160 &Revocation,
               const uint160 &Recovery,
-              const std::vector<libzcash::SaplingPaymentAddress> &Inboxes = std::vector<libzcash::SaplingPaymentAddress>()) : 
+              const std::vector<libzcash::SaplingPaymentAddress> &Inboxes = std::vector<libzcash::SaplingPaymentAddress>(),
+              int32_t unlockTime=0) : 
               CPrincipal(Version, Flags, primary, minPrimarySigs),
               parent(Parent),
               name(Name),
               revocationAuthority(Revocation),
               recoveryAuthority(Recovery),
-              privateAddresses(Inboxes)
+              privateAddresses(Inboxes),
+              unlockAfter(unlockTime)
     {
         for (auto &entry : hashes)
         {
@@ -352,6 +362,15 @@ public:
         READWRITE(revocationAuthority);
         READWRITE(recoveryAuthority);
         READWRITE(privateAddresses);
+
+        if (nVersion >= VERSION_PBAAS)
+        {
+            READWRITE(unlockAfter);
+        }
+        else if (ser_action.ForRead())
+        {
+            REF(unlockAfter) = 0;
+        }
     }
 
     UniValue ToUniValue() const;
@@ -359,6 +378,7 @@ public:
     void Revoke()
     {
         flags |= FLAG_REVOKED;
+        Unlock(0, 0);
     }
 
     void Unrevoke()
@@ -369,6 +389,64 @@ public:
     bool IsRevoked() const
     {
         return flags & FLAG_REVOKED;
+    }
+
+    void Lock(int32_t unlockTime)
+    {
+        if (unlockTime <= 0)
+        {
+            unlockTime = 1;
+        }
+        else if (unlockTime > MAX_UNLOCK_DELAY)
+        {
+            unlockTime = MAX_UNLOCK_DELAY;
+        }
+        flags |= FLAG_LOCKED;
+        unlockAfter = unlockTime;
+    }
+
+    void Unlock(uint32_t height, uint32_t txExpiryHeight)
+    {
+        if (IsRevoked())
+        {
+            flags &= ~FLAG_LOCKED;
+            unlockAfter = 0;
+        }
+        else if (IsLocked())
+        {
+            flags &= ~FLAG_LOCKED;
+            unlockAfter += txExpiryHeight;
+        }
+        else if (height > unlockAfter)
+        {
+            unlockAfter = 0;
+        }
+        if (unlockAfter > (txExpiryHeight + MAX_UNLOCK_DELAY))
+        {
+            unlockAfter = txExpiryHeight + MAX_UNLOCK_DELAY;
+        }
+    }
+
+    // This only returns the state of the lock flag. Note that an ID stays locked from spending or
+    // signing until the height it was unlocked plus the time lock applied when it was locked.
+    bool IsLocked() const
+    {
+        return flags & FLAG_LOCKED;
+    }
+
+    // consider the unlockAfter height as well
+    // this continues to return that it is locked after it is unlocked
+    // until passed the parameter of the height at which it was unlocked, plus the time lock
+    bool IsLocked(uint32_t height) const
+    {
+        return nVersion >= VERSION_PBAAS &&
+               (IsLocked() || unlockAfter >= height) &&
+               !IsRevoked();
+    }
+
+    int32_t UnlockHeight() const
+    {
+        return unlockAfter;
     }
 
     void ActivateCurrency()
@@ -392,7 +470,12 @@ public:
 
     bool IsValid() const
     {
-        return CPrincipal::IsValid() && name.size() > 0 && (name.size() <= MAX_NAME_LEN);
+        return CPrincipal::IsValid() && name.size() > 0 && 
+               (name.size() <= MAX_NAME_LEN) &&
+               primaryAddresses.size() &&
+               (nVersion < VERSION_PBAAS ||
+               (!revocationAuthority.IsNull() &&
+                !recoveryAuthority.IsNull()));
     }
 
     bool IsValidUnrevoked() const
@@ -448,22 +531,75 @@ public:
     static CScript TransparentOutput(const CIdentityID &destinationID);
 
     // creates an output script to control updates to this identity
-    CScript IdentityUpdateOutputScript() const;
+    CScript IdentityUpdateOutputScript(uint32_t height) const;
 
-    bool IsInvalidMutation(const CIdentity &newIdentity, uint32_t height) const
+    bool IsInvalidMutation(const CIdentity &newIdentity, uint32_t height, uint32_t expiryHeight) const
     {
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         if (parent != newIdentity.parent ||
             (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name) ||
-            (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && newIdentity.HasActiveCurrency()) ||
+            (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && (newIdentity.HasActiveCurrency() || 
+                                                                 newIdentity.IsLocked() || 
+                                                                 newIdentity.nVersion >= VERSION_PBAAS)) ||
+            (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && newIdentity.nVersion < VERSION_PBAAS) ||
             GetID() != newIdentity.GetID() ||
             ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
-            ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
+            ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
+            (IsLocked(height) && (!newIdentity.IsRevoked() && !newIdentity.IsLocked(height))) ||
             ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
             newIdentity.nVersion < VERSION_FIRSTVALID ||
             newIdentity.nVersion > VERSION_LASTVALID)
         {
             return true;
+        }
+
+        // we cannot unlock instantly unless we are revoked, we also cannot relock
+        // to enable an earlier unlock time
+        if (newIdentity.nVersion >= VERSION_PBAAS)
+        {
+            if (IsLocked(height))
+            {
+                if (!newIdentity.IsRevoked())
+                {
+                    if (IsLocked() && !newIdentity.IsLocked())
+                    {
+                        if ((newIdentity.unlockAfter != (unlockAfter + expiryHeight)) &&
+                            !(unlockAfter > MAX_UNLOCK_DELAY && newIdentity.unlockAfter == (MAX_UNLOCK_DELAY + expiryHeight)))
+                        {
+                            return true;
+                        }
+                    }
+                    else if (!IsLocked())
+                    {
+                        // only revocation can change unlock after time, and we don't allow re-lock to an earlier time until unlock either, 
+                        // which can change the new unlock time
+                        if (newIdentity.IsLocked())
+                        {
+                            if ((expiryHeight + newIdentity.unlockAfter < unlockAfter))
+                            {
+                                return true;
+                            }
+                        }
+                        else if (newIdentity.unlockAfter != unlockAfter)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            else if (newIdentity.IsLocked(height))
+            {
+                if (newIdentity.IsLocked() && newIdentity.unlockAfter > MAX_UNLOCK_DELAY)
+                {
+                    return true;
+                }
+                else if (!newIdentity.IsLocked() && newIdentity.unlockAfter <= expiryHeight)
+                {
+                    // we never set the locked bit, but we are counting down to the block set to unlock
+                    // cannot lock with unlock before the expiry height
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -475,7 +611,9 @@ public:
             (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
             privateAddresses != newIdentity.privateAddresses ||
-            (HasActiveCurrency() != newIdentity.HasActiveCurrency()))
+            unlockAfter != newIdentity.unlockAfter ||
+            (HasActiveCurrency() != newIdentity.HasActiveCurrency()) ||
+            IsLocked() != newIdentity.IsLocked())
         {
             return true;
         }
@@ -515,8 +653,9 @@ public:
     {
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         if (recoveryAuthority != newIdentity.recoveryAuthority ||
-            (revocationAuthority != newIdentity.revocationAuthority &&
-            (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && IsRevoked())))
+            (IsRevoked() &&
+             ((nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && revocationAuthority != newIdentity.revocationAuthority) ||
+              IsPrimaryMutation(newIdentity, height))))
         {
             return true;
         }

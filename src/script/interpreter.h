@@ -313,7 +313,7 @@ public:
         return false;
     }
 
-    static std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> ExtractIDMap(const CScript &scriptPubKeyIn, const CKeyStore &keystore, uint32_t spendHeight=INT32_MAX); // use wallet
+    static std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> ExtractIDMap(const CScript &scriptPubKeyIn, const CKeyStore &keystore, uint32_t spendHeight=INT32_MAX, bool isStake=true); // use wallet
 
     virtual void SetIDMap(const std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> &map) {}
     virtual std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> IDMap()

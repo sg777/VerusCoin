@@ -1213,6 +1213,10 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         CBlockHeader::SetVerusV2Hash();
         if (strcmp(ASSETCHAINS_SYMBOL,"VRSC") == 0)
         {
+            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("dai.eth."));
+            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("rbtc.eth."));
+            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("wbtc.eth."));
+            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("eth."));
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 310000);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 800200);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 800200);
@@ -1221,6 +1225,9 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         }
         else if (strcmp(ASSETCHAINS_SYMBOL,"VRSCTEST") == 0)
         {
+            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("usd"));
+            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("btc"));
+            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("eth"));
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 1);
@@ -1230,6 +1237,15 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         }
         else
         {
+            if (PBAAS_TESTMODE)
+            {
+                COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("vrsctest"));
+            }
+            else
+            {
+                COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("vrsc"));
+            }
+            
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 1);

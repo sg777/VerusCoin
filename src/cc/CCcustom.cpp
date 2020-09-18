@@ -157,9 +157,14 @@ std::string FinalizeExportPubKey = "0391fa230bd2509cbcc165c636c79ff540a8e3615993
 std::string FinalizeExportWIF = "UrRwoqyLMNddbASS7XV6rm3Q1JCBmMV9V5oPr92KEFmH5U8Evkf6";
 
 // quantum resistant public key output to keep one copy of a public key and refer to it via its hash on the chain
-std::string QuantumKeyOutAddr = "RQ55dLQ7uGnLx8scXfkaFV6QS6qVBGyxAG";
-std::string QuantumKeyOutPubKey = "0231dbadc511bcafdb557faf0b49bea1e2a4ccc0259aeae16c618e1cc4d38f2f4d";
-std::string QuantumKeyOutWIF = "Ux4w6K5ptuQG4SUEQd1bRV8X1LwzcLrVirApbXvThKYfm6uXEafJ";
+std::string QuantumKeyOutAddr = "";
+std::string QuantumKeyOutPubKey = "";
+std::string QuantumKeyOutWIF = "";
+
+// blockchain fee pool output
+std::string FeePoolAddr = "RQ55dLQ7uGnLx8scXfkaFV6QS6qVBGyxAG";
+std::string FeePoolPubKey = "0231dbadc511bcafdb557faf0b49bea1e2a4ccc0259aeae16c618e1cc4d38f2f4d";
+std::string FeePoolWIF = "Ux4w6K5ptuQG4SUEQd1bRV8X1LwzcLrVirApbXvThKYfm6uXEafJ";
 
 // atomic swap condition
 std::string AtomicSwapConditionAddr = "";
@@ -531,6 +536,16 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             cp->validate = ValidateFinalizeExport;
             cp->ismyvin = IsFinalizeExportInput;  // TODO: these input functions are not useful for new CCs
             cp->contextualprecheck = FinalizeExportContextualPreCheck;
+            break;
+
+        case EVAL_FEE_POOL:
+            strcpy(cp->unspendableCCaddr, FeePoolAddr.c_str());
+            strcpy(cp->normaladdr, FeePoolAddr.c_str());
+            strcpy(cp->CChexstr, FeePoolPubKey.c_str());
+            memcpy(cp->CCpriv, DecodeSecret(FeePoolWIF).begin(),32);
+            cp->validate = ValidateFeePool;
+            cp->ismyvin = IsFeePoolInput;
+            cp->contextualprecheck = PrecheckFeePool;
             break;
 
         case EVAL_QUANTUM_KEY:

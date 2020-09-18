@@ -1121,9 +1121,8 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
                 }
             }
 
-            // TODO: check total preallocation
-
-            if (counted.size() != preAllocations.size())
+            if (counted.size() != preAllocations.size() ||
+                totalPreAlloc != ConnectedChains.ThisChain().GetTotalPreallocation())
             {
                 valid = false;
             }
@@ -1370,13 +1369,12 @@ bool ContextualCheckTransaction(
             }
         }
     }
-    if (invalid)
+    /* if (invalid)
     {
-        // TODO: reenable on testnet reset - testnet disable for update
-        //UniValue jsonTx(UniValue::VOBJ);
-        //TxToUniv(tx, uint256(), jsonTx);
-        //printf("INVALID transaction:\n%s\n", jsonTx.write(1,2).c_str());
-    }
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(tx, uint256(), jsonTx);
+        printf("INVALID transaction:\n%s\n", jsonTx.write(1,2).c_str());
+    } */
     return true;
 }
 
@@ -2755,18 +2753,7 @@ namespace Consensus {
 
         CReserveTransactionDescriptor rtxd(tx, inputs, nSpendHeight);
 
-        if (cci.IsValid())
-        {
-            ReserveValueIn = rtxd.ReserveInputMap() + CCurrencyValueMap({cci.systemID}, {rtxd.TotalNativeOutConverted()});
-            //printf("cci:\n%s\n rtxd.ReserveInputMap():\n%s, rtxd.ReserveOutConvertedMap():\n%s\nReserveValueIn:\n%s\n", cci.ToUniValue().write(1, 2).c_str(), 
-            //    rtxd.ReserveInputMap().ToUniValue().write(1, 2).c_str(), rtxd.ReserveOutConvertedMap().ToUniValue().write(1, 2).c_str(),
-            //    ReserveValueIn.ToUniValue().write(1, 2).c_str());
-        }
-        else
-        {
-            ReserveValueIn = rtxd.ReserveInputMap();
-            //fprintf(stderr,"cci invalid ReserveValueIn: %s\n", ReserveValueIn.ToUniValue().write(1, 2).c_str());
-        }
+        ReserveValueIn = rtxd.ReserveInputMap();
 
         CAmount nFees = 0;
         for (unsigned int i = 0; i < tx.vin.size(); i++)
@@ -2860,6 +2847,7 @@ namespace Consensus {
                                         tx.GetHash().ToString(), FormatMoney(nValueIn), FormatMoney(tx.GetValueOut()),((double)nValueIn - tx.GetValueOut())/COIN),REJECT_INVALID, "bad-txns-in-belowout");
         }
 
+        //printf("NativeValueIn: %s\nNativeValueOut: %s\n", std::to_string(nValueIn).c_str(), std::to_string(tx.GetValueOut()).c_str());
         //printf("ReserveValueIn: %s\nGetReserveValueOut: %s\n", ReserveValueIn.ToUniValue().write(1, 2).c_str(), tx.GetReserveValueOut().ToUniValue().write(1, 2).c_str());
 
         if (ReserveValueIn < tx.GetReserveValueOut())
@@ -2916,12 +2904,14 @@ bool ContextualCheckInputs(const CTransaction& tx,
         // before the last block chain checkpoint. This is safe because block merkle hashes are
         // still computed and checked, and any change will be caught at the next checkpoint.
         if (fScriptChecks) {
+            CStakeParams sp;
+            bool isStake = ValidateStakeTransaction(tx, sp, false);
             for (unsigned int i = 0; i < tx.vin.size(); i++) {
                 const COutPoint &prevout = tx.vin[i].prevout;
                 const CCoins* coins = inputs.AccessCoins(prevout.hash);
                 assert(coins);
 
-                auto idAddresses = ServerTransactionSignatureChecker::ExtractIDMap(coins->vout[prevout.n].scriptPubKey, spendHeight);
+                auto idAddresses = ServerTransactionSignatureChecker::ExtractIDMap(coins->vout[prevout.n].scriptPubKey, spendHeight, isStake);
 
                 // Verify signature
                 CScriptCheck check(*coins, tx, i, flags, cacheStore, consensusBranchId, &txdata);
@@ -3180,6 +3170,8 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
     std::vector<CAddressUnspentDbEntry> addressUnspentIndex;
     std::vector<CSpentIndexDbEntry> spentIndex;
 
+    uint32_t nHeight = pindex->GetHeight();
+
     // undo transactions in reverse order
     for (int i = block.vtx.size() - 1; i >= 0; i--) {
         const CTransaction &tx = block.vtx[i];
@@ -3201,19 +3193,39 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                     {
                         dests = out.scriptPubKey.GetDestinations();
                     }
-                    
+
+                    std::map<uint160, uint32_t> heightOffsets = p.GetIndexHeightOffsets(nHeight);
+
                     for (auto dest : dests)
                     {
                         if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                         {
-                            // undo receiving activity
-                            addressIndex.push_back(make_pair(
-                                CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, k, false),
-                                out.nValue));
+                            uint160 destID = GetDestinationID(dest);
+                            if (dest.which() == COptCCParams::ADDRTYPE_INDEX &&
+                                heightOffsets.count(destID))
+                            {
+                                // undo receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), 
+                                                     destID, 
+                                                     heightOffsets[destID], 
+                                                     i, 
+                                                     hash, 
+                                                     k, 
+                                                     false),
+                                    out.nValue));
+                            }
+                            else
+                            {
+                                // undo receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), destID, nHeight, i, hash, k, false),
+                                    out.nValue));
+                            }
 
                             // undo unspent index
                             addressUnspentIndex.push_back(make_pair(
-                                CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), hash, k),
+                                CAddressUnspentKey(AddressTypeFromDest(dest), destID, hash, k),
                                 CAddressUnspentValue()));
                         }
                     }
@@ -3227,7 +3239,7 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                         {
                             // undo receiving activity
                             addressIndex.push_back(make_pair(
-                                CAddressIndexKey(scriptType, addrHash, pindex->GetHeight(), i, hash, k, false),
+                                CAddressIndexKey(scriptType, addrHash, nHeight, i, hash, k, false),
                                 out.nValue));
 
                             // undo unspent index
@@ -3246,7 +3258,7 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
             CCoinsModifier outs = view.ModifyCoins(hash);
             outs->ClearUnspendable();
             
-            CCoins outsBlock(tx, pindex->GetHeight());
+            CCoins outsBlock(tx, nHeight);
             // The CCoins serialization does not serialize negative numbers.
             // No network rules currently depend on the version here, so an inconsistency is harmless
             // but it must be corrected before txout nversion ever influences a network rule.
@@ -3291,18 +3303,33 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
                         {
                             dests = prevout.scriptPubKey.GetDestinations();
                         }
+
+                        std::map<uint160, uint32_t> heightOffsets = p.GetIndexHeightOffsets(nHeight);
+
                         for (auto dest : dests)
                         {
                             if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                             {
-                                // undo spending activity
-                                addressIndex.push_back(make_pair(
-                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, hash, j, true),
-                                    prevout.nValue * -1));
+                                uint160 destID = GetDestinationID(dest);
+                                if (dest.which() == COptCCParams::ADDRTYPE_INDEX &&
+                                    heightOffsets.count(destID))
+                                {
+                                    // undo spending activity
+                                    addressIndex.push_back(make_pair(
+                                        CAddressIndexKey(AddressTypeFromDest(dest), destID, heightOffsets[destID], i, hash, j, true),
+                                        prevout.nValue * -1));
+                                }
+                                else
+                                {
+                                    // undo spending activity
+                                    addressIndex.push_back(make_pair(
+                                        CAddressIndexKey(AddressTypeFromDest(dest), destID, nHeight, i, hash, j, true),
+                                        prevout.nValue * -1));
+                                }
 
                                 // restore unspent index
                                 addressUnspentIndex.push_back(make_pair(
-                                    CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
+                                    CAddressUnspentKey(AddressTypeFromDest(dest), destID, input.prevout.hash, input.prevout.n),
                                     CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undo.nHeight)));
                             }
                         }
@@ -3606,7 +3633,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTimeStart = GetTimeMicros();
     CAmount nFees = 0;
     int nInputs = 0;
-    int64_t interest,sum = 0;
     unsigned int nSigOps = 0;
     CDiskTxPos pos(pindex->GetBlockPos(), GetSizeOfCompactSize(block.vtx.size()));
     std::vector<std::pair<uint256, CDiskTxPos> > vPos;
@@ -3644,9 +3670,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     auto consensus = Params().GetConsensus();
     auto consensusBranchId = CurrentEpochBranchId(nHeight, consensus);
     bool isVerusActive = IsVerusActive();
+    uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
 
     // on non-Verus reserve chains, we'll want a block-wide currency state for calculations
-    // TODO:PBAAS - add the ability to pay native fees in reserve
     CReserveTransactionDescriptor rtxd;
     CCoinbaseCurrencyState prevCurrencyState = ConnectedChains.GetCurrencyState(nHeight ? nHeight - 1 : 0);
     CCurrencyDefinition thisChain = ConnectedChains.ThisChain();
@@ -3703,18 +3729,32 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     {
                         dests = prevout.scriptPubKey.GetDestinations();
                     }
+
+                    std::map<uint160, uint32_t> heightOffsets = p.GetIndexHeightOffsets(nHeight);
+
                     for (auto dest : dests)
                     {
                         if (dest.which() != COptCCParams::ADDRTYPE_INVALID) 
                         {
                             // record spending activity
-                            addressIndex.push_back(make_pair(
-                                CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, j, true),
-                                prevout.nValue * -1));
+                            uint160 destID = GetDestinationID(dest);
+                            if (dest.which() == COptCCParams::ADDRTYPE_INDEX &&
+                                heightOffsets.count(destID))
+                            {
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), heightOffsets[destID], i, txhash, j, true),
+                                    prevout.nValue * -1));
+                            }
+                            else
+                            {
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), nHeight, i, txhash, j, true),
+                                    prevout.nValue * -1));
+                            }
 
                             // remove address from unspent index
                             addressUnspentIndex.push_back(make_pair(
-                                CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), input.prevout.hash, input.prevout.n),
+                                CAddressUnspentKey(AddressTypeFromDest(dest), destID, input.prevout.hash, input.prevout.n),
                                 CAddressUnspentValue()));
                         }
                     }
@@ -3774,7 +3814,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         {
             // we get the currency state, and if reserve, add any appropriate converted fees that are the difference between
             // reserve in and native in converted to reserve and native out on the currency state output.
-            // TODO:PBAAS we currently convert to native, support converting to reserve
             if (tx.IsCoinBase())
             {
                 int outIdx;
@@ -3789,44 +3828,27 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (!tx.IsCoinBase())
         {
             rtxd = CReserveTransactionDescriptor(tx, view, nHeight);
-
-            if (rtxd.IsValid() && !isVerusActive)
+            if (rtxd.IsReject())
             {
-                CCurrencyValueMap unconvertedReserves = rtxd.ReserveFees() + rtxd.ReserveConversionFeesMap();
-                if (!currencyState.IsFractional() || thisChain.ChainOptions() & thisChain.OPTION_FEESASRESERVE)
+                return state.DoS(100, error("ConnectBlock(): Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reserve");
+            }
+
+            //if (rtxd.IsReserve() && rtxd.IsValid())
+            if (rtxd.IsValid())
+            {
+                if (isVerusActive)
                 {
-                    if (currencyState.IsFractional())
-                    {
-                        reserveIn += rtxd.ReserveOutConvertedMap();
-                        nativeIn += rtxd.NativeOutConvertedMap();
-                    }
-                    totalReserveTxFees += unconvertedReserves;
-                    nFees += rtxd.NativeFees() + rtxd.nativeConversionFees;
+                    nFees += rtxd.NativeFees();
                 }
                 else
                 {
-                    if (currencyState.IsFractional())
-                    {
-                        reserveIn += rtxd.ReserveOutConvertedMap() + rtxd.ReserveConversionFeesMap() + rtxd.ReserveFees();
-                        nativeIn += rtxd.NativeOutConvertedMap();
-                    }
-                    // remove convertible reserves from our reserves, so we retain fees that
-                    // cannot be converted as their original reserves
-                    totalReserveTxFees += CCurrencyValueMap(thisChain.currencies, 
-                                                            std::vector<CAmount>(thisChain.currencies.size(), 1)).NonIntersectingValues(unconvertedReserves);
-                    nFees += rtxd.AllFeesAsNative(currencyState, currencyState.conversionPrice) + 
-                                                  rtxd.nativeConversionFees + 
-                                                  currencyState.ReserveToNativeRaw(rtxd.ReserveConversionFeesMap(), currencyState.conversionPrice);
+                    // TODO : complete for PBaaS chain
                 }
             } else
             {
-                if (rtxd.IsReject())
-                {
-                    return state.DoS(100, error("ConnectBlock(): Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reserve");
-                }
+                CAmount interest;
                 nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut();
             }
-            sum += interest;
 
             std::vector<CScriptCheck> vChecks;
             bool fCacheResults = fJustCheck; /* Don't cache results if we're actually connecting blocks (still consult the cache, though) */
@@ -3842,6 +3864,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 if (out.scriptPubKey.IsPayToCryptoCondition(p))
                 {
                     std::vector<CTxDestination> dests;
+                    std::map<uint160, uint32_t> offsets;
                     if (p.IsValid())
                     {
                         dests = p.GetDestinations();
@@ -3850,26 +3873,40 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     {
                         dests = out.scriptPubKey.GetDestinations();
                     }
+
+                    std::map<uint160, uint32_t> heightOffsets = p.GetIndexHeightOffsets(nHeight);
+
                     for (auto dest : dests)
                     {
                         if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                         {
-                            // record receiving activity
-                            addressIndex.push_back(make_pair(
-                                CAddressIndexKey(AddressTypeFromDest(dest), GetDestinationID(dest), pindex->GetHeight(), i, txhash, k, false),
-                                out.nValue));
-
-                            /*
-                            if (dest.which() == COptCCParams::ADDRTYPE_PKH)
+                            // record spending activity
+                            uint160 destID = GetDestinationID(dest);
+                            if (dest.which() == COptCCParams::ADDRTYPE_INDEX &&
+                                heightOffsets.count(destID))
                             {
-                                printf("%s: adding unspent index for address %s\n", __func__, GetDestinationID(dest).GetHex().c_str());
-                            }
-                            */
+                                // record receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), destID, heightOffsets[destID], i, txhash, k, false),
+                                    out.nValue));
 
-                            // record unspent output
-                            addressUnspentIndex.push_back(make_pair(
-                                CAddressUnspentKey(AddressTypeFromDest(dest), GetDestinationID(dest), txhash, k),
-                                CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->GetHeight())));
+                                // record unspent output
+                                addressUnspentIndex.push_back(make_pair(
+                                    CAddressUnspentKey(AddressTypeFromDest(dest), destID, txhash, k),
+                                    CAddressUnspentValue(out.nValue, out.scriptPubKey, heightOffsets[destID])));
+                            }
+                            else
+                            {
+                                // record receiving activity
+                                addressIndex.push_back(make_pair(
+                                    CAddressIndexKey(AddressTypeFromDest(dest), destID, nHeight, i, txhash, k, false),
+                                    out.nValue));
+
+                                // record unspent output
+                                addressUnspentIndex.push_back(make_pair(
+                                    CAddressUnspentKey(AddressTypeFromDest(dest), destID, txhash, k),
+                                    CAddressUnspentValue(out.nValue, out.scriptPubKey, nHeight)));
+                            }
                         }
                     }
                 }
@@ -3943,6 +3980,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     std::vector<CAmount> conversionPrices;
     if (reserveIn.valueMap.size() || nativeIn.valueMap.size())
     {
+        int32_t numCurrencies = prevCurrencyState.currencies.size();
         conversionPrices = prevCurrencyState.ConvertAmounts(reserveIn.AsCurrencyVector(prevCurrencyState.currencies), 
                                                             nativeIn.AsCurrencyVector(prevCurrencyState.currencies),
                                                             checkState);
@@ -3956,31 +3994,66 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             // do it again for debugging only
             //conversionPrices = prevCurrencyState.ConvertAmounts(reserveIn.AsCurrencyVector(prevCurrencyState.currencies), 
             //                                                    nativeIn.AsCurrencyVector(prevCurrencyState.currencies),
-            //                                                    checkState);
+            //                                                    checkState, nullptr);
             return state.DoS(100, error("ConnectBlock(): currency state does not match block transactions"), REJECT_INVALID, "bad-blk-currency");
         }
     }
 
-    CAmount nativeBlockReward = nFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus()) + sum;
+    // enforce fee pooling if we are at PBAAS or past
+    CAmount rewardFees = nFees;
+    if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        // all fees must be taken and no more
+        CFeePool feePoolCheck;
+        if (CConstVerusSolutionVector::GetVersionByHeight(nHeight - 1) < CActivationHeight::ACTIVATE_PBAAS ||
+            (CFeePool::GetFeePool(feePoolCheck, nHeight - 1) && feePoolCheck.IsValid()))
+        {
+            CAmount feePoolCheckVal = 
+                feePoolCheck.reserveValues.valueMap[ASSETCHAINS_CHAINID] = 
+                    feePoolCheck.reserveValues.valueMap[ASSETCHAINS_CHAINID] + nFees;
+
+            rewardFees = feePoolCheck.OneFeeShare().reserveValues.valueMap[ASSETCHAINS_CHAINID];
+
+            CFeePool feePool;
+            CAmount feePoolVal;
+            if (!CFeePool::GetCoinbaseFeePool(block.vtx[0], feePool) ||
+                !feePool.IsValid() ||
+                (feePoolVal = feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID]) < (feePoolCheckVal - rewardFees) ||
+                feePoolVal > feePoolCheckVal)
+            {
+                return state.DoS(100, error("ConnectBlock(): invalid fee pool usage in block"), REJECT_INVALID, "bad-blk-fees");
+            }
+            rewardFees = feePoolCheckVal - feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID];
+        }
+        else 
+        {
+            return state.DoS(100, error("ConnectBlock(): valid fee state required in prior block"), REJECT_INVALID, "fee-pool-not-found");
+        }
+    }
+
+    CAmount nativeBlockReward = rewardFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus());
     // reserve reward is in totalReserveTxFees
 
-    bool isBlock1 = pindex->GetHeight() == 1;
-    if (isBlock1 && thisChain.preconverted.size() && thisChain.conversions.size())
+    if (!isVerusActive)
     {
-        // if we can have a pre-conversion output on block 1, add pre-conversion
-        nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted),
-                                                                   thisChain.currencies,
-                                                                   thisChain.conversions) + currencyState.nativeFees;
-    }
-    else
-    {
-        if (!isBlock1 && totalReserveTxFees.AsCurrencyVector(currencyState.currencies) != currencyState.fees)
+        bool isBlock1 = pindex->GetHeight() == 1;
+        if (isBlock1 && thisChain.preconverted.size() && thisChain.conversions.size())
         {
-            return state.DoS(100, error(("ConnectBlock(): invalid currency state fee does not match block total of " + totalReserveTxFees.ToUniValue().write()).c_str()), REJECT_INVALID, "bad-blk-currency-fee");
+            // if we can have a pre-conversion output on block 1, add pre-conversion
+            nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted),
+                                                                    thisChain.currencies,
+                                                                    thisChain.conversions) + currencyState.nativeFees;
         }
-        nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn),
-                                                                   currencyState.currencies,
-                                                                   currencyState.conversionPrice) + currencyState.nativeFees;
+        else
+        {
+            if (!isBlock1 && totalReserveTxFees.AsCurrencyVector(currencyState.currencies) != currencyState.fees)
+            {
+                return state.DoS(100, error(("ConnectBlock(): invalid currency state fee does not match block total of " + totalReserveTxFees.ToUniValue().write()).c_str()), REJECT_INVALID, "bad-blk-currency-fee");
+            }
+            nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn),
+                                                                    currencyState.currencies,
+                                                                    currencyState.conversionPrice) + currencyState.nativeFees;
+        }
     }
 
     if ( ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 && ASSETCHAINS_COMMISSION != 0 )
@@ -4009,7 +4082,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                    block.vtx[0].GetValueOut(), nativeBlockReward),
                              REJECT_INVALID, "bad-cb-amount");
         } else if ( IS_KOMODO_NOTARY != 0 )
-            fprintf(stderr,"allow nHeight.%d coinbase %.8f vs %.8f interest %.8f\n",(int32_t)pindex->GetHeight(),dstr(block.vtx[0].GetValueOut()),dstr(nativeBlockReward),dstr(sum));
+            fprintf(stderr,"allow nHeight.%d coinbase %.8f vs %.8f\n",(int32_t)pindex->GetHeight(),dstr(block.vtx[0].GetValueOut()),dstr(nativeBlockReward));
     }
 
     if (!control.Wait())

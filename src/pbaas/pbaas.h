@@ -45,21 +45,13 @@ static const int64_t PBAAS_MINNOTARIZATIONOUTPUT = 10000;   // enough for one fe
 static const int32_t PBAAS_MINSTARTBLOCKDELTA = 50;         // minimum number of blocks to wait for starting a chain after definition
 static const int32_t PBAAS_MAXPRIORBLOCKS = 16;             // maximum prior block commitments to include in prior blocks chain object
 
-// we wil uncomment service types as they are implemented
-// commented service types are here as guidance and reminders
-enum PBAAS_SERVICE_TYPES {
-    SERVICE_INVALID = 0,
-    SERVICE_NOTARIZATION = 1,
-    SERVICE_LAST = 1
-};
-
 // these are object types that can be stored and recognized in an opret array
 enum CHAIN_OBJECT_TYPES
 {
     CHAINOBJ_INVALID = 0,
     CHAINOBJ_HEADER = 1,            // serialized full block header w/proof
     CHAINOBJ_HEADER_REF = 2,        // equivalent to header, but only includes non-canonical data
-    CHAINOBJ_TRANSACTION_PROOF = 3,       // serialized transaction or partial transaction with proof
+    CHAINOBJ_TRANSACTION_PROOF = 3, // serialized transaction or partial transaction with proof
     CHAINOBJ_PROOF_ROOT = 4,        // merkle proof of preceding block or transaction
     CHAINOBJ_PRIORBLOCKS = 5,       // prior block commitments to ensure recognition of overlapping notarizations
     CHAINOBJ_RESERVETRANSFER = 6,   // serialized transaction, sometimes without an opret, which will be reconstructed
@@ -698,62 +690,6 @@ public:
     }
 };
 
-// Additional data for an output pool used for a PBaaS chain's reward for service, such as mining, staking, node or electrum service
-class CServiceReward
-{
-public:
-    uint32_t nVersion;                      // version of this chain definition data structure to allow for extensions (not daemon version)
-    uint16_t serviceType;                   // type of service
-    int32_t billingPeriod;                  // this is used to identify to which billing period of a chain, this reward applies
-
-    CServiceReward() : nVersion(PBAAS_VERSION_INVALID), serviceType(SERVICE_INVALID) {}
-
-    CServiceReward(PBAAS_SERVICE_TYPES ServiceType, int32_t period) : nVersion(PBAAS_VERSION), serviceType(ServiceType), billingPeriod(period) {}
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(serviceType);
-        READWRITE(billingPeriod);
-    }
-
-    CServiceReward(const std::vector<unsigned char> &asVector)
-    {
-        FromVector(asVector, *this);
-    }
-
-    CServiceReward(const UniValue &obj) : nVersion(PBAAS_VERSION)
-    {
-        serviceType = uni_get_str(find_value(obj, "servicetype")) == "notarization" ? SERVICE_NOTARIZATION : SERVICE_INVALID;
-        billingPeriod = uni_get_int(find_value(obj, "billingperiod"));
-        if (!billingPeriod)
-        {
-            serviceType = SERVICE_INVALID;
-        }
-    }
-
-    CServiceReward(const CTransaction &tx, bool validate = false);
-
-    UniValue ToUniValue() const
-    {
-        UniValue obj(UniValue::VOBJ);
-        obj.push_back(Pair("servicetype", serviceType == SERVICE_NOTARIZATION ? "notarization" : "unknown"));
-        obj.push_back(Pair("billingperiod", billingPeriod));
-        return obj;
-    }
-
-    std::vector<unsigned char> AsVector()
-    {
-        return ::AsVector(*this);
-    }
-
-    bool IsValid() const
-    {
-        return serviceType != SERVICE_INVALID;
-    }
-};
-
 class CInputDescriptor
 {
 public:
@@ -851,8 +787,7 @@ public:
     CCurrencyDefinition thisChain;
     bool readyToStart;
     std::vector<CNodeData> defaultPeerNodes;    // updated by notarizations
-    std::vector<std::pair<int, CScript>> latestMiningOutputs; // accessible from all merge miners - can be invalid
-    CTxDestination  latestDestination;          // latest destination from miner output 0 - can be invalid
+    std::vector<CTxOut> latestMiningOutputs;    // accessible from all merge miners - can be invalid
     int64_t lastAggregation = 0;                // adjusted time of last aggregation
 
     int32_t earnedNotarizationHeight;           // zero or the height of one or more potential submissions
@@ -898,7 +833,7 @@ public:
     uint32_t CombineBlocks(CBlockHeader &bh);
 
     // returns false if destinations are empty or first is not either pubkey or pubkeyhash
-    bool SetLatestMiningOutputs(const std::vector<std::pair<int, CScript>> &minerOutputs, CTxDestination &firstDestinationOut);
+    bool SetLatestMiningOutputs(const std::vector<CTxOut> &minerOutputs);
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
     CCurrencyDefinition UpdateCachedCurrency(const uint160 &currencyID, uint32_t height);
@@ -909,6 +844,7 @@ public:
                                uint32_t exportHeight, 
                                const CTransaction &exportTx, 
                                CMutableTransaction &mnewTx,
+                               CCoinbaseCurrencyState &oldCurState,
                                CCoinbaseCurrencyState &newCurState);
 
     bool GetLastImport(const uint160 &systemID, 
@@ -951,6 +887,8 @@ public:
     CCoinbaseCurrencyState GetCurrencyState(int32_t height);                                // gets this chain's native currency state by block height
     CCoinbaseCurrencyState GetCurrencyState(CCurrencyDefinition &curDef, int32_t height, int32_t curDefHeight=0); // gets currency state
     CCoinbaseCurrencyState GetCurrencyState(const uint160 &currencyID, int32_t height);     // gets currency state
+
+    CCurrencyDefinition GetDestinationCurrency(const CReserveTransfer &rt) const;
 
     bool CheckVerusPBaaSAvailable(UniValue &chainInfo, UniValue &chainDef);
     bool CheckVerusPBaaSAvailable();      // may use RPC to call Verus
