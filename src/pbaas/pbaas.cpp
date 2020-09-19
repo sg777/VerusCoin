@@ -1079,6 +1079,11 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
 
     if (curDef.IsFractional())
     {
+        if (curDef.name == "V")
+        {
+            printf("%s: prelaunch of V\n", __func__);
+        }
+
         // convert all non-native fees to native and update the price as a result
         bool isFeeConversion = false;
         std::vector<int64_t> reservesToConvert;
@@ -1136,18 +1141,29 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         {            
             // get a ratio and reduce all prices by that ratio
             static arith_uint256 bigSatoshi(SATOSHIDEN);
-            arith_uint256 newRatio((calculatedSupply * bigSatoshi) / currencyState.supply);
+            arith_uint256 newRatio((calculatedSupply * bigSatoshi) / curDef.initialFractionalSupply);
             for (auto &rate : currencyState.conversionPrice)
             {
                 arith_uint256 numerator = rate * newRatio;
                 rate = (numerator / bigSatoshi).GetLow64();
                 // truncate up, not down, to prevent any overflow at all
-                if (((numerator / bigSatoshi) >> 1) > 0)
+                if ((numerator - (bigSatoshi * rate)) > 0)
                 {
                     rate++;
                 }
             }
         }
+
+        calculatedSupply = 0;
+        for (auto &transfer : unspentTransfers)
+        {
+            if (transfer.second.second.IsPreConversion())
+            {
+                CAmount toConvert = transfer.second.second.nValue - CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
+                calculatedSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
+            }
+        }
+        printf("Calculated supply %s\n", ValueFromAmount(calculatedSupply).write().c_str());
 
         // now, remove carveout percentage from each weight & reserve
         // for currency state
