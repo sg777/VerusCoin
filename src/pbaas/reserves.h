@@ -681,10 +681,11 @@ public:
     // convert amounts for multi-reserve fractional reserve currencies
     // one entry in the vector for each currency in and one fractional input for each
     // currency expected as output
-    std::vector<CAmount> ConvertAmounts(const std::vector<CAmount> &inputReserve,                   // reserves to convert to fractional
-                                        const std::vector<CAmount> &inputFractional,                // fractional to convert to each reserve
+    std::vector<CAmount> ConvertAmounts(const std::vector<CAmount> &inputReserve,    // reserves to convert to fractional
+                                        const std::vector<CAmount> &inputFractional,    // fractional to convert to each reserve
                                         CCurrencyState &newState,
-                                        const std::vector<std::vector<CAmount>> *pCrossConversions=nullptr) const;
+                                        const std::vector<std::vector<CAmount>> *pCrossConversions=nullptr,
+                                        std::vector<CAmount> *pViaPrices=nullptr) const;
 
     CAmount CalculateConversionFee(CAmount inputAmount, bool convertToNative = false, int32_t reserveIndex=0) const;
     CAmount ReserveFeeToNative(CAmount inputAmount, CAmount outputAmount, int32_t reserveIndex=0) const;
@@ -778,6 +779,7 @@ public:
     std::vector<CAmount> nativeIn;          // native currency converted to reserve
     std::vector<CAmount> reserveOut;        // output can have both normal and reserve output value, if non-0, this is spent by the required output transactions
     std::vector<CAmount> conversionPrice;   // calculated price in reserve for all conversions * 100000000
+    std::vector<CAmount> viaConversionPrice; // the via conversion stage prices
     std::vector<CAmount> fees;              // fee values in native (or reserve if specified) coins for reserve transaction fees for the block
     std::vector<CAmount> conversionFees;    // total of only conversion fees, which will accrue to the conversion transaction
 
@@ -789,6 +791,7 @@ public:
                            const std::vector<CAmount> &NativeIn=std::vector<CAmount>(), 
                            const std::vector<CAmount> &ReserveOut=std::vector<CAmount>(), 
                            const std::vector<CAmount> &ConversionPrice=std::vector<CAmount>(), 
+                           const std::vector<CAmount> &ViaConversionPrice=std::vector<CAmount>(), 
                            const std::vector<CAmount> &Fees=std::vector<CAmount>(), 
                            const std::vector<CAmount> &ConversionFees=std::vector<CAmount>()) : 
         CCurrencyState(CurrencyState), nativeFees(NativeFees), nativeConversionFees(NativeConversionFees),
@@ -796,6 +799,7 @@ public:
         nativeIn(NativeIn),
         reserveOut(ReserveOut),
         conversionPrice(ConversionPrice),
+        viaConversionPrice(ViaConversionPrice),
         fees(Fees),
         conversionFees(ConversionFees)        
     {
@@ -803,6 +807,7 @@ public:
         if (!nativeIn.size()) nativeIn = std::vector<CAmount>(currencies.size());
         if (!reserveOut.size()) reserveOut = std::vector<CAmount>(currencies.size());
         if (!conversionPrice.size()) conversionPrice = std::vector<CAmount>(currencies.size());
+        if (!viaConversionPrice.size()) viaConversionPrice = std::vector<CAmount>(currencies.size());
         if (!fees.size()) fees = std::vector<CAmount>(currencies.size());
         if (!conversionFees.size()) conversionFees = std::vector<CAmount>(currencies.size());
     }
@@ -827,6 +832,7 @@ public:
         READWRITE(nativeIn);
         READWRITE(reserveOut);
         READWRITE(conversionPrice);
+        READWRITE(viaConversionPrice);
         READWRITE(fees);
         READWRITE(conversionFees);
     }

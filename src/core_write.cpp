@@ -536,8 +536,8 @@ UniValue CCoinbaseCurrencyState::ToUniValue() const
     {
         rowNames.push_back(EncodeDestination(CIdentityID(currencies[i])));
     }
-    std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "fees", "conversionfees"});
-    std::vector<const std::vector<CAmount> *> data = {&reserveIn, &nativeIn, &reserveOut, &conversionPrice, &fees, &conversionFees};
+    std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
+    std::vector<const std::vector<CAmount> *> data = {&reserveIn, &nativeIn, &reserveOut, &conversionPrice, &viaConversionPrice, &fees, &conversionFees};
 
     ret.push_back(Pair("currencies", ValueVectorsToUniValue(rowNames, columnNames, data, true)));
     ret.push_back(Pair("nativefees", nativeFees));
