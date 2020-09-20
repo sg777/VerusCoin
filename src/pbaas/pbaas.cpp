@@ -1039,7 +1039,8 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
     // currency state to be up to just before the start block
     std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> unspentTransfers;
     std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
-    int32_t nativeIdx = -1;
+    int32_t nativeIdx = currencyIndexes.count(curDef.systemID) ? currencyIndexes[curDef.systemID] : -1;
+
     if (GetChainTransfers(unspentTransfers, curDef.GetID(), fromHeight, height < curDef.startBlock ? height : curDef.startBlock - 1))
     {
         currencyState.ClearForNextBlock();
@@ -1067,11 +1068,10 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                 {
                     currencyState.nativeConversionFees += conversionFee;
                     currencyState.nativeFees += conversionFee;
-                    nativeIdx = curIdx;
                 }
-
                 currencyState.fees[curIdx] += conversionFee;
                 currencyState.nativeFees +=  transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                currencyState.fees[nativeIdx] +=  transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
                 currencyState.conversionFees[curIdx] += conversionFee;
             }
         }
@@ -1081,41 +1081,31 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
     {
         // convert all non-native fees to native and update the price as a result
         bool isFeeConversion = false;
-        std::vector<int64_t> reservesToConvert;
-        std::vector<int64_t> fractionalToConvert;
-        std::vector<std::vector<int64_t>> crossConversions = std::vector<std::vector<int64_t>>(curDef.currencies.size(), std::vector<int64_t>(curDef.currencies.size()));
+        int numCurrencies = curDef.currencies.size();
+        std::vector<int64_t> reservesToConvert(numCurrencies, 0);
+        std::vector<int64_t> fractionalToConvert(numCurrencies, 0);
+        CAmount newSupply =  currencyState.supply;
 
-        for (int i = 0; i < curDef.currencies.size(); i++)
+        for (int i = 0; i < numCurrencies; i++)
         {
-            currencyState.conversionPrice[i] = currencyState.PriceInReserve(i, true);
+            curDef.conversions[i] = currencyState.conversionPrice[i] = currencyState.PriceInReserve(i, true);
 
             // all currencies except the native currency of the system will be converted to the native currency
             if (currencyState.fees[i] && curDef.currencies[i] != curDef.systemID)
             {
-                reservesToConvert.push_back(currencyState.fees[i] + currencyState.reserves[i]);
-                fractionalToConvert.push_back(currencyState.ReserveToNative(currencyState.reserves[i], i));
-                if (nativeIdx != -1)
-                {
-                    crossConversions[i][nativeIdx] = currencyState.fees[i];
-                    isFeeConversion = true;
-                }
-            }
-            else
-            {
-                reservesToConvert.push_back(0);
-                fractionalToConvert.push_back(0);
+                fractionalToConvert[nativeIdx] += currencyState.ReserveToNativeRaw(currencyState.fees[i], currencyState.conversionPrice[i]);
+                newSupply += fractionalToConvert[i];
+                isFeeConversion = true;
             }
         }
+        currencyState.supply = newSupply;
 
         // convert all non-native fee currencies to native and adjust prices
         if (isFeeConversion)
         {
             CCurrencyState converterState = static_cast<CCurrencyState>(currencyState);
-            curDef.conversions = currencyState.conversionPrice = converterState.ConvertAmounts(reservesToConvert, fractionalToConvert, currencyState, &crossConversions);
-        }
-        else
-        {
-            curDef.conversions = currencyState.PricesInReserve();
+            currencyState.viaConversionPrice = 
+                converterState.ConvertAmounts(reservesToConvert, fractionalToConvert, currencyState);
         }
     }
 
@@ -1136,18 +1126,34 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         {            
             // get a ratio and reduce all prices by that ratio
             static arith_uint256 bigSatoshi(SATOSHIDEN);
-            arith_uint256 newRatio((calculatedSupply * bigSatoshi) / currencyState.supply);
+            arith_uint256 bigMultipliedSupply(calculatedSupply * bigSatoshi);
+            arith_uint256 newRatio(bigMultipliedSupply / curDef.initialFractionalSupply);
+            // truncate up, not down, to prevent any overflow at all
+            if (newRatio * curDef.initialFractionalSupply < bigMultipliedSupply)
+            {
+                newRatio++;
+            }
             for (auto &rate : currencyState.conversionPrice)
             {
                 arith_uint256 numerator = rate * newRatio;
                 rate = (numerator / bigSatoshi).GetLow64();
-                // truncate up, not down, to prevent any overflow at all
-                if (((numerator / bigSatoshi) >> 1) > 0)
+                if ((numerator - (bigSatoshi * rate)) > 0)
                 {
                     rate++;
                 }
             }
         }
+
+        calculatedSupply = 0;
+        for (auto &transfer : unspentTransfers)
+        {
+            if (transfer.second.second.IsPreConversion())
+            {
+                CAmount toConvert = transfer.second.second.nValue - CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
+                calculatedSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
+            }
+        }
+        printf("Calculated supply %s\n", ValueFromAmount(calculatedSupply).write().c_str());
 
         // now, remove carveout percentage from each weight & reserve
         // for currency state

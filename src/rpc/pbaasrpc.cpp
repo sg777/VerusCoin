@@ -5262,15 +5262,15 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
             CTransferDestination transferDest = DestinationToTransferDestination(CIdentityID(oneAlloc.first));
-            CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE, 
+            CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE + CReserveTransfer::FEE_DEST_NATIVE, 
                                                    newChain.systemID, 
                                                    oneAlloc.second,
-                                                   CReserveTransfer::CalculateTransferFee(transferDest, CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE), 
+                                                   CReserveTransfer::CalculateTransferFee(transferDest, CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE + CReserveTransfer::FEE_DEST_NATIVE), 
                                                    newChainID,
                                                    transferDest);
 
             vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), 
-                                CReserveTransfer::CalculateTransferFee(transferDest, CReserveTransfer::VALID + CReserveTransfer::PREALLOCATE), false});
+                                CReserveTransfer::CalculateTransferFee(transferDest, rt.flags), false});
         }
     }
 
