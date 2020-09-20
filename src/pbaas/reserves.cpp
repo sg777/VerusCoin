@@ -2171,7 +2171,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             if (oneCur.first == systemDestID)
             {
                 nativeOut += oneCur.second;
-                CTxOut(oneCur.second, GetScriptForDestination(CIdentityID(importCurrencyID)));
+                vOutputs.push_back(CTxOut(oneCur.second, GetScriptForDestination(CIdentityID(importCurrencyID))));
             }
             else
             {
@@ -2180,7 +2180,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                 std::vector<CTxDestination> dests = std::vector<CTxDestination>({CIdentityID(importCurrencyID)});
                 CTokenOutput ro = CTokenOutput(oneCur.first, oneCur.second);
                 AddReserveOutput(oneCur.first, oneCur.second);
-                CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
+                vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
             }
         }
     }
