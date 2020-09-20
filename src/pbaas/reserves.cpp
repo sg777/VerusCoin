@@ -295,16 +295,17 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
     {
         rowNames.push_back(EncodeDestination(CIdentityID(currencies[i])));
     }
-    std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "fees", "conversionfees"});
+    std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
     if (currenciesValue.isObject())
     {
         columnAmounts = ValueColumnsFromUniValue(currenciesValue, rowNames, columnNames);
         reserveIn = columnAmounts[0];
         nativeIn = columnAmounts[1];
         reserveOut = columnAmounts[2];
-        conversionPrice = columnAmounts[3];
-        fees = columnAmounts[4];
-        conversionFees = columnAmounts[5];
+        conversionPrice = columnAmounts[4];
+        viaConversionPrice = columnAmounts[3];
+        fees = columnAmounts[5];
+        conversionFees = columnAmounts[6];
     }
     nativeFees = uni_get_int64(find_value(obj, "nativefees"));
     nativeConversionFees = uni_get_int64(find_value(obj, "nativeconversionfees"));
@@ -379,8 +380,11 @@ CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount Normal
 std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &_inputReserves,
                                                     const std::vector<CAmount> &_inputFractional,
                                                     CCurrencyState &newState,
-                                                    std::vector<std::vector<CAmount>> const *pCrossConversions) const
+                                                    std::vector<std::vector<CAmount>> const *pCrossConversions,
+                                                    std::vector<CAmount> *pViaPrices) const
 {
+    static arith_uint256 bigSatoshi(SATOSHIDEN);
+
     int32_t numCurrencies = currencies.size();
     std::vector<CAmount> inputReserves = _inputReserves;
     std::vector<CAmount> inputFractional = _inputFractional;
@@ -449,40 +453,10 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
         if (oneIn < 0)
         {
             printf("%s: invalid fractional input amount for conversion %ld\n", __func__, oneIn);
-            haveConversion = true;
             break;
         }
     }
     // END DEBUG ONLY
-
-    bool convertRToR = false;
-    std::vector<CAmount> reservesRToR(numCurrencies, 0);    // keep track of reserve inputs that are opposite of synthetics
-
-    // now, create synthetic fractional currency to be converted on the other side of reserve <-> reserve
-    // transactions.
-    if (pCrossConversions)
-    {
-        // now add all cross conversions, determine how much of the converted fractional should be converted back to each
-        // reserve currency. after adding all together, convert all to each reserve and average the price again
-        for (int i = 0; i < numCurrencies; i++)
-        {
-            // add up all conversion amounts for each fractional to each reserve-to-reserve conversion
-            for (int j = 0; j < numCurrencies; j++)
-            {
-                // convert this much of currency indexed by i into currency indexed by j
-                // figure out how much fractional the amount of currency represents and add it to the total 
-                // fractionalIn for the currency indexed by j
-                if ((*pCrossConversions)[i][j])
-                {
-                    convertRToR = true;
-                    reservesRToR[i] += (*pCrossConversions)[i][j];
-                    CAmount syntheticFractional = ReserveToNativeRaw((*pCrossConversions)[i][j], initialRates[j]);
-                    inputFractional[j] += syntheticFractional;
-                    newState.supply += syntheticFractional;
-                }
-            }
-        }
-    }
 
     // Create corresponding fractions of the supply for each currency to be used as starting calculation of that currency's value
     // Determine the equivalent amount of input and output based on current values. Balance each such that each currency has only
@@ -519,7 +493,6 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
     // aggregate amounts of ins and outs across all currencies expressed in fractional values in both directions first buy/sell, then sell/buy
     std::map<uint160, std::pair<CAmount, CAmount>> fractionalInMap, fractionalOutMap;
 
-    static arith_uint256 bigSatoshi(SATOSHIDEN);
     arith_uint256 bigSupply(supply);
 
     int32_t totalReserveWeight = 0;
@@ -784,14 +757,57 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
             newState.supply -= inputFraction;
             newState.reserves[i] -= adjustedReserveDelta;
         }
+    }
 
-        // if reserve to reserve, adjust supply by the amount of new supply from the reserve
-        // that was already accounted for ahead of time with the synthetic amount
-        if (reservesRToR[i])
+    // if we have cross conversions, complete a final conversion with the updated currency, including all of the
+    // cross conversion outputs to their final currency destinations
+    if (pCrossConversions)
+    {
+        bool convertRToR = false;
+        std::vector<CAmount> reservesRToR(numCurrencies, 0);    // keep track of reserve inputs to convert to the fractional currency
+
+        // now add all cross conversions, determine how much of the converted fractional should be converted back to each
+        // reserve currency. after adding all together, convert all to each reserve and average the price again
+        for (int i = 0; i < numCurrencies; i++)
         {
-            CAmount syntheticAdjustment = CCurrencyDefinition::CalculateRatioOfValue(fractionalSizes[i],
-                                                        ((arith_uint256(reservesRToR[i]) * bigSatoshi) / reserveSizes[i]).GetLow64());
-            newState.supply -= syntheticAdjustment;
+            // add up all conversion amounts for each fractional to each reserve-to-reserve conversion
+            for (int j = 0; j < numCurrencies; j++)
+            {
+                // convert this much of currency indexed by i into currency indexed by j
+                // figure out how much fractional the amount of currency represents and add it to the total 
+                // fractionalIn for the currency indexed by j
+                if ((*pCrossConversions)[i][j])
+                {
+                    convertRToR = true;
+                    reservesRToR[i] += (*pCrossConversions)[i][j];
+                }
+            }
+        }
+
+        if (convertRToR)
+        {
+            std::vector<CAmount> scratchValues(numCurrencies, 0);
+            std::vector<CAmount> fractionsToConvert(numCurrencies, 0);
+
+            // add fractional created to be converted to its destination
+            for (int i = 0; i < reservesRToR.size(); i++)
+            {
+                if (reservesRToR[i])
+                {
+                    for (int j = 0; j < (*pCrossConversions)[i].size(); j++)
+                    {
+                        if ((*pCrossConversions)[i][j])
+                        {
+                            fractionsToConvert[j] += ReserveToNativeRaw((*pCrossConversions)[i][j], rates[i]);
+                        }
+                    }
+                }
+            }
+
+            std::vector<CAmount> _viaPrices;
+            std::vector<CAmount> &viaPrices(pViaPrices ? *pViaPrices : _viaPrices);
+            CCurrencyState intermediateState = newState;
+            viaPrices = intermediateState.ConvertAmounts(scratchValues, fractionsToConvert, newState);
         }
     }
 
@@ -1666,7 +1682,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         // if fractional currency is not native, one more conversion to native
                         if (totalFractionalFee && systemDestID != importCurrencyID)
                         {
-                            CAmount newConvertedNative = CCurrencyState::NativeToReserveRaw(totalFractionalFee, importCurrencyState.conversionPrice[systemDestIdx]);
+                            CAmount newConvertedNative = CCurrencyState::NativeToReserveRaw(totalFractionalFee, importCurrencyState.viaConversionPrice[systemDestIdx]);
                             totalNativeFee += newConvertedNative;
                             AddReserveOutConverted(systemDestID, newConvertedNative);
                         }
@@ -1822,7 +1838,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         }
                         else
                         {
-                            preConversionFee = initialCurrencyState.NativeToReserveRaw(intermediate, initialCurrencyState.conversionPrice[systemDestIdx]);
+                            preConversionFee = initialCurrencyState.NativeToReserveRaw(intermediate, initialCurrencyState.viaConversionPrice[systemDestIdx]);
                             nativeIn += preConversionFee;
                             AddReserveOutConverted(systemDestID, preConversionFee);
                             preConvertedReserves.valueMap[systemDestID] += preConversionFee;
@@ -1993,7 +2009,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             // it is not involved in, it is tracked separately and applied after the first conversion
                             int32_t outputCurrencIdx = currencyIndexMap[outputCurrencyID];
                             outputCurrencyID = curTransfer.secondReserveID;
-                            newCurrencyConverted = CCurrencyState::NativeToReserveRaw(newCurrencyConverted, importCurrencyState.conversionPrice[outputCurrencIdx]);
+                            newCurrencyConverted = CCurrencyState::NativeToReserveRaw(newCurrencyConverted, importCurrencyState.viaConversionPrice[outputCurrencIdx]);
                             crossConversions[reserveIdx][outputCurrencIdx] += valueOut;
                         }
                         else
@@ -2204,7 +2220,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
             importCurrencyState.ConvertAmounts(reserveConverted.AsCurrencyVector(importCurrencyState.currencies),
                                                fractionalConverted.AsCurrencyVector(importCurrencyState.currencies),
                                                dummyCurState,
-                                               &crossConversions);
+                                               &crossConversions,
+                                               &newCurrencyState.viaConversionPrice);
     }
 
     std::vector<CAmount> vResConverted = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
