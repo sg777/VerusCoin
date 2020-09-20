@@ -1017,6 +1017,11 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                                                                  int32_t height,
                                                                  int32_t curDefHeight)
 {
+    if (curDef.name == "PA-PD-PC-Tri")
+    {
+        printf("%s: currency PA-PD-PC-Tri starting\n", __func__);
+    }
+
     CCoinbaseCurrencyState currencyState = _currencyState;
     bool firstUpdate = fromHeight <= curDefHeight;
     if (firstUpdate)
@@ -1069,9 +1074,9 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                     currencyState.nativeConversionFees += conversionFee;
                     currencyState.nativeFees += conversionFee;
                 }
-
                 currencyState.fees[curIdx] += conversionFee;
                 currencyState.nativeFees +=  transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
+                currencyState.fees[nativeIdx] +=  transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
                 currencyState.conversionFees[curIdx] += conversionFee;
             }
         }
@@ -1084,18 +1089,21 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         int numCurrencies = curDef.currencies.size();
         std::vector<int64_t> reservesToConvert(numCurrencies, 0);
         std::vector<int64_t> fractionalToConvert(numCurrencies, 0);
-        curDef.conversions = currencyState.conversionPrice = currencyState.PricesInReserve();
+        CAmount newSupply =  currencyState.supply;
 
         for (int i = 0; i < numCurrencies; i++)
         {
+            curDef.conversions[i] = currencyState.conversionPrice[i] = currencyState.PriceInReserve(i, true);
+
             // all currencies except the native currency of the system will be converted to the native currency
             if (currencyState.fees[i] && curDef.currencies[i] != curDef.systemID)
             {
-                fractionalToConvert[nativeIdx] = currencyState.ReserveToNativeRaw(currencyState.fees[i], currencyState.conversionPrice[i]);
-                currencyState.supply += fractionalToConvert[i];
+                fractionalToConvert[nativeIdx] += currencyState.ReserveToNativeRaw(currencyState.fees[i], currencyState.conversionPrice[i]);
+                newSupply += fractionalToConvert[i];
                 isFeeConversion = true;
             }
         }
+        currencyState.supply = newSupply;
 
         // convert all non-native fee currencies to native and adjust prices
         if (isFeeConversion)
