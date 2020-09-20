@@ -139,7 +139,7 @@ GOTO :EOF
         )
         FOR %%F IN (!BOOTSTRAP_PACKAGE!, !BOOTSTRAP_PACKAGE_SIG!) DO (
             IF  EXIST "!Temp!\%%F" (
-                DEL "!Temp!\%%F"
+                DEL /Q "!Temp!\%%F"
         )
     )
 
