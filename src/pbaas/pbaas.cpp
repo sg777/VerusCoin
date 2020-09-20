@@ -1017,11 +1017,6 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                                                                  int32_t height,
                                                                  int32_t curDefHeight)
 {
-    if (curDef.name == "PA-PD-PC-Tri")
-    {
-        printf("%s: currency PA-PD-PC-Tri starting\n", __func__);
-    }
-
     CCoinbaseCurrencyState currencyState = _currencyState;
     bool firstUpdate = fromHeight <= curDefHeight;
     if (firstUpdate)
