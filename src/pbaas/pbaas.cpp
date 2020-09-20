@@ -1091,14 +1091,9 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
             // all currencies except the native currency of the system will be converted to the native currency
             if (currencyState.fees[i] && curDef.currencies[i] != curDef.systemID)
             {
-                fractionalToConvert[i] = currencyState.ReserveToNativeRaw(currencyState.fees[i], currencyState.conversionPrice[i]);
+                fractionalToConvert[nativeIdx] = currencyState.ReserveToNativeRaw(currencyState.fees[i], currencyState.conversionPrice[i]);
                 currencyState.supply += fractionalToConvert[i];
                 isFeeConversion = true;
-            }
-            else
-            {
-                reservesToConvert.push_back(0);
-                fractionalToConvert.push_back(0);
             }
         }
 
@@ -1139,10 +1134,10 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
             {
                 arith_uint256 numerator = rate * newRatio;
                 rate = (numerator / bigSatoshi).GetLow64();
-                //if ((numerator - (bigSatoshi * rate)) > 0)
-                //{
-                //    rate++;
-                //}
+                if ((numerator - (bigSatoshi * rate)) > 0)
+                {
+                    rate++;
+                }
             }
         }
 
