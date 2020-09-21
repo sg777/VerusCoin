@@ -1994,11 +1994,6 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
         isDefinition = true;
         if (height >= curDef.startBlock)
         {
-            if (curDef.name == "talent")
-            {
-                printf("%s: starting talent\n",__func__);
-            }
-
             initialCurrencyState.SetPrelaunch(false);
         }
     }
