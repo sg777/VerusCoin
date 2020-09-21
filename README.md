@@ -1,4 +1,4 @@
-## VerusCoin version 0.7.2
+## VerusCoin version 0.7.2-1
 
 Arguably the world's most advanced technology, zero knowledge privacy-centric blockchain, Verus Coin brings Sapling performance and zero knowledge features to an intelligent system with interchain smart contracts and a completely original, combined proof of stake/proof of work consensus algorithm that solves the nothing at stake problem. With this and its approach towards CPU mining and ASICs, Verus Coin strives to be one of the most naturally decentralizing and attack resistant blockchains in existence.
 
@@ -49,18 +49,18 @@ Many VRSC innovations are now also available back in the Komodo fork:
 
 ```shell
 #The following packages are needed:
-sudo apt-get install build-essential pkg-config libc6-dev m4 g++-multilib autoconf libtool ncurses-dev unzip git python python-zmq zlib1g-dev wget bsdmainutils automake curl
+sudo apt-get install build-essential pkg-config libc6-dev m4 g++-multilib autoconf libtool ncurses-dev unzip git zlib1g-dev wget bsdmainutils automake curl
 ```
 
 ARMv8 cross-compile
 ```shell
 #The following packages are needed:
-sudo apt-get install build-essential pkg-config linux-libc-dev-arm64-cross m4 autoconf g++-aarch64-linux-gnu binutils-aarch64-linux-gnu libtool ncurses-dev unzip git python python-zmq zlib1g-dev wget bsdmainutils automake curl
+sudo apt-get install build-essential pkg-config linux-libc-dev-arm64-cross m4 autoconf g++-aarch64-linux-gnu binutils-aarch64-linux-gnu libtool ncurses-dev unzip git zlib1g-dev wget bsdmainutils automake curl
 ```
 Windows cross-compile
 ```shell
 #The following packages are needed:
-sudo apt-get install autoconf automake autogen bsdmainutils cmake curl git libc6-dev libcap-dev libdb++-dev libqrencode-dev libprotobuf-dev libssl-dev libtool libz-dev libbz2-dev m4 make mingw-w64 ncurses-dev pkg-config protobuf-compiler python python-zmq unzip wget zip zlib1g-dev 
+sudo apt-get install autoconf automake autogen bsdmainutils cmake curl git libc6-dev libcap-dev libdb++-dev libqrencode-dev libprotobuf-dev libssl-dev libtool libz-dev libbz2-dev m4 make mingw-w64 ncurses-dev pkg-config protobuf-compiler unzip wget zip zlib1g-dev 
 ```
 
 Building
