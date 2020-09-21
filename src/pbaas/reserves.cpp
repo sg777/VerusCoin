@@ -2087,7 +2087,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             AddNativeOutConverted(curTransfer.destCurrencyID, ro.nValue);
                             if (curTransfer.destCurrencyID != systemDestID)
                             {
+                                AddReserveInput(curTransfer.destCurrencyID, ro.nValue);
                                 AddReserveOutConverted(curTransfer.destCurrencyID, ro.nValue);
+                            }
+                            else
+                            {
+                                nativeIn = ro.nValue;
                             }
                         }
                         AddReserveOutput(curTransfer.destCurrencyID, ro.nValue);
