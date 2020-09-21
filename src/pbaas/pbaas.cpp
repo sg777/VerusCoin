@@ -1144,7 +1144,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
             }
         }
 
-        calculatedSupply = 0;
+        /* calculatedSupply = 0;
         for (auto &transfer : unspentTransfers)
         {
             if (transfer.second.second.IsPreConversion())
@@ -1153,7 +1153,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                 calculatedSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
             }
         }
-        printf("Calculated supply %s\n", ValueFromAmount(calculatedSupply).write().c_str());
+        printf("Calculated supply %s\n", ValueFromAmount(calculatedSupply).write().c_str()); */
 
         // now, remove carveout percentage from each weight & reserve
         // for currency state
