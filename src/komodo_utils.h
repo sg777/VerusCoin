@@ -1435,8 +1435,10 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     // add Verus Coin Foundation sponsored testnet nodes
                     if (PBAAS_TESTMODE)
                     {
-                        //fprintf(fp,"addnode=%s\n", "185.25.48.72:18969");
-                        //fprintf(fp,"addnode=%s\n", "185.64.105.111:18969");
+                        fprintf(fp,"addnode=%s\n", "168.119.27.242:17683");
+                        fprintf(fp,"addnode=%s\n", "5.9.224.250:17683");
+                        fprintf(fp,"addnode=%s\n", "95.216.104.210:17683");
+                        fprintf(fp,"addnode=%s\n", "135.181.68.2:17683");
                     }
                 }
                 else
@@ -1831,7 +1833,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_supply"] = "5000000000000000";
         mapArgs["-ac_eras"] = "1";
         mapArgs["-ac_reward"] = "2400000000";
-        std::string halving = GetArg("-ac_halving", "283331"); // this assignment is required for an ARM compiler workaround
+        std::string halving = GetArg("-ac_halving", "301111"); // this assignment is required for an ARM compiler workaround
         mapArgs["-ac_halving"] = halving;    // allow testing easily with different values here
         mapArgs["-ac_decay"] = "0";
         mapArgs["-ac_options"] = "72";       // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
