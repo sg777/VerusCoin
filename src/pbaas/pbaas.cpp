@@ -1084,7 +1084,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         int numCurrencies = curDef.currencies.size();
         std::vector<int64_t> reservesToConvert(numCurrencies, 0);
         std::vector<int64_t> fractionalToConvert(numCurrencies, 0);
-        CAmount newSupply =  currencyState.supply;
+        std::vector<int64_t> reserveAdjustments(numCurrencies, 0);
 
         for (int i = 0; i < numCurrencies; i++)
         {
@@ -1094,18 +1094,40 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
             if (currencyState.fees[i] && curDef.currencies[i] != curDef.systemID)
             {
                 fractionalToConvert[nativeIdx] += currencyState.ReserveToNativeRaw(currencyState.fees[i], currencyState.conversionPrice[i]);
-                newSupply += fractionalToConvert[i];
+                reserveAdjustments[i] += currencyState.fees[i];
                 isFeeConversion = true;
             }
         }
-        currencyState.supply = newSupply;
 
         // convert all non-native fee currencies to native and adjust prices
         if (isFeeConversion)
         {
+            for (int i = 0; i < numCurrencies; i++)
+            {
+                if (reserveAdjustments[i])
+                {
+                    currencyState.reserveIn[i] += reserveAdjustments[i];
+                    currencyState.reserves[i] += reserveAdjustments[i];
+                }
+            }
+            currencyState.supply += fractionalToConvert[nativeIdx];
+
             CCurrencyState converterState = static_cast<CCurrencyState>(currencyState);
-            currencyState.viaConversionPrice = 
-                converterState.ConvertAmounts(reservesToConvert, fractionalToConvert, currencyState);
+            currencyState.viaConversionPrice = converterState.ConvertAmounts(reservesToConvert, fractionalToConvert, currencyState);
+
+            for (int j = 0; j < numCurrencies; j++)
+            {
+                currencyState.reserves[j] = converterState.reserves[j];
+            }
+            currencyState.supply = converterState.supply - fractionalToConvert[nativeIdx];
+
+            // to ensure no rounding errors, use the resulting native price to convert the fee fractional to native,
+            // subtract from supply, and subtract from native reserves
+            CAmount nativeFeeOutput = currencyState.NativeToReserveRaw(fractionalToConvert[nativeIdx], currencyState.viaConversionPrice[nativeIdx]);
+            currencyState.nativeConversionFees += nativeFeeOutput;
+            currencyState.nativeFees += nativeFeeOutput;
+            currencyState.reserves[nativeIdx] -= nativeFeeOutput;
+            currencyState.reserveOut[nativeIdx] += nativeFeeOutput;
         }
     }
 
