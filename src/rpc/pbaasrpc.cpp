@@ -545,6 +545,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
     availableCurrencyInput.valueMap[currencyDef.systemID] = TotalNativeInput;
 
     //printf("totalNativeInput: %ld, availableCurrencyInput:%s\n", totalNativeInput, availableCurrencyInput.ToUniValue().write().c_str());
+    if (currencyDef.name == "VRSC-BTC-ETH-USD")
+    {
+        printf("%s: importing to VRSC-BTC-ETH-USD\n", __func__);
+    }
+
 
     CPBaaSNotarization lastConfirmed(lastConfirmedNotarization);
     if ((isTokenImport && chainActive.LastTip() == NULL) ||
@@ -691,6 +696,20 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             BlockMap::iterator blkIt;
             CCrossChainExport ccx;
             COptCCParams p;
+
+            if (currencyDef.name == "VRSC-BTC-ETH-USD")
+            {
+                if (!utxo.first.spending &&
+                    (utxo.first.txhash != lastExportHash) &&
+                    myGetTransaction(utxo.first.txhash, tx, blkHash1))
+                {
+                    UniValue univTx(UniValue::VOBJ);
+                    TxToUniv(tx, blkHash1, univTx);
+                    ccx = CCrossChainExport(tx);
+                    printf("tx: %s\nccx: %s\n", univTx.write(1,2).c_str(), ccx.ToUniValue().write(1,2).c_str());
+                }
+            }
+
             if (!utxo.first.spending &&
                 (utxo.first.txhash != lastExportHash) &&
                 myGetTransaction(utxo.first.txhash, tx, blkHash1) &&
@@ -6652,7 +6671,7 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
         }
 #ifdef ENABLE_WALLET
         CReserveKey reservekey(pwalletMain);
-        pblocktemplate = CreateNewBlockWithKey(reservekey,chainActive.LastTip()->GetHeight()+1,KOMODO_MAXGPUCOUNT);
+        pblocktemplate = CreateNewBlockWithKey(reservekey,chainActive.LastTip()->GetHeight()+1);
 #else
         pblocktemplate = CreateNewBlockWithKey();
 #endif
