@@ -1923,10 +1923,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         {
                             preConversionFee = curTransfer.nValue;
                         }
+                        valueOut -= preConversionFee;
 
                         AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
+
+                        // only half the fee comes out as a mining fee, and by leaving the rest as
+                        // input, it goes directly into the currency
+                        preConversionFee -= preConversionFee >> 1;
                         transferFees.valueMap[curTransfer.currencyID] += preConversionFee;
-                        valueOut -= preConversionFee;
                     }
 
                     if (toFractional)
