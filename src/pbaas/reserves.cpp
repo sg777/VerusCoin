@@ -1649,6 +1649,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     {
                         nativeOut += (totalNativeFee - exporterReward);
                     }
+                    newCurrencyState.nativeFees = totalNativeFee;
 
                     curTransfer = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT,
                                                    systemDestID, exporterReward, 0, systemDestID, curTransfer.destination);
@@ -2190,7 +2191,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     {
         CReserveInOuts fractionalInOuts = currencies[systemDestID];
         newCurrencyState.nativeConversionFees = fractionalInOuts.reserveConversionFees;
-        newCurrencyState.nativeFees = (transferFees.valueMap[systemDestID] + newCurrencyState.nativeConversionFees);
     }
     newCurrencyState.conversionFees = ReserveConversionFeesMap().AsCurrencyVector(newCurrencyState.currencies);
     newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
