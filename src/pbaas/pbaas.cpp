@@ -2152,6 +2152,7 @@ bool CConnectedChains::NewImportNotarization(const CCurrencyDefinition &_curDef,
                 // on reserves
                 CCoinbaseCurrencyState tempCurState = initialCurrencyState;
                 tempCurState.conversionPrice = newCurState.conversionPrice;
+                tempCurState.viaConversionPrice = newCurState.viaConversionPrice;
                 vOutputs.resize(0);
                 rtxd = CReserveTransactionDescriptor();
                 isValidExport = rtxd.AddReserveTransferImportOutputs(currencyID, curDef, tempCurState, exportObjects, vOutputs, &newCurState);

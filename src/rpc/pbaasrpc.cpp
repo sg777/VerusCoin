@@ -805,6 +805,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 }
                 lastConfirmed = CPBaaSNotarization(newImportTx);
                 oldCurrencyState.conversionPrice = currencyState.conversionPrice;
+                oldCurrencyState.viaConversionPrice = currencyState.viaConversionPrice;
                 oldCurrencyState.flags = currencyState.flags;
             }
             else
