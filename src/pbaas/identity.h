@@ -612,9 +612,9 @@ public:
             (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
             privateAddresses != newIdentity.privateAddresses ||
-            (!isRevokedExempt && unlockAfter != newIdentity.unlockAfter) ||
+            (unlockAfter != newIdentity.unlockAfter && (!isRevokedExempt || newIdentity.unlockAfter != 0)) ||
             (HasActiveCurrency() != newIdentity.HasActiveCurrency()) ||
-            (!isRevokedExempt && IsLocked() != newIdentity.IsLocked()))
+            (IsLocked() != newIdentity.IsLocked() && (!isRevokedExempt || newIdentity.IsLocked())))
         {
             return true;
         }
