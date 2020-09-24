@@ -1583,7 +1583,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // convert all fees to the system currency of the import
                     // fees that started in fractional are already converted, so not considered
                     CAmount totalNativeFee = 0;
-                    CAmount totalFractionalFee = 0;
+                    CAmount totalViaFee = 0;
                     if (isFractional)
                     {
                         // setup conversion matrix for fees that are converted to
@@ -1594,15 +1594,27 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             if (oneFee.first != importCurrencyID && oneFee.first != systemDestID)
                             {
                                 CAmount oneFeeValue = 0;
-                                crossConversions[currencyIndexMap[oneFee.first]][systemDestIdx] += oneFee.second;
+                                int curIdx = currencyIndexMap[oneFee.first];
+                                reserveConverted.valueMap[oneFee.first] += oneFee.second;
+                                crossConversions[curIdx][systemDestIdx] += oneFee.second;
                                 oneFeeValue = importCurrencyState.ReserveToNativeRaw(oneFee.second,
                                                                            importCurrencyState.conversionPrice[currencyIndexMap[oneFee.first]]);
-                                totalFractionalFee += oneFeeValue;
+
+                                totalViaFee += oneFeeValue;
+
                                 if (systemDestID == importCurrencyID)
                                 {
                                     AddNativeOutConverted(oneFee.first, oneFeeValue);
                                     nativeIn += oneFeeValue;
                                     totalNativeFee += oneFeeValue;
+                                }
+                                else
+                                {
+                                    // if fractional currency is not native, one more conversion to native
+                                    CAmount nativeFromReserves = 
+                                        CCurrencyState::NativeToReserveRaw(oneFeeValue, importCurrencyState.viaConversionPrice[systemDestIdx]);
+                                    totalNativeFee += nativeFromReserves;
+                                    AddReserveOutConverted(systemDestID, nativeFromReserves);
                                 }
                             }
                             else if (oneFee.first == systemDestID)
@@ -1611,15 +1623,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             }
                             else
                             {
-                                totalFractionalFee += oneFee.second;
+                                // convert from fractional to system ID in the first, non-via stage, since this was
+                                // already fractional to begin with
+                                fractionalConverted.valueMap[systemDestID] += oneFee.second;
+                                CAmount convertedFractionalFee = CCurrencyState::NativeToReserveRaw(oneFee.second, importCurrencyState.conversionPrice[systemDestIdx]);
+                                totalNativeFee += convertedFractionalFee;
+                                AddReserveOutConverted(systemDestID, convertedFractionalFee);
                             }
-                        }
-                        // if fractional currency is not native, one more conversion to native
-                        if (totalFractionalFee && systemDestID != importCurrencyID)
-                        {
-                            CAmount newConvertedNative = CCurrencyState::NativeToReserveRaw(totalFractionalFee, importCurrencyState.viaConversionPrice[systemDestIdx]);
-                            totalNativeFee += newConvertedNative;
-                            AddReserveOutConverted(systemDestID, newConvertedNative);
                         }
                     }
                     else if (!transferFees.valueMap.count(systemDestID))
