@@ -1950,10 +1950,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             // we burn 0.025% of the fractional that was converted, and convert the rest to
                             // the specified reserve. since the burn depends on the first conversion, which
                             // it is not involved in, it is tracked separately and applied after the first conversion
-                            int32_t outputCurrencIdx = currencyIndexMap[outputCurrencyID];
                             outputCurrencyID = curTransfer.secondReserveID;
-                            newCurrencyConverted = CCurrencyState::NativeToReserveRaw(newCurrencyConverted, importCurrencyState.viaConversionPrice[outputCurrencIdx]);
-                            crossConversions[reserveIdx][outputCurrencIdx] += valueOut;
+                            int32_t outputCurrencyIdx = currencyIndexMap[outputCurrencyID];
+                            newCurrencyConverted = CCurrencyState::NativeToReserveRaw(newCurrencyConverted, importCurrencyState.viaConversionPrice[outputCurrencyIdx]);
+                            crossConversions[reserveIdx][outputCurrencyIdx] += valueOut;
                         }
                         else
                         {
