@@ -607,13 +607,14 @@ public:
     bool IsPrimaryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+        bool isRevokedExempt = nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && newIdentity.IsRevoked();
         if (CPrincipal::IsPrimaryMutation(newIdentity) ||
             (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
             privateAddresses != newIdentity.privateAddresses ||
-            unlockAfter != newIdentity.unlockAfter ||
+            (!isRevokedExempt && unlockAfter != newIdentity.unlockAfter) ||
             (HasActiveCurrency() != newIdentity.HasActiveCurrency()) ||
-            IsLocked() != newIdentity.IsLocked())
+            (!isRevokedExempt && IsLocked() != newIdentity.IsLocked()))
         {
             return true;
         }
