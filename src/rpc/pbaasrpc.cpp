@@ -691,6 +691,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
             BlockMap::iterator blkIt;
             CCrossChainExport ccx;
             COptCCParams p;
+
             if (!utxo.first.spending &&
                 (utxo.first.txhash != lastExportHash) &&
                 myGetTransaction(utxo.first.txhash, tx, blkHash1) &&
@@ -804,6 +805,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &currencyDe
                 }
                 lastConfirmed = CPBaaSNotarization(newImportTx);
                 oldCurrencyState.conversionPrice = currencyState.conversionPrice;
+                oldCurrencyState.viaConversionPrice = currencyState.viaConversionPrice;
                 oldCurrencyState.flags = currencyState.flags;
             }
             else
@@ -6652,7 +6654,7 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
         }
 #ifdef ENABLE_WALLET
         CReserveKey reservekey(pwalletMain);
-        pblocktemplate = CreateNewBlockWithKey(reservekey,chainActive.LastTip()->GetHeight()+1,KOMODO_MAXGPUCOUNT);
+        pblocktemplate = CreateNewBlockWithKey(reservekey,chainActive.LastTip()->GetHeight()+1);
 #else
         pblocktemplate = CreateNewBlockWithKey();
 #endif

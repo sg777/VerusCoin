@@ -1583,7 +1583,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     // convert all fees to the system currency of the import
                     // fees that started in fractional are already converted, so not considered
                     CAmount totalNativeFee = 0;
-                    CAmount totalFractionalFee = 0;
                     if (isFractional)
                     {
                         // setup conversion matrix for fees that are converted to
@@ -1594,15 +1593,25 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             if (oneFee.first != importCurrencyID && oneFee.first != systemDestID)
                             {
                                 CAmount oneFeeValue = 0;
-                                crossConversions[currencyIndexMap[oneFee.first]][systemDestIdx] += oneFee.second;
+                                int curIdx = currencyIndexMap[oneFee.first];
+                                reserveConverted.valueMap[oneFee.first] += oneFee.second;
+                                crossConversions[curIdx][systemDestIdx] += oneFee.second;
                                 oneFeeValue = importCurrencyState.ReserveToNativeRaw(oneFee.second,
                                                                            importCurrencyState.conversionPrice[currencyIndexMap[oneFee.first]]);
-                                totalFractionalFee += oneFeeValue;
+
                                 if (systemDestID == importCurrencyID)
                                 {
                                     AddNativeOutConverted(oneFee.first, oneFeeValue);
-                                    nativeIn += oneFeeValue;
                                     totalNativeFee += oneFeeValue;
+                                }
+                                else
+                                {
+                                    // if fractional currency is not native, one more conversion to native
+                                    CAmount reserveFromFrac = 
+                                        CCurrencyState::NativeToReserveRaw(oneFeeValue, importCurrencyState.viaConversionPrice[systemDestIdx]);
+                                    totalNativeFee += reserveFromFrac;
+                                    nativeIn += oneFeeValue;
+                                    AddReserveOutConverted(systemDestID, reserveFromFrac);
                                 }
                             }
                             else if (oneFee.first == systemDestID)
@@ -1611,15 +1620,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             }
                             else
                             {
-                                totalFractionalFee += oneFee.second;
+                                // convert from fractional to system ID in the first, non-via stage, since this was
+                                // already fractional to begin with
+                                fractionalConverted.valueMap[systemDestID] += oneFee.second;
+                                CAmount convertedFractionalFee = CCurrencyState::NativeToReserveRaw(oneFee.second, importCurrencyState.conversionPrice[systemDestIdx]);
+                                totalNativeFee += convertedFractionalFee;
+                                nativeIn += convertedFractionalFee;
+                                AddReserveOutConverted(systemDestID, convertedFractionalFee);
                             }
-                        }
-                        // if fractional currency is not native, one more conversion to native
-                        if (totalFractionalFee && systemDestID != importCurrencyID)
-                        {
-                            CAmount newConvertedNative = CCurrencyState::NativeToReserveRaw(totalFractionalFee, importCurrencyState.viaConversionPrice[systemDestIdx]);
-                            totalNativeFee += newConvertedNative;
-                            AddReserveOutConverted(systemDestID, newConvertedNative);
                         }
                     }
                     else if (!transferFees.valueMap.count(systemDestID))
@@ -1641,6 +1649,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                     {
                         nativeOut += (totalNativeFee - exporterReward);
                     }
+                    newCurrencyState.nativeFees = totalNativeFee;
 
                     curTransfer = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT,
                                                    systemDestID, exporterReward, 0, systemDestID, curTransfer.destination);
@@ -1914,11 +1923,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                         {
                             preConversionFee = curTransfer.nValue;
                         }
+                        valueOut -= preConversionFee;
 
                         AddReserveConversionFees(curTransfer.currencyID, preConversionFee);
-                        transferFees.valueMap[curTransfer.currencyID] += preConversionFee;
 
-                        valueOut -= preConversionFee;
+                        // only half the fee comes out as a mining fee, and by leaving the rest as
+                        // input, it goes directly into the currency
+                        preConversionFee -= preConversionFee >> 1;
+                        transferFees.valueMap[curTransfer.currencyID] += preConversionFee;
                     }
 
                     if (toFractional)
@@ -1942,10 +1954,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
                             // we burn 0.025% of the fractional that was converted, and convert the rest to
                             // the specified reserve. since the burn depends on the first conversion, which
                             // it is not involved in, it is tracked separately and applied after the first conversion
-                            int32_t outputCurrencIdx = currencyIndexMap[outputCurrencyID];
                             outputCurrencyID = curTransfer.secondReserveID;
-                            newCurrencyConverted = CCurrencyState::NativeToReserveRaw(newCurrencyConverted, importCurrencyState.viaConversionPrice[outputCurrencIdx]);
-                            crossConversions[reserveIdx][outputCurrencIdx] += valueOut;
+                            int32_t outputCurrencyIdx = currencyIndexMap[outputCurrencyID];
+                            newCurrencyConverted = CCurrencyState::NativeToReserveRaw(newCurrencyConverted, importCurrencyState.viaConversionPrice[outputCurrencyIdx]);
+                            crossConversions[reserveIdx][outputCurrencyIdx] += valueOut;
                         }
                         else
                         {
@@ -2170,7 +2182,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         newCurrencyState.reserveOut[i] = vResOutConverted[i];
         newCurrencyState.reserves[i] += vResConverted[i] - vResOutConverted[i];
         newCurrencyState.nativeIn[i] = vFracConverted[i];
-        newCurrencyState.supply += vFracOutConverted[i];
+        newCurrencyState.supply += vFracOutConverted[i] - vFracConverted[i];
     }
 
     if (totalMinted)
@@ -2183,7 +2195,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
     {
         CReserveInOuts fractionalInOuts = currencies[systemDestID];
         newCurrencyState.nativeConversionFees = fractionalInOuts.reserveConversionFees;
-        newCurrencyState.nativeFees = (transferFees.valueMap[systemDestID] + newCurrencyState.nativeConversionFees);
     }
     newCurrencyState.conversionFees = ReserveConversionFeesMap().AsCurrencyVector(newCurrencyState.currencies);
     newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
