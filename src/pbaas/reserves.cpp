@@ -2170,7 +2170,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
         newCurrencyState.reserveOut[i] = vResOutConverted[i];
         newCurrencyState.reserves[i] += vResConverted[i] - vResOutConverted[i];
         newCurrencyState.nativeIn[i] = vFracConverted[i];
-        newCurrencyState.supply += vFracOutConverted[i];
+        newCurrencyState.supply += vFracOutConverted[i] - vFracConverted[i];
     }
 
     if (totalMinted)
