@@ -2432,6 +2432,21 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             }
         }
 
+        uint32_t nHeight = 0;
+        if (pblock)
+        {
+            auto blkIndexIt = mapBlockIndex.find(pblock->GetHash());
+            if (blkIndexIt != mapBlockIndex.end())
+            {
+                nHeight = blkIndexIt->second->GetHeight();
+            }
+            else
+            {
+                // this should never happen
+                assert(false);
+            }
+        }
+
         for (auto output : tx.vout)
         {
             bool canSpend = false;
@@ -2439,21 +2454,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
             if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
             {
-                uint32_t nHeight = 0;
-                if (pblock)
-                {
-                    auto blkIndexIt = mapBlockIndex.find(pblock->GetHash());
-                    if (blkIndexIt != mapBlockIndex.end())
-                    {
-                        nHeight = blkIndexIt->second->GetHeight();
-                    }
-                    else
-                    {
-                        // this should never happen
-                        assert(false);
-                    }
-                }
-
                 CIdentityMapValue identity;
 
                 if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (*(CIdentity *)&identity = CIdentity(p.vData[0])).IsValid())
@@ -2913,7 +2913,9 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             }
         }
 
-        if (fExisted || IsMine(tx) || IsFromMe(tx) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
+        // for IsMine, the default height is max, not 0
+        nHeight = nHeight == 0 ? INT_MAX : nHeight;
+        if (fExisted || IsMine(tx, nHeight) || IsFromMe(tx, nHeight) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
         {
             CWalletTx wtx(this, tx);
 
@@ -3202,7 +3204,7 @@ void CWallet::GetSaplingNoteWitnesses(std::vector<SaplingOutPoint> notes,
     }
 }
 
-isminetype CWallet::IsMine(const CTxIn &txin) const
+isminetype CWallet::IsMine(const CTxIn &txin, uint32_t nHeight) const
 {
     {
         LOCK(cs_wallet);
@@ -3211,13 +3213,13 @@ isminetype CWallet::IsMine(const CTxIn &txin) const
         {
             const CWalletTx& prev = (*mi).second;
             if (txin.prevout.n < prev.vout.size())
-                return (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey));
+                return (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey, nHeight));
         }
     }
     return ISMINE_NO;
 }
 
-CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
+CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter, uint32_t nHeight) const
 {
     {
         LOCK(cs_wallet);
@@ -3226,14 +3228,14 @@ CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
         {
             const CWalletTx& prev = (*mi).second;
             if (txin.prevout.n < prev.vout.size())
-                if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey) & filter)
+                if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey, nHeight) & filter)
                     return prev.vout[txin.prevout.n].nValue; // komodo_interest?
         }
     }
     return 0;
 }
 
-CCurrencyValueMap CWallet::GetReserveDebit(const CTxIn &txin, const isminefilter& filter) const
+CCurrencyValueMap CWallet::GetReserveDebit(const CTxIn &txin, const isminefilter& filter, uint32_t nHeight) const
 {
     {
         LOCK(cs_wallet);
@@ -3242,23 +3244,23 @@ CCurrencyValueMap CWallet::GetReserveDebit(const CTxIn &txin, const isminefilter
         {
             const CWalletTx& prev = (*mi).second;
             if (txin.prevout.n < prev.vout.size())
-                if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey) & filter)
+                if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey, nHeight) & filter)
                     return prev.vout[txin.prevout.n].ReserveOutValue();
         }
     }
     return CCurrencyValueMap();
 }
 
-isminetype CWallet::IsMine(const CTxOut& txout) const
+isminetype CWallet::IsMine(const CTxOut& txout, uint32_t nHeight) const
 {
-    return ::IsMine(*this, txout.scriptPubKey);
+    return ::IsMine(*this, txout.scriptPubKey, nHeight);
 }
 
-CAmount CWallet::GetCredit(const CTxOut& txout, const isminefilter& filter) const
+CAmount CWallet::GetCredit(const CTxOut& txout, const isminefilter& filter, uint32_t nHeight) const
 {
     if (!MoneyRange(txout.nValue))
         throw std::runtime_error("CWallet::GetCredit(): value out of range");
-    return ((IsMine(txout) & filter) ? txout.nValue : 0);
+    return ((IsMine(txout, nHeight) & filter) ? txout.nValue : 0);
 }
 
 bool CWallet::IsChange(const CTxOut& txout) const
@@ -3293,11 +3295,13 @@ CAmount CWallet::GetChange(const CTxOut& txout) const
 typedef vector<unsigned char> valtype;
 unsigned int HaveKeys(const vector<valtype>& pubkeys, const CKeyStore& keystore);
 
-bool CWallet::IsMine(const CTransaction& tx)
+bool CWallet::IsMine(const CTransaction& tx, uint32_t nHeight)
 {
     for (int i = 0; i < tx.vout.size(); i++)
     {
-        if (IsMine(tx, i))
+        isminetype mine;
+        IsMine(tx, i, mine, nHeight);
+        if (mine)
             return true;
     }
     return false;
@@ -3305,7 +3309,7 @@ bool CWallet::IsMine(const CTransaction& tx)
 
 // special case handling for non-standard/Verus OP_RETURN script outputs, which need the transaction
 // to determine ownership
-isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
+void CWallet::IsMine(const CTransaction& tx, uint32_t voutNum, isminetype &mine, uint32_t nHeight)
 {
     vector<valtype> vSolutions;
     txnouttype whichType;
@@ -3328,31 +3332,39 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
         bool canSign = false;
         bool canSpend = false;
 
-        if (ExtractDestinations(scriptPubKey, whichType, dests, minSigs, this, &canSign, &canSpend))
+        if (ExtractDestinations(scriptPubKey, whichType, dests, minSigs, this, &canSign, &canSpend, nHeight))
         {
             if (canSpend)
             {
-                return ISMINE_SPENDABLE;
+                mine = ISMINE_SPENDABLE;
+                return;
             }
             else if (canSign)
             {
-                return ISMINE_WATCH_ONLY;
+                mine = ISMINE_WATCH_ONLY;
+                return;
             }
             else
             {
-                return ISMINE_NO;
+                mine = ISMINE_NO;
+                return;
             }
         }
         else
         {
-            return ISMINE_NO;
+            mine = ISMINE_NO;
+            return;
         }
     }
     else if (!Solver(scriptPubKey, whichType, vSolutions))
     {
         if (this->HaveWatchOnly(scriptPubKey))
-            return ISMINE_WATCH_ONLY;
-        return ISMINE_NO;
+        {
+            mine = ISMINE_WATCH_ONLY;
+            return;
+        }
+        mine = ISMINE_NO;
+        return;
     }
 
     CKeyID keyID;
@@ -3379,20 +3391,27 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
             }
             if (!keyID.IsNull() && HaveKey(keyID))
             {
-                return ISMINE_SPENDABLE;
+                mine = ISMINE_SPENDABLE;
+                return;
             }
             break;
 
         case TX_PUBKEY:
             keyID = CPubKey(vSolutions[0]).GetID();
             if (this->HaveKey(keyID))
-                return ISMINE_SPENDABLE;
+            {
+                mine = ISMINE_SPENDABLE;
+                return;
+            }
             break;
 
         case TX_PUBKEYHASH:
             keyID = CKeyID(uint160(vSolutions[0]));
             if (this->HaveKey(keyID))
-                return ISMINE_SPENDABLE;
+            {
+                mine = ISMINE_SPENDABLE;
+                return;
+            }
             break;
 
         case TX_SCRIPTHASH:
@@ -3402,13 +3421,17 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
                 // if this is a CLTV, handle it differently
                 if (subscript.IsCheckLockTimeVerify())
                 {
-                    return (::IsMine(*this, subscript));
+                    mine = (::IsMine(*this, subscript));
+                    return;
                 }
                 else
                 {
                     isminetype ret = ::IsMine(*this, subscript);
                     if (ret == ISMINE_SPENDABLE)
-                        return ret;
+                    {
+                        mine = ret;
+                        return;
+                    }
                 }
             }
             else if (tx.vout.size() > (voutNum + 1) &&
@@ -3436,7 +3459,8 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
                             {
                                 this->AddCScript(opretScript);
                             }
-                            return t;
+                            mine = t;
+                            return;
                         }
                     }
                 }
@@ -3451,17 +3475,23 @@ isminetype CWallet::IsMine(const CTransaction& tx, uint32_t voutNum)
             // in shared-wallet situations.
             vector<valtype> keys(vSolutions.begin()+1, vSolutions.begin()+vSolutions.size()-1);
             if (HaveKeys(keys, *this) == keys.size())
-                return ISMINE_SPENDABLE;
+            {
+                mine = ISMINE_SPENDABLE;
+                return;
+            }
             break;
     }
 
     if (this->HaveWatchOnly(scriptPubKey))
-        return ISMINE_WATCH_ONLY;
+    {
+        mine = ISMINE_WATCH_ONLY;
+        return;
+    }
 
-    return ISMINE_NO;
+    mine = ISMINE_NO;
 }
 
-bool CWallet::IsFromMe(const CTransaction& tx) const
+bool CWallet::IsFromMe(const CTransaction& tx, uint32_t height) const
 {
     {
         LOCK(cs_wallet);
@@ -3472,7 +3502,7 @@ bool CWallet::IsFromMe(const CTransaction& tx) const
             {
                 const CWalletTx& prev = (*mi).second;
                 if (txin.prevout.n < prev.vout.size())
-                    if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey) & ISMINE_ALL)
+                    if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey, height) & ISMINE_ALL)
                         return true;
             }
         }
@@ -3492,33 +3522,33 @@ bool CWallet::IsFromMe(const CTransaction& tx) const
     return false;
 }
 
-CAmount CWallet::GetDebit(const CTransaction& tx, const isminefilter& filter) const
+CAmount CWallet::GetDebit(const CTransaction& tx, const isminefilter& filter, uint32_t nHeight) const
 {
     CAmount nDebit = 0;
     BOOST_FOREACH(const CTxIn& txin, tx.vin)
     {
-        nDebit += GetDebit(txin, filter);
+        nDebit += GetDebit(txin, filter, nHeight);
         if (!MoneyRange(nDebit))
             throw std::runtime_error("CWallet::GetDebit(): value out of range");
     }
     return nDebit;
 }
 
-CCurrencyValueMap CWallet::GetReserveDebit(const CTransaction& tx, const isminefilter& filter) const
+CCurrencyValueMap CWallet::GetReserveDebit(const CTransaction& tx, const isminefilter& filter, uint32_t nHeight) const
 {
     CCurrencyValueMap retVal;
     BOOST_FOREACH(const CTxIn& txin, tx.vin)
     {
-        retVal += GetReserveDebit(txin, filter);
+        retVal += GetReserveDebit(txin, filter, nHeight);
     }
     return retVal;
 }
 
-CAmount CWallet::GetCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const
+CAmount CWallet::GetCredit(const CTransaction& tx, const int32_t &voutNum, const isminefilter& filter, uint32_t nHeight) const
 {
     if (voutNum >= tx.vout.size() || !MoneyRange(tx.vout[voutNum].nValue))
         throw std::runtime_error("CWallet::GetCredit(): value out of range");
-    return ((IsMine(tx.vout[voutNum]) & filter) ? tx.vout[voutNum].nValue : 0);
+    return ((IsMine(tx.vout[voutNum], nHeight) & filter) ? tx.vout[voutNum].nValue : 0);
 }
 
 CCurrencyValueMap CWallet::GetReserveCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const
@@ -3536,12 +3566,12 @@ CCurrencyValueMap CWallet::GetReserveCredit(const CTransaction& tx, const ismine
     return nCredit;
 }
 
-CAmount CWallet::GetCredit(const CTransaction& tx, const isminefilter& filter) const
+CAmount CWallet::GetCredit(const CTransaction& tx, const isminefilter& filter, uint32_t nHeight) const
 {
     CAmount nCredit = 0;
     for (int i = 0; i < tx.vout.size(); i++)
     {
-        nCredit += GetCredit(tx, i, filter);
+        nCredit += GetCredit(tx, i, filter, nHeight);
     }
     return nCredit;
 }
@@ -4215,7 +4245,9 @@ CAmount CWalletTx::GetDebit(const isminefilter& filter) const
             debit += nDebitCached;
         else
         {
-            nDebitCached = pwallet->GetDebit(*this, ISMINE_SPENDABLE);
+            int depth = this->GetDepthInMainChain();
+            uint32_t height = chainActive.Height() - --depth;
+            nDebitCached = pwallet->GetDebit(*this, ISMINE_SPENDABLE, height);
             fDebitCached = true;
             debit += nDebitCached;
         }
@@ -4226,7 +4258,9 @@ CAmount CWalletTx::GetDebit(const isminefilter& filter) const
             debit += nWatchDebitCached;
         else
         {
-            nWatchDebitCached = pwallet->GetDebit(*this, ISMINE_WATCH_ONLY);
+            int depth = this->GetDepthInMainChain();
+            uint32_t height = chainActive.Height() - --depth;
+            nWatchDebitCached = pwallet->GetDebit(*this, ISMINE_WATCH_ONLY, height);
             fWatchDebitCached = true;
             debit += nWatchDebitCached;
         }
@@ -4239,7 +4273,10 @@ CCurrencyValueMap CWalletTx::GetReserveDebit(const isminefilter& filter) const
     if (vin.empty())
         return CCurrencyValueMap();
 
-    return pwallet->GetReserveDebit(*this, filter);
+    int depth = this->GetDepthInMainChain();
+    uint32_t height = chainActive.Height() - --depth;
+
+    return pwallet->GetReserveDebit(*this, filter, height);
 }
 
 CAmount CWalletTx::GetCredit(const isminefilter& filter) const
@@ -4256,7 +4293,10 @@ CAmount CWalletTx::GetCredit(const isminefilter& filter) const
             credit += nCreditCached;
         else
         {
-            nCreditCached = pwallet->GetCredit(*this, ISMINE_SPENDABLE);
+            int depth = this->GetDepthInMainChain();
+            uint32_t height = chainActive.Height() - --depth;
+
+            nCreditCached = pwallet->GetCredit(*this, ISMINE_SPENDABLE, height);
             fCreditCached = true;
             credit += nCreditCached;
         }
@@ -4267,7 +4307,10 @@ CAmount CWalletTx::GetCredit(const isminefilter& filter) const
             credit += nWatchCreditCached;
         else
         {
-            nWatchCreditCached = pwallet->GetCredit(*this, ISMINE_WATCH_ONLY);
+            int depth = this->GetDepthInMainChain();
+            uint32_t height = chainActive.Height() - --depth;
+
+            nWatchCreditCached = pwallet->GetCredit(*this, ISMINE_WATCH_ONLY, height);
             fWatchCreditCached = true;
             credit += nWatchCreditCached;
         }
