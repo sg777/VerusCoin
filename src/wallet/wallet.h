@@ -1286,23 +1286,23 @@ public:
          std::vector<boost::optional<SaplingWitness>>& witnesses,
          uint256 &final_anchor);
 
-    isminetype IsMine(const CTxIn& txin) const;
-    CAmount GetDebit(const CTxIn& txin, const isminefilter& filter) const;
-    isminetype IsMine(const CTxOut& txout) const;
-    isminetype IsMine(const CTransaction& tx, uint32_t voutNum);
-    CAmount GetCredit(const CTxOut& txout, const isminefilter& filter) const;
+    isminetype IsMine(const CTxIn& txin, uint32_t nHeight=INT_MAX) const;
+    CAmount GetDebit(const CTxIn& txin, const isminefilter& filter, uint32_t nHeight=INT_MAX) const;
+    isminetype IsMine(const CTxOut& txout, uint32_t nHeight=INT_MAX) const;
+    CAmount GetCredit(const CTxOut& txout, const isminefilter& filter, uint32_t nHeight=INT_MAX) const;
     bool IsChange(const CTxOut& txout) const;
     CAmount GetChange(const CTxOut& txout) const;
-    bool IsMine(const CTransaction& tx);
+    void IsMine(const CTransaction& tx, uint32_t voutNum, isminetype &mineType, uint32_t nHeight=INT_MAX);
+    bool IsMine(const CTransaction& tx, uint32_t nHeight=INT_MAX);
     /** should probably be renamed to IsRelevantToMe */
-    bool IsFromMe(const CTransaction& tx) const;
-    CAmount GetDebit(const CTransaction& tx, const isminefilter& filter) const;
-    CCurrencyValueMap GetReserveDebit(const CTxIn &txin, const isminefilter& filter) const;
-    CCurrencyValueMap GetReserveDebit(const CTransaction& tx, const isminefilter& filter) const;
-    CAmount GetCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const;
+    bool IsFromMe(const CTransaction& tx, uint32_t height=INT_MAX) const;
+    CAmount GetDebit(const CTransaction& tx, const isminefilter& filter, uint32_t nHeight=INT_MAX) const;
+    CCurrencyValueMap GetReserveDebit(const CTxIn &txin, const isminefilter& filter, uint32_t nHeight=INT_MAX) const;
+    CCurrencyValueMap GetReserveDebit(const CTransaction& tx, const isminefilter& filter, uint32_t nHeight=INT_MAX) const;
+    CAmount GetCredit(const CTransaction& tx, const int32_t &voutNum, const isminefilter& filter, uint32_t nHeight=INT_MAX) const;
     CCurrencyValueMap GetReserveCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const;
     CCurrencyValueMap GetReserveCredit(const CTransaction& tx, const isminefilter& filter) const;
-    CAmount GetCredit(const CTransaction& tx, const isminefilter& filter) const;
+    CAmount GetCredit(const CTransaction& tx, const isminefilter& filter, uint32_t nHeight=INT_MAX) const;
     CAmount GetChange(const CTransaction& tx) const;
     void ChainTip(const CBlockIndex *pindex, const CBlock *pblock, SproutMerkleTree sproutTree, SaplingMerkleTree saplingTree, bool added);
     void RunSaplingMigration(int blockHeight);
