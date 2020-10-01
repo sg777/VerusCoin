@@ -5628,10 +5628,30 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
 
     // make sure we have a revocation and recovery authority defined
-    CIdentity revocationAuth = newID.LookupIdentity(newID.revocationAuthority);
-    CIdentity recoveryAuth = newID.LookupIdentity(newID.recoveryAuthority);
+    CIdentity revocationAuth;
+    CIdentity recoveryAuth;
 
-    if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
+    uint160 newIDID = newID.GetID();
+
+    if (newID.revocationAuthority == newIDID)
+    {
+        revocationAuth = newID;
+    }
+    else
+    {
+        revocationAuth = newID.LookupIdentity(newID.revocationAuthority);
+    }
+    
+    if (newID.recoveryAuthority == newIDID)
+    {
+        recoveryAuth = newID;
+    }
+    else
+    {
+        recoveryAuth = newID.LookupIdentity(newID.recoveryAuthority);
+    }
+
+    if (!(recoveryAuth.IsValidUnrevoked()) || !revocationAuth.IsValidUnrevoked())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
     }
