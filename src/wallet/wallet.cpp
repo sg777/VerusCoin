@@ -2458,6 +2458,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                 if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (*(CIdentity *)&identity = CIdentity(p.vData[0])).IsValid())
                 {
+                    if (identity.name == "Mike")
+                    {
+                        printf("%s: found ID mike@\n",__func__);
+                    }
+
                     identity.txid = txHash;
                     CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
                                                                nHeight, 
@@ -2682,7 +2687,9 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             {
                                 if (canSignCanSpend.first)
                                 {
-                                    // add all UTXOs sent to this address to this wallet
+                                    // add all UTXOs sent to this ID to this wallet
+                                    // and also check any other outputs that are sent to this ID to see if they have
+                                    // been spent, and if so, add them as spends as well
                                     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
                                     if (GetAddressUnspent(idID, CScript::P2ID, unspentOutputs))
                                     {
@@ -2693,14 +2700,14 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
                                             CWalletDB walletdb(strWalletFile, "r+", false);
 
-                                            // must not be the current tx, not already present, and be a CC output to be correctly sent to an identity
-                                            if (txHash != newOut.first.txhash && GetWalletTx(newOut.first.txhash) == nullptr && newOut.second.script.IsPayToCryptoCondition())
+                                            // must not be already present, and be a CC output to be correctly sent to an identity
+                                            if (GetWalletTx(newOut.first.txhash) == nullptr && newOut.second.script.IsPayToCryptoCondition())
                                             {
                                                 txnouttype newTypeRet;
                                                 std::vector<CTxDestination> newAddressRet;
                                                 int newNRequired;
                                                 bool newCanSign, newCanSpend;
-                                                if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend) && newCanSign))
+                                                if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend) || !newCanSign))
                                                 {
                                                     continue;
                                                 }
@@ -2724,6 +2731,55 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                     }
 
                                                     AddToWallet(wtx, false, &walletdb);
+
+                                                    // while we know there is an unspent index to this ID on the new transaction output, we don't know
+                                                    // if there are other outputs to this ID on the transaction, which are already spent. 
+                                                    // if so, we need to record the spends in the wallet as well, or it will add them but
+                                                    // not consider them spent.
+                                                    uint256 spendBlkHash;
+                                                    CTransaction spendTx;
+                                                    for (int i = 0; i < wtx.vout.size(); i++)
+                                                    {
+                                                        if (newOut.first.index == i)
+                                                        {
+                                                            continue;
+                                                        }
+
+                                                        // check any output we can sign for being spent as well, so we can add the spend
+                                                        if (!(ExtractDestinations(wtx.vout[i].scriptPubKey, 
+                                                                                  newTypeRet, 
+                                                                                  newAddressRet, 
+                                                                                  newNRequired, 
+                                                                                  this, 
+                                                                                  &newCanSign, 
+                                                                                  &newCanSpend) || !newCanSign))
+                                                        {
+                                                            continue;
+                                                        }
+
+                                                        CSpentIndexValue spentInfo;
+                                                        CSpentIndexKey spentKey(newOut.first.txhash, i);
+                                                        if (GetSpentIndex(spentKey, spentInfo))
+                                                        {
+                                                            if (GetWalletTx(spentInfo.txid) == nullptr &&
+                                                                spentInfo.blockHeight <= nHeight &&
+                                                                myGetTransaction(spentInfo.txid, spendTx, spendBlkHash) && !spendBlkHash.IsNull())
+                                                            {
+                                                                CWalletTx spendWtx(this, spendTx);
+
+                                                                // Get merkle branch if transaction was found in a block
+                                                                CBlock spendBlock;
+                                                                auto spendBlkIndexIt = mapBlockIndex.find(spendBlkHash);
+                                                                if (spendBlkIndexIt != mapBlockIndex.end() && 
+                                                                    chainActive.Contains(spendBlkIndexIt->second) &&
+                                                                    ReadBlockFromDisk(spendBlock, blkIndexIt->second, consensus))
+                                                                {
+                                                                    spendWtx.SetMerkleBranch(spendBlock);
+                                                                    AddToWallet(spendWtx, false, &walletdb);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -2735,8 +2791,14 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     // 1. remove all transactions that have UTXOs sent to this ID and are no longer can sign or can spend for us from the wallet
                                     // 2. if deletion, remove all transactions since the last idHistory that are in the wallet due to this ID
                                     // 3. remove all IDs from the wallet that are found in those removed transactions, are neither canSpend nor canSign, and are neither on manual hold nor present on any remaining transactions
+                                    // 4. remove any transactions that are only in the wallet because they spend an output that was sent to this ID
 
-                                    std::set<CIdentityID> idsToCheck = std::set<CIdentityID>({idID});
+                                    std::set<CIdentityID> idsToCheck = std::set<CIdentityID>();
+
+                                    if (!pblock)
+                                    {
+                                        idsToCheck.insert(idID);
+                                    }
 
                                     // first and last blocks to consider when deleting spent transactions from the wallet
                                     uint32_t deleteSpentFrom;
@@ -2750,7 +2812,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         deleteSpentFrom = idMapKey.blockHeight + 1;
                                     }
 
-                                    std::vector<uint256> txesToErase;
+                                    std::map<const uint256 *, CWalletTx *> txesToErase;
 
                                     for (auto &txidAndWtx : mapWallet)
                                     {
@@ -2776,24 +2838,26 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             eraseTx = false;
                                         }
 
-                                        // if the tx is from this wallet, we will not erase it
+                                        // if the tx is spending from another in this wallet, we will not erase it
+                                        // but check destinations before deciding not to erase IDs
                                         if (IsFromMe(txidAndWtx.second))
                                         {
                                             eraseTx = false;
                                         }
 
-                                        // look for a reason not to delete this tx
+                                        // look for a reason not to delete this tx or IDs it is sent to
                                         for (auto txout : txidAndWtx.second.vout)
                                         {
                                             // we only want to remove UTXOs that are sent to this ID, used to be ours, and are no longer cansign
                                             if (!txout.scriptPubKey.IsPayToCryptoCondition() || IsSpent(hashTx, i))
                                             {
-                                                // if this is ours, we will not erase the tx, mark dirty
+                                                // if this is ours, we will not erase the tx
+                                                // we already checked IsFromMe
                                                 if (IsMine(txout))
                                                 {
                                                     eraseTx = false;
+                                                    continue;
                                                 }
-                                                continue;
                                             }
                                             bool canSignOut = false;
                                             bool canSpendOut = false;
@@ -2806,7 +2870,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                     eraseTx = false;
                                                     continue;
                                                 }
-                                                
+
                                                 for (auto &dest : addresses)
                                                 {
                                                     if (dest.which() == COptCCParams::ADDRTYPE_ID)
@@ -2820,13 +2884,13 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         }
                                         if (eraseTx)
                                         {
-                                            txesToErase.push_back(txidAndWtx.first);
+                                            txesToErase.insert(make_pair(&txidAndWtx.first, &txidAndWtx.second));
                                         }
                                     }
 
-                                    for (auto hash : txesToErase)
+                                    for (auto &oneTx : txesToErase)
                                     {
-                                        EraseFromWallet(hash);
+                                        EraseFromWallet(*oneTx.first);
                                     }
 
                                     if (pblock && idsToCheck.count(idID))
