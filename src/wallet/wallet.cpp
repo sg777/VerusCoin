@@ -2458,11 +2458,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                 if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() && (*(CIdentity *)&identity = CIdentity(p.vData[0])).IsValid())
                 {
-                    if (identity.name == "Mike")
-                    {
-                        printf("%s: found ID mike@\n",__func__);
-                    }
-
                     identity.txid = txHash;
                     CIdentityMapKey idMapKey = CIdentityMapKey(identity.GetID(), 
                                                                nHeight, 
@@ -2772,7 +2767,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                                 auto spendBlkIndexIt = mapBlockIndex.find(spendBlkHash);
                                                                 if (spendBlkIndexIt != mapBlockIndex.end() && 
                                                                     chainActive.Contains(spendBlkIndexIt->second) &&
-                                                                    ReadBlockFromDisk(spendBlock, blkIndexIt->second, consensus))
+                                                                    ReadBlockFromDisk(spendBlock, spendBlkIndexIt->second, consensus))
                                                                 {
                                                                     spendWtx.SetMerkleBranch(spendBlock);
                                                                     AddToWallet(spendWtx, false, &walletdb);
@@ -7538,7 +7533,7 @@ void CMerkleTx::SetMerkleBranch(const CBlock& block)
     {
         vMerkleBranch.clear();
         nIndex = -1;
-        LogPrintf("ERROR: SetMerkleBranch(): couldn't find tx in block\n");
+        LogPrintf("ERROR: %s: couldn't find tx (%s) in block (%s)\n", __func__, GetHash().GetHex().c_str(), hashBlock.GetHex().c_str());
     }
 
     // Fill in merkle branch
