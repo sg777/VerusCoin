@@ -2447,12 +2447,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             }
         }
 
-        if (nHeight == 18591 || nHeight == 18594)
-        {
-            printf("%s: block %u\n", __func__, nHeight);
-            printf("\n");
-        }
-
         for (auto output : tx.vout)
         {
             bool canSpend = false;
@@ -2469,12 +2463,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                                nHeight, 
                                                                1, 
                                                                CIdentityMapKey::VALID);
-
-                    if (identity.name == "e")
-                    {
-                        printf("%s: checking ID e@ at height %u\n", __func__, nHeight);
-                        printf("\n");
-                    }
 
                     std::set<CKeyID> keySet;
                     CIdentityID idID(identity.GetID());
