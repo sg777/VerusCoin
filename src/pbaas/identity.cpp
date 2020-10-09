@@ -1392,6 +1392,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
                     {
                         return eval->Error("Identity reservation output spend does not match commitment");
                     }
+
                     outputNum = i;
                 }
             }
@@ -1404,6 +1405,11 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
             return ValidateSpendingIdentityReservation(spendingTx, outputNum, eval->state, height, thisChain);
         }
     }
+    else
+    {
+        printf("%s: error getting transaction %s to spend\n", __func__, spendingTx.vin[nIn].prevout.hash.GetHex().c_str());
+    }
+    
     return true;
 }
 

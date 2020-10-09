@@ -2447,6 +2447,12 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             }
         }
 
+        if (nHeight == 18591 || nHeight == 18594)
+        {
+            printf("%s: block %u\n", __func__, nHeight);
+            printf("\n");
+        }
+
         for (auto output : tx.vout)
         {
             bool canSpend = false;
@@ -2463,6 +2469,12 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                                nHeight, 
                                                                1, 
                                                                CIdentityMapKey::VALID);
+
+                    if (identity.name == "e")
+                    {
+                        printf("%s: checking ID e@ at height %u\n", __func__, nHeight);
+                        printf("\n");
+                    }
 
                     std::set<CKeyID> keySet;
                     CIdentityID idID(identity.GetID());
@@ -2528,7 +2540,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             idHistory = std::pair<CIdentityMapKey, CIdentityMapValue>();
                             wasCanSignCanSpend = std::pair<bool, bool>({false, false});
                         }
-
                         else if (nHeight && idHistory.first.blockHeight == nHeight && idHistory.second.txid != identity.txid)
                         {
                             // this is one of more than one identity records in the same block
@@ -2695,14 +2706,17 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
                                             CWalletDB walletdb(strWalletFile, "r+", false);
 
-                                            // must not be already present, and be a CC output to be correctly sent to an identity
-                                            if (GetWalletTx(newOut.first.txhash) == nullptr && newOut.second.script.IsPayToCryptoCondition())
+                                            txnouttype newTypeRet;
+                                            std::vector<CTxDestination> newAddressRet;
+                                            int newNRequired;
+                                            bool newCanSign, newCanSpend;
+                                            const CWalletTx *pWtx = GetWalletTx(newOut.first.txhash);
+
+                                            // must not be already present, and be a CC output, so we know it can be sent to an identity
+                                            if (pWtx == nullptr && newOut.second.script.IsPayToCryptoCondition())
                                             {
-                                                txnouttype newTypeRet;
-                                                std::vector<CTxDestination> newAddressRet;
-                                                int newNRequired;
-                                                bool newCanSign, newCanSpend;
-                                                if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend) || !newCanSign))
+                                                CWalletTx wtx;
+                                                if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend, nHeight == 0 ? INT_MAX : nHeight + 1) && newCanSign))
                                                 {
                                                     continue;
                                                 }
@@ -2710,7 +2724,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 CTransaction newTx;
                                                 if (myGetTransaction(newOut.first.txhash, newTx, blkHash))
                                                 {
-                                                    CWalletTx wtx(this, newTx);
+                                                    wtx = CWalletTx(this, newTx);
 
                                                     // Get merkle branch if transaction was found in a block
                                                     CBlock block;
@@ -2726,52 +2740,71 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                     }
 
                                                     AddToWallet(wtx, false, &walletdb);
+                                                    pWtx = GetWalletTx(newOut.first.txhash);
+                                                }
+                                            }
+                                            else if (pWtx = GetWalletTx(newOut.first.txhash))
+                                            {
+                                                if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend, nHeight == 0 ? INT_MAX : nHeight + 1) && newCanSign))
+                                                {
+                                                    continue;
+                                                }
+                                            }
 
-                                                    // while we know there is an unspent index to this ID on the new transaction output, we don't know
-                                                    // if there are other outputs to this ID on the transaction, which are already spent. 
-                                                    // if so, we need to record the spends in the wallet as well, or it will add them but
-                                                    // not consider them spent.
-                                                    uint256 spendBlkHash;
-                                                    CTransaction spendTx;
-                                                    for (int i = 0; i < wtx.vout.size(); i++)
+                                            // now, if we are in the wallet, we need to see if we should record new spends
+                                            if (pWtx != nullptr && newOut.second.script.IsPayToCryptoCondition())
+                                            {
+                                                // while we know there is an unspent index to this ID on the new transaction output, we don't know
+                                                // if there are other outputs to this ID on the transaction, which are already spent. 
+                                                // if so, we need to record the spends in the wallet as well, or it will add them but
+                                                // not consider them spent.
+                                                uint256 spendBlkHash;
+                                                CTransaction spendTx;
+                                                std::vector<CTxOut> checkIfSpent = pWtx->vout;
+                                                for (int i = 0; i < checkIfSpent.size(); i++)
+                                                {
+                                                    if (newOut.first.index == i)
                                                     {
-                                                        if (newOut.first.index == i)
-                                                        {
-                                                            continue;
-                                                        }
+                                                        continue;
+                                                    }
 
-                                                        // check any output we can sign for being spent as well, so we can add the spend
-                                                        if (!(ExtractDestinations(wtx.vout[i].scriptPubKey, 
-                                                                                  newTypeRet, 
-                                                                                  newAddressRet, 
-                                                                                  newNRequired, 
-                                                                                  this, 
-                                                                                  &newCanSign, 
-                                                                                  &newCanSpend) || !newCanSign))
-                                                        {
-                                                            continue;
-                                                        }
+                                                    // check any output we can sign for being spent as well, so we can add the spend
+                                                    if (!(ExtractDestinations(checkIfSpent[i].scriptPubKey, 
+                                                                              newTypeRet, 
+                                                                              newAddressRet, 
+                                                                              newNRequired, 
+                                                                              this, 
+                                                                              &newCanSign, 
+                                                                              &newCanSpend,
+                                                                              nHeight == 0 ? INT_MAX : nHeight + 1) && newCanSign))
+                                                    {
+                                                        continue;
+                                                    }
 
-                                                        CSpentIndexValue spentInfo;
-                                                        CSpentIndexKey spentKey(newOut.first.txhash, i);
-                                                        if (GetSpentIndex(spentKey, spentInfo))
+                                                    CSpentIndexValue spentInfo;
+                                                    CSpentIndexKey spentKey(newOut.first.txhash, i);
+                                                    if (GetSpentIndex(spentKey, spentInfo))
+                                                    {
+                                                        if (GetWalletTx(spentInfo.txid) == nullptr &&
+                                                            spentInfo.blockHeight <= nHeight &&
+                                                            myGetTransaction(spentInfo.txid, spendTx, spendBlkHash) && !spendBlkHash.IsNull())
                                                         {
-                                                            if (GetWalletTx(spentInfo.txid) == nullptr &&
-                                                                spentInfo.blockHeight <= nHeight &&
-                                                                myGetTransaction(spentInfo.txid, spendTx, spendBlkHash) && !spendBlkHash.IsNull())
+                                                            CWalletTx spendWtx(this, spendTx);
+
+                                                            // Get merkle branch if transaction was found in a block
+                                                            CBlock spendBlock;
+                                                            auto spendBlkIndexIt = mapBlockIndex.find(spendBlkHash);
+                                                            if (spendBlkIndexIt != mapBlockIndex.end() && 
+                                                                chainActive.Contains(spendBlkIndexIt->second) &&
+                                                                ReadBlockFromDisk(spendBlock, spendBlkIndexIt->second, consensus))
                                                             {
-                                                                CWalletTx spendWtx(this, spendTx);
+                                                                spendWtx.SetMerkleBranch(spendBlock);
+                                                                AddToWallet(spendWtx, false, &walletdb);
 
-                                                                // Get merkle branch if transaction was found in a block
-                                                                CBlock spendBlock;
-                                                                auto spendBlkIndexIt = mapBlockIndex.find(spendBlkHash);
-                                                                if (spendBlkIndexIt != mapBlockIndex.end() && 
-                                                                    chainActive.Contains(spendBlkIndexIt->second) &&
-                                                                    ReadBlockFromDisk(spendBlock, spendBlkIndexIt->second, consensus))
-                                                                {
-                                                                    spendWtx.SetMerkleBranch(spendBlock);
-                                                                    AddToWallet(spendWtx, false, &walletdb);
-                                                                }
+                                                                // add these outputs to the outputs we need to check if spent
+                                                                // as long as we are adding spending transactions that are earlier
+                                                                // or up to this height, we follow the spends
+                                                                checkIfSpent.insert(checkIfSpent.end(), spendTx.vout.begin(), spendTx.vout.end());
                                                             }
                                                         }
                                                     }
@@ -2835,7 +2868,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                                         // if the tx is spending from another in this wallet, we will not erase it
                                         // but check destinations before deciding not to erase IDs
-                                        if (IsFromMe(txidAndWtx.second))
+                                        if (IsFromMe(txidAndWtx.second, deleteSpentFrom - 1))
                                         {
                                             eraseTx = false;
                                         }
@@ -2857,7 +2890,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             bool canSignOut = false;
                                             bool canSpendOut = false;
 
-                                            if (ExtractDestinations(txout.scriptPubKey, txType, addresses, minSigs, this, &canSignOut, &canSpendOut))
+                                            if (ExtractDestinations(txout.scriptPubKey, txType, addresses, minSigs, this, &canSignOut, &canSpendOut, nHeight == 0 ? INT_MAX : nHeight + 1))
                                             {
                                                 if (canSignOut || canSpendOut)
                                                 {
@@ -2912,7 +2945,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             txnouttype txType;
                                             std::vector<CTxDestination> addresses;
                                             int minSigs;
-                                            if (ExtractDestinations(txout.scriptPubKey, txType, addresses, minSigs, this, &canSignOut, &canSpendOut))
+                                            if (ExtractDestinations(txout.scriptPubKey, txType, addresses, minSigs, this, &canSignOut, &canSpendOut, nHeight == 0 ? INT_MAX : nHeight + 1))
                                             {
                                                 if (canSignOut || canSpendOut)
                                                 {
@@ -3561,8 +3594,10 @@ bool CWallet::IsFromMe(const CTransaction& tx, uint32_t height) const
             {
                 const CWalletTx& prev = (*mi).second;
                 if (txin.prevout.n < prev.vout.size())
+                {
                     if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey, height) & ISMINE_ALL)
                         return true;
+                }
             }
         }
     }
