@@ -6554,13 +6554,18 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                         bool ret;
                         ret = reservekey.GetReservedKey(pubKey);
                         assert(ret); // should never fail, as we just unlocked
+                        changeDest = CTxDestination(pubKey);
+                    }
+                    else if (pOnlyFromDest && pOnlyFromDest->which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        changeDest = *pOnlyFromDest;
                     }
                     else
                     {
                         //fprintf(stderr,"use notary pubkey\n");
                         pubKey = CPubKey(ParseHex(NOTARY_PUBKEY));
+                        changeDest = CTxDestination(pubKey);
                     }
-                    changeDest = CTxDestination(pubKey);
                 }
 
                 // generate all necessary change outputs for all currencies
