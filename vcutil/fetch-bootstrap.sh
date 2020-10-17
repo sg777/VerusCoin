@@ -1,5 +1,5 @@
 #!/bin/bash
-trap 'kill $(jobs -p)' EXIT
+trap '[[ -z "$(jobs -p)" ]] || kill $(jobs -p)' EXIT
 
 set -eu
 
