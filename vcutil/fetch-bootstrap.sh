@@ -249,7 +249,6 @@ EOF
   if ! [ -d "${V_CHAIN_DATA_DIR}" ]; then
     echo "making dir ${V_CHAIN_DATA_DIR}"
     mkdir -p "${V_CHAIN_DATA_DIR}"
-    ls "${V_CHAIN_DATA_DIR}"
   else
     for file in "${data_files[@]}"; do
       if [ -f "${V_CHAIN_DATA_DIR}/${file}" ]; then
@@ -286,7 +285,7 @@ EOF
           fetch_bootstrap
           break
           ;;
-        No) echo bootstrap not installed && exit ;;
+        No) echo bootstrap not installed && exit 1;;
         esac
       done
     fi
