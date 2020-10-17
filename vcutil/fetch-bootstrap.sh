@@ -1,4 +1,5 @@
 #!/bin/bash
+trap 'kill $(jobs -p)' EXIT
 
 set -eu
 
@@ -193,9 +194,9 @@ function overwrite_bootstrap_data() {
           echo "Removing ${item}"
           rm -rf "${item}"
         done
-        fetch_bootstrap
       else
         echo Verusd is running, close and try again.
+        exit 1
       fi
       break
     fi
@@ -275,6 +276,7 @@ EOF
     echo "####################################################################################"
     if [ -n "$OVERWRITE_BLOCKCHAIN_DATA" ]; then
       overwrite_bootstrap_data
+      fetch_bootstrap
     else
       echo "Do you wish to overwrite blockchain data?"
       select yn in "Yes" "No"; do
@@ -289,7 +291,6 @@ EOF
       done
     fi
   fi
-  echo Setup complete
 }
 main
 rm -f /tmp/fetch_bootstrap
