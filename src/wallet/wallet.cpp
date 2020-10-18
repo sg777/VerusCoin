@@ -2420,6 +2420,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
         AssertLockHeld(cs_wallet);
         AssertLockHeld(cs_main);
         uint256 txHash = tx.GetHash();
+
         bool fExisted = mapWallet.count(txHash) != 0;
         if (fExisted && !fUpdate) return false;
         auto sproutNoteData = FindMySproutNotes(tx);
@@ -4008,7 +4009,27 @@ void CWalletTx::GetAmounts(list<COutputEntry>& listReceived,
 
     // Is this tx sent/signed by me?
     CAmount nDebit = GetDebit(filter);
-    bool isFromMyTaddr = nDebit > 0; // debit>0 means we signed/sent this transaction
+
+    bool isFromMyTaddr = false;
+
+    for (auto &txin : vin)
+    {
+        map<uint256, CWalletTx>::const_iterator mi = pwallet->mapWallet.find(txin.prevout.hash);
+        if (mi != pwallet->mapWallet.end())
+        {
+            const CWalletTx& prev = (*mi).second;
+            if (txin.prevout.n < prev.vout.size())
+            {
+                if (::IsMine(*pwallet, prev.vout[txin.prevout.n].scriptPubKey) & filter)
+                {
+                    isFromMyTaddr = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    //bool isFromMyTaddr = pwallet->IsFromMe(*this); // IsFromMe(filter); // debit>0 means we signed/sent this transaction
 
     // Compute fee if we sent this transaction.
     if (isFromMyTaddr) {
@@ -4109,7 +4130,6 @@ void CWalletTx::GetAmounts(list<COutputEntry>& listReceived,
         if (fIsMine & filter)
             listReceived.push_back(output);
     }
-
 }
 
 void CWalletTx::GetAccountAmounts(const string& strAccount, CAmount& nReceived,
@@ -6549,11 +6569,10 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                     // Reserve a new key pair from key pool
                     extern int32_t USE_EXTERNAL_PUBKEY; extern std::string NOTARY_PUBKEY;
                     CPubKey pubKey;
-                    if ( USE_EXTERNAL_PUBKEY == 0 )
+                    if ( USE_EXTERNAL_PUBKEY != 0 )
                     {
-                        bool ret;
-                        ret = reservekey.GetReservedKey(pubKey);
-                        assert(ret); // should never fail, as we just unlocked
+                        //fprintf(stderr,"use notary pubkey\n");
+                        pubKey = CPubKey(ParseHex(NOTARY_PUBKEY));
                         changeDest = CTxDestination(pubKey);
                     }
                     else if (pOnlyFromDest && pOnlyFromDest->which() == COptCCParams::ADDRTYPE_ID)
@@ -6562,8 +6581,9 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                     }
                     else
                     {
-                        //fprintf(stderr,"use notary pubkey\n");
-                        pubKey = CPubKey(ParseHex(NOTARY_PUBKEY));
+                        bool ret;
+                        ret = reservekey.GetReservedKey(pubKey);
+                        assert(ret); // should never fail, as we just unlocked
                         changeDest = CTxDestination(pubKey);
                     }
                 }
