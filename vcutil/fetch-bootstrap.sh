@@ -3,13 +3,23 @@ trap '[[ -z "$(jobs -p)" ]] || kill $(jobs -p)' EXIT
 
 set -eu
 
+function set_data_dir() {
+  echo Enter blockchain data directory or leave blank for default:
+  read -r vrsc_data_dir
+  if [[ "$vrsc_data_dir" == "" ]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      V_CHAIN_DATA_DIR="$HOME/Library/Application Support/Komodo/VRSC"
+    else
+      V_CHAIN_DATA_DIR="$HOME/.komodo/VRSC"
+    fi
+  else
+    V_CHAIN_DATA_DIR="$vrsc_data_dir"
+  fi
+}
+
 # set chain data dir
 if [[ -z "${V_CHAIN_DATA_DIR-}" ]]; then
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    V_CHAIN_DATA_DIR="$HOME/Library/Application Support/Komodo/VRSC"
-  else
-    V_CHAIN_DATA_DIR="$HOME/.komodo/VRSC"
-  fi
+  set_data_dir
 fi
 
 BOOTSTRAP_URL="https://bootstrap.veruscoin.io"
@@ -205,7 +215,6 @@ function overwrite_bootstrap_data() {
 
 function fetch_bootstrap() {
   echo Fetching bootstrap
-
   for method in wget curl failure; do
     if "fetch_$method" "$BOOTSTRAP_ARCHIVE" "/tmp/$BOOTSTRAP_ARCHIVE" "${BOOTSTRAP_URL}"; then
       echo "Download successful!"
@@ -232,7 +241,6 @@ function fetch_bootstrap() {
     rm /tmp/$BOOTSTRAP_ARCHIVE_SIG
     rm /tmp/$BOOTSTRAP_ARCHIVE
   fi
-
 }
 
 function main() {
@@ -285,7 +293,7 @@ EOF
           fetch_bootstrap
           break
           ;;
-        No) echo bootstrap not installed && exit 1;;
+        No) echo bootstrap not installed && exit 1 ;;
         esac
       done
     fi
