@@ -1,9 +1,9 @@
 @ECHO OFF
 TASKLIST /FI "IMAGENAME eq verusd.exe" 2>NUL | find /I /N "verusd.exe">NUL
-if "%ERRORLEVEL%"=="0" exit 1
+if "%ERRORLEVEL%"=="0" EXIT 1
 SET PROCESS_NAME=Verus Bootstrap
 TASKLIST /V /NH /FI "imagename eq cmd.exe"| FIND /I /C "%PROCESS_NAME%" >NUL
-IF %ERRORLEVEL%==0 exit 1
+IF %ERRORLEVEL%==0 EXIT 1
 TITLE %PROCESS_NAME%
 
 SETLOCAL EnableDelayedExpansion
@@ -18,8 +18,6 @@ IF %TAR_FOUND% EQU 1 (
 SET BOOTSTRAP_PACKAGE_SIG=!BOOTSTRAP_PACKAGE!.verusid
 
 CALL :MAIN
-PAUSE
-EXIT 0
 
 :MAIN
     CD !Temp!
@@ -46,7 +44,7 @@ EXIT 0
     )
     IF /I "!USE_BOOTSTRAP!" EQU "0" (
         CHOICE  /C:nyq /N /M "Existing blockchain data found. Overwrite? ([y]es/[n]o/[q]uit)"%1
-        IF !ERRORLEVEL! EQU 3 EXIT 0
+        IF !ERRORLEVEL! EQU 3 EXIT 1
         SET OVERWRITE_BLOCK_DATA=!ERRORLEVEL!
         IF !ERRORLEVEL! EQU 2 (
             FOR %%F IN (fee_estimates.dat, komodostate, komodostate.ind, peers.dat, db.log, debug.log, signedmasks) DO (
@@ -65,7 +63,7 @@ EXIT 0
         ) ELSE (
             ECHO Bootstrap not installed
             PAUSE
-            EXIT 0
+            EXIT 1
         )
      ) ELSE (
          CALL :FETCH_BOOTSTRAP
@@ -79,7 +77,7 @@ GOTO :EOF
         SET "VRSC_DATA_DIR=%APPDATA%\Komodo\VRSC"
     )
     CHOICE  /C:nyq /N /M "Install bootstrap in !VRSC_DATA_DIR!? ([y]es/[n]o/[q]uit)"%1
-    IF !ERRORLEVEL! EQU 3 EXIT 0
+    IF !ERRORLEVEL! EQU 3 EXIT 1
     IF !ERRORLEVEL! NEQ 2 GOTO SET_INSTALL_DIR
 GOTO :EOF
 
@@ -113,6 +111,13 @@ GOTO :EOF
    )>"!VRSC_DATA_DIR!\BOOTSTRAP-README.txt"
 GOTO :EOF
 
+:CLEAN_UP_DOWNLOADS
+    FOR %%F IN (!BOOTSTRAP_PACKAGE!, !BOOTSTRAP_PACKAGE_SIG!) DO (
+        IF  EXIST "!Temp!\%%F" (
+            DEL /Q "!Temp!\%%F"
+    )
+GOTO :EOF
+
 :FETCH_BOOTSTRAP
      ECHO Fetching VRSC bootstrap
         CALL :!DOWNLOAD_CMD! !BOOTSTRAP_PACKAGE!  !BOOTSTRAP_URL!
@@ -127,6 +132,8 @@ GOTO :EOF
                 ECHO Extracting Verus blockchain bootstrap
                 tar -xf "!Temp!\!BOOTSTRAP_PACKAGE!" --directory "!VRSC_DATA_DIR!"
                 ECHO Bootstrap successfully installed at "!VRSC_DATA_DIR!"
+                CALL :CLEAN_UP_DOWNLOADS
+                EXIT 0
             ) ELSE (
                 MOVE "!Temp!\!BOOTSTRAP_PACKAGE!" "!VRSC_DATA_DIR!"
                 CALL :WRITE_BOOTSTRAP_README
@@ -136,10 +143,8 @@ GOTO :EOF
         ) ELSE (
 	        ECHO "!filehash!"
             ECHO Failed to verify bootstrap checksum
-        )
-        FOR %%F IN (!BOOTSTRAP_PACKAGE!, !BOOTSTRAP_PACKAGE_SIG!) DO (
-            IF  EXIST "!Temp!\%%F" (
-                DEL /Q "!Temp!\%%F"
+            CALL :CLEAN_UP_DOWNLOADS
+            EXIT 1
         )
     )
 
