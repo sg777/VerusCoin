@@ -1872,7 +1872,6 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                 // are the actual inputs available?
                 if (!view.HaveInputs(tx))
                 {
-                    //fprintf(stderr,"accept failure.1\n");
                     return state.Invalid(error("AcceptToMemoryPool: inputs already spent"),REJECT_DUPLICATE, "bad-txns-inputs-spent");
                 }
             }
@@ -2035,9 +2034,12 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         if (!ContextualCheckInputs(tx, state, view, nextBlockHeight, true, STANDARD_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId))
         {
             //fprintf(stderr,"accept failure.9\n");
+            //UniValue jsonTx(UniValue::VOBJ);
+            //TxToUniv(tx, uint256(), jsonTx);
+            //printf("\n%s\n", jsonTx.write(1,2).c_str());
             return error("AcceptToMemoryPool: ConnectInputs failed (%s) %s", state.GetRejectReason(), hash.ToString());
         }
-        
+
         // Check again against just the consensus-critical mandatory script
         // verification flags, in case of bugs in the standard flags that cause
         // transactions to pass as valid when they're actually invalid. For
