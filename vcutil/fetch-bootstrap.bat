@@ -16,6 +16,8 @@ IF %TAR_FOUND% EQU 1 (
     SET BOOTSTRAP_PACKAGE=VRSC-bootstrap.zip
 )
 SET BOOTSTRAP_PACKAGE_SIG=!BOOTSTRAP_PACKAGE!.verusid
+SET BLOCKCHAIN_DATA_FILES=fee_estimates.dat, komodostate, komodostate.ind, peers.dat, db.log, debug.log, signedmasks
+SET BLOCKCHAIN_DATA_DIRS=blocks, chainstate, database, notarisations
 
 CALL :MAIN
 
@@ -30,44 +32,18 @@ CALL :MAIN
         ECHO No VRSC data directory found, creating directory.
         MD "!VRSC_DATA_DIR!"
     )
-    FOR %%F IN (fee_estimates.dat, komodostate, komodostate.ind, peers.dat, db.log, debug.log, signedmasks) DO (
-        IF  EXIST "!VRSC_DATA_DIR!\%%F" (
-            ECHO Found "!VRSC_DATA_DIR!\%%F"
-            SET USE_BOOTSTRAP=0
-        )
-    )
-    FOR /D %%D IN (blocks, chainstate, database, notarisations) DO (
-        IF EXIST "!VRSC_DATA_DIR!\%%D" (
-            ECHO Found "!VRSC_DATA_DIR!\%%D"
-            SET USE_BOOTSTRAP=0
-        )
-    )
+    CALL :CHECK_BLOCKCHAIN_DATA
     IF /I "!USE_BOOTSTRAP!" EQU "0" (
-        CHOICE  /C:nyq /N /M "Existing blockchain data found. Overwrite? ([y]es/[n]o/[q]uit)"%1
-        IF !ERRORLEVEL! EQU 3 EXIT 1
-        SET OVERWRITE_BLOCK_DATA=!ERRORLEVEL!
-        IF !ERRORLEVEL! EQU 2 (
-            FOR %%F IN (fee_estimates.dat, komodostate, komodostate.ind, peers.dat, db.log, debug.log, signedmasks) DO (
-                IF  EXIST "!VRSC_DATA_DIR!\%%F" (
-                    ECHO Removing "!VRSC_DATA_DIR!\%%F"
-                    DEL /Q/S "!VRSC_DATA_DIR!\%%F" >NUL
-                )
-            )
-            FOR /D %%D IN (blocks, chainstate, database, notarisations) DO (
-                IF EXIST "!VRSC_DATA_DIR!\%%D" (
-                    ECHO Removing "!VRSC_DATA_DIR!\%%D"
-                    DEL /Q/S  "!VRSC_DATA_DIR!\%%D" >NUL
-                )
-            )
-           CALL :FETCH_BOOTSTRAP
+        CHOICE  /C:12 /N /M "Existing blockchain data found. Overwrite? ([1]Yes/[2]No)"%1
+        IF !ERRORLEVEL! EQU 1 (
+            CALL :CLEAN_BLOCKCHAIN_DATA
         ) ELSE (
             ECHO Bootstrap not installed
-            PAUSE
             EXIT 1
         )
-     ) ELSE (
-         CALL :FETCH_BOOTSTRAP
      )
+     CALL :FETCH_BOOTSTRAP
+     EXIT 0
 GOTO :EOF
 
 :SET_INSTALL_DIR
@@ -76,9 +52,8 @@ GOTO :EOF
     IF !VRSC_DATA_DIR! == "" (
         SET "VRSC_DATA_DIR=%APPDATA%\Komodo\VRSC"
     )
-    CHOICE  /C:nyq /N /M "Install bootstrap in !VRSC_DATA_DIR!? ([y]es/[n]o/[q]uit)"%1
-    IF !ERRORLEVEL! EQU 3 EXIT 1
-    IF !ERRORLEVEL! NEQ 2 GOTO SET_INSTALL_DIR
+    CHOICE  /C:12 /N /M "Install bootstrap in !VRSC_DATA_DIR!? ([1]Yes/[2]No)"%1
+    IF !ERRORLEVEL! EQU 2 EXIT 1
 GOTO :EOF
 
 :FETCH_BITSADMIN.EXE
@@ -93,28 +68,40 @@ GOTO :EOF
     curl -# -L -C - "%URL%/%filename%" -o "%Temp%/%filename%"
 GOTO :EOF
 
-:GET_SHA256SUM
-    SET "file=!%~1!"
-    SET "sha256sum="
-    FOR /f "skip=1 tokens=* delims=" %%# IN ('certutil -hashfile !file! SHA256') DO (
-        IF NOT DEFINED sha256sum (
-            FOR %%Z IN (%%#) DO SET "sha256sum=!sha256sum!%%Z"
-        )
-    )
-    SET "%~2=!sha256sum!"
-GOTO :EOF
-
-:WRITE_BOOTSTRAP_README
-   (
-   ECHO !BOOTSTRAP_PACKAGE! needs be extracted directly into this directory. After extration, blocks and chainstate folders should be in this directory.
-   ECHO !BOOTSTRAP_PACKAGE! can be deleted after extraction.
-   )>"!VRSC_DATA_DIR!\BOOTSTRAP-README.txt"
-GOTO :EOF
-
 :CLEAN_UP_DOWNLOADS
     FOR %%F IN (!BOOTSTRAP_PACKAGE!, !BOOTSTRAP_PACKAGE_SIG!) DO (
         IF  EXIST "!Temp!\%%F" (
             DEL /Q "!Temp!\%%F"
+    )
+GOTO :EOF
+
+:CHECK_BLOCKCHAIN_DATA
+    FOR %%F IN (!BLOCKCHAIN_DATA_FILES!) DO (
+        IF  EXIST "!VRSC_DATA_DIR!\%%F" (
+            ECHO Found "!VRSC_DATA_DIR!\%%F"
+            SET USE_BOOTSTRAP=0
+        )
+    )
+    FOR /D %%D IN (!BLOCKCHAIN_DATA_DIRS!) DO (
+        IF EXIST "!VRSC_DATA_DIR!\%%D" (
+            ECHO Found "!VRSC_DATA_DIR!\%%D"
+            SET USE_BOOTSTRAP=0
+        )
+    )
+GOTO :EOF
+
+:CLEAN_BLOCKCHAIN_DATA
+    FOR %%F IN (!BLOCKCHAIN_DATA_FILES!) DO (
+        IF  EXIST "!VRSC_DATA_DIR!\%%F" (
+            ECHO Removing "!VRSC_DATA_DIR!\%%F"
+            DEL /Q/S "!VRSC_DATA_DIR!\%%F" >NUL
+        )
+    )
+    FOR /D %%D IN (!BLOCKCHAIN_DATA_DIRS!) DO (
+        IF EXIST "!VRSC_DATA_DIR!\%%D" (
+            ECHO Removing "!VRSC_DATA_DIR!\%%D"
+            DEL /Q/S  "!VRSC_DATA_DIR!\%%D" >NUL
+        )
     )
 GOTO :EOF
 
@@ -128,18 +115,14 @@ GOTO :EOF
         FINDSTR /m "!filehash!" "!Temp!\!BOOTSTRAP_PACKAGE_SIG!" >Nul
         IF !ERRORLEVEL! EQU 0 (
             ECHO Checksum verified!
+            ECHO Extracting Verus blockchain bootstrap
             IF %TAR_FOUND% EQU 1  (
-                ECHO Extracting Verus blockchain bootstrap
                 tar -xf "!Temp!\!BOOTSTRAP_PACKAGE!" --directory "!VRSC_DATA_DIR!"
-                ECHO Bootstrap successfully installed at "!VRSC_DATA_DIR!"
-                CALL :CLEAN_UP_DOWNLOADS
-                EXIT 0
             ) ELSE (
-                MOVE "!Temp!\!BOOTSTRAP_PACKAGE!" "!VRSC_DATA_DIR!"
-                CALL :WRITE_BOOTSTRAP_README
-                ECHO tar not found. Opening installation dir for manual bootstrap extraction.
-                START !VRSC_DATA_DIR!
+                CALL :UNZIPFILE "!VRSC_DATA_DIR!" "!Temp!\!BOOTSTRAP_PACKAGE!"
             )
+            ECHO Bootstrap successfully installed at "!VRSC_DATA_DIR!"
+            CALL :CLEAN_UP_DOWNLOADS
         ) ELSE (
 	        ECHO "!filehash!"
             ECHO Failed to verify bootstrap checksum
@@ -147,7 +130,32 @@ GOTO :EOF
             EXIT 1
         )
     )
-
 GOTO :EOF
 
+:GET_SHA256SUM
+    SET "file=!%~1!"
+    SET "sha256sum="
+    FOR /f "skip=1 tokens=* delims=" %%# IN ('certutil -hashfile !file! SHA256') DO (
+        IF NOT DEFINED sha256sum (
+            FOR %%Z IN (%%#) DO SET "sha256sum=!sha256sum!%%Z"
+        )
+    )
+    SET "%~2=!sha256sum!"
+GOTO :EOF
+
+:UNZIPFILE <ExtractTo> <ZipFile>
+SET vbs="%temp%\_.vbs"
+    IF EXIST %vbs% del /f /q %vbs%
+    >%vbs%  echo Set fso = CreateObject("Scripting.FileSystemObject")
+    >>%vbs% echo If NOT fso.FolderExists(%1) Then
+    >>%vbs% echo fso.CreateFolder(%1)
+    >>%vbs% echo End If
+    >>%vbs% echo set objShell = CreateObject("Shell.Application")
+    >>%vbs% echo set FilesInZip=objShell.NameSpace(%2).items
+    >>%vbs% echo objShell.NameSpace(%1).CopyHere(FilesInZip)
+    >>%vbs% echo Set fso = Nothing
+    >>%vbs% echo Set objShell = Nothing
+    cscript //nologo %vbs%
+    IF EXIST %vbs% del /f /q %vbs%
+GOTO :EOF
 ENDLOCAL
