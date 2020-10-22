@@ -1464,7 +1464,7 @@ UniValue getbalance(const UniValue& params, bool fHelp)
     isminefilter filter = ISMINE_SPENDABLE;
     if(params.size() > 2)
         if(params[2].get_bool())
-            filter = filter | ISMINE_WATCH_ONLY;
+            filter = ISMINE_ALL;
 
     if (params[0].get_str() == "*") {
         // Calculate total balance a different way from GetBalance()
@@ -1859,7 +1859,7 @@ UniValue ListReceived(const UniValue& params, bool fByAccounts)
     isminefilter filter = ISMINE_SPENDABLE;
     if(params.size() > 2)
         if(params[2].get_bool())
-            filter = filter | ISMINE_WATCH_ONLY;
+            filter = ISMINE_ALL;
 
     // Tally
     std::map<CTxDestination, tallyitem> mapTally;
@@ -2284,7 +2284,7 @@ UniValue listtransactions(const UniValue& params, bool fHelp)
     isminefilter filter = ISMINE_SPENDABLE;
     if(params.size() > 3)
         if(params[3].get_bool())
-            filter = filter | ISMINE_WATCH_ONLY;
+            filter = ISMINE_ALL;
 
     if (nCount < 0)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Negative count");
@@ -2370,7 +2370,7 @@ UniValue listaccounts(const UniValue& params, bool fHelp)
     isminefilter includeWatchonly = ISMINE_SPENDABLE;
     if(params.size() > 1)
         if(params[1].get_bool())
-            includeWatchonly = includeWatchonly | ISMINE_WATCH_ONLY;
+            includeWatchonly = ISMINE_ALL;
 
     map<string, CAmount> mapAccountBalances;
     BOOST_FOREACH(const PAIRTYPE(CTxDestination, CAddressBookData)& entry, pwalletMain->mapAddressBook) {
@@ -2481,7 +2481,7 @@ UniValue listsinceblock(const UniValue& params, bool fHelp)
 
     if(params.size() > 2)
         if(params[2].get_bool())
-            filter = filter | ISMINE_WATCH_ONLY;
+            filter = ISMINE_ALL;
 
     int depth = pindex ? (1 + chainActive.Height() - pindex->GetHeight()) : -1;
 
@@ -2565,7 +2565,7 @@ UniValue gettransaction(const UniValue& params, bool fHelp)
     isminefilter filter = ISMINE_SPENDABLE;
     if(params.size() > 1)
         if(params[1].get_bool())
-            filter = filter | ISMINE_WATCH_ONLY;
+            filter = ISMINE_ALL;
 
     UniValue entry(UniValue::VOBJ);
     if (!pwalletMain->mapWallet.count(hash))

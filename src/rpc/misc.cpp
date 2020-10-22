@@ -1735,7 +1735,7 @@ UniValue getsnapshot(const UniValue& params, bool fHelp)
     if ( fHelp || params.size() > 1)
     {
         throw runtime_error(
-                            "getsnapshot\n"
+                "getsnapshot\n"
 			    "\nReturns a snapshot of (address,amount) pairs at current height (requires addressindex to be enabled).\n"
 			    "\nArguments:\n"
 			    "  \"top\" (number, optional) Only return this many addresses, i.e. top N richlist\n"

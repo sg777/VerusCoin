@@ -1,15 +1,29 @@
 #!/bin/bash
+trap '[[ -z "$(jobs -p)" ]] || kill $(jobs -p)' EXIT
 
 set -eu
 
-# set chain data dir
-if [[ -z "${V_CHAIN_DATA_DIR-}" ]]; then
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    V_CHAIN_DATA_DIR="$HOME/Library/Application Support/Komodo/VRSC"
+function set_data_dir() {
+  echo Enter blockchain data directory or leave blank for default:
+  read -r vrsc_data_dir
+  if [[ "$vrsc_data_dir" == "" ]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      V_CHAIN_DATA_DIR="$HOME/Library/Application Support/Komodo/VRSC"
+    else
+      V_CHAIN_DATA_DIR="$HOME/.komodo/VRSC"
+    fi
   else
-    V_CHAIN_DATA_DIR="$HOME/.komodo/VRSC"
+    V_CHAIN_DATA_DIR="$vrsc_data_dir"
   fi
-fi
+  echo -n "Install bootstrap in ${V_CHAIN_DATA_DIR}? ([1]Yes/[2]No)"
+  read -r answer
+  if [ "$answer" != "${answer#[1]}" ]; then
+    echo
+  else
+    echo bootstrap not installed
+    exit 1
+  fi
+}
 
 BOOTSTRAP_URL="https://bootstrap.veruscoin.io"
 BOOTSTRAP_ARCHIVE="VRSC-bootstrap.tar.gz"
@@ -193,9 +207,9 @@ function overwrite_bootstrap_data() {
           echo "Removing ${item}"
           rm -rf "${item}"
         done
-        fetch_bootstrap
       else
         echo Verusd is running, close and try again.
+        exit 1
       fi
       break
     fi
@@ -204,7 +218,6 @@ function overwrite_bootstrap_data() {
 
 function fetch_bootstrap() {
   echo Fetching bootstrap
-
   for method in wget curl failure; do
     if "fetch_$method" "$BOOTSTRAP_ARCHIVE" "/tmp/$BOOTSTRAP_ARCHIVE" "${BOOTSTRAP_URL}"; then
       echo "Download successful!"
@@ -231,7 +244,6 @@ function fetch_bootstrap() {
     rm /tmp/$BOOTSTRAP_ARCHIVE_SIG
     rm /tmp/$BOOTSTRAP_ARCHIVE
   fi
-
 }
 
 function main() {
@@ -242,13 +254,16 @@ function main() {
 This script will install a blockchain data bootstrap
 
 EOF
+  # set chain data dir
+  if [[ -z "${V_CHAIN_DATA_DIR-}" ]]; then
+    set_data_dir
+  fi
   data_files=("fee_estimates.dat" "komodostate" "komodostate.ind" "peers.dat" "db.log" "debug.log" "signedmasks")
   data_dirs=("blocks" "chainstate" "database" "notarisations")
   vrsc_data=()
   if ! [ -d "${V_CHAIN_DATA_DIR}" ]; then
     echo "making dir ${V_CHAIN_DATA_DIR}"
     mkdir -p "${V_CHAIN_DATA_DIR}"
-    ls "${V_CHAIN_DATA_DIR}"
   else
     for file in "${data_files[@]}"; do
       if [ -f "${V_CHAIN_DATA_DIR}/${file}" ]; then
@@ -275,21 +290,19 @@ EOF
     echo "####################################################################################"
     if [ -n "$OVERWRITE_BLOCKCHAIN_DATA" ]; then
       overwrite_bootstrap_data
+      fetch_bootstrap
     else
-      echo "Do you wish to overwrite blockchain data?"
-      select yn in "Yes" "No"; do
-        case $yn in
-        Yes)
-          overwrite_bootstrap_data
-          fetch_bootstrap
-          break
-          ;;
-        No) echo bootstrap not installed && exit ;;
-        esac
-      done
+      echo -n "Existing blockchain data found. Overwrite? ([1]Yes/[2]No)"
+      read -r answer
+      if [ "$answer" != "${answer#[1]}" ]; then
+        overwrite_bootstrap_data
+        fetch_bootstrap
+      else
+        echo bootstrap not installed
+        exit 1
+      fi
     fi
   fi
-  echo Setup complete
 }
 main
 rm -f /tmp/fetch_bootstrap

@@ -5499,7 +5499,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "{\n"
-            "    \"txid\" : \"hexid\",          (hex)    the transaction ID of the name committment for this ID name\n"
+            "    \"txid\" : \"hexid\",          (hex)    the transaction ID of the name commitment for this ID name\n"
             "    \"namereservation\" :\n"
             "    {\n"
             "        \"name\": \"namestr\",     (string) the unique name in this commitment\n"
@@ -5628,10 +5628,30 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
 
     // make sure we have a revocation and recovery authority defined
-    CIdentity revocationAuth = (newID.revocationAuthority.IsNull() || newID.revocationAuthority == newID.GetID()) ? newID : newID.LookupIdentity(newID.revocationAuthority);
-    CIdentity recoveryAuth = (newID.recoveryAuthority.IsNull() || newID.recoveryAuthority == newID.GetID()) ? newID : newID.LookupIdentity(newID.recoveryAuthority);
+    CIdentity revocationAuth;
+    CIdentity recoveryAuth;
 
-    if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
+    uint160 newIDID = newID.GetID();
+
+    if (newID.revocationAuthority == newIDID)
+    {
+        revocationAuth = newID;
+    }
+    else
+    {
+        revocationAuth = newID.LookupIdentity(newID.revocationAuthority);
+    }
+    
+    if (newID.recoveryAuthority == newIDID)
+    {
+        recoveryAuth = newID;
+    }
+    else
+    {
+        recoveryAuth = newID.LookupIdentity(newID.recoveryAuthority);
+    }
+
+    if (!(recoveryAuth.IsValidUnrevoked()) || !revocationAuth.IsValidUnrevoked())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
     }
@@ -5803,6 +5823,15 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     if (!(oldID = CIdentity::LookupIdentity(newID.GetID(), 0, &idHeight, &idTxIn)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
+    }
+
+    // make sure we have a revocation and recovery authority defined
+    CIdentity revocationAuth = newID.LookupIdentity(newID.revocationAuthority);
+    CIdentity recoveryAuth = newID.LookupIdentity(newID.recoveryAuthority);
+
+    if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
     }
 
     CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);

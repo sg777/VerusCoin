@@ -562,7 +562,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                          const CKeyStore *pKeyStore, 
                          bool *pCanSign, 
                          bool *pCanSpend,
-                         uint32_t lastIdHeight,
+                         uint32_t nHeight,
                          std::map<uint160, CKey> *pPrivKeys)
 {
     addressRet.clear();
@@ -579,11 +579,20 @@ bool ExtractDestinations(const CScript& scriptPubKey,
         CScript postfix = CScript(scriptPubKey.size() > scriptStart ? scriptPubKey.begin() + scriptStart : scriptPubKey.end(), scriptPubKey.end());
 
         // check again with only postfix subscript
-        return(ExtractDestinations(postfix, typeRet, addressRet, nRequiredRet, pKeyStore, pCanSign, pCanSpend, lastIdHeight, pPrivKeys));
+        return(ExtractDestinations(postfix, typeRet, addressRet, nRequiredRet, pKeyStore, pCanSign, pCanSpend, nHeight, pPrivKeys));
     }
 
     int canSpendCount = 0;
     bool canSign = false;
+
+    if (pCanSign)
+    {
+        *pCanSign = false;
+    }
+    if (pCanSpend)
+    {
+        *pCanSpend = false;
+    }
 
     COptCCParams master, p;
     bool ccValid;
@@ -609,7 +618,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                         std::pair<CIdentityMapKey, CIdentityMapValue> identity;
                         idSet.insert(destId);
 
-                        if (pKeyStore && pKeyStore->GetIdentity(destId, identity, lastIdHeight) && identity.second.IsValidUnrevoked())
+                        if (pKeyStore && pKeyStore->GetIdentity(destId, identity, nHeight - 1) && identity.second.IsValidUnrevoked())
                         {
                             int canSignCount = 0;
                             for (auto oneKey : identity.second.primaryAddresses)
@@ -705,7 +714,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
 
                                 //printf("checking: %s\n", EncodeDestination(dest).c_str());
 
-                                if (pKeyStore && pKeyStore->GetIdentity(destId, identity, lastIdHeight) && identity.second.IsValidUnrevoked())
+                                if (pKeyStore && pKeyStore->GetIdentity(destId, identity, nHeight - 1) && identity.second.IsValidUnrevoked())
                                 {
                                     int canSignCount = 0;
                                     for (auto oneKey : identity.second.primaryAddresses)
@@ -778,6 +787,14 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                     // this kind of ID is defined as a CKeyID, since use of script hash type in CCs are reserved for IDs
                     addressRet.push_back(CKeyID(Hash160(subScr)));
                     nRequiredRet = 1;
+                    if (pCanSign)
+                    {
+                        *pCanSign = true;
+                    }
+                    if (pCanSpend)
+                    {
+                        *pCanSpend = true;
+                    }
                 }
                 else
                 {
@@ -803,6 +820,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
         if (typeRet == TX_MULTISIG)
         {
             nRequiredRet = vSolutions.front()[0];
+            int nHaveKeys = 0;
             for (unsigned int i = 1; i < vSolutions.size()-1; i++)
             {
                 CPubKey pubKey(vSolutions[i]);
@@ -811,10 +829,28 @@ bool ExtractDestinations(const CScript& scriptPubKey,
 
                 CTxDestination address = pubKey.GetID();
                 addressRet.push_back(address);
+
+                // if we were asked to see whether we can sign or spend, determine
+                if ((pCanSign || pCanSpend) && pKeyStore)
+                {
+                    if (pKeyStore->HaveKey(GetDestinationID(address)))
+                    {
+                        nHaveKeys++;
+                    }
+                }
             }
 
             if (addressRet.empty())
                 return false;
+
+            if (pCanSign && nHaveKeys)
+            {
+                *pCanSign = true;
+            }
+            if (pCanSpend && nHaveKeys >= nRequiredRet)
+            {
+                *pCanSpend = true;
+            }
         }
         else
         {
@@ -822,9 +858,23 @@ bool ExtractDestinations(const CScript& scriptPubKey,
             CTxDestination address;
             if (!ExtractDestination(scriptPubKey, address))
             {
-            return false;
+                return false;
             }
             addressRet.push_back(address);
+            if ((pCanSign || pCanSpend) && pKeyStore)
+            {
+                if (pKeyStore->HaveKey(GetDestinationID(address)))
+                {
+                    if (pCanSign)
+                    {
+                        *pCanSign = true;
+                    }
+                    if (pCanSpend)
+                    {
+                        *pCanSpend = true;
+                    }
+                }
+            }
         }
     }
     
