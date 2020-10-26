@@ -3104,7 +3104,9 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
 std::vector<CAddressUnspentDbEntry> GetFractionalNotarizationsForReserve(const uint160 &currencyID)
 {
     std::vector<CAddressUnspentDbEntry> fractionalNotarizations;
-    CIndexID indexKey = CCoinbaseCurrencyState::IndexConverterKey(currencyID, currencyID == ASSETCHAINS_CHAINID ? EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION);
+    CIndexID indexKey = CCoinbaseCurrencyState::IndexConverterKey(currencyID,
+                                                                  (currencyID != VERUS_CHAINID && currencyID == ASSETCHAINS_CHAINID) ? 
+                                                                    EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION);
     if (!GetAddressUnspent(indexKey, CScript::P2IDX, fractionalNotarizations))
     {
         LogPrintf("%s: Error reading unspent index\n", __func__);
