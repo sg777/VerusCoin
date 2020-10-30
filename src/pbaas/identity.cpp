@@ -1256,12 +1256,15 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         // if not fulfilled, neither recovery data nor its spend condition may be modified
         if (!fulfilled)
         {
+            if (oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity, height))
+            {
+                return eval->Error("Unauthorized modification of recovery information");
+            }
+
             // if revoked, only fulfilled recovery condition allows any mutation
             if (oldIdentity.IsRevoked() &&
                 (oldIdentity.IsPrimaryMutation(newIdentity, height) ||
-                 oldIdentity.IsRevocationMutation(newIdentity, height) ||
-                 oldIdentity.IsRecoveryMutation(newIdentity, height) ||
-                 oldIdentity.IsRecovery(newIdentity)))
+                 oldIdentity.IsRevocationMutation(newIdentity, height)))
             {
                 return eval->Error("Unauthorized modification of revoked identity without recovery authority");
             }
