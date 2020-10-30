@@ -123,7 +123,6 @@ AsyncRPCOperation_sendmany::AsyncRPCOperation_sendmany(
         LogPrint("zrpc", "%s: z_sendmany initialized\n", getId());
     }
 
-
     // Enable payment disclosure if requested
     paymentDisclosureMode = fExperimentalMode && GetBoolArg("-paymentdisclosure", false);
 }
