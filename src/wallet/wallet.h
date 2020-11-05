@@ -67,6 +67,7 @@ static const unsigned int MAX_FREE_TRANSACTION_CREATE_SIZE = 1000;
 static const unsigned int WITNESS_CACHE_SIZE = _COINBASE_MATURITY+10;
 
 // largest number of inputs we will create for a transaction
+// should be default when checking "-mempooltxinputlimit"
 #define MAX_NUM_INPUTS_LIMIT 200
 
 //! Size of HD seed in bytes
@@ -1452,6 +1453,7 @@ public:
     // staking functions
     bool VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, CTransaction &stakeSource, int32_t &voutNum, int32_t nHeight, uint32_t &bnTarget) const;
     int32_t VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &bnTarget, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CTxDestination &rewardDest) const;
+    static bool GetAndValidateSaplingZAddress(const std::string &addressStr, libzcash::PaymentAddress &zaddress);
 };
 
 /** A key allocated from the key pool. */

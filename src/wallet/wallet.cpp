@@ -5131,6 +5131,38 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
     }
 }
 
+bool CWallet::GetAndValidateSaplingZAddress(const std::string &addressStr, libzcash::PaymentAddress &zaddress)
+{
+    std::string addrCopy = addressStr;
+    std::vector<std::string> addressParts;
+    boost::split(addressParts, addrCopy, boost::is_any_of(":"));
+
+    if (addressParts.size() == 2 && addressParts[1] == "private")
+    {
+        // look up to see if this is the private address of an ID. if not, or if the ID does not have a valid, Sapling address, it is invalid
+        CTxDestination destination = DecodeDestination(addressParts[0]);
+        if (destination.which() == COptCCParams::ADDRTYPE_ID)
+        {
+            AssertLockHeld(cs_main);
+            CIdentity idSource = CIdentity::LookupIdentity(GetDestinationID(destination));
+            if (idSource.IsValid() && idSource.privateAddresses.size() > 0)
+            {
+                zaddress = idSource.privateAddresses[0];
+            }
+            return true;
+        }
+        return false;
+    }
+
+    zaddress = DecodePaymentAddress(addrCopy);
+    bool hasZSource = boost::get<libzcash::SaplingPaymentAddress>(&zaddress) != nullptr;
+    if (!hasZSource && boost::get<libzcash::SproutPaymentAddress>(&zaddress) != nullptr)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Legacy Sprout address not supported. Use a transparent or Sapling compatible address.");
+    }
+    return hasZSource;
+}
+
 static void ApproximateBestSubset(vector<pair<CAmount, pair<const CWalletTx*,unsigned int> > >vValue, const CAmount& nTotalLower, const CAmount& nTargetValue,vector<char>& vfBest, CAmount& nBest, int iterations = 1000)
 {
     vector<char> vfIncluded;
@@ -5548,6 +5580,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         CReserveOutSelectionInfo coin(pcoin, i, nAll);
 
         // if all values are equivalent to targets, we've found the perfect output, no more searching needed
+        // TODO: should we early out, even if we have extra currencies? If so, use nTotal to commpare
         if (nAll == nTotalTarget)
         {
             setCoinsRet.insert(std::make_pair(coin.pWtx, coin.n));
@@ -5618,7 +5651,9 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     }
 
     // if all the lower amounts are just what we need, and we don't add too many inputs in the process, use them all
-    if ((lowerTotal >= nTotalTarget && lowerTotal <= (nTotalTarget + nativeCent)) && lowerOuts.size() <= MAX_NUM_INPUTS_LIMIT)
+    size_t numInputsLimit = (size_t)GetArg("-mempooltxinputlimit", MAX_NUM_INPUTS_LIMIT);
+
+    if ((lowerTotal >= nTotalTarget && lowerTotal <= (nTotalTarget + nativeCent)) && lowerOuts.size() <= numInputsLimit)
     {
         for (auto oneOut : lowerOuts)
         {
@@ -5649,8 +5684,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
                 break;
             }
 
-            // consider "satisfying" an exact match of a single currency only, otherwise, we should fall through to the best fit solver
-            // if this output doesn't satisfy more than one, it is no better than one that does, so prioritize lowest larger
+            // consider "satisfying" an exact match of any currency in the adjusted request, otherwise, we should fall through to the best fit solver
             int newFound = 0;
             for (auto &oneCurID : multiIt->second.first)
             {

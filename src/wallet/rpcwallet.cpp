@@ -4186,7 +4186,16 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
     vector<COutput> vecOutputs;
     CAmount balance = 0;
 
-    if (transparentAddress.length() > 0) {
+
+    bool wildCardRAddress = transparentAddress == "R*";
+    bool wildCardiAddress = transparentAddress == "i*";
+    if (transparentAddress == "*")
+    {
+        wildCardRAddress = true;
+        wildCardiAddress = true;
+    }
+
+    if (!(wildCardRAddress || wildCardiAddress) && transparentAddress.length() > 0) {
         CTxDestination taddr = DecodeDestination(transparentAddress);
         if (!IsValidDestination(taddr)) {
             throw std::runtime_error("invalid transparent address");
@@ -4207,14 +4216,33 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
             continue;
         }
 
-        if (destinations.size()) {
+        if (wildCardRAddress || wildCardiAddress || destinations.size()) {
             CTxDestination address;
             if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address)) {
                 continue;
             }
 
-            if (!destinations.count(address)) {
-                continue;
+            if (wildCardRAddress || wildCardiAddress)
+            {
+                bool keep = false;
+                if (wildCardRAddress)
+                {
+                    keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
+                }
+                if (!keep && wildCardiAddress)
+                {
+                    keep = address.which() == COptCCParams::ADDRTYPE_ID;
+                }
+                if (!keep)
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                if (!destinations.count(address)) {
+                    continue;
+                }
             }
         }
 
@@ -4228,7 +4256,16 @@ CAmount getBalanceZaddr(std::string address, int minDepth = 1, bool ignoreUnspen
     CAmount balance = 0;
     std::vector<SproutNoteEntry> sproutEntries;
     std::vector<SaplingNoteEntry> saplingEntries;
+
+
     LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    libzcash::PaymentAddress zaddress;
+    if (pwalletMain->GetAndValidateSaplingZAddress(address, zaddress))
+    {
+        address = EncodePaymentAddress(zaddress);
+    }
+
     pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, address, minDepth, true, ignoreUnspendable);
     for (auto & entry : sproutEntries) {
         balance += CAmount(entry.note.value());
@@ -4369,15 +4406,24 @@ UniValue z_getbalance(const UniValue& params, bool fHelp)
     // Check that the from address is valid.
     auto fromaddress = params[0].get_str();
     bool fromTaddr = false;
-    CTxDestination taddr = DecodeDestination(fromaddress);
-    fromTaddr = IsValidDestination(taddr);
-    if (!fromTaddr) {
-        auto res = DecodePaymentAddress(fromaddress);
-        if (!IsValidPaymentAddress(res)) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, should be a taddr or zaddr.");
-        }
-        if (!boost::apply_visitor(PaymentAddressBelongsToWallet(pwalletMain), res)) {
-             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "From address does not belong to this node, spending key or viewing key not found.");
+    CTxDestination taddr;
+
+    if (fromaddress == "*" || fromaddress == "R*" || fromaddress == "i*")
+    {
+        fromTaddr = true;
+    }
+    else
+    {
+        taddr = DecodeDestination(fromaddress);
+        fromTaddr = IsValidDestination(taddr);
+        if (!fromTaddr) {
+            auto res = DecodePaymentAddress(fromaddress);
+            if (!IsValidPaymentAddress(res)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, should be a taddr or zaddr.");
+            }
+            if (!boost::apply_visitor(PaymentAddressBelongsToWallet(pwalletMain), res)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "From address does not belong to this node, spending key or viewing key not found.");
+            }
         }
     }
 
@@ -4923,9 +4969,9 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, amount must be positive");
 
         if (isZaddr) {
-            zaddrRecipients.push_back( SendManyRecipient(address, nAmount, memo) );
+            zaddrRecipients.push_back( SendManyRecipient(address, nAmount, memo, CScript()) );
         } else {
-            taddrRecipients.push_back( SendManyRecipient(address, nAmount, memo) );
+            taddrRecipients.push_back( SendManyRecipient(address, nAmount, memo, CScript()) );
         }
 
         nTotalOut += nAmount;

@@ -40,6 +40,7 @@
 using namespace libzcash;
 
 extern char ASSETCHAINS_SYMBOL[65];
+extern uint160 ASSETCHAINS_CHAINID;
 
 extern UniValue signrawtransaction(const UniValue& params, bool fHelp);
 extern UniValue sendrawtransaction(const UniValue& params, bool fHelp);
@@ -92,9 +93,26 @@ AsyncRPCOperation_sendmany::AsyncRPCOperation_sendmany(
         builder_ = builder.get();
     }
 
-    fromtaddr_ = DecodeDestination(fromAddress);
-    isfromtaddr_ = IsValidDestination(fromtaddr_);
-    isfromzaddr_ = false;
+    if (fromAddress == "*" || fromAddress == "R*" || fromAddress == "i*")
+    {
+        isfromtaddr_ = true;
+        isfromzaddr_ = false;
+        if (fromAddress == "R*")
+        {
+            // null t-address as wild card
+            fromtaddr_ = CKeyID(uint160());
+        }
+        else if (fromAddress == "i*")
+        {
+            fromtaddr_ = CIdentityID(uint160());
+        }
+    }
+    else
+    {
+        fromtaddr_ = DecodeDestination(fromAddress);
+        isfromtaddr_ = IsValidDestination(fromtaddr_);
+        isfromzaddr_ = false;
+    }
 
     if (!isfromtaddr_) {
         auto address = DecodePaymentAddress(fromAddress);
@@ -223,6 +241,33 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
     uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1);
 
+    // figure out just how much we need before getting inputs
+    CAmount t_outputs_total = 0;
+    CCurrencyValueMap t_all_outputs_total;
+    for (SendManyRecipient & t : t_outputs_) {
+        t_outputs_total += std::get<1>(t);
+        CScript outputScript = std::get<3>(t);
+        if (outputScript.size())
+        {
+            t_all_outputs_total += outputScript.ReserveOutValue();
+        }
+    }
+
+    CAmount z_outputs_total = 0;
+    for (SendManyRecipient & t : z_outputs_) {
+        z_outputs_total += std::get<1>(t);
+    }
+
+    CCurrencyValueMap sendAllAmounts = t_all_outputs_total;
+    if (t_outputs_total + z_outputs_total)
+    {
+        sendAllAmounts.valueMap[ASSETCHAINS_CHAINID] = t_outputs_total + z_outputs_total;
+    }
+
+    CCurrencyValueMap targetAllAmounts = sendAllAmounts;
+    targetAllAmounts.valueMap[ASSETCHAINS_CHAINID] += minersFee;
+    CAmount targetNativeAmount = targetAllAmounts.valueMap[ASSETCHAINS_CHAINID];
+
     // When spending coinbase utxos, you can only specify a single zaddr as the change must go somewhere
     // and if there are multiple zaddrs, we don't know where to send it.
     if (isfromtaddr_) {
@@ -252,9 +297,23 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     assert(z_sprout_inputs_.empty() || z_sapling_inputs_.empty());
 
     CAmount t_inputs_total = 0;
-    for (SendManyInputUTXO & t : t_inputs_) {
-        t_inputs_total += std::get<2>(t);
+    CCurrencyValueMap t_all_inputs_total;
+    if (t_inputs_.size())
+    {
+        LOCK(pwalletMain->cs_wallet);
+        for (int i = 0 ; i < t_inputs_.size(); i++)
+        {
+            COutput & t = t_inputs_[i];
+            if (!pwalletMain->mapWallet.count(t_inputs_txids_[i]))
+            {
+                throw JSONRPCError(RPC_INTERNAL_ERROR, "Wallet transaction was deleted from wallet after selection and before tx was made.");
+            }
+            t_all_inputs_total += t.tx->vout[t.i].ReserveOutValue();
+            t_inputs_total += t.tx->vout[t.i].nValue;
+        }
     }
+    t_all_inputs_total.valueMap[ASSETCHAINS_CHAINID] = t_inputs_total;
+    t_all_inputs_total = t_all_inputs_total.CanonicalMap();
 
     CAmount z_inputs_total = 0;
     for (SendManyInputJSOP & t : z_sprout_inputs_) {
@@ -264,38 +323,79 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         z_inputs_total += t.note.value();
     }
 
-    CAmount t_outputs_total = 0;
-    for (SendManyRecipient & t : t_outputs_) {
-        t_outputs_total += std::get<1>(t);
-    }
-
-    CAmount z_outputs_total = 0;
-    for (SendManyRecipient & t : z_outputs_) {
-        z_outputs_total += std::get<1>(t);
-    }
-
-    CAmount sendAmount = z_outputs_total + t_outputs_total;
-    CAmount targetAmount = sendAmount + minersFee;
-
     assert(!isfromtaddr_ || z_inputs_total == 0);
-    assert(!isfromzaddr_ || t_inputs_total == 0);
 
-    if (isfromtaddr_ && (t_inputs_total < targetAmount)) {
-        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
-            strprintf("Insufficient transparent funds, have %s, need %s",
-            FormatMoney(t_inputs_total), FormatMoney(targetAmount)));
+    assert(!isfromzaddr_ || t_all_inputs_total.valueMap.size() == 0);
+
+    if (isfromtaddr_ && (t_all_inputs_total < targetAllAmounts)) {
+        if (targetAllAmounts.valueMap.size() == 1)
+        {
+            throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
+                strprintf("Insufficient transparent funds, have %s, need %s",
+                FormatMoney(t_all_inputs_total.valueMap[ASSETCHAINS_CHAINID]), FormatMoney(targetNativeAmount)));
+        }
+        else
+        {
+            throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
+                strprintf("Insufficient transparent funds, have %s, need %s",
+                t_all_inputs_total.ToUniValue().write(1,2), targetAllAmounts.ToUniValue().write(1,2)));
+        }
     }
 
-    if (isfromzaddr_ && (z_inputs_total < targetAmount)) {
+    if (isfromzaddr_ && targetAllAmounts.valueMap.size() > 1)
+    {
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
+            strprintf("Cannot send non-native currencies from shielded funds, have %s of native, need %s",
+            FormatMoney(z_inputs_total), targetAllAmounts.ToUniValue().write(1,2)));
+    }
+
+    if (isfromzaddr_ && (z_inputs_total < targetNativeAmount)) {
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
             strprintf("Insufficient shielded funds, have %s, need %s",
-            FormatMoney(z_inputs_total), FormatMoney(targetAmount)));
+            FormatMoney(z_inputs_total), FormatMoney(targetNativeAmount)));
     }
 
     // If from address is a taddr, select UTXOs to spend
     CAmount selectedUTXOAmount = 0;
     bool selectedUTXOCoinbase = false;
-    if (isfromtaddr_) {
+    if (isfromtaddr_)
+    {
+        std::set<std::pair<const CWalletTx*, unsigned int>> setCoinsRet;
+        CCurrencyValueMap reserveValueRet;
+        CAmount nativeValueRet;
+        bool success;
+
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+
+        // sanity check, since we don't always hold locks
+        for (int i = 0 ; i < t_inputs_.size(); i++)
+        {
+            if (!pwalletMain->mapWallet.count(t_inputs_txids_[i]))
+            {
+                throw JSONRPCError(RPC_INTERNAL_ERROR, "Wallet transaction was deleted from wallet after selection and before tx was made.");
+            }
+        }
+
+        if (targetAllAmounts.valueMap.size() == 1 && targetNativeAmount != 0)
+        {
+            // only native currency matters, so use simpler functon
+            success = 
+              pwalletMain->SelectCoinsMinConf(targetNativeAmount, 0, 0, t_inputs_, setCoinsRet, nativeValueRet);
+        }
+        else
+        {
+            // select reserve currency and native inputs
+            CCurrencyValueMap targetReserveAmounts = targetAllAmounts;
+            targetReserveAmounts.valueMap.erase(ASSETCHAINS_CHAINID);
+            success = 
+              pwalletMain->SelectReserveCoinsMinConf(targetReserveAmounts, targetNativeAmount, 0, 0, t_inputs_, setCoinsRet, reserveValueRet, nativeValueRet);
+        }
+
+        if (!success)
+        {
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot find adequate utxos to fund transaction");
+        }
+
         // Get dust threshold
         CKey secret;
         secret.MakeNewKey(true);
@@ -304,17 +404,16 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         CAmount dustThreshold = out.GetDustThreshold(minRelayTxFee);
         CAmount dustChange = -1;
 
-        std::vector<SendManyInputUTXO> selectedTInputs;
-        for (SendManyInputUTXO & t : t_inputs_) {
-            bool b = std::get<3>(t);
-            if (b) {
+        std::vector<COutput> selectedTInputs;
+        for (COutput & t : t_inputs_) {
+            if (t.tx->IsCoinBase()) {
                 selectedUTXOCoinbase = true;
             }
-            selectedUTXOAmount += std::get<2>(t);
+            selectedUTXOAmount += t.tx->vout[t.i].nValue;
             selectedTInputs.push_back(t);
-            if (selectedUTXOAmount >= targetAmount) {
+            if (selectedUTXOAmount >= targetNativeAmount) {
                 // Select another utxo if there is change less than the dust threshold.
-                dustChange = selectedUTXOAmount - targetAmount;
+                dustChange = selectedUTXOAmount - targetNativeAmount;
                 if (dustChange == 0 || dustChange >= dustThreshold) {
                     break;
                 }
@@ -347,15 +446,10 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         }
 
         // update the transaction with these inputs
-        if (isUsingBuilder_) {
-            CScript scriptPubKey;
-            for (auto t : t_inputs_) {
-                scriptPubKey = std::get<4>(t);
-                //printf("Checking new script: %s\n", scriptPubKey.ToString().c_str());
-                uint256 txid = std::get<0>(t);
-                int vout = std::get<1>(t);
-                CAmount amount = std::get<2>(t);
-                builder_.AddTransparentInput(COutPoint(txid, vout), scriptPubKey, amount);
+        if (isUsingBuilder_)
+        {
+            for (COutput t : t_inputs_) {
+                builder_.AddTransparentInput(COutPoint(t.tx->GetHash(), t.i), t.tx->vout[t.i].scriptPubKey, t.tx->vout[t.i].nValue);
             }
             // for Komodo, set lock time to accure interest, for other chains, set
             // locktime to spend time locked coinbases
@@ -363,13 +457,12 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             {
                 builder_.SetLockTime((uint32_t)time(NULL) - 60); // set lock time for Komodo interest
             }
-        } else {
+        } else
+        {
             CMutableTransaction rawTx(tx_);
-            for (SendManyInputUTXO & t : t_inputs_) {
-                uint256 txid = std::get<0>(t);
-                int vout = std::get<1>(t);
-                CAmount amount = std::get<2>(t);
-                CTxIn in(COutPoint(txid, vout));
+            for (COutput & t : t_inputs_)
+            {
+                CTxIn in(COutPoint(t.tx->GetHash(), t.i));
                 rawTx.vin.push_back(in);
             }
             if (ASSETCHAINS_SYMBOL[0] == 0)
@@ -381,13 +474,12 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     }
 
     LogPrint((isfromtaddr_) ? "zrpc" : "zrpcunsafe", "%s: spending %s to send %s with fee %s\n",
-            getId(), FormatMoney(targetAmount), FormatMoney(sendAmount), FormatMoney(minersFee));
+            getId(), targetAllAmounts.ToUniValue().write(1,2), sendAllAmounts.ToUniValue().write(1,2), FormatMoney(minersFee));
     LogPrint("zrpc", "%s: transparent input: %s (to choose from)\n", getId(), FormatMoney(t_inputs_total));
     LogPrint("zrpcunsafe", "%s: private input: %s (to choose from)\n", getId(), FormatMoney(z_inputs_total));
     LogPrint("zrpc", "%s: transparent output: %s\n", getId(), FormatMoney(t_outputs_total));
     LogPrint("zrpcunsafe", "%s: private output: %s\n", getId(), FormatMoney(z_outputs_total));
     LogPrint("zrpc", "%s: fee: %s\n", getId(), FormatMoney(minersFee));
-
 
     /**
      * SCENARIO #0
@@ -415,7 +507,8 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         }
 
         // Set change address if we are using transparent funds
-        // use fromtaddr_ if this is coming from an identity
+        // use fromtaddr_ if this is coming from a specified identity
+        // otherwise, generate a change address
         CReserveKey keyChange(pwalletMain);
         if (isfromtaddr_) {
             LOCK2(cs_main, pwalletMain->cs_wallet);
@@ -424,7 +517,8 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
             CTxDestination changeAddr;
 
-            if (fromtaddr_.which() == COptCCParams::ADDRTYPE_ID)
+            if (fromtaddr_.which() == COptCCParams::ADDRTYPE_ID &&
+                !GetDestinationID(fromtaddr_).IsNull())
             {
                 changeAddr = fromtaddr_;
             }
@@ -452,7 +546,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             ops.push_back(t.op);
             notes.push_back(t.note);
             sum += t.note.value();
-            if (sum >= targetAmount) {
+            if (sum >= targetNativeAmount) {
                 break;
             }
         }
@@ -487,7 +581,6 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
             builder_.AddSaplingOutput(ovk, to, value, memo);
         }
-
 
         // Add transparent outputs
         for (auto r : t_outputs_) {
@@ -566,7 +659,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     for (auto o : z_sprout_inputs_) {
         zInputsDeque.push_back(o);
         tmp += std::get<2>(o);
-        if (tmp >= targetAmount) {
+        if (tmp >= targetNativeAmount) {
             break;
         }
     }
@@ -661,7 +754,6 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     /**
      * END SCENARIO #2
      */
-
 
 
     /**
@@ -889,7 +981,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             } else if (outAmount > jsInputValue) {
                 // Any amount due is owed to the recipient.  Let the miners fee get paid first.
                 CAmount due = outAmount - jsInputValue;
-                SendManyRecipient r = SendManyRecipient(address, due, hexMemo);
+                SendManyRecipient r = SendManyRecipient(address, due, hexMemo, CScript());
                 zOutputsDeque.push_front(r);
 
                 // reduce the amount being sent right now to the value of all inputs
@@ -941,10 +1033,33 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
 bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false) 
 {
-    std::set<CTxDestination> destinations;
-    destinations.insert(fromtaddr_);
+    assert(isfromtaddr_);
 
-    //printf("Looking for %s\n", boost::apply_visitor(AddressVisitorString(), fromtaddr_).c_str());
+    std::set<CTxDestination> destinations;
+
+    bool wildCardPKH = false;
+    bool wildCardID = false;
+
+    // if no specific address type, wildcard outputs to all transparent addresses and IDs are valid to consider
+    if (fromtaddr_.which() == COptCCParams::ADDRTYPE_INVALID)
+    {
+        wildCardPKH = true;
+        wildCardID = true;
+    }
+    // wildcard for all transparent addresses, except IDs is null PKH
+    else if (fromtaddr_.which() == COptCCParams::ADDRTYPE_PKH && GetDestinationID(fromtaddr_).IsNull())
+    {
+        wildCardPKH = true;
+    }
+    // wildcard for all ID transparent outputs is null ID
+    else if (fromtaddr_.which() == COptCCParams::ADDRTYPE_ID && GetDestinationID(fromtaddr_).IsNull())
+    {
+        wildCardID = true;
+    }
+    else
+    {
+        destinations.insert(fromtaddr_);
+    }
 
     vector<COutput> vecOutputs;
 
@@ -967,33 +1082,47 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
             continue;
         }
 
-        const CScript &scriptPubKey = out.tx->vout[out.i].scriptPubKey;
+        CTxDestination address;
+        if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address)) {
+            continue;
+        }
 
-        if (destinations.size()) {
-            if (!ExtractDestination(scriptPubKey, dest)) {
+        if (wildCardID || wildCardPKH)
+        {
+            bool keep = false;
+            if (wildCardPKH)
+            {
+                keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
+            }
+            if (!keep && wildCardID)
+            {
+                keep = address.which() == address.which() == COptCCParams::ADDRTYPE_ID;
+            }
+            if (!keep)
+            {
                 continue;
             }
-
-            //printf("%s\n", boost::apply_visitor(AddressVisitorString(), dest).c_str());
-            if (!destinations.count(dest)) {
+        }
+        else
+        {
+            if (!destinations.count(address)) {
                 continue;
             }
         }
 
-        CAmount nValue = out.tx->vout[out.i].nValue;
-        
-        SendManyInputUTXO utxo(out.tx->GetHash(), out.i, nValue, out.tx->IsCoinBase(), scriptPubKey);
-        t_inputs_.push_back(utxo);
+        const CScript &scriptPubKey = out.tx->vout[out.i].scriptPubKey;
+
+        t_inputs_.push_back(out);
+        t_inputs_txids_.push_back(out.tx->GetHash());
     }
 
     // sort in ascending order, so smaller utxos appear first
-    std::sort(t_inputs_.begin(), t_inputs_.end(), [](SendManyInputUTXO i, SendManyInputUTXO j) -> bool {
-        return ( std::get<2>(i) < std::get<2>(j));
+    std::sort(t_inputs_.begin(), t_inputs_.end(), [](COutput i, COutput j) -> bool {
+        return ( i.tx->vout[i.i].nValue < j.tx->vout[j.i].nValue );
     });
 
     return t_inputs_.size() > 0;
 }
-
 
 bool AsyncRPCOperation_sendmany::find_unspent_notes() {
     std::vector<SproutNoteEntry> sproutEntries;
@@ -1244,13 +1373,18 @@ void AsyncRPCOperation_sendmany::add_taddr_outputs_to_tx() {
     for (SendManyRecipient & r : t_outputs_) {
         std::string outputAddress = std::get<0>(r);
         CAmount nAmount = std::get<1>(r);
+        CScript scriptPubKey = std::get<3>(r);
 
         CTxDestination address = DecodeDestination(outputAddress);
         if (!IsValidDestination(address)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid output address, not a valid taddr.");
         }
 
-        CScript scriptPubKey = GetScriptForDestination(address);
+        // if we already have script contents, don't make a new one
+        if (scriptPubKey.size() == 0)
+        {
+            scriptPubKey = GetScriptForDestination(address);
+        }
 
         CTxOut out(nAmount, scriptPubKey);
         rawTx.vout.push_back(out);
