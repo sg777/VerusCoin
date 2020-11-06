@@ -3285,6 +3285,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     bool fromFractional = false;
 
     std::vector<CRecipient> outputs;
+    std::set<libzcash::PaymentAddress> zaddrDestSet;
 
     LOCK2(cs_main, mempool.cs);
 
@@ -3294,6 +3295,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     // by the async operation, to ensure that we don't need to lookup IDs in that operation
     if (hasZSource)
     {
+        zaddrDestSet.insert(zaddress);
         sourceAddress = EncodePaymentAddress(zaddress);
     }
 
@@ -3386,6 +3388,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // re-encode destination, in case it is specified as the private address of an ID
             if (hasZDest)
             {
+                // no duplicate z-address destinations
+                if (zaddrDestSet.count(zaddressDest))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot duplicate private address source or destination");
+                }
+                zaddrDestSet.insert(zaddressDest);
                 destStr = EncodePaymentAddress(zaddressDest);
             }
 
