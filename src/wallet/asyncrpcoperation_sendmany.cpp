@@ -104,7 +104,13 @@ AsyncRPCOperation_sendmany::AsyncRPCOperation_sendmany(
         }
         else if (fromAddress == "i*")
         {
+            // null i-address is wildcard for i-address
             fromtaddr_ = CIdentityID(uint160());
+        }
+        else
+        {
+            // invalid t-address is full wildcard
+            fromtaddr_ = CTxDestination();
         }
     }
     else
@@ -1096,7 +1102,7 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
             }
             if (!keep && wildCardID)
             {
-                keep = address.which() == address.which() == COptCCParams::ADDRTYPE_ID;
+                keep = address.which() == COptCCParams::ADDRTYPE_ID;
             }
             if (!keep)
             {
