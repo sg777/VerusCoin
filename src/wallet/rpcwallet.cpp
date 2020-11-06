@@ -4417,7 +4417,12 @@ UniValue z_getbalance(const UniValue& params, bool fHelp)
         taddr = DecodeDestination(fromaddress);
         fromTaddr = IsValidDestination(taddr);
         if (!fromTaddr) {
-            auto res = DecodePaymentAddress(fromaddress);
+            libzcash::PaymentAddress res;
+            bool isSapling = pwalletMain->GetAndValidateSaplingZAddress(fromaddress, res);
+            if (!isSapling)
+            {
+                res = DecodePaymentAddress(fromaddress);
+            }
             if (!IsValidPaymentAddress(res)) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, should be a taddr or zaddr.");
             }
