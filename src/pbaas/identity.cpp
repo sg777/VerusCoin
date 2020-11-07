@@ -1256,7 +1256,7 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         // if not fulfilled, neither recovery data nor its spend condition may be modified
         if (!fulfilled)
         {
-            // !! DO NOT COMMIT THESE COMMENTS - ONLY TO ALLOW USE ON TESTNET WITH NO FORK
+            // !! DO NOT COMMIT THESE COMMENTS IN MAINNET DEFI RELEASE - ONLY TO ALLOW USE ON TESTNET WITH NO FORK
             //if (oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity, height))
             //{
             //    return eval->Error("Unauthorized modification of recovery information");
