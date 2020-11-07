@@ -1200,7 +1200,7 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
         }
     }
 
-    out.push_back(Pair("spendableoutput", scriptPubKey.IsSpendableOutputType() ? "true" : "false"));
+    out.push_back(Pair("spendableoutput", scriptPubKey.IsSpendableOutputType() ? true : false));
 
     if (tokensOut.valueMap.size())
     {

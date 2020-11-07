@@ -70,8 +70,16 @@ AsyncRPCOperation_sendmany::AsyncRPCOperation_sendmany(
         std::vector<SendManyRecipient> zOutputs,
         int minDepth,
         CAmount fee,
-        UniValue contextInfo) :
-        tx_(contextualTx), fromaddress_(fromAddress), t_outputs_(tOutputs), z_outputs_(zOutputs), mindepth_(minDepth), fee_(fee), contextinfo_(contextInfo)
+        UniValue contextInfo,
+        bool fromsendcurrency) :
+        tx_(contextualTx),
+        fromaddress_(fromAddress),
+        t_outputs_(tOutputs),
+        z_outputs_(zOutputs),
+        mindepth_(minDepth),
+        fee_(fee),
+        contextinfo_(contextInfo),
+        sendCurrency(fromsendcurrency)
 {
     assert(fee_ >= 0);
 
@@ -1452,7 +1460,7 @@ UniValue AsyncRPCOperation_sendmany::getStatus() const {
     }
 
     UniValue obj = v.get_obj();
-    obj.push_back(Pair("method", "z_sendmany"));
+    obj.push_back(Pair("method", sendCurrency ? "sendcurrency" : "z_sendmany"));
     obj.push_back(Pair("params", contextinfo_ ));
     return obj;
 }

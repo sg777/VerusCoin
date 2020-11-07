@@ -57,7 +57,8 @@ public:
         std::vector<SendManyRecipient> zOutputs,
         int minDepth,
         CAmount fee = ASYNC_RPC_OPERATION_DEFAULT_MINERS_FEE,
-        UniValue contextInfo = NullUniValue);
+        UniValue contextInfo = NullUniValue,
+        bool fromsendcurrency=false);
     virtual ~AsyncRPCOperation_sendmany();
     
     // We don't want to be copied or moved around
@@ -70,8 +71,8 @@ public:
 
     virtual UniValue getStatus() const;
 
-    bool testmode = false;  // Set to true to disable sending txs and generating proofs
-
+    bool testmode = false;              // Set to true to disable sending txs and generating proofs
+    bool sendCurrency = false;          // set to true if this is from the "sendcurrency" API
     bool paymentDisclosureMode = false; // Set to true to save esk for encrypted notes in payment disclosure database.
 
 private:

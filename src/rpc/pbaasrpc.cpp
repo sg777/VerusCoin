@@ -3863,7 +3863,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                                  zOutputs,
                                                                                  hasZSource ? 1 : 0, 
                                                                                  feeAmount, 
-                                                                                 uniOutputs));
+                                                                                 uniOutputs,
+                                                                                 true) );
     q->addOperation(operation);
     AsyncRPCOperationId operationId = operation->getId();
     return operationId;
