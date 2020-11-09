@@ -3245,7 +3245,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "from any source set of UTXOs controlled by the wallet.\n"
 
             "\nArguments\n"
-            "1. \"fromaddress\"             (string, required) The Sapling, VerusID, or wildcard address to send funds from. \"*\", \"R*\",, or \"i*\" are valid wildcards\n"
+            "1. \"fromaddress\"             (string, required) The Sapling, VerusID, or wildcard address to send funds from. \"*\", \"R*\", or \"i*\" are valid wildcards\n"
             "2. \"outputs\"                 (array, required) An array of json objects representing currencies, amounts, and destinations to send.\n"
             "    [{\n"
             "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
