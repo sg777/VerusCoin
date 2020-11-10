@@ -4186,7 +4186,16 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
     vector<COutput> vecOutputs;
     CAmount balance = 0;
 
-    if (transparentAddress.length() > 0) {
+
+    bool wildCardRAddress = transparentAddress == "R*";
+    bool wildCardiAddress = transparentAddress == "i*";
+    if (transparentAddress == "*")
+    {
+        wildCardRAddress = true;
+        wildCardiAddress = true;
+    }
+
+    if (!(wildCardRAddress || wildCardiAddress) && transparentAddress.length() > 0) {
         CTxDestination taddr = DecodeDestination(transparentAddress);
         if (!IsValidDestination(taddr)) {
             throw std::runtime_error("invalid transparent address");
@@ -4207,14 +4216,33 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
             continue;
         }
 
-        if (destinations.size()) {
+        if (wildCardRAddress || wildCardiAddress || destinations.size()) {
             CTxDestination address;
             if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address)) {
                 continue;
             }
 
-            if (!destinations.count(address)) {
-                continue;
+            if (wildCardRAddress || wildCardiAddress)
+            {
+                bool keep = false;
+                if (wildCardRAddress)
+                {
+                    keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
+                }
+                if (!keep && wildCardiAddress)
+                {
+                    keep = address.which() == COptCCParams::ADDRTYPE_ID;
+                }
+                if (!keep)
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                if (!destinations.count(address)) {
+                    continue;
+                }
             }
         }
 
@@ -4228,7 +4256,16 @@ CAmount getBalanceZaddr(std::string address, int minDepth = 1, bool ignoreUnspen
     CAmount balance = 0;
     std::vector<SproutNoteEntry> sproutEntries;
     std::vector<SaplingNoteEntry> saplingEntries;
+
+
     LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    libzcash::PaymentAddress zaddress;
+    if (pwalletMain->GetAndValidateSaplingZAddress(address, zaddress))
+    {
+        address = EncodePaymentAddress(zaddress);
+    }
+
     pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, address, minDepth, true, ignoreUnspendable);
     for (auto & entry : sproutEntries) {
         balance += CAmount(entry.note.value());
@@ -4369,15 +4406,29 @@ UniValue z_getbalance(const UniValue& params, bool fHelp)
     // Check that the from address is valid.
     auto fromaddress = params[0].get_str();
     bool fromTaddr = false;
-    CTxDestination taddr = DecodeDestination(fromaddress);
-    fromTaddr = IsValidDestination(taddr);
-    if (!fromTaddr) {
-        auto res = DecodePaymentAddress(fromaddress);
-        if (!IsValidPaymentAddress(res)) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, should be a taddr or zaddr.");
-        }
-        if (!boost::apply_visitor(PaymentAddressBelongsToWallet(pwalletMain), res)) {
-             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "From address does not belong to this node, spending key or viewing key not found.");
+    CTxDestination taddr;
+
+    if (fromaddress == "*" || fromaddress == "R*" || fromaddress == "i*")
+    {
+        fromTaddr = true;
+    }
+    else
+    {
+        taddr = DecodeDestination(fromaddress);
+        fromTaddr = IsValidDestination(taddr);
+        if (!fromTaddr) {
+            libzcash::PaymentAddress res;
+            bool isSapling = pwalletMain->GetAndValidateSaplingZAddress(fromaddress, res);
+            if (!isSapling)
+            {
+                res = DecodePaymentAddress(fromaddress);
+            }
+            if (!IsValidPaymentAddress(res)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, should be a taddr or zaddr.");
+            }
+            if (!boost::apply_visitor(PaymentAddressBelongsToWallet(pwalletMain), res)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "From address does not belong to this node, spending key or viewing key not found.");
+            }
         }
     }
 
@@ -4856,7 +4907,6 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
     std::vector<SendManyRecipient> zaddrRecipients;
     CAmount nTotalOut = 0;
 
-    bool containsSproutOutput = false;
     bool containsSaplingOutput = false;
 
     for (const UniValue& o : outputs.getValues()) {
@@ -4879,24 +4929,19 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
                 isZaddr = true;
 
                 bool toSapling = boost::get<libzcash::SaplingPaymentAddress>(&res) != nullptr;
-                bool toSprout = !toSapling;
-                noSproutAddrs = noSproutAddrs && toSapling;
-
-                containsSproutOutput |= toSprout;
+                if (!toSapling)
+                {
+                    throw JSONRPCError(
+                        RPC_INVALID_PARAMETER,
+                        "Sprout addresses are deprecated on the Verus network. Either use z_setmigration or send from Sprout to transparent or VerusID, then to a Sapling address.");
+                }
                 containsSaplingOutput |= toSapling;
 
-                // Sending to both Sprout and Sapling is currently unsupported using z_sendmany
-                if (containsSproutOutput && containsSaplingOutput) {
-                    throw JSONRPCError(
-                        RPC_INVALID_PARAMETER,
-                        "Cannot send to both Sprout and Sapling addresses using z_sendmany");
-                }
-
                 // If sending between shielded addresses, they must be the same type
-                if ((fromSprout && toSapling) || (fromSapling && toSprout)) {
+                if ((fromSprout && toSapling)) {
                     throw JSONRPCError(
                         RPC_INVALID_PARAMETER,
-                        "Cannot send between Sprout and Sapling addresses using z_sendmany");
+                        "Cannot send between Sprout and Sapling addresses using z_sendmany. Either use z_setmigration or send from Sprout to transparent or VerusID, then to a Sapling address.");
                 }
             } else {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ")+address );
@@ -4929,9 +4974,9 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, amount must be positive");
 
         if (isZaddr) {
-            zaddrRecipients.push_back( SendManyRecipient(address, nAmount, memo) );
+            zaddrRecipients.push_back( SendManyRecipient(address, nAmount, memo, CScript()) );
         } else {
-            taddrRecipients.push_back( SendManyRecipient(address, nAmount, memo) );
+            taddrRecipients.push_back( SendManyRecipient(address, nAmount, memo, CScript()) );
         }
 
         nTotalOut += nAmount;
@@ -4970,16 +5015,7 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
     for (int i = 0; i < zaddrRecipients.size(); i++) {
         auto address = std::get<0>(zaddrRecipients[i]);
         auto res = DecodePaymentAddress(address);
-        bool toSapling = boost::get<libzcash::SaplingPaymentAddress>(&res) != nullptr;
-        if (toSapling) {
-            mtx.vShieldedOutput.push_back(OutputDescription());
-        } else {
-            JSDescription jsdesc;
-            if (mtx.fOverwintered && (mtx.nVersion >= SAPLING_TX_VERSION)) {
-                jsdesc.proof = GrothProof();
-            }
-            mtx.vJoinSplit.push_back(jsdesc);
-        }
+        mtx.vShieldedOutput.push_back(OutputDescription());
     }
     CTransaction tx(mtx);
     txsize += GetSerializeSize(tx, SER_NETWORK, tx.nVersion);
@@ -5024,7 +5060,7 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
             if (nFee > nTotalOut) {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Fee %s is greater than the sum of outputs %s and also greater than the default fee", FormatMoney(nFee), FormatMoney(nTotalOut)));
             }
-	}
+	    }
     }
 
     // Use input parameters as the optional context info to be returned by z_getoperationstatus and z_getoperationresult.

@@ -506,7 +506,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
 
     if (!maxReserveRatio)
     {
-        LogPrintf("%s: attempting to convert amounts on non-reserve currency\n", __func__);
+        LogPrintf("%s: attempting to convert amounts on non-fractional currency\n", __func__);
         return rates;
     }
 
