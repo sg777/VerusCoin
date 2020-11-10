@@ -955,6 +955,7 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
 {
     txnouttype type;
     vector<CTxDestination> addresses;
+    CCurrencyValueMap tokensOut = scriptPubKey.ReserveOutValue();
 
     // needs to be an object
     if (!out.isObject())
@@ -967,6 +968,7 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
     out.push_back(Pair("type", GetTxnOutputType(type)));
 
     COptCCParams p;
+
     if (scriptPubKey.IsPayToCryptoCondition(p) && p.version >= COptCCParams::VERSION_V2)
     {
         switch(p.evalCode)
@@ -1195,6 +1197,21 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
             default:
                 out.push_back(Pair("unknown", ""));
+        }
+    }
+
+    out.push_back(Pair("spendableoutput", scriptPubKey.IsSpendableOutputType() ? true : false));
+
+    if (tokensOut.valueMap.size())
+    {
+        UniValue reserveBal(UniValue::VOBJ);
+        for (auto &oneBalance : tokensOut.valueMap)
+        {
+            reserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        }
+        if (reserveBal.size())
+        {
+            out.push_back(Pair("reserve_balance", reserveBal));
         }
     }
 

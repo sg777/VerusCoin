@@ -22,9 +22,10 @@
 #include "txmempool.h"
 #include "util.h"
 #include "validationinterface.h"
-#ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
-#endif
+#include "asyncrpcqueue.h"
+#include "asyncrpcoperation.h"
+#include "wallet/asyncrpcoperation_sendmany.h"
 #include "timedata.h"
 
 #include <stdint.h>
@@ -3104,7 +3105,9 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
 std::vector<CAddressUnspentDbEntry> GetFractionalNotarizationsForReserve(const uint160 &currencyID)
 {
     std::vector<CAddressUnspentDbEntry> fractionalNotarizations;
-    CIndexID indexKey = CCoinbaseCurrencyState::IndexConverterKey(currencyID, currencyID == ASSETCHAINS_CHAINID ? EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION);
+    CIndexID indexKey = CCoinbaseCurrencyState::IndexConverterKey(currencyID,
+                                                                  (currencyID != VERUS_CHAINID && currencyID == ASSETCHAINS_CHAINID) ? 
+                                                                    EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION);
     if (!GetAddressUnspent(indexKey, CScript::P2IDX, fractionalNotarizations))
     {
         LogPrintf("%s: Error reading unspent index\n", __func__);
@@ -3235,14 +3238,14 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 2 || params.size() > 3)
     {
         throw runtime_error(
-            "sendcurrency \"fromaddress\" '[{\"address\":... ,\"amount\":...},...]' (returntx)\n"
+            "sendcurrency \"fromaddress\" '[{\"address\":... ,\"amount\":...},...]' (feeamount)\n"
             "\nThis sends one or many Verus outputs to one or many addresses on the same or another chain.\n"
             "Funds are sourced automatically from the current wallet, which must be present, as in sendtoaddress.\n"
             "If \"fromaddress\" is specified, all funds will be taken from that address, otherwise funds may come\n"
             "from any source set of UTXOs controlled by the wallet.\n"
 
             "\nArguments\n"
-            "1. \"fromaddress\"             (string, required) The VerusID or address to send the funds from. \"*\" means all addresses\n"
+            "1. \"fromaddress\"             (string, required) The Sapling, VerusID, or wildcard address to send funds from. \"*\", \"R*\", or \"i*\" are valid wildcards\n"
             "2. \"outputs\"                 (array, required) An array of json objects representing currencies, amounts, and destinations to send.\n"
             "    [{\n"
             "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
@@ -3255,7 +3258,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "      \"preconvert\":\"false\", (bool,   optional) auto-convert to PBaaS currency at market price, this only works if the order is mined before block start of the chain\n"
             "      \"subtractfee\":\"bool\", (bool,   optional) if true, output must be of native or convertible reserve currency, and output will be reduced by share of fee\n"
             "    }, ... ]\n"
-            "3. \"returntx\"                (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed and returned\n"
+            "3. \"feeamount\"               (bool,   optional) specific fee amount requested instead of default miner's fee\n"
 
             "\nResult:\n"
             "   \"txid\" : \"transactionid\" (string) The transaction id if (returntx) is false\n"
@@ -3270,21 +3273,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     std::string sourceAddress = uni_get_str(params[0]);
     CTxDestination sourceDest;
 
-    if (!(sourceAddress == "*" || (sourceDest = DecodeDestination(sourceAddress)).which() != COptCCParams::ADDRTYPE_INVALID))
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be source address/identity or \"*\". See help.");
-    }
-
-    if (!params[1].isArray() || !params[1].size())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. Second parameter must be array of outputs. See help.");
-    }
-
-    bool returnTx = false;
-    if (params.size() > 2)
-    {
-        returnTx = uni_get_bool(params[2]);
-    }
+    bool wildCardTransparentAddress = sourceAddress == "*";
+    bool wildCardRAddress = sourceAddress == "R*";
+    bool wildCardiAddress = sourceAddress == "i*";
+    bool wildCardAddress = wildCardTransparentAddress || wildCardRAddress || wildCardiAddress;
 
     bool isVerusActive = IsVerusActive();
     CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
@@ -3293,10 +3285,45 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     bool fromFractional = false;
 
     std::vector<CRecipient> outputs;
+    std::set<libzcash::PaymentAddress> zaddrDestSet;
+
+    LOCK2(cs_main, mempool.cs);
+
+    libzcash::PaymentAddress zaddress;
+    bool hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(sourceAddress, zaddress);
+    // if we have a z-address as a source, re-encode it to a string, which is used
+    // by the async operation, to ensure that we don't need to lookup IDs in that operation
+    if (hasZSource)
+    {
+        zaddrDestSet.insert(zaddress);
+        sourceAddress = EncodePaymentAddress(zaddress);
+    }
+
+    if (!(hasZSource ||
+          wildCardAddress ||
+          (sourceDest = DecodeDestination(sourceAddress)).which() != COptCCParams::ADDRTYPE_INVALID))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\",, or \"i*\",. See help.");
+    }
+
+    if (!params[1].isArray() || !params[1].size())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. Second parameter must be array of outputs. See help.");
+    }
+
+    CAmount feeAmount = DEFAULT_TRANSACTION_FEE;
+    if (params.size() > 2)
+    {
+        feeAmount = AmountFromValue(params[2]);
+    }
 
     const UniValue &uniOutputs = params[1];
 
     uint32_t height = chainActive.Height();
+
+    TransactionBuilder tb(Params().GetConsensus(), height + 1, pwalletMain);
+    std::vector<SendManyRecipient> tOutputs;
+    std::vector<SendManyRecipient> zOutputs;
 
     try
     {
@@ -3325,8 +3352,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 CheckPBaaSAPIsValid();
             }
 
-            LOCK2(cs_main, mempool.cs);
-
             CCurrencyDefinition sourceCurrencyDef;
             uint160 sourceCurrencyID;
             if (currencyStr != "")
@@ -3342,6 +3367,34 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 sourceCurrencyDef = thisChain;
                 sourceCurrencyID = sourceCurrencyDef.GetID();
                 currencyStr = thisChain.name;
+            }
+
+            if (hasZSource && sourceCurrencyID != ASSETCHAINS_CHAINID)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Only native " + thisChain.name + " currency can be sourced from a z-address.");
+            }
+
+            libzcash::PaymentAddress zaddressDest;
+            bool hasZDest = pwalletMain->GetAndValidateSaplingZAddress(destStr, zaddressDest);
+            if (hasZDest &&
+                (convertToStr.size() ||
+                 viaStr.size() ||
+                 burnCurrency ||
+                 mintNew ||
+                 preConvert))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert, preconvert, mint, or burn currency being sent to a z-address.");
+            }
+            // re-encode destination, in case it is specified as the private address of an ID
+            if (hasZDest)
+            {
+                // no duplicate z-address destinations
+                if (zaddrDestSet.count(zaddressDest))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot duplicate private address source or destination");
+                }
+                zaddrDestSet.insert(zaddressDest);
+                destStr = EncodePaymentAddress(zaddressDest);
             }
 
             CCurrencyDefinition convertToCurrencyDef;
@@ -3415,7 +3468,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             CCurrencyDefinition destSystemDef;
             std::vector<std::string> subNames;
 
-            toFractional = convertToCurrencyDef.IsFractional() && convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID);
+            toFractional = convertToCurrencyDef.IsValid() && convertToCurrencyDef.IsFractional() && convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID);
             fromFractional = !toFractional &&
                              sourceCurrencyDef.IsFractional() && !convertToCurrencyID.IsNull() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID);
             if (toFractional || preConvert)
@@ -3426,7 +3479,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             {
                 destSystemID = sourceCurrencyDef.systemID;
             }
-            else
+            else if (!hasZDest)
             {
                 // check for explicit system name specified
                 subNames = ParseSubNames(destStr, systemDestStr, true);
@@ -3457,319 +3510,341 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Only the ID of a mintable currency can mint such a currency. Minting cannot be combined with conversion.");
             }
 
-            CTxDestination destination = ValidateDestination(destStr);
-            CTransferDestination transferDestination;
-            if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
+            if (hasZDest)
             {
-                if (destSystemDef.options & destSystemDef.OPTION_GATEWAY)
+                // if memo starts with "#", convert it from a string to a hex value
+                if (memoStr.size() > 1 && memoStr[0] == '#')
                 {
-                    std::vector<unsigned char> rawDestBytes;
-                    for (int i = 0; i < subNames.size(); i++)
+                    // make a hex string out of the chars without the "#"
+                    memoStr = HexBytes((const unsigned char *)&(memoStr[1]), memoStr.size());
+                }
+
+                if (memoStr.size() && !IsHex(memoStr)) 
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, expected memo data in hexadecimal format or as a non-zero length string, starting with \"#\".");
+                }
+
+                if (memoStr.length() > ZC_MEMO_SIZE*2) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER,  strprintf("Invalid parameter, size of memo is larger than maximum allowed %d", ZC_MEMO_SIZE ));
+                }
+
+                zOutputs.emplace_back(destStr, sourceAmount, memoStr, CScript());
+            }
+            else
+            {
+                if (memoStr.size() > 0)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Memo is only an option for z-address destinations.");
+                }
+
+                CTxDestination destination = ValidateDestination(destStr);
+                CTransferDestination transferDestination;
+                if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
+                {
+                    if (destSystemDef.options & destSystemDef.OPTION_GATEWAY)
                     {
-                        if (i)
+                        std::vector<unsigned char> rawDestBytes;
+                        for (int i = 0; i < subNames.size(); i++)
                         {
-                            rawDestBytes.push_back('.');
+                            if (i)
+                            {
+                                rawDestBytes.push_back('.');
+                            }
+                            rawDestBytes.insert(rawDestBytes.end(), subNames[i].begin(), subNames[i].end());
                         }
-                        rawDestBytes.insert(rawDestBytes.end(), subNames[i].begin(), subNames[i].end());
+                        if (!rawDestBytes.size())
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
+                        }
+                        transferDestination = CTransferDestination(CTransferDestination::DEST_RAW, rawDestBytes);
                     }
-                    if (!rawDestBytes.size())
+                    else
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
                     }
-                    transferDestination = CTransferDestination(CTransferDestination::DEST_RAW, rawDestBytes);
                 }
-                else
+
+                CTxDestination refundDestination = DecodeDestination(refundToStr);
+                if (refundDestination.which() == COptCCParams::ADDRTYPE_ID &&
+                    GetDestinationID(refundDestination) != GetDestinationID(destination))
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
+                    if (!CIdentity::LookupIdentity(GetDestinationID(refundDestination)).IsValid())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "When refunding to an ID, the ID must be valid.");
+                    }
                 }
-            }
-
-            CTxDestination refundDestination = DecodeDestination(refundToStr);
-            if (refundDestination.which() == COptCCParams::ADDRTYPE_ID &&
-                GetDestinationID(refundDestination) != GetDestinationID(destination))
-            {
-                if (!CIdentity::LookupIdentity(GetDestinationID(refundDestination)).IsValid())
+                else if (refundDestination.which() == COptCCParams::ADDRTYPE_INVALID)
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "When refunding to an ID, the ID must be valid.");
+                    refundDestination = destination;
                 }
-            }
-            else if (refundDestination.which() == COptCCParams::ADDRTYPE_INVALID)
-            {
-                refundDestination = destination;
-            }
 
-            if (memoStr.size() > 512)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Memo, if specified, must be under 512 characters.");
-            }
-
-            // make one output
-            CRecipient oneOutput;
-
-            if (preConvert)
-            {
-                flags |= (CReserveTransfer::PRECONVERT + CReserveTransfer::FEE_DEST_NATIVE);
-            }
-            if (!burnCurrency && !convertToCurrencyID.IsNull())
-            {
-                flags |= CReserveTransfer::CONVERT;
-            }
-            else if (mintNew)
-            {
-                flags |= (CReserveTransfer::MINT_CURRENCY + CReserveTransfer::FEE_DEST_NATIVE);
-                convertToCurrencyID = sourceCurrencyID;
-                convertToCurrencyDef = sourceCurrencyDef;
-            }
-
-            // are we a system/chain transfer with or without conversion?
-            if (destSystemID != thisChainID)
-            {
-                CCcontract_info CC;
-                CCcontract_info *cp;
-                cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
-                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+                // make one output
+                CRecipient oneOutput;
 
                 if (preConvert)
                 {
-                    if (convertToCurrencyID.IsNull())
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot preconvert to unspecified or invalid currency.");
-                    }
-                    CCurrencyValueMap validConversionCurrencies = CCurrencyValueMap(convertToCurrencyDef.currencies, 
-                                                                                    std::vector<CAmount>(convertToCurrencyDef.currencies.size()));
-                    if (!validConversionCurrencies.valueMap.count(sourceCurrencyID))
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ".");
-                    }
-                    if (convertToCurrencyDef.startBlock <= (height + 1))
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Too late to convert " + sourceCurrencyDef.name + " to " + convertToStr + ", as pre-launch is over.");
-                    }
-
-                    CReserveTransfer rt = CReserveTransfer(flags, 
-                                                           sourceCurrencyID, 
-                                                           sourceAmount,
-                                                           0,
-                                                           convertToCurrencyID,
-                                                           DestinationToTransferDestination(destination));
-                    rt.nFees = rt.CalculateTransferFee();
-
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-
-                    oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : 0;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
+                    flags |= (CReserveTransfer::PRECONVERT + CReserveTransfer::FEE_DEST_NATIVE);
                 }
-                // only valid conversion for a cross-chain send is to the native currency of the chain
-                else if (convertToCurrencyID == destSystemID)
+                if (!burnCurrency && !convertToCurrencyID.IsNull())
                 {
                     flags |= CReserveTransfer::CONVERT;
-                    // native currency must be the currency we are converting to, and the source must be a reserve
-                    auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
-                    if (!reserveMap.count(sourceCurrencyID))
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 3");
-                    }
-                    // converting from reserve to a fractional of that reserve
-                    auto dest = DestinationToTransferDestination(destination);
-                    auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
-                    CReserveTransfer rt = CReserveTransfer(flags,
-                                                           sourceCurrencyID, 
-                                                           sourceAmount, 
-                                                           fees, 
-                                                           convertToCurrencyID, 
-                                                           dest);
-
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-
-                    oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : fees;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                 }
-                else if (convertToCurrencyID.IsNull())
+                else if (mintNew)
                 {
-                    auto dest = DestinationToTransferDestination(destination);
-                    auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
-                    CReserveTransfer rt = CReserveTransfer(flags,
-                                                           sourceCurrencyID, 
-                                                           sourceAmount, 
-                                                           fees, 
-                                                           sourceCurrencyID, 
-                                                           dest);
-
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-
-                    oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : fees;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
+                    flags |= (CReserveTransfer::MINT_CURRENCY + CReserveTransfer::FEE_DEST_NATIVE);
+                    convertToCurrencyID = sourceCurrencyID;
+                    convertToCurrencyDef = sourceCurrencyDef;
                 }
-            }
-            // a currency conversion without transfer?
-            else if (!convertToCurrencyID.IsNull())
-            {
-                // if pre-converting to a token, it must be a non-reserve preconvert.
-                // if we pre-convert for a new chain launch, which is required for a reserve, it will not be as a token
-                if (convertToCurrencyDef.IsToken() && preConvert)
+
+                // are we a system/chain transfer with or without conversion?
+                if (destSystemID != thisChainID)
                 {
-                    if (convertToCurrencyDef.startBlock <= (height + 1))
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Too late to convert " + sourceCurrencyDef.name + " to " + convertToStr + ", as pre-launch is over.");
-                    }
-
-                    CCurrencyValueMap validConversionCurrencies = CCurrencyValueMap(convertToCurrencyDef.currencies, 
-                                                                                    std::vector<CAmount>(convertToCurrencyDef.currencies.size()));
-                    if (!validConversionCurrencies.valueMap.count(sourceCurrencyID))
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 1");
-                    }
-
                     CCcontract_info CC;
                     CCcontract_info *cp;
                     cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                     CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
-                    CReserveTransfer rt = CReserveTransfer(flags, 
+                    if (preConvert)
+                    {
+                        if (convertToCurrencyID.IsNull())
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot preconvert to unspecified or invalid currency.");
+                        }
+                        CCurrencyValueMap validConversionCurrencies = CCurrencyValueMap(convertToCurrencyDef.currencies, 
+                                                                                        std::vector<CAmount>(convertToCurrencyDef.currencies.size()));
+                        if (!validConversionCurrencies.valueMap.count(sourceCurrencyID))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ".");
+                        }
+                        if (convertToCurrencyDef.startBlock <= (height + 1))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Too late to convert " + sourceCurrencyDef.name + " to " + convertToStr + ", as pre-launch is over.");
+                        }
+
+                        CReserveTransfer rt = CReserveTransfer(flags, 
                                                             sourceCurrencyID, 
                                                             sourceAmount,
                                                             0,
                                                             convertToCurrencyID,
                                                             DestinationToTransferDestination(destination));
-                    rt.nFees = rt.CalculateTransferFee();
-                    oneOutput.nAmount = (sourceCurrencyID == thisChainID) ? sourceAmount + rt.nFees : rt.nFees;
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
-                }
-                else if (!preConvert && (mintNew || burnCurrency || toFractional || fromFractional))
-                {
-                    // the following cases end up here:
-                    //   1. we are minting or burning currency
-                    //   2. we are converting from a fractional currency to its reserve or back
-                    //   3. we are converting from one reserve of a fractional currency to another reserve of the same fractional
-
-                    CCcontract_info CC;
-                    CCcontract_info *cp;
-                    cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
-                    CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-                    if (mintNew || burnCurrency)
-                    {
-                        // we onnly allow minting/burning of tokens right now
-                        // TODO: support centralized minting of native AND fractional currency
-                        // minting of fractional currency should emit coins without changing price by
-                        // adjusting reserve ratio
-                        if (!convertToCurrencyDef.IsToken())
-                        {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot mint or burn native currency " + convertToCurrencyDef.name);
-                        }
-                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
-
-                        if (burnCurrency)
-                        {
-                            flags |= CReserveTransfer::IMPORT_TO_SOURCE;
-                        }
-
-                        CReserveTransfer rt = CReserveTransfer(flags, 
-                                                               burnCurrency ? sourceCurrencyID : thisChainID, 
-                                                               sourceAmount,
-                                                               0,
-                                                               convertToCurrencyID,
-                                                               DestinationToTransferDestination(destination));
                         rt.nFees = rt.CalculateTransferFee();
-                        oneOutput.nAmount = rt.CalculateTransferFee();
-                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
-                    }
-                    else
-                    {
-                        flags |= CReserveTransfer::CONVERT;
-
-                        // determine the currency that is the fractional currency, whether that is the source
-                        // or destination
-                        CCurrencyDefinition *pFractionalCurrency = &sourceCurrencyDef;
-
-                        // determine the reserve currency of the destination that we are relevant to,
-                        // again, whether source or destination
-                        CCurrencyDefinition *pReserveCurrency = &convertToCurrencyDef;
-
-                        // is our destination currency, the conversion destination?
-                        if (toFractional)
-                        {
-                            pReserveCurrency = pFractionalCurrency;
-                            pFractionalCurrency = &convertToCurrencyDef;
-                        }
-                        else
-                        {
-                            flags |= CReserveTransfer::IMPORT_TO_SOURCE;
-                        }
-                        if (!secondCurrencyID.IsNull())
-                        {
-                            flags |= CReserveTransfer::RESERVE_TO_RESERVE;
-                        }
-
-                        if (pFractionalCurrency->startBlock > height)
-                        {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + " except through preconvert before the startblock has passed.");
-                        }
-
-                        auto reserveMap = pFractionalCurrency->GetCurrenciesMap();
-                        auto reserveIndexIt = reserveMap.find(pReserveCurrency->GetID());
-                        if (reserveIndexIt == reserveMap.end())
-                        {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". Must have reserve<->fractional relationship.");
-                        }
-
-                        // converting from reserve to a fractional of that reserve
-                        auto dest = DestinationToTransferDestination(destination);
-                        auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
-
-                        // since this is conversion to a reserve token, which must be fungible with Verus, we will take the fee from
-                        // source currency, in an amount we calculate to be equivalent to the expected fee amount in Verus + some buffer,
-                        // based on the current price, even if that price must be first converted from reserve to token value, then
-                        // back to Verus
-                        CChainNotarizationData cnd;
-                        if (!GetNotarizationData(pFractionalCurrency->GetID(), EVAL_ACCEPTEDNOTARIZATION, cnd))
-                        {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to get reserve currency data for " + pFractionalCurrency->name + ".");
-                        }
-
-                        CReserveTransfer rt = CReserveTransfer(flags,
-                                                               sourceCurrencyID, 
-                                                               sourceAmount, 
-                                                               fees, 
-                                                               convertToCurrencyID, 
-                                                               dest,
-                                                               secondCurrencyID);
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
-                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : 0;
+                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : 0;
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
+                    }
+                    // only valid conversion for a cross-chain send is to the native currency of the chain
+                    else if (convertToCurrencyID == destSystemID)
+                    {
+                        flags |= CReserveTransfer::CONVERT;
+                        // native currency must be the currency we are converting to, and the source must be a reserve
+                        auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
+                        if (!reserveMap.count(sourceCurrencyID))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 3");
+                        }
+                        // converting from reserve to a fractional of that reserve
+                        auto dest = DestinationToTransferDestination(destination);
+                        auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
+                        CReserveTransfer rt = CReserveTransfer(flags,
+                                                            sourceCurrencyID, 
+                                                            sourceAmount, 
+                                                            fees, 
+                                                            convertToCurrencyID, 
+                                                            dest);
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+
+                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : fees;
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
+                    }
+                    else if (convertToCurrencyID.IsNull())
+                    {
+                        auto dest = DestinationToTransferDestination(destination);
+                        auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
+                        CReserveTransfer rt = CReserveTransfer(flags,
+                                                            sourceCurrencyID, 
+                                                            sourceAmount, 
+                                                            fees, 
+                                                            sourceCurrencyID, 
+                                                            dest);
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+
+                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : fees;
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                 }
+                // a currency conversion without transfer?
+                else if (!convertToCurrencyID.IsNull())
+                {
+                    // if pre-converting to a token, it must be a non-reserve preconvert.
+                    // if we pre-convert for a new chain launch, which is required for a reserve, it will not be as a token
+                    if (convertToCurrencyDef.IsToken() && preConvert)
+                    {
+                        if (convertToCurrencyDef.startBlock <= (height + 1))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Too late to convert " + sourceCurrencyDef.name + " to " + convertToStr + ", as pre-launch is over.");
+                        }
+
+                        CCurrencyValueMap validConversionCurrencies = CCurrencyValueMap(convertToCurrencyDef.currencies, 
+                                                                                        std::vector<CAmount>(convertToCurrencyDef.currencies.size()));
+                        if (!validConversionCurrencies.valueMap.count(sourceCurrencyID))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 1");
+                        }
+
+                        CCcontract_info CC;
+                        CCcontract_info *cp;
+                        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+                        CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        CReserveTransfer rt = CReserveTransfer(flags, 
+                                                                sourceCurrencyID, 
+                                                                sourceAmount,
+                                                                0,
+                                                                convertToCurrencyID,
+                                                                DestinationToTransferDestination(destination));
+                        rt.nFees = rt.CalculateTransferFee();
+                        oneOutput.nAmount = (sourceCurrencyID == thisChainID) ? sourceAmount + rt.nFees : rt.nFees;
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
+                    }
+                    else if (!preConvert && (mintNew || burnCurrency || toFractional || fromFractional))
+                    {
+                        // the following cases end up here:
+                        //   1. we are minting or burning currency
+                        //   2. we are converting from a fractional currency to its reserve or back
+                        //   3. we are converting from one reserve of a fractional currency to another reserve of the same fractional
+
+                        CCcontract_info CC;
+                        CCcontract_info *cp;
+                        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+                        CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+                        if (mintNew || burnCurrency)
+                        {
+                            // we onnly allow minting/burning of tokens right now
+                            // TODO: support centralized minting of native AND fractional currency
+                            // minting of fractional currency should emit coins without changing price by
+                            // adjusting reserve ratio
+                            if (!convertToCurrencyDef.IsToken())
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot mint or burn native currency " + convertToCurrencyDef.name);
+                            }
+                            std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
+
+                            if (burnCurrency)
+                            {
+                                flags |= CReserveTransfer::IMPORT_TO_SOURCE;
+                            }
+
+                            CReserveTransfer rt = CReserveTransfer(flags, 
+                                                                burnCurrency ? sourceCurrencyID : thisChainID, 
+                                                                sourceAmount,
+                                                                0,
+                                                                convertToCurrencyID,
+                                                                DestinationToTransferDestination(destination));
+                            rt.nFees = rt.CalculateTransferFee();
+                            oneOutput.nAmount = rt.CalculateTransferFee();
+                            oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
+                        }
+                        else
+                        {
+                            flags |= CReserveTransfer::CONVERT;
+
+                            // determine the currency that is the fractional currency, whether that is the source
+                            // or destination
+                            CCurrencyDefinition *pFractionalCurrency = &sourceCurrencyDef;
+
+                            // determine the reserve currency of the destination that we are relevant to,
+                            // again, whether source or destination
+                            CCurrencyDefinition *pReserveCurrency = &convertToCurrencyDef;
+
+                            // is our destination currency, the conversion destination?
+                            if (toFractional)
+                            {
+                                pReserveCurrency = pFractionalCurrency;
+                                pFractionalCurrency = &convertToCurrencyDef;
+                            }
+                            else
+                            {
+                                flags |= CReserveTransfer::IMPORT_TO_SOURCE;
+                            }
+                            if (!secondCurrencyID.IsNull())
+                            {
+                                flags |= CReserveTransfer::RESERVE_TO_RESERVE;
+                            }
+
+                            if (pFractionalCurrency->startBlock > (height + 1))
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + " except through preconvert before the startblock has passed.");
+                            }
+
+                            auto reserveMap = pFractionalCurrency->GetCurrenciesMap();
+                            auto reserveIndexIt = reserveMap.find(pReserveCurrency->GetID());
+                            if (reserveIndexIt == reserveMap.end())
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". Must have reserve<->fractional relationship.");
+                            }
+
+                            // converting from reserve to a fractional of that reserve
+                            auto dest = DestinationToTransferDestination(destination);
+                            auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
+
+                            // since this is conversion to a reserve token, which must be fungible with Verus, we will take the fee from
+                            // source currency, in an amount we calculate to be equivalent to the expected fee amount in Verus + some buffer,
+                            // based on the current price, even if that price must be first converted from reserve to token value, then
+                            // back to Verus
+                            CChainNotarizationData cnd;
+                            if (!GetNotarizationData(pFractionalCurrency->GetID(), EVAL_ACCEPTEDNOTARIZATION, cnd))
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to get reserve currency data for " + pFractionalCurrency->name + ".");
+                            }
+
+                            CReserveTransfer rt = CReserveTransfer(flags,
+                                                                sourceCurrencyID, 
+                                                                sourceAmount, 
+                                                                fees, 
+                                                                convertToCurrencyID, 
+                                                                dest,
+                                                                secondCurrencyID);
+
+                            std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+
+                            oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : 0;
+                            oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
+                        }
+                    }
+                    else
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 4");
+                    }
+                }
+                // or a normal native or reserve output?
                 else
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 4");
-                }
-            }
-            // or a normal native or reserve output?
-            else
-            {
-                if (sourceCurrencyID == thisChainID)
-                {
-                    oneOutput.nAmount = sourceAmount;
-                    oneOutput.scriptPubKey = GetScriptForDestination(destination);
-                }
-                else
-                {
-                    oneOutput.nAmount = 0;
+                    if (sourceCurrencyID == thisChainID)
+                    {
+                        oneOutput.nAmount = sourceAmount;
+                        oneOutput.scriptPubKey = GetScriptForDestination(destination);
+                    }
+                    else
+                    {
+                        oneOutput.nAmount = 0;
 
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({destination});
-                    CTokenOutput to(sourceCurrencyID, sourceAmount);
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({destination});
+                        CTokenOutput to(sourceCurrencyID, sourceAmount);
 
-                    oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
+                        oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
+                    }
                 }
+                if (!oneOutput.scriptPubKey.size())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Failure to make currency output");
+                }
+                tOutputs.emplace_back(destStr, oneOutput.nAmount, "", oneOutput.scriptPubKey);
             }
-            if (!oneOutput.scriptPubKey.size())
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Failure to make currency output");
-            }
-            oneOutput.fSubtractFeeFromAmount = subtractFee;
-            outputs.push_back(oneOutput);
         }
     }
     catch(const std::exception& e)
@@ -3778,46 +3853,21 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters.");
     }
 
-    // now figure out if we are pulling from a single address or all addresses
-    // make, sign, and send or return the transaction
-    CTxDestination *pSourceDest = (sourceDest.which() == COptCCParams::ADDRTYPE_INVALID) ? nullptr : &sourceDest;
-
-    CWalletTx wtx;
-    CReserveKey reserveKey(pwalletMain);
-    CAmount nFeesRet;
-    int nChangePosRet, nChangeOutputs;
-    std::string failReason;
-    int errorRet;
-
-    UniValue ret;
-    if ((errorRet = 
-         pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, nFeesRet, nChangePosRet, nChangeOutputs, failReason, NULL, pSourceDest, true))
-          == CWallet::RPC_OK)
-    {
-        // now, we either return or commit the transaction
-        if (returnTx)
-        {
-            // keep the change key
-            reserveKey.KeepKey();
-            ret = UniValue(EncodeHexTx(wtx));
-        }
-        else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-        {
-            UniValue jsonTx(UniValue::VOBJ);
-            TxToUniv(wtx, uint256(), jsonTx);
-            LogPrintf("%s\n", jsonTx.write(1,2).c_str());
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit reserve transaction " + wtx.GetHash().GetHex());
-        }
-        else
-        {
-            ret = UniValue(wtx.GetHash().GetHex());
-        }
-    }
-    else
-    {
-        throw JSONRPCError(errorRet, failReason);
-    }
-    return ret;
+    // Create operation and add to global queue
+    CMutableTransaction contextualTx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), height + 1);
+    std::shared_ptr<AsyncRPCQueue> q = getAsyncRPCQueue();
+    std::shared_ptr<AsyncRPCOperation> operation( new AsyncRPCOperation_sendmany(tb, 
+                                                                                 contextualTx, 
+                                                                                 sourceAddress, 
+                                                                                 tOutputs, 
+                                                                                 zOutputs,
+                                                                                 hasZSource ? 1 : 0, 
+                                                                                 feeAmount, 
+                                                                                 uniOutputs,
+                                                                                 true) );
+    q->addOperation(operation);
+    AsyncRPCOperationId operationId = operation->getId();
+    return operationId;
 }
 
 bool GetLastImportIn(uint160 chainID, CTransaction &lastImportTx)
@@ -3942,7 +3992,7 @@ UniValue getlastimportin(const UniValue& params, bool fHelp)
         if (GetLastImportIn(chainID, lastImportTx))
         {
             ret = UniValue(UniValue::VOBJ);
-            CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), chainActive.Height());
+            CMutableTransaction txTemplate = CreateNewContextualCMutableTransaction(Params().GetConsensus(), chainActive.Height() + 1);
             // find the import output
             COptCCParams p;
             int importIdx;

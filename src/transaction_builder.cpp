@@ -9,6 +9,8 @@
 #include "rpc/protocol.h"
 #include "script/sign.h"
 #include "utilmoneystr.h"
+#include "cc/CCinclude.h"
+#include "pbaas/reserves.h"
 
 #include <boost/variant.hpp>
 #include <librustzcash.h>
@@ -144,6 +146,7 @@ void TransactionBuilder::AddSproutOutput(
     CAmount value,
     std::array<unsigned char, ZC_MEMO_SIZE> memo)
 {
+    throw std::runtime_error("Sprout outputs are deprecated on the Verus network. Use a Sapling or later destination type for shielded outputs.");
     if (sproutParams == nullptr) {
         throw std::runtime_error("Cannot add Sprout outputs to a TransactionBuilder without Sprout params");
     }
@@ -155,11 +158,9 @@ void TransactionBuilder::AddSproutOutput(
 
 void TransactionBuilder::AddTransparentInput(COutPoint utxo, CScript scriptPubKey, CAmount value, uint32_t _nSequence)
 {
-    if (keystore == nullptr) {
-        if (!scriptPubKey.IsPayToCryptoCondition())
-        {
-            throw std::runtime_error("Cannot add transparent inputs to a TransactionBuilder without a keystore, except with crypto conditions");
-        }
+    if (keystore == nullptr && !scriptPubKey.IsPayToCryptoCondition())
+    {
+        throw std::runtime_error("Cannot add transparent inputs to a TransactionBuilder without a keystore, except with crypto conditions");
     }
 
     mtx.vin.emplace_back(utxo);
@@ -211,11 +212,12 @@ void TransactionBuilder::SendChangeTo(libzcash::SaplingPaymentAddress changeAddr
 {
     saplingChangeAddr = std::make_pair(ovk, changeAddr);
     sproutChangeAddr = boost::none;
-    tChangeAddr = boost::none;
+    // tChangeAddr = boost::none;
 }
 
 void TransactionBuilder::SendChangeTo(libzcash::SproutPaymentAddress changeAddr)
 {
+    throw std::runtime_error("Sprout outputs are deprecated on the Verus network for any purpose. Use a Sapling or later destination type for change.");
     sproutChangeAddr = changeAddr;
     saplingChangeAddr = boost::none;
     tChangeAddr = boost::none;
@@ -228,7 +230,7 @@ void TransactionBuilder::SendChangeTo(CTxDestination& changeAddr)
     }
 
     tChangeAddr = changeAddr;
-    saplingChangeAddr = boost::none;
+    // saplingChangeAddr = boost::none;
     sproutChangeAddr = boost::none;
 }
 
@@ -237,6 +239,11 @@ TransactionBuilderResult TransactionBuilder::Build()
     //
     // Consistency checks
     //
+
+    // calculate change and include all reserve inputs as well
+    CCurrencyValueMap reserveChange;
+    reserveChange -= CTransaction(mtx).GetReserveValueOut();
+    bool hasReserveChange = false;
 
     // Valid change
     CAmount change = mtx.valueBalance - fee;
@@ -248,40 +255,74 @@ TransactionBuilderResult TransactionBuilder::Build()
     }
     for (auto tIn : tIns) {
         change += tIn.value;
+        reserveChange += tIn.scriptPubKey.ReserveOutValue();
+    }
+    if (reserveChange.valueMap.size())
+    {
+        reserveChange = reserveChange.CanonicalMap();
+        hasReserveChange = reserveChange > CCurrencyValueMap();
     }
     for (auto tOut : mtx.vout) {
         change -= tOut.nValue;
     }
-    if (change < 0) {
-        return TransactionBuilderResult("Change cannot be negative");
+    if (change < 0 || reserveChange.HasNegative()) {
+        return TransactionBuilderResult("Change cannot be negative, native: " + std::to_string(change) + "reserves: " + reserveChange.ToUniValue().write());
+    }
+    bool hasNativeChange = change > 0;
+
+    if (hasReserveChange && !tChangeAddr)
+    {
+        return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
     }
 
     //
-    // Change output
+    // Create change output for native, reserve, or both types of currency
     //
-
-    if (change > 0) {
-        // Send change to the specified change address. If no change address
-        // was set, send change to the first Sapling address given as input
-        // if any; otherwise the first Sprout address given as input.
-        // (A t-address can only be used as the change address if explicitly set.)
-        if (saplingChangeAddr) {
+    if (hasNativeChange || hasReserveChange)
+    {
+        // Send change to the specified change address(es). If both tChangeAddr and saplingChangeAddr are set, send native to the sapling address
+        // (A t-address or ID can only be used as the change address if explicitly set.)
+        if (hasReserveChange)
+        {
+            // even if reserve currency goes to a t-change address, native currency can go to
+            // a Sapling address, if both are specified
+            if (hasNativeChange && saplingChangeAddr)
+            {
+                AddSaplingOutput(saplingChangeAddr->first, saplingChangeAddr->second, change);
+                hasNativeChange = false;    // no more native change to send
+            }
+            std::vector<CTxDestination> dest(1, tChangeAddr.get());
+            // one output for each type of reserve, we should remove any currency that is not whitelisted if specified after whitelist is supported
+            for (auto &oneCur : reserveChange.valueMap)
+            {
+                CTokenOutput to(oneCur.first, oneCur.second);
+                AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to)), hasNativeChange ? change : 0);
+                hasNativeChange = false;    // now it's sent
+            }
+        }
+        else if (saplingChangeAddr) 
+        {
             AddSaplingOutput(saplingChangeAddr->first, saplingChangeAddr->second, change);
-        } else if (sproutChangeAddr) {
-            AddSproutOutput(sproutChangeAddr.get(), change);
-        } else if (tChangeAddr) {
+        } else if (tChangeAddr) 
+        {
             // tChangeAddr has already been validated.
             AddTransparentOutput(tChangeAddr.value(), change);
-        } else if (!spends.empty()) {
+        } else if (!spends.empty()) 
+        {
             auto fvk = spends[0].expsk.full_viewing_key();
             auto note = spends[0].note;
             libzcash::SaplingPaymentAddress changeAddr(note.d, note.pk_d);
             AddSaplingOutput(fvk.ovk, changeAddr, change);
-        } else if (!jsInputs.empty()) {
-            auto changeAddr = jsInputs[0].key.address();
-            AddSproutOutput(changeAddr, change);
-        } else {
-            return TransactionBuilderResult("Could not determine change address");
+        } else 
+        {
+            if (hasReserveChange)
+            {
+                return TransactionBuilderResult("Could not determine change address for reserve currency change");
+            }
+            else
+            {
+                return TransactionBuilderResult("Could not determine change address for native currency change");
+            }
         }
     }
 
@@ -455,6 +496,10 @@ TransactionBuilderResult TransactionBuilder::Build()
             TransactionSignatureCreator(keystore, &txNewConst, nIn, tIn.value, tIn.scriptPubKey), tIn.scriptPubKey, sigdata, consensusBranchId);
 
         if (!signSuccess) {
+            //UniValue jsonTx(UniValue::VOBJ);
+            //extern void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry);
+            //TxToUniv(txNewConst, uint256(), jsonTx);
+            //printf("Failed to sign for script:\n%s\n", jsonTx.write(1,2).c_str());
             return TransactionBuilderResult("Failed to sign transaction");
         } else {
             UpdateTransaction(mtx, nIn, sigdata);
