@@ -137,7 +137,7 @@ bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
 {
     CPBaaSNotarization notarization;
     std::vector<CAddressIndexDbEntry> notarizationIndex;
-    // get the last unspent notarization for this currency, which is valid by definition for a token
+    // get the last notarization in the indicated height for this currency, which is valid by definition for a token
     if (GetAddressIndex(CCrossChainRPCData::GetConditionID(currencyID, eCode), CScript::P2IDX, notarizationIndex, startHeight, endHeight))
     {
         // filter out all transactions that do not spend from the notarization thread, or originate as the
@@ -177,6 +177,58 @@ bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
         }
     }
     return notarization.IsValid();
+}
+
+bool CPBaaSNotarization::GetLastUnspentNotarization(const uint160 &currencyID,
+                                                    uint32_t eCode, 
+                                                    uint256 *txIDOut,
+                                                    CTransaction *txOut)
+{
+    CPBaaSNotarization notarization;
+    std::vector<CAddressUnspentDbEntry> notarizationIndex;
+    // get the last notarization in the indicated height for this currency, which is valid by definition for a token
+    if (GetAddressUnspent(CCrossChainRPCData::GetConditionID(currencyID, eCode), CScript::P2IDX, notarizationIndex))
+    {
+        // first valid, unspent notarization found is the one we return
+        for (auto it = notarizationIndex.rbegin(); it != notarizationIndex.rend(); it++)
+        {
+            LOCK(mempool.cs);
+            CTransaction oneTx;
+            uint256 blkHash;
+            if (myGetTransaction(it->first.txhash, oneTx, blkHash))
+            {
+                if ((notarization = CPBaaSNotarization(oneTx.vout[it->first.index].scriptPubKey)).IsValid())
+                {
+                    *this = notarization;
+                    if (txIDOut)
+                    {
+                        *txIDOut = it->first.txhash;
+                    }
+                    if (txOut)
+                    {
+                        *txOut = oneTx;
+                    }
+                    break;
+                }
+            }
+            else
+            {
+                LogPrintf("%s: error transaction %s not found, may need reindexing\n", __func__, it->first.txhash.GetHex().c_str());
+                printf("%s: error transaction %s not found, may need reindexing\n", __func__, it->first.txhash.GetHex().c_str());
+                continue;
+            }
+        }
+    }
+    return notarization.IsValid();
+}
+
+bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &_curDef, 
+                                              uint32_t height, 
+                                              uint32_t lastNotarizationHeight, 
+                                              const CTransaction &lastNotarizationTx, 
+                                              const CPBaaSNotarization &lastNotarization)
+{
+    return false;
 }
 
 CTransactionFinalization::CTransactionFinalization(const CTransaction &tx, uint32_t *pEcode, int32_t *pFinalizationOutNum)

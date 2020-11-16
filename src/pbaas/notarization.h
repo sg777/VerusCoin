@@ -218,6 +218,18 @@ public:
                              uint256 *txIDOut=nullptr,
                              CTransaction *txOut=nullptr);
 
+    // if false, no matching, unspent notarization found
+    bool GetLastUnspentNotarization(const uint160 &currencyID, 
+                                    uint32_t eCode, 
+                                    uint256 *txIDOut=nullptr,
+                                    CTransaction *txOut=nullptr);
+
+    bool NextNotarizationInfo(const CCurrencyDefinition &_curDef, 
+                              uint32_t height, 
+                              uint32_t lastNotarizationHeight, 
+                              const CTransaction &lastNotarizationTx, 
+                              const CPBaaSNotarization &lastNotarization);
+
     UniValue ToUniValue() const;
 };
 

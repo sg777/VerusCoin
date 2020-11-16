@@ -216,7 +216,7 @@ void AsyncRPCOperation_sendmany::main() {
         set_state(OperationStatus::FAILED);
     }
 
-    std::string s = strprintf("%s: z_sendmany finished (status=%s", getId(), getStateAsString());
+    std::string s = strprintf("%s: %s finished (status=%s", getId(), sendCurrency ? "sendcurrency" : "z_sendmany", getStateAsString());
     if (success) {
         s += strprintf(", txid=%s)\n", tx_.GetHash().ToString());
     } else {
@@ -1078,7 +1078,20 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
     vector<COutput> vecOutputs;
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
-    pwalletMain->AvailableCoins(vecOutputs, false, NULL, false, true, fAcceptProtectedCoinbase);
+
+    if (sendCurrency)
+    {
+        pwalletMain->AvailableReserveCoins(vecOutputs,
+                                           false,
+                                           NULL,
+                                           true,
+                                           true,
+                                           wildCardPKH || wildCardID ? nullptr : &fromtaddr_);
+    }
+    else
+    {
+        pwalletMain->AvailableCoins(vecOutputs, false, NULL, false, true, fAcceptProtectedCoinbase);
+    }
 
     BOOST_FOREACH(const COutput& out, vecOutputs) {
         CTxDestination dest;

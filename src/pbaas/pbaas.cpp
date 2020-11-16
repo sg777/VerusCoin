@@ -1224,7 +1224,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     // if this is a token on this chain, it will be simply notarized
     else if (curDef.systemID == ASSETCHAINS_CHAINID)
     {
-        // get the last unspent notarization for this currency, which is valid by definition for a token
+        // get the last notarization in the height range for this currency, which is valid by definition for a token
         CPBaaSNotarization notarization;
         if ((notarization.GetLastNotarization(chainID, EVAL_ACCEPTEDNOTARIZATION, curDefHeight, height) &&
              (currencyState = notarization.currencyState).IsValid()) ||
