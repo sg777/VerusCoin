@@ -4548,7 +4548,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
     uint256 hashTx = GetHash();
     for (unsigned int i = 0; i < vout.size(); i++)
     {
-        if (!pwallet->IsSpent(hashTx, i))
+        if (!pwallet->IsSpent(hashTx, i) && vout[i].scriptPubKey.IsSpendableOutputType())
         {
             nCredit += pwallet->GetCredit(*this, i, ISMINE_SPENDABLE);
         }
@@ -4572,7 +4572,7 @@ CCurrencyValueMap CWalletTx::GetAvailableReserveCredit(bool fUseCache) const
     uint256 hashTx = GetHash();
     for (unsigned int i = 0; i < vout.size(); i++)
     {
-        if (!pwallet->IsSpent(hashTx, i))
+        if (!pwallet->IsSpent(hashTx, i) && vout[i].scriptPubKey.IsSpendableOutputType())
         {
             retVal += pwallet->GetReserveCredit(*this, i, ISMINE_SPENDABLE);
         }
@@ -5084,6 +5084,7 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                 {
                     COptCCParams p;
                     CCurrencyValueMap rOut = pcoin->vout[i].scriptPubKey.ReserveOutValue(p, true);
+
                     if (p.IsValid() && !pcoin->vout[i].scriptPubKey.IsSpendableOutputType(p))
                     {
                         continue;
@@ -5543,6 +5544,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     random_shuffle(vCoins.begin(), vCoins.end(), GetRandInt);
 
     CCurrencyValueMap nTotalTarget = (targetValues + CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({targetNativeValue}))).CanonicalMap();
+
     //printf("totaltarget: %s\n", nTotalTarget.ToUniValue().write().c_str());
 
     BOOST_FOREACH(const COutput &output, vCoins)
@@ -5557,7 +5559,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
 
         int i = output.i;
         CCurrencyValueMap nAll(pcoin->vout[i].scriptPubKey.ReserveOutValue());  // all currencies, whether in target or not
-        CCurrencyValueMap n = targetValues.IntersectingValues(nAll);            // get only those reserve currencies that are also in target
+        CCurrencyValueMap n = nAll.IntersectingValues(targetValues);            // get only those reserve currencies that are also in target
         CCurrencyValueMap nTotal = n;                                           // nTotal will be all currencies, including native, that are also in target
         CAmount nativeN = pcoin->vout[i].nValue;
         if (nativeN)
@@ -5574,6 +5576,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         {
             continue;
         }
+
+        //printf("nTotal: %s\n", nTotal.ToUniValue().write().c_str());
 
         vOutputsToOptimize.push_back(std::make_pair(nAll, std::make_pair(output.tx, output.i)));
 
@@ -5649,6 +5653,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     {
         return false;
     }
+
+    //printf("lowerTotal:\n%s\nlargerTotal:\n%s\n", lowerTotal.ToUniValue().write().c_str(), largerTotal.ToUniValue().write().c_str());
 
     // if all the lower amounts are just what we need, and we don't add too many inputs in the process, use them all
     size_t numInputsLimit = (size_t)GetArg("-mempooltxinputlimit", MAX_NUM_INPUTS_LIMIT);
@@ -5756,12 +5762,23 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     totalToOptimize = largerTotal.SubtractToZero(removedValue) + lowerTotal;
     CCurrencyValueMap newOptimizationTarget = nTotalTarget.SubtractToZero(removedValue);
 
+    /* printf("totalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", totalToOptimize.ToUniValue().write().c_str(), newOptimizationTarget.ToUniValue().write().c_str());
+    for (int i = 0; i < vOutputsToOptimize.size(); i++)
+    {
+        printf("output #%d:\nreserves:\n%s\nnative:\n%s\n", 
+            i, 
+            vOutputsToOptimize[i].first.ToUniValue().write().c_str(), 
+            ValueFromAmount(vOutputsToOptimize[i].second.first->vout[vOutputsToOptimize[i].second.second].nValue).write().c_str());
+    } */
+
     vector<char> vfBest;
     CCurrencyValueMap bestTotals;
 
     ApproximateBestReserveSubset(vOutputsToOptimize, totalToOptimize, newOptimizationTarget, vfBest, bestTotals, 1000);
     if (bestTotals != targetValues && totalToOptimize >= targetValues + nativeCent)
+    {
         ApproximateBestReserveSubset(vOutputsToOptimize, totalToOptimize, newOptimizationTarget + nativeCent, vfBest, bestTotals, 1000);
+    }
 
     for (unsigned int i = 0; i < vOutputsToOptimize.size(); i++)
     {
@@ -5773,8 +5790,11 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         }
     }
 
-    CCurrencyValueMap checkReturn(valueRet);
     valueRet.valueMap[ASSETCHAINS_CHAINID] = nativeValueRet;
+    CCurrencyValueMap checkReturn(valueRet);
+
+    //printf("valueRet:\n%s\n", valueRet.ToUniValue().write().c_str());
+
     if (checkReturn.IntersectingValues(nTotalTarget) < nTotalTarget)
     {
         return false;

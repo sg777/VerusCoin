@@ -228,6 +228,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &_curDef
                                               const CTransaction &lastNotarizationTx, 
                                               const CPBaaSNotarization &lastNotarization)
 {
+    // based on the last notarization and existing
     return false;
 }
 

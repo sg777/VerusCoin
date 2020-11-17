@@ -326,6 +326,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             t_inputs_total += t.tx->vout[t.i].nValue;
         }
     }
+
     t_all_inputs_total.valueMap[ASSETCHAINS_CHAINID] = t_inputs_total;
     t_all_inputs_total = t_all_inputs_total.CanonicalMap();
 
@@ -401,6 +402,11 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             // select reserve currency and native inputs
             CCurrencyValueMap targetReserveAmounts = targetAllAmounts;
             targetReserveAmounts.valueMap.erase(ASSETCHAINS_CHAINID);
+
+            // printf("total currency:\n%s\n", t_all_inputs_total.ToUniValue().write(1,2).c_str());
+            // printf("target reserve:\n%s\n", targetReserveAmounts.ToUniValue().write(1,2).c_str());
+            // printf("target native:\n%s\n", ValueFromAmount(targetNativeAmount).write(1,2).c_str());
+
             success = 
               pwalletMain->SelectReserveCoinsMinConf(targetReserveAmounts, targetNativeAmount, 0, 0, t_inputs_, setCoinsRet, reserveValueRet, nativeValueRet);
         }
@@ -408,7 +414,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         if (!success)
         {
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot find adequate utxos to fund transaction");
-        }
+        }        
 
         // Get dust threshold
         CKey secret;
@@ -419,7 +425,8 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         CAmount dustChange = -1;
 
         std::vector<COutput> selectedTInputs;
-        for (COutput & t : t_inputs_) {
+        for (auto &oneInput : setCoinsRet) {
+            COutput t = COutput(oneInput.first, oneInput.second, 0, true);
             if (t.tx->IsCoinBase()) {
                 selectedUTXOCoinbase = true;
             }
@@ -598,11 +605,19 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
         // Add transparent outputs
         for (auto r : t_outputs_) {
-            auto outputAddress = std::get<0>(r);
             auto amount = std::get<1>(r);
+            auto script = std::get<3>(r);
 
-            auto address = DecodeDestination(outputAddress);
-            builder_.AddTransparentOutput(address, amount);
+            if (script.size() == 0)
+            {
+                auto outputAddress = std::get<0>(r);
+                auto address = DecodeDestination(outputAddress);
+                builder_.AddTransparentOutput(address, amount);
+            }
+            else
+            {
+                builder_.AddTransparentOutput(script, amount);
+            }
         }
 
         // Build the transaction
@@ -1101,11 +1116,6 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
         }
 
         if (out.nDepth < mindepth_) {
-            continue;
-        }
-
-        if (!out.tx->vout[out.i].nValue)
-        {
             continue;
         }
 
