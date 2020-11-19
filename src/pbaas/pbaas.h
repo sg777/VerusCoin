@@ -30,6 +30,7 @@
 void ScriptPubKeyToJSON(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex, bool fIncludeAsm=true);
 
 class CPBaaSNotarization;
+class TransactionBuilder;
 
 // these are output cryptoconditions for the Verus reserve liquidity system
 // VRSC can be proxied to other PBaaS chains and sent back for use with this system
@@ -852,6 +853,19 @@ public:
                        CPartialTransactionProof &crossChainExport, 
                        CCrossChainImport &ccImport, 
                        CCrossChainExport &ccCrossExport);
+
+    bool CreateNextExport(const CCurrencyDefinition &_curDef,
+                          const std::vector<ChainTransferData> _txInputs,
+                          uint32_t nHeight,
+                          TransactionBuilder &exportBuilder,
+                          int32_t &inputsConsumed,
+                          const CPBaaSNotarization &lastNotarization,
+                          CPBaaSNotarization &newNotarization,
+                          CCurrencyValueMap *arbitragePrices=nullptr,
+                          CCurrencyValueMap *arbitrageFunds=nullptr,
+                          CCurrencyValueMap *arbitrageThresholds=nullptr,
+                          bool *inputTxAdded=nullptr,
+                          CTransaction *newInputTx=nullptr);
 
     // returns newly created import transactions to the specified chain from exports on this chain specified chain
     bool CreateLatestImports(const CCurrencyDefinition &chainDef, 

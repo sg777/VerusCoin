@@ -1262,7 +1262,7 @@ UniValue getpendingtransfers(const UniValue& params, bool fHelp)
     if ((IsVerusActive() && GetCurrencyDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.NotaryChain().chainDefinition).GetID() == chainID)
     {
         // look for new exports
-        multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
+        multimap<uint160, ChainTransferData> inputDescriptors;
 
         if (GetUnspentChainTransfers(inputDescriptors, chainID))
         {
@@ -1271,12 +1271,15 @@ UniValue getpendingtransfers(const UniValue& params, bool fHelp)
             for (auto &desc : inputDescriptors)
             {
                 UniValue oneExport(UniValue::VOBJ);
+                uint32_t inpHeight = std::get<0>(desc.second);
+                CInputDescriptor inpDesc = std::get<1>(desc.second);
 
                 oneExport.push_back(Pair("currencyid", EncodeDestination(CIdentityID(desc.first))));
-                oneExport.push_back(Pair("txid", desc.second.first.txIn.prevout.hash.GetHex()));
-                oneExport.push_back(Pair("n", (int32_t)desc.second.first.txIn.prevout.n));
-                oneExport.push_back(Pair("valueout", desc.second.first.nValue));
-                oneExport.push_back(Pair("reservetransfer", desc.second.second.ToUniValue()));
+                oneExport.push_back(Pair("height", (int64_t)inpHeight));
+                oneExport.push_back(Pair("txid", inpDesc.txIn.prevout.hash.GetHex()));
+                oneExport.push_back(Pair("n", (int32_t)inpDesc.txIn.prevout.n));
+                oneExport.push_back(Pair("valueout", inpDesc.nValue));
+                oneExport.push_back(Pair("reservetransfer", std::get<2>(desc.second).ToUniValue()));
                 ret.push_back(oneExport);
             }
             if (ret.size())
@@ -1680,7 +1683,7 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
 
 // returns all unspent chain transfer outputs with an optional chainFilter. if the chainFilter is not
 // NULL, only transfers to that chain are returned
-bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter)
+bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDescriptors, uint160 chainFilter)
 {
     bool nofilter = chainFilter.IsNull();
 
@@ -1716,10 +1719,12 @@ bool GetUnspentChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveT
                         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
                         (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID) == chainFilter))
                     {
-                        inputDescriptors.insert(make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID),
-                                                make_pair(CInputDescriptor(coins.vout[it->first.index].scriptPubKey, 
-                                                                           coins.vout[it->first.index].nValue, 
-                                                                           CTxIn(COutPoint(it->first.txhash, it->first.index))), rt)));
+                        inputDescriptors.insert(make_pair((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.currencyID : rt.destCurrencyID,
+                                                          ChainTransferData(coins.nHeight,
+                                                                         CInputDescriptor(coins.vout[it->first.index].scriptPubKey, 
+                                                                                          coins.vout[it->first.index].nValue, 
+                                                                                          CTxIn(COutPoint(it->first.txhash, it->first.index))),
+                                                                         rt)));
                     }
                 }
             }
