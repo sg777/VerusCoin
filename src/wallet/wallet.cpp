@@ -5790,10 +5790,10 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         }
     }
 
-    valueRet.valueMap[ASSETCHAINS_CHAINID] = nativeValueRet;
     CCurrencyValueMap checkReturn(valueRet);
+    checkReturn.valueMap[ASSETCHAINS_CHAINID] = nativeValueRet;
 
-    //printf("valueRet:\n%s\n", valueRet.ToUniValue().write().c_str());
+    //printf("valueRet:\n%s\n", checkReturn.ToUniValue().write().c_str());
 
     if (checkReturn.IntersectingValues(nTotalTarget) < nTotalTarget)
     {
