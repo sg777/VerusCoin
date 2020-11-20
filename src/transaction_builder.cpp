@@ -266,7 +266,7 @@ TransactionBuilderResult TransactionBuilder::Build()
         change -= tOut.nValue;
     }
     if (change < 0 || reserveChange.HasNegative()) {
-        return TransactionBuilderResult("Change cannot be negative, native: " + std::to_string(change) + "reserves: " + reserveChange.ToUniValue().write());
+        return TransactionBuilderResult("Change cannot be negative, native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write() + "\n");
     }
     bool hasNativeChange = change > 0;
 

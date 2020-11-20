@@ -1224,7 +1224,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     // if this is a token on this chain, it will be simply notarized
     else if (curDef.systemID == ASSETCHAINS_CHAINID)
     {
-        // get the last unspent notarization for this currency, which is valid by definition for a token
+        // get the last notarization in the height range for this currency, which is valid by definition for a token
         CPBaaSNotarization notarization;
         if ((notarization.GetLastNotarization(chainID, EVAL_ACCEPTEDNOTARIZATION, curDefHeight, height) &&
              (currencyState = notarization.currencyState).IsValid()) ||
@@ -1398,6 +1398,43 @@ CCurrencyDefinition CConnectedChains::UpdateCachedCurrency(const uint160 &curren
     return currencyDef;
 }
 
+bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
+                                        const std::vector<ChainTransferData> _txInputs,
+                                        uint32_t nHeight,
+                                        TransactionBuilder &exportBuilder,
+                                        int32_t &inputsConsumed,
+                                        const CPBaaSNotarization &lastNotarization,
+                                        CPBaaSNotarization &newNotarization,
+                                        CCurrencyValueMap *arbitragePrices,
+                                        CCurrencyValueMap *arbitrageFunds,
+                                        CCurrencyValueMap *arbitrageThresholds,
+                                        bool *inputTxAdded,
+                                        CTransaction *newInputTx)
+{
+    // this function accepts all reserve transfer inputs to a particular currency destination,
+    // from a particular block as well as a height, which is used as a limiting factor in the
+    // search or addition of new transactions. This is used both to create new export transactions
+    // and their associated notarizations, as well as to validate existing export transactions
+    // to ensure they follow the aggregation, anti-front-running rules.
+
+    // The aggregation rules require that:
+    // 1. Either there are MIN_INPUTS of reservetransfer or MIN_BLOCKS before an 
+    //    aggregation can be made as an export transaction.
+    // 2. If an export transaction can be made up to a specific block, all inputs
+    //    included in all blocks, up to and including that block, which were not yet 
+    //    exported, must be included in the current export.
+    // 3. One additional *conversion* input may be added in the export transaction. If 
+    //    there is such an extra conversion in the export, over and above those in prior 
+    //    blocks, it must be selected from the first block containing chain transfers, 
+    //    following the last block from which chain transfers, are present in the export.
+    //
+    // If the input tx boolean, new input tx pointer, and arbitrage information is included,
+    // this function may create a new transaction and conversion input, which is added to the
+    // export transaction created.
+    return false;
+}
+
+
 void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight)
 {
     // all chains aggregate reserve transfer transactions, so aggregate and add all necessary export transactions to the mem pool
@@ -1407,7 +1444,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             return;
         }
 
-        std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> transferOutputs;
+        std::multimap<uint160, ChainTransferData> transferOutputs;
 
         LOCK(cs_main);
 
@@ -1421,7 +1458,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 return;
             }
 
-            std::vector<pair<CInputDescriptor, CReserveTransfer>> txInputs;
+            std::vector<ChainTransferData> txInputs;
             uint160 lastChain = transferOutputs.begin()->first;
 
             CCoins coins;
@@ -1480,9 +1517,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 {
                     std::pair<uint160, std::pair<int, CInputDescriptor>> lastExport = *exportOutputs.begin();
 
+                    // if we have enough inputs for an export based on size
                     bool oneFullSize = txInputs.size() >= CCrossChainExport::MIN_INPUTS;
+                    bool oneAfterWait = (nHeight - lastExport.second.first) >= CCrossChainExport::MIN_BLOCKS;
 
-                    if (((nHeight - lastExport.second.first) >= CCrossChainExport::MIN_BLOCKS) || oneFullSize)
+                    // if we don't have enough inputs to generate an export and haven't waited long enough
+                    // we can't make an export
+                    if (oneAfterWait || oneFullSize)
                     {
                         boost::optional<CTransaction> oneExport;
 
@@ -1492,6 +1533,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             TransactionBuilder tb(Params().GetConsensus(), nHeight);
 
                             int inputsLeft = txInputs.size();
+
+                            // get the inputs to include, 
+
                             int numInputs = inputsLeft > CCrossChainExport::MAX_EXPORT_INPUTS ? CCrossChainExport::MAX_EXPORT_INPUTS : inputsLeft;
 
                             if (numInputs > CCrossChainExport::MAX_EXPORT_INPUTS)
@@ -1512,9 +1556,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             // 1. transfers of reserve for fractional reserve chains
                             // 2. pre-conversions for pre-launch participation in the premine
                             // 3. reserve market conversions to send between Verus and a fractional reserve chain and always output the native coin
-                            //
-                            // If we are on the Verus chain, all inputs will include native coins. On a PBaaS chain, inputs can either be native
-                            // or reserve token inputs.
                             //
                             // On the Verus chain, total native amount, minus the fee, must be sent to the reserve address of the specific chain
                             // as reserve deposit with native coin equivalent. Pre-conversions and conversions will be realized on the PBaaS chain
@@ -1610,13 +1651,16 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                             for (int j = 0; j < numInputs; j++)
                             {
-                                tb.AddTransparentInput(txInputs[j].first.txIn.prevout, txInputs[j].first.scriptPubKey, txInputs[j].first.nValue, txInputs[j].first.txIn.nSequence);
-                                CCurrencyValueMap newTransferInput = txInputs[j].first.scriptPubKey.ReserveOutValue();
-                                newTransferInput.valueMap[ASSETCHAINS_CHAINID] = txInputs[j].first.nValue;
+                                CInputDescriptor &inputDesc = std::get<1>(txInputs[j]);
+                                CReserveTransfer &reserveTransfer = std::get<2>(txInputs[j]);
 
-                                totalTxFees += txInputs[j].second.CalculateFee(txInputs[j].second.flags, txInputs[j].second.nValue, lastChainDef.systemID);
+                                tb.AddTransparentInput(inputDesc.txIn.prevout, inputDesc.scriptPubKey, inputDesc.nValue, inputDesc.txIn.nSequence);
+                                CCurrencyValueMap newTransferInput = inputDesc.scriptPubKey.ReserveOutValue();
+                                newTransferInput.valueMap[ASSETCHAINS_CHAINID] = inputDesc.nValue;
+
+                                totalTxFees += reserveTransfer.CalculateFee(reserveTransfer.flags, reserveTransfer.nValue, lastChainDef.systemID);
                                 totalAmounts += newTransferInput;
-                                chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(txInputs[j].second), txInputs[j].second));
+                                chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(reserveTransfer), reserveTransfer));
                             }
 
                             // remove in reverse order so one removal does not affect the position of the next
