@@ -3090,10 +3090,16 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
+    uint32_t nHeight = chainActive.Height();
+    bool checkunlockedIDs = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
+
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
     obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance())));
-    obj.push_back(Pair("unlocked_balance",  ValueFromAmount(pwalletMain->GetBalance(false))));
+    if (checkunlockedIDs)
+    {
+        obj.push_back(Pair("unlocked_balance",  ValueFromAmount(pwalletMain->GetBalance(false))));
+    }
     obj.push_back(Pair("unconfirmed_balance", ValueFromAmount(pwalletMain->GetUnconfirmedBalance())));
     obj.push_back(Pair("immature_balance", ValueFromAmount(pwalletMain->GetImmatureBalance())));
 
@@ -3139,13 +3145,16 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     }
     if (reserveBal.size())
     {
-        UniValue unlockedReserveBal(UniValue::VOBJ);
-        for (auto &oneBalance : pwalletMain->GetReserveBalance(false).valueMap)
-        {
-            unlockedReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
-        }
         obj.push_back(Pair("reserve_balance", reserveBal));
-        obj.push_back(Pair("unlocked_reserve_balance", unlockedReserveBal));
+        if (checkunlockedIDs)
+        {
+            UniValue unlockedReserveBal(UniValue::VOBJ);
+            for (auto &oneBalance : pwalletMain->GetReserveBalance(false).valueMap)
+            {
+                unlockedReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+            }
+            obj.push_back(Pair("unlocked_reserve_balance", unlockedReserveBal));
+        }
     }
 
     UniValue unconfirmedReserveBal(UniValue::VOBJ);
