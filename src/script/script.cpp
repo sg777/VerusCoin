@@ -1329,7 +1329,10 @@ CCurrencyValueMap::CCurrencyValueMap(const std::vector<uint160> &currencyIDs, co
     int commonNum = currencyIDs.size() >= amounts.size() ? amounts.size() : currencyIDs.size();
     for (int i = 0; i < commonNum; i++)
     {
-        valueMap[currencyIDs[i]] = amounts[i];
+        if (amounts[i])
+        {
+            valueMap[currencyIDs[i]] = amounts[i];
+        }
     }
 }
 
@@ -1337,22 +1340,39 @@ bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
 {
     // to be less than means, in this order:
     // 1. To have fewer non-zero currencies.
-    // 2. If not fewer currencies, to be unable to be subtracted from the one being checked
-    //    without creating negative values
+    // 2. If not fewer currencies, all present currencies must be less in a than b
     if (!a.valueMap.size() && !b.valueMap.size())
     {
         return false;
     }
+
     bool isaltb = false;
 
+    // ensure that we are smaller than all those present in b
     for (auto &oneVal : b.valueMap)
     {
         if (oneVal.second)
         {
             auto it = a.valueMap.find(oneVal.first);
-            if (it == a.valueMap.end() || it->second < oneVal.second)
+
+            // negative is less than not present, which is equivalent to 0
+            if ((it == a.valueMap.end() && oneVal.second > 0) || (it != a.valueMap.end() && it->second < oneVal.second))
             {
                 isaltb = true;
+            }
+        }
+    }
+
+    // ensure that for all the currencies we have, b does not have less
+    for (auto &oneVal : a.valueMap)
+    {
+        if (oneVal.second)
+        {
+            auto it = b.valueMap.find(oneVal.first);
+
+            if ((it == b.valueMap.end() && oneVal.second > 0) || (it != b.valueMap.end() && it->second < oneVal.second))
+            {
+                isaltb = false;
             }
         }
     }
@@ -1391,7 +1411,44 @@ bool operator!=(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
 
 bool operator<=(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
 {
-    return (a < b) || (a == b);
+    // to be less or equal to than means, in this order:
+    // 1. To have fewer non-zero or both zero currencies.
+    // 2. If not fewer or both zero currencies, all present currencies must be less or equal to in a with respect to b
+    if (!a.valueMap.size() && !b.valueMap.size())
+    {
+        return true;
+    }
+
+    bool isalteb = false;
+
+    // ensure that we are smaller than all those present in b
+    for (auto &oneVal : b.valueMap)
+    {
+        if (oneVal.second)
+        {
+            auto it = a.valueMap.find(oneVal.first);
+
+            if ((it == a.valueMap.end() && oneVal.second >= 0) || (it != a.valueMap.end() && it->second <= oneVal.second))
+            {
+                isalteb = true;
+            }
+        }
+    }
+
+    // ensure that for all the currencies we have, b has equal or more
+    for (auto &oneVal : a.valueMap)
+    {
+        if (oneVal.second)
+        {
+            auto it = b.valueMap.find(oneVal.first);
+
+            if ((it == b.valueMap.end() && oneVal.second > 0) || (it != b.valueMap.end() && it->second < oneVal.second))
+            {
+                isalteb = false;
+            }
+        }
+    }
+    return isalteb;
 }
 
 bool operator>=(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
@@ -1539,19 +1596,23 @@ CCurrencyValueMap CCurrencyValueMap::CanonicalMap() const
 
 CCurrencyValueMap CCurrencyValueMap::NonIntersectingValues(const CCurrencyValueMap& operand) const
 {
-    CCurrencyValueMap retVal = operand;
+    CCurrencyValueMap retVal = *this;
 
     if (valueMap.size() && operand.valueMap.size())
     {
         for (auto &oneVal : valueMap)
         {
-            auto it = operand.valueMap.find(oneVal.first);
-            if (it != operand.valueMap.end())
+            if (oneVal.second)
             {
-                if (it->second > 0 && oneVal.second > 0)
+                auto it = operand.valueMap.find(oneVal.first);
+                if (it != operand.valueMap.end() && it->second != 0)
                 {
-                    retVal.valueMap.erase(it);
+                    retVal.valueMap.erase(it->first);
                 }
+            }
+            else
+            {
+                retVal.valueMap.erase(oneVal.first);
             }
         }
     }
@@ -1585,7 +1646,7 @@ bool CCurrencyValueMap::HasNegative() const
 // subtract, but do not subtract to negative values
 CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& operand) const
 {
-    CCurrencyValueMap retVal = *this;
+    CCurrencyValueMap retVal(*this);
     std::vector<uint160> toRemove;
     if (valueMap.size() && operand.valueMap.size())
     {
@@ -1594,7 +1655,7 @@ CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& ope
             auto it = operand.valueMap.find(oneVal.first);
             if (it != operand.valueMap.end())
             {
-                oneVal.second = oneVal.second - it->second;
+                oneVal.second -= it->second;
                 if (oneVal.second <= 0)
                 {
                     toRemove.push_back(oneVal.first);

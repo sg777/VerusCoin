@@ -327,6 +327,8 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         }
     }
 
+    // printf("Transparent funds, have %s, need %s", t_all_inputs_total.ToUniValue().write(1,2).c_str(), targetAllAmounts.ToUniValue().write(1,2).c_str());
+
     t_all_inputs_total.valueMap[ASSETCHAINS_CHAINID] = t_inputs_total;
     t_all_inputs_total = t_all_inputs_total.CanonicalMap();
 
@@ -385,7 +387,8 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         // sanity check, since we don't always hold locks
         for (int i = 0 ; i < t_inputs_.size(); i++)
         {
-            if (!pwalletMain->mapWallet.count(t_inputs_txids_[i]))
+            auto pit = pwalletMain->mapWallet.find(t_inputs_txids_[i]);
+            if (pit == pwalletMain->mapWallet.end() || t_inputs_[i].tx != &pit->second)
             {
                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Wallet transaction was deleted from wallet after selection and before tx was made.");
             }
@@ -409,6 +412,23 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
             success = 
               pwalletMain->SelectReserveCoinsMinConf(targetReserveAmounts, targetNativeAmount, 0, 0, t_inputs_, setCoinsRet, reserveValueRet, nativeValueRet);
+
+            /* if (success)
+            {
+                printf("value returned:\n%s, native: %s\n", reserveValueRet.ToUniValue().write(1,2).c_str(), ValueFromAmount(nativeValueRet).write(1,2).c_str());
+                for (auto &oneOutput : setCoinsRet)
+                {
+                    printf("Output %s : %d, for native: %s\n    reserve: %s\n\n", 
+                           oneOutput.first->GetHash().GetHex().c_str(), 
+                           oneOutput.second, 
+                           ValueFromAmount(oneOutput.first->vout[oneOutput.second].nValue).write().c_str(), 
+                           oneOutput.first->vout[oneOutput.second].ReserveOutValue().ToUniValue().write(1,2).c_str());
+                }
+            }
+            else
+            {
+                printf("%s: selection failed\n", __func__);
+            } */
         }
 
         if (!success)
@@ -435,9 +455,6 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             if (selectedUTXOAmount >= targetNativeAmount) {
                 // Select another utxo if there is change less than the dust threshold.
                 dustChange = selectedUTXOAmount - targetNativeAmount;
-                if (dustChange == 0 || dustChange >= dustThreshold) {
-                    break;
-                }
             }
         }
 
@@ -1147,16 +1164,19 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
             }
         }
 
-        const CScript &scriptPubKey = out.tx->vout[out.i].scriptPubKey;
-
         t_inputs_.push_back(out);
-        t_inputs_txids_.push_back(out.tx->GetHash());
     }
 
     // sort in ascending order, so smaller utxos appear first
     std::sort(t_inputs_.begin(), t_inputs_.end(), [](COutput i, COutput j) -> bool {
         return ( i.tx->vout[i.i].nValue < j.tx->vout[j.i].nValue );
     });
+
+    // get txids for verification between holding locks
+    for (auto &out : t_inputs_)
+    {
+        t_inputs_txids_.push_back(out.tx->GetHash());
+    }
 
     return t_inputs_.size() > 0;
 }

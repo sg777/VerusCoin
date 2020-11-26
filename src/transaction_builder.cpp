@@ -255,6 +255,7 @@ TransactionBuilderResult TransactionBuilder::Build()
     }
     for (auto tIn : tIns) {
         change += tIn.value;
+        printf("tIn.scriptPubKey.ReserveOutValue():\n%s\n", tIn.scriptPubKey.ReserveOutValue().ToUniValue().write(1,2).c_str());
         reserveChange += tIn.scriptPubKey.ReserveOutValue();
     }
     if (reserveChange.valueMap.size())
