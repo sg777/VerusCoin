@@ -5347,7 +5347,7 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
 
     // Get available utxos
     vector<COutput> vecOutputs;
-    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, true);
+    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, true, false, false);
 
     // Find unspent coinbase utxos and update estimated size
     BOOST_FOREACH(const COutput& out, vecOutputs) {
@@ -5686,7 +5686,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
     if (useAnyUTXO || taddrs.size() > 0) {
         // Get available utxos
         vector<COutput> vecOutputs;
-        pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
+        pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false, false, false);
 
         // Find unspent utxos and update estimated size
         for (const COutput& out : vecOutputs) {

@@ -4944,7 +4944,7 @@ CCurrencyValueMap CWallet::GetImmatureWatchOnlyReserveBalance() const
 uint64_t komodo_interestnew(int32_t txheight,uint64_t nValue,uint32_t nLockTime,uint32_t tiptime);
 uint64_t komodo_accrued_interest(int32_t *txheightp,uint32_t *locktimep,uint256 hash,int32_t n,int32_t checkheight,uint64_t checkvalue,int32_t tipheight);
 
-void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase, bool fIncludeImmatureCoins) const
+void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase, bool fIncludeImmatureCoins, bool fIncludeIDLockedCoins) const
 {
     uint64_t interest,*ptr;
     vCoins.clear();
@@ -4990,6 +4990,28 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
                     !IsLockedCoin((*it).first, i) && (pcoin->vout[i].nValue > 0 || fIncludeZeroValue) &&
                     (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*it).first, i)))
                 {
+                    if (!fIncludeIDLockedCoins)
+                    {
+                        // if this is sent to an ID in this wallet, ensure that the ID is unlocked or skip it
+                        CTxDestination checkDest;
+                        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+                        if (ExtractDestination(pcoin->vout[i].scriptPubKey, checkDest) &&
+                            checkDest.which() == COptCCParams::ADDRTYPE_ID)
+                        {
+                            if (GetIdentity(GetDestinationID(checkDest), keyAndIdentity))
+                            {
+                                if (keyAndIdentity.second.IsLocked(nHeight))
+                                {
+                                    continue;
+                                }
+                            }
+                            else
+                            {
+                                LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                            }
+                        }
+                    }
+
                     if ( KOMODO_EXCHANGEWALLET == 0 )
                     {
                         uint32_t locktime; int32_t txheight; CBlockIndex *tipindex;
@@ -5038,12 +5060,13 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
     }
 }
 
-void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeCoinBase, bool fIncludeNative, const CTxDestination *pOnlyFromDest, const CCurrencyValueMap *pOnlyTheseCurrencies) const
+void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeCoinBase, bool fIncludeNative, const CTxDestination *pOnlyFromDest, const CCurrencyValueMap *pOnlyTheseCurrencies, bool fIncludeIDLockedCoins) const
 {
     vCoins.clear();
 
     {
         LOCK2(cs_main, cs_wallet);
+        uint32_t nHeight = chainActive.Height() + 1;
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
         {
             const uint256& wtxid = it->first;
@@ -5108,6 +5131,29 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                             }
                         }
                     }
+
+                    if (!fIncludeIDLockedCoins)
+                    {
+                        // if this is sent to an ID in this wallet, ensure that the ID is unlocked or skip it
+                        CTxDestination checkDest;
+                        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+                        if (ExtractDestination(pcoin->vout[i].scriptPubKey, checkDest) &&
+                            checkDest.which() == COptCCParams::ADDRTYPE_ID)
+                        {
+                            if (GetIdentity(GetDestinationID(checkDest), keyAndIdentity))
+                            {
+                                if (keyAndIdentity.second.IsLocked(nHeight))
+                                {
+                                    continue;
+                                }
+                            }
+                            else
+                            {
+                                LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                            }
+                        }
+                    }
+
                     // don't return zero valued outputs
                     if (rOut.CanonicalMap().valueMap.size() || pcoin->vout[i].nValue)
                     {
@@ -5419,8 +5465,8 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*
     //    *interestp = 0;
     //}
     vector<COutput> vCoinsNoCoinbase, vCoinsWithCoinbase;
-    AvailableCoins(vCoinsNoCoinbase, true, coinControl, false, true, false);
-    AvailableCoins(vCoinsWithCoinbase, true, coinControl, false, true, true);
+    AvailableCoins(vCoinsNoCoinbase, true, coinControl, false, true, false, false, false);
+    AvailableCoins(vCoinsWithCoinbase, true, coinControl, false, true, true, false, false);
     fOnlyProtectedCoinbaseCoinsRet = vCoinsNoCoinbase.size() == 0 && vCoinsWithCoinbase.size() > 0;
 
     // If coinbase utxos can only be sent to zaddrs, exclude any coinbase utxos from coin selection.
@@ -5945,8 +5991,8 @@ bool CWallet::SelectReserveCoins(const CCurrencyValueMap& targetReserveValues,
     // Output parameter fOnlyCoinbaseCoinsRet is set to true when the only available coins are coinbase utxos.
 
     vector<COutput> vCoinsNoCoinbase, vCoinsWithCoinbase;
-    AvailableReserveCoins(vCoinsNoCoinbase, true, coinControl, false, true, pOnlyFromDest, &targetReserveValues);
-    AvailableReserveCoins(vCoinsWithCoinbase, true, coinControl, true, true, pOnlyFromDest, &targetReserveValues);
+    AvailableReserveCoins(vCoinsNoCoinbase, true, coinControl, false, true, pOnlyFromDest, &targetReserveValues, false);
+    AvailableReserveCoins(vCoinsWithCoinbase, true, coinControl, true, true, pOnlyFromDest, &targetReserveValues, false);
     fOnlyCoinbaseCoinsRet = vCoinsNoCoinbase.size() == 0 && vCoinsWithCoinbase.size() > 0;
 
     // coinbase protection forcing them to be spent only to z-addresses ended

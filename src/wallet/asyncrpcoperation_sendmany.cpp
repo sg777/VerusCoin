@@ -1118,7 +1118,9 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
                                            NULL,
                                            true,
                                            true,
-                                           wildCardPKH || wildCardID ? nullptr : &fromtaddr_);
+                                           wildCardPKH || wildCardID ? nullptr : &fromtaddr_,
+                                           nullptr,
+                                           false);
     }
     else
     {
