@@ -4523,7 +4523,7 @@ CCurrencyValueMap CWalletTx::GetImmatureReserveCredit(bool fUseCache) const
     return CCurrencyValueMap();
 }
 
-CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
+CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked) const
 {
     if (pwallet == 0)
         return 0;
@@ -4532,13 +4532,35 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
     if (IsCoinBase() && GetBlocksToMaturity() > 0)
         return 0;
 
-    if (fUseCache && fAvailableCreditCached)
+    if (includeIDLocked && fUseCache && fAvailableCreditCached)
         return nAvailableCreditCached;
 
     CAmount nCredit = 0;
     uint256 hashTx = GetHash();
     for (unsigned int i = 0; i < vout.size(); i++)
     {
+        if (!includeIDLocked)
+        {
+            // if this is sent to an ID in this wallet, ensure that the ID is unlocked or skip it
+            CTxDestination checkDest;
+            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+            if (ExtractDestination(vout[i].scriptPubKey, checkDest) &&
+                checkDest.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                if (pwalletMain->GetIdentity(GetDestinationID(checkDest), keyAndIdentity))
+                {
+                    if (keyAndIdentity.second.IsLocked(chainActive.Height()))
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                    continue;
+                }
+            }
+        }
         if (!pwallet->IsSpent(hashTx, i) && vout[i].scriptPubKey.IsSpendableOutputType())
         {
             nCredit += pwallet->GetCredit(*this, i, ISMINE_SPENDABLE);
@@ -4550,7 +4572,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
     return nCredit;
 }
 
-CCurrencyValueMap CWalletTx::GetAvailableReserveCredit(bool fUseCache) const
+CCurrencyValueMap CWalletTx::GetAvailableReserveCredit(bool fUseCache, bool includeIDLocked) const
 {
     CCurrencyValueMap retVal;
     if (pwallet == 0)
@@ -4563,6 +4585,28 @@ CCurrencyValueMap CWalletTx::GetAvailableReserveCredit(bool fUseCache) const
     uint256 hashTx = GetHash();
     for (unsigned int i = 0; i < vout.size(); i++)
     {
+        if (!includeIDLocked)
+        {
+            // if this is sent to an ID in this wallet, ensure that the ID is unlocked or skip it
+            CTxDestination checkDest;
+            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+            if (ExtractDestination(vout[i].scriptPubKey, checkDest) &&
+                checkDest.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                if (pwalletMain->GetIdentity(GetDestinationID(checkDest), keyAndIdentity))
+                {
+                    if (keyAndIdentity.second.IsLocked(chainActive.Height()))
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                    continue;
+                }
+            }
+        }
         if (!pwallet->IsSpent(hashTx, i) && vout[i].scriptPubKey.IsSpendableOutputType())
         {
             retVal += pwallet->GetReserveCredit(*this, i, ISMINE_SPENDABLE);
@@ -4758,7 +4802,7 @@ void CWallet::ResendWalletTransactions(int64_t nBestBlockTime)
  */
 
 
-CAmount CWallet::GetBalance() const
+CAmount CWallet::GetBalance(bool includeIDLocked) const
 {
     CAmount nTotal = 0;
     {
@@ -4767,14 +4811,14 @@ CAmount CWallet::GetBalance() const
         {
             const CWalletTx* pcoin = &(*it).second;
             if (pcoin->IsTrusted())
-                nTotal += pcoin->GetAvailableCredit();
+                nTotal += pcoin->GetAvailableCredit(includeIDLocked, includeIDLocked);
         }
     }
 
     return nTotal;
 }
 
-CCurrencyValueMap CWallet::GetReserveBalance() const
+CCurrencyValueMap CWallet::GetReserveBalance(bool includeIDLocked) const
 {
     CCurrencyValueMap retVal;
     {
@@ -4783,7 +4827,7 @@ CCurrencyValueMap CWallet::GetReserveBalance() const
         {
             const CWalletTx* pcoin = &(*it).second;
             if (pcoin->IsTrusted())
-                retVal += pcoin->GetAvailableReserveCredit();
+                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked);
         }
     }
 

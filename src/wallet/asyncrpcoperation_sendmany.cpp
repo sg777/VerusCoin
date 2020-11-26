@@ -460,9 +460,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
         // If there is transparent change, is it valid or is it dust?
         if (dustChange < dustThreshold && dustChange != 0) {
-            throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
-                strprintf("Insufficient transparent funds, have %s, need %s more to avoid creating invalid change output %s (dust threshold is %s)",
-                FormatMoney(t_inputs_total), FormatMoney(dustThreshold - dustChange), FormatMoney(dustChange), FormatMoney(dustThreshold)));
+            minersFee += dustChange;
         }
 
         t_inputs_ = selectedTInputs;

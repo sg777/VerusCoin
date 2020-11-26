@@ -628,8 +628,8 @@ public:
     CCurrencyValueMap GetReserveCredit(const isminefilter& filter) const;
     CAmount GetImmatureCredit(bool fUseCache=true) const;
     CCurrencyValueMap GetImmatureReserveCredit(bool fUseCache=true) const;
-    CAmount GetAvailableCredit(bool fUseCache=true) const;
-    CCurrencyValueMap GetAvailableReserveCredit(bool fUseCache=true) const;
+    CAmount GetAvailableCredit(bool fUseCache=true, bool includeIDLocked=true) const;
+    CCurrencyValueMap GetAvailableReserveCredit(bool fUseCache=true, bool includeIDLocked=true) const;
     CAmount GetImmatureWatchOnlyCredit(const bool& fUseCache=true) const;
     CCurrencyValueMap GetImmatureWatchOnlyReserveCredit(const bool& fUseCache=true) const;
     CAmount GetAvailableWatchOnlyCredit(const bool& fUseCache=true) const;
@@ -1239,8 +1239,8 @@ public:
     void ReacceptWalletTransactions();
     void ResendWalletTransactions(int64_t nBestBlockTime);
     std::vector<uint256> ResendWalletTransactionsBefore(int64_t nTime);
-    CAmount GetBalance() const;
-    CCurrencyValueMap GetReserveBalance() const;
+    CAmount GetBalance(bool includeIDLocked=true) const;
+    CCurrencyValueMap GetReserveBalance(bool includeIDLocked=true) const;
     CAmount GetUnconfirmedBalance() const;
     CCurrencyValueMap GetUnconfirmedReserveBalance() const;
     CAmount GetImmatureBalance() const;
