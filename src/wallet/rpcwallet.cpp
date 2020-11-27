@@ -3095,10 +3095,16 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
-    obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance())));
+
+    CAmount allBal = pwalletMain->GetBalance();
+    obj.push_back(Pair("balance",       ValueFromAmount(allBal)));
     if (checkunlockedIDs)
     {
-        obj.push_back(Pair("unlocked_balance",  ValueFromAmount(pwalletMain->GetBalance(false))));
+        CAmount unlockBal = pwalletMain->GetBalance(false);
+        if (unlockBal != allBal)
+        {
+            obj.push_back(Pair("unlocked_balance",  ValueFromAmount(unlockBal)));
+        }
     }
     obj.push_back(Pair("unconfirmed_balance", ValueFromAmount(pwalletMain->GetUnconfirmedBalance())));
     obj.push_back(Pair("immature_balance", ValueFromAmount(pwalletMain->GetImmatureBalance())));
@@ -3139,7 +3145,8 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
     UniValue reserveBal(UniValue::VOBJ);
-    for (auto &oneBalance : pwalletMain->GetReserveBalance().valueMap)
+    CCurrencyValueMap resBal = pwalletMain->GetReserveBalance();
+    for (auto &oneBalance : resBal.valueMap)
     {
         reserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
     }
@@ -3149,11 +3156,15 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
         if (checkunlockedIDs)
         {
             UniValue unlockedReserveBal(UniValue::VOBJ);
-            for (auto &oneBalance : pwalletMain->GetReserveBalance(false).valueMap)
+            CCurrencyValueMap unlockedResBal = pwalletMain->GetReserveBalance(false);
+            if (resBal != unlockedResBal)
             {
-                unlockedReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+                for (auto &oneBalance : unlockedResBal.valueMap)
+                {
+                    unlockedReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+                }
+                obj.push_back(Pair("unlocked_reserve_balance", unlockedReserveBal));
             }
-            obj.push_back(Pair("unlocked_reserve_balance", unlockedReserveBal));
         }
     }
 
