@@ -4579,10 +4579,10 @@ UniValue getcurrencybalance(const UniValue& params, bool fHelp)
     int nMinDepth = 1;
     bool friendlyNames = true;
     if (params.size() > 1) {
-        friendlyNames = params[1].get_bool();
+        nMinDepth = params[1].get_int();
     }
     if (params.size() > 2) {
-        nMinDepth = params[1].get_int();
+        friendlyNames = params[2].get_bool();
     }
     if (nMinDepth < 0) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Minimum number of confirmations cannot be less than 0");
