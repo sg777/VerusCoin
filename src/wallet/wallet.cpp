@@ -4567,8 +4567,11 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked) cons
         }
     }
 
-    nAvailableCreditCached = nCredit;
-    fAvailableCreditCached = true;
+    if (includeIDLocked && fUseCache)
+    {
+        nAvailableCreditCached = nCredit;
+        fAvailableCreditCached = true;
+    }
     return nCredit;
 }
 
