@@ -4510,7 +4510,11 @@ UniValue z_getbalance(const UniValue& params, bool fHelp)
     bool fromTaddr = false;
     CTxDestination taddr;
 
-    if (fromaddress == "*" || fromaddress == "R*" || fromaddress == "i*")
+    if (fromaddress == "z*")
+    {
+        fromaddress = "";
+    }
+    else if (fromaddress == "*" || fromaddress == "R*" || fromaddress == "i*")
     {
         fromTaddr = true;
     }
