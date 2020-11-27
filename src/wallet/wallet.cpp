@@ -4556,7 +4556,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked) cons
                 }
                 else
                 {
-                    LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                    //LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
                     continue;
                 }
             }
@@ -4605,7 +4605,7 @@ CCurrencyValueMap CWalletTx::GetAvailableReserveCredit(bool fUseCache, bool incl
                 }
                 else
                 {
-                    LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                    //LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
                     continue;
                 }
             }
@@ -5054,7 +5054,8 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
                             }
                             else
                             {
-                                LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                                //LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                                continue;
                             }
                         }
                     }
@@ -5196,7 +5197,8 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                             }
                             else
                             {
-                                LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                                //LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                                continue;
                             }
                         }
                     }
