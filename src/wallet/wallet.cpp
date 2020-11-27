@@ -4539,31 +4539,35 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked) cons
     uint256 hashTx = GetHash();
     for (unsigned int i = 0; i < vout.size(); i++)
     {
-        if (!includeIDLocked)
-        {
-            // if this is sent to an ID in this wallet, ensure that the ID is unlocked or skip it
-            CTxDestination checkDest;
-            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
-            if (ExtractDestination(vout[i].scriptPubKey, checkDest) &&
-                checkDest.which() == COptCCParams::ADDRTYPE_ID)
-            {
-                if (pwalletMain->GetIdentity(GetDestinationID(checkDest), keyAndIdentity))
-                {
-                    if (keyAndIdentity.second.IsLocked(chainActive.Height()))
-                    {
-                        continue;
-                    }
-                }
-                else
-                {
-                    //LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
-                    continue;
-                }
-            }
-        }
         if (!pwallet->IsSpent(hashTx, i) && vout[i].scriptPubKey.IsSpendableOutputType())
         {
-            nCredit += pwallet->GetCredit(*this, i, ISMINE_SPENDABLE);
+            CAmount newCredit = pwallet->GetCredit(*this, i, ISMINE_SPENDABLE);;
+            if (newCredit)
+            {
+                if (!includeIDLocked)
+                {
+                    // if this is sent to an ID in this wallet, ensure that the ID is unlocked or skip it
+                    CTxDestination checkDest;
+                    std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+                    if (ExtractDestination(vout[i].scriptPubKey, checkDest) &&
+                        checkDest.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        if (pwalletMain->GetIdentity(GetDestinationID(checkDest), keyAndIdentity))
+                        {
+                            if (keyAndIdentity.second.IsLocked(chainActive.Height()))
+                            {
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            //LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                            continue;
+                        }
+                    }
+                }
+                nCredit += newCredit;
+            }
         }
     }
 
@@ -4588,31 +4592,35 @@ CCurrencyValueMap CWalletTx::GetAvailableReserveCredit(bool fUseCache, bool incl
     uint256 hashTx = GetHash();
     for (unsigned int i = 0; i < vout.size(); i++)
     {
-        if (!includeIDLocked)
-        {
-            // if this is sent to an ID in this wallet, ensure that the ID is unlocked or skip it
-            CTxDestination checkDest;
-            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
-            if (ExtractDestination(vout[i].scriptPubKey, checkDest) &&
-                checkDest.which() == COptCCParams::ADDRTYPE_ID)
-            {
-                if (pwalletMain->GetIdentity(GetDestinationID(checkDest), keyAndIdentity))
-                {
-                    if (keyAndIdentity.second.IsLocked(chainActive.Height()))
-                    {
-                        continue;
-                    }
-                }
-                else
-                {
-                    //LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
-                    continue;
-                }
-            }
-        }
         if (!pwallet->IsSpent(hashTx, i) && vout[i].scriptPubKey.IsSpendableOutputType())
         {
-            retVal += pwallet->GetReserveCredit(*this, i, ISMINE_SPENDABLE);
+            CCurrencyValueMap newValue = pwallet->GetReserveCredit(*this, i, ISMINE_SPENDABLE);;
+            if (newValue.valueMap.size())
+            {
+                if (!includeIDLocked)
+                {
+                    // if this is sent to an ID in this wallet, ensure that the ID is unlocked or skip it
+                    CTxDestination checkDest;
+                    std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+                    if (ExtractDestination(vout[i].scriptPubKey, checkDest) &&
+                        checkDest.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        if (pwalletMain->GetIdentity(GetDestinationID(checkDest), keyAndIdentity))
+                        {
+                            if (keyAndIdentity.second.IsLocked(chainActive.Height()))
+                            {
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            //LogPrintf("%s: unable to locate ID %s that should be present in wallet\n", __func__, EncodeDestination(checkDest).c_str());
+                            continue;
+                        }
+                    }
+                }
+                retVal += newValue;
+            }
         }
     }
     return retVal;
