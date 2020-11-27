@@ -4482,7 +4482,7 @@ UniValue z_getbalance(const UniValue& params, bool fHelp)
             "\nCAUTION: If the wallet has only an incoming viewing key for this address, then spends cannot be"
             "\ndetected, and so the returned balance may be larger than the actual balance.\n"
             "\nArguments:\n"
-            "1. \"address\"      (string) The selected address. It may be a transparent or private address and include R* and i* wildcards.\n"
+            "1. \"address\"      (string) The selected address. It may be a transparent or private address and include z*, R*, and i* wildcards.\n"
             "2. minconf          (numeric, optional, default=1) Only include transactions confirmed at least this many times.\n"
             "\nResult:\n"
             "amount              (numeric) The total amount in " + std::string(ASSETCHAINS_SYMBOL) + " received for this address.\n"
@@ -4553,15 +4553,16 @@ UniValue getcurrencybalance(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size()==0 || params.size() >2)
+    if (fHelp || params.size()==0 || params.size() > 3)
         throw runtime_error(
-            "getcurrencybalance \"address\" ( minconf )\n"
+            "getcurrencybalance \"address\" ( minconf ) ( friendlynames )\n"
             "\nReturns the balance in all currencies of a taddr or zaddr belonging to the node's wallet.\n"
             "\nCAUTION: If the wallet has only an incoming viewing key for this address, then spends cannot be"
             "\ndetected, and so the returned balance may be larger than the actual balance.\n"
             "\nArguments:\n"
             "1. \"address\"      (string) The selected address. It may be a transparent or private address and include z*, R*, and i* wildcards.\n"
             "2. minconf          (numeric, optional, default=1) Only include transactions confirmed at least this many times.\n"
+            "3. friendlynames    (boolean, optional, default=true) use friendly names instead of i-addresses.\n"
             "\nResult:\n"
             "amount              (numeric) The total amount in " + std::string(ASSETCHAINS_SYMBOL) + " received for this address.\n"
             "\nExamples:\n"
@@ -4576,7 +4577,11 @@ UniValue getcurrencybalance(const UniValue& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     int nMinDepth = 1;
+    bool friendlyNames = true;
     if (params.size() > 1) {
+        friendlyNames = params[1].get_bool();
+    }
+    if (params.size() > 2) {
         nMinDepth = params[1].get_int();
     }
     if (nMinDepth < 0) {
@@ -4630,12 +4635,15 @@ UniValue getcurrencybalance(const UniValue& params, bool fHelp)
     UniValue currencyBal(UniValue::VOBJ);
     if (balance.valueMap.count(ASSETCHAINS_CHAINID))
     {
-        currencyBal.push_back(make_pair(EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID())), ValueFromAmount(balance.valueMap[ASSETCHAINS_CHAINID])));
+        std::string name = friendlyNames ? ConnectedChains.ThisChain().name : EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()));
+        currencyBal.push_back(make_pair(name, ValueFromAmount(balance.valueMap[ASSETCHAINS_CHAINID])));
         balance.valueMap.erase(ASSETCHAINS_CHAINID);
     }
     for (auto &oneBalance : balance.valueMap)
     {
-        currencyBal.push_back(make_pair(EncodeDestination(CIdentityID(ConnectedChains.GetCachedCurrency(oneBalance.first).GetID())), ValueFromAmount(oneBalance.second)));
+        std::string name = friendlyNames ? ConnectedChains.GetCachedCurrency(oneBalance.first).name : 
+                                           EncodeDestination(CIdentityID(ConnectedChains.GetCachedCurrency(oneBalance.first).GetID()));
+        currencyBal.push_back(make_pair(name, ValueFromAmount(oneBalance.second)));
     }
 
     return currencyBal;
