@@ -401,6 +401,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "getbalance", 1 },
     { "getbalance", 2 },
     { "getcurrencybalance", 1},
+    { "getcurrencybalance", 2},
     { "getblockhash", 0 },
     { "move", 2 },
     { "move", 3 },
