@@ -170,6 +170,7 @@ public:
     std::map<uint160, int64_t> valueMap;
 
     CCurrencyValueMap() {}
+    CCurrencyValueMap(const CCurrencyValueMap &operand) : valueMap(operand.valueMap) {}
     CCurrencyValueMap(const std::map<uint160, int64_t> &vMap) : valueMap(vMap) {}
     CCurrencyValueMap(const std::vector<uint160> &currencyIDs, const std::vector<int64_t> &amounts);
     CCurrencyValueMap(const UniValue &uni);
@@ -210,6 +211,11 @@ public:
     friend CCurrencyValueMap operator-(const CCurrencyValueMap& a, int b);
     friend CCurrencyValueMap operator*(const CCurrencyValueMap& a, int b);
 
+    const CCurrencyValueMap &operator=(const CCurrencyValueMap& operand)
+    {
+        valueMap = operand.valueMap;
+        return *this;
+    }
     const CCurrencyValueMap &operator-=(const CCurrencyValueMap& operand);
     const CCurrencyValueMap &operator+=(const CCurrencyValueMap& operand);
 

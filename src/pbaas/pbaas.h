@@ -855,17 +855,16 @@ public:
                        CCrossChainExport &ccCrossExport);
 
     bool CreateNextExport(const CCurrencyDefinition &_curDef,
-                          const std::vector<ChainTransferData> _txInputs,
+                          const std::pair<int, CInputDescriptor> &lastExportInput,
+                          const std::vector<CInputDescriptor> &reserveDeposits,
+                          const std::vector<ChainTransferData> txInputs,
+                          const CTxDestination &feeOutput,
                           uint32_t nHeight,
                           TransactionBuilder &exportBuilder,
                           int32_t &inputsConsumed,
                           const CPBaaSNotarization &lastNotarization,
                           CPBaaSNotarization &newNotarization,
-                          CCurrencyValueMap *arbitragePrices=nullptr,
-                          CCurrencyValueMap *arbitrageFunds=nullptr,
-                          CCurrencyValueMap *arbitrageThresholds=nullptr,
-                          bool *inputTxAdded=nullptr,
-                          CTransaction *newInputTx=nullptr);
+                          const ChainTransferData *addInputTx=nullptr);
 
     // returns newly created import transactions to the specified chain from exports on this chain specified chain
     bool CreateLatestImports(const CCurrencyDefinition &chainDef, 
