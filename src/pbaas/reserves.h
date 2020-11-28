@@ -147,8 +147,9 @@ public:
         BURN_CHANGE_WEIGHT = 0x100,         // this output is being burned on import and will change the reserve ratio
         IMPORT_TO_SOURCE = 0x200,           // set when the source currency, not destination is the import currency
         RESERVE_TO_RESERVE = 0x400,         // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
-        FEE_SOURCE_NATIVE = 0x800,          // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
-        FEE_DEST_NATIVE = 0x1000            // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
+        FEE_SOURCE_NATIVE = 0x800,          // fee is paid in native currency of source system
+        FEE_DEST_NATIVE = 0x1000,           // fee is paid in native currency of destination system
+        REFUND = 0x2000                     // this transfer should be refunded, individual property when conversions exceed limits
     };
 
     enum EConstants
@@ -283,6 +284,8 @@ public:
     {
         return flags & RESERVE_TO_RESERVE;
     }
+
+    CReserveTransfer GetRefundTransfer() const;
 };
 
 class CReserveDeposit : public CMultiOutput

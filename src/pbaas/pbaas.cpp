@@ -1399,17 +1399,16 @@ CCurrencyDefinition CConnectedChains::UpdateCachedCurrency(const uint160 &curren
 }
 
 bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
+                                        const std::pair<int, CInputDescriptor> &lastExportInput,
+                                        const std::vector<CInputDescriptor> &reserveDeposits,
                                         const std::vector<ChainTransferData> _txInputs,
+                                        const CTxDestination &feeOutput,
                                         uint32_t nHeight,
                                         TransactionBuilder &exportBuilder,
                                         int32_t &inputsConsumed,
                                         const CPBaaSNotarization &lastNotarization,
                                         CPBaaSNotarization &newNotarization,
-                                        CCurrencyValueMap *arbitragePrices,
-                                        CCurrencyValueMap *arbitrageFunds,
-                                        CCurrencyValueMap *arbitrageThresholds,
-                                        bool *inputTxAdded,
-                                        CTransaction *newInputTx)
+                                        const ChainTransferData *addInputTx)
 {
     // this function accepts all reserve transfer inputs to a particular currency destination,
     // from a particular block as well as a height, which is used as a limiting factor in the
@@ -1428,9 +1427,255 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     //    blocks, it must be selected from the first block containing chain transfers, 
     //    following the last block from which chain transfers, are present in the export.
     //
-    // If the input tx boolean, new input tx pointer, and arbitrage information is included,
-    // this function may create a new transaction and conversion input, which is added to the
-    // export transaction created.
+    // If the addInputTx is included, this function will add it to the export transaction created.
+
+    uint160 currencyID = _curDef.GetID();
+
+    // get the inputs to include
+    std::vector<ChainTransferData> txInputs;
+    uint32_t curHeight = _txInputs.size() ? std::get<0>(_txInputs[0]) : nHeight;
+    for (int inputNum = 0; inputNum < _txInputs.size(); inputNum++)
+    {
+        uint32_t nextHeight = std::get<0>(_txInputs[inputNum]);
+        if (curHeight != nextHeight)
+        {
+            // if we have skipped to the next block, and we have enough to make an export, we cannot take any more
+            // except the optional one to add
+            if (inputNum >= CCrossChainExport::MIN_INPUTS)
+            {
+                break;
+            }
+            txInputs.push_back(_txInputs[inputNum]);
+        }
+    }
+
+    // we will consume this many inputs from the list
+    int numInputs = txInputs.size();
+
+    // check to see if we need to add the optional input, not counted as "consumed"
+    if (addInputTx)
+    {
+        uint32_t rtHeight = std::get<0>(*addInputTx);
+        CReserveTransfer reserveTransfer = std::get<2>(*addInputTx);
+        // ensure that any pre-conversions or conversions are all valid, based on mined height and
+        if (reserveTransfer.IsPreConversion())
+        {
+            printf("%s: Invalid optional pre-conversion\n", __func__);
+            LogPrintf("%s: Invalid optional pre-conversion\n", __func__);
+        }
+        else if (reserveTransfer.IsConversion() && rtHeight < _curDef.startBlock)
+        {
+            printf("%s: Invalid optional conversion added before start block\n", __func__);
+            LogPrintf("%s: Invalid optional conversion added before start block\n", __func__);
+        }
+        else
+        {
+            txInputs.push_back(*addInputTx);
+        }
+    }
+
+    // if we have no inputs, including the optional one, we are done
+    if (txInputs.size() == 0)
+    {
+        return false;
+    }
+
+    // now we have all inputs to use. make an export and new notarization from the old notarization
+
+    // inputs can be:
+    // 1. transfers of reserve or tokens for fractional reserve chains
+    // 2. pre-conversions for pre-launch participation in the premine
+    // 3. reserve market conversions
+    //
+    CAmount exportOutVal = lastExportInput.second.nValue; // native export output amount
+
+    // add the last export input, then reserve deposits, then txInputs to the new export
+    exportBuilder.AddTransparentInput(COutPoint(lastExportInput.second.txIn.prevout.hash, lastExportInput.second.txIn.prevout.n), 
+                                      lastExportInput.second.scriptPubKey,
+                                      lastExportInput.second.nValue);
+
+    // combine any reserve deposits from the last export
+    // into the reserve deposit inputs for this export and spend them
+    CCurrencyValueMap currentReserveDeposits;
+    CAmount nativeReserveDeposit = 0;
+
+    for (auto &oneReserveDeposit : reserveDeposits)
+    {
+        COptCCParams p;
+        currentReserveDeposits += oneReserveDeposit.scriptPubKey.ReserveOutValue(p);
+        assert(p.evalCode == EVAL_RESERVE_DEPOSIT);
+        if (oneReserveDeposit.nValue)
+        {
+            nativeReserveDeposit += oneReserveDeposit.nValue;
+        }
+        exportBuilder.AddTransparentInput(COutPoint(oneReserveDeposit.txIn.prevout.hash, oneReserveDeposit.txIn.prevout.n), 
+                                          oneReserveDeposit.scriptPubKey,
+                                          oneReserveDeposit.nValue);
+    }
+
+    CCurrencyValueMap totalTxFees;                  // all fees taken from reserveTransfers
+    CCurrencyValueMap totalAmounts;                 // total amounts exported
+    std::vector<CBaseChainObject *> chainObjects;   // exports that will be part of the opRet
+    std::vector<CReserveTransfer *> preConversions; // if we have pre-conversions, store them here
+
+    for (int i = 0; i < txInputs.size(); i++)
+    {
+        uint32_t rtHeight = std::get<0>(txInputs[i]);
+        CInputDescriptor inputDesc = std::get<1>(txInputs[i]);
+        CReserveTransfer reserveTransfer = std::get<2>(txInputs[i]);
+
+        // ensure that any pre-conversions or conversions are all valid, based on mined height and
+        if (reserveTransfer.IsPreConversion())
+        {
+            //
+            if (rtHeight >= _curDef.startBlock)
+            {
+                printf("%s: Invalid pre-conversion, mined after start block\n", __func__);
+                LogPrintf("%s: Invalid pre-conversion, mined after start block\n", __func__);
+                reserveTransfer = reserveTransfer.GetRefundTransfer();
+            }
+            else
+            {
+                preConversions.push_back(&reserveTransfer);
+            }
+        }
+        else if (reserveTransfer.IsConversion() && rtHeight < _curDef.startBlock)
+        {
+            printf("%s: Invalid conversion, mined before start block\n", __func__);
+            LogPrintf("%s: Invalid conversion, mined before start block\n", __func__);
+            reserveTransfer = reserveTransfer.GetRefundTransfer();
+        }
+
+        exportBuilder.AddTransparentInput(inputDesc.txIn.prevout, inputDesc.scriptPubKey, inputDesc.nValue, inputDesc.txIn.nSequence);
+        CCurrencyValueMap newTransferInput = inputDesc.scriptPubKey.ReserveOutValue();
+        newTransferInput.valueMap[ASSETCHAINS_CHAINID] = inputDesc.nValue;
+
+        totalTxFees += reserveTransfer.CalculateFee(reserveTransfer.flags, reserveTransfer.nValue, _curDef.systemID);
+        totalAmounts += newTransferInput;
+        chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(reserveTransfer), reserveTransfer));
+    }
+
+    // make a fee output as placeholder
+    CReserveTransfer feeOut(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT, 
+                            _curDef.systemID, 0, 0, _curDef.systemID, DestinationToTransferDestination(feeOutput));
+    chainObjects.push_back(new CChainObject<CReserveTransfer>(ObjTypeCode(feeOut), feeOut));
+
+    //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
+    CCrossChainExport ccx(currencyID, txInputs.size(), totalAmounts.CanonicalMap(), totalTxFees.CanonicalMap());
+
+    CAmount nativeExportAmount = 0;
+    if (ccx.totalAmounts.valueMap.count(ASSETCHAINS_CHAINID))
+    {
+        nativeExportAmount = ccx.totalAmounts.valueMap[ASSETCHAINS_CHAINID];
+        nativeReserveDeposit += nativeExportAmount;
+        currentReserveDeposits += ccx.totalAmounts;
+        currentReserveDeposits.valueMap.erase(ASSETCHAINS_CHAINID);
+    }
+    else
+    {
+        currentReserveDeposits += ccx.totalAmounts;
+    }
+
+    if (chainObjects.size())
+    {
+        CScript opRet = StoreOpRetArray(chainObjects);
+        DeleteOpRetObjects(chainObjects);
+
+        CCcontract_info CC;
+        CCcontract_info *cp;
+
+        if (nativeReserveDeposit || currentReserveDeposits.valueMap.size())
+        {
+            CScript opRet = StoreOpRetArray(chainObjects);
+            DeleteOpRetObjects(chainObjects);
+
+            // now send transferred currencies to a reserve deposit
+            cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
+
+            // send the entire amount to a reserve deposit output of the specific chain
+            // we receive our fee on the other chain, when it comes back, or if a token,
+            // when it gets imported back to the chain
+            std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
+            CReserveDeposit rd = CReserveDeposit(currencyID, currentReserveDeposits);
+            exportBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), 
+                                    nativeReserveDeposit);
+        }
+
+        cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
+
+        // send native amount of zero to a cross chain export output of the specific chain
+        std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
+
+        exportBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx)),
+                                exportOutVal);
+
+        // when exports are confirmed as having been imported, they are finalized
+        // until then, a finalization UTXO enables an index search to only find transactions
+        // that have work to complete on this chain, or have not had their cross-chain import 
+        // acknowledged
+        cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
+        CTransactionFinalization finalization(CTransactionFinalization::FINALIZE_EXPORT, currencyID, 0);
+
+        //printf("%s: Finalizing export with index dest %s\n", __func__, EncodeDestination(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))).c_str());
+
+        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
+        exportBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTransactionFinalization>(EVAL_FINALIZE_EXPORT, dests, 1, &finalization)), 0);
+
+        exportBuilder.AddOpRet(opRet);
+        exportBuilder.SetFee(0);
+
+        CCrossChainExport lastCCX;
+        COptCCParams p;
+
+        if (!(lastExportInput.second.scriptPubKey.IsPayToCryptoCondition(p) && 
+            p.IsValid() && 
+            p.evalCode == EVAL_CROSSCHAIN_EXPORT && 
+            p.vData.size() && 
+            (lastCCX = CCrossChainExport(p.vData[0])).IsValid()))
+        {
+            printf("%s: ERROR: Invalid last export input for %s currency\n", __func__, _curDef.name.c_str());
+            LogPrintf("%s: ERROR: Invalid last export input for %s currency\n", __func__, _curDef.name.c_str());
+            return false;
+        }
+
+        CTransaction lastImport;
+        CPartialTransactionProof exportProof;
+        CCrossChainImport ccImport;
+        CCrossChainExport ccExport;
+        if (!GetLastImport(currencyID, lastImport, exportProof, ccImport, ccExport))
+        {
+            printf("%s: ERROR: Cannot find last import transaction for %s currency\n", __func__, _curDef.name.c_str());
+            LogPrintf("%s: ERROR: Cannot find last import transaction for %s currency\n", __func__, _curDef.name.c_str());
+            return false;
+        }
+
+        //get new notarization, as of when this imports
+        CTransaction simulatedExport(exportBuilder.mtx);
+        CMutableTransaction mtx;
+        CCoinbaseCurrencyState newState;
+        CCoinbaseCurrencyState oldState = lastNotarization.currencyState;
+        CPBaaSNotarization newImportNotarization;
+        if (NewImportNotarization(_curDef, nHeight, lastImport, nHeight, simulatedExport, mtx, oldState, newState))
+        {
+            newImportNotarization = CPBaaSNotarization(mtx);
+            // check if we have gone over the currency limit or maximum pre-conversion contribution
+            // if over on conversion or pre-conversion contribution, determine how much we need to remove
+            // and loop through to remove it
+
+            // if we are still calculating pre-conversion, check against pre-conversion amounts
+
+            // if post start, ensure that resulting currency supply is at or under the maximum
+            // if not, loop through to remove what is needed, largest first
+        }
+
+        /* UniValue uni(UniValue::VOBJ);
+        TxToUniv(exportBuilder.mtx, uint256(), uni);
+        printf("%s: about to send reserve deposits with tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
+
+        // we have build a transaction builder and provided a new notarization for analysis or use
+        return true;
+    }
+
     return false;
 }
 

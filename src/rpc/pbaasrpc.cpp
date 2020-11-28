@@ -3125,10 +3125,10 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 1 || params.size() > CCurrencyState::MAX_RESERVE_CURRENCIES)
     {
         throw runtime_error(
-            "getcurrencyconverters [\"currency1\",\"currency2\",...]'\n"
+            "getcurrencyconverters \"currency1\" \"currency2\" ...\n"
             "\nRetrieves all currencies that have at least 1000 VRSC in reserve, are >10% VRSC reserve ratio, and have all listed currencies as reserves\n"
             "\nArguments\n"
-            "       [\"currencyname\"    : \"string\", ...]  (string list, one or more) all selected currencies are returned with their current state"
+            "       \"currencyname\"               : \"string\" ...  (string(s), one or more) all selected currencies are returned with their current state"
 
             "\nResult:\n"
             "       \"[{currency1}, {currency2}]\" : \"array of objects\" (string) All currencies and the last notarization, which are valid converters.\n"
@@ -3452,7 +3452,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "      \"refundto\":\"dest\"    (string, optional) For pre-conversions, this is where refunds will go, defaults to fromaddress\n"
             "      \"memo\":memo            (string, optional) If destination is a zaddr (not supported on testnet), a string message (not hexadecimal) to include.\n"
             "      \"preconvert\":\"false\", (bool,  optional) convert to currency at market price (default=false), only works if transaction is mined before start of currency\n"
-            "      \"subtractfee\":\"bool\", (bool,  optional) if true, output must be of native or convertible reserve currency, and output will be reduced by share of fee\n"
             "    }, ... ]\n"
             "3. \"feeamount\"               (bool,   optional) specific fee amount requested instead of default miner's fee\n"
 
@@ -3534,7 +3533,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
             bool burnCurrency = uni_get_bool(find_value(uniOutputs[i], "burn"));
-            bool subtractFee = uni_get_bool(find_value(uniOutputs[i], "subtractfee"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
 
             if (currencyStr.size() ||

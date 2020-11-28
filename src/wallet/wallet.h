@@ -628,8 +628,8 @@ public:
     CCurrencyValueMap GetReserveCredit(const isminefilter& filter) const;
     CAmount GetImmatureCredit(bool fUseCache=true) const;
     CCurrencyValueMap GetImmatureReserveCredit(bool fUseCache=true) const;
-    CAmount GetAvailableCredit(bool fUseCache=true) const;
-    CCurrencyValueMap GetAvailableReserveCredit(bool fUseCache=true) const;
+    CAmount GetAvailableCredit(bool fUseCache=true, bool includeIDLocked=true) const;
+    CCurrencyValueMap GetAvailableReserveCredit(bool fUseCache=true, bool includeIDLocked=true) const;
     CAmount GetImmatureWatchOnlyCredit(const bool& fUseCache=true) const;
     CCurrencyValueMap GetImmatureWatchOnlyReserveCredit(const bool& fUseCache=true) const;
     CAmount GetAvailableWatchOnlyCredit(const bool& fUseCache=true) const;
@@ -1063,8 +1063,8 @@ public:
     //! check whether we are allowed to upgrade (or already support) to the named feature
     bool CanSupportFeature(enum WalletFeature wf) { AssertLockHeld(cs_wallet); return nWalletMaxVersion >= wf; }
 
-    void AvailableCoins(std::vector<COutput>& vCoins, bool fOnlyConfirmed=true, const CCoinControl *coinControl = NULL, bool fIncludeZeroValue=false, bool fIncludeCoinBase=true, bool fIncludeProtectedCoinbase=true, bool fIncludeImmatureCoins=false) const;
-    void AvailableReserveCoins(std::vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeCoinBase, bool fIncludeNative=true, const CTxDestination *pOnlyFromDest=nullptr, const CCurrencyValueMap *pOnlyTheseCurrencies=nullptr) const;
+    void AvailableCoins(std::vector<COutput>& vCoins, bool fOnlyConfirmed=true, const CCoinControl *coinControl = NULL, bool fIncludeZeroValue=false, bool fIncludeCoinBase=true, bool fIncludeProtectedCoinbase=true, bool fIncludeImmatureCoins=false, bool fIncludeIDLockedCoins=true) const;
+    void AvailableReserveCoins(std::vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeCoinBase, bool fIncludeNative=true, const CTxDestination *pOnlyFromDest=nullptr, const CCurrencyValueMap *pOnlyTheseCurrencies=nullptr, bool fIncludeIDLockedCoins=true) const;
     bool SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int nConfTheirs, std::vector<COutput> vCoins, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet) const;
     bool SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues, 
                                     CAmount targetNativeValue, 
@@ -1239,8 +1239,8 @@ public:
     void ReacceptWalletTransactions();
     void ResendWalletTransactions(int64_t nBestBlockTime);
     std::vector<uint256> ResendWalletTransactionsBefore(int64_t nTime);
-    CAmount GetBalance() const;
-    CCurrencyValueMap GetReserveBalance() const;
+    CAmount GetBalance(bool includeIDLocked=true) const;
+    CCurrencyValueMap GetReserveBalance(bool includeIDLocked=true) const;
     CAmount GetUnconfirmedBalance() const;
     CCurrencyValueMap GetUnconfirmedReserveBalance() const;
     CAmount GetImmatureBalance() const;

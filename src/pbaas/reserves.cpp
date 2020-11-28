@@ -1416,29 +1416,34 @@ CCurrencyValueMap CReserveTransactionDescriptor::GeneratedImportCurrency(const u
     return retVal;
 }
 
+CReserveTransfer CReserveTransfer::GetRefundTransfer() const
+{
+    CReserveTransfer rt = *this;
+
+    // convert full ID destinations to normal ID outputs, since it's refund, full ID will be on this chain already
+    if (rt.destination.type == CTransferDestination::DEST_FULLID)
+    {
+        CIdentity(rt.destination.destination);
+        rt.destination = CTransferDestination(CTransferDestination::DEST_ID, rt.destination.destination);
+    }
+
+    // turn it into a normal transfer, which will create an unconverted output
+    rt.flags &= ~(CReserveTransfer::SEND_BACK | CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT);
+
+    if (rt.flags & (CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY))
+    {
+        rt.flags &= ~(CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY);
+        rt.nValue = 0;
+    }
+    rt.destCurrencyID = rt.currencyID;
+    return rt;
+}
+
 CReserveTransfer RefundExport(const CBaseChainObject *objPtr)
 {
     if (objPtr->objectType == CHAINOBJ_RESERVETRANSFER)
     {
-        CReserveTransfer &rt = ((CChainObject<CReserveTransfer> *)objPtr)->object;
-
-        // convert full ID destinations to normal ID outputs, since it's refund, full ID will be on this chain already
-        if (rt.destination.type == CTransferDestination::DEST_FULLID)
-        {
-            CIdentity(rt.destination.destination);
-            rt.destination = CTransferDestination(CTransferDestination::DEST_ID, rt.destination.destination);
-        }
-
-        // turn it into a normal transfer, which will create an unconverted output
-        rt.flags &= ~(CReserveTransfer::SEND_BACK | CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT);
-
-        if (rt.flags & (CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY))
-        {
-            rt.flags &= ~(CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY);
-            rt.nValue = 0;
-        }
-        rt.destCurrencyID = rt.currencyID;
-        return rt;
+        return ((CChainObject<CReserveTransfer> *)objPtr)->object.GetRefundTransfer();
     }
     return CReserveTransfer();
 }
