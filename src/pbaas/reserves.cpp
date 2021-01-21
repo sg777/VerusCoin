@@ -1938,10 +1938,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const uint16
 
                         // only half the fee comes out as a mining fee, and by leaving the rest as
                         // input, it goes directly into the currency
-//                        if (curTransfer.IsReserveToReserve())
-//                        {
-//                            preConversionFee -= preConversionFee >> 1;
-//                        }
+                        preConversionFee -= preConversionFee >> 1;
+                        //if (curTransfer.IsReserveToReserve())
+                        //{
+                        //    preConversionFee -= preConversionFee >> 1;
+                        //}
                         transferFees.valueMap[curTransfer.currencyID] += preConversionFee;
                     }
 

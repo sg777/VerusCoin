@@ -870,7 +870,14 @@ public:
         for (auto &oneCur : currencyMap)
         {
             reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
-            supply += (nativeIn[oneCur.second] - ReserveToNativeRaw(reserveIn[oneCur.second], PriceInReserve(oneCur.second)));
+            if (reserveIn[oneCur.second] && conversionPrice[oneCur.second])
+            {
+                // TODO: we don't yet know how much native was actually created by the reserves input vs. what was reserve to reserve, 
+                // so for this testnet only, we don't subtract what we think was created when reverting. the commented line below 
+                // will be correct on the next version.
+                supply += nativeIn[oneCur.second];
+                //supply += (nativeIn[oneCur.second] - ReserveToNativeRaw(reserveIn[oneCur.second], conversionPrice[oneCur.second]));
+            }
         }
     }
 
