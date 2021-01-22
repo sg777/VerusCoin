@@ -8,7 +8,7 @@ stages:
 variables:
   VERSION: 0.7.2-6
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
-  VERUS_CLI_LINUX_AMD64: Verus-CLI-Linux-v${VERSION}-amd64.tar.gz
+  VERUS_CLI_LINUX_X86_64: Verus-CLI-Linux-v${VERSION}-x86_64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
   VERUS_CLI_MACOS: Verus-CLI-MacOS-v${VERSION}.tar.gz
   DOWNSTREAM_AGAMA_BRANCH: ${CI_COMMIT_REF_NAME}
@@ -53,19 +53,19 @@ build:linux:
     - chmod +x verus-cli/verusd
     - chmod +x verus-cli/fetch-params
     - chmod +x verus-cli/fetch-bootstrap
-    - tar -czvf ${VERUS_CLI_LINUX_AMD64} verus-cli
-    - sha256sum ${VERUS_CLI_LINUX_AMD64} > ${VERUS_CLI_LINUX_AMD64}.sha256
+    - tar -czvf ${VERUS_CLI_LINUX_X86_64} verus-cli
+    - sha256sum ${VERUS_CLI_LINUX_X86_64} > ${VERUS_CLI_LINUX_X86_64}.sha256
     - git status
   after_script:
-    - curl -F file=@"${VERUS_CLI_LINUX_AMD64}"
+    - curl -F file=@"${VERUS_CLI_LINUX_X86_64}"
       -F channels="${CLI_POST_CHANNEL}"
       -F initial_comment="${POST_MESSAGE}"
       -H "${SLACK_BOT_AUTH}"
       "https://slack.com/api/files.upload"
   artifacts:
     paths:
-      - ${VERUS_CLI_LINUX_AMD64}
-      - ${VERUS_CLI_LINUX_AMD64}.sha256
+      - ${VERUS_CLI_LINUX_X86_64}
+      - ${VERUS_CLI_LINUX_X86_64}.sha256
     expire_in: 1 week
 
 
@@ -257,7 +257,7 @@ build:mac:
     - rm -rf /root/.komodo || true
     - mv .komodo /root/ || true
   script:
-    - tar -xzvf ${VERUS_CLI_LINUX_AMD64}
+    - tar -xzvf ${VERUS_CLI_LINUX_X86_64}
     - export PATH=$PATH:$CI_PROJECT_DIR/verus-cli
     - python qa/verus-cli-tests/verus-cli-tester.py
   after_script:
@@ -286,7 +286,7 @@ build:mac:
     - rm -rf /root/.komodo || true
     - mv .komodo /root/ || true
   script:
-    - tar -xzvf ${VERUS_CLI_LINUX_AMD64}
+    - tar -xzvf ${VERUS_CLI_LINUX_X86_64}
     - export PATH=$PATH:$CI_PROJECT_DIR/verus-cli
     - python qa/verus-cli-tests/verus-cli-tester.py
   after_script:
@@ -375,7 +375,7 @@ deploy:
   script:
     - mkdir Windows && mkdir Linux && mkdir MacOS
     - cp ${VERUS_CLI_WINDOWS} Windows
-    - cp ${VERUS_CLI_LINUX_AMD64} Linux
+    - cp ${VERUS_CLI_LINUX_X86_64} Linux
     - cp ${VERUS_CLI_ARM64_LINUX} Linux
     - cp ${VERUS_CLI_MACOS} MacOS
     - echo "$AUTH_KEY" > AUTH_KEY.json &&
@@ -384,8 +384,8 @@ deploy:
     - gsutil cp -r Windows MacOS Linux  $STAGING/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}
   artifacts:
     paths:
-      - ${VERUS_CLI_LINUX_AMD64}
-      - ${VERUS_CLI_LINUX_AMD64}.sha256
+      - ${VERUS_CLI_LINUX_X86_64}
+      - ${VERUS_CLI_LINUX_X86_64}.sha256
       - ${VERUS_CLI_WINDOWS}
       - ${VERUS_CLI_WINDOWS}.sha256
       - ${VERUS_CLI_MACOS}
