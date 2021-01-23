@@ -183,7 +183,7 @@ public:
                      CAmount fees,
                      const uint160 &destCurID,
                      const CTransferDestination &dest,
-                     const uint160 &secondCID=uint160()) : 
+                     const uint160 &secondCID=uint160()) :
         CTokenOutput(cID, value), flags(Flags), nFees(fees), destCurrencyID(destCurID), destination(dest), secondReserveID(secondCID)
     {
         if (!secondReserveID.IsNull())
@@ -300,7 +300,7 @@ public:
         FromVector(asVector, *this);
     }
 
-    CReserveDeposit(const uint160 &controllingID, const CCurrencyValueMap &reserveOut) : 
+    CReserveDeposit(const uint160 &controllingID, const CCurrencyValueMap &reserveOut) :
         CMultiOutput(reserveOut), controllingCurrencyID(controllingID) {}
 
     ADD_SERIALIZE_METHODS;
@@ -412,7 +412,7 @@ public:
 
     CReserveExchange() : CTokenOutput(), nLimit(0), nValidBefore(0) { }
 
-    CReserveExchange(uint32_t Flags, const uint160 &cID, CAmount amountIn, CAmount Limit=0, uint32_t ValidBefore=0) : 
+    CReserveExchange(uint32_t Flags, const uint160 &cID, CAmount amountIn, CAmount Limit=0, uint32_t ValidBefore=0) :
         CTokenOutput(cID, amountIn), flags(Flags), nLimit(Limit), nValidBefore(ValidBefore) {}
 
     CReserveExchange(const UniValue &uni);
@@ -463,7 +463,7 @@ public:
     CCurrencyValueMap totalReserveOutMap;               // all non-native currencies being held in this thread and released on import
 
     CCrossChainImport() : nVersion(VERSION_INVALID) {}
-    CCrossChainImport(const uint160 &sysID, const uint160 &importCID, const CCurrencyValueMap &ImportValue, const CCurrencyValueMap &InitialReserveOutput=CCurrencyValueMap()) : 
+    CCrossChainImport(const uint160 &sysID, const uint160 &importCID, const CCurrencyValueMap &ImportValue, const CCurrencyValueMap &InitialReserveOutput=CCurrencyValueMap()) :
                         nVersion(VERSION_CURRENT),
                         systemID(sysID),
                         importCurrencyID(importCID),
@@ -532,7 +532,7 @@ public:
         FromVector(asVector, *this);
     }
 
-    CCrossChainExport(uint160 SystemID, int32_t numin, const CCurrencyValueMap &values, const CCurrencyValueMap &fees) : 
+    CCrossChainExport(uint160 SystemID, int32_t numin, const CCurrencyValueMap &values, const CCurrencyValueMap &fees) :
                       nVersion(VERSION_CURRENT), systemID(SystemID), numInputs(numin), totalAmounts(values), totalFees(fees) {}
 
     CCrossChainExport(const CTransaction &tx, int32_t *pCCXOutputNum=nullptr);
@@ -555,8 +555,8 @@ public:
 
     bool IsValid() const
     {
-        return nVersion > VERSION_INVALID && 
-               nVersion <= VERSION_LAST && 
+        return nVersion > VERSION_INVALID &&
+               nVersion <= VERSION_LAST &&
                !systemID.IsNull();
     }
 
@@ -601,19 +601,19 @@ public:
     CCurrencyState() : flags(0), initialSupply(0), emitted(0), supply(0) {}
 
     CCurrencyState(const uint160 &cID,
-                   const std::vector<uint160> &Currencies, 
-                   const std::vector<int32_t> &Weights, 
-                   const std::vector<int64_t> &Reserves, 
-                   CAmount InitialSupply, 
-                   CAmount Emitted, 
-                   CAmount Supply, 
-                   uint32_t Flags=FLAG_VALID) : 
+                   const std::vector<uint160> &Currencies,
+                   const std::vector<int32_t> &Weights,
+                   const std::vector<int64_t> &Reserves,
+                   CAmount InitialSupply,
+                   CAmount Emitted,
+                   CAmount Supply,
+                   uint32_t Flags=FLAG_VALID) :
         flags(Flags),
         currencyID(cID),
-        currencies(Currencies), 
-        weights(Weights), 
+        currencies(Currencies),
+        weights(Weights),
         reserves(Reserves),
-        initialSupply(InitialSupply), 
+        initialSupply(InitialSupply),
         emitted(Emitted),
         supply(Supply)
     {}
@@ -630,10 +630,10 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(flags);
-        READWRITE(currencyID);        
-        READWRITE(currencies);        
-        READWRITE(weights);        
-        READWRITE(reserves);        
+        READWRITE(currencyID);
+        READWRITE(currencies);
+        READWRITE(weights);
+        READWRITE(reserves);
         READWRITE(VARINT(initialSupply));
         READWRITE(VARINT(emitted));
         READWRITE(VARINT(supply));
@@ -791,12 +791,12 @@ public:
     CCoinbaseCurrencyState(const CCurrencyState &CurrencyState,
                            CAmount NativeFees=0, CAmount NativeConversionFees=0,
                            const std::vector<CAmount> &ReserveIn=std::vector<CAmount>(),
-                           const std::vector<CAmount> &NativeIn=std::vector<CAmount>(), 
-                           const std::vector<CAmount> &ReserveOut=std::vector<CAmount>(), 
-                           const std::vector<CAmount> &ConversionPrice=std::vector<CAmount>(), 
-                           const std::vector<CAmount> &ViaConversionPrice=std::vector<CAmount>(), 
-                           const std::vector<CAmount> &Fees=std::vector<CAmount>(), 
-                           const std::vector<CAmount> &ConversionFees=std::vector<CAmount>()) : 
+                           const std::vector<CAmount> &NativeIn=std::vector<CAmount>(),
+                           const std::vector<CAmount> &ReserveOut=std::vector<CAmount>(),
+                           const std::vector<CAmount> &ConversionPrice=std::vector<CAmount>(),
+                           const std::vector<CAmount> &ViaConversionPrice=std::vector<CAmount>(),
+                           const std::vector<CAmount> &Fees=std::vector<CAmount>(),
+                           const std::vector<CAmount> &ConversionFees=std::vector<CAmount>()) :
         CCurrencyState(CurrencyState), nativeFees(NativeFees), nativeConversionFees(NativeConversionFees),
         reserveIn(ReserveIn),
         nativeIn(NativeIn),
@@ -804,7 +804,7 @@ public:
         conversionPrice(ConversionPrice),
         viaConversionPrice(ViaConversionPrice),
         fees(Fees),
-        conversionFees(ConversionFees)        
+        conversionFees(ConversionFees)
     {
         if (!reserveIn.size()) reserveIn = std::vector<CAmount>(currencies.size());
         if (!nativeIn.size()) nativeIn = std::vector<CAmount>(currencies.size());
@@ -859,16 +859,38 @@ public:
         conversionFees = std::vector<CAmount>(currencies.size());
     }
 
-    CCoinbaseCurrencyState MatchOrders(const std::vector<CReserveTransactionDescriptor> &orders, 
-                                       std::vector<CReserveTransactionDescriptor> &reserveFills, 
-                                       std::vector<CReserveTransactionDescriptor> &noFills, 
-                                       std::vector<const CReserveTransactionDescriptor *> &expiredFillOrKills, 
-                                       std::vector<const CReserveTransactionDescriptor *> &rejects, 
-                                       std::vector<CAmount> &exchangeRates, 
-                                       int32_t height, std::vector<CInputDescriptor> &conversionInputs, 
+    // given that all reserves in and out are accurate, this reverts the reserves and supply to the prior state,
+    // while leaving conversion prices the same
+    void RevertReservesAndSupply()
+    {
+        // add reserves out to reserves
+        auto currencyMap = GetReserveMap();
+
+        // revert changes in reserves, add reserve outs and subtract reserve ins
+        for (auto &oneCur : currencyMap)
+        {
+            reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
+            if (reserveOut[oneCur.second] && conversionPrice[oneCur.second])
+            {
+                // TODO: we don't yet know how much native was actually created by the reserves input vs. what was reserve to reserve, 
+                // so for this testnet only, we don't subtract what we think was created when reverting. the commented line below 
+                // will be correct on the next version.
+                supply += nativeIn[oneCur.second];
+                //supply += (nativeIn[oneCur.second] - ReserveToNativeRaw(reserveIn[oneCur.second], conversionPrice[oneCur.second]));
+            }
+        }
+    }
+
+    CCoinbaseCurrencyState MatchOrders(const std::vector<CReserveTransactionDescriptor> &orders,
+                                       std::vector<CReserveTransactionDescriptor> &reserveFills,
+                                       std::vector<CReserveTransactionDescriptor> &noFills,
+                                       std::vector<const CReserveTransactionDescriptor *> &expiredFillOrKills,
+                                       std::vector<const CReserveTransactionDescriptor *> &rejects,
+                                       std::vector<CAmount> &exchangeRates,
+                                       int32_t height, std::vector<CInputDescriptor> &conversionInputs,
                                        int64_t maxSerializedSize=LONG_MAX, int64_t *ptotalSerializeSize=NULL, CMutableTransaction *pConversionTx=NULL,
                                        bool feesAsReserve=false) const;
-    
+
     template <typename NUMBERVECTOR>
     NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b) const
     {
@@ -907,13 +929,13 @@ public:
         // TODO: this needs to be specific to the current blockchain
         // on Verus, we will consider any currency with 1000 or more in Verus reserves and >= 10% reserve a possible
         // converter
-        return 1000; 
+        return 1000;
     }
 
     inline static int32_t IndexConverterReserveRatio()
     {
         // currencies must have at least 10% native reserve to be considered a converter
-        return 1000000; 
+        return 1000000;
     }
 
     inline static uint160 IndexConverterKey(uint160 currencyID, uint32_t evalCode)
@@ -932,11 +954,11 @@ public:
     int64_t nativeOutConverted;
     int64_t reserveConversionFees;
     CReserveInOuts() : reserveIn(0), reserveOut(0), reserveOutConverted(0), nativeOutConverted(0), reserveConversionFees(0) {}
-    CReserveInOuts(int64_t ReserveIn, int64_t ReserveOut, int64_t ReserveOutConverted, int64_t NativeOutConverted, int64_t ReserveConversionFees) : 
-                    reserveIn(ReserveIn), 
-                    reserveOut(ReserveOut), 
-                    reserveOutConverted(ReserveOutConverted), 
-                    nativeOutConverted(NativeOutConverted), 
+    CReserveInOuts(int64_t ReserveIn, int64_t ReserveOut, int64_t ReserveOutConverted, int64_t NativeOutConverted, int64_t ReserveConversionFees) :
+                    reserveIn(ReserveIn),
+                    reserveOut(ReserveOut),
+                    reserveOutConverted(ReserveOutConverted),
+                    nativeOutConverted(NativeOutConverted),
                     reserveConversionFees(ReserveConversionFees) {}
 };
 
@@ -973,7 +995,7 @@ public:
     CAmount nativeConversionFees = 0;           // non-zero only if there is a conversion
     std::vector<std::pair<int, CReserveExchange>> vRex; // index and rehydrated, validated reserve exchange outputs
 
-    CReserveTransactionDescriptor() : 
+    CReserveTransactionDescriptor() :
         flags(0),
         ptx(NULL),
         numBuys(0),                             // each limit conversion that is valid before a certain block should account for FILL_OR_KILL_FEE
@@ -1061,15 +1083,15 @@ public:
         }
     }
 
-    CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx, 
-                                             std::vector<CInputDescriptor> &conversionInputs, 
-                                             const CCurrencyValueMap &exchangeRates=CCurrencyValueMap(), 
+    CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx,
+                                             std::vector<CInputDescriptor> &conversionInputs,
+                                             const CCurrencyValueMap &exchangeRates=CCurrencyValueMap(),
                                              const CCurrencyState *pCurrencyState=nullptr) const;
 
-    bool AddReserveTransferImportOutputs(const uint160 &currencySourceID, 
-                                         const CCurrencyDefinition &importCurrencyDef, 
+    bool AddReserveTransferImportOutputs(const uint160 &currencySourceID,
+                                         const CCurrencyDefinition &importCurrencyDef,
                                          const CCoinbaseCurrencyState &importCurrencyState,
-                                         const std::vector<CBaseChainObject *> &exportObjects, 
+                                         const std::vector<CBaseChainObject *> &exportObjects,
                                          std::vector<CTxOut> &vOutputs,
                                          CCoinbaseCurrencyState *pNewCurrencyState=nullptr);
 };
