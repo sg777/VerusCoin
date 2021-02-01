@@ -80,7 +80,7 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn, 
     switch ( ecode )
     {
         case EVAL_CURRENCY_DEFINITION:
-        case EVAL_SERVICEREWARD:
+        case EVAL_NOTARY_EVIDENCE:
         case EVAL_EARNEDNOTARIZATION:
         case EVAL_ACCEPTEDNOTARIZATION:
         case EVAL_FINALIZE_NOTARIZATION:

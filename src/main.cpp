@@ -3983,11 +3983,13 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (reserveIn.valueMap.size() || nativeIn.valueMap.size())
     {
         int32_t numCurrencies = prevCurrencyState.currencies.size();
+        static_cast<CCurrencyState>(checkState) = CCurrencyState();
         conversionPrices = prevCurrencyState.ConvertAmounts(reserveIn.AsCurrencyVector(prevCurrencyState.currencies), 
                                                             nativeIn.AsCurrencyVector(prevCurrencyState.currencies),
                                                             checkState);
 
-        if ((currencyState.conversionPrice != conversionPrices) || 
+        if (!checkState.IsValid() ||
+            (currencyState.conversionPrice != conversionPrices) || 
             (nHeight != 1 && currencyState.supply != checkState.supply) || 
             (nHeight != 1 && currencyState.reserveIn != reserveIn.AsCurrencyVector(currencyState.currencies)) || 
             (nHeight == 1 && !thisChain.preconverted.size() && currencyState.supply - currencyState.initialSupply != checkState.supply) || 
@@ -4008,7 +4010,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         // all fees must be taken and no more
         CFeePool feePoolCheck;
         if (CConstVerusSolutionVector::GetVersionByHeight(nHeight - 1) < CActivationHeight::ACTIVATE_PBAAS ||
-            (CFeePool::GetFeePool(feePoolCheck, nHeight - 1) && feePoolCheck.IsValid()))
+            (CFeePool::GetCoinbaseFeePool(feePoolCheck, nHeight - 1) && feePoolCheck.IsValid()))
         {
             CAmount feePoolCheckVal = 
                 feePoolCheck.reserveValues.valueMap[ASSETCHAINS_CHAINID] = 
@@ -4018,7 +4020,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
             CFeePool feePool;
             CAmount feePoolVal;
-            if (!CFeePool::GetCoinbaseFeePool(block.vtx[0], feePool) ||
+            if (!(feePool = CFeePool(block.vtx[0])).IsValid() ||
                 !feePool.IsValid() ||
                 (feePoolVal = feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID]) < (feePoolCheckVal - rewardFees) ||
                 feePoolVal > feePoolCheckVal)

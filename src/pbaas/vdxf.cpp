@@ -10,7 +10,11 @@
 
 #include "vdxf.h"
 
-std::string DATA_KEY_SEPARATOR = "::";
+std::string CVDXF::DATA_KEY_SEPARATOR = "::";
+std::map<uint160,std::pair<std::pair<uint32_t, uint32_t>,std::pair<uint32_t, uint32_t>>> CVDXF::VDXF_TYPES;
+uint160 CVDXF::STRUCTURED_DATA_KEY = CVDXF_StructuredData::StructuredDataKey();
+uint160 CVDXF::ZMEMO_MESSAGE_KEY = CVDXF_Data::ZMemoMessageKey();
+uint160 CVDXF::ZMEMO_SIGNATURE_KEY = CVDXF_Data::ZMemoSignatureKey();
 
 std::string TrimLeading(const std::string &Name, unsigned char ch)
 {
@@ -52,7 +56,7 @@ std::string TrimSpaces(const std::string &Name)
 
 // this will add the current Verus chain name to subnames if it is not present
 // on both id and chain names
-std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter, bool addVerus)
+std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter, bool addVerus)
 {
     std::string nameCopy = Name;
     std::string invalidChars = "\\/:*?\"<>|";
@@ -87,7 +91,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 
     int numRetNames = retNames.size();
 
-    std::string verusChainName = boost::to_lower_copy(VERUS_CHAINNAME);
+    static std::string verusChainName = boost::to_lower_copy(VERUS_CHAINNAME);
 
     if (addVerus)
     {
@@ -329,5 +333,35 @@ std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def)
     {
         return def;
     }
+}
+
+// this deserializes a vector into either a VDXF data object or a VDXF structured
+// object, which may contain one or more VDXF data objects.
+// If the data in the sourceVector is not a recognized VDXF object, the returned
+// variant will be empty/invalid, otherwise, it will be a recognized VDXF object
+// or a VDXF structured object containing one or more recognized VDXF objects.
+VDXFData DeserializeVDXFData(const std::vector<unsigned char> &sourceVector)
+{
+    CVDXF_StructuredData sData;
+    ::FromVector(sourceVector, sData);
+    if (sData.IsValid())
+    {
+        return sData;
+    }
+    else
+    {
+        CVDXF_Data Data;
+        ::FromVector(sourceVector, sData);
+        if (Data.IsValid())
+        {
+            return Data;
+        }
+    }
+    return VDXFData();
+}
+
+std::vector<unsigned char> SerializeVDXFData(const VDXFData &vdxfData)
+{
+    return boost::apply_visitor(CSerializeVDXFData(), vdxfData);
 }
 

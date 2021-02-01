@@ -793,7 +793,6 @@ public:
     int n;
     CCurrencyValueMap outVal;
 
-
     CReserveOutSelectionInfo(const CWalletTx *pwtx, int outNum, CCurrencyValueMap curValues) : pWtx(pwtx), n(outNum), outVal(curValues) {}
 };
 

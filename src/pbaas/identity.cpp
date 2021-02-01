@@ -53,106 +53,6 @@ UniValue CNameReservation::ToUniValue() const
     return ret;
 }
 
-CPrincipal::CPrincipal(const UniValue &uni)
-{
-    nVersion = uni_get_int(find_value(uni, "version"));
-    // upgrade new or updated IDs when we update to PBaaS
-    if (nVersion == VERSION_INVALID || nVersion == VERSION_VERUSID)
-    {
-        LOCK(cs_main);
-        if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
-        {
-            nVersion = VERSION_PBAAS;
-        }
-        else
-        {
-            nVersion = VERSION_VERUSID;
-        }
-    }
-    flags = uni_get_int(find_value(uni, "flags"));
-    UniValue primaryAddressesUni = find_value(uni, "primaryaddresses");
-    if (primaryAddressesUni.isArray())
-    {
-        for (int i = 0; i < primaryAddressesUni.size(); i++)
-        {
-            try
-            {
-                CTxDestination dest = DecodeDestination(uni_get_str(primaryAddressesUni[i]));
-                if (dest.which() == COptCCParams::ADDRTYPE_PK || dest.which() == COptCCParams::ADDRTYPE_PKH)
-                {
-                    primaryAddresses.push_back(dest);
-                }
-            }
-            catch (const std::exception &e)
-            {
-                printf("%s: bad address %s\n", __func__, primaryAddressesUni[i].write().c_str());
-                LogPrintf("%s: bad address %s\n", __func__, primaryAddressesUni[i].write().c_str());
-                nVersion = VERSION_INVALID;
-            }
-        }
-    }
-
-    minSigs = uni_get_int(find_value(uni, "minimumsignatures"));
-}
-
-CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
-{
-    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "parent")))));
-    name = CleanName(uni_get_str(find_value(uni, "name")), parent);
-
-    UniValue hashesUni = find_value(uni, "contentmap");
-    if (hashesUni.isObject())
-    {
-        std::vector<std::string> keys = hashesUni.getKeys();
-        std::vector<UniValue> values = hashesUni.getValues();
-        for (int i = 0; i < keys.size(); i++)
-        {
-            try
-            {
-                std::vector<unsigned char> vch(ParseHex(keys[i]));
-                uint160 key;
-                if (vch.size() == 20 && !((key = uint160(vch)).IsNull() || i >= values.size()))
-                {
-                    contentMap[key] = uint256S(uni_get_str(values[i]));
-                }
-                else
-                {
-                    nVersion = VERSION_INVALID;
-                }
-            }
-            catch (const std::exception &e)
-            {
-                nVersion = VERSION_INVALID;
-            }
-            if (nVersion == VERSION_INVALID)
-            {
-                printf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
-                LogPrintf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
-                break;
-            }
-        }
-    }
-    std::string revocationStr = uni_get_str(find_value(uni, "revocationauthority"));
-    std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthority"));
-
-    revocationAuthority = uint160(GetDestinationID(DecodeDestination(revocationStr == "" ? name + "@" : revocationStr)));
-    recoveryAuthority = uint160(GetDestinationID(DecodeDestination(recoveryStr == "" ? name + "@" : recoveryStr)));
-    libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
-
-    unlockAfter = uni_get_int(find_value(uni, "timelock"));
-
-    if (revocationAuthority.IsNull() || recoveryAuthority.IsNull())
-    {
-        printf("%s: invalid address\n", __func__);
-        LogPrintf("%s: invalid address\n", __func__);
-        nVersion = VERSION_INVALID;
-    }
-    else if (boost::get<libzcash::SaplingPaymentAddress>(&pa) != nullptr)
-    {
-        privateAddresses.push_back(*boost::get<libzcash::SaplingPaymentAddress>(&pa));
-    }
-}
-
 CIdentity::CIdentity(const CTransaction &tx, int *voutNum)
 {
     std::set<uint160> ids;
@@ -1256,11 +1156,10 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         // if not fulfilled, neither recovery data nor its spend condition may be modified
         if (!fulfilled)
         {
-            // !! DO NOT COMMIT THESE COMMENTS IN MAINNET DEFI RELEASE - ONLY TO ALLOW USE ON TESTNET WITH NO FORK
-            //if (oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity, height))
-            //{
-            //    return eval->Error("Unauthorized modification of recovery information");
-            //}
+            if (oldIdentity.IsRecovery(newIdentity) || oldIdentity.IsRecoveryMutation(newIdentity, height))
+            {
+                return eval->Error("Unauthorized modification of recovery information");
+            }
 
             // if revoked, only fulfilled recovery condition allows any mutation
             if (oldIdentity.IsRevoked() &&

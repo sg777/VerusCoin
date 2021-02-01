@@ -224,8 +224,8 @@ public:
     }
 
     static std::string DATA_KEY_SEPARATOR;
-    static std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false);
     static std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter=false, bool addVerus=true);
+    static std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false);
     static uint160 GetID(const std::string &Name);
     static uint160 GetID(const std::string &Name, uint160 &parent);
     static uint160 GetDataKey(const std::string &keyName, uint160 nameSpaceID);
@@ -234,9 +234,9 @@ public:
         assert(typeID != STRUCTURED_DATA_KEY);
         VDXF_TYPES.insert(std::make_pair(typeID, std::make_pair(std::make_pair(minVer, maxVer), std::make_pair(minVecSize, maxVecSize))));
     }
-    bool IsValid()
+    bool IsValid(bool registered=false)
     {
-        return ((key == STRUCTURED_DATA_KEY && version >= FIRST_VERSION && version <= LAST_VERSION) ||
+        return (((key == STRUCTURED_DATA_KEY || !registered ) && version >= FIRST_VERSION && version <= LAST_VERSION) ||
                 (VDXF_TYPES.count(key) && version >= VDXF_TYPES[key].first.first && version <= VDXF_TYPES[key].first.second));
     }
 };
@@ -253,32 +253,49 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(*(VDXF *)this);
+        READWRITE(*(CVDXF *)this);
         if (version != VERSION_INVALID)
         {
-            if (VDXF_CORE_TYPES.count(key))
+            if (VDXF_TYPES.count(key))
             {
                 READWRITE(data);
-                if (!(VDXF_CORE_TYPES[key].first <= data.size() && VDXF_CORE_TYPES[key].first >= data.size()))
+                if (!(VDXF_TYPES[key].second.first <= data.size() && VDXF_TYPES[key].second.second >= data.size()))
                 {
                     version = VERSION_INVALID;
                 }
             }
         }
     }
+    static std::string ZMemoMessageKeyName()
+    {
+        return "vrsc::system.zmemo.message";
+    }
     static uint160 ZMemoMessageKey()
     {
-        return GetDataKey("system.zmemo.message", uint160());
+        return GetDataKey(ZMemoMessageKeyName(), uint160());
+    }
+    static std::string ZMemoSignatureKeyName()
+    {
+        return "vrsc::system.zmemo.signature";
     }
     static uint160 ZMemoSignatureKey()
     {
-        return GetDataKey("system.zmemo.signature", uint160());
+        return GetDataKey(ZMemoSignatureKeyName(), uint160());
     }
-    bool IsValid()
+    static std::string CurrencyStartNotarizationKeyName()
     {
-        return CVDXF::IsValid() &&
-               data.size() <= VDXF_TYPES[key].second.first &&
-               data.size() >= VDXF_TYPES[key].second.second;
+        return "vrsc::system.currency.startnotarization";
+    }
+    static uint160 CurrencyStartNotarizationKey()
+    {
+        return GetDataKey(CurrencyStartNotarizationKeyName(), uint160());
+    }
+    bool IsValid(bool registered=false)
+    {
+        return CVDXF::IsValid(registered) &&
+                (!registered ||
+                (data.size() <= VDXF_TYPES[key].second.first &&
+                 data.size() >= VDXF_TYPES[key].second.second));
     }
 };
 
@@ -306,9 +323,13 @@ public:
             READWRITE(data);
         }
     }
+    static std::string StructuredDataKeyName()
+    {
+        return "vrsc::system.structured-data";
+    }
     static uint160 StructuredDataKey()
     {
-        return GetDataKey("system.structured-data", uint160());
+        return GetDataKey(StructuredDataKeyName(), uint160());
     }
     bool IsValid()
     {
@@ -334,31 +355,6 @@ public:
 
 typedef boost::variant<CVDXF_NoData, CVDXF_StructuredData, CVDXF_Data> VDXFData;
 
-// this deserializes a vector into either a VDXF data object or a VDXF structured
-// object, which may contain one or more VDXF data objects.
-// If the data in the sourceVector is not a recognized VDXF object, the returned
-// variant will be empty/invalid, otherwise, it will be a recognized VDXF object
-// or a VDXF structured object containing one or more recognized VDXF objects.
-VDXFData DeserializeVDXFData(const std::vector<unsigned char> &sourceVector)
-{
-    CVDXF_StructuredData sData;
-    ::FromVector(sourceVector, sData);
-    if (sData.IsValid())
-    {
-        return sData;
-    }
-    else
-    {
-        CVDXF_Data Data;
-        ::FromVector(sourceVector, sData);
-        if (Data.IsValid())
-        {
-            return Data;
-        }
-    }
-    return VDXFData();
-}
-
 class CSerializeVDXFData : public boost::static_visitor<std::vector<unsigned char>>
 {
 public:
@@ -380,10 +376,18 @@ public:
     }
 };
 
-std::vector<unsigned char> SerializeVDXFData(const VDXFData &vdxfData)
-{
-    return boost::apply_visitor(CSerializeVDXFData(), vdxfData);
-}
+// standard name parsing functions
+std::string TrimLeading(const std::string &Name, unsigned char ch);
+std::string TrimTrailing(const std::string &Name, unsigned char ch);
+std::string TrimSpaces(const std::string &Name);
+
+// this deserializes a vector into either a VDXF data object or a VDXF structured
+// object, which may contain one or more VDXF data objects.
+// If the data in the sourceVector is not a recognized VDXF object, the returned
+// variant will be empty/invalid, otherwise, it will be a recognized VDXF object
+// or a VDXF structured object containing one or more recognized VDXF objects.
+VDXFData DeserializeVDXFData(const std::vector<unsigned char> &sourceVector);
+std::vector<unsigned char> SerializeVDXFData(const VDXFData &vdxfData);
 
 bool uni_get_bool(UniValue uv, bool def=false);
 int32_t uni_get_int(UniValue uv, int32_t def=0);

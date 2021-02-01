@@ -1446,6 +1446,7 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     const char *charPtr;
                     // basic coin parameters. the rest will come from block 1
                     fprintf(fp,"ac_algo=verushash\nac_veruspos=50\nac_cc=1\n");
+                    fprintf(fp,"launchsystemid=%s\n", EncodeDestination(CIdentityID(ConnectedChains.thisChain.launchSystemID)).c_str());
                     fprintf(fp,"startblock=%d\n", ConnectedChains.thisChain.startBlock);
                     fprintf(fp,"endblock=%d\n", ConnectedChains.thisChain.endBlock);
                     fprintf(fp,"ac_supply=%s\n", (charPtr = mapArgs["-ac_supply"].c_str())[0] == 0 ? "0" : charPtr);
@@ -1703,6 +1704,7 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
 }
 
 extern int64_t MAX_MONEY;
+extern int64_t MAX_SUPPLY;
 extern std::string VERUS_DEFAULT_ZADDR;
 bool SetThisChain(const UniValue &chainDefinition);
 const uint256 &CurrencyDefHash();

@@ -262,7 +262,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     EVAL_NONE,
                     EVAL_STAKEGUARD,
                     EVAL_CURRENCY_DEFINITION,
-                    EVAL_SERVICEREWARD,
+                    EVAL_NOTARY_EVIDENCE,
                     EVAL_EARNEDNOTARIZATION,
                     EVAL_ACCEPTEDNOTARIZATION,
                     EVAL_FINALIZE_NOTARIZATION,

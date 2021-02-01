@@ -216,6 +216,7 @@ BITCOIN_CORE_H = \
   netbase.h \
   noui.h \
   pbaas/crosschainrpc.h \
+  pbaas/vdxf.h \
   pbaas/identity.h \
   pbaas/notarization.h \
   pbaas/pbaas.h \
@@ -523,6 +524,7 @@ libbitcoin_common_a_SOURCES = \
   metrics.cpp \
   mmr.cpp \
   pbaas/crosschainrpc.cpp \
+  pbaas/vdxf.cpp \
   primitives/block.cpp \
   primitives/transaction.cpp \
   primitives/nonce.cpp \
@@ -684,6 +686,7 @@ wallet_utility_LDADD = \
 	$(BOOST_LIBS) \
 	$(BDB_LIBS) \
 	$(CRYPTO_LIBS) \
+	$(EVENT_LIBS) \
 	$(LIBZCASH) \
 	$(LIBSNARK) \
 	$(LIBZCASH_LIBS)\
@@ -705,6 +708,7 @@ verus_tx_LDADD = \
 	$(BOOST_LIBS) \
   $(LIBBITCOIN_COMMON) \
   $(LIBBITCOIN_UTIL) \
+	$(EVENT_LIBS) \
   $(LIBSECP256K1) \
   $(LIBZCASH) \
   $(LIBSNARK) \

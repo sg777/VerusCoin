@@ -67,6 +67,7 @@ uint32_t ASSETCHAINS_MAGIC = 2387029918;
 int64_t ASSETCHAINS_GENESISTXVAL = 5000000000;
 
 int64_t MAX_MONEY = 200000000 * 100000000LL;
+int64_t MAX_SUPPLY = 50000000000LL * 100000000LL;
 
 // consensus variables for coinbase timelock control and timelock transaction support
 // time locks are specified enough to enable their use initially to lock specific coinbase transactions for emission control
