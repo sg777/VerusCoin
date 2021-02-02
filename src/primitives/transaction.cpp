@@ -633,6 +633,19 @@ CTransactionComponentProof::CTransactionComponentProof(TransactionMMView &txView
     }
 }
 
+UniValue CPartialTransactionProof::ToUniValue() const
+{
+    // univalue of this is just hex
+    std::vector<unsigned char> serBytes(::AsVector(*this));
+    return HexBytes(&(serBytes[0]), serBytes.size());
+}
+
+CPartialTransactionProof::CPartialTransactionProof(const UniValue &uni)
+{
+    // univalue of this is just hex
+    ::FromVector(ParseHex(uni_get_str(uni)), *this);
+}
+
 // this validates that all parts of a transaction match and either returns a full transaction
 // and its hash, a partially filled transaction and its MMR root, or NULL
 uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, bool *pIsPartial) const

@@ -118,7 +118,7 @@ std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def)
     }
 }
 
-uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
+uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, uint32_t condition)
 {
     CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
     hw << condition;
@@ -127,7 +127,27 @@ uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
-uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
+uint160 GetConditionID(const uint160 &cid, const uint160 &condition)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid, int32_t voutNum)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    hw << txid;
+    hw << voutNum;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 CCrossChainRPCData::GetConditionID(std::string name, uint32_t condition)
 {
     uint160 parent;
     uint160 cid = CIdentity::GetID(name, parent);

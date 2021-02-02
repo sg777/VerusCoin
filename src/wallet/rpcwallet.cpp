@@ -798,6 +798,93 @@ UniValue listaddressgroupings(const UniValue& params, bool fHelp)
     return jsonGroupings;
 }
 
+CIdentitySignature::ESignatureVerification CIdentitySignature::AddSignature(const CIdentity &signingID,
+                                                                            const std::vector<uint160> &vdxfCodes, 
+                                                                            const std::vector<uint256> &statements, 
+                                                                            const uint160 &systemID, 
+                                                                            uint32_t height,
+                                                                            const std::string &prefixString, 
+                                                                            const uint256 &msgHash,
+                                                                            const CKeyStore *pWallet)
+{
+    if (blockHeight != height)
+    {
+        return SIGNATURE_INVALID;
+    }
+
+    uint160 sID = signingID.GetID();
+    std::set<uint160> signatureIDs;
+    std::set<uint160> idKeys;
+    for (auto &oneKey : signingID.primaryAddresses)
+    {
+        if (oneKey.which() != COptCCParams::ADDRTYPE_PK && oneKey.which() != COptCCParams::ADDRTYPE_PKH)
+        {
+            return SIGNATURE_INVALID;
+        }
+        idKeys.insert(GetDestinationID(oneKey));
+    }
+
+    uint256 signatureHash = IdentitySignatureHash(vdxfCodes, statements, systemID, height, sID, prefixString, msgHash);
+    
+    for (auto &oneSig : signatures)
+    {
+        CPubKey pubkey;
+        if (pubkey.RecoverCompact(signatureHash, oneSig))
+        {
+            uint160 pkID = pubkey.GetID();
+            // wrong signature means this is wrong
+            if (!idKeys.count(pkID))
+            {
+                return SIGNATURE_INVALID;
+            }
+            signatureIDs.insert(pkID);
+        }
+    }
+
+    for (auto &oneAddr : signingID.primaryAddresses)
+    {
+        CKeyID addrID = GetDestinationID(oneAddr);
+        if (signatureIDs.count(addrID))
+        {
+            continue;
+        }
+        CKey signingKey;
+        std::vector<unsigned char> newSig;
+        if (pWallet->GetKey(addrID, signingKey) && signingKey.SignCompact(signatureHash, newSig))
+        {
+            signatures.insert(newSig);
+            signatureIDs.insert(addrID);
+        }
+    }
+
+    if (signatureIDs.size() >= signingID.minSigs)
+    {
+        return SIGNATURE_COMPLETE;
+    }
+    else if (signatureIDs.size())
+    {
+        return SIGNATURE_PARTIAL;
+    }
+    else
+    {
+        return SIGNATURE_INVALID;
+    }
+}
+
+CIdentitySignature::ESignatureVerification CIdentitySignature::NewSignature(const CIdentity &signingID,
+                                                                            const std::vector<uint160> &vdxfCodes, 
+                                                                            const std::vector<uint256> &statements, 
+                                                                            const uint160 &systemID, 
+                                                                            uint32_t height,
+                                                                            const std::string &prefixString, 
+                                                                            const uint256 &msgHash, 
+                                                                            const CKeyStore *pWallet)
+{
+    signatures.clear();
+    blockHeight = height;
+    return AddSignature(signingID, vdxfCodes, statements, systemID, height, prefixString, msgHash, pWallet);
+}
+
 std::string SignMessageHash(const CIdentity &identity, const uint256 &_msgHash, const std::string &signatureStr, uint32_t blockHeight)
 {
     int numSigs = 0;
@@ -6699,13 +6786,13 @@ UniValue diceaddress(const UniValue& params, bool fHelp)
 UniValue faucetaddress(const UniValue& params, bool fHelp)
 {
     struct CCcontract_info *cp,C; std::vector<unsigned char> pubkey;
-    int32_t errno;
+    int32_t errnum;
     cp = CCinit(&C,EVAL_FAUCET);
     if ( fHelp || params.size() > 1 )
         throw runtime_error("faucetaddress [pubkey]\n");
-    errno = ensure_CCrequirements();
-    if ( errno < 0 )
-        throw runtime_error(strprintf("to use CC contracts, you need to launch daemon with valid -pubkey= for an address in your wallet. ERR=%d\n", errno));
+    errnum = ensure_CCrequirements();
+    if ( errnum < 0 )
+        throw runtime_error(strprintf("to use CC contracts, you need to launch daemon with valid -pubkey= for an address in your wallet. ERR=%d\n", errnum));
     if ( params.size() == 1 )
         pubkey = ParseHex(params[0].get_str().c_str());
     return(CCaddress(cp,(char *)"Faucet",pubkey));

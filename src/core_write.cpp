@@ -134,32 +134,6 @@ string EncodeHexBlk(const CBlock& tx)
     return HexStr(ssTx.begin(), ssTx.end());
 }
 
-void ScriptPubKeyToUniv(const CScript& scriptPubKey,
-                        UniValue& out, bool fIncludeHex)
-{
-    txnouttype type;
-    vector<CTxDestination> addresses;
-    int nRequired;
-
-    out.pushKV("asm", ScriptToAsmStr(scriptPubKey));
-    if (fIncludeHex)
-        out.pushKV("hex", HexStr(scriptPubKey.begin(), scriptPubKey.end()));
-
-    if (!ExtractDestinations(scriptPubKey, type, addresses, nRequired)) {
-        out.pushKV("type", GetTxnOutputType(type));
-        return;
-    }
-
-    out.pushKV("reqSigs", nRequired);
-    out.pushKV("type", GetTxnOutputType(type));
-
-    UniValue a(UniValue::VARR);
-    for (const CTxDestination& addr : addresses) {
-        a.push_back(EncodeDestination(addr));
-    }
-    out.pushKV("addresses", a);
-}
-
 UniValue ValueFromAmount(const CAmount& amount)
 {
     bool sign = amount < 0;
@@ -549,18 +523,56 @@ UniValue CPBaaSNotarization::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int32_t)nVersion));
+    if (IsDefinitionNotarization())
+    {
+        obj.push_back(Pair("isdefinition", true));
+    }
+
+    if (IsPreLaunch())
+    {
+        obj.push_back(Pair("prelaunch", true));
+    }
+
+    if (IsLaunchCleared())
+    {
+        obj.push_back(Pair("launchclear", true));
+    }
+
+    if (IsRefunding())
+    {
+        obj.push_back(Pair("refunding", true));
+    }
+
+    if (IsLaunchConfirmed())
+    {
+        obj.push_back(Pair("launchconfirmed", true));
+    }
+
+    obj.push_back(Pair("proposer", proposer.ToUniValue()));
+
     obj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
-    obj.push_back(Pair("notaryaddress", EncodeDestination(notaryDest)));
-    obj.push_back(Pair("notarizationheight", (int32_t)notarizationHeight));
-    obj.push_back(Pair("mmrroot", mmrRoot.GetHex()));
-    obj.push_back(Pair("notarizationprehash", notarizationPreHash.GetHex()));
-    obj.push_back(Pair("work", ((UintToArith256(compactPower) << 128) >> 128).ToString()));
-    obj.push_back(Pair("stake", (UintToArith256(compactPower) >> 128).ToString()));
+    obj.push_back(Pair("notarizationheight", (int64_t)notarizationHeight));
     obj.push_back(Pair("currencystate", currencyState.ToUniValue()));
-    obj.push_back(Pair("prevnotarization", prevNotarization.GetHex()));
-    obj.push_back(Pair("prevheight", prevHeight));
-    obj.push_back(Pair("crossnotarization", crossNotarization.GetHex()));
-    obj.push_back(Pair("crossheight", crossHeight));
+    obj.push_back(Pair("prevnotarizationhash", prevNotarization.hash.GetHex()));
+    obj.push_back(Pair("prevnotarizationout", (int64_t)prevNotarization.n));
+    obj.push_back(Pair("hashprevnotarizationobject", hashPrevNotarization.GetHex()));
+    obj.push_back(Pair("prevheight", (int64_t)prevHeight));
+
+    // now get states and roots, of which there may be multiple
+    UniValue curStateArr(UniValue::VARR);
+    for (auto &oneState : currencyStates)
+    {
+        curStateArr.push_back(Pair(EncodeDestination(CIdentityID(oneState.first)), oneState.second.ToUniValue()));
+    }
+    obj.push_back(Pair("currencystates", curStateArr));
+
+    UniValue proofRootArr(UniValue::VARR);
+    for (auto &oneRoot : proofRoots)
+    {
+        proofRootArr.push_back(Pair(EncodeDestination(CIdentityID(oneRoot.first)), oneRoot.second.ToUniValue()));
+    }
+    obj.push_back(Pair("proofroots", proofRootArr));
+
     UniValue nodesUni(UniValue::VARR);
     for (auto node : nodes)
     {
@@ -574,35 +586,21 @@ UniValue CCurrencyDefinition::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
 
-    obj.push_back(Pair("name", name));
     obj.push_back(Pair("version", (int64_t)nVersion));
     obj.push_back(Pair("options", (int64_t)options));
-    obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
-    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("name", name));
     obj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(GetID()))));
+    obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
+
+    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
     obj.push_back(Pair("notarizationprotocol", (int)notarizationProtocol));
     obj.push_back(Pair("proofprotocol", (int)proofProtocol));
 
-    obj.push_back(Pair("idregistrationprice", idRegistrationAmount));
-    obj.push_back(Pair("idreferrallevels", idReferralLevels));
+    obj.push_back(Pair("nativecurrencyid", nativeCurrencyID.ToUniValue()));
 
-    // notaries are identities that perform specific functions for the currency's operation
-    // related to notarizing an external currency source, as well as proving imports
-    if (notaries.size())
-    {
-        UniValue notaryArr(UniValue::VARR);
-        for (auto &notary : notaries)
-        {
-            notaryArr.push_back(EncodeDestination(CIdentityID(notary)));
-        }
-        obj.push_back(Pair("notaries", notaryArr));
-    }
-    obj.push_back(Pair("minnotariesconfirm", minNotariesConfirm));
-
-    obj.push_back(Pair("billingperiod", billingPeriod));
-    obj.push_back(Pair("notarizationreward", notarizationReward));
-    obj.push_back(Pair("startblock", (int32_t)startBlock));
-    obj.push_back(Pair("endblock", (int32_t)endBlock));
+    obj.push_back(Pair("launchsystemid", EncodeDestination(CIdentityID(launchSystemID))));
+    obj.push_back(Pair("startblock", (int64_t)startBlock));
+    obj.push_back(Pair("endblock", (int64_t)endBlock));
 
     // notaries are identities that perform specific functions for the currency's operation
     // related to notarizing an external currency source, as well as proving imports
@@ -685,6 +683,13 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("preallocation", preAllocationArr));
     }
 
+    if ((IsPBaaSChain() && !gatewayConverterName.empty()) || IsPBaaSConverter())
+    {
+        obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
+        obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
+        obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
+    }
+
     if (contributions.size())
     {
         UniValue initialContributionArr(UniValue::VARR);
@@ -705,30 +710,48 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("preconversions", preconversionArr));
     }
 
-    UniValue eraArr(UniValue::VARR);
-    for (int i = 0; i < rewards.size(); i++)
+    if (IsGateway() || IsPBaaSChain() || IsPBaaSConverter())
     {
-        UniValue era(UniValue::VOBJ);
-        era.push_back(Pair("reward", rewards.size() > i ? rewards[i] : (int64_t)0));
-        era.push_back(Pair("decay", rewardsDecay.size() > i ? rewardsDecay[i] : (int64_t)0));
-        era.push_back(Pair("halving", halving.size() > i ? (int32_t)halving[i] : (int32_t)0));
-        era.push_back(Pair("eraend", eraEnd.size() > i ? (int32_t)eraEnd[i] : (int32_t)0));
-        eraArr.push_back(era);
+        // notaries are identities that perform specific functions for the currency's operation
+        // related to notarizing an external currency source, as well as proving imports
+        if (notaries.size())
+        {
+            UniValue notaryArr(UniValue::VARR);
+            for (auto &notary : notaries)
+            {
+                notaryArr.push_back(EncodeDestination(CIdentityID(notary)));
+            }
+            obj.push_back(Pair("notaries", notaryArr));
+        }
+        obj.push_back(Pair("minnotariesconfirm", minNotariesConfirm));
+
+        obj.push_back(Pair("idregistrationprice", ValueFromAmount(idRegistrationFees)));
+        obj.push_back(Pair("idreferrallevels", idReferralLevels));
+
+        if (IsPBaaSChain())
+        {
+            UniValue eraArr(UniValue::VARR);
+            for (int i = 0; i < rewards.size(); i++)
+            {
+                UniValue era(UniValue::VOBJ);
+                era.push_back(Pair("reward", rewards.size() > i ? rewards[i] : (int64_t)0));
+                era.push_back(Pair("decay", rewardsDecay.size() > i ? rewardsDecay[i] : (int64_t)0));
+                era.push_back(Pair("halving", halving.size() > i ? (int32_t)halving[i] : (int32_t)0));
+                era.push_back(Pair("eraend", eraEnd.size() > i ? (int32_t)eraEnd[i] : (int32_t)0));
+                eraArr.push_back(era);
+            }
+            obj.push_back(Pair("eras", eraArr));
+
+            obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
+            uint160 gatewayParent = GetID();
+            obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentity::GetID(gatewayConverterName, gatewayParent))));
+        }
     }
-    obj.push_back(Pair("eras", eraArr));
+
     return obj;
 }
 
 UniValue CTokenOutput::ToUniValue() const
-{
-    UniValue ret(UniValue::VOBJ);
-    ret.push_back(Pair("version", (int64_t)nVersion));
-    ret.push_back(Pair("currencyid", currencyID.IsNull() ? "NULL" : EncodeDestination(CIdentityID(currencyID))));
-    ret.push_back(Pair("value", ValueFromAmount(nValue)));
-    return ret;
-}
-
-UniValue CMultiOutput::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("version", (int64_t)nVersion));
@@ -738,9 +761,81 @@ UniValue CMultiOutput::ToUniValue() const
 
 UniValue CReserveDeposit::ToUniValue() const
 {
-    UniValue ret = ((CMultiOutput *)this)->ToUniValue();
+    UniValue ret = ((CTokenOutput *)this)->ToUniValue();
     ret.push_back(Pair("controllingcurrencyid", controllingCurrencyID.IsNull() ? "NULL" : EncodeDestination(CIdentityID(controllingCurrencyID))));
     return ret;
+}
+
+UniValue CTransferDestination::ToUniValue() const
+{
+    UniValue destVal = UniValue(UniValue::VOBJ);
+    destVal.push_back(Pair("type", type));
+
+    switch (TypeNoFlags())
+    {
+        case CTransferDestination::DEST_PK:
+        {
+            CPubKey pk;
+            pk.Set(destination.begin(), destination.end());
+            destVal.push_back(Pair("address", HexStr(pk)));
+            break;
+        }
+
+        case CTransferDestination::DEST_PKH:
+            destVal.push_back(Pair("address", EncodeDestination(CKeyID(uint160(destination)))));
+            break;
+
+        case CTransferDestination::DEST_SH:
+            destVal.push_back(Pair("address", EncodeDestination(CScriptID(uint160(destination)))));
+            break;
+
+        case CTransferDestination::DEST_ID:
+            destVal.push_back(Pair("address", EncodeDestination(CIdentityID(uint160(destination)))));
+            break;
+
+        case CTransferDestination::DEST_QUANTUM:
+            destVal.push_back(Pair("address", EncodeDestination(CQuantumID(uint160(destination)))));
+            break;
+
+        case CTransferDestination::DEST_ETH:
+            destVal.push_back(Pair("address", EncodeEthDestination(uint160(destination))));
+            break;
+
+        case CTransferDestination::DEST_FULLID:
+            destVal.push_back(Pair("identity", CIdentity(destination).ToUniValue()));
+            break;
+
+        case CTransferDestination::DEST_REGISTERCURRENCY:
+        {
+            CCurrencyRegistrationDestination curRegistration;
+            ::FromVector(destination, curRegistration);
+            destVal.push_back(Pair("identity", curRegistration.identity.ToUniValue()));
+            destVal.push_back(Pair("currency", curRegistration.currency.ToUniValue()));
+            break;
+        }
+
+        case CTransferDestination::DEST_RAW:
+            destVal.push_back(Pair("address", HexBytes(&(destination[0]),destination.size())));
+            break;
+
+        case CTransferDestination::DEST_NESTEDTRANSFER:
+            destVal.push_back(Pair("nestedtransfer", CReserveTransfer(destination).ToUniValue()));
+            break;
+
+        default:
+            destVal.push_back(Pair("nodestination", CReserveTransfer(destination).ToUniValue()));
+            break;
+    }
+    if (type & FLAG_DEST_GATEWAY)
+    {
+        if (destVal.isNull())
+        {
+            destVal = UniValue(UniValue::VOBJ);
+        }
+        destVal.push_back(Pair("gateway", EncodeDestination(CIdentityID(gatewayID))));
+        destVal.push_back(Pair("fees", fees));
+    }
+    return destVal;
 }
 
 UniValue CReserveTransfer::ToUniValue() const
@@ -768,6 +863,7 @@ UniValue CReserveTransfer::ToUniValue() const
     if (IsPreallocate())
         ret.push_back(Pair("preallocate", true));
 
+    ret.push_back(Pair("feecurrencyid", EncodeDestination(CIdentityID(secondReserveID))));
     ret.push_back(Pair("fees", ValueFromAmount(nFees)));
     if (IsReserveToReserve())
     {
@@ -778,30 +874,8 @@ UniValue CReserveTransfer::ToUniValue() const
     {
         ret.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
     }
-    std::string destStr;
-    switch (destination.type)
-    {
-    case CTransferDestination::DEST_PKH:
-        destStr = EncodeDestination(CKeyID(uint160(destination.destination)));
-        break;
 
-    case CTransferDestination::DEST_SH:
-        destStr = EncodeDestination(CScriptID(uint160(destination.destination)));
-        break;
-
-    case CTransferDestination::DEST_ID:
-        destStr = EncodeDestination(CIdentityID(uint160(destination.destination)));
-        break;
-
-    case CTransferDestination::DEST_QUANTUM:
-        destStr = EncodeDestination(CQuantumID(uint160(destination.destination)));
-        break;
-
-    default:
-        destStr = HexStr(destination.destination);
-        break;
-    }
-    ret.push_back(Pair("destination", destStr));
+    ret.push_back(Pair("destination", destination.ToUniValue()));
     return ret;
 }
 
@@ -827,33 +901,82 @@ UniValue CReserveExchange::ToUniValue() const
 UniValue CCrossChainExport::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
-    obj.push_back(Pair("version", (int)nVersion));
-    obj.push_back(Pair("exportcurrencyid", EncodeDestination(CIdentityID(systemID))));
-    obj.push_back(Pair("numinputs", numInputs));
-    obj.push_back(Pair("totalamounts", totalAmounts.ToUniValue()));
-    obj.push_back(Pair("totalfees", totalFees.ToUniValue()));
+    obj.push_back(Pair("version", (int32_t)nVersion));
+    obj.push_back(Pair("flags", (int32_t)nVersion));
+    if (!this->IsSupplemental())
+    {
+        obj.push_back(Pair("sourceheightstart", (int64_t)sourceHeightStart));
+        obj.push_back(Pair("sourceheightend", (int64_t)sourceHeightEnd));
+        obj.push_back(Pair("sourcesystemid", EncodeDestination(CIdentityID(sourceSystemID))));
+        obj.push_back(Pair("destinationsystemid", EncodeDestination(CIdentityID(destCurrencyID))));
+        obj.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
+        obj.push_back(Pair("numinputs", numInputs));
+        obj.push_back(Pair("totalamounts", totalAmounts.ToUniValue()));
+        obj.push_back(Pair("totalfees", totalFees.ToUniValue()));
+        obj.push_back(Pair("hashtransfers", hashReserveTransfers.GetHex()));
+        obj.push_back(Pair("rewardaddress", EncodeDestination(TransferDestinationToDestination(exporter))));
+        obj.push_back(Pair("firstinput", firstInput));
+    }
+    else
+    {
+        obj.push_back(Pair("issuplemental", true));
+        UniValue transfers(UniValue::VARR);
+        for (auto &oneTransfer : reserveTransfers)
+        {
+            transfers.push_back(oneTransfer.ToUniValue());
+        }
+        if (transfers.size())
+        {
+            obj.push_back(Pair("transfers", transfers));
+        }
+    }
     return obj;
 }
 
 UniValue CCrossChainImport::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
-    obj.push_back(Pair("version", (int)nVersion));
-    obj.push_back(Pair("sourcesystemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("version", (int32_t)nVersion));
+    obj.push_back(Pair("flags", (int32_t)nVersion));
+    obj.push_back(Pair("sourcesystemid", EncodeDestination(CIdentityID(sourceSystemID))));
+    obj.push_back(Pair("sourceheight", (int64_t)sourceSystemHeight));
     obj.push_back(Pair("importcurrencyid", EncodeDestination(CIdentityID(importCurrencyID))));
     obj.push_back(Pair("valuein", importValue.ToUniValue()));
     obj.push_back(Pair("tokensout", totalReserveOutMap.ToUniValue()));
+    obj.push_back(Pair("numoutputs", (int32_t)numOutputs));
+    obj.push_back(Pair("hashtransfers", hashReserveTransfers.GetHex()));
+    obj.push_back(Pair("exporttxid", exportTxId.GetHex()));
+    obj.push_back(Pair("exporttxout", exportTxOutNum));
     return obj;
 }
 
-UniValue CTransactionFinalization::ToUniValue() const
+UniValue CUTXORef::ToUniValue() const
+{
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("txid", hash.GetHex()));
+    obj.push_back(Pair("voutnum", (int64_t)n));
+    return obj;
+}
+
+CUTXORef::CUTXORef(const UniValue &uni)
+{
+    hash = uint256S(uni_get_str(find_value(uni, "txid")));
+    n = uni_get_int(find_value(uni, "voutnum"));
+}
+
+UniValue CObjectFinalization::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("finalizationtype", (finalizationType == FINALIZE_NOTARIZATION) ? 
                                                 "finalizenotarization" : finalizationType == FINALIZE_EXPORT ? 
                                                 "finalizeexport" : "invalid"));
+    ret.push_back(Pair("status", (finalizationType & FINALIZE_CONFIRMED) != 0 ? 
+                                    "confirmed" : 
+                                 (finalizationType & FINALIZE_REJECTED) != 0 ? 
+                                    "rejected" : 
+                                    "pending"));
     ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
-    ret.push_back(Pair("confirmedinput", confirmedInput));
+    ret.push_back(Pair("output", output.ToUniValue()));
     return ret;
 }
 
@@ -988,17 +1111,17 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 break;
             }
 
-            case EVAL_SERVICEREWARD:
+            case EVAL_NOTARY_EVIDENCE:
             {
-                CServiceReward reward;
+                CNotaryEvidence evidence;
 
-                if (p.vData.size() && (reward = CServiceReward(p.vData[0])).IsValid())
+                if (p.vData.size() && (evidence = CNotaryEvidence(p.vData[0])).IsValid())
                 {
-                    out.push_back(Pair("pbaasServiceReward", reward.ToUniValue()));
+                    out.push_back(Pair("notaryevidence", evidence.ToUniValue()));
                 }
                 else
                 {
-                    out.push_back(Pair("pbaasServiceReward", "invalid"));
+                    out.push_back(Pair("notaryevidence", "invalid"));
                 }
                 break;
             }
@@ -1010,23 +1133,23 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
                 if (p.vData.size() && (notarization = CPBaaSNotarization(p.vData[0])).IsValid())
                 {
-                    out.push_back(Pair("pbaasNotarization", notarization.ToUniValue()));
+                    out.push_back(Pair("pbaasnotarization", notarization.ToUniValue()));
                 }
                 else
                 {
-                    out.push_back(Pair("pbaasNotarization", "invalid"));
+                    out.push_back(Pair("pbaasnotarization", "invalid"));
                 }
                 break;
             }
 
             case EVAL_FINALIZE_NOTARIZATION:
             {
-                CTransactionFinalization finalization;
+                CObjectFinalization finalization;
 
                 if (p.vData.size())
                 {
-                    finalization = CTransactionFinalization(p.vData[0]);
-                    out.push_back(Pair("finalizeNotarization", finalization.ToUniValue()));
+                    finalization = CObjectFinalization(p.vData[0]);
+                    out.push_back(Pair("finalizenotarization", finalization.ToUniValue()));
                 }
                 break;
             }
@@ -1173,11 +1296,11 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
             case EVAL_FINALIZE_EXPORT:
             {
-                CTransactionFinalization finalization;
+                CObjectFinalization finalization;
 
                 if (p.vData.size())
                 {
-                    finalization = CTransactionFinalization(p.vData[0]);
+                    finalization = CObjectFinalization(p.vData[0]);
                     out.push_back(Pair("finalizeexport", finalization.ToUniValue()));
                 }
                 break;

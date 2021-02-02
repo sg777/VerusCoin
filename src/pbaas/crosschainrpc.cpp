@@ -236,87 +236,6 @@ UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeou
     return UniValue(UniValue::VNULL);
 }
 
-bool uni_get_bool(UniValue uv, bool def)
-{
-    try
-    {
-        if (uv.isStr())
-        {
-            std::string boolStr;
-            if ((boolStr = uni_get_str(uv, def ? "true" : "false")) == "true" || boolStr == "1")
-            {
-                return true;
-            }
-            else if (boolStr == "false" || boolStr == "0")
-            {
-                return false;
-            }
-            return def;
-        }
-        else if (uv.isNum())
-        {
-            return uv.get_int() != 0;
-        }
-        else
-        {
-            return uv.get_bool();
-        }
-        return false;
-    }
-    catch(const std::exception& e)
-    {
-        return def;
-    }
-}
-
-int32_t uni_get_int(UniValue uv, int32_t def)
-{
-    try
-    {
-        return uv.get_int();
-    }
-    catch(const std::exception& e)
-    {
-        return def;
-    }
-}
-
-int64_t uni_get_int64(UniValue uv, int64_t def)
-{
-    try
-    {
-        return uv.get_int64();
-    }
-    catch(const std::exception& e)
-    {
-        return def;
-    }
-}
-
-std::string uni_get_str(UniValue uv, std::string def)
-{
-    try
-    {
-        return uv.get_str();
-    }
-    catch(const std::exception& e)
-    {
-        return def;
-    }
-}
-
-std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def)
-{
-    try
-    {
-        return uv.getValues();
-    }
-    catch(const std::exception& e)
-    {
-        return def;
-    }
-}
-
 UniValue CCrossChainRPCData::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
@@ -346,6 +265,117 @@ CNodeData::CNodeData(std::string netAddr, std::string paymentAddr) :
     nodeIdentity = GetDestinationID(DecodeDestination(paymentAddr));
 }
 
+CIdentitySignature::CIdentitySignature(const UniValue &uni)
+{
+    version = uni_get_int(find_value(uni, "version"));
+    blockHeight = uni_get_int64(find_value(uni, "blockheight"));
+    UniValue sigs = find_value(uni, "signatures");
+    if (sigs.isArray() && sigs.size())
+    {
+        for (int i = 0; i < sigs.size(); i++)
+        {
+            signatures.insert(ParseHex(uni_get_str(sigs[i])));
+        }
+    }
+}
+
+uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vdxfCodes, 
+                                                  const std::vector<uint256> &statements, 
+                                                  const uint160 &systemID, 
+                                                  uint32_t blockHeight, 
+                                                  uint160 idID,
+                                                  const std::string &prefixString, 
+                                                  const uint256 &msgHash) const
+{
+    uint256 retVal;
+    if (version == VERSION_VERUSID)
+    {
+        CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
+
+        ss << prefixString;
+        ss << systemID;
+        ss << blockHeight;
+        ss << idID;
+        ss << msgHash;
+
+        retVal = ss.GetHash();
+    }
+    else
+    {
+        auto ss = CMMRNode<>::GetHashWriter();
+
+        if (vdxfCodes.size())
+        {
+            ss << vdxfCodes;
+        }
+        if (statements.size())
+        {
+            ss << statements;
+        }
+        ss << systemID;
+        ss << blockHeight;
+        ss << idID;
+        if (prefixString.size())
+        {
+            ss << prefixString;
+        }
+        ss << msgHash;
+        retVal = ss.GetHash();
+    }
+    return retVal;
+}
+
+CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(const CIdentity &signingID,
+                                                                              const std::vector<uint160> &vdxfCodes, 
+                                                                              const std::vector<uint256> &statements, 
+                                                                              const uint160 systemID, 
+                                                                              const std::string &prefixString, 
+                                                                              const uint256 &msgHash) const
+{
+    CPubKey checkKey;
+    std::set<uint160> keys;
+    std::set<uint160> idKeys;
+    for (auto &oneKey : signingID.primaryAddresses)
+    {
+        // we currently only support secp256k1 signatures
+        if (oneKey.which() != COptCCParams::ADDRTYPE_PK && oneKey.which() != COptCCParams::ADDRTYPE_PKH)
+        {
+            return SIGNATURE_INVALID;
+        }
+        idKeys.insert(GetDestinationID(oneKey));
+    }
+    uint256 signatureHash = IdentitySignatureHash(vdxfCodes, statements, systemID, blockHeight, signingID.GetID(), prefixString, msgHash);
+    for (auto &oneSig : signatures)
+    {
+        if (oneSig.size() != ECDSA_RECOVERABLE_SIZE)
+        {
+            return SIGNATURE_INVALID;
+        }
+        if (!checkKey.RecoverCompact(signatureHash, oneSig))
+        {
+            return SIGNATURE_INVALID;
+        }
+        uint160 checkKeyID = checkKey.GetID();
+        if (!idKeys.count(checkKeyID))
+        {
+            return SIGNATURE_INVALID;
+        }
+        keys.insert(checkKey.GetID());
+    }
+    if (keys.size() >= signingID.minSigs)
+    {
+        return SIGNATURE_COMPLETE;
+    }
+    else if (keys.size())
+    {
+        return SIGNATURE_PARTIAL;
+    }
+    else
+    {
+        return SIGNATURE_INVALID;
+    }
+}
+
 uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurrencyDef=NULL);
 
 CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
@@ -354,7 +384,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 {
     try
     {
-        nVersion = PBAAS_VERSION;
+        nVersion = uni_get_int64(find_value(obj, "version"), PBAAS_VERSION);
+        options = (uint32_t)uni_get_int64(find_value(obj, "options"));
         name = std::string(uni_get_str(find_value(obj, "name")), 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
 
         std::string parentStr = uni_get_str(find_value(obj, "parent"));
@@ -366,55 +397,72 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             if (parentDest.which() == COptCCParams::ADDRTYPE_INVALID)
             {
                 nVersion = PBAAS_VERSION_INVALID;
+                return;
             }
         }
 
         name = CleanName(name, parent);
 
-        options = (uint32_t)uni_get_int64(find_value(obj, "options"));
-
-        idRegistrationAmount = AmountFromValueNoErr(find_value(obj, "idregistrationprice"));
-        idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"));
-
-        UniValue notaryArr = find_value(obj, "notaries");
-        minNotariesConfirm = 0;
-        if (notaryArr.isArray())
+        std::string systemIDStr = uni_get_str(find_value(obj, "systemid"));
+        if (systemIDStr != "")
         {
-            for (int i = 0; i < notaryArr.size(); i++)
+            CTxDestination systemDest = DecodeDestination(systemIDStr);
+            systemID = GetDestinationID(systemDest);
+            // if we have a system, but it is invalid, the json for this definition cannot be valid
+            if (systemDest.which() == COptCCParams::ADDRTYPE_INVALID)
             {
-                CIdentityID notaryID;
-                CTxDestination notaryDest = DecodeDestination(uni_get_str(notaryArr[i]));
-                notaryID = GetDestinationID(notaryDest);
-                // if we have a destination, but it is invalid, the json for this definition cannot be valid
-                if (notaryID.IsNull())
-                {
-                    nVersion = PBAAS_VERSION_INVALID;
-                }
-                else
-                {
-                    notaries.push_back(notaryID);
-                }
+                nVersion = PBAAS_VERSION_INVALID;
+                return;
             }
-            minNotariesConfirm = uni_get_int(find_value(obj, "minnotariesconfirm"));
         }
-        billingPeriod = uni_get_int(find_value(obj, "billingperiod"));
-        notarizationReward = AmountFromValueNoErr(find_value(obj, "notarizationreward"));
+        else
+        {
+            systemID = parent;
+        }
+
+        gatewayConverterName = uni_get_str(find_value(obj, "gatewayconvertername"));
+        if (!gatewayConverterName.empty())
+        {
+            uint160 gatewayParent = systemID;
+            gatewayID = GetID(gatewayConverterName, gatewayParent);
+        }
+
+        notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_NOTARY_CONFIRM);
+        if (notarizationProtocol != NOTARIZATION_NOTARY_CONFIRM && !(IsToken() && notarizationProtocol == NOTARIZATION_AUTO))
+        {
+            LogPrintf("%s: notarization protocol for PBaaS chains must be %d (NOTARIZATION_NOTARY_CONFIRM) at this time\n", __func__, (int)NOTARIZATION_NOTARY_CONFIRM);
+            nVersion = PBAAS_VERSION_INVALID;
+            return;
+        }
+        proofProtocol = (EProofProtocol)uni_get_int(find_value(obj, "proofprotocol"), (int32_t)PROOF_PBAASMMR);
+        if (proofProtocol != PROOF_PBAASMMR && proofProtocol != PROOF_CHAINID && proofProtocol != PROOF_ETHNOTARIZATION)
+        {
+            LogPrintf("%s: proofprotocol must be %d, %d, or %d\n", __func__, (int)PROOF_PBAASMMR, (int)PROOF_CHAINID, (int)PROOF_ETHNOTARIZATION);
+            nVersion = PBAAS_VERSION_INVALID;
+            return;
+        }
+
+        nativeCurrencyID = CTransferDestination(find_value(obj, "nativecurrencyid"));
+
+        std::string launchIDStr = uni_get_str(find_value(obj, "launchsystemid"));
+        if (launchIDStr != "")
+        {
+            CTxDestination launchDest = DecodeDestination(launchIDStr);
+            launchSystemID = GetDestinationID(launchDest);
+            // if we have a system, but it is invalid, the json for this definition cannot be valid
+            if (launchDest.which() == COptCCParams::ADDRTYPE_INVALID)
+            {
+                nVersion = PBAAS_VERSION_INVALID;
+                return;
+            }
+        }
+        else
+        {
+            launchSystemID = parent;
+        }
 
         startBlock = uni_get_int(find_value(obj, "startblock"));
         endBlock = uni_get_int(find_value(obj, "endblock"));
-
-        proofProtocol = (EProofProtocol)uni_get_int(find_value(obj, "proofprotocol"), (int32_t)PROOF_PBAASMMR);
-        if (proofProtocol != PROOF_PBAASMMR && proofProtocol != PROOF_CHAINID)
-        {
-            LogPrintf("%s: proofprotocol must be either %d or %d\n", __func__, (int)PROOF_PBAASMMR, (int)PROOF_CHAINID);
-            nVersion = PBAAS_VERSION_INVALID;
-        }
-        notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_AUTO);
-        if (notarizationProtocol != NOTARIZATION_AUTO)
-        {
-            LogPrintf("%s: notarization protocol must be %d at this time\n", __func__, (int)NOTARIZATION_AUTO);
-            nVersion = PBAAS_VERSION_INVALID;
-        }
 
         int32_t totalReserveWeight = IsFractional() ? SATOSHIDEN : 0;
         UniValue currencyArr = find_value(obj, "currencies");
@@ -432,6 +480,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             {
                 preLaunchDiscount = AmountFromValueNoErr(find_value(obj, "prelaunchdiscount"));
                 initialFractionalSupply = AmountFromValueNoErr(find_value(obj, "initialsupply"));
+                gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
 
                 if (!initialFractionalSupply)
                 {
@@ -619,7 +668,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
             for (int i = 0; nVersion != PBAAS_VERSION_INVALID && i < currencyArr.size(); i++)
             {
-                uint160 currencyID = ValidateCurrencyName(uni_get_str(currencyArr[i]));
+                uint160 currencyID = GetDestinationID(DecodeDestination(uni_get_str(currencyArr[i])));
                 // if we have a destination, but it is invalid, the json for this definition cannot be valid
                 if (currencyID.IsNull())
                 {
@@ -720,6 +769,31 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             }
         }
 
+        idRegistrationFees = AmountFromValueNoErr(find_value(obj, "idregistrationprice"));
+        idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"));
+
+        UniValue notaryArr = find_value(obj, "notaries");
+        minNotariesConfirm = 0;
+        if (notaryArr.isArray())
+        {
+            for (int i = 0; i < notaryArr.size(); i++)
+            {
+                CIdentityID notaryID;
+                CTxDestination notaryDest = DecodeDestination(uni_get_str(notaryArr[i]));
+                notaryID = GetDestinationID(notaryDest);
+                // if we have a destination, but it is invalid, the json for this definition cannot be valid
+                if (notaryID.IsNull())
+                {
+                    nVersion = PBAAS_VERSION_INVALID;
+                }
+                else
+                {
+                    notaries.push_back(notaryID);
+                }
+            }
+            minNotariesConfirm = uni_get_int(find_value(obj, "minnotariesconfirm"));
+        }
+
         auto vEras = uni_getValues(find_value(obj, "eras"));
         if (vEras.size() > ASSETCHAINS_MAX_ERAS)
         {
@@ -776,41 +850,4 @@ int32_t CCurrencyDefinition::GetTotalCarveOut() const
     }
     return totalCarveOut;
 }
-
-std::vector<std::pair<uint160, int64_t>> CCurrencyDefinition::GetPreAllocationAmounts() const
-{
-    if (!preLaunchDiscount)
-    {
-        return preAllocation;
-    }
-    if (preLaunchDiscount >= SATOSHIDEN)
-    {
-        return std::vector<std::pair<uint160, int64_t>>();
-    }
-    int64_t totalPreAllocation = GetTotalPreallocation();
-    int64_t totalPreAllocUnits = 0;
-    for (auto &onePreAlloc : preAllocation)
-    {
-        totalPreAllocUnits += onePreAlloc.second;
-    }
-    static arith_uint256 bigSatoshi(SATOSHIDEN);
-
-    std::vector<std::pair<uint160, int64_t>> retVal(preAllocation.size());
-    for (int i = 0; i < preAllocation.size(); i++)
-    {
-        if (i == preAllocation.size() - 1)
-        {
-            retVal[i] = make_pair(preAllocation[i].first, totalPreAllocation);
-        }
-        else
-        {
-            CAmount subRatio = ((arith_uint256(preAllocation[i].second) * bigSatoshi) / totalPreAllocUnits).GetLow64();
-            CAmount thisPreAlloc = CalculateRatioOfValue(totalPreAllocation, subRatio);
-            retVal[i] = make_pair(preAllocation[i].first, thisPreAlloc);
-            totalPreAllocation -= thisPreAlloc;
-        }
-    }
-    return retVal;
-}
-
 

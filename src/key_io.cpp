@@ -25,6 +25,7 @@ extern uint160 VERUS_CHAINID;
 extern std::string VERUS_CHAINNAME;
 
 CIdentityID VERUS_DEFAULTID;
+CIdentityID VERUS_NOTARYID;
 bool VERUS_PRIVATECHANGE;
 std::string VERUS_DEFAULT_ZADDR;
 
@@ -547,7 +548,225 @@ libzcash::SpendingKey DecodeSpendingKey(const std::string& str)
     return libzcash::InvalidEncoding();
 }
 
-uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
+CProofRoot::CProofRoot(const UniValue &uni) :
+    version(VERSION_CURRENT),
+    type(TYPE_PBAAS),
+    rootHeight(0)
+{
+    version = (uint32_t)uni_get_int(find_value(uni, "version"));
+    type = (uint32_t)uni_get_int(find_value(uni, "type"));
+    systemID = GetDestinationID(DecodeDestination(uni_get_str(uni, "systemid")));
+    rootHeight = (uint32_t)uni_get_int(find_value(uni, "height"));
+    stateRoot = uint256S(uni_get_str(find_value(uni, "stateroot")));
+    blockHash = uint256S(uni_get_str(find_value(uni, "blockhash")));
+    compactPower = uint256S(uni_get_str(find_value(uni, "power")));
+}
+
+UniValue CProofRoot::ToUniValue() const
+{
+    UniValue obj;
+    obj.push_back(Pair("version", (int64_t)version));
+    obj.push_back(Pair("type", (int64_t)type));
+    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("height", (int64_t)rootHeight));
+    obj.push_back(Pair("stateroot", stateRoot.GetHex()));
+    obj.push_back(Pair("blockhash", blockHash.GetHex()));
+    obj.push_back(Pair("power", compactPower.GetHex()));
+    return obj;
+}
+
+CReserveTransfer::CReserveTransfer(const UniValue &uni) : nFees(0)
+{
+    flags = uni_get_int64(find_value(uni, "flags"), 0);
+    feeCurrencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "feecurrencyid"))));
+    nFees = uni_get_int64(find_value(uni, "fees"), 0);
+
+    if (IsReserveToReserve())
+    {
+        secondReserveID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "destinationcurrencyid"))));
+        destCurrencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "via"))));
+    }
+    else
+    {
+        destCurrencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "destinationcurrencyid"))));
+    }
+    destination = CTransferDestination(find_value(uni, "destination"));
+}
+
+CPrincipal::CPrincipal(const UniValue &uni)
+{
+    nVersion = uni_get_int(find_value(uni, "version"), VERSION_PBAAS);
+    flags = uni_get_int(find_value(uni, "flags"));
+    UniValue primaryAddressesUni = find_value(uni, "primaryaddresses");
+    if (primaryAddressesUni.isArray())
+    {
+        for (int i = 0; i < primaryAddressesUni.size(); i++)
+        {
+            try
+            {
+                CTxDestination dest = DecodeDestination(uni_get_str(primaryAddressesUni[i]));
+                if (dest.which() == COptCCParams::ADDRTYPE_PK || dest.which() == COptCCParams::ADDRTYPE_PKH)
+                {
+                    primaryAddresses.push_back(dest);
+                }
+            }
+            catch (const std::exception &e)
+            {
+                printf("%s: bad address %s\n", __func__, primaryAddressesUni[i].write().c_str());
+                LogPrintf("%s: bad address %s\n", __func__, primaryAddressesUni[i].write().c_str());
+                nVersion = VERSION_INVALID;
+            }
+        }
+    }
+
+    minSigs = uni_get_int(find_value(uni, "minimumsignatures"));
+}
+
+CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
+{
+    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "parent")))));
+    name = CleanName(uni_get_str(find_value(uni, "name")), parent);
+
+    UniValue hashesUni = find_value(uni, "contentmap");
+    if (hashesUni.isObject())
+    {
+        std::vector<std::string> keys = hashesUni.getKeys();
+        std::vector<UniValue> values = hashesUni.getValues();
+        for (int i = 0; i < keys.size(); i++)
+        {
+            try
+            {
+                std::vector<unsigned char> vch(ParseHex(keys[i]));
+                uint160 key;
+                if (vch.size() == 20 && !((key = uint160(vch)).IsNull() || i >= values.size()))
+                {
+                    contentMap[key] = uint256S(uni_get_str(values[i]));
+                }
+                else
+                {
+                    nVersion = VERSION_INVALID;
+                }
+            }
+            catch (const std::exception &e)
+            {
+                nVersion = VERSION_INVALID;
+            }
+            if (nVersion == VERSION_INVALID)
+            {
+                printf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
+                LogPrintf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
+                break;
+            }
+        }
+    }
+    std::string revocationStr = uni_get_str(find_value(uni, "revocationauthority"));
+    std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthority"));
+
+    revocationAuthority = uint160(GetDestinationID(DecodeDestination(revocationStr == "" ? name + "@" : revocationStr)));
+    recoveryAuthority = uint160(GetDestinationID(DecodeDestination(recoveryStr == "" ? name + "@" : recoveryStr)));
+    libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
+
+    unlockAfter = uni_get_int(find_value(uni, "timelock"));
+
+    if (revocationAuthority.IsNull() || recoveryAuthority.IsNull())
+    {
+        printf("%s: invalid address\n", __func__);
+        LogPrintf("%s: invalid address\n", __func__);
+        nVersion = VERSION_INVALID;
+    }
+    else if (boost::get<libzcash::SaplingPaymentAddress>(&pa) != nullptr)
+    {
+        privateAddresses.push_back(*boost::get<libzcash::SaplingPaymentAddress>(&pa));
+    }
+}
+
+CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
+{
+    type = uni_get_int(find_value(obj, "type"));
+
+    switch (TypeNoFlags())
+    {
+        case CTransferDestination::DEST_PKH:
+        case CTransferDestination::DEST_SH:
+        case CTransferDestination::DEST_ID:
+        case CTransferDestination::DEST_QUANTUM:
+        {
+            CTxDestination checkDest = DecodeDestination(uni_get_str(find_value(obj, "address")));
+            if (checkDest.which() != COptCCParams::ADDRTYPE_INVALID)
+            {
+                destination = GetDestinationBytes(checkDest);
+            }
+            else
+            {
+                type = DEST_INVALID;
+            }
+            break;
+        }
+
+        case CTransferDestination::DEST_PK:
+        {
+            std::string pkStr = uni_get_str(find_value(obj, "address"));
+            destination = ParseHex(pkStr);
+            break;
+        }
+
+        case CTransferDestination::DEST_ETH:
+        {
+            uint160 ethDestID = DecodeEthDestination(uni_get_str(find_value(obj, "address")));
+            destination = std::vector<unsigned char>(ethDestID.begin(), ethDestID.end());
+            break;
+        }
+
+        case CTransferDestination::DEST_FULLID:
+        {
+            CIdentity destID = CIdentity(find_value(obj, "identity"));
+            if (destID.IsValid())
+            {
+                destination = ::AsVector(destID);
+            }
+            else
+            {
+                type = DEST_INVALID;
+            }
+            break;
+        }
+
+        case CTransferDestination::DEST_REGISTERCURRENCY:
+        {
+            CCurrencyRegistrationDestination curRegistration({CIdentity(find_value(obj, "identity")), CCurrencyDefinition(find_value(obj, "currency"))});
+            if (curRegistration.IsValid())
+            {
+                destination = ::AsVector(curRegistration);
+            }
+            else
+            {
+                type = DEST_INVALID;
+            }
+            break;
+        }
+
+        case CTransferDestination::DEST_RAW:
+        {
+            std::string rawStr = uni_get_str(find_value(obj, "address"));
+            destination = ParseHex(rawStr);
+            break;
+        }
+
+        case CTransferDestination::DEST_NESTEDTRANSFER:
+        {
+            CReserveTransfer nestedTransfer = CReserveTransfer(find_value(obj, "nestedtransfer"));
+            destination = ::AsVector(nestedTransfer);
+            break;
+        }
+    }
+    if (type & FLAG_DEST_GATEWAY)
+    {
+        gatewayID = DecodeEthDestination(uni_get_str(find_value(obj, "gateway")));
+        fees = uni_get_int64(find_value(obj, "fees"));
+    }
+}
+
+uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, uint32_t condition)
 {
     CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
     hw << condition;
@@ -556,7 +775,27 @@ uint160 CCrossChainRPCData::GetConditionID(uint160 cid, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
-uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
+uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, const uint160 &condition)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid, int32_t voutNum)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    hw << txid;
+    hw << voutNum;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 CCrossChainRPCData::GetConditionID(std::string name, uint32_t condition)
 {
     uint160 parent;
     uint160 cid = CIdentity::GetID(name, parent);
@@ -568,147 +807,34 @@ uint160 CCrossChainRPCData::GetConditionID(std::string name, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
-std::string TrimLeading(const std::string &Name, unsigned char ch)
+UniValue CNotaryEvidence::ToUniValue() const
 {
-    std::string nameCopy = Name;
-    int removeSpaces;
-    for (removeSpaces = 0; removeSpaces < nameCopy.size(); removeSpaces++)
+    UniValue retObj(UniValue::VOBJ);
+    retObj.push_back(Pair("version", version));
+    retObj.push_back(Pair("type", type));
+    retObj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    retObj.push_back(Pair("output", output.ToUniValue()));
+    retObj.push_back(Pair("confirmed", confirmed));
+    UniValue sigObj(UniValue::VOBJ);
+    for (auto &oneSig : signatures)
     {
-        if (nameCopy[removeSpaces] != ch)
-        {
-            break;
-        }
+        sigObj.push_back(Pair(EncodeDestination(CIdentityID(oneSig.first)), oneSig.second.ToUniValue()));
     }
-    if (removeSpaces)
+    retObj.push_back(Pair("signatures", sigObj));
+    UniValue evidenceProofs(UniValue::VARR);
+    for (auto &oneProof : evidence)
     {
-        nameCopy.erase(nameCopy.begin(), nameCopy.begin() + removeSpaces);
+        evidenceProofs.push_back(oneProof.ToUniValue());
     }
-    return nameCopy;
-}
-
-std::string TrimTrailing(const std::string &Name, unsigned char ch)
-{
-    std::string nameCopy = Name;
-    int removeSpaces;
-    for (removeSpaces = nameCopy.size() - 1; removeSpaces >= 0; removeSpaces--)
-    {
-        if (nameCopy[removeSpaces] != ch)
-        {
-            break;
-        }
-    }
-    nameCopy.resize(nameCopy.size() - ((nameCopy.size() - 1) - removeSpaces));
-    return nameCopy;
-}
-
-std::string TrimSpaces(const std::string &Name)
-{
-    return TrimTrailing(TrimLeading(Name, ' '), ' ');
+    retObj.push_back(Pair("evidence", sigObj));
+    return retObj;
 }
 
 // this will add the current Verus chain name to subnames if it is not present
 // on both id and chain names
 std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter, bool addVerus)
 {
-    std::string nameCopy = Name;
-    std::string invalidChars = "\\/:*?\"<>|";
-    if (displayfilter)
-    {
-        invalidChars += "\n\t\r\b\t\v\f\x1B";
-    }
-    for (int i = 0; i < nameCopy.size(); i++)
-    {
-        if (invalidChars.find(nameCopy[i]) != std::string::npos)
-        {
-            return std::vector<std::string>();
-        }
-    }
-
-    std::vector<std::string> retNames;
-    boost::split(retNames, nameCopy, boost::is_any_of("@"));
-    if (!retNames.size() || retNames.size() > 2)
-    {
-        return std::vector<std::string>();
-    }
-
-    bool explicitChain = false;
-    if (retNames.size() == 2)
-    {
-        ChainOut = retNames[1];
-        explicitChain = true;
-    }    
-
-    nameCopy = retNames[0];
-    boost::split(retNames, nameCopy, boost::is_any_of("."));
-
-    int numRetNames = retNames.size();
-
-    std::string verusChainName = boost::to_lower_copy(VERUS_CHAINNAME);
-
-    if (addVerus)
-    {
-        if (explicitChain)
-        {
-            std::vector<std::string> chainOutNames;
-            boost::split(chainOutNames, ChainOut, boost::is_any_of("."));
-            std::string lastChainOut = boost::to_lower_copy(chainOutNames.back());
-            
-            if (lastChainOut != "" && lastChainOut != verusChainName)
-            {
-                chainOutNames.push_back(verusChainName);
-            }
-            else if (lastChainOut == "")
-            {
-                chainOutNames.pop_back();
-            }
-        }
-
-        std::string lastRetName = boost::to_lower_copy(retNames.back());
-        if (lastRetName != "" && lastRetName != verusChainName)
-        {
-            retNames.push_back(verusChainName);
-        }
-        else if (lastRetName == "")
-        {
-            retNames.pop_back();
-        }
-    }
-
-    for (int i = 0; i < retNames.size(); i++)
-    {
-        if (retNames[i].size() > KOMODO_ASSETCHAIN_MAXLEN - 1)
-        {
-            retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
-        }
-        // spaces are allowed, but no sub-name can have leading or trailing spaces
-        if (!retNames[i].size() || retNames[i] != TrimTrailing(TrimLeading(retNames[i], ' '), ' '))
-        {
-            return std::vector<std::string>();
-        }
-    }
-
-    // if no explicit chain is specified, default to chain of the ID
-    if (!explicitChain && retNames.size())
-    {
-        if (retNames.size() == 1 && retNames.back() != verusChainName)
-        {
-            // we are referring to an external root blockchain
-            ChainOut = retNames[0];
-        }
-        else
-        {
-            for (int i = 1; i < retNames.size(); i++)
-            {
-                if (ChainOut.size())
-                {
-                    ChainOut = ChainOut + ".";
-                }
-                ChainOut = ChainOut + retNames[i];
-            }
-        }
-    }
-
-    return retNames;
+    return CVDXF::ParseSubNames(Name, ChainOut, displayfilter, addVerus);
 }
 
 // takes a multipart name, either complete or partially processed with a Parent hash,

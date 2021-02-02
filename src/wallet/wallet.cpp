@@ -1797,8 +1797,8 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 uint256 txRoot = txView.GetRoot();
 
                 std::vector<CTransactionComponentProof> txProofVec;
-                txProofVec.emplace_back(txView, txMap, stakeSource, CTransactionHeader::TX_HEADER, 0);
-                txProofVec.emplace_back(txView, txMap, stakeSource, CTransactionHeader::TX_OUTPUT, pwinner->i);
+                txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_HEADER, 0));
+                txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_OUTPUT, pwinner->i));
 
                 // now, both the header and stake output are dependent on the transaction MMR root being provable up
                 // through the block MMR, and since we don't cache the new MMR proof for transactions yet, we need the block to create the proof.
@@ -6559,22 +6559,11 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
     CCurrencyValueMap totalReserveOutput;
     CAmount totalNativeOutput = 0;
 
-    CCurrencyValueMap reserveCurrencies;
     unsigned int nSubtractFeeFromAmount = 0;
 
     // fees can only be deducted from fractional reserve outputs on fractional currency blockchains, otherwise,
     // Verus/Verustest must be used to cover fees.
     bool isVerusActive = IsVerusActive();
-    if (!isVerusActive)
-    {
-        if (ConnectedChains.ReserveCurrencies().size())
-        {
-            for (auto &oneCur : ConnectedChains.ReserveCurrencies())
-            {
-                reserveCurrencies.valueMap[oneCur.first] = 1;       // we're only testing for intersection, not value
-            }
-        }
-    }
 
     // make sure we have some outputs
     if (vecSend.empty())
@@ -6617,7 +6606,7 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
         totalReserveOutput += values;
 
         // if we should take from this output, it must be able to pay the fee. fail if it does not
-        if (recipient.fSubtractFeeFromAmount && (recipient.nAmount > 0 || reserveCurrencies.Intersects(values)))
+        if (recipient.fSubtractFeeFromAmount && (recipient.nAmount > 0))
         {
             nSubtractFeeFromAmount++;
         }
@@ -6748,25 +6737,6 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                         {
                             txout.nValue -= subFee;
                         }
-                        else if ((relevantReserves = reserveOutput.IntersectingValues(reserveCurrencies)).valueMap.size())
-                        {
-                            // if we will subtract from more than one currency, divide fee among them equally
-                            CAmount subSubFee = subFee / relevantReserves.valueMap.size();
-                            CAmount extraFee = subFee % relevantReserves.valueMap.size();
-                            // TODO: this does not support multi-currency, since the outputs do not. it will need
-                            // to be checked when we enable multi-currency outputs
-                            for (auto &oneCur : relevantReserves.valueMap)
-                            {
-                                auto it = exchangeRates.valueMap.find(oneCur.first);
-                                assert(it != exchangeRates.valueMap.end());
-                                reserveOutput.valueMap[it->first] -= currencyState.NativeToReserveRaw(subFee + (extraFee ? 1 : 0), it->second);
-                                if (extraFee)
-                                {
-                                    extraFee--;
-                                }
-                            }
-                            txout.scriptPubKey.SetReserveOutValue(reserveOutput);
-                        }
                         else
                         {
                             // asking to pay a fee on an output, but not being able to is not accepted, should
@@ -6848,97 +6818,21 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
             }
             */
 
-            std::vector<std::pair<std::pair<const CWalletTx*, unsigned int>, CAmount>> coinsWithEquivalentNative;
-            if (reserveCurrencies.valueMap.size())
-            {
-                BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
-                {
-                    CAmount nCredit = pcoin.first->vout[pcoin.second].nValue + 
-                                    currencyState.ReserveToNativeRaw(reserveCurrencies.IntersectingValues(pcoin.first->vout[pcoin.second].ReserveOutValue()), 
-                                                                    exchangeRates.AsCurrencyVector(currencyState.currencies));
-                    coinsWithEquivalentNative.push_back(make_pair(pcoin, nCredit));
-                }
-            }
-
             CCurrencyValueMap reserveChange = totalValueIn - totalReserveValue;
 
             //printf("reservechange: %s\ntotalvaluein: %s\n", reserveChange.ToUniValue().write(1,2).c_str(), totalValueIn.ToUniValue().write(1,2).c_str());
-
-            CCurrencyValueMap convertibleChange = reserveCurrencies.IntersectingValues(reserveChange);
             CAmount nChange = totalNativeValueIn - nTotalNativeValue;
-            CAmount nConvertedReserveChange = 0;
 
             // /printf("tokenChange: %s\nnativeChange: %s\n", reserveChange.ToUniValue().write().c_str(), ValueFromAmount(nChange).write().c_str());
 
             // if we will try to take the fee from change
             if (nSubtractFeeFromAmount == 0)
             {
-                if (nChange < nFeeRet && convertibleChange.valueMap.size())
-                {
-                    nConvertedReserveChange = currencyState.ReserveToNativeRaw(convertibleChange, 
-                                                                                exchangeRates.AsCurrencyVector(currencyState.currencies));
-                }
                 nChange -= nFeeRet;
             }
 
-            if ((nChange + nConvertedReserveChange > 0) || (reserveChange > CCurrencyValueMap()))
+            if ((nChange > 0) || (reserveChange > CCurrencyValueMap()))
             {
-                // if we can and need to convert reserves, adjust reserve change output amounts as needed
-                if (nChange < 0 && convertibleChange.valueMap.size())
-                {
-                    // no native change output, so, convert what's needed and make reserve output(s)
-                    // attempt to convert equally across currencies, and if we fail, take the rest as
-                    // first come, first served
-                    CAmount nChangePerCur = -nChange / convertibleChange.valueMap.size();
-                    CAmount nChangeMod = -nChange % convertibleChange.valueMap.size();
-                    CAmount remainder = 0;
-                    nChange = 0;
-                    for (int i = 0; i < currencyState.currencies.size(); i++)
-                    {
-                        auto it = reserveChange.valueMap.find(currencyState.currencies[i]);
-                        if (it != reserveChange.valueMap.end())
-                        {
-                            CAmount feeAsReserve = currencyState.NativeToReserve(nChangePerCur + (nChangeMod ? 1 : 0), i);
-                            if (it->second - feeAsReserve <= 0)
-                            {
-                                // if we don't have enough reserve in this currency for its part of the fee, we will
-                                // take it all, and then take more from the other currencies as needed
-                                remainder += currencyState.ReserveToNative(feeAsReserve - it->second, i);
-                                reserveChange.valueMap.erase(it);
-                            }
-                            else
-                            {
-                                it->second -= feeAsReserve;
-                            }
-                        }
-                    }
-                    // if we have any fee left to convert because we were short on some currency, take it
-                    // from the remaining reserves in change
-                    if (remainder)
-                    {
-                        for (int i = 0; i < currencyState.currencies.size(); i++)
-                        {
-                            auto it = reserveChange.valueMap.find(currencyState.currencies[i]);
-                            if (it != reserveChange.valueMap.end())
-                            {
-                                CAmount feeAsReserve = currencyState.NativeToReserve(remainder, i);
-                                if (it->second - feeAsReserve <= 0)
-                                {
-                                    // if we don't have enough reserve in this currency for its part of the fee, we will
-                                    // take it all, and then take more from the other currencies as needed
-                                    reserveChange.valueMap.erase(it);
-                                    remainder -= currencyState.ReserveToNative(it->second, i);
-                                }
-                                else
-                                {
-                                    it->second -= feeAsReserve;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
                 // coin control: send change to custom address
 
                 // reserve tokens can currently only be sent to public keys or addresses that are in the current wallet

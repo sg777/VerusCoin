@@ -293,13 +293,11 @@ TransactionBuilderResult TransactionBuilder::Build()
                 hasNativeChange = false;    // no more native change to send
             }
             std::vector<CTxDestination> dest(1, tChangeAddr.get());
-            // one output for each type of reserve, we should remove any currency that is not whitelisted if specified after whitelist is supported
-            for (auto &oneCur : reserveChange.valueMap)
-            {
-                CTokenOutput to(oneCur.first, oneCur.second);
-                AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to)), hasNativeChange ? change : 0);
-                hasNativeChange = false;    // now it's sent
-            }
+
+            // one output for all reserves, change gets combined
+            // we should separate, or remove any currency that is not whitelisted if specified after whitelist is supported
+            CTokenOutput to(reserveChange);
+            AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to)), hasNativeChange ? change : 0);
         }
         else if (saplingChangeAddr) 
         {

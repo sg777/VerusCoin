@@ -1258,6 +1258,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     // get default IDs and addresses
     auto defaultIDDest = DecodeDestination(GetArg("-defaultid", ""));
     VERUS_DEFAULTID = defaultIDDest.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(defaultIDDest)) : CIdentityID();
+    auto notaryIDDest = DecodeDestination(GetArg("-notaryid", ""));
+    VERUS_NOTARYID = notaryIDDest.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(notaryIDDest)) : CIdentityID();
     VERUS_DEFAULT_ZADDR = GetArg("-cheatcatcher", "");
     VERUS_DEFAULT_ZADDR = GetArg("-defaultzaddr", VERUS_DEFAULT_ZADDR);
     // if we are supposed to catch stake cheaters, there must be a valid sapling parameter, we need it at
