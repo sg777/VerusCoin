@@ -234,6 +234,11 @@ public:
         }       
         return false; 
     }
+
+    void SetVersion(uint32_t version)
+    {
+        nVersion = version;
+    }
 };
 
 class CIdentity : public CPrincipal

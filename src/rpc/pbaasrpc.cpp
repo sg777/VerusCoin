@@ -4154,12 +4154,23 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     uint256 txid = uint256S(uni_get_str(find_value(params[0], "txid")));
     CNameReservation reservation(find_value(params[0], "namereservation"));
 
-    CIdentity newID(find_value(params[0], "identity"));
+    // lookup commitment to be sure that we can register this identity
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    uint32_t height = chainActive.Height();
 
+    UniValue rawID = find_value(params[0], "identity");
+    if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        rawID.pushKV("version", (int64_t)CIdentity::VERSION_PBAAS);
+    }
+
+    CIdentity newID(rawID);
     if (!newID.IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
     }
+
+    uint160 newIDID = newID.GetID();
 
     CAmount feeOffer;
     CAmount minFeeOffer = reservation.referral.IsNull() ? 
@@ -4189,16 +4200,21 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched reservation.");
     }
 
-    // lookup commitment to be sure that we can register this identity
-    LOCK2(cs_main, pwalletMain->cs_wallet);
-
-    uint32_t height = chainActive.Height();
     uint256 hashBlk;
     CTransaction txOut;
     CCommitmentHash ch;
     int commitmentOutput;
 
     uint32_t commitmentHeight;
+
+    // make sure we have a revocation and recovery authority defined
+    CIdentity revocationAuth = newID.revocationAuthority == newIDID ? newID : newID.LookupIdentity(newID.revocationAuthority);
+    CIdentity recoveryAuth = newID.recoveryAuthority == newIDID ? newID : newID.LookupIdentity(newID.recoveryAuthority);
+
+    if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
+    }
 
     // must be present and in a mined block
     {
@@ -4250,39 +4266,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_VERIFY_ALREADY_IN_CHAIN, "Identity already exists.");
     }
-
-    // make sure we have a revocation and recovery authority defined
-    CIdentity revocationAuth;
-    CIdentity recoveryAuth;
-
-    uint160 newIDID = newID.GetID();
-
-    if (newID.revocationAuthority == newIDID)
-    {
-        revocationAuth = newID;
-    }
-    else
-    {
-        revocationAuth = newID.LookupIdentity(newID.revocationAuthority);
-    }
-    
-    if (newID.recoveryAuthority == newIDID)
-    {
-        recoveryAuth = newID;
-    }
-    else
-    {
-        recoveryAuth = newID.LookupIdentity(newID.recoveryAuthority);
-    }
-
-    if (!(recoveryAuth.IsValidUnrevoked()) || !revocationAuth.IsValidUnrevoked())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
-    }
-
-    // now we have a new and valid primary, revocation, and recovery identity, as well as a valid reservation
-    newID.revocationAuthority = revocationAuth.GetID();
-    newID.recoveryAuthority = recoveryAuth.GetID();
 
     // create the identity definition transaction & reservation key output
     CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), 1, &reservation);
@@ -4424,17 +4407,14 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     // get identity
     bool returnTx = false;
-    CIdentity newID(params[0]);
-
-    if (!newID.IsValid())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
-    }
-
     if (params.size() > 1)
     {
         returnTx = uni_get_bool(params[1], false);
     }
+
+    uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(params[0], "parent")))));
+    std::string nameStr = CleanName(uni_get_str(find_value(params[0], "name")), parentID);
+    uint160 newIDID = CIdentity::GetID(nameStr, parentID);
 
     CTxIn idTxIn;
     CIdentity oldID;
@@ -4444,14 +4424,34 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     uint32_t nHeight = chainActive.Height() + 1;
 
-    if (!(oldID = CIdentity::LookupIdentity(newID.GetID(), 0, &idHeight, &idTxIn)).IsValid())
+    if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn)).IsValid())
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + ", not found ");
+    }
+
+    UniValue uniID = oldID.ToUniValue();
+    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        uniID.pushKV("version", (int64_t)oldID.VERSION_PBAAS);
+    }
+
+    uniID.pushKVs(params[0]);
+
+    CIdentity newID(uniID);
+
+    if (!newID.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
     }
 
     // make sure we have a revocation and recovery authority defined
-    CIdentity revocationAuth = newID.LookupIdentity(newID.revocationAuthority);
-    CIdentity recoveryAuth = newID.LookupIdentity(newID.recoveryAuthority);
+    CIdentity revocationAuth = newID.revocationAuthority == newIDID ? newID : newID.LookupIdentity(newID.revocationAuthority);
+    CIdentity recoveryAuth = newID.recoveryAuthority == newIDID ? newID : newID.LookupIdentity(newID.recoveryAuthority);
+
+    if (!revocationAuth.IsValid() || !recoveryAuth.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid revocation or recovery authority");
+    }
 
     if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
     {
@@ -4695,10 +4695,13 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity must be revoked in order to recover : " + newID.name);
     }
 
+    uint32_t nHeight = chainActive.Height();
+
     newID.flags &= ~CIdentity::FLAG_REVOKED;
+    newID.SetVersion(CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1));
 
     // create the identity definition transaction
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(chainActive.Height()), 0, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight), 0, false}});
     CWalletTx wtx;
 
     CReserveKey reserveKey(pwalletMain);
