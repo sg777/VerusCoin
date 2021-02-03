@@ -797,8 +797,9 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
             if (chainID == ASSETCHAINS_CHAINID)
             {
-                ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
-                ret.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
+                int64_t curHeight = chainActive.Height();
+                ret.push_back(Pair("lastconfirmedheight", curHeight));
+                ret.push_back(Pair("bestheight", curHeight));
             }
             else
             {
