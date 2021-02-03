@@ -590,7 +590,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
     obj.push_back(Pair("options", (int64_t)options));
     obj.push_back(Pair("name", name));
     obj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(GetID()))));
-    obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
+    obj.push_back(Pair("parent", parent.IsNull() ? "self" : EncodeDestination(CIdentityID(parent))));
 
     obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
     obj.push_back(Pair("notarizationprotocol", (int)notarizationProtocol));
@@ -601,7 +601,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("nativecurrencyid", nativeCurrencyID.ToUniValue()));
     }
 
-    obj.push_back(Pair("launchsystemid", EncodeDestination(CIdentityID(launchSystemID))));
+    obj.push_back(Pair("launchsystemid", launchSystemID.IsNull() ? "self" : EncodeDestination(CIdentityID(launchSystemID))));
     obj.push_back(Pair("startblock", (int64_t)startBlock));
     obj.push_back(Pair("endblock", (int64_t)endBlock));
 
