@@ -823,7 +823,7 @@ UniValue CTransferDestination::ToUniValue() const
             break;
 
         default:
-            destVal.push_back(Pair("nodestination", CReserveTransfer(destination).ToUniValue()));
+            destVal.push_back(Pair("nodestination", ""));
             break;
     }
     if (type & FLAG_DEST_GATEWAY)
