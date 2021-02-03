@@ -596,7 +596,10 @@ UniValue CCurrencyDefinition::ToUniValue() const
     obj.push_back(Pair("notarizationprotocol", (int)notarizationProtocol));
     obj.push_back(Pair("proofprotocol", (int)proofProtocol));
 
-    obj.push_back(Pair("nativecurrencyid", nativeCurrencyID.ToUniValue()));
+    if (nativeCurrencyID.IsValid())
+    {
+        obj.push_back(Pair("nativecurrencyid", nativeCurrencyID.ToUniValue()));
+    }
 
     obj.push_back(Pair("launchsystemid", EncodeDestination(CIdentityID(launchSystemID))));
     obj.push_back(Pair("startblock", (int64_t)startBlock));
