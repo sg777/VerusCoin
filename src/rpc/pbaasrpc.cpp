@@ -742,7 +742,11 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency not found");
         }
-        ret.push_back(Pair("definitiontxid", defTxId.GetHex()));
+
+        if (!defTxId.IsNull())
+        {
+            ret.push_back(Pair("definitiontxid", defTxId.GetHex()));
+        }
 
         if (chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID)
         {
@@ -791,20 +795,28 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
                 }
             }
 
-            if (!chainDef.IsToken())
+            if (chainID == ASSETCHAINS_CHAINID)
             {
                 ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
-                if (confirmedHeight != -1)
-                {
-                    ret.push_back(Pair("lastconfirmedtxid", cnd.vtx[cnd.lastConfirmed].first.hash.GetHex().c_str()));
-                    ret.push_back(Pair("lastconfirmedcurrencystate", cnd.vtx[cnd.lastConfirmed].second.currencyState.ToUniValue()));
-                }
+                ret.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
             }
-            ret.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
-            if (bestHeight != -1)
+            else
             {
-                ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.hash.GetHex().c_str()));
-                ret.push_back(Pair("bestcurrencystate", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.ToUniValue()));
+                if (!chainDef.IsToken())
+                {
+                    ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
+                    if (confirmedHeight != -1)
+                    {
+                        ret.push_back(Pair("lastconfirmedtxid", cnd.vtx[cnd.lastConfirmed].first.hash.GetHex().c_str()));
+                        ret.push_back(Pair("lastconfirmedcurrencystate", cnd.vtx[cnd.lastConfirmed].second.currencyState.ToUniValue()));
+                    }
+                }
+                ret.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
+                if (bestHeight != -1)
+                {
+                    ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.hash.GetHex().c_str()));
+                    ret.push_back(Pair("bestcurrencystate", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.ToUniValue()));
+                }
             }
         }
         return ret;
