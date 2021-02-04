@@ -592,12 +592,13 @@ public:
         VERSION_LAST = 1,
     };
     enum EFlags {
-        FLAG_INITIALLAUNCHIMPORT = 1,
-        FLAG_POSTLAUNCH = 2,
-        FLAG_SAMECHAIN = 4,                             // means proof/reerve transfers are from export on chain
-        FLAG_HASSUPPLEMENT = 8,                         // indicates that we have additional outputs containing the reservetransfers for this export
-        FLAG_SUPPLEMENTAL = 0x10,                       // this flag indicates that this is a supplemental output to a prior output
-        FLAG_SOURCESYSTEM = 0x20
+        FLAG_DEFINITIONIMPORT = 1,
+        FLAG_INITIALLAUNCHIMPORT = 2,
+        FLAG_POSTLAUNCH = 4,
+        FLAG_SAMECHAIN = 8,                             // means proof/reerve transfers are from export on chain
+        FLAG_HASSUPPLEMENT = 0x10,                      // indicates that we have additional outputs containing the reservetransfers for this export
+        FLAG_SUPPLEMENTAL = 0x20,                       // this flag indicates that this is a supplemental output to a prior output
+        FLAG_SOURCESYSTEM = 0x40,
     };
     uint16_t nVersion;
     uint16_t flags;
@@ -622,7 +623,7 @@ public:
                       uint256 HashReserveTransfers=uint256(),
                       uint256 ExportTxId=uint256(),
                       int32_t ExportTxOutNum=-1,
-                      uint16_t Flags=0,
+                      uint16_t Flags=FLAG_SAMECHAIN,
                       uint16_t version=VERSION_CURRENT) : 
                         nVersion(version),
                         flags(Flags),
@@ -675,6 +676,35 @@ public:
     bool IsSameChain() const
     {
         return flags & FLAG_SAMECHAIN;
+    }
+
+    void SetSameChain(bool isSameChain)
+    {
+        if (isSameChain)
+        {
+            flags |= FLAG_SAMECHAIN;
+        }
+        else
+        {
+            flags &= ~FLAG_SAMECHAIN;
+        }
+    }
+
+    void SetDefinitionImport(bool isDefinition)
+    {
+        if (isDefinition)
+        {
+            flags |= FLAG_DEFINITIONIMPORT;
+        }
+        else
+        {
+            flags &= ~FLAG_DEFINITIONIMPORT;
+        }
+    }
+
+    bool IsDefinitionImport() const
+    {
+        return flags & FLAG_DEFINITIONIMPORT;
     }
 
     bool IsPostLaunch() const

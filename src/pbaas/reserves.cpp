@@ -343,26 +343,31 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     if (IsSameChain())
     {
         // reserve transfers are available via the inputs to the matching export
-        CTransaction exportTx;
+        CTransaction exportTx = exportTxId.IsNull() ? importTx : CTransaction();
         uint256 hashBlk;
         COptCCParams p;
-        if (!(myGetTransaction(exportTxId, exportTx, hashBlk) &&
-              exportTxOutNum >= 0 &&
+
+        if (!((exportTxId.IsNull() ? true : myGetTransaction(exportTxId, exportTx, hashBlk)) &&
+              IsDefinitionImport() ||
+              (exportTxOutNum >= 0 &&
               exportTx.vout.size() > exportTxOutNum &&
               exportTx.vout[exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
               p.IsValid() &&
               p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
               p.vData.size() &&
-              (ccx = CCrossChainExport(p.vData[0])).IsValid()))
+              (ccx = CCrossChainExport(p.vData[0])).IsValid())))
         {
             return state.Error(strprintf("%s: cannot retrieve export transaction for import",__func__));
         }
 
-        int32_t nextOutput;
-        CPBaaSNotarization xNotarization;
-        if (!ccx.GetExportInfo(exportTx, exportTxOutNum, nextOutput, xNotarization, reserveTransfers, state))
+        if (!IsDefinitionImport())
         {
-            return false;
+            int32_t nextOutput;
+            CPBaaSNotarization xNotarization;
+            if (!ccx.GetExportInfo(exportTx, exportTxOutNum, nextOutput, xNotarization, reserveTransfers, state))
+            {
+                return false;
+            }
         }
         // next output after import out is notarization
     }
@@ -1564,50 +1569,53 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         return;
                     }
 
-                    importCurrencyDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID);
-                    sourceSystemDef = ConnectedChains.GetCachedCurrency(cci.sourceSystemID);
-
-                    if (!sourceSystemDef.IsValid() || importCurrencyDef.IsValid())
+                    if (!cci.IsDefinitionImport())
                     {
-                        flags &= ~IS_VALID;
-                        flags |= IS_REJECT;
-                        return;
-                    }
+                        importCurrencyDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID);
+                        sourceSystemDef = ConnectedChains.GetCachedCurrency(cci.sourceSystemID);
 
-                    // get the chain definition of the chain we are importing
-                    std::vector<CTxOut> checkOutputs;
-                    CCurrencyValueMap importedCurrency, gatewayDeposits, spentCurrencyOut;
+                        if (!sourceSystemDef.IsValid() || importCurrencyDef.IsValid())
+                        {
+                            flags &= ~IS_VALID;
+                            flags |= IS_REJECT;
+                            return;
+                        }
 
-                    CCoinbaseCurrencyState checkState = importNotarization.currencyState;
-                    CCoinbaseCurrencyState newState;
-                    checkState.RevertReservesAndSupply();
+                        // get the chain definition of the chain we are importing
+                        std::vector<CTxOut> checkOutputs;
+                        CCurrencyValueMap importedCurrency, gatewayDeposits, spentCurrencyOut;
 
-                    if (!AddReserveTransferImportOutputs(sourceSystemDef,
-                                                         ConnectedChains.thisChain,
-                                                         importCurrencyDef,
-                                                         checkState,
-                                                         importTransfers,
-                                                         checkOutputs,
-                                                         importedCurrency,
-                                                         gatewayDeposits,
-                                                         spentCurrencyOut,
-                                                         &newState))
-                    {
-                        flags &= ~IS_VALID;
-                        flags |= IS_REJECT;
-                        return;
-                    }
+                        CCoinbaseCurrencyState checkState = importNotarization.currencyState;
+                        CCoinbaseCurrencyState newState;
+                        checkState.RevertReservesAndSupply();
 
-                    importGeneratedCurrency += importedCurrency;
+                        if (!AddReserveTransferImportOutputs(sourceSystemDef,
+                                                            ConnectedChains.thisChain,
+                                                            importCurrencyDef,
+                                                            checkState,
+                                                            importTransfers,
+                                                            checkOutputs,
+                                                            importedCurrency,
+                                                            gatewayDeposits,
+                                                            spentCurrencyOut,
+                                                            &newState))
+                        {
+                            flags &= ~IS_VALID;
+                            flags |= IS_REJECT;
+                            return;
+                        }
 
-                    if (newState.nativeOut != 0)
-                    {
-                        importGeneratedCurrency.valueMap[cci.importCurrencyID] += newState.nativeOut;
-                    }
+                        importGeneratedCurrency += importedCurrency;
 
-                    for (auto &oneOutCur : cci.totalReserveOutMap.valueMap)
-                    {
-                        AddReserveOutput(oneOutCur.first, oneOutCur.second);
+                        if (newState.nativeOut != 0)
+                        {
+                            importGeneratedCurrency.valueMap[cci.importCurrencyID] += newState.nativeOut;
+                        }
+
+                        for (auto &oneOutCur : cci.totalReserveOutMap.valueMap)
+                        {
+                            AddReserveOutput(oneOutCur.first, oneOutCur.second);
+                        }
                     }
                 }
                 break;

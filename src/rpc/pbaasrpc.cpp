@@ -3779,6 +3779,27 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Gateway currencies are not yet supported");
     }
 
+    // create import and export outputs
+    cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
+    pk = CPubKey(ParseHex(CC.CChexstr));
+
+    if (newChain.proofProtocol == newChain.PROOF_PBAASMMR || newChain.proofProtocol == newChain.PROOF_CHAINID)
+    {
+        dests = std::vector<CTxDestination>({pk.GetID()});
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
+    }
+
+    // if this is a token on this chain, the transfer that is output here is burned through the export 
+    // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
+    // and the reserve transfer outputs.
+    CCrossChainImport cci = CCrossChainImport(newChain.systemID, height, newChainID, CCurrencyValueMap(), CCurrencyValueMap());
+    cci.SetSameChain(newChain.systemID == ASSETCHAINS_CHAINID);
+    cci.SetDefinitionImport(true);
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)), 0, false});
+
     // get initial currency state at this height
     CCoinbaseCurrencyState newCurrencyState = ConnectedChains.GetCurrencyState(newChain, chainActive.Height());
 
@@ -3810,35 +3831,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn)), 
                                          CPBaaSNotarization::MIN_NOTARIZATION_OUTPUT, 
                                          false});
-
-    // make a finalization output, which is finalized, such as it is
-    cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
-    pk = CPubKey(ParseHex(CC.CChexstr));
-
-    dests = std::vector<CTxDestination>({pk});
-
-    CObjectFinalization nf(CObjectFinalization::FINALIZE_NOTARIZATION + CObjectFinalization::FINALIZE_CONFIRMED, newChainID, uint256(), vOutputs.size() - 1);
-
-    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &nf)), 0, false});
-
-    // create import and export outputs
-    cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
-    pk = CPubKey(ParseHex(CC.CChexstr));
-
-    if (newChain.proofProtocol == newChain.PROOF_PBAASMMR || newChain.proofProtocol == newChain.PROOF_CHAINID)
-    {
-        dests = std::vector<CTxDestination>({pk.GetID()});
-    }
-    else
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
-    }
-
-    // if this is a token on this chain, the transfer that is output here is burned through the export 
-    // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
-    // and the reserve transfer outputs.
-    CCrossChainImport cci = CCrossChainImport(newChain.systemID, height, newChainID, CCurrencyValueMap(), CCurrencyValueMap());
-    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)), 0, false});
 
     // export thread
     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
