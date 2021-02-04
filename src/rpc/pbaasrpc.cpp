@@ -4398,6 +4398,31 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     return UniValue(wtx.GetHash().GetHex());
 }
 
+std::map<std::string, UniValue> UniObjectToMap(const UniValue &obj)
+{
+    std::map<std::string, UniValue> retVal;
+    if (obj.isObject())
+    {
+        std::vector<std::string> keys = obj.getKeys();
+        std::vector<UniValue> values = obj.getValues();
+        for (int i = 0; i < keys.size(); i++)
+        {
+            retVal.insert(std::make_pair(keys[i], values[i]));
+        }
+    }
+    return retVal;
+}
+
+UniValue MapToUniObject(const std::map<std::string, UniValue> &uniMap)
+{
+    UniValue retVal(UniValue::VOBJ);
+    for (auto &oneEl : uniMap)
+    {
+        retVal.pushKV(oneEl.first, oneEl.second);
+    }
+    return retVal;
+}
+
 UniValue updateidentity(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)
@@ -4443,15 +4468,21 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + ", not found ");
     }
 
-    UniValue uniID = oldID.ToUniValue();
-    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
+    auto uniOldID = UniObjectToMap(oldID.ToUniValue());
+
+    // overwrite old elements
+    for (auto &oneEl : UniObjectToMap(params[0]))
     {
-        uniID.pushKV("version", (int64_t)oldID.VERSION_PBAAS);
+        uniOldID[oneEl.first] = oneEl.second;
     }
 
-    uniID.pushKVs(params[0]);
+    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        uniOldID["version"] = (int64_t)oldID.VERSION_PBAAS;
+    }
 
-    CIdentity newID(uniID);
+    UniValue newUniID = MapToUniObject(uniOldID);
+    CIdentity newID(newUniID);
 
     if (!newID.IsValid())
     {

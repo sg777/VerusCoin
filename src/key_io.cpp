@@ -612,7 +612,6 @@ CPrincipal::CPrincipal(const UniValue &uni)
             }
             catch (const std::exception &e)
             {
-                printf("%s: bad address %s\n", __func__, primaryAddressesUni[i].write().c_str());
                 LogPrintf("%s: bad address %s\n", __func__, primaryAddressesUni[i].write().c_str());
                 nVersion = VERSION_INVALID;
             }
@@ -653,7 +652,6 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             }
             if (nVersion == VERSION_INVALID)
             {
-                printf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
                 LogPrintf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
                 break;
             }
@@ -670,7 +668,6 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 
     if (revocationAuthority.IsNull() || recoveryAuthority.IsNull())
     {
-        printf("%s: invalid address\n", __func__);
         LogPrintf("%s: invalid address\n", __func__);
         nVersion = VERSION_INVALID;
     }
