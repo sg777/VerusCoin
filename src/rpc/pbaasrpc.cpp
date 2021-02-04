@@ -619,7 +619,7 @@ void CheckIdentityAPIsValid()
     }
 }
 
-uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurrencyDef=NULL)
+uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=false, CCurrencyDefinition *pCurrencyDef=NULL)
 {
     std::string extraName;
     uint160 retVal;
@@ -649,23 +649,32 @@ uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurr
     if (currencyDest.which() != COptCCParams::ADDRTYPE_INVALID)
     {
         // make sure there is such a currency defined on this chain
-        CCurrencyDefinition currencyDef;
-        if (!GetCurrencyDefinition(GetDestinationID(currencyDest), currencyDef) || !currencyDef.IsValid())
+        uint160 currencyID = GetDestinationID(currencyDest);
+        if (ensureCurrencyValid)
         {
-            return retVal;
+            CCurrencyDefinition currencyDef;
+            if (!GetCurrencyDefinition(currencyID, currencyDef) || !currencyDef.IsValid())
+            {
+                return retVal;
+            }
+            retVal = currencyDef.GetID();
+            if (pCurrencyDef)
+            {
+                *pCurrencyDef = currencyDef;
+            }
         }
-        retVal = currencyDef.GetID();
-        if (pCurrencyDef)
+        else
         {
-            *pCurrencyDef = currencyDef;
+            retVal = currencyID;
         }
+        
     }
     return retVal;
 }
 
 uint160 GetChainIDFromParam(const UniValue &param, CCurrencyDefinition *pCurrencyDef=NULL)
 {
-    return ValidateCurrencyName(uni_get_str(param), pCurrencyDef);
+    return ValidateCurrencyName(uni_get_str(param), true, pCurrencyDef);
 }
 
 UniValue getcurrency(const UniValue& params, bool fHelp)
@@ -936,7 +945,7 @@ UniValue getexports(const UniValue& params, bool fHelp)
     CCurrencyDefinition curDef;
     std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
 
-    if ((currencyID = ValidateCurrencyName(uni_get_str(params[0]), &curDef)).IsNull())
+    if ((currencyID = ValidateCurrencyName(uni_get_str(params[0]), true, &curDef)).IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
@@ -1052,7 +1061,7 @@ UniValue submitimports(const UniValue& params, bool fHelp)
     LOCK2(cs_main, mempool.cs);
 
     CCurrencyDefinition curDef;
-    uint160 sourceSystemID = ValidateCurrencyName(uni_get_str(find_value(params[0], "sourcesystemid")), &curDef);
+    uint160 sourceSystemID = ValidateCurrencyName(uni_get_str(find_value(params[0], "sourcesystemid")), true, &curDef);
 
     sourceSystemID = curDef.IsGateway() ? curDef.gatewayID : curDef.systemID;
 
@@ -1182,7 +1191,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
     CCurrencyDefinition chainDef;
     int32_t defHeight;
 
-    if ((chainID = ValidateCurrencyName(uni_get_str(params[0]), &chainDef)).IsNull())
+    if ((chainID = ValidateCurrencyName(uni_get_str(params[0]), true, &chainDef)).IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
     }
@@ -2005,7 +2014,7 @@ UniValue getcurrencyconverters(const UniValue& params, bool fHelp)
         CCurrencyDefinition oneCurrency;
         uint160 oneCurrencyID;
         if (!oneName.size() ||
-            (oneCurrencyID = ValidateCurrencyName(oneName, &oneCurrency)).IsNull() ||
+            (oneCurrencyID = ValidateCurrencyName(oneName, true, &oneCurrency)).IsNull() ||
             reserves.count(oneCurrencyID))
         {
             throw JSONRPCError(RPC_INVALID_PARAMS, "Each reserve currency specified must be a valid, unique currency");
@@ -2111,7 +2120,7 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     uint160 sourceCurrencyID;
     if (currencyStr != "")
     {
-        sourceCurrencyID = ValidateCurrencyName(currencyStr, &sourceCurrencyDef);
+        sourceCurrencyID = ValidateCurrencyName(currencyStr, true, &sourceCurrencyDef);
         if (sourceCurrencyID.IsNull())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "If source currency is specified, it must be valid.");
@@ -2133,7 +2142,7 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     }
     else 
     {
-        convertToCurrencyID = ValidateCurrencyName(convertToStr, &convertToCurrencyDef);
+        convertToCurrencyID = ValidateCurrencyName(convertToStr, true, &convertToCurrencyDef);
         if (convertToCurrencyID == sourceCurrencyID)
         {
             convertToCurrencyID.SetNull();
@@ -2152,7 +2161,7 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     uint160 secondCurrencyID;
     if (viaStr != "")
     {
-        secondCurrencyID = ValidateCurrencyName(viaStr, &secondCurrencyDef);
+        secondCurrencyID = ValidateCurrencyName(viaStr, true, &secondCurrencyDef);
         std::map<uint160, int32_t> viaIdxMap = secondCurrencyDef.GetCurrenciesMap();
         if (secondCurrencyID.IsNull() ||
             sourceCurrencyID.IsNull() ||
@@ -2380,7 +2389,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint160 sourceCurrencyID;
             if (currencyStr != "")
             {
-                sourceCurrencyID = ValidateCurrencyName(currencyStr, &sourceCurrencyDef);
+                sourceCurrencyID = ValidateCurrencyName(currencyStr, true, &sourceCurrencyDef);
                 if (sourceCurrencyID.IsNull())
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "If source currency is specified, it must be valid.");
@@ -2427,7 +2436,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint160 convertToCurrencyID;
             if (convertToStr != "")
             {
-                convertToCurrencyID = ValidateCurrencyName(convertToStr, &convertToCurrencyDef);
+                convertToCurrencyID = ValidateCurrencyName(convertToStr, true, &convertToCurrencyDef);
                 if (convertToCurrencyID == sourceCurrencyID)
                 {
                     convertToCurrencyID.SetNull();
@@ -2450,7 +2459,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint160 secondCurrencyID;
             if (viaStr != "")
             {
-                secondCurrencyID = ValidateCurrencyName(viaStr, &secondCurrencyDef);
+                secondCurrencyID = ValidateCurrencyName(viaStr, true, &secondCurrencyDef);
                 std::map<uint160, int32_t> viaIdxMap = secondCurrencyDef.GetCurrenciesMap();
                 if (secondCurrencyID.IsNull() ||
                     sourceCurrencyID.IsNull() ||
@@ -2515,7 +2524,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     {
                         exportToStr = systemDestStr;
                     }
-                    destSystemID = ValidateCurrencyName(systemDestStr, &destSystemDef);
+                    destSystemID = ValidateCurrencyName(systemDestStr, true, &destSystemDef);
                     if (destSystemID.IsNull() || destSystemDef.IsToken() || destSystemDef.systemID != destSystemDef.GetID())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "If destination system is specified, destination system or chain must be registered.");
@@ -2539,7 +2548,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint160 exportToCurrencyID;
             if (exportToStr != "")
             {
-                exportToCurrencyID = ValidateCurrencyName(exportToStr, &exportToCurrencyDef);
+                exportToCurrencyID = ValidateCurrencyName(exportToStr, true, &exportToCurrencyDef);
                 if (exportToCurrencyID.IsNull())
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency export is requested, export currency and system must be valid");
@@ -2564,7 +2573,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint160 exportAfterCurrencyID;
             if (exportAfterStr != "")
             {
-                exportAfterCurrencyID = ValidateCurrencyName(exportAfterStr, &exportAfterCurrencyDef);
+                exportAfterCurrencyID = ValidateCurrencyName(exportAfterStr, true, &exportAfterCurrencyDef);
                 if (exportAfterCurrencyID.IsNull())
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency export is requested, export currency and system must be valid");

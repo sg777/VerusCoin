@@ -217,7 +217,7 @@ CPBaaSNotarization::CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx)
     }
 }
 
-uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurrencyDef=NULL);
+uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=false, CCurrencyDefinition *pCurrencyDef=NULL);
 
 CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
 {
@@ -244,16 +244,12 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
         flags |= FLAG_LAUNCH_CONFIRMED;
     }
 
-    std::string currencyStr = uni_get_str(find_value(obj, "currencyid"));
-    CCurrencyDefinition currencyDef;
-    ValidateCurrencyName(currencyStr, &currencyDef);
-    if (currencyDef.IsValid())
+    currencyID = ValidateCurrencyName(uni_get_str(find_value(obj, "currencyid")));
+    if (currencyID.IsNull())
     {
         nVersion = VERSION_INVALID;
         return;
     }
-
-    currencyID = currencyDef.GetID();
 
     UniValue transferID = find_value(obj, "proposer");
     if (transferID.isObject())

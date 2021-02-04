@@ -376,7 +376,35 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
     }
 }
 
-uint160 ValidateCurrencyName(std::string currencyStr, CCurrencyDefinition *pCurrencyDef=NULL);
+uint160 DecodeCurrencyName(std::string currencyStr)
+{
+    std::string extraName;
+    uint160 retVal;
+    currencyStr = TrimSpaces(currencyStr);
+    if (!currencyStr.size())
+    {
+        return retVal;
+    }
+    ParseSubNames(currencyStr, extraName, true);
+    if (currencyStr.back() == '@' || (extraName != "" && boost::to_lower_copy(extraName) != boost::to_lower_copy(VERUS_CHAINNAME)))
+    {
+        return retVal;
+    }
+    if (CCurrencyDefinition::GetID(currencyStr) == ASSETCHAINS_CHAINID)
+    {
+        return ASSETCHAINS_CHAINID;
+    }
+    CTxDestination currencyDest = DecodeDestination(currencyStr);
+    if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
+    {
+        currencyDest = DecodeDestination(currencyStr + "@");
+    }
+    if (currencyDest.which() != COptCCParams::ADDRTYPE_INVALID)
+    {
+        return GetDestinationID(currencyDest);
+    }
+    return retVal;
+}
 
 CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     preLaunchDiscount(0),
@@ -391,11 +419,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         std::string parentStr = uni_get_str(find_value(obj, "parent"));
         if (parentStr != "")
         {
-            CTxDestination parentDest = DecodeDestination(parentStr);
-            parent = GetDestinationID(parentDest);
-            // if we have a destination, but it is invalid, the json for this definition cannot be valid
-            if (parentDest.which() == COptCCParams::ADDRTYPE_INVALID)
+            parent = DecodeCurrencyName(parentStr);
+            if (parent.IsNull())
             {
+                LogPrintf("%s: invalid parent for currency: %s\n", __func__, parentStr.c_str());
                 nVersion = PBAAS_VERSION_INVALID;
                 return;
             }
@@ -406,10 +433,9 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         std::string systemIDStr = uni_get_str(find_value(obj, "systemid"));
         if (systemIDStr != "")
         {
-            CTxDestination systemDest = DecodeDestination(systemIDStr);
-            systemID = GetDestinationID(systemDest);
+            systemID = DecodeCurrencyName(systemIDStr);
             // if we have a system, but it is invalid, the json for this definition cannot be valid
-            if (systemDest.which() == COptCCParams::ADDRTYPE_INVALID)
+            if (systemID.IsNull())
             {
                 nVersion = PBAAS_VERSION_INVALID;
                 return;
@@ -423,6 +449,12 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         gatewayConverterName = uni_get_str(find_value(obj, "gatewayconvertername"));
         if (!gatewayConverterName.empty())
         {
+            if (!(IsPBaaSChain() || IsGateway()))
+            {
+                LogPrintf("%s: a gateway converter currency may only be defined as part of a gateway or PBaaS system definition\n", __func__);
+                nVersion = PBAAS_VERSION_INVALID;
+                return;
+            }
             uint160 gatewayParent = systemID;
             gatewayID = GetID(gatewayConverterName, gatewayParent);
         }
@@ -447,10 +479,9 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         std::string launchIDStr = uni_get_str(find_value(obj, "launchsystemid"));
         if (launchIDStr != "")
         {
-            CTxDestination launchDest = DecodeDestination(launchIDStr);
-            launchSystemID = GetDestinationID(launchDest);
+            launchSystemID = DecodeCurrencyName(launchIDStr);
             // if we have a system, but it is invalid, the json for this definition cannot be valid
-            if (launchDest.which() == COptCCParams::ADDRTYPE_INVALID)
+            if (launchSystemID.IsNull())
             {
                 nVersion = PBAAS_VERSION_INVALID;
                 return;
@@ -668,7 +699,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
             for (int i = 0; nVersion != PBAAS_VERSION_INVALID && i < currencyArr.size(); i++)
             {
-                uint160 currencyID = GetDestinationID(DecodeDestination(uni_get_str(currencyArr[i])));
+                uint160 currencyID = DecodeCurrencyName(uni_get_str(currencyArr[i]));
                 // if we have a destination, but it is invalid, the json for this definition cannot be valid
                 if (currencyID.IsNull())
                 {
