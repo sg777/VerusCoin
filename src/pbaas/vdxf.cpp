@@ -99,7 +99,7 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
 
     int numRetNames = retNames.size();
 
-    static std::string verusChainName = boost::to_lower_copy(VERUS_CHAINNAME);
+    std::string verusChainName = boost::to_lower_copy(VERUS_CHAINNAME);
 
     if (addVerus)
     {
