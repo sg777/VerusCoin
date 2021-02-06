@@ -218,7 +218,7 @@ void CTxMemPool::addAddressIndex(const CTxMemPoolEntry &entry, const CCoinsViewC
                 if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
                 {
                     uint160 destID = GetDestinationID(dest);
-                    if (!(dest.which() == COptCCParams::ADDRTYPE_INDEX && heightOffsets.count(destID) && heightOffsets[destID] != nHeight))
+                    if (!(dest.which() == COptCCParams::ADDRTYPE_INDEX && heightOffsets.count(destID) && heightOffsets[destID] > nHeight))
                     {
                         CMempoolAddressDeltaKey key(AddressTypeFromDest(dest), GetDestinationID(dest), txhash, j, 0);
                         mapAddress.insert(make_pair(key, CMempoolAddressDelta(entry.GetTime(), out.nValue)));

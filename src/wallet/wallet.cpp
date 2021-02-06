@@ -6765,7 +6765,7 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                         {
                             nativeEquivalent += reserveOutput.valueMap.size() ? reserveOutput.valueMap.begin()->second : 0;
                         }
-                        
+
                         if (nativeEquivalent < dustThreshold)
                         {
                             if (recipient.fSubtractFeeFromAmount && nFeeRet > 0)

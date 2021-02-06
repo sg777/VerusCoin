@@ -366,7 +366,8 @@ public:
 
     static uint160 IdentitySignatureKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(IdentitySignatureKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(IdentitySignatureKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -722,18 +723,32 @@ public:
 
     static uint160 CurrencyDefinitionKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyDefinitionKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyDefinitionKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static std::string CurrencyLaunchKeyName()
+    {
+        return "vrsc::system.currency.launch";
+    }
+
+    static uint160 CurrencyLaunchKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyLaunchKeyName(), nameSpace);
         return signatureKey;
     }
 
     static std::string CurrencyGatewayKeyName()
     {
-        return "vrsc::system.currency.systemdefinition";
+        return "vrsc::system.currency.gatewaydefinition";
     }
 
     static uint160 CurrencyGatewayKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyGatewayKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyGatewayKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -744,7 +759,8 @@ public:
 
     static uint160 CurrencySystemKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(CurrencySystemKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(CurrencySystemKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -941,6 +957,7 @@ public:
 extern int64_t AmountFromValue(const UniValue& value);
 extern int64_t AmountFromValueNoErr(const UniValue& value);
 extern UniValue ValueFromAmount(const int64_t& amount);
+extern uint160 DecodeCurrencyName(std::string currencyStr);
 
 // we wil uncomment service types as they are implemented
 // commented service types are here as guidance and reminders

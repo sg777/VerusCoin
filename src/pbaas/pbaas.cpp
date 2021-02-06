@@ -2867,9 +2867,52 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
             // set final numbers for notarization
 
-            // TODO: if this is a PBaaS fractional gateway launch, the issued reserves for the gateway should be considered
+            // if this is a PBaaS fractional gateway launch, the issued reserves for the gateway must be considered
             // when calculating final prices
-            newNotarization.currencyState.conversionPrice = newNotarization.currencyState.PricesInReserve();
+            std::map<uint160, int32_t> reserveMap;
+            if (_curDef.IsFractional() && _curDef.currencies.size() > 1 && 
+                (reserveMap = newNotarization.currencyState.GetReserveMap()).count(_curDef.systemID) && 
+                _curDef.systemID != ASSETCHAINS_CHAINID)
+            {
+                CCurrencyDefinition systemDefForGateway = ConnectedChains.GetCachedCurrency(_curDef.systemID);
+                if (!systemDefForGateway.IsValid())
+                {
+                    printf("%s: Invalid launch system currency for fractional gateway converter\n", __func__);
+                    LogPrintf("%s: Invalid launch system currency for fractional gateway converter\n", __func__);
+                    return false;
+                }
+                uint160 scratchSysID = _curDef.systemID;
+                if (systemDefForGateway.GetID(systemDefForGateway.gatewayConverterName, scratchSysID) == currencyID)
+                {
+                    newNotarization.currencyState.reserves[reserveMap[_curDef.systemID]] = systemDefForGateway.gatewayConverterIssuance;
+                }
+
+                // to get initial prices, do so without the native currency, then add it at launch
+                CCoinbaseCurrencyState calcState = newNotarization.currencyState;
+                
+                int nativeReserveIndex = reserveMap[_curDef.systemID];
+                int32_t weightToDistribute = calcState.weights[nativeReserveIndex];
+                calcState.currencies.erase(calcState.currencies.begin() + nativeReserveIndex);
+                calcState.weights.erase(calcState.weights.begin() + nativeReserveIndex);
+                calcState.reserves.erase(calcState.reserves.begin() + nativeReserveIndex);
+
+                // adjust weights for launch pricing
+                int32_t divisor = calcState.currencies.size();
+                int32_t dividedWeight = weightToDistribute / divisor;
+                int32_t excessToDivide = weightToDistribute % divisor;
+                for (auto &oneWeight : calcState.weights)
+                {
+                    oneWeight += excessToDivide ? dividedWeight + excessToDivide-- : dividedWeight;
+                }
+
+                std::vector<int64_t> adjustedPrices = newNotarization.currencyState.PricesInReserve();
+                adjustedPrices.insert(adjustedPrices.begin() + nativeReserveIndex, newNotarization.currencyState.PriceInReserve(nativeReserveIndex));
+                newNotarization.currencyState.conversionPrice = adjustedPrices;
+            }
+            else
+            {
+                newNotarization.currencyState.conversionPrice = newNotarization.currencyState.PricesInReserve();
+            }
         }
     }
     else if (!isPreLaunch)
@@ -2949,10 +2992,44 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
         uint160 thisChainID = ConnectedChains.ThisChain().GetID();
 
+        uint32_t nHeight = chainActive.Height();
+
+        // check for currencies that should launch in the last 20 blocks, haven't yet, and can have their launch export mined
+        // if we find any that have no export creation pending, add it to imports
+        std::vector<CAddressIndexDbEntry> rawCurrenciesToLaunch;
+        std::map<uint160, std::pair<CCurrencyDefinition, CUTXORef>> launchCurrencies;
+        if (GetAddressIndex(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyLaunchKey()),
+                            CScript::P2IDX, 
+                            rawCurrenciesToLaunch,
+                            nHeight - 20 < 0 ? 0 : nHeight - 20,
+                            nHeight) &&
+            rawCurrenciesToLaunch.size())
+        {
+            // add any unlaunched currencies as an output
+            for (auto &oneDefIdx : rawCurrenciesToLaunch)
+            {
+                CTransaction defTx;
+                uint256 hashBlk;
+                COptCCParams p;
+                CCurrencyDefinition oneDef;
+                if (myGetTransaction(oneDefIdx.first.txhash, defTx, hashBlk) &&
+                    defTx.vout.size() > oneDefIdx.first.index &&
+                    defTx.vout[oneDefIdx.first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_CURRENCY_DEFINITION &&
+                    p.vData.size() &&
+                    (oneDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
+                    oneDef.systemID == ASSETCHAINS_CHAINID)
+                {
+                    launchCurrencies.insert(std::make_pair(oneDef.GetID(), std::make_pair(oneDef, CUTXORef())));
+                }
+            }
+        }
+
         // get all available transfer outputs to aggregate into export transactions
         if (GetUnspentChainTransfers(transferOutputs))
         {
-            if (!transferOutputs.size())
+            if (!(transferOutputs.size() || launchCurrencies.size()))
             {
                 return;
             }
@@ -2970,7 +3047,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             view.SetBackend(viewMemPool);
 
             auto outputIt = transferOutputs.begin();
-            for (int outputsDone = 0; outputsDone <= transferOutputs.size(); outputIt++, outputsDone++)
+            bool checkLaunchCurrencies = false;
+            for (int outputsDone = 0; outputsDone <= transferOutputs.size() || launchCurrencies.size(); !checkLaunchCurrencies ? outputIt++, outputsDone++ : 0)
             {
                 if (outputIt != transferOutputs.end())
                 {
@@ -2980,6 +3058,34 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         txInputs.push_back(output.second);
                         continue;
                     }
+                }
+                else if (checkLaunchCurrencies)
+                {
+                    // we are done with all natural exports and have deleted any launch entries that had natural exports,
+                    // since they should also handle launch naturally.
+                    // if we have launch currencies that have not been launched and do not have associated
+                    // transfer outputs, force launch them
+                    std::vector<uint160> toErase;
+                    for (auto &oneLaunchCur : launchCurrencies)
+                    {
+                        CChainNotarizationData cnd;
+                        std::vector<std::pair<CTransaction, uint256>> txes;
+
+                        if (!(GetNotarizationData(oneLaunchCur.first, cnd, &txes) &&
+                              cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() &&
+                              !cnd.vtx[cnd.lastConfirmed].second.IsLaunchCleared()))
+                        {
+                            toErase.push_back(oneLaunchCur.first);
+                        }
+                    }
+                    for (auto &oneToErase : toErase)
+                    {
+                        launchCurrencies.erase(oneToErase);
+                    }
+                }
+                else
+                {
+                    checkLaunchCurrencies = launchCurrencies.size() != 0;
                 }
 
                 CCurrencyDefinition destDef, systemDef;
@@ -3085,8 +3191,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     CPBaaSNotarization lastNotarization = cnd.vtx[cnd.lastConfirmed].second;
                     CPBaaSNotarization newNotarization;
 
-                    while (txInputs.size())
+                    while (txInputs.size() || launchCurrencies.count(lastChain))
                     {
+                        // even if we have no txInputs, currencies that need to will launch
                         if (!CConnectedChains::CreateNextExport(lastChainDef,
                                                                 txInputs,
                                                                 allExportOutputs,

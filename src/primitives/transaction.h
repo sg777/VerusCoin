@@ -1567,7 +1567,8 @@ public:
 
     static uint160 UtxoReferenceKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(UtxoReferenceKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(UtxoReferenceKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1682,7 +1683,8 @@ public:
 
     static uint160 NotarySignatureKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotarySignatureKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotarySignatureKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1693,7 +1695,8 @@ public:
 
     static uint160 NotarySignaturesKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotarySignaturesKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotarySignaturesKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1704,7 +1707,8 @@ public:
 
     static uint160 NotarizationHashDataKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotarizationHashDataKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotarizationHashDataKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1715,7 +1719,8 @@ public:
 
     static uint160 NotaryConfirmedKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotaryConfirmedKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotaryConfirmedKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1726,7 +1731,8 @@ public:
 
     static uint160 NotaryRejectedKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotaryRejectedKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotaryRejectedKeyName(), nameSpace);
         return signatureKey;
     }
 

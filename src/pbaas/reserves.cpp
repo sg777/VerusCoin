@@ -1976,8 +1976,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 // only tokens release pre-allocations here
                 // PBaaS chain pre-allocations come out of the coinbase, not the first import
-                if (!importCurrencyDef.IsPBaaSChain() &&
-                    importCurrencyState.IsLaunchCompleteMarker() &&
+                if (importCurrencyState.IsLaunchCompleteMarker() &&
                     !importCurrencyState.IsRefunding())
                 {
                     // if we have finished importing all pre-launch exports, create all pre-allocation outputs

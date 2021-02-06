@@ -223,26 +223,12 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
 {
     nVersion = (uint32_t)uni_get_int(find_value(obj, "version"));
     flags = FLAGS_NONE;
-    if (uni_get_bool(find_value(obj, "isdefinition")))
-    {
-        flags |= FLAG_DEFINITION_NOTARIZATION;
-    }
-    if (uni_get_bool(find_value(obj, "prelaunch")))
-    {
-        flags |= FLAG_PRE_LAUNCH;
-    }
-    if (uni_get_bool(find_value(obj, "launchclear")))
-    {
-        flags |= FLAG_START_NOTARIZATION;
-    }
-    if (uni_get_bool(find_value(obj, "refunding")))
-    {
-        flags |= FLAG_REFUNDING;
-    }
-    if (uni_get_bool(find_value(obj, "launchconfirmed")))
-    {
-        flags |= FLAG_LAUNCH_CONFIRMED;
-    }
+    SetDefinitionNotarization(uni_get_bool(find_value(obj, "isdefinition")));
+    SetBlockOneNotarization(uni_get_bool(find_value(obj, "isblockonenotarization")));
+    SetPreLaunch(uni_get_bool(find_value(obj, "prelaunch")));
+    SetLaunchCleared(uni_get_bool(find_value(obj, "launchclear")));
+    SetRefunding(uni_get_bool(find_value(obj, "refunding")));
+    SetLaunchConfirmed(uni_get_bool(find_value(obj, "launchconfirmed")));
 
     currencyID = ValidateCurrencyName(uni_get_str(find_value(obj, "currencyid")));
     if (currencyID.IsNull())

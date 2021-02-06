@@ -528,6 +528,11 @@ UniValue CPBaaSNotarization::ToUniValue() const
         obj.push_back(Pair("isdefinition", true));
     }
 
+    if (IsBlockOneNotarization())
+    {
+        obj.push_back(Pair("isblockonenotarization", true));
+    }
+
     if (IsPreLaunch())
     {
         obj.push_back(Pair("prelaunch", true));

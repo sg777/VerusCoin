@@ -202,9 +202,10 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     else if (std::count(str.begin(), str.end(), '@') == 1)
     {
         uint160 parent;
-        if (CleanName(str, parent) != "")
+        std::string cleanName = CleanName(str, parent);
+        if (cleanName != "")
         {
-            return CIdentityID(CIdentity::GetID(str, parent));
+            return CIdentityID(CIdentity::GetID(cleanName, parent));
         }
     }
 

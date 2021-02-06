@@ -378,19 +378,19 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
 
 uint160 DecodeCurrencyName(std::string currencyStr)
 {
-    std::string extraName;
     uint160 retVal;
     currencyStr = TrimSpaces(currencyStr);
     if (!currencyStr.size())
     {
         return retVal;
     }
-    ParseSubNames(currencyStr, extraName, true);
-    if (currencyStr.back() == '@' || (extraName != "" && boost::to_lower_copy(extraName) != boost::to_lower_copy(VERUS_CHAINNAME)))
+    if (currencyStr.back() == '@')
     {
         return retVal;
     }
-    if (CCurrencyDefinition::GetID(currencyStr) == ASSETCHAINS_CHAINID)
+    uint160 parent;
+    currencyStr = CleanName(currencyStr, parent, true);
+    if (!parent.IsNull() && CCurrencyDefinition::GetID(currencyStr, parent) == ASSETCHAINS_CHAINID)
     {
         return ASSETCHAINS_CHAINID;
     }

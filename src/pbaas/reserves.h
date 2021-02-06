@@ -354,7 +354,8 @@ public:
 
     static uint160 ReserveTransferKey()
     {
-        static uint160 reserveTransferKey = CVDXF::GetDataKey(ReserveTransferKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 reserveTransferKey = CVDXF::GetDataKey(ReserveTransferKeyName(), nameSpace);
         return reserveTransferKey;
     }
 
@@ -420,7 +421,8 @@ public:
 
     static uint160 ReserveDepositKey()
     {
-        static uint160 reserveDepositKey = CVDXF::GetDataKey(ReserveDepositKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 reserveDepositKey = CVDXF::GetDataKey(ReserveDepositKeyName(), nameSpace);
         return reserveDepositKey;
     }
 
@@ -733,7 +735,8 @@ public:
 
     static uint160 CurrencyImportKey()
     {
-        static uint160 key = CVDXF::GetDataKey(CurrencyImportKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(CurrencyImportKeyName(), nameSpace);
         return key;
     }
 
@@ -744,7 +747,8 @@ public:
 
     static uint160 CurrencySystemImportKey()
     {
-        static uint160 key = CVDXF::GetDataKey(CurrencySystemImportKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(CurrencySystemImportKeyName(), nameSpace);
         return key;
     }
 
@@ -972,7 +976,8 @@ public:
 
     static uint160 CurrencyExportKey()
     {
-        static uint160 key = CVDXF::GetDataKey(CurrencyExportKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(CurrencyExportKeyName(), nameSpace);
         return key;
     }
 
@@ -983,7 +988,8 @@ public:
 
     static uint160 SystemExportKey()
     {
-        static uint160 key = CVDXF::GetDataKey(SystemExportKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(SystemExportKeyName(), nameSpace);
         return key;
     }
 };
@@ -1413,7 +1419,8 @@ public:
 
     static uint160 CurrencyStateKey()
     {
-        static uint160 currencyStateKey = CVDXF::GetDataKey(CurrencyStateKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 currencyStateKey = CVDXF::GetDataKey(CurrencyStateKeyName(), nameSpace);
         return currencyStateKey;
     }
 
@@ -1424,7 +1431,8 @@ public:
 
     static uint160 CurrencyConverterKey()
     {
-        static uint160 converterKey = CVDXF::GetDataKey(CurrencyConverterKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 converterKey = CVDXF::GetDataKey(CurrencyConverterKeyName(), nameSpace);
         return converterKey;
     }
 

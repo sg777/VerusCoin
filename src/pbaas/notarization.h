@@ -100,7 +100,8 @@ public:
         FLAG_START_NOTARIZATION = 4,        // first notarization after pre-launch
         FLAG_LAUNCH_CONFIRMED = 8,
         FLAG_REFUNDING = 0x10,
-        FLAG_ACCEPTED_MIRROR = 0x20         // if this is set, this notarization is a mirror of an earned notarization on another chain
+        FLAG_ACCEPTED_MIRROR = 0x20,        // if this is set, this notarization is a mirror of an earned notarization on another chain
+        FLAG_BLOCKONE_NOTARIZATION = 0x40   // block one notarizations are auto-finalized, since the blockchain itself will be worthless if it is wrong
     };
 
     uint32_t nVersion;
@@ -227,7 +228,8 @@ public:
     }
     static uint160 NotaryNotarizationKey()
     {
-        static uint160 notaryNotarizationKey = CVDXF::GetDataKey(NotaryNotarizationKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 notaryNotarizationKey = CVDXF::GetDataKey(NotaryNotarizationKeyName(), nameSpace);
         return notaryNotarizationKey;
     }
 
@@ -374,6 +376,23 @@ public:
         else
         {
             flags &= ~FLAG_DEFINITION_NOTARIZATION;
+        }
+    }
+
+    bool IsBlockOneNotarization() const
+    {
+        return flags & FLAG_BLOCKONE_NOTARIZATION;
+    }
+
+    void SetBlockOneNotarization(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_BLOCKONE_NOTARIZATION;
+        }
+        else
+        {
+            flags &= ~FLAG_BLOCKONE_NOTARIZATION;
         }
     }
 
@@ -625,37 +644,43 @@ public:
 
     static uint160 ObjectFinalizationPendingKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationPendingKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationPendingKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationPrelaunchKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationPrelaunchKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationPrelaunchKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationNotarizationKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationNotarizationKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationNotarizationKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationExportKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationExportKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationExportKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationConfirmedKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationConfirmedKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationConfirmedKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationRejectedKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationRejectedKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationRejectedKeyName(), nameSpace);
         return key;
     }
 

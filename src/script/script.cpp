@@ -976,9 +976,14 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 uint160 currencyID = definition.GetID();
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(currencyID, CCurrencyDefinition::CurrencyDefinitionKey())));
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.systemID, CCurrencyDefinition::CurrencySystemKey())));
-                if (!definition.gatewayID.IsNull() && definition.gatewayID != currencyID)
+                if (!definition.gatewayID.IsNull() && definition.gatewayID == currencyID && !definition.IsFractional())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.gatewayID, CCurrencyDefinition::CurrencyGatewayKey())));
+                }
+                else if (definition.systemID == ASSETCHAINS_CHAINID)
+                {
+                    // create an entry that will be indexed by the start block and queryable by block range
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.systemID, CCurrencyDefinition::CurrencyLaunchKey())));
                 }
             }
             break;
@@ -1027,26 +1032,28 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
 
                 // determine if the new notarization is automatically final, and if so, store a finalization index key as well
                 CCoinbaseCurrencyState &curState = notarization.currencyState;
-                if (evalCode == EVAL_ACCEPTEDNOTARIZATION &&
-                    curState.IsValid() &&
-                    notarization.IsSameChain())
+                if (curState.IsValid() &&
+                    ((evalCode == EVAL_ACCEPTEDNOTARIZATION && notarization.IsSameChain()) ||
+                     notarization.IsDefinitionNotarization() ||
+                     notarization.IsBlockOneNotarization()))
                 {
                     uint160 finalizeNotarizationKey = CCrossChainRPCData::GetConditionID(notarization.currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey());
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationConfirmedKey())));
 
-                    // determine if this newly notarized currency can be used as a fee converter, and if so, add an index destination, so this
+                    // determine if this newly notarized currency can be used as a currency converter, and if so, add an index destination, so this
                     // currency can be quickly found and used
                     int32_t nativeReserveIdx;
                     std::map<uint160, int32_t> reserveIdxMap;
-                    if (curState.IsFractional() &&
+                    if (notarization.IsSameChain() &&
+                        curState.IsFractional() &&
                         curState.IsLaunchConfirmed() &&
                         (reserveIdxMap = curState.GetReserveMap()).count(ASSETCHAINS_CHAINID) &&
                         curState.weights[nativeReserveIdx = reserveIdxMap[ASSETCHAINS_CHAINID]] > curState.IndexConverterReserveRatio() &&
                         curState.reserves[nativeReserveIdx] > curState.IndexConverterReserveMinimum())
                     {
                         // go through all currencies and add an index entry for each
-                        // when looking for a fee converter, we will look through all indexed options
-                        // for the best conversion rate from a source fee currency to the native coin
+                        // when looking for a currency converter, we will look through all indexed options
+                        // for the best conversion rate from a source currency to the destination
                         for (auto &one : reserveIdxMap)
                         {
                             destinations.insert(CIndexID(curState.IndexConverterKey(one.first)));
@@ -1190,16 +1197,13 @@ std::map<uint160, uint32_t> COptCCParams::GetIndexHeightOffsets(uint32_t height)
     // what work needs to be done, are offset to have a height of the start block, ensuring
     // that they are not considered for import until the start block is reached
     std::map<uint160, uint32_t> offsets;
-    CObjectFinalization ef;
-    if (evalCode == EVAL_FINALIZE_EXPORT &&
+    CCurrencyDefinition curDef;
+    if (evalCode == EVAL_CURRENCY_DEFINITION &&
         vData.size() &&
-        (ef = CObjectFinalization(vData[0])).IsValid())
+        (curDef = CCurrencyDefinition(vData[0])).IsValid())
     {
-        CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(ef.currencyID);
-        if (curDef.IsValid() && curDef.startBlock > height)
-        {
-            offsets.insert(make_pair(CCrossChainRPCData::GetConditionID(curDef.systemID, evalCode), (uint32_t)curDef.startBlock));
-        }
+        offsets.insert(make_pair(CCrossChainRPCData::GetConditionID(curDef.systemID, CCurrencyDefinition::CurrencyLaunchKey()),
+                                 (uint32_t)curDef.startBlock));
     }
     return offsets;
 }

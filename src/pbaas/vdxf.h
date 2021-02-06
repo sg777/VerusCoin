@@ -228,7 +228,7 @@ public:
     static std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false);
     static uint160 GetID(const std::string &Name);
     static uint160 GetID(const std::string &Name, uint160 &parent);
-    static uint160 GetDataKey(const std::string &keyName, uint160 nameSpaceID);
+    static uint160 GetDataKey(const std::string &keyName, uint160 &nameSpaceID);
     static void RegisterVDXFType(const uint160 &typeID, uint32_t minVer, uint32_t maxVer, uint32_t minVecSize, uint32_t maxVecSize)
     {
         assert(typeID != STRUCTURED_DATA_KEY);
@@ -272,7 +272,9 @@ public:
     }
     static uint160 ZMemoMessageKey()
     {
-        return GetDataKey(ZMemoMessageKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 memoMessageKey = GetDataKey(ZMemoMessageKeyName(), nameSpace);
+        return memoMessageKey;
     }
     static std::string ZMemoSignatureKeyName()
     {
@@ -280,7 +282,9 @@ public:
     }
     static uint160 ZMemoSignatureKey()
     {
-        return GetDataKey(ZMemoSignatureKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 memoSigKey = GetDataKey(ZMemoSignatureKeyName(), nameSpace);
+        return memoSigKey;
     }
     static std::string CurrencyStartNotarizationKeyName()
     {
@@ -288,7 +292,9 @@ public:
     }
     static uint160 CurrencyStartNotarizationKey()
     {
-        return GetDataKey(CurrencyStartNotarizationKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 currencyStartNotarization = GetDataKey(CurrencyStartNotarizationKeyName(), nameSpace);
+        return currencyStartNotarization;
     }
     bool IsValid(bool registered=false)
     {
@@ -329,7 +335,9 @@ public:
     }
     static uint160 StructuredDataKey()
     {
-        return GetDataKey(StructuredDataKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 structuredDataKey = GetDataKey(StructuredDataKeyName(), nameSpace);
+        return structuredDataKey;
     }
     bool IsValid()
     {
