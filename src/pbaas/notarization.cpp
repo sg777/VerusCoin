@@ -480,7 +480,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
     }
 
-    transferHash = hw.GetHash();
+    if (exportTransfers.size())
+    {
+        transferHash = hw.GetHash();
+    }
 
     CReserveTransactionDescriptor rtxd;
 

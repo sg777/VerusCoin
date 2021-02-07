@@ -3805,7 +3805,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     CPBaaSNotarization pbn = CPBaaSNotarization(newChainID, 
                                                 newCurrencyState,
-                                                0,
+                                                height,
                                                 CUTXORef(),
                                                 0);
 
