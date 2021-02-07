@@ -503,6 +503,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             minPreMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.minPreconvert).CanonicalMap();
         }
 
+        newNotarization.SetPreLaunch(false);
+        newNotarization.currencyState.SetLaunchClear();
+
         if (minPreMap.valueMap.size() && preConvertedMap < minPreMap)
         {
             // we force the supply to zero
@@ -515,7 +518,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
         else
         {
-            newNotarization.currencyState.SetLaunchClear();
             newNotarization.currencyState.SetLaunchConfirmed();
         }
         CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.systemID);
@@ -532,6 +534,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     }
     else if (lastExportHeight >= destCurrency.startBlock)
     {
+        newNotarization.currencyState.SetLaunchClear(false);
+        if (destCurrency.systemID != ASSETCHAINS_CHAINID)
+        {
+            newNotarization.SetSameChain(false);
+        }
+
         // calculate new state from processing all transfers
         // we are not refunding, and it is possible that we also have
         // normal conversions in addition to pre-conversions. add any conversions that may 

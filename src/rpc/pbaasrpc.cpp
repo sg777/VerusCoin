@@ -3809,6 +3809,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                 CUTXORef(),
                                                 0);
 
+    pbn.SetSameChain();
+
     // make the first chain notarization output
     cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
     CTxDestination notarizationDest;
@@ -3887,6 +3889,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                            0,
                                                            CUTXORef(),
                                                            0);
+
+        // launch notarizations are on this chain
+        pbn.SetSameChain();
 
         // make the first chain notarization output
         cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);

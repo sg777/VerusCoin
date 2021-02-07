@@ -2957,7 +2957,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     }
 
     // if this is a pre-launch export, including clear launch, update notarization and add it to the export outputs
-    if (isPreLaunch)
+    if (isClearLaunchExport || isPreLaunch)
     {
         // if we are exporting off chain, add a notarization proof root
         if (destSystemID != ASSETCHAINS_CHAINID)
@@ -3035,7 +3035,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             }
 
             std::vector<ChainTransferData> txInputs;
-            uint160 lastChain = transferOutputs.begin()->first;
+            uint160 lastChain = transferOutputs.size() ? transferOutputs.begin()->first : launchCurrencies.begin()->second.first.GetID();
 
             CCoins coins;
             CCoinsView dummy;
@@ -3059,7 +3059,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         continue;
                     }
                 }
-                else if (checkLaunchCurrencies)
+                else if (checkLaunchCurrencies || !transferOutputs.size())
                 {
                     // we are done with all natural exports and have deleted any launch entries that had natural exports,
                     // since they should also handle launch naturally.
@@ -3072,8 +3072,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         std::vector<std::pair<CTransaction, uint256>> txes;
 
                         if (!(GetNotarizationData(oneLaunchCur.first, cnd, &txes) &&
-                              cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() &&
-                              !cnd.vtx[cnd.lastConfirmed].second.IsLaunchCleared()))
+                              cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch()))
                         {
                             toErase.push_back(oneLaunchCur.first);
                         }
@@ -3085,6 +3084,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 }
                 else
                 {
+                    // this is when we have to finish one round and then continue with currency launches
                     checkLaunchCurrencies = launchCurrencies.size() != 0;
                 }
 

@@ -276,9 +276,9 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
 
     exportNotarization = CPBaaSNotarization();
 
-    if ((IsPrelaunch() || IsClearLaunch()) && IsSameChain())
+    if (IsSameChain() && (IsPrelaunch() || IsClearLaunch()))
     {
-        // in same chain, we expect a notarization to follow
+        // in same chain before launch, we expect a notarization to follow
         numOutput++;
         COptCCParams p;
         if (!(exportTx.vout.size() > numOutput &&
