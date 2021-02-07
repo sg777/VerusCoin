@@ -1428,7 +1428,7 @@ bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view,
         }
     }
     if (!exportOuts.size() &&
-        !GetAddressUnspent(CCrossChainRPCData::GetConditionID(currencyID, CCrossChainExport::CurrencyExportKey()), CScript::P2IDX, unspentOutputs))
+        !GetAddressUnspent(exportIndexKey, CScript::P2IDX, unspentOutputs))
     {
         return false;
     }
@@ -3124,8 +3124,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     continue;
                 }
 
-                uint160 systemDefID = systemDef.GetID();
-                bool isSameChain = systemDefID == thisChainID;
+                bool isSameChain = destDef.systemID == thisChainID;
 
                 // when we get here, we have a consecutive number of transfer outputs to consume in txInputs
                 // we need an unspent export output to export, or use the last one of it is an export to the same

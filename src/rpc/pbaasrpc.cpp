@@ -3839,7 +3839,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
-    CCrossChainExport ccx = CCrossChainExport(newChain.systemID, 0, height, newChainID, newChain.systemID, 0, CCurrencyValueMap(), CCurrencyValueMap(), uint256());
+    CCrossChainExport ccx = CCrossChainExport(newChain.systemID, 0, height, newChain.systemID, newChainID, 0, CCurrencyValueMap(), CCurrencyValueMap(), uint256());
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx)), 0, false});
 
     // make the outputs for initial contributions
@@ -3951,7 +3951,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         // export thread
         cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-        CCrossChainExport gatewayCcx = CCrossChainExport(newGatewayConverter.systemID, 0, height, gatewayCurrencyID, newChain.systemID, 0, CCurrencyValueMap(), CCurrencyValueMap(), uint256());
+        CCrossChainExport gatewayCcx = CCrossChainExport(newGatewayConverter.systemID, 0, height, newChain.systemID, gatewayCurrencyID, 0, CCurrencyValueMap(), CCurrencyValueMap(), uint256());
         vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &gatewayCcx)), 0, false});
 
         // make the outputs for initial contributions
