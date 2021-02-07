@@ -977,7 +977,9 @@ public:
                           std::vector<CTxOut> &exportOutputs,
                           std::vector<CReserveTransfer> &exportTransfers,
                           const CPBaaSNotarization &lastNotarization,
+                          const CUTXORef &lastNotarizationUTXO,
                           CPBaaSNotarization &newNotarization,
+                          int &newNotarizationOutNum,
                           bool onlyIfRequired=true,
                           const ChainTransferData *addInputTx=nullptr);
 

@@ -2517,7 +2517,9 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                         std::vector<CTxOut> &exportOutputs,
                                         std::vector<CReserveTransfer> &exportTransfers,
                                         const CPBaaSNotarization &lastNotarization,
+                                        const CUTXORef &lastNotarizationUTXO,
                                         CPBaaSNotarization &newNotarization,
+                                        int &newNotarizationOutNum,
                                         bool createOnlyIfRequired,
                                         const ChainTransferData *addInputTx)
 {
@@ -2531,6 +2533,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // 3) the last export transaction is added as input outside of this call
 
     newNotarization = lastNotarization;
+    newNotarization.prevNotarization = lastNotarizationUTXO;
     inputsConsumed = 0;
 
     uint160 destSystemID = _curDef.IsGateway() ? _curDef.gatewayID : _curDef.systemID;
@@ -2972,6 +2975,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         // TODO: check to see if we are connected to a running PBaaS daemon for this currency waiting for it to start,
         // and if so, share nodes in the notarization
 
+        newNotarizationOutput = exportOutputs.size();
+
         cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
         exportOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &newNotarization))));
@@ -3191,13 +3196,16 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     }
 
                     CPBaaSNotarization lastNotarization = cnd.vtx[cnd.lastConfirmed].second;
+                    CUTXORef lastNotarizationUTXO = cnd.vtx[cnd.lastConfirmed].first;
                     CPBaaSNotarization newNotarization;
+                    int newNotarizationOutNum;
 
                     while (txInputs.size() || launchCurrencies.count(lastChain))
                     {
                         launchCurrencies.erase(lastChain);
 
                         // even if we have no txInputs, currencies that need to will launch
+                        newNotarizationOutNum = -1;
                         if (!CConnectedChains::CreateNextExport(lastChainDef,
                                                                 txInputs,
                                                                 allExportOutputs,
@@ -3209,10 +3217,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                                                 exportTxOuts,
                                                                 exportTransfers,
                                                                 lastNotarization,
-                                                                newNotarization))
+                                                                lastNotarizationUTXO,
+                                                                newNotarization,
+                                                                newNotarizationOutNum))
                         {
                             printf("%s: unable to create export for %s\n", __func__, EncodeDestination(CIdentityID(lastChainDef.GetID())).c_str());
                             LogPrintf("%s: unable to create export for  %s\n", __func__, EncodeDestination(CIdentityID(lastChainDef.GetID())).c_str());
+                            break;
                         }
 
                         // now, if we have created any outputs, we have a transaction to make, if not, we are done
@@ -3267,6 +3278,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         {
                             // replace the last one only if we have a valid new one
                             CTransaction tx = buildResult.GetTxOrThrow();
+
+                            if (newNotarizationOutNum >= 0)
+                            {
+                                lastNotarization = newNotarization;
+                                lastNotarizationUTXO.hash = tx.GetHash();
+                                lastNotarizationUTXO.n = newNotarizationOutNum;
+                            }
 
                             /* uni = UniValue(UniValue::VOBJ);
                             TxToUniv(tx, uint256(), uni);

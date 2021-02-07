@@ -416,6 +416,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     uint160 sourceSystemID = sourceSystem.GetID();
 
     newNotarization = *this;
+    newNotarization.prevNotarization = CUTXORef();
     newNotarization.prevHeight = newNotarization.notarizationHeight;
     newNotarization.notarizationHeight = currentHeight;
 
