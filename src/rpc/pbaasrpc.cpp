@@ -3810,6 +3810,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                 0);
 
     pbn.SetSameChain();
+    pbn.SetPreLaunch();
 
     // make the first chain notarization output
     cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
@@ -3892,6 +3893,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
         // launch notarizations are on this chain
         pbn.SetSameChain();
+        pbn.SetPreLaunch();
 
         // make the first chain notarization output
         cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
