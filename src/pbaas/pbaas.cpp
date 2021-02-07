@@ -2592,7 +2592,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // if we made an export before getting to the end, it doesn't clear launch
     // if we either early outed, due to height or landed right on the correct height, determine launch state
     // a clear launch export may have no inputs yet still be created with a clear launch notarization
-    isClearLaunchExport = (addHeight == _curDef.startBlock - 1);
+    if (isClearLaunchExport)
+    {
+        addHeight = _curDef.startBlock - 1;
+    }
 
     // all we expect to add are in txInputs now
     inputsConsumed = txInputs.size();
@@ -3192,6 +3195,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                     while (txInputs.size() || launchCurrencies.count(lastChain))
                     {
+                        launchCurrencies.erase(lastChain);
+
                         // even if we have no txInputs, currencies that need to will launch
                         if (!CConnectedChains::CreateNextExport(lastChainDef,
                                                                 txInputs,
