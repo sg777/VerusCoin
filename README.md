@@ -1,10 +1,10 @@
-## VerusCoin version 0.7.2-7
+## VerusCoin version 0.7.2-8
 
 Arguably the world's most advanced technology, zero knowledge privacy-centric blockchain, Verus Coin brings Sapling performance and zero knowledge features to an intelligent system with interchain smart contracts and a completely original, combined proof of stake/proof of work consensus algorithm that solves the nothing at stake problem. With this and its approach towards CPU mining and ASICs, Verus Coin strives to be one of the most naturally decentralizing and attack resistant blockchains in existence.
 
 We have added a variation of a zawy12, lwma difficulty algorithm, a new CPU-optimized hash algorithm and a new algorithm for fair proof of stake. We describe these changes and vision going forward in a [our Phase I white paper](http://185.25.51.16/papers/VerusPhaseI.pdf) and [our Vision](http://185.25.51.16/papers/VerusVision.pdf).
 
-Also see our [VerusCoin web site](https://veruscoin.io/) and [VerusCoin Explorer](https://explorer.veruscoin.io/).
+Also see our [VerusCoin web site](https://verus.io/) and [VerusCoin Explorer](https://explorer.verus.io/).
 
 ## VerusCoin
 This software is the VerusCoin client. Generally, you will use this if you want to mine VRSC or setup a full node. When you run the wallet it launches komodod automatically. On first launch it downloads Zcash parameters, roughly 1GB, which is mildly slow.
@@ -12,13 +12,13 @@ This software is the VerusCoin client. Generally, you will use this if you want 
 The wallet downloads and stores the block chain or asset chain of the coin you select. It downloads and stores the entire history of the coins transactions; depending on the speed of your computer and network connection, the synchronization process could take a day or more once the blockchain has reached a significant size.
 
 ## Development Resources
-- VerusCoin:[https://veruscoin.io/](https://veruscoin.io/) Wallets and CLI tools
+- VerusCoin:[https://verus.io/](https://veruscoin.io/) Wallets and CLI tools
 - Discord: [https://discord.gg/VRKMP2S](https://discord.gg/VRKMP2S)
-- Mail: [development@veruscoin.io](development@veruscoin.io)
-- FAQs & How-to: [https://wiki.veruscoin.io/#!index.md](https://wiki.veruscoin.io/#!index.mdhttps://komodoplatform.atlassian.net/wiki/spaces/KPSD/pages)
-- API references: [https://wiki.veruscoin.io/#!faq-cli/clifaq-02_verus_commands.md](https://wiki.veruscoin.io/#!faq-cli/clifaq-02_verus_commands.md)
+- Mail: [development@verus.io](development@verus.io)
+- FAQs & How-to: [https://wiki.verus.io/#!index.md](https://wiki.veruscoin.io/#!index.md)
+- API references: [https://wiki.verus.io/#!faq-cli/clifaq-02_verus_commands.md](https://wiki.verus.io/#!faq-cli/clifaq-02_verus_commands.md)
 - Medium: [https://medium.com/@veruscoin](https://medium.com/@veruscoin)
-- Explorer: [https://explorer.veruscoin.io/](https://explorer.veruscoin.io/)
+- Explorer: [https://explorer.verus.io/](https://explorer.veruscoin.io/)
 ## Tech Specification
 - Launch Date May 21, 2018
 - Max Supply: 83,540,184 VRSC

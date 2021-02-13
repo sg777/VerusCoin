@@ -171,7 +171,7 @@ function verify_checksum() {
 Verifying $filename checksum
 EOF
   "$SHA256CMD" $SHA256ARGS -c <<EOF
-$expectedhash $dlname
+$expectedhash  $dlname
 EOF
 }
 

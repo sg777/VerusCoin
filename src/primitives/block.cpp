@@ -178,6 +178,10 @@ int32_t CBlockHeader::GetPBaaSHeader(CPBaaSBlockHeader &pbh, const uint160 &cID)
         {
             int32_t len = CVerusSolutionVector::solutionTools.ExtraDataLen(nSolution);
             int32_t numHeaders = d.numPBaaSHeaders;
+            if (numHeaders * sizeof(CPBaaSBlockHeader) > len)
+            {
+                numHeaders = len / sizeof(CPBaaSBlockHeader);
+            }
             const CPBaaSBlockHeader *ppbbh = CVerusSolutionVector::solutionTools.GetFirstPBaaSHeader(nSolution);
             for (int32_t i = 0; i < numHeaders; i++)
             {
