@@ -27,7 +27,7 @@ CALL :MAIN
     FOR %%x IN (CURL.EXE BITSADMIN.EXE) DO IF NOT [%%~$PATH:x]==[] IF NOT DEFINED DOWNLOAD_CMD SET "DOWNLOAD_CMD=FETCH_%%x"
     CALL :SET_INSTALL_DIR
     SET "USE_BOOTSTRAP=1"
-    SET i=0
+    DEL /Q/S "!Temp!\!BOOTSTRAP_PACKAGE_SIG!" >NUL
     IF NOT EXIST "!VRSC_DATA_DIR!" (
         ECHO No VRSC data directory found, creating directory.
         MD "!VRSC_DATA_DIR!"
@@ -42,8 +42,8 @@ CALL :MAIN
             EXIT 1
         )
      )
-     CALL :FETCH_BOOTSTRAP
-     EXIT 0
+    CALL :FETCH_BOOTSTRAP
+    EXIT 0
 GOTO :EOF
 
 :SET_INSTALL_DIR
@@ -69,10 +69,8 @@ GOTO :EOF
 GOTO :EOF
 
 :CLEAN_UP_DOWNLOADS
-    FOR %%F IN (!BOOTSTRAP_PACKAGE!, !BOOTSTRAP_PACKAGE_SIG!) DO (
-        IF  EXIST "!Temp!\%%F" (
-            DEL /Q "!Temp!\%%F"
-    )
+    DEL /Q/S "!Temp!\!BOOTSTRAP_PACKAGE!" >NUL
+    DEL /Q/S "!Temp!\!BOOTSTRAP_PACKAGE_SIG!" >NUL
 GOTO :EOF
 
 :CHECK_BLOCKCHAIN_DATA
