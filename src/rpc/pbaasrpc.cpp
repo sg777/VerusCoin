@@ -1254,7 +1254,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
                         oneImportUni.push_back(Pair("importheight", (int64_t)importHeight));
                         oneImportUni.push_back(Pair("importtxid", idx.first.txhash.GetHex()));
-                        oneImportUni.push_back(Pair("importvout", idx.first.index));
+                        oneImportUni.push_back(Pair("importvout", (int64_t)idx.first.index));
                         oneImportUni.push_back(Pair("import", cci.ToUniValue()));
                         if (sysCCIOut != -1)
                         {
