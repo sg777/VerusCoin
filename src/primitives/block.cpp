@@ -176,7 +176,7 @@ int32_t CBlockHeader::GetPBaaSHeader(CPBaaSBlockHeader &pbh, const uint160 &cID)
         CPBaaSSolutionDescriptor d = CVerusSolutionVector::solutionTools.GetDescriptor(nSolution);
         if (CVerusSolutionVector::solutionTools.HasPBaaSHeader(nSolution) != 0)
         {
-            int32_t len = CVerusSolutionVector::solutionTools.ExtraDataLen(nSolution);
+            int32_t len = CVerusSolutionVector::solutionTools.ExtraDataLen(nSolution, true);
             int32_t numHeaders = d.numPBaaSHeaders;
             if (numHeaders * sizeof(CPBaaSBlockHeader) > len)
             {
