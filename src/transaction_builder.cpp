@@ -242,85 +242,102 @@ TransactionBuilderResult TransactionBuilder::Build()
 
     // calculate change and include all reserve inputs as well
     CCurrencyValueMap reserveChange;
-    reserveChange -= CTransaction(mtx).GetReserveValueOut();
-    bool hasReserveChange = false;
 
-    // Valid change
-    CAmount change = mtx.valueBalance - fee;
-    for (auto jsInput : jsInputs) {
-        change += jsInput.note.value();
-    }
-    for (auto jsOutput : jsOutputs) {
-        change -= jsOutput.value;
-    }
-    for (auto tIn : tIns) {
-        change += tIn.value;
-        //printf("tIn.scriptPubKey.ReserveOutValue():\n%s\n", tIn.scriptPubKey.ReserveOutValue().ToUniValue().write(1,2).c_str());
-        reserveChange += tIn.scriptPubKey.ReserveOutValue();
-    }
-    if (reserveChange.valueMap.size())
+    CCoinsView dummy;
+    CCoinsViewCache view(&dummy);
+    int64_t interest;
+    CAmount nValueIn = 0;
+
     {
-        reserveChange = reserveChange.CanonicalMap();
-        hasReserveChange = reserveChange > CCurrencyValueMap();
-    }
-    for (auto tOut : mtx.vout) {
-        change -= tOut.nValue;
-    }
-    if (change < 0 || reserveChange.HasNegative()) {
-        return TransactionBuilderResult("Change cannot be negative, native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write() + "\n");
-    }
-    bool hasNativeChange = change > 0;
+        LOCK(mempool.cs);
+        CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+        view.SetBackend(viewMemPool);
 
-    if (hasReserveChange && !tChangeAddr)
-    {
-        return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
-    }
+        CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height());
+        reserveChange -= rtxd.ReserveInputMap() - rtxd.ReserveOutputMap();
+        printf("%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
+        bool hasReserveChange = false;
 
-    //
-    // Create change output for native, reserve, or both types of currency
-    //
-    if (hasNativeChange || hasReserveChange)
-    {
-        // Send change to the specified change address(es). If both tChangeAddr and saplingChangeAddr are set, send native to the sapling address
-        // (A t-address or ID can only be used as the change address if explicitly set.)
-        if (hasReserveChange)
-        {
-            // even if reserve currency goes to a t-change address, native currency can go to
-            // a Sapling address, if both are specified
-            if (hasNativeChange && saplingChangeAddr)
-            {
-                AddSaplingOutput(saplingChangeAddr->first, saplingChangeAddr->second, change);
-                hasNativeChange = false;    // no more native change to send
-            }
-            std::vector<CTxDestination> dest(1, tChangeAddr.get());
-
-            // one output for all reserves, change gets combined
-            // we should separate, or remove any currency that is not whitelisted if specified after whitelist is supported
-            CTokenOutput to(reserveChange);
-            AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to)), hasNativeChange ? change : 0);
+        // Valid change
+        CAmount change = mtx.valueBalance - fee;
+        for (auto jsInput : jsInputs) {
+            change += jsInput.note.value();
         }
-        else if (saplingChangeAddr) 
+        for (auto jsOutput : jsOutputs) {
+            change -= jsOutput.value;
+        }
+        for (auto tIn : tIns) {
+            change += tIn.value;
+            printf("tIn.scriptPubKey.ReserveOutValue():\n%s\n", tIn.scriptPubKey.ReserveOutValue().ToUniValue().write(1,2).c_str());
+            reserveChange += tIn.scriptPubKey.ReserveOutValue();
+        }
+        if (reserveChange.valueMap.size())
         {
-            AddSaplingOutput(saplingChangeAddr->first, saplingChangeAddr->second, change);
-        } else if (tChangeAddr) 
+            CReserveTransactionDescriptor debugCheckDescriptor(mtx, view, chainActive.Height());
+            reserveChange = reserveChange.CanonicalMap();
+            hasReserveChange = reserveChange > CCurrencyValueMap();
+        }
+        for (auto tOut : mtx.vout) {
+            change -= tOut.nValue;
+        }
+        if (change < 0 || reserveChange.HasNegative()) {
+            // it's possible this is an import transaction that is minting currency
+            return TransactionBuilderResult("Change cannot be negative, native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write() + "\n");
+        }
+        bool hasNativeChange = change > 0;
+
+        if (hasReserveChange && !tChangeAddr)
         {
-            // tChangeAddr has already been validated.
-            AddTransparentOutput(tChangeAddr.value(), change);
-        } else if (!spends.empty()) 
+            printf("%s: reserveChange: %s\n", __func__, reserveChange.ToUniValue().write(1,2).c_str());
+            return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
+        }
+
+        //
+        // Create change output for native, reserve, or both types of currency
+        //
+        if (hasNativeChange || hasReserveChange)
         {
-            auto fvk = spends[0].expsk.full_viewing_key();
-            auto note = spends[0].note;
-            libzcash::SaplingPaymentAddress changeAddr(note.d, note.pk_d);
-            AddSaplingOutput(fvk.ovk, changeAddr, change);
-        } else 
-        {
+            // Send change to the specified change address(es). If both tChangeAddr and saplingChangeAddr are set, send native to the sapling address
+            // (A t-address or ID can only be used as the change address if explicitly set.)
             if (hasReserveChange)
             {
-                return TransactionBuilderResult("Could not determine change address for reserve currency change");
+                // even if reserve currency goes to a t-change address, native currency can go to
+                // a Sapling address, if both are specified
+                if (hasNativeChange && saplingChangeAddr)
+                {
+                    AddSaplingOutput(saplingChangeAddr->first, saplingChangeAddr->second, change);
+                    hasNativeChange = false;    // no more native change to send
+                }
+                std::vector<CTxDestination> dest(1, tChangeAddr.get());
+
+                // one output for all reserves, change gets combined
+                // we should separate, or remove any currency that is not whitelisted if specified after whitelist is supported
+                CTokenOutput to(reserveChange);
+                AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to)), hasNativeChange ? change : 0);
             }
-            else
+            else if (saplingChangeAddr) 
             {
-                return TransactionBuilderResult("Could not determine change address for native currency change");
+                AddSaplingOutput(saplingChangeAddr->first, saplingChangeAddr->second, change);
+            } else if (tChangeAddr) 
+            {
+                // tChangeAddr has already been validated.
+                AddTransparentOutput(tChangeAddr.value(), change);
+            } else if (!spends.empty()) 
+            {
+                auto fvk = spends[0].expsk.full_viewing_key();
+                auto note = spends[0].note;
+                libzcash::SaplingPaymentAddress changeAddr(note.d, note.pk_d);
+                AddSaplingOutput(fvk.ovk, changeAddr, change);
+            } else 
+            {
+                if (hasReserveChange)
+                {
+                    return TransactionBuilderResult("Could not determine change address for reserve currency change");
+                }
+                else
+                {
+                    return TransactionBuilderResult("Could not determine change address for native currency change");
+                }
             }
         }
     }

@@ -368,11 +368,11 @@ class CConstVerusSolutionVector
             return GetDescriptor(vch).numPBaaSHeaders * sizeof(CPBaaSBlockHeader) + OVERHEAD_SIZE;
         }
 
-        static uint32_t ExtraDataLen(const std::vector<unsigned char> &vch)
+        static uint32_t ExtraDataLen(const std::vector<unsigned char> &vch, bool allowPBaaSHeader=false)
         {
             int len;
 
-            if (Version(vch) < CActivationHeight::ACTIVATE_PBAAS)
+            if (!(Version(vch) >= CActivationHeight::ACTIVATE_PBAAS || (allowPBaaSHeader && Version(vch) >= CActivationHeight::ACTIVATE_PBAAS_HEADER)))
             {
                 len = 0;
             }

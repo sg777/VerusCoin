@@ -825,6 +825,7 @@ public:
         FLAG_SUPPLEMENTAL = 8,                  // this flag indicates that this is a supplemental output to a prior output
         FLAG_EVIDENCEONLY = 0x10,               // when set, this is not indexed as an active export
         FLAG_GATEWAYEXPORT = 0x20,              // when set, will be exported to a gateway currency, which may get routed from this chain as systemID
+        FLAG_DEFINITIONEXPORT = 0x40,           // set on only the first export
     };
 
     uint16_t nVersion;                          // current version
@@ -951,9 +952,50 @@ public:
         return flags & FLAG_PRELAUNCH;
     }
 
+    void SetPreLaunch(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_PRELAUNCH;
+        }
+        else
+        {
+            flags &= ~FLAG_PRELAUNCH;
+        }
+    }
+
+    bool IsChainDefinition() const
+    {
+        return flags & FLAG_DEFINITIONEXPORT;
+    }
+
+    void SetChainDefinition(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_DEFINITIONEXPORT;
+        }
+        else
+        {
+            flags &= ~FLAG_DEFINITIONEXPORT;
+        }
+    }
+
     bool IsClearLaunch() const
     {
         return flags & FLAG_CLEARLAUNCH;
+    }
+
+    void SetClearLaunch(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_CLEARLAUNCH;
+        }
+        else
+        {
+            flags &= ~FLAG_CLEARLAUNCH;
+        }
     }
 
     bool GetExportInfo(const CTransaction &exportTx, 
@@ -1189,11 +1231,24 @@ public:
         return flags & FLAG_LAUNCHCOMPLETEMARKER;
     }
 
+    // this is only set after the import that completes all pre-conversions
+    void SetLaunchCompleteMarker(bool newState=true)
+    {
+        if (newState)
+        {
+            flags &= ~FLAG_PRELAUNCH;
+            flags |= FLAG_LAUNCHCOMPLETEMARKER;
+        }
+        else
+        {
+            flags &= ~FLAG_LAUNCHCOMPLETEMARKER;
+        }
+    }
+
     void SetPrelaunch(bool newState=true)
     {
         if (newState)
         {
-            flags &= ~(FLAG_REFUNDING + FLAG_LAUNCHCLEAR + FLAG_LAUNCHCONFIRMED);
             flags |= FLAG_PRELAUNCH;
         }
         else
@@ -1218,7 +1273,6 @@ public:
     {
         if (newState)
         {
-            flags &= ~(FLAG_REFUNDING + FLAG_PRELAUNCH);
             flags |= FLAG_LAUNCHCONFIRMED;
         }
         else
@@ -1231,7 +1285,6 @@ public:
     {
         if (newState)
         {
-            flags &= ~(FLAG_PRELAUNCH + FLAG_LAUNCHCLEAR + FLAG_LAUNCHCONFIRMED);
             flags |= FLAG_REFUNDING;
         }
         else
@@ -1344,6 +1397,14 @@ public:
     // while leaving conversion prices the same
     void RevertReservesAndSupply()
     {
+        // if this is the launch clear notarization, we have only the starting condition
+        // and we don't revert anything
+        if (IsLaunchClear())
+        {
+            SetLaunchClear(false);
+            SetPrelaunch(true);
+        }
+
         // add reserves out to reserves
         auto currencyMap = GetReserveMap();
 
@@ -1351,7 +1412,15 @@ public:
         for (auto &oneCur : currencyMap)
         {
             reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
-            supply += (nativeIn[oneCur.second] - (nativeOut + emitted));
+            supply += nativeIn[oneCur.second];
+        }
+        if (IsPrelaunch())
+        {
+            supply -= emitted;
+        }
+        else
+        {
+            supply -= (nativeOut + emitted);
         }
     }
 

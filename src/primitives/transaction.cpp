@@ -400,7 +400,8 @@ CCurrencyValueMap CTransaction::GetReserveValueOut() const
     CCurrencyValueMap retVal;
     for (std::vector<CTxOut>::const_iterator it(vout.begin()); it != vout.end(); ++it)
     {
-        CCurrencyValueMap oneOut = it->scriptPubKey.ReserveOutValue();
+        COptCCParams p;
+        CCurrencyValueMap oneOut = it->scriptPubKey.ReserveOutValue(p);
 
         for (auto &oneCur : oneOut.valueMap)
         {

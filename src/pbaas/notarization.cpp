@@ -487,15 +487,24 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     }
 
     CReserveTransactionDescriptor rtxd;
+    std::vector<CTxOut> dummyImportOutputs;
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
-    if (destCurrency.launchSystemID == sourceSystemID && lastExportHeight < (destCurrency.startBlock - 1))
+    if (destCurrency.launchSystemID == sourceSystemID && currentHeight == (destCurrency.startBlock - 1))
     {
-        // the rest is already updated
-        return true;
-    }
-    else if (destCurrency.launchSystemID == sourceSystemID && lastExportHeight == (destCurrency.startBlock - 1))
-    {
+        // we get one pre-launch coming through here
+        if (newNotarization.IsPreLaunch() && !newNotarization.currencyState.IsLaunchClear())
+        {
+            newNotarization.SetPreLaunch(false);
+            newNotarization.currencyState.SetPrelaunch(false);
+            newNotarization.currencyState.SetLaunchClear();
+            // first time through is export, second is import, then we finish clearing the launch
+        }
+        else if (newNotarization.currencyState.IsLaunchClear())
+        {
+            newNotarization.currencyState.SetLaunchClear(false);
+        }
+
         bool refunding = false;
 
         // check if the chain is qualified for a refund
@@ -506,9 +515,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         {
             minPreMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.minPreconvert).CanonicalMap();
         }
-
-        newNotarization.SetPreLaunch(false);
-        newNotarization.currencyState.SetLaunchClear();
 
         if (minPreMap.valueMap.size() && preConvertedMap < minPreMap)
         {
@@ -524,17 +530,23 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         {
             newNotarization.currencyState.SetLaunchConfirmed();
         }
+
         CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.systemID);
-        return rtxd.AddReserveTransferImportOutputs(sourceSystem,
-                                                    destSystem,
-                                                    destCurrency, 
-                                                    newNotarization.currencyState, 
-                                                    exportTransfers, 
-                                                    importOutputs, 
-                                                    importedCurrency,
-                                                    gatewayDepositsUsed, 
-                                                    spentCurrencyOut,
-                                                    &newNotarization.currencyState);
+
+        CCoinbaseCurrencyState tempState = newNotarization.currencyState;
+        bool retVal = rtxd.AddReserveTransferImportOutputs(sourceSystem,
+                                                           destSystem,
+                                                           destCurrency, 
+                                                           newNotarization.currencyState, 
+                                                           exportTransfers, 
+                                                           importOutputs, 
+                                                           importedCurrency,
+                                                           gatewayDepositsUsed, 
+                                                           spentCurrencyOut,
+                                                           &tempState);
+        
+        newNotarization.currencyState = tempState;
+        return retVal;
     }
     else if (lastExportHeight >= destCurrency.startBlock)
     {
@@ -553,7 +565,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                   destCurrency, 
                                                                   currencyState, 
                                                                   exportTransfers, 
-                                                                  importOutputs, 
+                                                                  dummyImportOutputs, 
                                                                   importedCurrency,
                                                                   gatewayDepositsUsed, 
                                                                   spentCurrencyOut,
@@ -567,7 +579,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             CCoinbaseCurrencyState tempCurState = currencyState;
             tempCurState.conversionPrice = newNotarization.currencyState.conversionPrice;
             tempCurState.viaConversionPrice = newNotarization.currencyState.viaConversionPrice;
-            importOutputs.resize(0);
             rtxd = CReserveTransactionDescriptor();
             isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem, 
                                                                  ConnectedChains.ThisChain(),

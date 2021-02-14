@@ -5313,7 +5313,7 @@ bool CloserToTarget(const CCurrencyValueMap &target, const CCurrencyValueMap &cu
     return workingTarget.SubtractToZero(candidate) < workingTarget;
 }
 
-static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<const CWalletTx*,unsigned int> > >vValue, 
+static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<const CWalletTx*,unsigned int>>> vValue, 
                                          const CCurrencyValueMap &totalToOptimize, 
                                          const CCurrencyValueMap &targetValues,
                                          vector<char>& vfBest, 

@@ -408,11 +408,20 @@ uint160 DecodeCurrencyName(std::string currencyStr)
 
 CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     preLaunchDiscount(0),
-    initialFractionalSupply(0)
+    initialFractionalSupply(0),
+    gatewayConverterIssuance(0),
+    minNotariesConfirm(0),
+    idRegistrationFees(IDENTITY_REGISTRATION_FEE),
+    idReferralLevels(DEFAULT_ID_REFERRAL_LEVELS),
+    idImportFees(IDENTITY_IMPORT_FEE),
+    currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
+    currencyImportFee(CURRENCY_IMPORT_FEE),
+    transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
+    transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
 {
     try
     {
-        nVersion = uni_get_int64(find_value(obj, "version"), PBAAS_VERSION);
+        nVersion = uni_get_int64(find_value(obj, "version"), VERSION_CURRENT);
         options = (uint32_t)uni_get_int64(find_value(obj, "options"));
         name = std::string(uni_get_str(find_value(obj, "name")), 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
 
@@ -831,12 +840,34 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             vEras.resize(ASSETCHAINS_MAX_ERAS);
         }
 
-        for (auto era : vEras)
+        if (vEras.size())
         {
-            rewards.push_back(uni_get_int64(find_value(era, "reward")));
-            rewardsDecay.push_back(uni_get_int64(find_value(era, "decay")));
-            halving.push_back(uni_get_int64(find_value(era, "halving")));
-            eraEnd.push_back(uni_get_int64(find_value(era, "eraend")));
+            idRegistrationFees = uni_get_int64(find_value(obj, "idregistrationfees"), idRegistrationFees);
+            idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"), idReferralLevels);
+            idImportFees = uni_get_int64(find_value(obj, "idimportfees"), idImportFees);
+            currencyRegistrationFee = uni_get_int64(find_value(obj, "currencyregistrationfee"), currencyRegistrationFee);
+            currencyImportFee = uni_get_int64(find_value(obj, "currencyimportfee"), currencyImportFee);
+            transactionImportFee = uni_get_int64(find_value(obj, "transactionimportfee"), transactionImportFee);
+            transactionExportFee = uni_get_int64(find_value(obj, "transactionexportfee"), transactionExportFee);
+
+            if (!gatewayID.IsNull())
+            {
+                gatewayConverterIssuance = uni_get_int64(find_value(obj, "gatewayconverterissuance"));
+            }
+
+            for (auto era : vEras)
+            {
+                rewards.push_back(uni_get_int64(find_value(era, "reward")));
+                rewardsDecay.push_back(uni_get_int64(find_value(era, "decay")));
+                halving.push_back(uni_get_int64(find_value(era, "halving")));
+                eraEnd.push_back(uni_get_int64(find_value(era, "eraend")));
+            }
+
+            if (!rewards.size())
+            {
+                LogPrintf("%s: PBaaS chain does not have valid rewards eras");
+                nVersion = PBAAS_VERSION_INVALID;
+            }
         }
     }
     catch (exception e)

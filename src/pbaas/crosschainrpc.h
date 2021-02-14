@@ -435,6 +435,14 @@ class CCurrencyDefinition
 public:
     static const int64_t DEFAULT_ID_REGISTRATION_AMOUNT = 10000000000;
 
+    enum EVersion
+    {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_LAST = 1,
+        VERSION_CURRENT = 1
+    };
+
     enum ELimitsDefaults
     {
         TRANSACTION_TRANSFER_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
@@ -548,7 +556,7 @@ public:
 
     std::string gatewayConverterName;       // reserved ID and currency that is a basket of all currencies accepted on launch, parent chain, and native
 
-    CCurrencyDefinition() : nVersion(PBAAS_VERSION_INVALID), 
+    CCurrencyDefinition() : nVersion(VERSION_INVALID), 
                             options(0),
                             notarizationProtocol(NOTARIZATION_INVALID),
                             proofProtocol(PROOF_INVALID),
@@ -590,8 +598,9 @@ public:
                         const std::string &LaunchGatewayName,
                         int64_t TransactionTransferFee=TRANSACTION_TRANSFER_FEE, int64_t CurrencyRegistrationFee=CURRENCY_REGISTRATION_FEE,
                         int64_t CurrencyImportFee=CURRENCY_IMPORT_FEE, int64_t IDRegistrationAmount=IDENTITY_REGISTRATION_FEE, 
-                        int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE) :
-                        nVersion(PBAAS_VERSION),
+                        int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE,
+                        uint32_t Version=VERSION_CURRENT) :
+                        nVersion(Version),
                         options(Options),
                         parent(Parent),
                         name(Name),
@@ -685,6 +694,24 @@ public:
             READWRITE(VARINT(transactionImportFee));
             READWRITE(VARINT(transactionExportFee));
         }
+        else
+        {
+            // replace "s" in scope
+            CDataStream s = CDataStream(SER_DISK, PROTOCOL_VERSION);
+            // pad for read
+            int64_t initZero = 0;
+            s << initZero;
+            s << initZero;
+            s << initZero;
+            s << initZero;
+            s << initZero;
+            READWRITE(VARINT(idImportFees));
+            READWRITE(VARINT(currencyRegistrationFee));
+            READWRITE(VARINT(currencyImportFee));
+            READWRITE(VARINT(transactionImportFee));
+            READWRITE(VARINT(transactionExportFee));
+        }
+        
         if (options & OPTION_PBAAS)
         {
             READWRITE(rewards);
@@ -706,6 +733,11 @@ public:
     {
         uint160 Parent;
         return GetID(Name, Parent);
+    }
+
+    int64_t GetCurrencyRegistrationFee() const
+    {
+        return currencyRegistrationFee;
     }
 
     uint160 GetID() const

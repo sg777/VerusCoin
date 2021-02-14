@@ -344,8 +344,6 @@ bool SetThisChain(const UniValue &chainDefinition)
     else
     {
         ConnectedChains.ThisChain().options = (CCurrencyDefinition::OPTION_CANBERESERVE | CCurrencyDefinition::OPTION_ID_REFERRALS);
-        ConnectedChains.ThisChain().idRegistrationFees = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
-        ConnectedChains.ThisChain().idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
         ConnectedChains.ThisChain().systemID = ConnectedChains.ThisChain().GetID();   
     }
 
@@ -1215,9 +1213,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
     {
         // which transaction are we in this block?
         std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-        uint160 searchKey = chainDef.systemID == ASSETCHAINS_CHAINID ?
-                            CCrossChainRPCData::GetConditionID(chainID, CCrossChainImport::CurrencyImportKey()) :
-                            CCrossChainRPCData::GetConditionID(chainID, CCrossChainImport::CurrencySystemImportKey());
+        uint160 searchKey = CCrossChainRPCData::GetConditionID(chainID, CCrossChainImport::CurrencyImportKey());
         CBlockIndex *pIndex;
         CChainNotarizationData cnd;
 
@@ -1239,12 +1235,26 @@ UniValue getimports(const UniValue& params, bool fHelp)
                     int32_t importNotOut;
                     int32_t evidenceOutStart, evidenceOutEnd;
                     std::vector<CReserveTransfer> reserveTransfers;
+                    uint32_t importHeight = 0;
+
+                    auto importBlockIdxIt = mapBlockIndex.find(blkHash);
+                    if (importBlockIdxIt != mapBlockIndex.end() && chainActive.Contains(importBlockIdxIt->second))
+                    {
+                        importHeight = importBlockIdxIt->second->GetHeight();
+                    }
+                    else
+                    {
+                        continue;
+                    }
 
                     if ((cci = CCrossChainImport(importTx)).IsValid() &&
                         cci.GetImportInfo(importTx, idx.first.index, ccx, cci, sysCCIOut, importNotarization, importNotOut, evidenceOutStart, evidenceOutEnd, reserveTransfers))
                     {
                         UniValue oneImportUni(UniValue::VOBJ);
 
+                        oneImportUni.push_back(Pair("importheight", (int64_t)importHeight));
+                        oneImportUni.push_back(Pair("importtxid", idx.first.txhash.GetHex()));
+                        oneImportUni.push_back(Pair("importvout", idx.first.index));
                         oneImportUni.push_back(Pair("import", cci.ToUniValue()));
                         if (sysCCIOut != -1)
                         {
@@ -3798,6 +3808,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     CCrossChainImport cci = CCrossChainImport(newChain.systemID, height, newChainID, CCurrencyValueMap(), CCurrencyValueMap());
     cci.SetSameChain(newChain.systemID == ASSETCHAINS_CHAINID);
     cci.SetDefinitionImport(true);
+    cci.exportTxOutNum = vOutputs.size() + 2;
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)), 0, false});
 
     // get initial currency state at this height
@@ -3839,7 +3850,11 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
-    CCrossChainExport ccx = CCrossChainExport(newChain.systemID, 0, height, newChain.systemID, newChainID, 0, CCurrencyValueMap(), CCurrencyValueMap(), uint256());
+    CCurrencyValueMap launchFee(std::vector<uint160>({ASSETCHAINS_CHAINID}),
+                                std::vector<int64_t>({ConnectedChains.ThisChain().GetCurrencyRegistrationFee()}));
+    CCrossChainExport ccx = CCrossChainExport(newChain.systemID, 0, height, newChain.systemID, newChainID, 0, launchFee, launchFee, uint256());
+    ccx.SetPreLaunch();
+    ccx.SetChainDefinition();
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx)), 0, false});
 
     // make the outputs for initial contributions
@@ -3895,6 +3910,25 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         pbn.SetSameChain();
         pbn.SetPreLaunch();
 
+        // create import and export outputs
+        cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
+        pk = CPubKey(ParseHex(CC.CChexstr));
+
+        if (newGatewayConverter.proofProtocol == newGatewayConverter.PROOF_PBAASMMR || newGatewayConverter.proofProtocol == newGatewayConverter.PROOF_CHAINID)
+        {
+            dests = std::vector<CTxDestination>({pk.GetID()});
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
+        }
+
+        // if this is a token on this chain, the transfer that is output here is burned through the export 
+        // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
+        // and the reserve transfer outputs.
+        CCrossChainImport gatewayCci = CCrossChainImport(newGatewayConverter.systemID, height, gatewayCurrencyID, CCurrencyValueMap(), CCurrencyValueMap());
+        vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &gatewayCci)), 0, false});
+
         // make the first chain notarization output
         cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
         CTxDestination notarizationDest;
@@ -3916,42 +3950,16 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         dests = std::vector<CTxDestination>({notarizationDest});
 
         vOutputs.push_back({MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &gatewayPbn)), 
-                                            CPBaaSNotarization::MIN_NOTARIZATION_OUTPUT, 
-                                            false});
-
-        // make a finalization output, which is finalized, such as it is
-        cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
-        pk = CPubKey(ParseHex(CC.CChexstr));
-
-        dests = std::vector<CTxDestination>({pk});
-
-        CObjectFinalization gatewayNf(CObjectFinalization::FINALIZE_NOTARIZATION + CObjectFinalization::FINALIZE_CONFIRMED, gatewayCurrencyID, uint256(), vOutputs.size() - 1);
-
-        vOutputs.push_back({MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &gatewayNf)), 0, false});
-
-        // create import and export outputs
-        cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
-        pk = CPubKey(ParseHex(CC.CChexstr));
-
-        if (newGatewayConverter.proofProtocol == newGatewayConverter.PROOF_PBAASMMR || newGatewayConverter.proofProtocol == newGatewayConverter.PROOF_CHAINID)
-        {
-            dests = std::vector<CTxDestination>({pk.GetID()});
-        }
-        else
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
-        }
-
-        // if this is a token on this chain, the transfer that is output here is burned through the export 
-        // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
-        // and the reserve transfer outputs.
-        CCrossChainImport gatewayCci = CCrossChainImport(newGatewayConverter.systemID, height, gatewayCurrencyID, CCurrencyValueMap(), CCurrencyValueMap());
-        vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &gatewayCci)), 0, false});
+                                             CPBaaSNotarization::MIN_NOTARIZATION_OUTPUT, 
+                                             false});
 
         // export thread
         cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-        CCrossChainExport gatewayCcx = CCrossChainExport(newGatewayConverter.systemID, 0, height, newChain.systemID, gatewayCurrencyID, 0, CCurrencyValueMap(), CCurrencyValueMap(), uint256());
+        CCrossChainExport gatewayCcx = CCrossChainExport(newGatewayConverter.systemID, 0, height, newChain.systemID, gatewayCurrencyID, 0, launchFee, launchFee, uint256());
+        gatewayCcx.SetPreLaunch();
+        gatewayCcx.SetChainDefinition();
+
         vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &gatewayCcx)), 0, false});
 
         // make the outputs for initial contributions
@@ -3984,6 +3992,23 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 }
             }
         }
+    }
+
+    // pay currency launch fee directly into currency reserve deposits
+    cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
+    pk = CPubKey(ParseHex(CC.CChexstr));
+    dests = std::vector<CTxDestination>({pk});
+    CReserveDeposit launchDeposit = CReserveDeposit(newChainID, CCurrencyValueMap());
+    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
+                                         ConnectedChains.ThisChain().GetCurrencyRegistrationFee(), 
+                                         false});
+
+    if (newGatewayConverter.IsValid())
+    {
+        launchDeposit = CReserveDeposit(newGatewayConverter.GetID(), CCurrencyValueMap());
+        vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
+                                            ConnectedChains.ThisChain().GetCurrencyRegistrationFee(), 
+                                            false});
     }
 
     // create the transaction
@@ -4474,6 +4499,12 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + ", not found ");
     }
+    uint256 blkHash;
+    CTransaction oldIdTx;
+    if (!myGetTransaction(idTxIn.prevout.hash, oldIdTx, blkHash))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + ", transaction not found ");
+    }
 
     auto uniOldID = UniObjectToMap(oldID.ToUniValue());
 
@@ -4530,60 +4561,40 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     }
 
     // create the identity definition transaction
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(chainActive.Height()), 0, false}});
-    CWalletTx wtx;
+    TransactionBuilder tb = TransactionBuilder(Params().GetConsensus(), nHeight, pwalletMain);
+    tb.SetFee(minRelayTxFee.GetFeePerK());
+    tb.AddTransparentInput(idTxIn.prevout, oldIdTx.vout[idTxIn.prevout.n].scriptPubKey, oldIdTx.vout[idTxIn.prevout.n].nValue);
+    tb.AddTransparentOutput(newID.IdentityUpdateOutputScript(chainActive.Height()), 0);
 
-    CReserveKey reserveKey(pwalletMain);
-    CAmount fee;
-    int nChangePos;
-    string failReason;
-
-    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, nullptr, false))
+    TransactionBuilderResult buildResult = tb.Build();
+    CTransaction newIdTx;
+    try
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to create update transaction: " + failReason);
+        newIdTx = buildResult.GetTxOrThrow();
     }
-
-    CMutableTransaction mtx(wtx);
-    mtx.vin.push_back(idTxIn);
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
-
-    // now sign
-    CCoinsViewCache view(pcoinsTip);
-    for (int i = 0; i < wtx.vin.size(); i++)
+    catch(const std::exception& e)
     {
-        bool signSuccess;
-        SignatureData sigdata;
-
-        CCoins coins;
-        if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
-        {
-            break;
-        }
-
-        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
-
-        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
-
-        if (!signSuccess)
-        {
-            LogPrintf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
-        } else {
-            UpdateTransaction(mtx, i, sigdata);
-        }
+        throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Invalid update identity transaction : " + std::string(e.what()));
     }
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
 
     if (returnTx)
     {
-        return EncodeHexTx(wtx);
+        return EncodeHexTx(newIdTx);
     }
-    else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+    else
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+        CValidationState state;
+        // add to mem pool and relay
+        if (!myAddtomempool(newIdTx, &state))
+        {
+            throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Cannot add transaction to memory pool : " + state.GetRejectReason());
+        }
+        else
+        {
+            RelayTransaction(newIdTx);
+        }
     }
-    return wtx.GetHash().GetHex();
+    return newIdTx.GetHash().GetHex();
 }
 
 UniValue revokeidentity(const UniValue& params, bool fHelp)
