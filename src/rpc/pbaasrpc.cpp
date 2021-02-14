@@ -412,7 +412,7 @@ void GetCurrencyDefinitions(vector<CCurrencyDefinition> &chains, bool includeExp
 
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
-    if (GetAddressIndex(CKeyID(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), EVAL_CURRENCY_DEFINITION)), CScript::P2IDX, addressIndex))
+    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), CCurrencyDefinition::CurrencySystemKey()), CScript::P2IDX, addressIndex))
     {
         for (auto txidx : addressIndex)
         {

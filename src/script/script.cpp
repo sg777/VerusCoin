@@ -980,7 +980,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.gatewayID, CCurrencyDefinition::CurrencyGatewayKey())));
                 }
-                else if (definition.systemID == ASSETCHAINS_CHAINID)
+                else if (definition.launchSystemID == ASSETCHAINS_CHAINID)
                 {
                     // create an entry that will be indexed by the start block and queryable by block range
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.systemID, CCurrencyDefinition::CurrencyLaunchKey())));
