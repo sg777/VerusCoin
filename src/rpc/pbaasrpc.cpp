@@ -2566,7 +2566,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                 if (exportToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot export from one system to itself");
+                    exportToStr = "";
+                    exportToCurrencyID.SetNull();
                 }
             }
 

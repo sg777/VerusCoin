@@ -1636,7 +1636,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         {
                             importGeneratedCurrency.valueMap[cci.importCurrencyID] = newState.nativeOut;
                         }
-                        printf("%s: import generated currency:\n%s\n", __func__, importGeneratedCurrency.ToUniValue().write(1,2).c_str());
+                        //printf("%s: import generated currency:\n%s\n", __func__, importGeneratedCurrency.ToUniValue().write(1,2).c_str());
 
                         for (auto &oneOutCur : cci.totalReserveOutMap.valueMap)
                         {

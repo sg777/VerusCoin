@@ -255,7 +255,7 @@ TransactionBuilderResult TransactionBuilder::Build()
 
         CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height());
         reserveChange -= rtxd.ReserveInputMap() - rtxd.ReserveOutputMap();
-        printf("%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
+        //printf("%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
         bool hasReserveChange = false;
 
         // Valid change
@@ -268,7 +268,7 @@ TransactionBuilderResult TransactionBuilder::Build()
         }
         for (auto tIn : tIns) {
             change += tIn.value;
-            printf("tIn.scriptPubKey.ReserveOutValue():\n%s\n", tIn.scriptPubKey.ReserveOutValue().ToUniValue().write(1,2).c_str());
+            //printf("tIn.scriptPubKey.ReserveOutValue():\n%s\n", tIn.scriptPubKey.ReserveOutValue().ToUniValue().write(1,2).c_str());
             reserveChange += tIn.scriptPubKey.ReserveOutValue();
         }
         if (reserveChange.valueMap.size())
@@ -288,7 +288,7 @@ TransactionBuilderResult TransactionBuilder::Build()
 
         if (hasReserveChange && !tChangeAddr)
         {
-            printf("%s: reserveChange: %s\n", __func__, reserveChange.ToUniValue().write(1,2).c_str());
+            //printf("%s: reserveChange: %s\n", __func__, reserveChange.ToUniValue().write(1,2).c_str());
             return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
         }
 
