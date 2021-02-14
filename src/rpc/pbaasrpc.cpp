@@ -1395,7 +1395,11 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressIndex(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER), CScript::P2IDX, addressIndex, start, end))
+    if (!GetAddressIndex(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CReserveTransfer::ReserveTransferKey()), 
+                         CScript::P2IDX, 
+                         addressIndex, 
+                         start, 
+                         end))
     {
         return false;
     }
@@ -2981,68 +2985,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     q->addOperation(operation);
     AsyncRPCOperationId operationId = operation->getId();
     return operationId;
-}
-
-bool GetLastImportIn(uint160 chainID, CTransaction &lastImportTx)
-{
-    // look for unspent chain transfer outputs for all chains
-    CIndexID idxID = CCrossChainRPCData::GetConditionID(chainID, EVAL_CROSSCHAIN_IMPORT);
-
-    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
-
-    LOCK(cs_main);
-
-    if (!GetAddressUnspent(idxID, CScript::P2IDX, unspentOutputs))
-    {
-        return false;
-    }
-
-    for (auto output : unspentOutputs)
-    {
-        // find the first one that is either in block 1, part of a chain definition transaction, or spends a prior
-        // import output in input 0, which cannot be done unless the output is rooted in a valid import thread. anyone can try to send
-        // coins to this address without being part of the chain, but they will be wasted and unspendable.
-        COptCCParams p;
-        if (output.second.script.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_IMPORT)
-        {
-            // we actually don't care what is in the transaction here, only that it is a valid cross chain import tx
-            // that is either the first in a chain or spends a valid cross chain import output
-            CCrossChainImport cci(p.vData[0]);
-            CTransaction lastTx;
-            uint256 blkHash;
-            if (cci.IsValid() && myGetTransaction(output.first.txhash, lastTx, blkHash))
-            {
-                if (output.second.blockHeight == 1 && lastTx.IsCoinBase())
-                {
-                    lastImportTx = lastTx;
-                    return true;
-                }
-                else
-                {
-                    if (IsVerusActive())
-                    {
-                        // if this is the Verus chain, then we need to either be part of a chain definition transaction
-                        // or spend a valid import output
-                        std::vector<CCurrencyDefinition> definedChains = CCurrencyDefinition::GetCurrencyDefinitions(lastTx);
-                        if (definedChains.size() == 1 && definedChains[0].IsValid())
-                        {
-                            lastImportTx = lastTx;
-                            return true;
-                        }
-                        // if we get here, we must spend a valid import output
-                        CTransaction inputTx;
-                        uint256 inputBlkHash;
-                        if (lastTx.vin.size() && myGetTransaction(lastTx.vin[0].prevout.hash, inputTx, inputBlkHash) && CCrossChainImport(lastTx).IsValid())
-                        {
-                            lastImportTx = lastTx;
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return false;
 }
 
 UniValue refundfailedlaunch(const UniValue& params, bool fHelp)

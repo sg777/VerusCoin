@@ -1002,11 +1002,6 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
         CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
         std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
         CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
-
-        std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetID(), EVAL_IDENTITY_PRIMARY))),
-                                                IsRevoked() ? CTxDestination(CIdentityID(recoveryAuthority)) : CTxDestination(CIdentityID(revocationAuthority)),
-                                                primaryAddresses.size() ? primaryAddresses[0] : CKeyID()});
-
         ret = MakeMofNCCScript(1, primary, revocation, recovery);
     }
 

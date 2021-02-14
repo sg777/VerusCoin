@@ -2988,8 +2988,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         // is the system destination for this export (i.e. "which system should do the next work?")
         CObjectFinalization finalization(CObjectFinalization::FINALIZE_EXPORT, destSystemID, uint256(), exportOutNum);
 
-        //printf("%s: Finalizing export with index dest %s\n", __func__, EncodeDestination(CKeyID(CCrossChainRPCData::GetConditionID(lastChainDef.systemID, EVAL_FINALIZE_EXPORT))).c_str());
-
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
         exportOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_EXPORT, dests, 1, &finalization))));
     }
@@ -3523,7 +3521,6 @@ void CConnectedChains::ProcessLocalImports()
     std::set<uint160> currenciesProcessed;
     uint160 finalizeExportKey(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CObjectFinalization::ObjectFinalizationExportKey()));
 
-    //printf("%s: Searching for %s\n", __func__, EncodeDestination(CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_FINALIZE_EXPORT))).c_str());
     if (GetAddressUnspent(finalizeExportKey, CScript::P2IDX, unspentOutputs))
     {
         // now, we have a list of all currencies with exports that have work to do

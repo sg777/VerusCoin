@@ -318,7 +318,7 @@ bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
     CPBaaSNotarization notarization;
     std::vector<CAddressIndexDbEntry> notarizationIndex;
     // get the last notarization in the indicated height for this currency, which is valid by definition for a token
-    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(currencyID, eCode), CScript::P2IDX, notarizationIndex, startHeight, endHeight))
+    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(currencyID, CPBaaSNotarization::NotaryNotarizationKey()), CScript::P2IDX, notarizationIndex, startHeight, endHeight))
     {
         // filter out all transactions that do not spend from the notarization thread, or originate as the
         // chain definition
@@ -368,7 +368,7 @@ bool CPBaaSNotarization::GetLastUnspentNotarization(const uint160 &currencyID,
     CPBaaSNotarization notarization;
     std::vector<CAddressUnspentDbEntry> notarizationIndex;
     // get the last notarization in the indicated height for this currency, which is valid by definition for a token
-    if (GetAddressUnspent(CCrossChainRPCData::GetConditionID(currencyID, eCode), CScript::P2IDX, notarizationIndex))
+    if (GetAddressUnspent(CCrossChainRPCData::GetConditionID(currencyID, CPBaaSNotarization::NotaryNotarizationKey()), CScript::P2IDX, notarizationIndex))
     {
         // first valid, unspent notarization found is the one we return
         for (auto it = notarizationIndex.rbegin(); it != notarizationIndex.rend(); it++)

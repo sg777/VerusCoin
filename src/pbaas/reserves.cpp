@@ -2945,7 +2945,6 @@ CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutable
                                     CTransferDestination(p.vKeys[0].which(), GetDestinationBytes(p.vKeys[0])));
 
                 // cast object to the most derived class to avoid template errors to a least derived class
-                CTxDestination rtIndexDest(CKeyID(ConnectedChains.ThisChain().GetConditionID(EVAL_RESERVE_TRANSFER)));
                 conversionTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt))));
             }
         }
