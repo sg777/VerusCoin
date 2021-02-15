@@ -524,10 +524,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             // represents a failed launch
             newNotarization.currencyState.supply = 0;
             newNotarization.currencyState.SetRefunding(true);
+            newNotarization.SetRefunding(true);
             refunding = true;
         }
         else
         {
+            newNotarization.SetLaunchConfirmed();
             newNotarization.currencyState.SetLaunchConfirmed();
         }
 
