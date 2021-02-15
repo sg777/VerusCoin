@@ -1917,6 +1917,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     CCoinbaseCurrencyState initialCurrencyState;
     CCurrencyValueMap preConvertedOutput;
     CCurrencyValueMap preConvertedReserves;
+    CAmount preAllocTotal = 0;
 
     // determine if we are importing from a gateway currency
     // if so, we can use it to mint gateway currencies via the gateway, and deal with fees and conversions on
@@ -2033,6 +2034,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             {
                                 AddReserveOutConverted(importCurrencyID, onePreAlloc.second);
                             }
+                            preAllocTotal += onePreAlloc.second;
 
                             std::vector<CTxDestination> dests;
                             if (onePreAlloc.first.IsNull())
@@ -2750,7 +2752,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         newCurrencyState.reserveOut[i] = vResOutConverted[i];
         newCurrencyState.reserves[i] += isFractional ? vResConverted[i] - vResOutConverted[i] : 0;
         newCurrencyState.nativeIn[i] = vFracConverted[i];
-        newCurrencyState.supply += vFracOutConverted[i] - vFracConverted[i];
+        newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]) + preAllocTotal;
     }
 
     if (totalMinted)

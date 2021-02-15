@@ -1414,14 +1414,7 @@ public:
             reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
             supply += nativeIn[oneCur.second];
         }
-        if (IsPrelaunch())
-        {
-            supply -= emitted;
-        }
-        else
-        {
-            supply -= (nativeOut + emitted);
-        }
+        supply -= (nativeOut + emitted);
     }
 
     CCoinbaseCurrencyState MatchOrders(const std::vector<CReserveTransactionDescriptor> &orders, 

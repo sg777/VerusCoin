@@ -1956,7 +1956,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
                                 0,
                                 chainDef.initialFractionalSupply,
                                 CCurrencyState::FLAG_FRACTIONAL);
-        cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
+        //cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
         conversions = cState.PricesInReserve();
     }
     else
@@ -1971,7 +1971,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
                                 0, 
                                 PreconvertedNative,
                                 PreconvertedNative);
-        cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
+        //cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
     }
 
     CCoinbaseCurrencyState retVal(cState, 

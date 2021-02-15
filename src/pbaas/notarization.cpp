@@ -520,8 +520,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         {
             // we force the supply to zero
             // in any case where there was less than minimum participation,
-            // the result of the supply cannot be zero, enabling us to easily determine that this
-            // represents a failed launch
             newNotarization.currencyState.supply = 0;
             newNotarization.currencyState.SetRefunding(true);
             newNotarization.SetRefunding(true);

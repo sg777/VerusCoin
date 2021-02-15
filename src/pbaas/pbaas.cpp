@@ -1145,8 +1145,6 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         }
     }
 
-    currencyState.UpdateWithEmission(curDef.GetTotalPreallocation());
-
     return currencyState;
 }
 
