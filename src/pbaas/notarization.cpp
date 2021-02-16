@@ -493,16 +493,21 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     if (destCurrency.launchSystemID == sourceSystemID && currentHeight == (destCurrency.startBlock - 1))
     {
         // we get one pre-launch coming through here
+        bool launchClear = false;
         if (newNotarization.IsPreLaunch() && !newNotarization.currencyState.IsLaunchClear())
         {
             newNotarization.SetPreLaunch(false);
+            newNotarization.currencyState.RevertReservesAndSupply();
             newNotarization.currencyState.SetPrelaunch(false);
             newNotarization.currencyState.SetLaunchClear();
             // first time through is export, second is import, then we finish clearing the launch
         }
         else if (newNotarization.currencyState.IsLaunchClear())
         {
+            launchClear = true;
             newNotarization.currencyState.SetLaunchClear(false);
+            newNotarization.currencyState.SetPrelaunch(true);
+            newNotarization.currencyState.ClearForNextBlock();
         }
 
         bool refunding = false;
@@ -546,6 +551,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            &tempState);
         
         newNotarization.currencyState = tempState;
+        if (launchClear)
+        {
+            newNotarization.currencyState.SetPrelaunch(false);
+            newNotarization.currencyState.SetLaunchClear(false);
+        }
         return retVal;
     }
     else if (lastExportHeight >= destCurrency.startBlock)

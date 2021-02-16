@@ -2752,8 +2752,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         newCurrencyState.reserveOut[i] = vResOutConverted[i];
         newCurrencyState.reserves[i] += isFractional ? vResConverted[i] - vResOutConverted[i] : 0;
         newCurrencyState.nativeIn[i] = vFracConverted[i];
-        newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]) + preAllocTotal;
+        newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]);
     }
+
+    newCurrencyState.supply += preAllocTotal;
 
     if (totalMinted)
     {

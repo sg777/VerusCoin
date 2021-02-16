@@ -1168,7 +1168,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
              (currencyState = notarization.currencyStates[chainID]).IsValid()) ||
             (currencyState = GetInitialCurrencyState(curDef)).IsValid())
         {
-            if (!(notarization.IsValid() && notarization.notarizationHeight >= curDef.startBlock))
+            if (!notarization.IsValid() || notarization.notarizationHeight < (curDef.startBlock - 1))
             {
                 // pre-launch
                 currencyState.SetPrelaunch(true);
@@ -1177,10 +1177,6 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                                                         notarization.IsValid() ? notarization.notarizationHeight : curDefHeight, 
                                                         height, 
                                                         curDefHeight);
-            }
-            else
-            {
-                currencyState.SetPrelaunch(false);
             }
         }
     }
@@ -1929,7 +1925,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         if (lastNotarization.currencyState.IsLaunchClear() && !lastCCI.IsInitialLaunchImport())
         {
             lastNotarization.SetPreLaunch();
-            lastNotarization.currencyState.RevertReservesAndSupply();
+            lastNotarization.currencyState.SetLaunchClear(false);
+            lastNotarization.currencyState.SetPrelaunch(true);
         }
         if (!lastNotarization.NextNotarizationInfo(sourceSystemDef,
                                                    destCur,

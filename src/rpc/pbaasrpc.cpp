@@ -3510,7 +3510,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + EncodeDestination(CIdentityID(currency)) + " may not be used as a reserve");
             }
 
-            if (currency == VERUS_CHAINID)
+            if (currency == ASSETCHAINS_CHAINID)
             {
                 hasCoreReserve = true;
             }
@@ -3663,7 +3663,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         }
 
         // set the parent and system of the new gateway converter to the new currency
-        newGatewayConverter = CCurrencyDefinition(ValidateNewUnivalueCurrencyDefinition(params[1], height, newChainID));
+        newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(params[1], height, newChainID);
 
         newGatewayConverter.startBlock = newChain.startBlock;
 
