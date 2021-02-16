@@ -566,13 +566,13 @@ public:
                             gatewayConverterIssuance(0),
                             preLaunchDiscount(0),
                             minNotariesConfirm(0),
-                            idRegistrationFees(0),
-                            idReferralLevels(0),
-                            idImportFees(0),
-                            currencyRegistrationFee(0),
-                            currencyImportFee(0),
-                            transactionImportFee(0),
-                            transactionExportFee(0)
+                            idRegistrationFees(IDENTITY_REGISTRATION_FEE),
+                            idReferralLevels(DEFAULT_ID_REFERRAL_LEVELS),
+                            idImportFees(IDENTITY_IMPORT_FEE),
+                            currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
+                            currencyImportFee(CURRENCY_IMPORT_FEE),
+                            transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
+                            transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
     {}
 
     CCurrencyDefinition(const UniValue &obj);
@@ -675,20 +675,18 @@ public:
         READWRITE(preconverted);
         READWRITE(VARINT(preLaunchDiscount));
         READWRITE(preLaunchCarveOuts);
-
-        if (IsGateway())
-        {
-            READWRITE(nativeCurrencyID);
-            READWRITE(gatewayID);
-        }
-
         READWRITE(notaries);
         READWRITE(VARINT(minNotariesConfirm));
         READWRITE(VARINT(idRegistrationFees));
         READWRITE(VARINT(idReferralLevels));
-        if (options & OPTION_GATEWAY || options & OPTION_PBAAS)
+        READWRITE(VARINT(idImportFees));
+        if (IsGateway() || IsPBaaSChain())
         {
-            READWRITE(VARINT(idImportFees));
+            if (IsGateway())
+            {
+                READWRITE(nativeCurrencyID);
+                READWRITE(gatewayID);
+            }
             READWRITE(VARINT(currencyRegistrationFee));
             READWRITE(VARINT(currencyImportFee));
             READWRITE(VARINT(transactionImportFee));
@@ -705,7 +703,6 @@ public:
             s << initZero;
             s << initZero;
             s << initZero;
-            READWRITE(VARINT(idImportFees));
             READWRITE(VARINT(currencyRegistrationFee));
             READWRITE(VARINT(currencyImportFee));
             READWRITE(VARINT(transactionImportFee));

@@ -809,9 +809,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             }
         }
 
-        idRegistrationFees = AmountFromValueNoErr(find_value(obj, "idregistrationprice"));
-        idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"));
-
         UniValue notaryArr = find_value(obj, "notaries");
         minNotariesConfirm = 0;
         if (notaryArr.isArray())
@@ -834,6 +831,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             minNotariesConfirm = uni_get_int(find_value(obj, "minnotariesconfirm"));
         }
 
+        idRegistrationFees = uni_get_int64(find_value(obj, "idregistrationfees"), idRegistrationFees);
+        idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"), idReferralLevels);
+        idImportFees = uni_get_int64(find_value(obj, "idimportfees"), idImportFees);
+
         auto vEras = uni_getValues(find_value(obj, "eras"));
         if (vEras.size() > ASSETCHAINS_MAX_ERAS)
         {
@@ -842,9 +843,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (vEras.size())
         {
-            idRegistrationFees = uni_get_int64(find_value(obj, "idregistrationfees"), idRegistrationFees);
-            idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"), idReferralLevels);
-            idImportFees = uni_get_int64(find_value(obj, "idimportfees"), idImportFees);
             currencyRegistrationFee = uni_get_int64(find_value(obj, "currencyregistrationfee"), currencyRegistrationFee);
             currencyImportFee = uni_get_int64(find_value(obj, "currencyimportfee"), currencyImportFee);
             transactionImportFee = uni_get_int64(find_value(obj, "transactionimportfee"), transactionImportFee);
