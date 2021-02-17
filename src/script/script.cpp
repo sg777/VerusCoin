@@ -1358,10 +1358,12 @@ bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
     }
 
     bool isaltb = false;
+    std::set<uint160> checked;
 
     // ensure that we are smaller than all those present in b
     for (auto &oneVal : b.valueMap)
     {
+        checked.insert(oneVal.first);
         if (oneVal.second)
         {
             auto it = a.valueMap.find(oneVal.first);
@@ -1374,10 +1376,10 @@ bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
         }
     }
 
-    // ensure that for all the currencies we have, b does not have less
+    // ensure that for all the currencies we have, b does not have less or equal
     for (auto &oneVal : a.valueMap)
     {
-        if (oneVal.second)
+        if (!checked.count(oneVal.first) && oneVal.second)
         {
             auto it = b.valueMap.find(oneVal.first);
 
