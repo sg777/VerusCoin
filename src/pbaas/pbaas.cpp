@@ -1163,21 +1163,28 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     {
         // get the last notarization in the height range for this currency, which is valid by definition for a token
         CPBaaSNotarization notarization;
-        if ((notarization.GetLastNotarization(chainID, EVAL_ACCEPTEDNOTARIZATION, curDefHeight, height) &&
-             notarization.currencyStates.count(chainID) &&
-             (currencyState = notarization.currencyStates[chainID]).IsValid()) ||
-            (currencyState = GetInitialCurrencyState(curDef)).IsValid())
+        notarization.GetLastNotarization(chainID, EVAL_ACCEPTEDNOTARIZATION, curDefHeight, height);
+        currencyState = notarization.currencyState;
+        if (!currencyState.IsValid())
         {
-            if (!notarization.IsValid() || notarization.notarizationHeight < (curDef.startBlock - 1))
+            if (notarization.IsValid() && notarization.currencyStates.count(chainID))
             {
-                // pre-launch
-                currencyState.SetPrelaunch(true);
-                currencyState = AddPrelaunchConversions(curDef, 
-                                                        currencyState, 
-                                                        notarization.IsValid() ? notarization.notarizationHeight : curDefHeight, 
-                                                        height, 
-                                                        curDefHeight);
+                currencyState = notarization.currencyStates[chainID];
             }
+            else
+            {
+                currencyState = GetInitialCurrencyState(curDef);
+            }
+        }
+        if (!currencyState.IsValid() || notarization.notarizationHeight < (curDef.startBlock - 1))
+        {
+            // pre-launch
+            currencyState.SetPrelaunch(true);
+            currencyState = AddPrelaunchConversions(curDef, 
+                                                    currencyState, 
+                                                    notarization.IsValid() ? notarization.notarizationHeight : curDefHeight, 
+                                                    height, 
+                                                    curDefHeight);
         }
     }
     else
@@ -1944,6 +1951,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
         newNotarization.prevNotarization = CUTXORef(lastNotarizationOut.txIn.prevout.hash, lastNotarizationOut.txIn.prevout.n);
+
+        //printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
 
         // create the import
         CCrossChainImport cci = CCrossChainImport(sourceSystemID,
