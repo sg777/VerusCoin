@@ -254,7 +254,7 @@ TransactionBuilderResult TransactionBuilder::Build()
         view.SetBackend(viewMemPool);
 
         CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height());
-        reserveChange -= rtxd.ReserveInputMap() - rtxd.ReserveOutputMap();
+        reserveChange = rtxd.ReserveInputMap() - rtxd.ReserveOutputMap();
         //printf("%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
         bool hasReserveChange = false;
 
@@ -268,12 +268,9 @@ TransactionBuilderResult TransactionBuilder::Build()
         }
         for (auto tIn : tIns) {
             change += tIn.value;
-            //printf("tIn.scriptPubKey.ReserveOutValue():\n%s\n", tIn.scriptPubKey.ReserveOutValue().ToUniValue().write(1,2).c_str());
-            reserveChange += tIn.scriptPubKey.ReserveOutValue();
         }
         if (reserveChange.valueMap.size())
         {
-            CReserveTransactionDescriptor debugCheckDescriptor(mtx, view, chainActive.Height());
             reserveChange = reserveChange.CanonicalMap();
             hasReserveChange = reserveChange > CCurrencyValueMap();
         }
