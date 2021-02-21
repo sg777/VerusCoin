@@ -689,6 +689,7 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p, bool spendableOnly) 
             {
                 CReserveDeposit rd(p.vData[0]);
                 retVal = rd.reserveValues;
+                retVal.valueMap.erase(ASSETCHAINS_CHAINID);
                 break;
             }
 

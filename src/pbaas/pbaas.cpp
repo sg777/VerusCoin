@@ -1159,7 +1159,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
         currencyState = GetInitialCurrencyState(thisChain);
     }
     // if this is a token on this chain, it will be simply notarized
-    else if (curDef.systemID == ASSETCHAINS_CHAINID)
+    else if (curDef.systemID == ASSETCHAINS_CHAINID || (curDef.launchSystemID == ASSETCHAINS_CHAINID && curDef.startBlock > height))
     {
         // get the last notarization in the height range for this currency, which is valid by definition for a token
         CPBaaSNotarization notarization;
@@ -1174,9 +1174,10 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
             else
             {
                 currencyState = GetInitialCurrencyState(curDef);
+                currencyState.SetPrelaunch();
             }
         }
-        if (!currencyState.IsValid() || notarization.notarizationHeight < (curDef.startBlock - 1))
+        if (currencyState.IsValid() && notarization.notarizationHeight < (curDef.startBlock - 1))
         {
             // pre-launch
             currencyState.SetPrelaunch(true);
@@ -1845,7 +1846,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         // if not the initial import in the thread, it should have a valid prior notarization as well
         // the notarization of the initial import may be superceded by pre-launch exports
-        if (nHeight && lastCCI.IsInitialLaunchImport() || lastCCI.IsPostLaunch())
+        if (nHeight && lastCCI.IsPostLaunch())
         {
             if (!lastCCI.GetImportInfo(lastImportTx,
                                        outputNum,
@@ -1928,7 +1929,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         std::vector<CReserveTransfer> exportTransfers = oneIT.second;
         std::vector<CTxOut> newOutputs;
         CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
-        // if we are transisitioning from export to import, allow the function to set launch clear on the currency
+        // if we are transitioning from export to import, allow the function to set launch clear on the currency
         if (lastNotarization.currencyState.IsLaunchClear() && !lastCCI.IsInitialLaunchImport())
         {
             lastNotarization.SetPreLaunch();
@@ -2207,10 +2208,17 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // dust rules don't apply
             if (oneChangeVal.second)
             {
-                CReserveDeposit rd = CReserveDeposit(sourceSystemID, CCurrencyValueMap(std::vector<uint160>({oneChangeVal.first}), 
-                                                                                            std::vector<int64_t>({oneChangeVal.second})));
-                tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), 
-                                                                                        oneChangeVal.first == ASSETCHAINS_CHAINID ? oneChangeVal.second : 0);
+                CReserveDeposit rd = CReserveDeposit(sourceSystemID, CCurrencyValueMap());;
+                CAmount nativeOutput = 0;
+                if (oneChangeVal.first == ASSETCHAINS_CHAINID)
+                {
+                    nativeOutput = oneChangeVal.second;
+                }
+                else
+                {
+                    rd.reserveValues.valueMap[oneChangeVal.first] = oneChangeVal.second;
+                }
+                tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), nativeOutput);
             }
         }
 
@@ -2221,10 +2229,17 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // dust rules don't apply
             if (oneChangeVal.second)
             {
-                CReserveDeposit rd = CReserveDeposit(ccx.destCurrencyID, CCurrencyValueMap(std::vector<uint160>({oneChangeVal.first}), 
-                                                                                            std::vector<int64_t>({oneChangeVal.second})));
-                tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), 
-                                                                                        oneChangeVal.first == ASSETCHAINS_CHAINID ? oneChangeVal.second : 0);
+                CReserveDeposit rd = CReserveDeposit(ccx.destCurrencyID, CCurrencyValueMap());;
+                CAmount nativeOutput = 0;
+                if (oneChangeVal.first == ASSETCHAINS_CHAINID)
+                {
+                    nativeOutput = oneChangeVal.second;
+                }
+                else
+                {
+                    rd.reserveValues.valueMap[oneChangeVal.first] = oneChangeVal.second;
+                }
+                tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), nativeOutput);
             }
         }
 
@@ -2715,6 +2730,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         return false;
     }
 
+    //printf("%s: num transfers %ld\n", __func__, exportTransfers.size());
+
     newNotarization.prevNotarization = lastNotarizationUTXO;
 
     CCurrencyValueMap totalExports;
@@ -2819,7 +2836,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                           addHeight,
                           destSystemID, 
                           currencyID, 
-                          txInputs.size(), 
+                          exportTransfers.size(), 
                           totalExports.CanonicalMap(), 
                           totalTransferFees.CanonicalMap(),
                           transferHash,
@@ -3091,7 +3108,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
             auto outputIt = transferOutputs.begin();
             bool checkLaunchCurrencies = false;
             for (int outputsDone = 0; 
-                 outputsDone < transferOutputs.size() || launchCurrencies.size();
+                 outputsDone <= transferOutputs.size() || launchCurrencies.size();
                  outputsDone++)
             {
                 if (outputIt != transferOutputs.end())

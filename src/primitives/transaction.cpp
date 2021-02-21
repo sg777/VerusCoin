@@ -415,8 +415,8 @@ CCurrencyValueMap CTransaction::GetReserveValueOut() const
                 reserveIt->second += oneCur.second;
                 if (reserveIt->second < 0)
                 {
-                    printf("CTransaction::GetReserveValueOut(): currency value overflow total: %ld, adding: %ld\n", reserveIt->second, oneCur.second);
-                    LogPrintf("CTransaction::GetReserveValueOut(): value overflow\n");
+                    printf("%s: currency value overflow total: %ld, adding: %ld\n", __func__, reserveIt->second, oneCur.second);
+                    LogPrintf("%s: currency value overflow total: %ld, adding: %ld\n", __func__, reserveIt->second, oneCur.second);
                     return std::map<uint160, CAmount>();
                 }
             }

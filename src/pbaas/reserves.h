@@ -726,6 +726,18 @@ public:
         return flags & FLAG_INITIALLAUNCHIMPORT;
     }
 
+    void SetInitialLaunchImport(bool isInitialLaunchImport=true)
+    {
+        if (isInitialLaunchImport)
+        {
+            flags |= FLAG_INITIALLAUNCHIMPORT;
+        }
+        else
+        {
+            flags &= ~FLAG_INITIALLAUNCHIMPORT;
+        }
+    }
+
     UniValue ToUniValue() const;
 
     static std::string CurrencyImportKeyName()
@@ -1308,6 +1320,7 @@ class CCoinbaseCurrencyState : public CCurrencyState
 {
 public:
     CAmount nativeOut;                      // converted native output, emitted is stored in parent class
+    CAmount preConvertedOut;                // how much of the currency out was pre-converted, which is asynchronously added to supply
     CAmount nativeFees;
     CAmount nativeConversionFees;
     std::vector<CAmount> reserveIn;         // reserve currency converted to native
@@ -1318,7 +1331,7 @@ public:
     std::vector<CAmount> fees;              // fee values in native (or reserve if specified) coins for reserve transaction fees for the block
     std::vector<CAmount> conversionFees;    // total of only conversion fees, which will accrue to the conversion transaction
 
-    CCoinbaseCurrencyState() : nativeOut(0), nativeFees(0), nativeConversionFees(0) {}
+    CCoinbaseCurrencyState() : nativeOut(0), preConvertedOut(0), nativeFees(0), nativeConversionFees(0) {}
 
     CCoinbaseCurrencyState(const CCurrencyState &CurrencyState,
                            CAmount NativeOut=0, CAmount NativeFees=0, CAmount NativeConversionFees=0,
@@ -1328,7 +1341,8 @@ public:
                            const std::vector<CAmount> &ConversionPrice=std::vector<CAmount>(), 
                            const std::vector<CAmount> &ViaConversionPrice=std::vector<CAmount>(), 
                            const std::vector<CAmount> &Fees=std::vector<CAmount>(), 
-                           const std::vector<CAmount> &ConversionFees=std::vector<CAmount>()) : 
+                           const std::vector<CAmount> &ConversionFees=std::vector<CAmount>(),
+                           CAmount PreConvertedOut=0) : 
         CCurrencyState(CurrencyState), nativeOut(NativeOut), nativeFees(NativeFees), nativeConversionFees(NativeConversionFees),
         reserveIn(ReserveIn),
         nativeIn(NativeIn),
@@ -1336,7 +1350,8 @@ public:
         conversionPrice(ConversionPrice),
         viaConversionPrice(ViaConversionPrice),
         fees(Fees),
-        conversionFees(ConversionFees)        
+        conversionFees(ConversionFees),
+        preConvertedOut(PreConvertedOut)
     {
         if (!reserveIn.size()) reserveIn = std::vector<CAmount>(currencies.size());
         if (!nativeIn.size()) nativeIn = std::vector<CAmount>(currencies.size());
@@ -1362,6 +1377,7 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CCurrencyState *)this);
         READWRITE(nativeOut);
+        READWRITE(preConvertedOut);
         READWRITE(nativeFees);
         READWRITE(nativeConversionFees);
         READWRITE(reserveIn);
@@ -1384,6 +1400,7 @@ public:
     {
         emitted = 0;
         nativeOut = 0;
+        preConvertedOut = 0;
         nativeFees = 0;
         nativeConversionFees = 0;
         reserveIn = std::vector<CAmount>(currencies.size());
@@ -1414,7 +1431,7 @@ public:
             reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
             supply += nativeIn[oneCur.second];
         }
-        supply -= (nativeOut + emitted);
+        supply -= ((nativeOut + emitted) - preConvertedOut);
     }
 
     CCoinbaseCurrencyState MatchOrders(const std::vector<CReserveTransactionDescriptor> &orders, 

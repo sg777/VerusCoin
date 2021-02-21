@@ -1395,7 +1395,7 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressIndex(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CReserveTransfer::ReserveTransferKey()), 
+    if (!GetAddressIndex(CReserveTransfer::ReserveTransferKey(), 
                          CScript::P2IDX, 
                          addressIndex, 
                          start, 
