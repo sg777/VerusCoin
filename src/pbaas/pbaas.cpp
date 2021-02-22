@@ -2154,12 +2154,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // reserve deposits change
         requiredDeposits += spentCurrencyOut.SubtractToZero(requiredDeposits);
 
-        if (newNotarization.IsLaunchCleared())
-        {
-            requiredDeposits += CCurrencyValueMap(std::vector<uint160>({sourceSystemID}), 
-                                                  std::vector<int64_t>({sourceSystemDef.GetCurrencyRegistrationFee()}));
-        }
-
         CCurrencyValueMap newCurrencyIn = gatewayDepositsUsed + importedCurrency;
         CCurrencyValueMap localDepositRequirements = requiredDeposits.SubtractToZero(newCurrencyIn);
         CCurrencyValueMap localDepositChange;
@@ -2190,7 +2184,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // local despoit requirements, or this is an error
             if (localDepositChange.HasNegative())
             {
-                LogPrintf("%s: insufficient funds for local reserve deposits for currency %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str());
+                LogPrintf("%s: insufficient funds for local reserve deposits for currency %s, have:\n%s, need:\n%s\n", 
+                          __func__, 
+                          EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(),
+                          totalDepositsInput.ToUniValue().write(1,2).c_str(),
+                          localDepositRequirements.ToUniValue().write(1,2).c_str());
                 return false;
             }
         }
@@ -2585,7 +2583,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     uint160 currencyID = _curDef.GetID();
     bool crossSystem = destSystemID != ASSETCHAINS_CHAINID;
     bool isPreLaunch = _curDef.launchSystemID == ASSETCHAINS_CHAINID && _curDef.startBlock > sinceHeight;
-    bool isClearLaunchExport = isPreLaunch && _curDef.startBlock <= curHeight;
+    bool isClearLaunchExport = isPreLaunch && curHeight >= _curDef.startBlock && !lastNotarization.IsLaunchCleared();
 
     if (!isClearLaunchExport && !_txInputs.size() && !addInputTx)
     {
@@ -3133,8 +3131,12 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         CChainNotarizationData cnd;
                         std::vector<std::pair<CTransaction, uint256>> txes;
 
+                        // ensure that a currency is still unlaunched before
+                        // marking it for launch
                         if (!(GetNotarizationData(oneLaunchCur.first, cnd, &txes) &&
-                              cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch()))
+                              cnd.vtx[cnd.lastConfirmed].second.IsValid() &&
+                              !(cnd.vtx[cnd.lastConfirmed].second.currencyState.IsLaunchClear() || 
+                                cnd.vtx[cnd.lastConfirmed].second.IsLaunchCleared())))
                         {
                             toErase.push_back(oneLaunchCur.first);
                         }

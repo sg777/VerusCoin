@@ -1432,6 +1432,7 @@ public:
             supply += nativeIn[oneCur.second];
         }
         supply -= ((nativeOut + emitted) - preConvertedOut);
+        ClearForNextBlock();
     }
 
     CCoinbaseCurrencyState MatchOrders(const std::vector<CReserveTransactionDescriptor> &orders, 

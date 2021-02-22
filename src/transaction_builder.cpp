@@ -255,7 +255,7 @@ TransactionBuilderResult TransactionBuilder::Build()
 
         CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height());
         reserveChange = rtxd.ReserveInputMap() - rtxd.ReserveOutputMap();
-        printf("%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
+        //printf("%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
         bool hasReserveChange = false;
 
         // Valid change
