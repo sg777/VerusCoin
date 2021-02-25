@@ -2224,11 +2224,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             tb.AddTransparentInput(oneOut.txIn.prevout, oneOut.scriptPubKey, oneOut.nValue);
         }
 
+        /*
         for (auto &oneIn : tb.mtx.vin)
         {
             UniValue scriptObj(UniValue::VOBJ);
             printf("%s: oneInput - hash: %s, n: %d\n", __func__, oneIn.prevout.hash.GetHex().c_str(), oneIn.prevout.n);
         }
+        */
 
         // we will keep reserve deposit change to single currency outputs to ensure aggregation of like currencies and
         // prevent fragmentation edge cases
@@ -2370,7 +2372,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
             else
             {
-                printf("%s: success adding %s to mempool\n", __func__, newImportTx.GetHash().GetHex().c_str());
+                //printf("%s: success adding %s to mempool\n", __func__, newImportTx.GetHash().GetHex().c_str());
                 RelayTransaction(newImportTx);
             }
 
