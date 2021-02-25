@@ -1942,6 +1942,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             lastNotarization.currencyState.SetPrelaunch(false);
             lastNotarization.currencyState.SetLaunchClear(false);
         }
+
+        uint32_t nextHeight = std::max(ccx.sourceHeightEnd, lastNotarization.notarizationHeight);
+        if (nextHeight >= destCur.startBlock)
+        {
+            lastNotarization.currencyState.SetLaunchCompleteMarker();
+        }
+
         if (!lastNotarization.NextNotarizationInfo(sourceSystemDef,
                                                    destCur,
                                                    ccx.sourceHeightStart,
