@@ -243,19 +243,20 @@ TransactionBuilderResult TransactionBuilder::Build()
     // calculate change and include all reserve inputs as well
     CCurrencyValueMap reserveChange;
 
-    CCoinsView dummy;
-    CCoinsViewCache view(&dummy);
     int64_t interest;
     CAmount nValueIn = 0;
 
     {
         LOCK(mempool.cs);
+        CCoinsView dummy;
+        CCoinsViewCache view(&dummy);
         CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
         view.SetBackend(viewMemPool);
 
         CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height());
         reserveChange = rtxd.ReserveInputMap() - rtxd.ReserveOutputMap();
-        //printf("%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
+
+        //printf("\n%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
         bool hasReserveChange = false;
 
         // Valid change
@@ -333,7 +334,7 @@ TransactionBuilderResult TransactionBuilder::Build()
                 }
                 else
                 {
-                    return TransactionBuilderResult("Could not determine change address for native currency change");
+                    return TransactionBuilderResult("Could not determine change address for native currency change, amount: " + std::to_string(change));
                 }
             }
         }

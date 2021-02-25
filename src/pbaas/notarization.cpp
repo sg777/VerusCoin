@@ -453,18 +453,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             else
             {
                 // check if it exceeds pre-conversion maximums, and refund if so
-                std::map<uint160, int32_t> currencyMap = destCurrency.GetCurrenciesMap();
-                CCurrencyValueMap fees = reserveTransfer.CalculateFee(reserveTransfer.flags, reserveTransfer.FirstValue());
                 CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({reserveTransfer.FirstCurrency()}), 
-                                                                   std::vector<int64_t>({reserveTransfer.FirstValue() - fees.valueMap[reserveTransfer.FirstCurrency()]}));
+                                                                   std::vector<int64_t>({reserveTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(reserveTransfer.FirstValue())}));
                 CCurrencyValueMap newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn;
-                if (!destCurrency.maxPreconvert.size() || newTotalReserves <= CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
-                {
-                    newNotarization.currencyState.reserveIn = 
-                        (CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserveIn) + newReserveIn).AsCurrencyVector(destCurrency.currencies);
-                    newNotarization.currencyState.reserves = newTotalReserves.AsCurrencyVector(destCurrency.currencies);
-                }
-                else
+                if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
                 {
                     LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
                     reserveTransfer = reserveTransfer.GetRefundTransfer();
@@ -491,27 +483,27 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     std::vector<CTxOut> dummyImportOutputs;
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
-    if (destCurrency.launchSystemID == sourceSystemID && currentHeight == (destCurrency.startBlock - 1))
+    if (destCurrency.launchSystemID == sourceSystemID && currentHeight <= (destCurrency.startBlock - 1))
     {
         // we get one pre-launch coming through here, initial supply is set and ready for pre-convert
         // don't revert or emit initial supply, it will be emitted for valid pre-conversions, which must already
         // be included in the currency state
-        if (newNotarization.IsPreLaunch())
+        if (currentHeight == (destCurrency.startBlock - 1) && newNotarization.IsPreLaunch())
         {
             // the first block executes the second time through
             if (newNotarization.IsLaunchCleared())
             {
                 newNotarization.SetPreLaunch(false);
+                newNotarization.currencyState.SetLaunchClear();
                 newNotarization.currencyState.RevertReservesAndSupply();
                 newNotarization.currencyState.SetPrelaunch(false);
-                newNotarization.currencyState.SetLaunchClear();
             }
             else
             {
                 newNotarization.SetLaunchCleared();
+                newNotarization.currencyState.SetLaunchClear();
                 newNotarization.currencyState.RevertReservesAndSupply();
                 newNotarization.currencyState.SetPrelaunch(false);
-                newNotarization.currencyState.SetLaunchClear();
 
                 // first time through is export, second is import, then we finish clearing the launch
                 // check if the chain is qualified to launch or should refund
@@ -538,6 +530,22 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 }
             }
         }
+        else if (currentHeight < (destCurrency.startBlock - 1))
+        {
+            newNotarization.currencyState.SetPrelaunch();
+            // if we are about to get the notarization just after the definition notarization,
+            // remove the initial contribution amount before continuing
+            if (IsDefinitionNotarization())
+            {
+                if (destCurrency.contributions.size())
+                {
+                    for (int i = 0; i < destCurrency.contributions.size(); i++)
+                    {
+                        newNotarization.currencyState.reserves[i] -= destCurrency.contributions[i];
+                    }
+                }
+            }
+        }
 
         CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
@@ -558,18 +566,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     }
     else
     {
-        if (lastExportHeight >= destCurrency.startBlock)
+        newNotarization.currencyState.SetLaunchCompleteMarker();
+        newNotarization.currencyState.SetLaunchClear(false);
+        if (destCurrency.systemID != ASSETCHAINS_CHAINID)
         {
-            newNotarization.currencyState.SetLaunchCompleteMarker();
-            newNotarization.currencyState.SetLaunchClear(false);
-            if (destCurrency.systemID != ASSETCHAINS_CHAINID)
-            {
-                newNotarization.SetSameChain(false);
-            }
-        }
-        else
-        {
-            newNotarization.currencyState.SetPrelaunch();
+            newNotarization.SetSameChain(false);
         }
 
         // calculate new state from processing all transfers

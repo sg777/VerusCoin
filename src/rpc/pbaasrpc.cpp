@@ -3742,7 +3742,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
     else
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid notarization protocol specified");
     }
 
     // if this is a token on this chain, the transfer that is output here is burned through the export 
@@ -3756,6 +3756,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     // get initial currency state at this height
     CCoinbaseCurrencyState newCurrencyState = ConnectedChains.GetCurrencyState(newChain, chainActive.Height());
+    newCurrencyState.SetPrelaunch();
 
     CPBaaSNotarization pbn = CPBaaSNotarization(newChainID, 
                                                 newCurrencyState,

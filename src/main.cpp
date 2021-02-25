@@ -1812,20 +1812,20 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             {
                 // Disable replacement feature for now
                 //fprintf(stderr,"pool.mapNextTx.count\n");
-                return error("inputs have been spent in mempool");
+                return state.Invalid(false, REJECT_INVALID, "bad-txns-inputs-spent");
             }
         }
         BOOST_FOREACH(const JSDescription &joinsplit, tx.vJoinSplit) {
             BOOST_FOREACH(const uint256 &nf, joinsplit.nullifiers) {
                 if (pool.nullifierExists(nf, SPROUT)) {
                     fprintf(stderr,"pool.mapNullifiers.count\n");
-                    return false;
+                    return state.Invalid(false, REJECT_INVALID, "bad-txns-sprout-nullifier-exists");
                 }
             }
         }
         for (const SpendDescription &spendDescription : tx.vShieldedSpend) {
             if (pool.nullifierExists(spendDescription.nullifier, SAPLING)) {
-                return false;
+                return state.Invalid(false, REJECT_INVALID, "bad-txns-sapling-nullifier-exists");
             }
         }
     }
@@ -1865,7 +1865,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                         if (pfMissingInputs)
                             *pfMissingInputs = true;
                         //fprintf(stderr,"missing inputs\n");
-                        return state.DoS(0, error("AcceptToMemoryPool: tx inputs not found"),REJECT_INVALID, "bad-txns-inputs-missing");
+                        return state.DoS(0, error((std::string("AcceptToMemoryPool: tx inputs not found ") + txin.prevout.hash.GetHex()).c_str()),REJECT_INVALID, "bad-txns-inputs-missing");
                     }
                 }
                 

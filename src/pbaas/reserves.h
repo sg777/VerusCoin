@@ -1412,28 +1412,7 @@ public:
 
     // given that all reserves in and out are accurate, this reverts the reserves and supply to the prior state,
     // while leaving conversion prices the same
-    void RevertReservesAndSupply()
-    {
-        // if this is the launch clear notarization, we have only the starting condition
-        // and we don't revert anything
-        if (IsLaunchClear())
-        {
-            SetLaunchClear(false);
-            SetPrelaunch(true);
-        }
-
-        // add reserves out to reserves
-        auto currencyMap = GetReserveMap();
-
-        // revert changes in reserves and supply to pre conversion state, add reserve outs and subtract reserve ins
-        for (auto &oneCur : currencyMap)
-        {
-            reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
-            supply += nativeIn[oneCur.second];
-        }
-        supply -= ((nativeOut + emitted) - preConvertedOut);
-        ClearForNextBlock();
-    }
+    void RevertReservesAndSupply();
 
     CCoinbaseCurrencyState MatchOrders(const std::vector<CReserveTransactionDescriptor> &orders, 
                                        std::vector<CReserveTransactionDescriptor> &reserveFills, 
@@ -1537,6 +1516,7 @@ public:
                     reserveOutConverted(ReserveOutConverted), 
                     nativeOutConverted(NativeOutConverted), 
                     reserveConversionFees(ReserveConversionFees) {}
+    UniValue ToUniValue() const;
 };
 
 class CReserveTransactionDescriptor
@@ -1583,6 +1563,8 @@ public:
         nativeConversionFees(0) {}              // non-zero only if there is a conversion, stored vs. calculated to get exact number with each calculated seperately
 
     CReserveTransactionDescriptor(const CTransaction &tx, const CCoinsViewCache &view, int32_t nHeight);
+
+    UniValue ToUniValue() const;
 
     bool IsReject() const { return flags & IS_REJECT; }
     bool IsValid() const { return flags & IS_VALID && !IsReject(); }

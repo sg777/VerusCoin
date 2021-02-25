@@ -1600,12 +1600,12 @@ bool CConnectedChains::GetExportProofs(uint32_t height,
     return true;
 }
 
-bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, std::vector<CInputDescriptor> &reserveDeposits)
+bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoinsViewCache &view, std::vector<CInputDescriptor> &reserveDeposits)
 {
     std::vector<CAddressUnspentDbEntry> confirmedUTXOs;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> unconfirmedUTXOs;
 
-    LOCK(mempool.cs);
+    CCoins coin;
 
     uint160 depositIndexKey = CReserveDeposit::ReserveDepositIndexKey(currencyID);
     if (!GetAddressUnspent(depositIndexKey, CScript::P2IDX, confirmedUTXOs) ||
@@ -1616,31 +1616,26 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, std::vector
     }
     for (auto &oneConfirmed : confirmedUTXOs)
     {
-        reserveDeposits.push_back(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, 
-                                                    CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index)));
+        if (view.GetCoins(oneConfirmed.first.txhash, coin) && coin.IsAvailable(oneConfirmed.first.index))
+        {
+            reserveDeposits.push_back(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, 
+                                                        CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index)));
+        }
     }
 
     // we need to remove those that are spent
     std::map<COutPoint, CInputDescriptor> memPoolOuts;
     for (auto &oneUnconfirmed : unconfirmedUTXOs)
     {
-        if (oneUnconfirmed.first.spending)
-        {
-            memPoolOuts.erase(COutPoint(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index));
-        }
-        else
+        if (!oneUnconfirmed.first.spending &&
+            view.GetCoins(oneUnconfirmed.first.txhash, coin) && 
+            coin.IsAvailable(oneUnconfirmed.first.index))
         {
             const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
-            memPoolOuts.insert(std::make_pair(COutPoint(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index),
-                                            CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount, 
-                                                        CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index))));
+            reserveDeposits.push_back(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount, 
+                                                        CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)));
         }
     }
-    for (auto &oneUnconfirmed : memPoolOuts)
-    {
-        reserveDeposits.push_back(oneUnconfirmed.second);
-    }
-
     return true;
 }
 
@@ -1652,7 +1647,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 {
     // each export is from the source system, but may be to any currency exposed on this system, so each import
     // made combines the potential currency sources of the source system and the importing currency
-    LOCK(cs_main);
+    LOCK2(cs_main, mempool.cs);
+
+    CCoinsView dummy;
+    CCoinsViewCache view(&dummy);
+    CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+    view.SetBackend(viewMemPool);
 
     uint32_t nHeight = chainActive.Height();
     uint160 sourceSystemID = sourceSystemDef.GetID();
@@ -1725,7 +1725,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // or an external chain/gateway
         std::vector<CInputDescriptor> localDeposits;
         std::vector<CInputDescriptor> crossChainDeposits;
-        if (!ConnectedChains.GetReserveDeposits(ccx.destCurrencyID, localDeposits))
+        if (!ConnectedChains.GetReserveDeposits(ccx.destCurrencyID, view, localDeposits))
         {
             LogPrintf("%s: cannot get reserve deposits for export in tx %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
             return false;
@@ -1735,7 +1735,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // as well
         if (useProofs)
         {
-            if (!ConnectedChains.GetReserveDeposits(sourceSystemID, crossChainDeposits))
+            if (!ConnectedChains.GetReserveDeposits(sourceSystemID, view, crossChainDeposits))
             {
                 LogPrintf("%s: cannot get reserve deposits for cross-system export in tx %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
                 return false;
@@ -1769,7 +1769,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
         
         CCurrencyDefinition destCur = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID);
-        if (!destCur.IsValid())
+        if (!lastCCI.IsValid() || !destCur.IsValid())
         {
             LogPrintf("%s: invalid destination currency for export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), outputNum);
             return false;
@@ -1936,6 +1936,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             lastNotarization.currencyState.SetLaunchClear(false);
             lastNotarization.currencyState.SetPrelaunch(true);
         }
+        else if (lastCCI.IsInitialLaunchImport())
+        {
+            lastNotarization.SetPreLaunch(false);
+            lastNotarization.currencyState.SetPrelaunch(false);
+            lastNotarization.currencyState.SetLaunchClear(false);
+        }
         if (!lastNotarization.NextNotarizationInfo(sourceSystemDef,
                                                    destCur,
                                                    ccx.sourceHeightStart,
@@ -1965,7 +1971,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                   transferHash, 
                                                   oneIT.first.first.txIn.prevout.hash, 
                                                   oneIT.first.first.txIn.prevout.n,
-                                                  lastCCI.IsDefinitionImport() ? CCrossChainImport::FLAG_INITIALLAUNCHIMPORT : CCrossChainImport::FLAG_POSTLAUNCH);
+                                                  CCrossChainImport::FLAG_POSTLAUNCH + (lastCCI.IsDefinitionImport() ? CCrossChainImport::FLAG_INITIALLAUNCHIMPORT : 0));
         cci.SetSameChain(!useProofs);
 
         TransactionBuilder tb = TransactionBuilder(Params().GetConsensus(), nHeight + 1);
@@ -2147,7 +2153,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         // first determine total deposits required to fulfill currency in requirements
         // this will take fees into account, which do not intersect with other currencies
-        CCurrencyValueMap requiredDeposits = cci.importValue;
+        CCurrencyValueMap requiredDeposits;
+
+        if (!newNotarization.currencyState.IsLaunchConfirmed() || newNotarization.currencyState.IsLaunchCompleteMarker())
+        {
+            requiredDeposits = cci.importValue;
+        }
 
         // we must also come up with anything spent that is not satisfied via standard required deposits, 
         // as determined by reserves in. any excess in required deposits beyond what is spent will go to
@@ -2157,6 +2168,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CCurrencyValueMap newCurrencyIn = gatewayDepositsUsed + importedCurrency;
         CCurrencyValueMap localDepositRequirements = requiredDeposits.SubtractToZero(newCurrencyIn);
         CCurrencyValueMap localDepositChange;
+
+        /*
+        printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
+        printf("%s: requireddeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
+        printf("%s: newcurrencyin: %s\n", __func__, newCurrencyIn.ToUniValue().write(1,2).c_str());
+        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str());
+        */
 
         // add local reserve deposit inputs and determine change
         if (localDepositRequirements.valueMap.size())
@@ -2197,6 +2215,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         for (auto oneOut : depositsToUse)
         {
             tb.AddTransparentInput(oneOut.txIn.prevout, oneOut.scriptPubKey, oneOut.nValue);
+        }
+
+        for (auto &oneIn : tb.mtx.vin)
+        {
+            UniValue scriptObj(UniValue::VOBJ);
+            printf("%s: oneInput - hash: %s, n: %d\n", __func__, oneIn.prevout.hash.GetHex().c_str(), oneIn.prevout.n);
         }
 
         // we will keep reserve deposit change to single currency outputs to ensure aggregation of like currencies and
@@ -2256,7 +2280,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 ccx.totalFees.ToUniValue().write(1,2).c_str()); */
 
         // pay the fee out to the miner
-        tb.SetFee(requiredDeposits.valueMap[ASSETCHAINS_CHAINID] - spentCurrencyOut.valueMap[ASSETCHAINS_CHAINID]);
+        CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight);
+        tb.SetFee(rtxd.nativeIn - rtxd.nativeOut);
 
         // if we've got launch currency as the fee, it means we are mining block 1
         // send it to our current miner or notary address
@@ -2289,10 +2314,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         TransactionBuilderResult result = tb.Build();
         if (result.IsError())
         {
-            UniValue jsonTx(UniValue::VOBJ);
-            uint256 hashBlk;
-            TxToUniv(tb.mtx, hashBlk, jsonTx);
-            printf("%s\n", jsonTx.write(1,2).c_str());
+            //UniValue jsonTx(UniValue::VOBJ);
+            //uint256 hashBlk;
+            //TxToUniv(tb.mtx, hashBlk, jsonTx);
+            //printf("%s\n", jsonTx.write(1,2).c_str());
+            printf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             LogPrintf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             return false;
         }
@@ -2309,19 +2335,47 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
-        // put our transaction in place of any others
-        std::list<CTransaction> removed;
-        mempool.removeConflicts(newImportTx, removed);
+        {
+            for (auto &oneIn : newImportTx.vin)
+            {
+                if (!view.HaveCoins(oneIn.prevout.hash))
+                {
+                    printf("%s: cannot find input in view %s\n", __func__, oneIn.prevout.hash.GetHex().c_str());
+                }
+            }
 
-        // add to mem pool and relay
-        if (!myAddtomempool(newImportTx, &state))
-        {
-            LogPrintf("%s: %s\n", __func__, state.GetRejectReason().c_str());
-            return false;
-        }
-        else
-        {
-            RelayTransaction(newImportTx);
+            // put our transaction in place of any others
+            std::list<CTransaction> removed;
+            //mempool.removeConflicts(newImportTx, removed);
+
+            // add to mem pool and relay
+            if (!myAddtomempool(newImportTx, &state))
+            {
+                LogPrintf("%s: %s\n", __func__, state.GetRejectReason().c_str());
+                if (state.GetRejectReason() == "bad-txns-inputs-missing")
+                {
+                    for (auto &oneIn : newImportTx.vin)
+                    {
+                        printf("{\"vin\":{\"%s\":%d}\n", oneIn.prevout.hash.GetHex().c_str(), oneIn.prevout.n);
+                    }
+                }
+                return false;
+            }
+            else
+            {
+                printf("%s: success adding %s to mempool\n", __func__, newImportTx.GetHash().GetHex().c_str());
+                RelayTransaction(newImportTx);
+            }
+
+            if (!mempool.mapTx.count(newImportTx.GetHash()))
+            {
+                printf("%s: cannot find tx in mempool %s\n", __func__, newImportTx.GetHash().GetHex().c_str());
+            }
+            UpdateCoins(newImportTx, view, nHeight);
+            if (!view.HaveCoins(newImportTx.GetHash()))
+            {
+                printf("%s: cannot find tx in view %s\n", __func__, newImportTx.GetHash().GetHex().c_str());
+            }
         }
 
         newImports[ccx.destCurrencyID].push_back(std::make_pair(0, newImportTx));
@@ -3537,7 +3591,7 @@ void CConnectedChains::ProcessLocalImports()
     std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> exportsOut;
     uint160 thisChainID = thisChain.GetID();
 
-    LOCK2(cs_main, mempool.cs);
+    LOCK(cs_main);
     uint32_t nHeight = chainActive.Height();
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;

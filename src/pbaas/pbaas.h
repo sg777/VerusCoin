@@ -964,7 +964,7 @@ public:
     bool GetExportProofs(uint32_t height,
                          std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> &exports);
 
-    static bool GetReserveDeposits(const uint160 &currencyID, std::vector<CInputDescriptor> &reserveDeposits);
+    static bool GetReserveDeposits(const uint160 &currencyID, const CCoinsViewCache &view, std::vector<CInputDescriptor> &reserveDeposits);
 
     bool CreateNextExport(const CCurrencyDefinition &_curDef,
                           const std::vector<ChainTransferData> &txInputs,
