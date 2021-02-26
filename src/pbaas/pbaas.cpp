@@ -3223,6 +3223,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     {
                         launchCurrencies.erase(oneToErase);
                     }
+                    if (launchCurrencies.size())
+                    {
+                        lastChain = launchCurrencies.begin()->first;
+                    }
                 }
                 else
                 {
@@ -3333,6 +3337,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     while (txInputs.size() || launchCurrencies.count(lastChain))
                     {
                         launchCurrencies.erase(lastChain);
+                        //printf("%s: launchCurrencies.size(): %ld\n", __func__, launchCurrencies.size());
 
                         // even if we have no txInputs, currencies that need to will launch
                         newNotarizationOutNum = -1;
@@ -3478,10 +3483,15 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         }
 
                         // erase the inputs we've attempted to spend and loop for another export tx
-                        txInputs.erase(txInputs.begin(), txInputs.begin() + numInputsUsed);
+                        if (numInputsUsed)
+                        {
+                            txInputs.erase(txInputs.begin(), txInputs.begin() + numInputsUsed);
+                        }
                     }
                 }
                 txInputs.clear();
+                launchCurrencies.erase(lastChain);
+
                 if (outputIt != transferOutputs.end())
                 {
                     lastChain = outputIt->first;
