@@ -1944,7 +1944,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
 
         uint32_t nextHeight = std::max(ccx.sourceHeightEnd, lastNotarization.notarizationHeight);
-        if (nextHeight >= destCur.startBlock)
+        if (ccx.IsPostlaunch())
         {
             lastNotarization.currencyState.SetLaunchCompleteMarker();
         }
@@ -2645,8 +2645,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     uint160 destSystemID = _curDef.IsGateway() ? _curDef.gatewayID : _curDef.systemID;
     uint160 currencyID = _curDef.GetID();
     bool crossSystem = destSystemID != ASSETCHAINS_CHAINID;
-    bool isPreLaunch = _curDef.launchSystemID == ASSETCHAINS_CHAINID && _curDef.startBlock > sinceHeight;
-    bool isClearLaunchExport = isPreLaunch && curHeight >= _curDef.startBlock && !lastNotarization.IsLaunchCleared();
+    bool isPreLaunch = _curDef.launchSystemID == ASSETCHAINS_CHAINID &&
+                       _curDef.startBlock > sinceHeight &&
+                       !(_curDef.systemID == ASSETCHAINS_CHAINID && sinceHeight == _curDef.startBlock - 1 && curHeight > _curDef.startBlock);
+    bool isClearLaunchExport = isPreLaunch && curHeight == _curDef.startBlock && !lastNotarization.IsLaunchCleared();
 
     if (!isClearLaunchExport && !_txInputs.size() && !addInputTx)
     {
@@ -2774,17 +2776,29 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     CCurrencyValueMap spentCurrencyOut;
     std::vector<CTxOut> checkOutputs;
 
-    if (!lastNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
-                                               _curDef,
-                                               sinceHeight,
-                                               addHeight,
-                                               exportTransfers,
-                                               transferHash,
-                                               newNotarization,
-                                               checkOutputs,
-                                               importedCurrency,
-                                               gatewayDepositsUsed,
-                                               spentCurrencyOut))
+    CPBaaSNotarization intermediateNotarization = lastNotarization;
+    CCrossChainExport lastExport;
+    bool isPostLaunch = false;
+    if (priorExports.size() &&
+        (lastExport = CCrossChainExport(priorExports[0].scriptPubKey)).IsValid() &&
+        (lastExport.IsClearLaunch() || intermediateNotarization.currencyState.IsLaunchCompleteMarker()))
+    {
+        // now, all exports are post launch
+        isPostLaunch = true;
+        intermediateNotarization.currencyState.SetLaunchCompleteMarker();
+    }
+
+    if (!intermediateNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
+                                                        _curDef,
+                                                        sinceHeight,
+                                                        addHeight,
+                                                        exportTransfers,
+                                                        transferHash,
+                                                        newNotarization,
+                                                        checkOutputs,
+                                                        importedCurrency,
+                                                        gatewayDepositsUsed,
+                                                        spentCurrencyOut))
     {
         printf("%s: cannot create notarization\n", __func__);
         LogPrintf("%s: cannot create notarization\n", __func__);
@@ -2796,12 +2810,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     newNotarization.prevNotarization = lastNotarizationUTXO;
 
     CCurrencyValueMap totalExports;
-    CCurrencyValueMap totalTransferFees;            // all fees taken from reserveTransfers
     CCurrencyValueMap newReserveDeposits;
 
     for (int i = 0; i < exportTransfers.size(); i++)
     {
-        totalTransferFees += exportTransfers[i].TotalTransferFee();
         totalExports += exportTransfers[i].TotalCurrencyOut();
     }
 
@@ -2891,6 +2903,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // 3. reserve market conversions
     //
 
+    CCurrencyValueMap estimatedFees = CCurrencyValueMap(newNotarization.currencyState.currencies, newNotarization.currencyState.fees).CanonicalMap();
+
     //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
     CCrossChainExport ccx(ASSETCHAINS_CHAINID,
                           sinceHeight,
@@ -2899,12 +2913,13 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                           currencyID, 
                           exportTransfers.size(), 
                           totalExports.CanonicalMap(), 
-                          totalTransferFees.CanonicalMap(),
+                          estimatedFees,
                           transferHash,
                           inputStartNum,
                           DestinationToTransferDestination(feeOutput));
 
     ccx.SetPreLaunch(isPreLaunch);
+    ccx.SetPostLaunch(isPostLaunch);
     ccx.SetClearLaunch(isClearLaunchExport);
 
     // if we should add a system export, do so
@@ -2931,7 +2946,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                    destSystemID, 
                                    txInputs.size(), 
                                    totalExports.CanonicalMap(), 
-                                   totalTransferFees.CanonicalMap(),
+                                   estimatedFees,
                                    transferHash,
                                    inputStartNum,
                                    DestinationToTransferDestination(feeOutput),
@@ -3403,7 +3418,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                             /* scriptUniOut = UniValue(UniValue::VOBJ);
                             ScriptPubKeyToUniv(oneOut.scriptPubKey, scriptUniOut, false);
-                            printf("adding output %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vout.size(), oneOut.nValue, scriptUniOut.write(1,2).c_str());
+                            printf("%s: adding output %d with %ld nValue and script:\n%s\n", __func__, (int)tb.mtx.vout.size(), oneOut.nValue, scriptUniOut.write(1,2).c_str());
                             */
 
                             tb.AddTransparentOutput(oneOut.scriptPubKey, oneOut.nValue);

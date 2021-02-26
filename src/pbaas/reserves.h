@@ -292,7 +292,7 @@ public:
 
     bool IsValid() const
     {
-        return CTokenOutput::IsValid() && (nFees > 0 || flags & (FEE_OUTPUT | CONVERT)) && reserveValues.valueMap.size() == 1 && destination.destination.size();
+        return CTokenOutput::IsValid() && reserveValues.valueMap.size() == 1 && destination.IsValid();
     }
 
     bool IsConversion() const
@@ -838,6 +838,7 @@ public:
         FLAG_EVIDENCEONLY = 0x10,               // when set, this is not indexed as an active export
         FLAG_GATEWAYEXPORT = 0x20,              // when set, will be exported to a gateway currency, which may get routed from this chain as systemID
         FLAG_DEFINITIONEXPORT = 0x40,           // set on only the first export
+        FLAG_POSTLAUNCH = 0x80                  // set post launch
     };
 
     uint16_t nVersion;                          // current version
@@ -973,6 +974,23 @@ public:
         else
         {
             flags &= ~FLAG_PRELAUNCH;
+        }
+    }
+
+    bool IsPostlaunch() const
+    {
+        return flags & FLAG_POSTLAUNCH;
+    }
+
+    void SetPostLaunch(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_POSTLAUNCH;
+        }
+        else
+        {
+            flags &= ~FLAG_POSTLAUNCH;
         }
     }
 

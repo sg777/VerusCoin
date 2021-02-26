@@ -465,7 +465,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
         else if (reserveTransfer.IsConversion())
         {
-            if (lastExportHeight < destCurrency.startBlock)
+            if (!newNotarization.currencyState.IsLaunchCompleteMarker())
             {
                 //printf("%s: Invalid conversion, mined before start block\n", __func__);
                 LogPrintf("%s: Invalid conversion, mined before start block\n", __func__);
@@ -607,6 +607,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                  gatewayDepositsUsed, 
                                                                  spentCurrencyOut,
                                                                  &newNotarization.currencyState);
+            if (isValidExport)
+            {
+                newNotarization.currencyState.conversionPrice = tempCurState.conversionPrice;
+                newNotarization.currencyState.viaConversionPrice = tempCurState.viaConversionPrice;
+            }
         }
         if (!isValidExport)
         {

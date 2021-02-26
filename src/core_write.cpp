@@ -916,7 +916,7 @@ UniValue CCrossChainExport::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int32_t)nVersion));
-    obj.push_back(Pair("flags", (int32_t)nVersion));
+    obj.push_back(Pair("flags", (int32_t)flags));
     if (!this->IsSupplemental())
     {
         obj.push_back(Pair("sourceheightstart", (int64_t)sourceHeightStart));

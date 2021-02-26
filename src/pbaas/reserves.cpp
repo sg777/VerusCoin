@@ -2690,7 +2690,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                     else
                     {
-                        curTransfer.GetTxOut(CCurrencyValueMap(std::vector<uint160>({outputCurrencyID}), std::vector<int64_t>(newCurrencyConverted)), 
+                        curTransfer.GetTxOut(CCurrencyValueMap(std::vector<uint160>({outputCurrencyID}), std::vector<int64_t>({newCurrencyConverted})), 
                                              0, newOut);
                     }
                 }

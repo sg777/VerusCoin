@@ -586,9 +586,7 @@ bool CConnectedChains::GetLastImport(const uint160 &currencyID,
     uint256 hashBlk;
     CCurrencyDefinition newCur;
 
-    if (!myGetTransaction(pOutput->first.txhash, lastImport, hashBlk) || 
-        !(lastImport.vout.size() &&
-         (lastImport.vout.back().scriptPubKey.IsOpReturn() || CCurrencyDefinition::GetCurrencyDefinitions(lastImport).size())))
+    if (!myGetTransaction(pOutput->first.txhash, lastImport, hashBlk))
     {
         return false;
     }
@@ -992,6 +990,8 @@ UniValue getexports(const UniValue& params, bool fHelp)
         oneObj.push_back(Pair("height", indexIt->second->GetHeight()));
         oneObj.push_back(Pair("txid", oneExport.first.first.txIn.prevout.hash.GetHex()));
         oneObj.push_back(Pair("txoutnum", (int64_t)oneExport.first.first.txIn.prevout.n));
+        CCrossChainExport ccx(oneExport.first.first.scriptPubKey);
+        oneObj.push_back(Pair("exportinfo", ccx.ToUniValue()));
         // if we have a proof height to use for making proofs, make them
         if (proofHeight)
         {
