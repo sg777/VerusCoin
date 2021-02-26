@@ -4488,6 +4488,11 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
 
+    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        newID.SetVersion(CIdentity::VERSION_PBAAS);
+    }
+
     if (oldID.IsLocked() != newID.IsLocked())
     {
         bool newLocked = newID.IsLocked();
@@ -4506,40 +4511,62 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     }
 
     // create the identity definition transaction
-    TransactionBuilder tb = TransactionBuilder(Params().GetConsensus(), nHeight, pwalletMain);
-    tb.SetFee(minRelayTxFee.GetFeePerK());
-    tb.AddTransparentInput(idTxIn.prevout, oldIdTx.vout[idTxIn.prevout.n].scriptPubKey, oldIdTx.vout[idTxIn.prevout.n].nValue);
-    tb.AddTransparentOutput(newID.IdentityUpdateOutputScript(chainActive.Height()), 0);
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight), 0, false}});
+    CWalletTx wtx;
 
-    TransactionBuilderResult buildResult = tb.Build();
-    CTransaction newIdTx;
-    try
+    CReserveKey reserveKey(pwalletMain);
+    CAmount fee;
+    int nChangePos;
+    int nNumChangeOutputs = 0;
+    string failReason;
+
+    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, nullptr, false))
     {
-        newIdTx = buildResult.GetTxOrThrow();
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to create update transaction: " + failReason);
     }
-    catch(const std::exception& e)
+    CMutableTransaction mtx(wtx);
+
+    // add the spend of the last ID transaction output
+    mtx.vin.push_back(idTxIn);
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    // now sign
+    CCoinsViewCache view(pcoinsTip);
+    for (int i = 0; i < wtx.vin.size(); i++)
     {
-        throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Invalid update identity transaction : " + std::string(e.what()));
+        bool signSuccess;
+        SignatureData sigdata;
+
+        CCoins coins;
+        if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
+        {
+            break;
+        }
+
+        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
+
+        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
+
+        if (!signSuccess)
+        {
+            LogPrintf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            printf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
+        } else {
+            UpdateTransaction(mtx, i, sigdata);
+        }
     }
+    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
 
     if (returnTx)
     {
-        return EncodeHexTx(newIdTx);
+        return EncodeHexTx(wtx);
     }
-    else
+    else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
     {
-        CValidationState state;
-        // add to mem pool and relay
-        if (!myAddtomempool(newIdTx, &state))
-        {
-            throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Cannot add transaction to memory pool : " + state.GetRejectReason());
-        }
-        else
-        {
-            RelayTransaction(newIdTx);
-        }
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
     }
-    return newIdTx.GetHash().GetHex();
+    return wtx.GetHash().GetHex();
 }
 
 UniValue revokeidentity(const UniValue& params, bool fHelp)
@@ -4706,7 +4733,10 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     uint32_t nHeight = chainActive.Height();
 
     newID.flags &= ~CIdentity::FLAG_REVOKED;
-    newID.SetVersion(CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1));
+    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        newID.SetVersion(CIdentity::VERSION_PBAAS);
+    }
 
     // create the identity definition transaction
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight), 0, false}});
