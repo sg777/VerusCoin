@@ -951,7 +951,7 @@ UniValue CCrossChainImport::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int32_t)nVersion));
-    obj.push_back(Pair("flags", (int32_t)nVersion));
+    obj.push_back(Pair("flags", (int32_t)flags));
     obj.push_back(Pair("sourcesystemid", EncodeDestination(CIdentityID(sourceSystemID))));
     obj.push_back(Pair("sourceheight", (int64_t)sourceSystemHeight));
     obj.push_back(Pair("importcurrencyid", EncodeDestination(CIdentityID(importCurrencyID))));

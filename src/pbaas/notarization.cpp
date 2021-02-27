@@ -425,12 +425,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     hw << *this;
     newNotarization.hashPrevNotarization = hw.GetHash();
 
-    // if already refunding, numbers don't change
-    if (currencyState.IsRefunding())
-    {
-        return true;
-    }
-
     hw = CMMRNode<>::GetHashWriter();
 
     for (int i = 0; i < exportTransfers.size(); i++)
@@ -440,9 +434,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         // add the pre-mutation reserve transfer to the hash
         hw << reserveTransfer;
 
+        if (currencyState.IsRefunding())
+        {
+            reserveTransfer = reserveTransfer.GetRefundTransfer();
+        }
         // ensure that any pre-conversions or conversions are all valid, based on mined height and
         // maximum pre-conversions
-        if (reserveTransfer.IsPreConversion())
+        else if (reserveTransfer.IsPreConversion())
         {
             if (lastExportHeight >= destCurrency.startBlock)
             {

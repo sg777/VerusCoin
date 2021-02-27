@@ -2195,6 +2195,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             CTokenOutput ro = CTokenOutput(oneFee.first, oneFee.second);
                             vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
                         }
+                        else if (oneFee.second)
+                        {
+                            totalNativeFee = oneFee.second;
+                        }
+                        
                     }
                 }
 
@@ -2204,7 +2209,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 exporterReward = CCrossChainExport::ExportReward(exportFee);
                 nativeOut += totalNativeFee;
                 newCurrencyState.nativeFees += totalNativeFee;
-                if (!curTransfer.destination.IsValid())
+                if (!curTransfer.destination.IsValid() || !exporterReward)
                 {
                     break;
                 }

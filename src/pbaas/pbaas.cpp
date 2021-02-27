@@ -1721,6 +1721,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
+        // if we have inputs, break
+        if (ccx.numInputs)
+        {
+            printf("%s:break for debugger on import for export: %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
+        }
+
         // get reserve deposits for destination currency of export. these will be available whether the source is same chain
         // or an external chain/gateway
         std::vector<CInputDescriptor> localDeposits;
