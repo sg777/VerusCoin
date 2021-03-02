@@ -447,18 +447,9 @@ void CNode::PushVersion()
 
     if (PROTOCOL_VERSION >= MIN_PBAAS_VERSION)
     {
-        CKeyID nodePaymentAddress;
-        if (USE_EXTERNAL_PUBKEY)
-        {
-            CPubKey pubKey = CPubKey(ParseHex(NOTARY_PUBKEY));
-            if (pubKey.IsFullyValid())
-            {
-                nodePaymentAddress = pubKey.GetID();
-            }
-            LogPrint("net", "send PBaaS node payment pubkey hash -- pubkey: %s, hash: %s\n", NOTARY_PUBKEY, nodePaymentAddress.ToString());
-        }
+        CIdentityID nodeID = VERUS_NODEID.IsNull() ? uint160() : VERUS_NODEID;
         PushMessage("version", PROTOCOL_VERSION, 
-                    nLocalServices, nTime, addrYou, addrMe, nLocalHostNonce, nodePaymentAddress, strSubVersion, nBestHeight, true);
+                    nLocalServices, nTime, addrYou, addrMe, nLocalHostNonce, nodeID, strSubVersion, nBestHeight, true);
     }
     else
     {

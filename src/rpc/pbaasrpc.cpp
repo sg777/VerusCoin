@@ -3774,6 +3774,32 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "If a gateway converter currency is named, it must be specified in the same definition transaction");
         }
 
+        // create a set of default, necessary parameters
+        // then apply the parameters passed, which will simplify the
+        // specification with defaults
+        std::map<std::string, UniValue> gatewayConverterMap;
+        gatewayConverterMap.insert(std::make_pair("options", CCurrencyDefinition::OPTION_CANBERESERVE +
+                                                             CCurrencyDefinition::OPTION_FRACTIONAL +
+                                                             CCurrencyDefinition::OPTION_TOKEN));
+        gatewayConverterMap.insert(std::make_pair("parent", EncodeDestination(CIdentityID(newChainID))));
+        gatewayConverterMap.insert(std::make_pair("launchsystemid", EncodeDestination(CIdentityID(thisChainID))));
+        gatewayConverterMap.insert(std::make_pair("systemid", EncodeDestination(CIdentityID(newChainID))));
+        gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
+
+        UniValue currenciesUni(UniValue::VARR);
+        currenciesUni.push_back(EncodeDestination(CIdentityID(thisChainID)));
+        currenciesUni.push_back(EncodeDestination(CIdentityID(newChainID)));
+        gatewayConverterMap.insert(std::make_pair("currencies", currenciesUni));
+
+        auto curKeys = params[1].getKeys();
+        auto curValues = params[1].getValues();
+        for (int i = 0; i < curKeys.size(); i++)
+        {
+            gatewayConverterMap.insert(std::make_pair(curKeys[i], curValues[i]));
+        }
+
+        gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
+
         // set the parent and system of the new gateway converter to the new currency
         newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(params[1], height, newChainID);
 

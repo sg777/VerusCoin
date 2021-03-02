@@ -18,6 +18,7 @@
 
 extern CIdentityID VERUS_DEFAULTID;
 extern CIdentityID VERUS_NOTARYID;
+extern uint160 VERUS_NODEID;
 extern bool VERUS_PRIVATECHANGE;
 extern std::string VERUS_DEFAULT_ZADDR;
 

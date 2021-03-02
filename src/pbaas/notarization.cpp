@@ -959,6 +959,8 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     return true;
 }
 
+extern void CopyNodeStats(std::vector<CNodeStats>& vstats);
+
 // create a notarization that is validated as part of the block, generally benefiting the miner or staker if the
 // cross notarization is valid
 bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalSystem,
@@ -1154,6 +1156,43 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         if (GetNotarizationData(gatewayConverterID, gatewayCND) && gatewayCND.vtx.size())
         {
             notarization.currencyStates[gatewayConverterID] = gatewayCND.vtx[gatewayCND.lastConfirmed].second.currencyState;
+        }
+    }
+
+    // good nodes ordered by time connected
+    {
+        std::map<int64_t, CNode *> goodNodes;
+
+        LOCK(cs_vNodes);
+        for (auto oneNode : vNodes)
+        {
+            if (!oneNode->fInbound)
+            {
+                if (oneNode->fWhitelisted)
+                {
+                    goodNodes.insert(std::make_pair(oneNode->nTimeConnected, oneNode));
+                }
+                else if (oneNode->GetTotalBytesRecv() > (1024 * 1024))
+                {
+                    goodNodes.insert(std::make_pair(oneNode->nTimeConnected, oneNode));
+                }
+            }
+        }
+        if (goodNodes.size() > 1)
+        {
+            std::vector<CNode *> finalists;
+            auto it = goodNodes.begin();
+            int dropCount = goodNodes.size() >> 1;
+            for (int i = 0; i < (goodNodes.size() - dropCount); i++, it++)
+            {
+                finalists.push_back(it->second);
+            }
+            int nodeIdx = insecure_rand() % finalists.size();
+            notarization.nodes.push_back(CNodeData(finalists[nodeIdx]->addr.ToStringIPPort(), finalists[nodeIdx]->hashPaymentAddress));
+        }
+        else if (goodNodes.begin()->second->fWhitelisted)
+        {
+            notarization.nodes.push_back(CNodeData(goodNodes.begin()->second->addr.ToStringIPPort(), goodNodes.begin()->second->hashPaymentAddress));
         }
     }
 

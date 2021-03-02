@@ -63,6 +63,18 @@ TransactionBuilder::TransactionBuilder(
     coinsView(coinsView),
     cs_coinsView(cs_coinsView)
 {
+    if (keystore && VERUS_PRIVATECHANGE && defaultSaplingDest != boost::none)
+    {
+        uint256 ovk;
+        HDSeed seed;
+        if (keystore->GetHDSeed(seed))
+        {
+            ovk = ovkForShieldingFromTaddr(seed);
+
+            // send everything to default Sapling address by default
+            SendChangeTo(defaultSaplingDest.value(), ovk);
+        }
+    }
     mtx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
 }
 

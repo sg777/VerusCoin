@@ -2314,7 +2314,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
             else if (!VERUS_DEFAULTID.IsNull())
             {
-                addr = VERUS_NOTARYID;
+                addr = VERUS_DEFAULTID;
+            }
+            else if (!VERUS_NODEID.IsNull())
+            {
+                addr = CIdentityID(VERUS_NODEID);
             }
             else if (!NOTARY_PUBKEY.empty())
             {
