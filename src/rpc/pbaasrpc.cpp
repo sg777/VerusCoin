@@ -3967,8 +3967,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), 
                                                      newChain.currencies[i] == thisChainID ? contribution + fee : fee, 
                                                      false});
-                
-                // TODO: send export and conversion fees to reserve deposit, as appropriate, to enable payment
             }
         }
     }
