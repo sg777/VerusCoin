@@ -657,7 +657,7 @@ bool AddOneCurrencyImport(CCurrencyDefinition &newCurrency,
             {
                 registrationAmount = ConnectedChains.ThisChain().currencyImportFee;
             }
-            
+
             // TODO: this should actually import the first notarization
             CCrossChainImport cci = CCrossChainImport(ASSETCHAINS_CHAINID,
                                                       1,
@@ -987,22 +987,30 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             }
         }
 
-        LOCK2(cs_main, mempool.cs);
-        if (pindexPrev != chainActive.LastTip())
-        {
-            // try again
-            loop = true;
-            continue;
-        }
-        pblock->nTime = GetAdjustedTime();
-
-        CCoinbaseCurrencyState currencyState = ConnectedChains.GetCurrencyState(nHeight);
-
+        CCoinbaseCurrencyState currencyState;
         CCoinsViewCache view(pcoinsTip);
         uint32_t expired; uint64_t commission;
         
         SaplingMerkleTree sapling_tree;
-        assert(view.GetSaplingAnchorAt(view.GetBestAnchor(SAPLING), sapling_tree));
+
+        {
+            LOCK2(cs_main, mempool.cs);
+            if (pindexPrev != chainActive.LastTip())
+            {
+                // try again
+                loop = true;
+                continue;
+            }
+            pblock->nTime = GetAdjustedTime();
+
+            currencyState = ConnectedChains.GetCurrencyState(nHeight);
+
+            if (!(view.GetSaplingAnchorAt(view.GetBestAnchor(SAPLING), sapling_tree)))
+            {
+                LogPrintf("%s: failed to get Sapling anchor\n", __func__);
+                assert(false);
+            }
+        }
 
         // Priority order to process transactions
         list<COrphan> vOrphan; // list memory doesn't move
@@ -1013,98 +1021,104 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         vector<TxPriority> vecPriority;
         vecPriority.reserve(mempool.mapTx.size() + 1);
 
-        // check if we should add cheat transaction
-        CBlockIndex *ppast;
-        CTransaction cb;
-        int cheatHeight = nHeight - COINBASE_MATURITY < 1 ? 1 : nHeight - COINBASE_MATURITY;
-        if (defaultSaplingDest &&
-            chainActive.Height() > 100 && 
-            (ppast = chainActive[cheatHeight]) && 
-            ppast->IsVerusPOSBlock() && 
-            cheatList.IsHeightOrGreaterInList(cheatHeight))
         {
-            // get the block and see if there is a cheat candidate for the stake tx
-            CBlock b;
-            if (!(fHavePruned && !(ppast->nStatus & BLOCK_HAVE_DATA) && ppast->nTx > 0) && ReadBlockFromDisk(b, ppast, chainparams.GetConsensus(), 1))
+            LOCK(cs_main);
+
+            // check if we should add cheat transaction
+            CBlockIndex *ppast;
+            CTransaction cb;
+            int cheatHeight = nHeight - COINBASE_MATURITY < 1 ? 1 : nHeight - COINBASE_MATURITY;
+            if (defaultSaplingDest &&
+                chainActive.Height() > 100 && 
+                (ppast = chainActive[cheatHeight]) && 
+                ppast->IsVerusPOSBlock() && 
+                cheatList.IsHeightOrGreaterInList(cheatHeight))
             {
-                CTransaction &stakeTx = b.vtx[b.vtx.size() - 1];
-
-                if (cheatList.IsCheatInList(stakeTx, &cheatTx))
+                // get the block and see if there is a cheat candidate for the stake tx
+                CBlock b;
+                if (!(fHavePruned && !(ppast->nStatus & BLOCK_HAVE_DATA) && ppast->nTx > 0) && ReadBlockFromDisk(b, ppast, chainparams.GetConsensus(), 1))
                 {
-                    // make and sign the cheat transaction to spend the coinbase to our address
-                    CMutableTransaction mtx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
+                    CTransaction &stakeTx = b.vtx[b.vtx.size() - 1];
 
-                    uint32_t voutNum;
-                    // get the first vout with value
-                    for (voutNum = 0; voutNum < b.vtx[0].vout.size(); voutNum++)
+                    if (cheatList.IsCheatInList(stakeTx, &cheatTx))
                     {
-                        if (b.vtx[0].vout[voutNum].nValue > 0)
-                            break;
-                    }
+                        // make and sign the cheat transaction to spend the coinbase to our address
+                        CMutableTransaction mtx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
 
-                    // send to the same pub key as the destination of this block reward
-                    if (MakeCheatEvidence(mtx, b.vtx[0], voutNum, cheatTx))
-                    {
-                        LOCK(pwalletMain->cs_wallet);
-                        TransactionBuilder tb = TransactionBuilder(consensusParams, nHeight);
-                        cb = b.vtx[0];
-                        cbHash = cb.GetHash();
-
-                        bool hasInput = false;
-                        for (uint32_t i = 0; i < cb.vout.size(); i++)
+                        uint32_t voutNum;
+                        // get the first vout with value
+                        for (voutNum = 0; voutNum < b.vtx[0].vout.size(); voutNum++)
                         {
-                            // add the spends with the cheat
-                            if (cb.vout[i].nValue > 0)
-                            {
-                                tb.AddTransparentInput(COutPoint(cbHash,i), cb.vout[0].scriptPubKey, cb.vout[0].nValue);
-                                hasInput = true;
-                            }
+                            if (b.vtx[0].vout[voutNum].nValue > 0)
+                                break;
                         }
 
-                        if (hasInput)
+                        // send to the same pub key as the destination of this block reward
+                        if (MakeCheatEvidence(mtx, b.vtx[0], voutNum, cheatTx))
                         {
-                            // this is a send from a t-address to a sapling address, which we don't have an ovk for.
-                            // Instead, generate a common one from the HD seed. This ensures the data is
-                            // recoverable, at least for us, while keeping it logically separate from the ZIP 32
-                            // Sapling key hierarchy, which the user might not be using.
-                            uint256 ovk;
-                            HDSeed seed;
-                            if (pwalletMain->GetHDSeed(seed)) {
-                                ovk = ovkForShieldingFromTaddr(seed);
+                            LOCK(pwalletMain->cs_wallet);
+                            TransactionBuilder tb = TransactionBuilder(consensusParams, nHeight);
+                            cb = b.vtx[0];
+                            cbHash = cb.GetHash();
 
-                                // send everything to Sapling address
-                                tb.SendChangeTo(defaultSaplingDest.value(), ovk);
-
-                                tb.AddOpRet(mtx.vout[mtx.vout.size() - 1].scriptPubKey);
-
-                                TransactionBuilderResult buildResult(tb.Build());
-                                if (!buildResult.IsError() && buildResult.IsTx())
+                            bool hasInput = false;
+                            for (uint32_t i = 0; i < cb.vout.size(); i++)
+                            {
+                                // add the spends with the cheat
+                                if (cb.vout[i].nValue > 0)
                                 {
-                                    cheatSpend = buildResult.GetTxOrThrow();
+                                    tb.AddTransparentInput(COutPoint(cbHash,i), cb.vout[0].scriptPubKey, cb.vout[0].nValue);
+                                    hasInput = true;
                                 }
-                                else
-                                {
-                                    LogPrintf("Error building cheat catcher transaction: %s\n", buildResult.GetError().c_str());
+                            }
+
+                            if (hasInput)
+                            {
+                                // this is a send from a t-address to a sapling address, which we don't have an ovk for.
+                                // Instead, generate a common one from the HD seed. This ensures the data is
+                                // recoverable, at least for us, while keeping it logically separate from the ZIP 32
+                                // Sapling key hierarchy, which the user might not be using.
+                                uint256 ovk;
+                                HDSeed seed;
+                                if (pwalletMain->GetHDSeed(seed)) {
+                                    ovk = ovkForShieldingFromTaddr(seed);
+
+                                    // send everything to Sapling address
+                                    tb.SendChangeTo(defaultSaplingDest.value(), ovk);
+
+                                    tb.AddOpRet(mtx.vout[mtx.vout.size() - 1].scriptPubKey);
+
+                                    TransactionBuilderResult buildResult(tb.Build());
+                                    if (!buildResult.IsError() && buildResult.IsTx())
+                                    {
+                                        cheatSpend = buildResult.GetTxOrThrow();
+                                    }
+                                    else
+                                    {
+                                        LogPrintf("Error building cheat catcher transaction: %s\n", buildResult.GetError().c_str());
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
 
-        if (cheatSpend)
-        {
-            cheatTx = cheatSpend.value();
-            std::list<CTransaction> removed;
-            mempool.removeConflicts(cheatTx, removed);
-            printf("Found cheating stake! Adding cheat spend for %.8f at block #%d, coinbase tx\n%s\n",
-                (double)cb.GetValueOut() / (double)COIN, nHeight, cheatSpend.value().vin[0].prevout.hash.GetHex().c_str());
-
-            // add to mem pool and relay
-            if (myAddtomempool(cheatTx))
+            if (cheatSpend)
             {
-                RelayTransaction(cheatTx);
+                LOCK(mempool.cs);
+
+                cheatTx = cheatSpend.value();
+                std::list<CTransaction> removed;
+                mempool.removeConflicts(cheatTx, removed);
+                printf("Found cheating stake! Adding cheat spend for %.8f at block #%d, coinbase tx\n%s\n",
+                    (double)cb.GetValueOut() / (double)COIN, nHeight, cheatSpend.value().vin[0].prevout.hash.GetHex().c_str());
+
+                // add to mem pool and relay
+                if (myAddtomempool(cheatTx))
+                {
+                    RelayTransaction(cheatTx);
+                }
             }
         }
 
@@ -1314,10 +1328,27 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             CValidationState state;
             TransactionBuilder notarizationBuilder = TransactionBuilder(consensusParams, nHeight);
             bool finalized;
+            CTransaction notarizationTx;
             if (CPBaaSNotarization::ConfirmOrRejectNotarizations(pwalletMain, ConnectedChains.FirstNotaryChain(), state, notarizationBuilder, finalized))
             {
+                LOCK2(cs_main, mempool.cs);
                 TransactionBuilderResult buildResult = notarizationBuilder.Build();
+                try
+                {
+                    notarizationTx = buildResult.GetTxOrThrow();
+                    std::list<CTransaction> removed;
+                    LogPrintf("%s: Notarizing cross-chain currency\n", __func__);
 
+                    // add to mem pool and relay
+                    if (myAddtomempool(notarizationTx))
+                    {
+                        RelayTransaction(notarizationTx);
+                    }
+                }
+                catch(const std::exception& e)
+                {
+                    std::cerr << e.what() << '\n';
+                }
             }
         }
 
@@ -1351,6 +1382,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 ProcessNewImports(ConnectedChains.FirstNotaryChain().chainDefinition.GetID(), lastImportNotarization, lastImportNotarizationUTXO, nHeight);
             }
         }
+
+        // done calling out, take locks for the rest
+        LOCK2(cs_main, mempool.cs);
 
         totalEmission = GetBlockSubsidy(nHeight, consensusParams);
         blockSubsidy = totalEmission;

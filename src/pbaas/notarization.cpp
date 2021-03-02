@@ -1412,10 +1412,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 }
             }
 
-            if (evidenceOuts.size() >= (externalSystem.chainDefinition.minNotariesConfirm - 1))
-            {
-            }
-
             // we've already signed
             if (!myIDSet.size())
             {
