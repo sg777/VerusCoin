@@ -528,7 +528,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     // crosschain
     { "assetchainproof", 1},
     { "crosschainproof", 1},
-    { "getproofroot", 2},
+    { "getbestproofroot", 0},
+    { "submitacceptednotarization", 0},
     { "height_MoM", 1},
     { "calc_MoM", 2},
     // pbaas

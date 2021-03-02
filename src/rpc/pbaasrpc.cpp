@@ -1847,6 +1847,118 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
     }
 }
 
+UniValue getbestproofroot(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1 || params[0].getKeys().size() < 2)
+    {
+        throw runtime_error(
+            "getbestproofroot '{\"proofroots\":[\"version\":n,\"type\":n,\"systemid\":\"currencyidorname\",\"height\":n,\n"
+            "                   \"stateroot\":\"hex\",\"blockhash\":\"hex\",\"power\":\"hex\"],\"lastconfirmed\":n}'\n"
+            "\nDetermines and returns the index of the best (most recent, valid, qualified) proof root in the list of proof roots,\n"
+            "and the most recent, valid proof root.\n"
+
+            "\nArguments\n"
+            "{\n"
+            "  \"proofroots\":                  (array, required/may be empty) ordered array of proof roots, indexed on return\n"
+            "  [\n"
+            "    {\n"
+            "      \"version\":n                (int, required) version of this proof root data structure\n"
+            "      \"type\":n                   (int, required) type of proof root (chain or system specific)\n"
+            "      \"systemid\":\"hexstr\"      (hexstr, required) system the proof root is for\n"
+            "      \"height\":n                 (uint32_t, required) height of this proof root\n"
+            "      \"stateroot\":\"hexstr\"     (hexstr, required) Merkle or merkle-style tree root for the specified block/sequence\n"
+            "      \"blockhash\":\"hexstr\"     (hexstr, required) hash identifier for the specified block/sequence\n"
+            "      \"power\":\"hexstr\"         (hexstr, required) work, stake, or combination of the two for most-work/most-power rule\n"
+            "    }\n"
+            "  .\n"
+            "  .\n"
+            "  .\n"
+            "  ]\n"
+            "  \"currencies\":[\"id1\"]         (array, optional) currencies to query for currency states\n"
+            "  \"lastconfirmed\":n              (int, required) index into the proof root array indicating the last confirmed root"
+            "}\n"
+
+            "\nResult:\n"
+            "\"bestproofrootindex\"             (int) index of best proof root not confirmed that is provided, confirmed index, or -1"
+            "\"latestproofroot\"                (object) latest valid proof root of chain"
+            "\"currencystates\"                 (int) currency states of target currency and published bridges"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getbestproofroot", "\"{\"proofroots\":[\"version\":n,\"type\":n,\"systemid\":\"currencyidorname\",\"height\":n,\"stateroot\":\"hex\",\"blockhash\":\"hex\",\"power\":\"hex\"],\"lastconfirmed\":n}\"")
+            + HelpExampleRpc("getbestproofroot", "\"{\"proofroots\":[\"version\":n,\"type\":n,\"systemid\":\"currencyidorname\",\"height\":n,\"stateroot\":\"hex\",\"blockhash\":\"hex\",\"power\":\"hex\"],\"lastconfirmed\":n}\"")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+
+    std::vector<std::string> paramKeys = params[0].getKeys();
+    UniValue currenciesUni;
+    if (paramKeys.size() > 3 ||
+        (paramKeys.size() == 3) && !(currenciesUni = find_value(params[0], "currencies")).isArray())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "too many members in object or invalid currencies array");
+    }
+
+    int lastConfirmed = uni_get_int(find_value(params[0], "lastconfirmed"), -1);
+    if (lastConfirmed == -1)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid lastconfirmed");
+    }
+
+    std::vector<CProofRoot> proofRootArr;
+    UniValue uniProofRoots = find_value(params[0], "proofroots");
+    if (!uniProofRoots.isArray())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid proof root array parameter");
+    }
+
+    LOCK(cs_main);
+
+    uint32_t nHeight = chainActive.Height();
+
+    uint32_t curHeight = 0;
+    std::map<uint32_t, int32_t> validRoots;       // height, index (only return the first valid at each height)
+    for (int i = 0; i < proofRootArr.size(); i++)
+    {
+        CProofRoot checkRoot = CProofRoot(proofRootArr[i]);
+        // proof roots must be valid and in height order, though heights can overlap
+        if (!checkRoot.IsValid() ||
+            checkRoot.rootHeight < curHeight ||
+            checkRoot.systemID != ASSETCHAINS_CHAINID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid proof root array parameter for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+        }
+        // ignore potential dups
+        if (validRoots.count(checkRoot.rootHeight))
+        {
+            continue;
+        }
+        if (checkRoot == checkRoot.GetProofRoot(checkRoot.rootHeight))
+        {
+            validRoots.insert(std::make_pair(checkRoot.rootHeight, i));
+        }
+    }
+
+    UniValue retVal(UniValue::VOBJ);
+
+    // get the latest proof root and currency states
+    retVal.pushKV("latestproofroot", CProofRoot::GetProofRoot(nHeight).ToUniValue());
+
+    std::vector<UniValue> currencyStatesUni;
+    for (int i = 0; i < currenciesUni.size(); i++)
+    {
+        CCurrencyDefinition targetCur;
+        uint160 targetCurID;
+        if ((targetCurID = ValidateCurrencyName(uni_get_str(currenciesUni[i]), true, &targetCur)).IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid currency state request for %s", uni_get_str(currenciesUni[i])));
+        }
+        currencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, nHeight).ToUniValue());
+    }
+
+    return NullUniValue;
+}
+
 UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 2)
@@ -1857,8 +1969,8 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             "\nIf successful in submitting the transaction based on all rules, a transaction ID is returned, otherwise, NULL.\n"
 
             "\nArguments\n"
-            "\"earnednotarizaton\"              (object, required) notarization earned on the other system, which is the basis for this"
-            "\"notaryevidence\"                 (object, required) evidence and notary signatures validating the notarization"
+            "\"earnednotarization\"             (object, required) notarization earned on the other system, which is the basis for this\n"
+            "\"notaryevidence\"                 (object, required) evidence and notary signatures validating the notarization\n"
 
             "\nResult:\n"
             "txid                               (hexstring) transaction ID of submitted transaction\n"
@@ -5523,6 +5635,7 @@ static const CRPCCommand commands[] =
     { "multichain",   "getcurrencyconverters",        &getcurrencyconverters,  true  },
     { "multichain",   "getcurrency",                  &getcurrency,            true  },
     { "multichain",   "getnotarizationdata",          &getnotarizationdata,    true  },
+    { "multichain",   "getbestproofroot",             &getbestproofroot,       true  },
     { "multichain",   "submitacceptednotarization",   &submitacceptednotarization, true },
     { "multichain",   "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "multichain",   "getcurrencystate",             &getcurrencystate,       true  },

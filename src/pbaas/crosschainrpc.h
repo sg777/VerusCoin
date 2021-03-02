@@ -980,6 +980,8 @@ public:
         return !systemID.IsNull() && !stateRoot.IsNull() && !blockHash.IsNull();
     }
 
+    friend bool operator==(const CProofRoot &op1, const CProofRoot &op2);
+
     UniValue ToUniValue() const;
 };
 

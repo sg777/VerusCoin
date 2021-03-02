@@ -283,6 +283,9 @@ public:
                                              TransactionBuilder &txBuilder,
                                              bool &finalized);
 
+    static std::vector<uint256> SubmitFinalizedNotarizations(const CRPCChainData &externalSystem,
+                                                             CValidationState &state);
+
     bool CheckProof(const uint160 &systemID, const CMMRProof &transactionBlockProof, uint256 checkHash)
     {
         auto proofRootIt = proofRoots.find(systemID);

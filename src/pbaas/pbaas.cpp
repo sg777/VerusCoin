@@ -3747,6 +3747,7 @@ void CConnectedChains::SubmissionThread()
                     sem_submitthread.wait();
                 }
             }
+
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
             if (IsNotaryAvailable())
             {

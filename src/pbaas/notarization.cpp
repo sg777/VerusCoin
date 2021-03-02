@@ -293,6 +293,17 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     }
 }
 
+bool operator==(const CProofRoot &op1, const CProofRoot &op2)
+{
+    return op1.version == op2.version &&
+           op1.type == op2.type &&
+           op1.rootHeight == op2.rootHeight &&
+           op1.stateRoot == op2.stateRoot &&
+           op1.systemID == op2.systemID &&
+           op1.blockHash == op2.blockHash &&
+           op1.compactPower == op2.compactPower;
+}
+
 CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
 {
     if (blockHeight > chainActive.Height())
@@ -1540,6 +1551,156 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
     return retVal;
 }
 
+bool CallNotary(const CRPCChainData &notarySystem, std::string command, const UniValue &params, UniValue &result, UniValue &error);
+
+// look for finalized notarizations either on chain or in the mempool, which are eligible for submission
+// and submit them to the notary chain.
+std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPCChainData &externalSystem,
+                                                                      CValidationState &state)
+{
+    // look for finalized notarizations for our notary chains in recent blocks
+    // if we find any and are connected, submit them
+    std::vector<CAddressIndexDbEntry> finalizedNotarizations;
+    uint160 systemID = externalSystem.chainDefinition.GetID();
+    std::vector<std::pair<CPBaaSNotarization, CNotaryEvidence>> notarizations;
+
+    {
+        LOCK2(cs_main, mempool.cs);
+
+        uint32_t nHeight = chainActive.Height();
+        uint160 finalizeConfirmedKey = 
+            CCrossChainRPCData::GetConditionID(
+                CCrossChainRPCData::GetConditionID(systemID, CObjectFinalization::ObjectFinalizationNotarizationKey()), 
+                CObjectFinalization::ObjectFinalizationConfirmedKey());
+
+        if (GetAddressIndex(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations, nHeight-10) && finalizedNotarizations.size())
+        {
+            // get the recent finalized notarizations and submit. the daemon we submit to may early out immediately if
+            // the notarization is already posted or in mempool
+            for (auto &oneFinalization : finalizedNotarizations)
+            {
+                if (oneFinalization.first.spending)
+                {
+                    continue;
+                }
+                // now, we have a finalized notarization for the target network
+                // prepare an accepted notarization and submit
+                CTransaction finTx, nTx;
+                uint256 blkHash;
+                COptCCParams p;
+                CObjectFinalization of;
+                CPBaaSNotarization pbn;
+                if (!myGetTransaction(oneFinalization.first.txhash, finTx, blkHash))
+                {
+                    // set error, but continue processing
+                    state.Error("inaccessible-transaction");
+                }
+                if (!(finTx.vout.size() > oneFinalization.first.index &&
+                      finTx.vout[oneFinalization.first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                      p.IsValid() &&
+                      (p.evalCode == EVAL_FINALIZE_NOTARIZATION) &&
+                      p.vData.size() &&
+                      (of = CObjectFinalization(p.vData[0])).IsValid() &&
+                      of.GetOutputTransaction(finTx, nTx, blkHash) &&
+                      nTx.vout.size() > of.output.n &&
+                      nTx.vout[of.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                      p.IsValid() &&
+                      p.evalCode == EVAL_EARNEDNOTARIZATION &&
+                      p.vData.size() &&
+                      (pbn = CPBaaSNotarization(p.vData[0])).IsValid()))
+                {
+                    // this is almost certainly a corrupt local database, so we will start to return errors
+                    // rather than attempt to continue
+                    state.Error("invalid-or-corrupt-notarization");
+                    return std::vector<uint256>();
+                }
+
+                // get all notarization evidence and submit the notarization + evidence
+                CNotaryEvidence allEvidence, scratchEvidence;
+
+                // get all inputs with evidence and add it to our evidence
+                for (auto &oneEvidenceIn : of.evidenceInputs)
+                {
+                    CTransaction evidenceTx;
+                    uint256 eBlkHash;
+                    COptCCParams eP;
+                    if (!(finTx.vin.size() > oneEvidenceIn &&
+                          myGetTransaction(finTx.vin[oneEvidenceIn].prevout.hash, evidenceTx, eBlkHash) &&
+                          evidenceTx.vout.size() > finTx.vin[oneEvidenceIn].prevout.n &&
+                          evidenceTx.vout[finTx.vin[oneEvidenceIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(eP) &&
+                          eP.IsValid() &&
+                          eP.evalCode == EVAL_NOTARY_EVIDENCE &&
+                          eP.vData.size() &&
+                          (scratchEvidence = CNotaryEvidence(eP.vData[0])).IsValid()))
+                    {
+                        state.Error("innaccessible-evidence");
+                        return std::vector<uint256>();
+                    }
+                    allEvidence.evidence.insert(allEvidence.evidence.end(), scratchEvidence.evidence.begin(), scratchEvidence.evidence.end());
+                    for (auto &oneSig : scratchEvidence.signatures)
+                    {
+                        if (oneSig.second.signatures.size())
+                        {
+                            for (auto &oneSigEntry : oneSig.second.signatures)
+                            {
+                                allEvidence.signatures[oneSig.first].signatures.insert(oneSigEntry);
+                            }
+                        }
+                    }
+                }
+                // get all outputs with evidence and add
+                for (auto oneEvidenceOut : of.evidenceOutputs)
+                {
+                    if (!(finTx.vout.size() > oneEvidenceOut &&
+                        finTx.vout[oneEvidenceOut].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        (p.evalCode == EVAL_NOTARY_EVIDENCE) &&
+                        p.vData.size() &&
+                        (scratchEvidence = CNotaryEvidence(p.vData[0])).IsValid()))
+                    {
+                        state.Error("invalid-evidence");
+                        return std::vector<uint256>();
+                    }
+                    allEvidence.evidence.insert(allEvidence.evidence.end(), scratchEvidence.evidence.begin(), scratchEvidence.evidence.end());
+                    for (auto &oneSig : scratchEvidence.signatures)
+                    {
+                        if (oneSig.second.signatures.size())
+                        {
+                            for (auto &oneSigEntry : oneSig.second.signatures)
+                            {
+                                allEvidence.signatures[oneSig.first].signatures.insert(oneSigEntry);
+                            }
+                        }
+                    }
+                }
+                notarizations.push_back(std::make_pair(pbn, allEvidence));
+            }
+        }
+    }
+
+    std::vector<uint256> retVal;
+    // collect them holding the lock, release it, then call out
+    for (auto &oneNotarization : notarizations)
+    {
+        // now, we should have enough evidence to prove
+        // the notarization. the API call will ensure that we do
+        UniValue params(UniValue::VARR);
+        UniValue result, error;
+        std::string strTxId;
+        params.push_back(oneNotarization.first.ToUniValue());
+        params.push_back(oneNotarization.second.ToUniValue());
+        if (!CallNotary(externalSystem, "submitacceptednotarization", params, result, error) ||
+            !error.isNull() ||
+            (strTxId = uni_get_str(result)).empty() ||
+            !IsHex(strTxId))
+        {
+            continue;
+        }
+        // store the transaction ID and accepted notariation to prevent redundant submits
+        retVal.push_back(uint256S(strTxId));
+    }
+    return retVal;
+}
 
 /*
  * Validates a notarization output spend by ensuring that the spending transaction fulfills all requirements.

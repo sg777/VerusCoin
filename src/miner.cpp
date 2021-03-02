@@ -1308,6 +1308,19 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             currencyState = launchNotarization.currencyState;
         }
 
+        // if we are a notary, notarize
+        if (!VERUS_NOTARYID.IsNull())
+        {
+            CValidationState state;
+            TransactionBuilder notarizationBuilder = TransactionBuilder(consensusParams, nHeight);
+            bool finalized;
+            if (CPBaaSNotarization::ConfirmOrRejectNotarizations(pwalletMain, ConnectedChains.FirstNotaryChain(), state, notarizationBuilder, finalized))
+            {
+                TransactionBuilderResult buildResult = notarizationBuilder.Build();
+
+            }
+        }
+
         if (notaryConnected)
         {
             // if we should make an earned notarization, do so
@@ -1333,6 +1346,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 }
                 CPBaaSNotarization lastImportNotarization;
                 CUTXORef lastImportNotarizationUTXO;
+
+                CPBaaSNotarization::SubmitFinalizedNotarizations(ConnectedChains.FirstNotaryChain(), state);
                 ProcessNewImports(ConnectedChains.FirstNotaryChain().chainDefinition.GetID(), lastImportNotarization, lastImportNotarizationUTXO, nHeight);
             }
         }

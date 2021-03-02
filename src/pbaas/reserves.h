@@ -1432,16 +1432,6 @@ public:
     // while leaving conversion prices the same
     void RevertReservesAndSupply();
 
-    CCoinbaseCurrencyState MatchOrders(const std::vector<CReserveTransactionDescriptor> &orders, 
-                                       std::vector<CReserveTransactionDescriptor> &reserveFills, 
-                                       std::vector<CReserveTransactionDescriptor> &noFills, 
-                                       std::vector<const CReserveTransactionDescriptor *> &expiredFillOrKills, 
-                                       std::vector<const CReserveTransactionDescriptor *> &rejects, 
-                                       std::vector<CAmount> &exchangeRates, 
-                                       int32_t height, std::vector<CInputDescriptor> &conversionInputs, 
-                                       int64_t maxSerializedSize=LONG_MAX, int64_t *ptotalSerializeSize=NULL, CMutableTransaction *pConversionTx=NULL,
-                                       bool feesAsReserve=false) const;
-    
     template <typename NUMBERVECTOR>
     NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b) const
     {
