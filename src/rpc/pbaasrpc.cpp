@@ -3796,11 +3796,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
         if (!newChain.gatewayConverterName.empty())
         {
-            if (params.size() < 2)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "If a gateway converter currency is named, it must be specified in the same definition transaction");
-            }
-
             // create a set of default, necessary parameters
             // then apply the parameters passed, which will simplify the
             // specification with defaults
