@@ -455,7 +455,8 @@ public:
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
         DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
         DEFAULT_ID_REFERRAL_LEVELS = 3,
-        MAX_NAME_LEN = 64
+        MAX_NAME_LEN = 64,
+        MAX_STARTUP_NODES = 5
     };
 
     enum ECurrencyOptions

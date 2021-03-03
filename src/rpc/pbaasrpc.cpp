@@ -3682,15 +3682,15 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
             "         \"eras\"          : \"objarray\", (array, optional) data specific to each era, maximum 3\n"
             "         {\n"
-            "            \"reward\"     : n,           (int64,  optional) native initial block rewards in each period\n"
+            "            \"reward\"     : n,           (int64,  required) native initial block rewards in each period\n"
             "            \"decay\"      : n,           (int64,  optional) reward decay for each era\n"
             "            \"halving\"    : n,           (int,    optional) halving period for each era\n"
             "            \"eraend\"     : n,           (int,    optional) ending block of each era\n"
             "         }\n"
-            "         \"nodes\"         : \"[obj, ..]\", (objectarray, optional) up to 2 nodes that can be used to connect to the blockchain"
+            "         \"nodes\"         : \"[obj, ..]\", (objectarray, optional) up to 5 nodes that can be used to connect to the blockchain"
             "         [{\n"
-            "            \"networkaddress\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
-            "            \"nodeidentity\" : \"name@\",  (string, optional) rewards payment and identity\n"
+            "            \"networkaddress\" : \"ip:port\", (string,  optional) internet, TOR, or other supported address for node\n"
+            "            \"nodeidentity\" : \"name@\",  (string, optional) published node identity\n"
             "         }, .. ]\n"
             "      }\n"
 
@@ -3767,59 +3767,88 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // if this is a PBaaS chain definition, and we have a gateway converter currency to also start,
     // validate and start the converter currency as well
     CCurrencyDefinition newGatewayConverter;
-    if (newChain.IsPBaaSChain() && !newChain.gatewayConverterName.empty())
+    std::vector<CNodeData> startupNodes;
+    if (newChain.IsPBaaSChain())
     {
-        if (params.size() < 2)
+        UniValue launchNodesUni = find_value(params[0], "nodes");
+        if (launchNodesUni.isArray() && launchNodesUni.size())
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "If a gateway converter currency is named, it must be specified in the same definition transaction");
+            for (int i = 0; i < launchNodesUni.size(); i++)
+            {
+                std::string networkAddress;
+                std::string nodeIdentity;
+                CNodeData oneNode;
+                if (launchNodesUni[i].isObject() &&
+                    (oneNode = CNodeData(launchNodesUni[i])).IsValid())
+                {
+                    startupNodes.push_back(oneNode);
+                }
+            }
+        }
+        if (!startupNodes.size())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must specify valid, initial launch nodes for a PBaaS chain");
+        }
+        else if (startupNodes.size() > CCurrencyDefinition::MAX_STARTUP_NODES)
+        {
+            startupNodes.resize(CCurrencyDefinition::MAX_STARTUP_NODES);
         }
 
-        // create a set of default, necessary parameters
-        // then apply the parameters passed, which will simplify the
-        // specification with defaults
-        std::map<std::string, UniValue> gatewayConverterMap;
-        gatewayConverterMap.insert(std::make_pair("options", CCurrencyDefinition::OPTION_CANBERESERVE +
-                                                             CCurrencyDefinition::OPTION_FRACTIONAL +
-                                                             CCurrencyDefinition::OPTION_TOKEN));
-        gatewayConverterMap.insert(std::make_pair("parent", EncodeDestination(CIdentityID(newChainID))));
-        gatewayConverterMap.insert(std::make_pair("launchsystemid", EncodeDestination(CIdentityID(thisChainID))));
-        gatewayConverterMap.insert(std::make_pair("systemid", EncodeDestination(CIdentityID(newChainID))));
-        gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
-
-        UniValue currenciesUni(UniValue::VARR);
-        currenciesUni.push_back(EncodeDestination(CIdentityID(thisChainID)));
-        currenciesUni.push_back(EncodeDestination(CIdentityID(newChainID)));
-        gatewayConverterMap.insert(std::make_pair("currencies", currenciesUni));
-
-        auto curKeys = params[1].getKeys();
-        auto curValues = params[1].getValues();
-        for (int i = 0; i < curKeys.size(); i++)
+        if (!newChain.gatewayConverterName.empty())
         {
-            gatewayConverterMap.insert(std::make_pair(curKeys[i], curValues[i]));
-        }
+            if (params.size() < 2)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "If a gateway converter currency is named, it must be specified in the same definition transaction");
+            }
 
-        gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
+            // create a set of default, necessary parameters
+            // then apply the parameters passed, which will simplify the
+            // specification with defaults
+            std::map<std::string, UniValue> gatewayConverterMap;
+            gatewayConverterMap.insert(std::make_pair("options", CCurrencyDefinition::OPTION_CANBERESERVE +
+                                                                 CCurrencyDefinition::OPTION_FRACTIONAL +
+                                                                 CCurrencyDefinition::OPTION_TOKEN +
+                                                                 CCurrencyDefinition::OPTION_PBAAS_CONVERTER));
+            gatewayConverterMap.insert(std::make_pair("parent", EncodeDestination(CIdentityID(newChainID))));
+            gatewayConverterMap.insert(std::make_pair("launchsystemid", EncodeDestination(CIdentityID(thisChainID))));
+            gatewayConverterMap.insert(std::make_pair("systemid", EncodeDestination(CIdentityID(newChainID))));
+            gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
 
-        // set the parent and system of the new gateway converter to the new currency
-        newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(params[1], height, newChainID);
+            UniValue currenciesUni(UniValue::VARR);
+            currenciesUni.push_back(EncodeDestination(CIdentityID(thisChainID)));
+            currenciesUni.push_back(EncodeDestination(CIdentityID(newChainID)));
+            gatewayConverterMap.insert(std::make_pair("currencies", currenciesUni));
 
-        newGatewayConverter.startBlock = newChain.startBlock;
+            auto curKeys = params[1].getKeys();
+            auto curValues = params[1].getValues();
+            for (int i = 0; i < curKeys.size(); i++)
+            {
+                gatewayConverterMap.insert(std::make_pair(curKeys[i], curValues[i]));
+            }
 
-        // check that basics are correct, fractional that includes correct currencies, etc.
-        if (newGatewayConverter.parent != newChainID ||
-            !newGatewayConverter.IsFractional() ||
-            !newGatewayConverter.IsToken())
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "A gateway currency must have the PBaaS chain as parent and be a fractional token");
-        }
+            gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
 
-        auto currencyMap = newGatewayConverter.GetCurrenciesMap();
-        if (!currencyMap.count(ASSETCHAINS_CHAINID) ||
-            !currencyMap.count(newChainID) ||
-            newGatewayConverter.weights[currencyMap[ASSETCHAINS_CHAINID]] < (SATOSHIDEN / 10) ||
-            newGatewayConverter.weights[currencyMap[newChainID]] < (SATOSHIDEN / 10))
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "A gateway currency must be a fractional token that includes both the launch coin and PBaaS native coin at 10% or greater ratio each");
+            // set the parent and system of the new gateway converter to the new currency
+            newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(params[1], height, newChainID);
+
+            newGatewayConverter.startBlock = newChain.startBlock;
+
+            // check that basics are correct, fractional that includes correct currencies, etc.
+            if (newGatewayConverter.parent != newChainID ||
+                !newGatewayConverter.IsFractional() ||
+                !newGatewayConverter.IsToken())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "A gateway currency must have the PBaaS chain as parent and be a fractional token");
+            }
+
+            auto currencyMap = newGatewayConverter.GetCurrenciesMap();
+            if (!currencyMap.count(ASSETCHAINS_CHAINID) ||
+                !currencyMap.count(newChainID) ||
+                newGatewayConverter.weights[currencyMap[ASSETCHAINS_CHAINID]] < (SATOSHIDEN / 10) ||
+                newGatewayConverter.weights[currencyMap[newChainID]] < (SATOSHIDEN / 10))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "A gateway currency must be a fractional token that includes both the launch coin and PBaaS native coin at 10% or greater ratio each");
+            }
         }
     }
     else if (!newChain.gatewayConverterName.empty() || params.size() > 1)
@@ -3905,6 +3934,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     pbn.SetSameChain();
     pbn.SetPreLaunch();
     pbn.SetDefinitionNotarization();
+    pbn.nodes = startupNodes;
 
     // make the first chain notarization output
     cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
