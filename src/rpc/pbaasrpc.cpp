@@ -3598,11 +3598,18 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         newCurrency.preconverted = newCurrency.contributions;
         for (auto &currency : newCurrency.currencies)
         {
-            reserveCurrencies.push_back(CCurrencyDefinition());
+            if (currency == ASSETCHAINS_CHAINID)
+            {
+                hasCoreReserve = true;
+            }
+
             if (newCurrency.systemID == currency)
             {
                 continue;
             }
+
+            reserveCurrencies.push_back(CCurrencyDefinition());
+
             if (!GetCurrencyDefinition(currency, reserveCurrencies.back()) ||
                 reserveCurrencies.back().startBlock >= height)
             {
@@ -3617,11 +3624,6 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             if (!reserveCurrencies.back().CanBeReserve())
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + EncodeDestination(CIdentityID(currency)) + " may not be used as a reserve");
-            }
-
-            if (currency == ASSETCHAINS_CHAINID)
-            {
-                hasCoreReserve = true;
             }
         }
         if (!hasCoreReserve)
@@ -3751,6 +3753,11 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         launchIdentity = static_cast<CIdentity>(keyAndIdentity.second);
     }
 
+    if (!canSign)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot sign for ID " + newChain.name);
+    }
+
     if (!(launchIdentity = CIdentity::LookupIdentity(newChainID, 0, &idHeight, &idTxIn)).IsValidUnrevoked() || launchIdentity.HasActiveCurrency())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID " + newChain.name + " not found, is revoked, or already has an active currency defined");
@@ -3765,7 +3772,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // validate and start the converter currency as well
     CCurrencyDefinition newGatewayConverter;
     std::vector<CNodeData> startupNodes;
-    if (newChain.IsPBaaSChain())
+    if (newChain.IsPBaaSChain() || newChain.IsGateway())
     {
         UniValue launchNodesUni = find_value(params[0], "nodes");
         if (launchNodesUni.isArray() && launchNodesUni.size())
@@ -3805,7 +3812,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             gatewayConverterMap.insert(std::make_pair("name", newChain.gatewayConverterName));
             gatewayConverterMap.insert(std::make_pair("launchsystemid", EncodeDestination(CIdentityID(thisChainID))));
             gatewayConverterMap.insert(std::make_pair("systemid", EncodeDestination(CIdentityID(newChainID))));
-            gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
 
             UniValue currenciesUni(UniValue::VARR);
             currenciesUni.push_back(EncodeDestination(CIdentityID(thisChainID)));
@@ -3894,12 +3900,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newChain)), 
                                          CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
                                          false});
-
-    // if this is a gateway, we must notarize its counterpart, otherwise notarization is finalized, since we start on one chain
-    if (newChain.IsGateway())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Gateway currencies are not yet supported");
-    }
 
     // create import and export outputs
     cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
@@ -4004,7 +4004,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
 
     // now, setup the gateway converter currency, if appropriate
-    if (newChain.IsPBaaSChain() && newGatewayConverter.IsValid())
+    if ((newChain.IsPBaaSChain() || newChain.IsGateway()) && newGatewayConverter.IsValid())
     {
         // get initial currency state at this height
         CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height());
