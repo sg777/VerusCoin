@@ -3810,6 +3810,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                                  CCurrencyDefinition::OPTION_TOKEN +
                                                                  CCurrencyDefinition::OPTION_PBAAS_CONVERTER));
             gatewayConverterMap.insert(std::make_pair("parent", EncodeDestination(CIdentityID(newChainID))));
+            gatewayConverterMap.insert(std::make_pair("name", newChain.gatewayConverterName));
             gatewayConverterMap.insert(std::make_pair("launchsystemid", EncodeDestination(CIdentityID(thisChainID))));
             gatewayConverterMap.insert(std::make_pair("systemid", EncodeDestination(CIdentityID(newChainID))));
             gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
@@ -3819,19 +3820,26 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             currenciesUni.push_back(EncodeDestination(CIdentityID(newChainID)));
             gatewayConverterMap.insert(std::make_pair("currencies", currenciesUni));
 
-            auto curKeys = params[1].getKeys();
-            auto curValues = params[1].getValues();
-            for (int i = 0; i < curKeys.size(); i++)
+            if (params.size() > 1)
             {
-                gatewayConverterMap.insert(std::make_pair(curKeys[i], curValues[i]));
+                auto curKeys = params[1].getKeys();
+                auto curValues = params[1].getValues();
+                for (int i = 0; i < curKeys.size(); i++)
+                {
+                    gatewayConverterMap.insert(std::make_pair(curKeys[i], curValues[i]));
+                }
             }
 
             gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
 
-            // set the parent and system of the new gateway converter to the new currency
-            newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(params[1], height, newChainID);
+            UniValue newCurUni(UniValue::VOBJ);
+            for (auto oneProp : gatewayConverterMap)
+            {
+                newCurUni.pushKV(oneProp.first, oneProp.second);
+            }
 
-            newGatewayConverter.startBlock = newChain.startBlock;
+            // set the parent and system of the new gateway converter to the new currency
+            newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(newCurUni, height, newChainID);
 
             // check that basics are correct, fractional that includes correct currencies, etc.
             if (newGatewayConverter.parent != newChainID ||
