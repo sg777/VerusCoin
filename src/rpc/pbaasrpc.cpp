@@ -3594,18 +3594,15 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserves must have non-zero initial contributions for each reserve for fractional currency " + newCurrency.name);
         }
-        for (int i = 0; i < newCurrency.contributions.size(); i++)
-        {
-            if (newCurrency.contributions[i] <= 0)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserves must have non-zero initial contributions " + EncodeDestination(CIdentityID(newCurrency.currencies[i])));
-            }
-        }
 
         newCurrency.preconverted = newCurrency.contributions;
         for (auto &currency : newCurrency.currencies)
         {
             reserveCurrencies.push_back(CCurrencyDefinition());
+            if (newCurrency.systemID == currency)
+            {
+                continue;
+            }
             if (!GetCurrencyDefinition(currency, reserveCurrencies.back()) ||
                 reserveCurrencies.back().startBlock >= height)
             {
@@ -3832,6 +3829,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             {
                 newCurUni.pushKV(oneProp.first, oneProp.second);
             }
+
+            printf("%s: gatewayConverter definition:\n%s\n", __func__, newCurUni.write(1,2).c_str());
 
             // set the parent and system of the new gateway converter to the new currency
             newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(newCurUni, height, newChainID);
