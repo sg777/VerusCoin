@@ -625,7 +625,7 @@ uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=f
         return retVal;
     }
     ParseSubNames(currencyStr, extraName, true);
-    if (currencyStr.back() == '@' || (extraName != "" && boost::to_lower_copy(extraName) != boost::to_lower_copy(VERUS_CHAINNAME)))
+    if (currencyStr.back() == '@')
     {
         return retVal;
     }
@@ -1485,7 +1485,7 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
-    LOCK2(cs_main, mempool.cs);
+    LOCK(cs_main);
 
     if (!GetAddressUnspent(CReserveTransfer::ReserveTransferKey(), CScript::P2IDX, unspentOutputs))
     {
@@ -3853,7 +3853,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                 CCurrencyDefinition::OPTION_PBAAS_CONVERTER;
             gatewayConverterMap["options"] = (int64_t)converterOptions;
 
-            printf("%s: gatewayConverter definition:\n%s\n", __func__, newCurUni.write(1,2).c_str());
+            //printf("%s: gatewayConverter definition:\n%s\n", __func__, newCurUni.write(1,2).c_str());
 
             // set the parent and system of the new gateway converter to the new currency
             newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(newCurUni, height, newChainID);
@@ -3981,9 +3981,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
-    CCurrencyValueMap launchFee(std::vector<uint160>({ASSETCHAINS_CHAINID}),
+    CCurrencyValueMap launchFee(std::vector<uint160>({thisChainID}),
                                 std::vector<int64_t>({ConnectedChains.ThisChain().GetCurrencyRegistrationFee()}));
-    CCrossChainExport ccx = CCrossChainExport(newChain.systemID, 0, height, newChain.systemID, newChainID, 0, launchFee, launchFee, uint256());
+    CCrossChainExport ccx = CCrossChainExport(thisChainID, 0, height, newChain.systemID, newChainID, 0, launchFee, launchFee, uint256());
     ccx.SetPreLaunch();
     ccx.SetChainDefinition();
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx)), 0, false});
@@ -4022,6 +4022,12 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // now, setup the gateway converter currency, if appropriate
     if ((newChain.IsPBaaSChain() || newChain.IsGateway()) && newGatewayConverter.IsValid())
     {
+        cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
+        std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
+        vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newGatewayConverter)), 
+                                            CCurrencyDefinition::DEFAULT_OUTPUT_VALUE, 
+                                            false});
+
         // get initial currency state at this height
         CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height());
         int currencyIndex = gatewayCurrencyState.GetReserveMap()[newChainID];
@@ -4038,9 +4044,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                            0);
 
         // launch notarizations are on this chain
-        pbn.SetSameChain();
-        pbn.SetPreLaunch();
-        pbn.SetDefinitionNotarization();
+        gatewayPbn.SetSameChain();
+        gatewayPbn.SetPreLaunch();
+        gatewayPbn.SetDefinitionNotarization();
 
         // create import and export outputs
         cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
@@ -4091,7 +4097,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         // export thread
         cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-        CCrossChainExport gatewayCcx = CCrossChainExport(newGatewayConverter.systemID, 0, height, newChain.systemID, gatewayCurrencyID, 0, launchFee, launchFee, uint256());
+        CCrossChainExport gatewayCcx = CCrossChainExport(thisChainID, 0, height, newGatewayConverter.systemID, gatewayCurrencyID, 0, launchFee, launchFee, uint256());
         gatewayCcx.SetPreLaunch();
         gatewayCcx.SetChainDefinition();
 

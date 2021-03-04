@@ -306,7 +306,8 @@ CPubKey GetScriptPublicKey(const CScript &scriptPubKey)
 }
 
 // call a chain that we consider a notary chain, meaning we call its daemon, not the other way around,
-// retrieve new exports that we have not imported, and process them.
+// retrieve new exports that we have not imported, and process them. Also, send any exports that are now
+// provable with the available notarization on the specified chain.
 void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastConfirmed, CUTXORef &lastConfirmedUTXO, uint32_t nHeight)
 {
     if (CConstVerusSolutionVector::GetVersionByHeight(nHeight) < CActivationHeight::ACTIVATE_PBAAS || 

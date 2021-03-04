@@ -6573,21 +6573,9 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
         return RPC_INVALID_PARAMETER;
     }
 
-    CCurrencyDefinition newCurrency;
-
     // make sure that there are recipients, all recipients expect reserve inputs, and amounts are all non-negative
     BOOST_FOREACH (const CRecipient& recipient, vecSend)
     {
-        COptCCParams p;
-        if (recipient.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CURRENCY_DEFINITION && p.vData.size() >= 1)
-        {
-            if (newCurrency.IsValid())
-            {
-                strFailReason = _("A normal transaction cannot define define multiple currencies");
-                return RPC_INVALID_PARAMETER;
-            }
-            newCurrency = CCurrencyDefinition(p.vData[0]);
-        }
         CCurrencyValueMap values = recipient.scriptPubKey.ReserveOutValue();
         CCurrencyValueMap zeroes = values - values; // zero values of the same currencies
 
@@ -6623,11 +6611,6 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
             strFailReason = _("Transaction amounts must not be negative");
             return RPC_INVALID_PARAMETER;
         }
-    }
-
-    if (newCurrency.IsValid())
-    {
-        totalReserveOutput.valueMap.erase(newCurrency.GetID());
     }
 
     //printf("totalReserveOutput: %s\n", totalReserveOutput.ToUniValue().write(1,2).c_str());

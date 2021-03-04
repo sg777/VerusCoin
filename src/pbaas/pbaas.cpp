@@ -3248,6 +3248,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                 destDef = GetCachedCurrency(lastChain);
 
+                if (!destDef.IsValid())
+                {
+                    printf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(lastChain)).c_str());
+                    LogPrintf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(lastChain)).c_str());
+                    break;
+                }
+
                 if (destDef.systemID == thisChainID)
                 {
                     if (destDef.IsGateway())
@@ -3265,12 +3272,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     systemDef = GetCachedCurrency(destDef.systemID);
                 }
 
-                if (!destDef.IsValid())
-                {
-                    printf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(lastChain)).c_str());
-                    LogPrintf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(lastChain)).c_str());
-                    break;
-                }
                 if (!systemDef.IsValid())
                 {
                     printf("%s: cannot find destination system definition %s\n", __func__, EncodeDestination(CIdentityID(destDef.systemID)).c_str());
@@ -3315,7 +3316,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         !(isSameChain ||
                           (lastSysExport.second.scriptPubKey.IsPayToCryptoCondition(p) &&
                            p.IsValid() &&
-                           p.evalCode != EVAL_CROSSCHAIN_EXPORT &&
+                           p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
                            p.vData.size() &&
                            (sysCCX = CCrossChainExport(p.vData[0])).IsValid())))
                     {
