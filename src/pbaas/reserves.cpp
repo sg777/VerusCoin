@@ -1615,7 +1615,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     std::vector<CReserveTransfer> importTransfers;
 
                     // if this is the source system for a cci that we already processed, skip it
-                    if (cci.flags & cci.FLAG_SOURCESYSTEM)
+                    if ((cci.flags & cci.FLAG_SOURCESYSTEM) || (cci.flags & cci.FLAG_DEFINITIONIMPORT))
                     {
                         break;
                     }
