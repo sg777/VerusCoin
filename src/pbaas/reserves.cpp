@@ -1620,15 +1620,15 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         break;
                     }
 
-                    if (!cci.GetImportInfo(tx, i, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutStart, eOutEnd, importTransfers))
-                    {
-                        flags &= ~IS_VALID;
-                        flags |= IS_REJECT;
-                        return;
-                    }
-
                     if (!cci.IsDefinitionImport())
                     {
+                        if (!cci.GetImportInfo(tx, i, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutStart, eOutEnd, importTransfers))
+                        {
+                            flags &= ~IS_VALID;
+                            flags |= IS_REJECT;
+                            return;
+                        }
+
                         importCurrencyDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID);
                         sourceSystemDef = ConnectedChains.GetCachedCurrency(cci.sourceSystemID);
 

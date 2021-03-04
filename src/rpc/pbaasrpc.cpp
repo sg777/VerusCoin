@@ -4040,6 +4040,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         // launch notarizations are on this chain
         pbn.SetSameChain();
         pbn.SetPreLaunch();
+        pbn.SetDefinitionNotarization();
 
         // create import and export outputs
         cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
@@ -4058,6 +4059,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
         // and the reserve transfer outputs.
         CCrossChainImport gatewayCci = CCrossChainImport(newGatewayConverter.systemID, height, gatewayCurrencyID, CCurrencyValueMap(), CCurrencyValueMap());
+        gatewayCci.SetSameChain(newGatewayConverter.systemID == ASSETCHAINS_CHAINID);
+        gatewayCci.SetDefinitionImport(true);
+
         vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &gatewayCci)), 0, false});
 
         // make the first chain notarization output
