@@ -3811,7 +3811,17 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             gatewayConverterMap.insert(std::make_pair("parent", EncodeDestination(CIdentityID(newChainID))));
             gatewayConverterMap.insert(std::make_pair("name", newChain.gatewayConverterName));
             gatewayConverterMap.insert(std::make_pair("launchsystemid", EncodeDestination(CIdentityID(thisChainID))));
-            gatewayConverterMap.insert(std::make_pair("systemid", EncodeDestination(CIdentityID(newChainID))));
+
+            // if this is a gateway, the converter runs on the launching chain by defaylt
+            // if PBaaS chain, on the new system
+            if (newChain.IsGateway())
+            {
+                gatewayConverterMap.insert(std::make_pair("systemid", EncodeDestination(CIdentityID(thisChainID))));
+            }
+            else
+            {
+                gatewayConverterMap.insert(std::make_pair("systemid", EncodeDestination(CIdentityID(newChainID))));
+            }
 
             UniValue currenciesUni(UniValue::VARR);
             currenciesUni.push_back(EncodeDestination(CIdentityID(thisChainID)));
@@ -3835,6 +3845,13 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             {
                 newCurUni.pushKV(oneProp.first, oneProp.second);
             }
+
+            uint32_t converterOptions = uni_get_int64(gatewayConverterMap["options"]);
+            converterOptions &= ~(CCurrencyDefinition::OPTION_GATEWAY + CCurrencyDefinition::OPTION_PBAAS);
+            converterOptions |= CCurrencyDefinition::OPTION_FRACTIONAL +
+                                CCurrencyDefinition::OPTION_TOKEN +
+                                CCurrencyDefinition::OPTION_PBAAS_CONVERTER;
+            gatewayConverterMap["options"] = (int64_t)converterOptions;
 
             printf("%s: gatewayConverter definition:\n%s\n", __func__, newCurUni.write(1,2).c_str());
 
@@ -3905,7 +3922,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
     pk = CPubKey(ParseHex(CC.CChexstr));
 
-    if (newChain.proofProtocol == newChain.PROOF_PBAASMMR || newChain.proofProtocol == newChain.PROOF_CHAINID)
+    if (newChain.proofProtocol == newChain.PROOF_PBAASMMR ||
+        newChain.proofProtocol == newChain.PROOF_ETHNOTARIZATION ||
+        newChain.proofProtocol == newChain.PROOF_CHAINID)
     {
         dests = std::vector<CTxDestination>({pk.GetID()});
     }
@@ -3914,9 +3933,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid notarization protocol specified");
     }
 
-    // if this is a token on this chain, the transfer that is output here is burned through the export 
-    // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
-    // and the reserve transfer outputs.
     CCrossChainImport cci = CCrossChainImport(newChain.systemID, height, newChainID, CCurrencyValueMap(), CCurrencyValueMap());
     cci.SetSameChain(newChain.systemID == ASSETCHAINS_CHAINID);
     cci.SetDefinitionImport(true);
@@ -4009,8 +4025,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         // get initial currency state at this height
         CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height());
         int currencyIndex = gatewayCurrencyState.GetReserveMap()[newChainID];
+
         gatewayCurrencyState.reserves[currencyIndex] += newChain.gatewayConverterIssuance;
         gatewayCurrencyState.reserveIn[currencyIndex] += newChain.gatewayConverterIssuance;
+
         uint160 gatewayCurrencyID = newGatewayConverter.GetID();
 
         CPBaaSNotarization gatewayPbn = CPBaaSNotarization(gatewayCurrencyID, 
@@ -4118,7 +4136,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     if (newGatewayConverter.IsValid())
     {
-        launchDeposit = CReserveDeposit(newGatewayConverter.GetID(), CCurrencyValueMap());
+        uint160 gatewayDepositCurrencyID = newGatewayConverter.systemID == thisChainID ? 
+                                           newGatewayConverter.GetID() :
+                                           newGatewayConverter.systemID;
+        launchDeposit = CReserveDeposit(gatewayDepositCurrencyID, CCurrencyValueMap());
         vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
                                             ConnectedChains.ThisChain().GetCurrencyRegistrationFee(), 
                                             false});

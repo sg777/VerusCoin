@@ -1450,9 +1450,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
         return;
     }
 
+    int32_t solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
     // reserve descriptor transactions cannot run until identity activates
-    if (!chainActive.LastTip() ||
-        CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) < CConstVerusSolutionVector::activationHeight.ACTIVATE_IDENTITY)
+    if (!chainActive.LastTip() || solutionVersion < CConstVerusSolutionVector::activationHeight.ACTIVATE_IDENTITY)
     {
         return;
     }
@@ -1504,7 +1504,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 case EVAL_IDENTITY_PRIMARY:
                 {
                     // one identity per transaction
-                    if (p.version < p.VERSION_V3 || !p.vData.size() || identity.IsValid() || !(identity = CIdentity(p.vData[0])).IsValid())
+                    if (p.version < p.VERSION_V3 ||
+                        !p.vData.size() ||
+                        (solutionVersion < CActivationHeight::ACTIVATE_PBAAS && identity.IsValid()) ||
+                        !(identity = CIdentity(p.vData[0])).IsValid())
                     {
                         flags &= ~IS_VALID;
                         flags |= IS_REJECT;
@@ -1592,7 +1595,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                     // if this is an import, add the amount imported to the reserve input and the amount of reserve output as
                     // the amount available to take from this transaction in reserve as an import fee
-                    if (flags & IS_IMPORT || !p.vData.size() || !(cci = CCrossChainImport(p.vData[0])).IsValid())
+                    if (!p.vData.size() || !(cci = CCrossChainImport(p.vData[0])).IsValid())
                     {
                         flags &= ~IS_VALID;
                         flags |= IS_REJECT;
@@ -1610,6 +1613,12 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     int32_t importNotarizationOut;
                     int32_t eOutStart, eOutEnd;
                     std::vector<CReserveTransfer> importTransfers;
+
+                    // if this is the source system for a cci that we already processed, skip it
+                    if (cci.flags & cci.FLAG_SOURCESYSTEM)
+                    {
+                        break;
+                    }
 
                     if (!cci.GetImportInfo(tx, i, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutStart, eOutEnd, importTransfers))
                     {
@@ -1642,8 +1651,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 __func__, 
                                 checkState.ToUniValue().write(1,2).c_str());
                         */
-
-
                         checkState.RevertReservesAndSupply();
                         if (cci.IsInitialLaunchImport())
                         {
