@@ -764,14 +764,17 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             GetNotarizationData(chainID, cnd);
             int32_t confirmedHeight = -1, bestHeight = -1;
 
-            std::vector<CNodeData> vNNodes;
+            std::map<std::string, CNodeData> vNNodes;
 
             if (cnd.forks.size())
             {
                 // get all nodes from notarizations of the best chain into a vector
                 for (auto &oneNot : cnd.forks[cnd.bestChain])
                 {
-                    vNNodes.insert(vNNodes.end(), cnd.vtx[oneNot].second.nodes.begin(), cnd.vtx[oneNot].second.nodes.end());
+                    for (auto &oneNode : cnd.vtx[oneNot].second.nodes)
+                    {
+                        vNNodes.insert(std::make_pair(oneNode.networkAddress, oneNode));
+                    }
                 }
 
                 confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
@@ -779,22 +782,32 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
                 // shuffle and take 8 nodes,
                 // up to two of which will be from the last confirmed notarization if present
-                std::random_shuffle(vNNodes.begin(), vNNodes.end());
                 int numConfirmedNodes = cnd.lastConfirmed == -1 ? 0 : cnd.vtx[cnd.lastConfirmed].second.nodes.size();
-                if (vNNodes.size() > (8 - numConfirmedNodes))
+                int numToRemove = vNNodes.size() - (8 - numConfirmedNodes);
+                if (numToRemove > 0)
                 {
-                    vNNodes.resize(8);
+                    for (int i = 0; i < numToRemove; i++)
+                    {
+                        int idxToRemove = (insecure_rand() % vNNodes.size());
+                        auto removeIt = vNNodes.begin();
+                        int j;
+                        for (j = 0; j < idxToRemove; removeIt++, j++);
+                        vNNodes.erase(removeIt);
+                    }
                 }
                 if (numConfirmedNodes)
                 {
-                    vNNodes.insert(vNNodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.begin(), cnd.vtx[cnd.lastConfirmed].second.nodes.end());
+                    for (int i = 0; i < numConfirmedNodes; i++)
+                    {
+                        vNNodes.insert(std::make_pair(cnd.vtx[cnd.lastConfirmed].second.nodes[i].networkAddress, cnd.vtx[cnd.lastConfirmed].second.nodes[i]));
+                    }
                 }
                 if (vNNodes.size())
                 {
                     UniValue nodeArr(UniValue::VARR);
                     for (auto &oneNode : vNNodes)
                     {
-                        nodeArr.push_back(oneNode.ToUniValue());
+                        nodeArr.push_back(oneNode.second.ToUniValue());
                     }
                     ret.push_back(Pair("nodes", nodeArr));
                 }
@@ -3789,13 +3802,13 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 }
             }
         }
+        if (startupNodes.size() > CCurrencyDefinition::MAX_STARTUP_NODES)
+        {
+            startupNodes.resize(CCurrencyDefinition::MAX_STARTUP_NODES);
+        }
         if (!startupNodes.size())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Must specify valid, initial launch nodes for a PBaaS chain");
-        }
-        else if (startupNodes.size() > CCurrencyDefinition::MAX_STARTUP_NODES)
-        {
-            startupNodes.resize(CCurrencyDefinition::MAX_STARTUP_NODES);
         }
 
         if (!newChain.gatewayConverterName.empty())
