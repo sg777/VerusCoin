@@ -915,7 +915,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                 {
                     {
                         LOCK(cs_mergemining);
-                        notarySystems[VERUS_CHAINID].height = uni_get_int64(find_value(chainDef, "lastconfirmedcurrencystate"));
+                        notarySystems[VERUS_CHAINID].height = uni_get_int64(find_value(chainDef, "lastconfirmedheight"));
                     }
 
                     // if we have not past block 1 yet, store the best known update of our current state
