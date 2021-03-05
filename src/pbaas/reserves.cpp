@@ -508,7 +508,7 @@ bool CCrossChainImport::ValidateImport(const CTransaction &tx,
     return ValidateImport(tx, numImportin, numImportOut, ccx, importNotarization, reserveTransfers, state);
 }
 
-CCurrencyState::CCurrencyState(const UniValue &obj)
+CCurrencyState::CCurrencyState(const UniValue &obj) : version(VERSION_CURRENT)
 {
     try
     {
@@ -639,22 +639,46 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
         std::vector<std::vector<CAmount>> columnAmounts;
 
         auto currenciesValue = find_value(obj, "currencies");
-        std::vector<std::string> rowNames;
-        for (int i = 0; i < currenciesValue.size(); i++)
+        std::vector<std::string> rowNames = currenciesValue.getKeys();
+        if (!currencies.size() && rowNames.size())
         {
-            rowNames.push_back(EncodeDestination(CIdentityID(uni_get_str(currenciesValue[i]))));
+            currencies.resize(rowNames.size());
+            weights.resize(rowNames.size());
+            reserves.resize(rowNames.size());
+            for (int i = 0; i < rowNames.size(); i++)
+            {
+                currencies[i] = GetDestinationID(DecodeDestination(rowNames[i]));
+            }
+        }
+        else if (currencies.size())
+        {
+            rowNames.resize(currencies.size());
+            for (int i = 0; i < rowNames.size(); i++)
+            {
+                rowNames[i] = EncodeDestination(CIdentityID(currencies[i]));
+            }
+        }
+        if (currencies.size() != rowNames.size())
+        {
+            LogPrintf("%s: mismatch currencies and reserve currencies\n", __func__);
+            version = VERSION_INVALID;
+            return;
         }
         std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
         if (currenciesValue.isObject())
         {
+            //printf("%s: currencies: %s\n", __func__, currenciesValue.write(1,2).c_str());
             columnAmounts = ValueColumnsFromUniValue(currenciesValue, rowNames, columnNames);
-            reserveIn = columnAmounts[0];
-            nativeIn = columnAmounts[1];
-            reserveOut = columnAmounts[2];
-            conversionPrice = columnAmounts[4];
-            viaConversionPrice = columnAmounts[3];
-            fees = columnAmounts[5];
-            conversionFees = columnAmounts[6];
+            if (columnAmounts.size() == columnNames.size())
+            {
+                reserveIn = columnAmounts[0];
+                nativeIn = columnAmounts[1];
+                reserveOut = columnAmounts[2];
+                conversionPrice = columnAmounts[4];
+                viaConversionPrice = columnAmounts[3];
+                fees = columnAmounts[5];
+                conversionFees = columnAmounts[6];
+            }
         }
         nativeFees = uni_get_int64(find_value(obj, "nativefees"));
         nativeConversionFees = uni_get_int64(find_value(obj, "nativeconversionfees"));

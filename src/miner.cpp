@@ -2189,8 +2189,8 @@ void static VerusStaker(CWallet *pwallet)
                     static int outputCounter;
                     if (outputCounter++ % 60 == 0)
                     {
-                        printf("%s: waiting for block %u on %s before mining block 1\n", __func__, 
-                                                                                        ConnectedChains.ThisChain().startBlock, 
+                        printf("%s: waiting for confirmation of launch at or after block %u on %s before mining block 1\n", __func__, 
+                                                                                        (uint32_t)ConnectedChains.ThisChain().startBlock, 
                                                                                         ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
                         sleep(1);
                     }
@@ -2411,7 +2411,7 @@ void static BitcoinMiner_noeq()
                         ConnectedChains.IsNotaryAvailable() &&
                         !ConnectedChains.readyToStart)
                     {
-                        fprintf(stderr,"Waiting for block %d on %s chain to start.\n", ConnectedChains.ThisChain().startBlock,
+                        fprintf(stderr,"waiting for confirmation of launch at or after block %u on %s chain to start\n", (uint32_t)ConnectedChains.ThisChain().startBlock,
                                                                                         ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
                     }
                     else
