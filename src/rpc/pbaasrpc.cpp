@@ -2704,7 +2704,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // ensure that any initial export is explicit
             if (destSystemID != thisChainID && exportToCurrencyID != destSystemID)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly export a tranaction off chain -- \"exportto\" must match the destination system implied");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly export a transaction off chain -- \"exportto\" must match the destination system implied");
             }
 
             // "exportafter" requests an explicit export after an operation and reserves fees for doing so.
@@ -2841,7 +2841,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot preconvert to unspecified or invalid currency.");
                         }
                         CCurrencyValueMap validConversionCurrencies = CCurrencyValueMap(convertToCurrencyDef.currencies, 
-                                                                                        std::vector<CAmount>(convertToCurrencyDef.currencies.size()));
+                                                                                        std::vector<CAmount>(convertToCurrencyDef.currencies.size(), 1));
                         if (!validConversionCurrencies.valueMap.count(sourceCurrencyID))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ".");
