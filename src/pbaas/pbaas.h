@@ -728,14 +728,15 @@ public:
 class CRPCChainData
 {
 public:
-    CCurrencyDefinition chainDefinition;  // chain information for the specific chain
+    CCurrencyDefinition chainDefinition;    // chain information for the specific chain
     std::string     rpcHost;                // host of the chain's daemon
     int32_t         rpcPort;                // port of the chain's daemon
     std::string     rpcUserPass;            // user and password for this daemon
+    int64_t         lastConnectTime;        // set whenever we check valid
 
     CRPCChainData() {}
     CRPCChainData(CCurrencyDefinition &chainDef, std::string host, int32_t port, std::string userPass) :
-        chainDefinition(chainDef), rpcHost{host}, rpcPort(port), rpcUserPass(userPass) {}
+        chainDefinition(chainDef), rpcHost{host}, rpcPort(port), rpcUserPass(userPass), lastConnectTime(0) {}
 
     ADD_SERIALIZE_METHODS;
 
@@ -745,6 +746,7 @@ public:
         READWRITE(rpcHost);
         READWRITE(rpcPort);
         READWRITE(rpcUserPass);
+        READWRITE(lastConnectTime);
     }
 
     std::vector<unsigned char> AsVector()
@@ -755,6 +757,16 @@ public:
     bool IsValid() const
     {
         return chainDefinition.IsValid();
+    }
+
+    int64_t SetLastConnection(int64_t setTime)
+    {
+        return (lastConnectTime = setTime);
+    }
+
+    int64_t LastConnectionTime() const
+    {
+        return lastConnectTime;
     }
 
     uint160 GetID()
@@ -1047,7 +1059,7 @@ public:
     bool CheckVerusPBaaSAvailable(UniValue &chainInfo, UniValue &chainDef);
     bool CheckVerusPBaaSAvailable();      // may use RPC to call Verus
     bool IsVerusPBaaSAvailable();
-    bool IsNotaryAvailable();
+    bool IsNotaryAvailable(bool callToCheck=false);
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {
         std::vector<CCurrencyDefinition> ret;

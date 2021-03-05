@@ -858,11 +858,6 @@ bool CConnectedChains::IsVerusPBaaSAvailable()
     return IsNotaryAvailable() && FirstNotaryChain().chainDefinition.GetID() == VERUS_CHAINID;
 }
 
-bool CConnectedChains::IsNotaryAvailable()
-{
-    return !(FirstNotaryChain().rpcHost.empty() || FirstNotaryChain().rpcPort == 0 || FirstNotaryChain().rpcUserPass.empty());
-}
-
 extern string PBAAS_HOST, PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue &chainDefUni)
@@ -876,11 +871,17 @@ bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue
             CCurrencyDefinition chainDef(chainDefUni);
             if (chainDef.IsValid())
             {
-                if (!notarySystems.count(chainDef.GetID()))
+                /*printf("%s: \n%s\nfirstnotary: %s\ngetid: %s\n", __func__, 
+                    chainDef.ToUniValue().write(1,2).c_str(), 
+                    EncodeDestination(CIdentityID(notarySystems.begin()->first)).c_str(), 
+                    EncodeDestination(CIdentityID(chainDef.GetID())).c_str());
+                */
+                if (notarySystems.count(chainDef.GetID()))
                 {
-                    notarySystems[chainDef.GetID()] = CNotarySystemInfo(uni_get_int(find_value(chainInfoUni, "blocks")), 
+                    notarySystems[chainDef.GetID()] = CNotarySystemInfo(uni_get_int64(find_value(chainInfoUni, "blocks")), 
                                                       CRPCChainData(chainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS),
                                                       CCurrencyDefinition());
+                    notarySystems[chainDef.GetID()].notaryChain.SetLastConnection(GetTime());
                 }
             }
         }
@@ -896,7 +897,7 @@ uint32_t CConnectedChains::NotaryChainHeight()
 
 bool CConnectedChains::CheckVerusPBaaSAvailable()
 {
-    if (!IsVerusActive())
+    if (FirstNotaryChain().IsValid())
     {
         // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
         // tolerate only 15 second timeout
@@ -912,20 +913,27 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
 
                 if (!chainDef.isNull() && CheckVerusPBaaSAvailable(chainInfo, chainDef))
                 {
+                    {
+                        LOCK(cs_mergemining);
+                        notarySystems[VERUS_CHAINID].height = uni_get_int64(find_value(chainDef, "lastconfirmedcurrencystate"));
+                    }
+
                     // if we have not past block 1 yet, store the best known update of our current state
                     if ((!chainActive.LastTip() || !chainActive.LastTip()->GetHeight()))
                     {
                         bool success = false;
-                        params.clear();
+                        params = UniValue(UniValue::VARR);
                         params.push_back(EncodeDestination(CIdentityID(thisChain.GetID())));
                         chainDef = find_value(RPCCallRoot("getcurrency", params), "result");
                         if (!chainDef.isNull())
                         {
+                            CCoinbaseCurrencyState checkState(find_value(chainDef, "lastconfirmedcurrencystate"));
                             CCurrencyDefinition currencyDef(chainDef);
-                            if (currencyDef.IsValid())
+                            if (currencyDef.IsValid() && checkState.IsValid() && (checkState.IsLaunchConfirmed()))
                             {
                                 thisChain = currencyDef;
-                                if (NotaryChainHeight() >= thisChain.startBlock)
+                                uint32_t currentNotaryHeight = NotaryChainHeight();
+                                if (currentNotaryHeight >= thisChain.startBlock)
                                 {
                                     readyToStart = true;    // this only gates mining of block one, to be sure we have the latest definition
                                 }
@@ -943,6 +951,17 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
         }
     }
     return false;
+}
+
+bool CConnectedChains::IsNotaryAvailable(bool callToCheck)
+{
+    if (!callToCheck)
+    {
+        // if we aren't checking, we consider unavailable no contact in the last two minutes
+        return (GetTime() - FirstNotaryChain().LastConnectionTime() < (120000));
+    }
+    return !(FirstNotaryChain().rpcHost.empty() || FirstNotaryChain().rpcPort == 0 || FirstNotaryChain().rpcUserPass.empty()) &&
+           CheckVerusPBaaSAvailable();
 }
 
 int CConnectedChains::GetThisChainPort() const
@@ -3754,7 +3773,7 @@ void CConnectedChains::SubmissionThread()
             }
 
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
-            if (IsNotaryAvailable())
+            if (IsNotaryAvailable(true))
             {
                 // check to see if we have recently earned a block with an earned notarization that qualifies for
                 // submitting an accepted notarization
@@ -3764,16 +3783,6 @@ void CConnectedChains::SubmissionThread()
                     int32_t txIndex = -1, height;
                     {
                         LOCK(cs_mergemining);
-                        if (earnedNotarizationHeight && earnedNotarizationHeight <= chainActive.Height() && earnedNotarizationBlock.GetHash() == chainActive[earnedNotarizationHeight]->GetBlockHash())
-                        {
-                            blk = earnedNotarizationBlock;
-                            earnedNotarizationBlock = CBlock();
-                            txIndex = earnedNotarizationIndex;
-                            height = earnedNotarizationHeight;
-                            earnedNotarizationHeight = 0;
-                        }
-                    }
-
                     if (txIndex != -1)
                     {
                         LOCK(cs_main);
@@ -3795,6 +3804,16 @@ void CConnectedChains::SubmissionThread()
                         {
                             //printf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
                             //LogPrintf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
+                        }
+                    }
+
+                        if (earnedNotarizationHeight && earnedNotarizationHeight <= chainActive.Height() && earnedNotarizationBlock.GetHash() == chainActive[earnedNotarizationHeight]->GetBlockHash())
+                        {
+                            blk = earnedNotarizationBlock;
+                            earnedNotarizationBlock = CBlock();
+                            txIndex = earnedNotarizationIndex;
+                            height = earnedNotarizationHeight;
+                            earnedNotarizationHeight = 0;
                         }
                     }
                 }

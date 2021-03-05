@@ -330,6 +330,7 @@ bool SetThisChain(const UniValue &chainDefinition)
         notaryChainDef.options = (notaryChainDef.OPTION_CANBERESERVE | notaryChainDef.OPTION_ID_REFERRALS);
         notaryChainDef.idRegistrationFees = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
         notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
+        VERUS_CHAINNAME = notaryChainDef.name;
         notaryChainDef.systemID = notaryChainDef.GetID();
 
         ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
@@ -337,6 +338,7 @@ bool SetThisChain(const UniValue &chainDefinition)
         ASSETCHAINS_TIMEUNLOCKTO = 0;
 
         LOCK(cs_main);
+        //printf("%s: %s\n", __func__, EncodeDestination(CIdentityID(notaryChainDef.GetID())).c_str());
         ConnectedChains.notarySystems[notaryChainDef.GetID()] = 
             CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CCurrencyDefinition());
         CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);

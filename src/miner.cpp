@@ -1306,7 +1306,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
         // if we don't have a connected root PBaaS chain, we can't properly check
         // and notarize the start block, so we have to pass the notarization and cross chain steps
-        bool notaryConnected = ConnectedChains.CheckVerusPBaaSAvailable();
+        bool notaryConnected = ConnectedChains.IsNotaryAvailable();
 
         // at block 1 for a PBaaS chain, we validate launch conditions
         if (!isVerusActive && nHeight == 1)
@@ -2184,7 +2184,7 @@ void static VerusStaker(CWallet *pwallet)
 
             if ( ptr == 0 )
             {
-                if (newHeight == 1 && (isNotaryConnected = ConnectedChains.CheckVerusPBaaSAvailable()))
+                if (newHeight == 1 && (isNotaryConnected = ConnectedChains.IsNotaryAvailable()))
                 {
                     static int outputCounter;
                     if (outputCounter++ % 60 == 0)
@@ -2408,7 +2408,7 @@ void static BitcoinMiner_noeq()
                 if ( counter++ % 40 == 0 )
                 {
                     if (!IsVerusActive() &&
-                        ConnectedChains.IsVerusPBaaSAvailable() &&
+                        ConnectedChains.IsNotaryAvailable() &&
                         !ConnectedChains.readyToStart)
                     {
                         fprintf(stderr,"Waiting for block %d on %s chain to start.\n", ConnectedChains.ThisChain().startBlock,
