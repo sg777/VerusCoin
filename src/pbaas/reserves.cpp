@@ -510,72 +510,74 @@ bool CCrossChainImport::ValidateImport(const CTransaction &tx,
 
 CCurrencyState::CCurrencyState(const UniValue &obj)
 {
-    flags = uni_get_int(find_value(obj, "flags"));
-
-    std::string cIDStr = uni_get_str(find_value(obj, "currencyid"));
-    if (cIDStr != "")
+    try
     {
-        CTxDestination currencyDest = DecodeDestination(cIDStr);
-        currencyID = GetDestinationID(currencyDest);
-    }
+        flags = uni_get_int(find_value(obj, "flags"));
 
-    if (flags & FLAG_FRACTIONAL)
-    {
-        auto CurrenciesArr = find_value(obj, "reservecurrencies");
-        size_t numCurrencies;
-        if (!CurrenciesArr.isArray() ||
-            !(numCurrencies = CurrenciesArr.size()) ||
-            numCurrencies > MAX_RESERVE_CURRENCIES)
+        std::string cIDStr = uni_get_str(find_value(obj, "currencyid"));
+        if (cIDStr != "")
         {
-            version = VERSION_INVALID;
-            LogPrintf("Failed to proplerly specify currencies in reserve currency definition\n");
+            CTxDestination currencyDest = DecodeDestination(cIDStr);
+            currencyID = GetDestinationID(currencyDest);
         }
-        else
+
+        if (flags & FLAG_FRACTIONAL)
         {
-            // store currencies, weights, and reserves
-            try
+            auto CurrenciesArr = find_value(obj, "reservecurrencies");
+            size_t numCurrencies;
+            if (!CurrenciesArr.isArray() ||
+                !(numCurrencies = CurrenciesArr.size()) ||
+                numCurrencies > MAX_RESERVE_CURRENCIES)
             {
-                for (int i = 0; i < CurrenciesArr.size(); i++)
+                version = VERSION_INVALID;
+                LogPrintf("Failed to proplerly specify currencies in reserve currency definition\n");
+            }
+            else
+            {
+                // store currencies, weights, and reserves
+                try
                 {
-                    uint160 currencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(CurrenciesArr[i], "currencyid"))));
-                    if (currencyID.IsNull())
+                    for (int i = 0; i < CurrenciesArr.size(); i++)
                     {
-                        LogPrintf("Invalid currency ID\n");
-                        version = VERSION_INVALID;
-                        break;
+                        uint160 currencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(CurrenciesArr[i], "currencyid"))));
+                        if (currencyID.IsNull())
+                        {
+                            LogPrintf("Invalid currency ID\n");
+                            version = VERSION_INVALID;
+                            break;
+                        }
+                        currencies[i] = currencyID;
+                        weights[i] = AmountFromValue(find_value(CurrenciesArr[i], "weight"));
+                        reserves[i] = AmountFromValue(find_value(CurrenciesArr[i], "reserves"));
                     }
-                    currencies[i] = currencyID;
-                    weights[i] = AmountFromValue(find_value(CurrenciesArr[i], "weight"));
-                    reserves[i] = AmountFromValue(find_value(CurrenciesArr[i], "reserves"));
+                }
+                catch(const std::exception& e)
+                {
+                    std::cerr << e.what() << '\n';
+                    version = VERSION_INVALID;
+                    LogPrintf("Invalid specification of currencies, weights, and/or reserves in initial definition of reserve currency\n");
                 }
             }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-                version = VERSION_INVALID;
-                LogPrintf("Invalid specification of currencies, weights, and/or reserves in initial definition of reserve currency\n");
-            }
         }
-    }
 
-    if (version == VERSION_INVALID)
-    {
-        printf("Invalid currency specification, see debug.log for reason other than invalid flags\n");
-        LogPrintf("Invalid currency specification\n");
-    }
-    else
-    {
-        try
+        if (version == VERSION_INVALID)
+        {
+            printf("Invalid currency specification, see debug.log for reason other than invalid flags\n");
+            LogPrintf("Invalid currency specification\n");
+        }
+        else
         {
             initialSupply = AmountFromValue(find_value(obj, "initialsupply"));
             emitted = AmountFromValue(find_value(obj, "emitted"));
             supply = AmountFromValue(find_value(obj, "supply"));
         }
-        catch(const std::exception& e)
-        {
-            std::cerr << e.what() << '\n';
-            version = VERSION_INVALID;
-        }
+    }
+    catch(const std::exception& e)
+    {
+        printf("Invalid currency specification, see debug.log for reason other than invalid flags\n");
+        LogPrintf("Invalid currency specification\n");
+        version = VERSION_INVALID;
+        LogPrintf("%s: %s\n", __func__, e.what());
     }
 }
 
@@ -632,28 +634,36 @@ std::vector<std::vector<CAmount>> ValueColumnsFromUniValue(const UniValue &uni,
 
 CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyState(obj)
 {
-    std::vector<std::vector<CAmount>> columnAmounts;
+    try
+    {
+        std::vector<std::vector<CAmount>> columnAmounts;
 
-    auto currenciesValue = find_value(obj, "currencies");
-    std::vector<std::string> rowNames;
-    for (int i = 0; i < currencies.size(); i++)
-    {
-        rowNames.push_back(EncodeDestination(CIdentityID(currencies[i])));
+        auto currenciesValue = find_value(obj, "currencies");
+        std::vector<std::string> rowNames;
+        for (int i = 0; i < currenciesValue.size(); i++)
+        {
+            rowNames.push_back(EncodeDestination(CIdentityID(uni_get_str(currenciesValue[i]))));
+        }
+        std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
+        if (currenciesValue.isObject())
+        {
+            columnAmounts = ValueColumnsFromUniValue(currenciesValue, rowNames, columnNames);
+            reserveIn = columnAmounts[0];
+            nativeIn = columnAmounts[1];
+            reserveOut = columnAmounts[2];
+            conversionPrice = columnAmounts[4];
+            viaConversionPrice = columnAmounts[3];
+            fees = columnAmounts[5];
+            conversionFees = columnAmounts[6];
+        }
+        nativeFees = uni_get_int64(find_value(obj, "nativefees"));
+        nativeConversionFees = uni_get_int64(find_value(obj, "nativeconversionfees"));
     }
-    std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
-    if (currenciesValue.isObject())
+    catch(const std::exception& e)
     {
-        columnAmounts = ValueColumnsFromUniValue(currenciesValue, rowNames, columnNames);
-        reserveIn = columnAmounts[0];
-        nativeIn = columnAmounts[1];
-        reserveOut = columnAmounts[2];
-        conversionPrice = columnAmounts[4];
-        viaConversionPrice = columnAmounts[3];
-        fees = columnAmounts[5];
-        conversionFees = columnAmounts[6];
+        version = VERSION_INVALID;
+        LogPrintf("%s: %s\n", __func__, e.what());
     }
-    nativeFees = uni_get_int64(find_value(obj, "nativefees"));
-    nativeConversionFees = uni_get_int64(find_value(obj, "nativeconversionfees"));
 }
 
 CAmount CalculateFractionalOut(CAmount NormalizedReserveIn, CAmount Supply, CAmount NormalizedReserve, int32_t reserveRatio)

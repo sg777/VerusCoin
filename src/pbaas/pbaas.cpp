@@ -918,7 +918,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                         notarySystems[VERUS_CHAINID].height = uni_get_int64(find_value(chainDef, "lastconfirmedheight"));
                     }
 
-                    // if we have not past block 1 yet, store the best known update of our current state
+                    // if we have not passed block 1 yet, store the best known update of our current state
                     if ((!chainActive.LastTip() || !chainActive.LastTip()->GetHeight()))
                     {
                         bool success = false;
