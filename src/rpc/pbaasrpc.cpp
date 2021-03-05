@@ -337,7 +337,8 @@ bool SetThisChain(const UniValue &chainDefinition)
         ASSETCHAINS_TIMEUNLOCKTO = 0;
 
         LOCK(cs_main);
-        ConnectedChains.notarySystems[notaryChainDef.GetID()] = CNotarySystemInfo(0, CRPCChainData(notaryChainDef, "", 0, ""), CCurrencyDefinition());
+        ConnectedChains.notarySystems[notaryChainDef.GetID()] = 
+            CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CCurrencyDefinition());
         CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
         ASSETCHAINS_SUPPLY = currencyState.supply;
     }

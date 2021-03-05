@@ -1306,18 +1306,21 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
         // if we don't have a connected root PBaaS chain, we can't properly check
         // and notarize the start block, so we have to pass the notarization and cross chain steps
-        bool notaryConnected = ConnectedChains.IsNotaryAvailable();
+        bool notaryConnected = ConnectedChains.CheckVerusPBaaSAvailable();
 
         // at block 1 for a PBaaS chain, we validate launch conditions
         if (!isVerusActive && nHeight == 1)
         {
             CPBaaSNotarization launchNotarization;
-            if (!notaryConnected || !MakeBlockOneCoinbaseOutputs(coinbaseTx.vout, launchNotarization, Params().GetConsensus()))
+            if (!ConnectedChains.readyToStart)
+            {
+                return NULL;
+            }
+            if (!MakeBlockOneCoinbaseOutputs(coinbaseTx.vout, launchNotarization, Params().GetConsensus()))
             {
                 // can't mine block 1 if we are not connected to a notary
                 printf("%s: cannot create block one coinbase outputs\n", __func__);
                 LogPrintf("%s: cannot create block one coinbase outputs\n", __func__);
-                sleep(5000);
                 return NULL;
             }
             currencyState = launchNotarization.currencyState;
@@ -2114,6 +2117,7 @@ void static VerusStaker(CWallet *pwallet)
 
     const CChainParams& chainparams = Params();
     auto consensusParams = chainparams.GetConsensus();
+    bool isNotaryConnected = ConnectedChains.CheckVerusPBaaSAvailable();
 
     // Each thread has its own key
     CReserveKey reservekey(pwallet);
@@ -2180,9 +2184,24 @@ void static VerusStaker(CWallet *pwallet)
 
             if ( ptr == 0 )
             {
+                if (newHeight == 1 && (isNotaryConnected = ConnectedChains.CheckVerusPBaaSAvailable()))
+                {
+                    static int outputCounter;
+                    if (outputCounter++ % 60 == 0)
+                    {
+                        printf("%s: waiting for block %u on %s before mining block 1\n", __func__, 
+                                                                                        ConnectedChains.ThisChain().startBlock, 
+                                                                                        ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
+                        sleep(1);
+                    }
+                }
                 // wait to try another staking block until after the tip moves again
                 while ( chainActive.LastTip() == pindexPrev )
                     MilliSleep(250);
+                if (newHeight == 1)
+                {
+                    sleep(10);
+                }
                 continue;
             }
 
@@ -2390,7 +2409,7 @@ void static BitcoinMiner_noeq()
                 {
                     if (!IsVerusActive() &&
                         ConnectedChains.IsVerusPBaaSAvailable() &&
-                        ConnectedChains.readyToStart)
+                        !ConnectedChains.readyToStart)
                     {
                         fprintf(stderr,"Waiting for block %d on %s chain to start.\n", ConnectedChains.ThisChain().startBlock,
                                                                                         ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
