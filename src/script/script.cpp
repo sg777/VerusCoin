@@ -977,14 +977,14 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 uint160 currencyID = definition.GetID();
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(currencyID, CCurrencyDefinition::CurrencyDefinitionKey())));
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.systemID, CCurrencyDefinition::CurrencySystemKey())));
-                if (!definition.gatewayID.IsNull() && definition.gatewayID == currencyID && !definition.IsFractional())
+                if (!definition.IsGateway() && definition.gatewayID == currencyID)
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.gatewayID, CCurrencyDefinition::CurrencyGatewayKey())));
                 }
-                else if (definition.launchSystemID == ASSETCHAINS_CHAINID)
+                if (definition.launchSystemID == ASSETCHAINS_CHAINID)
                 {
                     // create an entry that will be indexed by the start block and queryable by block range
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.systemID, CCurrencyDefinition::CurrencyLaunchKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyLaunchKey())));
                 }
             }
             break;
