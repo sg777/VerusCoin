@@ -332,6 +332,7 @@ bool SetThisChain(const UniValue &chainDefinition)
         notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
         VERUS_CHAINNAME = notaryChainDef.name;
         notaryChainDef.systemID = notaryChainDef.GetID();
+        ASSETCHAINS_CHAINID = ConnectedChains.ThisChain().GetID();
 
         ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
         ASSETCHAINS_TIMEUNLOCKFROM = 0;
