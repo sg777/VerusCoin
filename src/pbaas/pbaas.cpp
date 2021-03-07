@@ -1202,7 +1202,8 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
             currencyState.SetPrelaunch(true);
             currencyState = AddPrelaunchConversions(curDef, 
                                                     currencyState, 
-                                                    notarization.IsValid() ? notarization.notarizationHeight : curDefHeight, 
+                                                    notarization.IsValid() && !notarization.IsDefinitionNotarization() ? 
+                                                        notarization.notarizationHeight + 1 : curDefHeight, 
                                                     height, 
                                                     curDefHeight);
         }
@@ -2677,6 +2678,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // 2) _txInputs is sorted
     // 3) the last export transaction is added as input outside of this call
 
+    AssertLockHeld(cs_main);
+
     newNotarization = lastNotarization;
     newNotarization.prevNotarization = lastNotarizationUTXO;
     inputsConsumed = 0;
@@ -3033,7 +3036,33 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // now, if we are clearing launch, determine if we should refund or launch and set notarization appropriately
     if (isClearLaunchExport)
     {
-        if (CCurrencyValueMap(_curDef.currencies, newNotarization.currencyState.reserves) < CCurrencyValueMap(_curDef.currencies, _curDef.minPreconvert))
+        // if we are connected to another currency, make sure it will also start before we fonfirm that we can
+        CCurrencyDefinition coLaunchCurrency;
+        CCoinbaseCurrencyState coLaunchState;
+        if (_curDef.IsPBaaSConverter())
+        {
+            coLaunchCurrency = destSystem;
+            coLaunchState = GetCurrencyState(destSystem, addHeight);
+        }
+        else if ((_curDef.IsPBaaSChain() || _curDef.IsGateway()) && !_curDef.gatewayConverterName.empty())
+        {
+            coLaunchCurrency = GetCachedCurrency(_curDef.GatewayConverterID());
+            if (!coLaunchCurrency.IsValid())
+            {
+                printf("%s: Invalid co-launch currency - likely corruption\n", __func__);
+                LogPrintf("%s: Invalid co-launch currency - likely corruption\n", __func__);
+                return false;
+            }
+            coLaunchState = GetCurrencyState(coLaunchCurrency, addHeight);
+        }
+
+        // check our currency and any co-launch currency to determine our eligibility, as ALL
+        // co-launch currencies must launch for one to launch
+        if (CCurrencyValueMap(_curDef.currencies, newNotarization.currencyState.reserves) < 
+                CCurrencyValueMap(_curDef.currencies, _curDef.minPreconvert) ||
+            (coLaunchCurrency.IsValid() &&
+             CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserves) < 
+                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert)))
         {
             newNotarization.currencyState.SetRefunding();
         }

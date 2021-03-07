@@ -694,7 +694,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
                                        ValueFromAmount(onePreAllocation.second)));
             preAllocationArr.push_back(onePreAlloc);
         }
-        obj.push_back(Pair("preallocation", preAllocationArr));
+        obj.push_back(Pair("preallocations", preAllocationArr));
     }
 
     if ((IsPBaaSChain() || IsGateway()))

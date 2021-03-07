@@ -2174,7 +2174,7 @@ void komodo_args(char *argv0)
                 UniValue preallocObj(UniValue::VOBJ);
                 preallocObj.push_back(Pair("DestinationPending", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
                 preallocArr.push_back(preallocObj);
-                obj.push_back(Pair("preallocation", preallocArr));
+                obj.push_back(Pair("preallocations", preallocArr));
             }
             SetThisChain(obj);
             paramsLoaded = true;

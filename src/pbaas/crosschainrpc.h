@@ -733,6 +733,17 @@ public:
         return GetID(Name, Parent);
     }
 
+    uint160 GatewayConverterID() const
+    {
+        uint160 retVal;
+        if (!gatewayConverterName.empty())
+        {
+            uint160 parentID = GetID();
+            retVal = GetID(gatewayConverterName, parentID);
+        }
+        return retVal;
+    }
+
     int64_t GetCurrencyRegistrationFee() const
     {
         return currencyRegistrationFee;
