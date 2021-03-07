@@ -2419,7 +2419,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 printf("%s: cannot find tx in mempool %s\n", __func__, newImportTx.GetHash().GetHex().c_str());
             }
-            UpdateCoins(newImportTx, view, nHeight);
+            UpdateCoins(newImportTx, view, nHeight + 1);
             if (!view.HaveCoins(newImportTx.GetHash()))
             {
                 printf("%s: cannot find tx in view %s\n", __func__, newImportTx.GetHash().GetHex().c_str());
@@ -3426,7 +3426,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             break;
                         }
 
-                        TransactionBuilder tb(Params().GetConsensus(), nHeight);
+                        TransactionBuilder tb(Params().GetConsensus(), nHeight + 1);
                         tb.SetFee(0);
 
                         // add input from last export, all consumed txInputs, and all outputs created to make 
@@ -3535,6 +3535,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                 LogPrintf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
                                 break;
                             }
+                            UpdateCoins(tx, view, nHeight + 1);
                         }
                         else
                         {
@@ -3666,7 +3667,7 @@ void CConnectedChains::SignAndCommitImportTransactions(const CTransaction &lastI
             }
             else
             {
-                UpdateCoins(signedTx, view, nHeight);
+                UpdateCoins(signedTx, view, nHeight + 1);
                 lastSignedHash = signedTx.GetHash();
             }
         }
