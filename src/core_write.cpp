@@ -697,9 +697,8 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("preallocation", preAllocationArr));
     }
 
-    if ((IsPBaaSChain() && !gatewayConverterName.empty()) || IsPBaaSConverter())
+    if ((IsPBaaSChain() || IsGateway()))
     {
-        obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
         obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
         obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
     }

@@ -838,7 +838,8 @@ public:
         FLAG_EVIDENCEONLY = 0x10,               // when set, this is not indexed as an active export
         FLAG_GATEWAYEXPORT = 0x20,              // when set, will be exported to a gateway currency, which may get routed from this chain as systemID
         FLAG_DEFINITIONEXPORT = 0x40,           // set on only the first export
-        FLAG_POSTLAUNCH = 0x80                  // set post launch
+        FLAG_POSTLAUNCH = 0x80,                 // set post launch
+        FLAG_SYSTEMTHREAD = 0x100               // export that is there to ensure continuous export thread only
     };
 
     uint16_t nVersion;                          // current version
@@ -994,6 +995,23 @@ public:
         }
     }
 
+    bool IsSystemThreadExport() const
+    {
+        return flags & FLAG_SYSTEMTHREAD;
+    }
+
+    void SetSystemThreadExport(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_SYSTEMTHREAD;
+        }
+        else
+        {
+            flags &= ~FLAG_SYSTEMTHREAD;
+        }
+    }
+
     bool IsChainDefinition() const
     {
         return flags & FLAG_DEFINITIONEXPORT;
@@ -1030,6 +1048,7 @@ public:
 
     bool GetExportInfo(const CTransaction &exportTx, 
                        int numExportOut,
+                       int &primaryExportOutNumOut,
                        int32_t &nextOutput,
                        CPBaaSNotarization &exportNotarization, 
                        std::vector<CReserveTransfer> &reserveTransfers,
@@ -1037,6 +1056,7 @@ public:
 
     bool GetExportInfo(const CTransaction &exportTx, 
                        int numExportOut, 
+                       int &primaryExportOutNumOut,
                        int32_t &nextOutput,
                        CPBaaSNotarization &exportNotarization, 
                        std::vector<CReserveTransfer> &reserveTransfers) const;

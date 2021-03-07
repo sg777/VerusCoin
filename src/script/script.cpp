@@ -1150,6 +1150,10 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (ccx = CCrossChainExport(vData[0])).IsValid())
             {
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destCurrencyID, ccx.CurrencyExportKey())));
+                if (ccx.destCurrencyID == ccx.destSystemID && ccx.destCurrencyID != ASSETCHAINS_CHAINID)
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destSystemID, ccx.SystemExportKey())));
+                }
             }
             break;
         }
@@ -1201,9 +1205,11 @@ std::map<uint160, uint32_t> COptCCParams::GetIndexHeightOffsets(uint32_t height)
     CCurrencyDefinition curDef;
     if (evalCode == EVAL_CURRENCY_DEFINITION &&
         vData.size() &&
-        (curDef = CCurrencyDefinition(vData[0])).IsValid())
+        (curDef = CCurrencyDefinition(vData[0])).IsValid() &&
+        curDef.launchSystemID == ASSETCHAINS_CHAINID &&
+        height <= curDef.startBlock)
     {
-        offsets.insert(make_pair(CCrossChainRPCData::GetConditionID(curDef.systemID, CCurrencyDefinition::CurrencyLaunchKey()),
+        offsets.insert(make_pair(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyLaunchKey()),
                                  (uint32_t)curDef.startBlock));
     }
     return offsets;

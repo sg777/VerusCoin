@@ -1359,51 +1359,61 @@ CCurrencyDefinition CConnectedChains::UpdateCachedCurrency(const uint160 &curren
 }
 
 
-// returns all unspent chain exports for a specific chain/system, indexed by the actuall currency destination
-bool CConnectedChains::GetUnspentSystemExports(const uint160 systemID, multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs)
+// returns all unspent chain exports for a specific chain/currency
+bool CConnectedChains::GetUnspentSystemExports(const CCoinsViewCache &view, 
+                                               const uint160 systemID, 
+                                               std::vector<pair<int, CInputDescriptor>> &exportOutputs)
 {
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> exportUTXOs;
+
+    std::vector<pair<int, CInputDescriptor>> exportOuts;
 
     LOCK2(cs_main, mempool.cs);
 
-    if (!GetAddressUnspent(CCrossChainRPCData::GetConditionID(systemID, CCrossChainExport::SystemExportKey()), CScript::P2IDX, unspentOutputs))
+    uint160 exportIndexKey = CCrossChainRPCData::GetConditionID(systemID, CCrossChainExport::SystemExportKey());
+
+    if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{exportIndexKey, CScript::P2IDX}}), exportUTXOs) &&
+        exportUTXOs.size())
+    {
+        // we need to remove those that are spent
+        std::map<COutPoint, CInputDescriptor> memPoolOuts;
+        for (auto &oneExport : exportUTXOs)
+        {
+            if (oneExport.first.spending)
+            {
+                memPoolOuts.erase(COutPoint(oneExport.first.txhash, oneExport.first.index));
+            }
+            else
+            {
+                const CTransaction oneTx = mempool.mapTx.find(oneExport.first.txhash)->GetTx();
+                memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
+                                                CInputDescriptor(oneTx.vout[oneExport.first.index].scriptPubKey, oneExport.second.amount, 
+                                                            CTxIn(oneExport.first.txhash, oneExport.first.index))));
+            }
+        }
+
+        for (auto &oneUTXO : memPoolOuts)
+        {
+            exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+        }
+    }
+    if (!exportOuts.size() &&
+        !GetAddressUnspent(exportIndexKey, CScript::P2IDX, unspentOutputs))
     {
         return false;
     }
     else
     {
-        CCoinsViewCache view(pcoinsTip);
-
         for (auto it = unspentOutputs.begin(); it != unspentOutputs.end(); it++)
         {
-            CCoins coins;
-
-            if (view.GetCoins(it->first.txhash, coins))
-            {
-                int i = it->first.index;
-                if (coins.IsAvailable(i))
-                {
-                    // if this is an export output, optionally to this chain, add it to the input vector
-                    COptCCParams p;
-                    CCrossChainExport cx;
-                    if (coins.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                        p.vData.size() && (cx = CCrossChainExport(p.vData[0])).IsValid())
-                    {
-                        exportOutputs.insert(make_pair(cx.destCurrencyID,
-                                                    make_pair(coins.nHeight, CInputDescriptor(coins.vout[i].scriptPubKey, coins.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))))));
-                    }
-                }
-            }
-            else
-            {
-                printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
-                return false;
-            }
+            exportOuts.push_back(std::make_pair(it->second.blockHeight, CInputDescriptor(it->second.script, it->second.satoshis, 
+                                                            CTxIn(it->first.txhash, it->first.index))));
         }
-        return true;
     }
+    exportOutputs.insert(exportOutputs.end(), exportOuts.begin(), exportOuts.end());
+    return exportOuts.size() != 0;
 }
-
 
 // returns all unspent chain exports for a specific chain/currency
 bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view, 
@@ -1460,7 +1470,6 @@ bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view,
     exportOutputs.insert(exportOutputs.end(), exportOuts.begin(), exportOuts.end());
     return exportOuts.size() != 0;
 }
-
 
 bool CConnectedChains::GetPendingCurrencyExports(const uint160 currencyID,
                                                  uint32_t fromHeight,
@@ -1658,9 +1667,10 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
     return true;
 }
 
-// given a set of exports and the reserve deposits for this from another chain, create a set of import transactions
+// given a set of provable exports to this chain from either this chain or another chain or system, 
+// create a set of import transactions
 bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSystemDef,                      // transactions imported from system
-                                           const CUTXORef &confirmedSourceNotarization,                     // last notarization of exporting system
+                                           const CUTXORef &confirmedSourceNotarization,                     // relevant notarization of exporting system
                                            const std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> &exports,
                                            std::map<uint160, std::vector<std::pair<int, CTransaction>>> &newImports)
 {
@@ -2677,7 +2687,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     bool isPreLaunch = _curDef.launchSystemID == ASSETCHAINS_CHAINID &&
                        _curDef.startBlock > sinceHeight &&
                        !(_curDef.systemID == ASSETCHAINS_CHAINID && sinceHeight == _curDef.startBlock - 1 && curHeight > _curDef.startBlock);
-    bool isClearLaunchExport = isPreLaunch && curHeight == _curDef.startBlock && !lastNotarization.IsLaunchCleared();
+    bool isClearLaunchExport = isPreLaunch && curHeight >= _curDef.startBlock && !lastNotarization.IsLaunchCleared();
 
     if (!isClearLaunchExport && !_txInputs.size() && !addInputTx)
     {
@@ -2953,7 +2963,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     // if we should add a system export, do so
     CCrossChainExport sysCCX;
-    if (crossSystem)
+    if (crossSystem && ccx.destSystemID != ccx.destCurrencyID)
     {
         assert(priorExports.size() == 2);
         COptCCParams p;
@@ -2981,6 +2991,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                    DestinationToTransferDestination(feeOutput),
                                    std::vector<CReserveTransfer>(),
                                    sysCCX.flags);
+        sysCCX.SetSystemThreadExport();
     }
 
     CAmount nativeReserveDeposit = 0;
@@ -3013,7 +3024,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
     exportOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx))));
 
-    if (crossSystem)
+    // only add an extra system export if we aren't actually exporting to the system itself directly
+    if (crossSystem && ccx.destSystemID != ccx.destCurrencyID)
     {
         exportOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &sysCCX))));
     }
@@ -3183,7 +3195,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     p.evalCode == EVAL_CURRENCY_DEFINITION &&
                     p.vData.size() &&
                     (oneDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
-                    oneDef.systemID == ASSETCHAINS_CHAINID)
+                    oneDef.launchSystemID == ASSETCHAINS_CHAINID)
                 {
                     launchCurrencies.insert(std::make_pair(oneDef.GetID(), std::make_pair(oneDef, CUTXORef())));
                 }
@@ -3273,6 +3285,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     LogPrintf("%s: cannot find destination currency %s\n", __func__, EncodeDestination(CIdentityID(lastChain)).c_str());
                     break;
                 }
+                uint160 destID = lastChain;
 
                 if (destDef.systemID == thisChainID)
                 {
@@ -3285,6 +3298,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     {
                         systemDef = destDef;
                     }
+                }
+                else if (destDef.systemID == destID)
+                {
+                    systemDef = destDef;
                 }
                 else
                 {
@@ -3306,14 +3323,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 std::vector<std::pair<int, CInputDescriptor>> exportOutputs;
                 std::vector<std::pair<int, CInputDescriptor>> sysExportOutputs;
                 std::vector<CInputDescriptor> allExportOutputs;
-                CCurrencyDefinition lastChainDef = GetCachedCurrency(lastChain);
 
                 // export outputs must come from the latest, including mempool, to ensure
                 // enforcement of sequential exports. get unspent currency export, and if not on the current
                 // system, the external system export as well
 
                 if ((ConnectedChains.GetUnspentCurrencyExports(view, lastChain, exportOutputs) && exportOutputs.size()) &&
-                    (isSameChain || ConnectedChains.GetUnspentCurrencyExports(view, lastChainDef.systemID, sysExportOutputs) && sysExportOutputs.size()))
+                    (isSameChain || ConnectedChains.GetUnspentSystemExports(view, destDef.systemID, sysExportOutputs) && sysExportOutputs.size()))
                 {
                     assert(exportOutputs.size() == 1);
                     std::pair<int, CInputDescriptor> lastExport = exportOutputs[0];
@@ -3339,9 +3355,21 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                            p.vData.size() &&
                            (sysCCX = CCrossChainExport(p.vData[0])).IsValid())))
                     {
-                        printf("%s: invalid export(s) for %s in index\n", __func__, EncodeDestination(CIdentityID(lastChainDef.GetID())).c_str());
-                        LogPrintf("%s: invalid export(s) for %s in index\n", __func__, EncodeDestination(CIdentityID(lastChainDef.GetID())).c_str());
+                        printf("%s: invalid export(s) for %s in index\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
+                        LogPrintf("%s: invalid export(s) for %s in index\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
                         break;
+                    }
+
+                    // now, in the case that these are both the same export, and/or if this is a sys export thread export
+                    // merge into one export
+                    bool mergedSysExport = false;
+                    if (!isSameChain &&
+                        ccx.destCurrencyID == ccx.destSystemID)
+                    {
+                        ccx.SetSystemThreadExport(false);
+                        mergedSysExport = true;
+                        // remove the system output
+                        allExportOutputs.pop_back();
                     }
 
                     // now, we have the previous export to this currency/system, which we should spend to
@@ -3354,8 +3382,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     // get notarization for the actual currency we are exporting
                     if (!GetNotarizationData(lastChain, cnd) || cnd.lastConfirmed == -1)
                     {
-                        printf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(lastChainDef.GetID())).c_str());
-                        LogPrintf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(lastChainDef.GetID())).c_str());
+                        printf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
+                        LogPrintf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
                         break;
                     }
 
@@ -3371,7 +3399,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
 
                         // even if we have no txInputs, currencies that need to will launch
                         newNotarizationOutNum = -1;
-                        if (!CConnectedChains::CreateNextExport(lastChainDef,
+                        if (!CConnectedChains::CreateNextExport(destDef,
                                                                 txInputs,
                                                                 allExportOutputs,
                                                                 feeOutput,
@@ -3386,8 +3414,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                                                 newNotarization,
                                                                 newNotarizationOutNum))
                         {
-                            printf("%s: unable to create export for %s\n", __func__, EncodeDestination(CIdentityID(lastChainDef.GetID())).c_str());
-                            LogPrintf("%s: unable to create export for  %s\n", __func__, EncodeDestination(CIdentityID(lastChainDef.GetID())).c_str());
+                            printf("%s: unable to create export for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
+                            LogPrintf("%s: unable to create export for  %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
                             break;
                         }
 
@@ -3413,9 +3441,8 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         tb.AddTransparentInput(lastExport.second.txIn.prevout, lastExport.second.scriptPubKey, lastExport.second.nValue);
 
                         // if going to another system, add the system export thread as well
-                        if (!isSameChain)
+                        if (!isSameChain && !mergedSysExport)
                         {
-
                             /* scriptUniOut = UniValue(UniValue::VOBJ);
                             ScriptPubKeyToUniv(lastSysExport.second.scriptPubKey, scriptUniOut, false);
                             printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastSysExport.second.nValue, scriptUniOut.write(1,2).c_str());
@@ -3443,7 +3470,12 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         for (auto &oneOut : exportTxOuts)
                         {
                             COptCCParams xp;
-                            if (oneOut.scriptPubKey.IsPayToCryptoCondition(xp) && xp.IsValid() && xp.evalCode == EVAL_CROSSCHAIN_EXPORT)
+                            CCrossChainExport checkCCX;
+                            if (oneOut.scriptPubKey.IsPayToCryptoCondition(xp) &&
+                                xp.IsValid() && 
+                                xp.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                                (checkCCX = CCrossChainExport(xp.vData[0])).IsValid() &&
+                                !checkCCX.IsSystemThreadExport())
                             {
                                 thisExport.second.scriptPubKey = oneOut.scriptPubKey;
                                 thisExport.second.nValue = oneOut.nValue;

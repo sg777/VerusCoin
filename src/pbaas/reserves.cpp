@@ -188,6 +188,7 @@ CCrossChainImport::CCrossChainImport(const CTransaction &tx, int32_t *pOutNum)
 
 bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx, 
                                       int numExportOut,
+                                      int &primaryExportOutNumOut,
                                       int32_t &nextOutput,
                                       CPBaaSNotarization &exportNotarization,
                                       std::vector<CReserveTransfer> &reserveTransfers,
@@ -199,17 +200,27 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
     // if this is called directly to get info, though it is a supplemental output, it is currently an error
     if (IsSupplemental())
     {
-        return state.Error(strprintf("%s: cannot get export data directly from a supplemental data output. must be in context.",__func__));
+        return state.Error(strprintf("%s: cannot get export data directly from a supplemental data output. must be in context",__func__));
     }
 
     auto hw = CMMRNode<>::GetHashWriter();
-    int numOutput = numExportOut;
 
-    // if this export is from another system, we assume the reserve transfers come as part of this export or as supplemental outputs
+    // this can be called passing either a system export or a normal currency export, and it will always
+    // retrieve information from the same normal currency export in either case and return the primary output num
+    int numOutput = IsSystemThreadExport() ? numExportOut - 1 : numExportOut;
+    if (numOutput < 0)
+    {
+        return state.Error(strprintf("%s: invalid output index for export out or invalid export transaction",__func__));
+    }
+    primaryExportOutNumOut = numOutput;
+
+    // if this export is from our system
     if (sourceSystemID == ASSETCHAINS_CHAINID)
     {
-        // if we're going off-chain, we have a system export output after our currency export. skip it.
-        if (destSystemID != sourceSystemID)
+        // if we're exporting off-chain and not directly to the system currency,
+        // the system currency is added as a system export output, which ensures export serialization from this system
+        // to the other. the system export output will be after our currency export. if so skip it.
+        if (destSystemID != sourceSystemID && destCurrencyID != destSystemID)
         {
             numOutput++;
         }
@@ -240,6 +251,9 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
     }
     else
     {
+        // this is coming from another chain or system.
+        // the proof of this export must already have been checked, so we are
+        // only interested in the reserve transfers for this and any supplements
         CCrossChainExport rtExport = *this;
         while (rtExport.IsValid())
         {
@@ -319,12 +333,13 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
 
 bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx, 
                                     int numExportOut, 
+                                    int &primaryExportOutNumOut,
                                     int32_t &nextOutput,
                                     CPBaaSNotarization &exportNotarization, 
                                     std::vector<CReserveTransfer> &reserveTransfers) const
 {
     CValidationState state;
-    return GetExportInfo(exportTx, numExportOut, nextOutput, exportNotarization, reserveTransfers, state);
+    return GetExportInfo(exportTx, numExportOut, primaryExportOutNumOut, nextOutput, exportNotarization, reserveTransfers, state);
 }
 
 
@@ -386,7 +401,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         {
             int32_t nextOutput;
             CPBaaSNotarization xNotarization;
-            if (!ccx.GetExportInfo(exportTx, exportTxOutNum, nextOutput, xNotarization, reserveTransfers, state))
+            int primaryOutNumOut;
+            if (!ccx.GetExportInfo(exportTx, exportTxOutNum, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers, state))
             {
                 return false;
             }
@@ -441,7 +457,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
         int32_t nextOutput;
         CPBaaSNotarization xNotarization;
-        if (!ccx.GetExportInfo(importTx, evidenceOutStart, nextOutput, xNotarization, reserveTransfers))
+        int primaryOutNumOut;
+        if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers))
         {
             return state.Error(strprintf("%s: invalid export evidence for import 1",__func__));
         }

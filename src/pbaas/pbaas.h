@@ -945,8 +945,9 @@ public:
                        CTransaction &lastImport, 
                        int32_t &outputNum);
 
-    bool GetUnspentSystemExports(const uint160 systemID, 
-                                 multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs);
+    bool GetUnspentSystemExports(const CCoinsViewCache &view,
+                                 const uint160 systemID, 
+                                 std::vector<pair<int, CInputDescriptor>> &exportOutputs);
 
     bool GetUnspentCurrencyExports(const CCoinsViewCache &view,
                                    const uint160 currencyID, 

@@ -338,7 +338,6 @@ bool SetThisChain(const UniValue &chainDefinition)
         ASSETCHAINS_TIMEUNLOCKFROM = 0;
         ASSETCHAINS_TIMEUNLOCKTO = 0;
 
-        LOCK(cs_main);
         //printf("%s: %s\n", __func__, EncodeDestination(CIdentityID(notaryChainDef.GetID())).c_str());
         ConnectedChains.notarySystems[notaryChainDef.GetID()] = 
             CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CCurrencyDefinition());
@@ -4056,7 +4055,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
         CPBaaSNotarization gatewayPbn = CPBaaSNotarization(gatewayCurrencyID, 
                                                            gatewayCurrencyState,
-                                                           0,
+                                                           height,
                                                            CUTXORef(),
                                                            0);
 
