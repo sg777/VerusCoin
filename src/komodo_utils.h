@@ -1359,11 +1359,13 @@ uint16_t _komodo_userpass(char *username,char *password,FILE *fp)
 void komodo_statefname(char *fname,char *symbol,char *str)
 {
     int32_t n,len;
-    sprintf(fname,"%s",GetDataDir(false).string().c_str());
-    if ( (n= (int32_t)strlen(ASSETCHAINS_SYMBOL)) != 0 )
+    std::string checkName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
+    const char *chkName = checkName.c_str();
+    sprintf(fname, "%s", GetDataDir(false).string().c_str());
+    if ( (n = (int32_t)strlen(chkName)) != 0 )
     {
         len = (int32_t)strlen(fname);
-        if ( strcmp(ASSETCHAINS_SYMBOL,&fname[len - n]) == 0 )
+        if ( strcmp(chkName, &fname[len - n]) == 0 )
             fname[len - n] = 0;
         else
         {
@@ -1397,16 +1399,22 @@ void komodo_statefname(char *fname,char *symbol,char *str)
 // be the case when loading without VRSC active.
 void komodo_configfile(char *symbol, uint16_t rpcport)
 {
+    std::string fileName(symbol);
+    if (fileName != "VRSC")
+    {
+        fileName = boost::to_lower_copy(fileName);
+    }
+    const char *_symbol = fileName.c_str();
     static char myusername[512],mypassword[7168];
     FILE *fp; uint16_t kmdport; uint8_t buf2[33]; char fname[512],buf[128],username[512],password[7168]; uint32_t crc,r,r2,i;
-    if ( symbol != 0 && rpcport != 0 )
+    if ( !fileName.empty() && rpcport != 0 )
     {
         r = (uint32_t)time(NULL);
         r2 = OS_milliseconds();
         memcpy(buf,&r,sizeof(r));
         memcpy(&buf[sizeof(r)],&r2,sizeof(r2));
-        memcpy(&buf[sizeof(r)+sizeof(r2)],symbol,strlen(symbol));
-        crc = calc_crc32(0,(uint8_t *)buf,(int32_t)(sizeof(r)+sizeof(r2)+strlen(symbol)));
+        memcpy(&buf[sizeof(r)+sizeof(r2)], _symbol, strlen(_symbol));
+        crc = calc_crc32(0,(uint8_t *)buf,(int32_t)(sizeof(r)+sizeof(r2)+strlen(_symbol)));
 				#ifdef _WIN32
 				randombytes_buf(buf2,sizeof(buf2));
 				#else
@@ -1415,12 +1423,12 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
         for (i=0; i<sizeof(buf2); i++)
             sprintf(&password[i*2],"%02x",buf2[i]);
         password[i*2] = 0;
-        sprintf(buf,"%s.conf",symbol);
+        sprintf(buf,"%s.conf", _symbol);
         BITCOIND_RPCPORT = rpcport;
 #ifdef _WIN32
-        sprintf(fname,"%s\\%s",GetDataDir(false).string().c_str(),buf);
+        sprintf(fname,"%s\\%s",GetDataDir(false).string().c_str(), buf);
 #else
-        sprintf(fname,"%s/%s",GetDataDir(false).string().c_str(),buf);
+        sprintf(fname,"%s/%s",GetDataDir(false).string().c_str(), buf);
 #endif
         if ( (fp= fopen(fname,"rb")) == 0 )
         {
@@ -1782,18 +1790,32 @@ void komodo_args(char *argv0)
 
     name = GetArg("-ac_name", name);
 
-    if (PBAAS_TESTMODE && name == "VRSC")
+    std::string lowerName = boost::to_lower_copy(name);
+
+    // both VRSC and VRSCTEST are names that cannot be
+    // used as alternate chain names
+    if (PBAAS_TESTMODE && lowerName == "vrsc")
     {
         // for testnet release, default to testnet
         name = "VRSCTEST";
         PBAAS_TESTMODE = false;
     }
-    else if (name == "VRSCTEST" && !PBAAS_TESTMODE)
+    else if (lowerName != "vrsc")
     {
         PBAAS_TESTMODE = true;
+        if (name == "vrsctest")
+        {
+            name = "VRSCTEST";
+        }
+    }
+    else
+    {
+        name = "VRSC";
     }
 
     mapArgs["-ac_name"] = name;
+    memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
+    strcpy(ASSETCHAINS_SYMBOL, name.c_str());
 
     ASSETCHAINS_ALGO = ASSETCHAINS_VERUSHASH;
     ASSETCHAINS_LWMAPOS = 50;
@@ -1855,6 +1877,7 @@ void komodo_args(char *argv0)
     {
         // this is a PBaaS chain, so look for an installation on the local file system or check the Verus daemon if it's running
         // printf("Reading config file for %s\n", name.c_str());
+        name = boost::to_lower_copy(name);
         if (!ReadConfigFile(name, mapArgs, mapMultiArgs))
         {
             map<string, string> settings;
@@ -1919,6 +1942,8 @@ void komodo_args(char *argv0)
 
     VERUS_CHAINNAME = PBAAS_TESTMODE ? "VRSCTEST" : "VRSC";
     VERUS_CHAINID = CCrossChainRPCData::GetID(VERUS_CHAINNAME);
+    memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
+    strcpy(ASSETCHAINS_SYMBOL, name.c_str());
 
     /*
     KOMODO_STOPAT = GetArg("-stopat",0);

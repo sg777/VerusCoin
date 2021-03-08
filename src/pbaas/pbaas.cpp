@@ -3027,12 +3027,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
     exportOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx))));
 
-    // only add an extra system export if we aren't actually exporting to the system itself directly
-    if (crossSystem && ccx.destSystemID != ccx.destCurrencyID)
-    {
-        exportOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &sysCCX))));
-    }
-
     // now, if we are clearing launch, determine if we should refund or launch and set notarization appropriately
     if (isClearLaunchExport)
     {
@@ -3144,6 +3138,13 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         }
     }
 
+    // only add an extra system export if we aren't actually exporting to the system itself directly
+    bool isRefunding = newNotarization.currencyState.IsRefunding();
+    if (!isRefunding && crossSystem && ccx.destSystemID != ccx.destCurrencyID)
+    {
+        exportOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &sysCCX))));
+    }
+
     // all exports to a currency on this chain include a finalization that is spent by the import of this export
     // external systems and gateways get one finalization for their clear to launch export
     if (isClearLaunchExport || (destSystemID == ASSETCHAINS_CHAINID && addHeight >= _curDef.startBlock))
@@ -3153,6 +3154,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         // currency ID for finalization determine indexing and query capability
         // since we care about looking for all exports to one system or another, the currency in the finalization
         // is the system destination for this export (i.e. "which system should do the next work?")
+        if (isRefunding)
+        {
+            destSystemID = ASSETCHAINS_CHAINID;
+        }
         CObjectFinalization finalization(CObjectFinalization::FINALIZE_EXPORT, destSystemID, uint256(), exportOutNum);
 
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});

@@ -511,10 +511,9 @@ void PrintExceptionContinue(const std::exception* pex, const char* pszThread)
 boost::filesystem::path GetDefaultDataDir()
 {
     namespace fs = boost::filesystem;
-    char symbol[KOMODO_ASSETCHAIN_MAXLEN];
-    if ( ASSETCHAINS_SYMBOL[0] != 0 )
-        strcpy(symbol,ASSETCHAINS_SYMBOL);
-    else symbol[0] = 0;
+    std::string chainName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
+    const char *symbol = chainName.c_str();
+
     // Windows < Vista: C:\Documents and Settings\Username\Application Data\Zcash
     // Windows >= Vista: C:\Users\Username\AppData\Roaming\Zcash
     // Mac: ~/Library/Application Support/Zcash
@@ -531,7 +530,7 @@ boost::filesystem::path GetDefaultDataDir()
         }
         else
         {
-            return GetSpecialFolderPath(CSIDL_APPDATA) / (PBAAS_TESTMODE ? "VerusTest" : "Verus") / "PBAAS" / symbol;
+            return GetSpecialFolderPath(CSIDL_APPDATA) / (PBAAS_TESTMODE ? "VerusTest" : "Verus") / "pbaas" / symbol;
         }
     }
 #else
@@ -558,7 +557,7 @@ boost::filesystem::path GetDefaultDataDir()
         {
             pathRet /= PBAAS_TESTMODE ? "VerusTest" : "Verus";
             TryCreateDirectory(pathRet);
-            pathRet /= "PBAAS";
+            pathRet /= "pbaas";
             TryCreateDirectory(pathRet);
         }
         return pathRet / symbol;
@@ -575,7 +574,7 @@ boost::filesystem::path GetDefaultDataDir()
         }
         else
         {
-            return pathRet / (PBAAS_TESTMODE ? ".verustest" : ".verus") / "PBAAS" / symbol;
+            return pathRet / (PBAAS_TESTMODE ? ".verustest" : ".verus") / "pbaas" / symbol;
         }
     }
 #endif
@@ -587,6 +586,10 @@ boost::filesystem::path GetDefaultDataDir(std::string chainName)
     char symbol[KOMODO_ASSETCHAIN_MAXLEN];
     if (chainName.size() >= KOMODO_ASSETCHAIN_MAXLEN)
         chainName.resize(KOMODO_ASSETCHAIN_MAXLEN - 1);
+    if (chainName != "VRSC")
+    {
+        chainName = boost::to_lower_copy(chainName);
+    }
     strcpy(symbol, chainName.c_str());
 
     namespace fs = boost::filesystem;
@@ -597,13 +600,13 @@ boost::filesystem::path GetDefaultDataDir(std::string chainName)
     // Unix: ~/.zcash
 #ifdef _WIN32
     // Windows
-    if (chainName == "VRSC" || chainName == "VRSCTEST")
+    if (chainName == "VRSC" || chainName == "vrsctest")
     {
         return GetSpecialFolderPath(CSIDL_APPDATA) / "Komodo" / symbol;
     }
     else
     {
-        return GetSpecialFolderPath(CSIDL_APPDATA) / (PBAAS_TESTMODE ? "VerusTest" : "Verus") / "PBAAS" / symbol;
+        return GetSpecialFolderPath(CSIDL_APPDATA) / (PBAAS_TESTMODE ? "VerusTest" : "Verus") / "PBaaS" / symbol;
     }
 #else
     fs::path pathRet;
@@ -616,7 +619,7 @@ boost::filesystem::path GetDefaultDataDir(std::string chainName)
     // Mac
     pathRet /= "Library/Application Support";
     TryCreateDirectory(pathRet);
-    if (chainName == "VRSC" || chainName == "VRSCTEST")
+    if (chainName == "VRSC" || chainName == "vrsctest")
     {
         pathRet /= "Komodo";
         TryCreateDirectory(pathRet);
@@ -625,19 +628,19 @@ boost::filesystem::path GetDefaultDataDir(std::string chainName)
     {
         pathRet /= PBAAS_TESTMODE ? "VerusTest" : "Verus";
         TryCreateDirectory(pathRet);
-        pathRet /= "PBAAS";
+        pathRet /= "pbaas";
         TryCreateDirectory(pathRet);
     }
     return pathRet / symbol;
 #else
     // Unix
-    if (chainName == "VRSC" || chainName == "VRSCTEST")
+    if (chainName == "VRSC" || chainName == "vrsctest")
     {
         return pathRet / ".komodo" / symbol;
     }
     else
     {
-        return pathRet / (PBAAS_TESTMODE ? ".verustest" : ".verus") / "PBAAS" / symbol;
+        return pathRet / (PBAAS_TESTMODE ? ".verustest" : ".verus") / "pbaas" / symbol;
     }
 #endif
 #endif
@@ -756,8 +759,12 @@ const boost::filesystem::path GetDataDir(std::string chainName)
 {
     namespace fs = boost::filesystem;
     fs::path path;
+    if (chainName != "VRSC")
+    {
+        chainName = boost::to_lower_copy(chainName);
+    }
 
-    if ((chainName == "VRSC" || chainName == "VRSCTEST") && mapArgs.count("-datadir")) {
+    if ((chainName == "VRSC" || chainName == "vrsctest") && mapArgs.count("-datadir")) {
         path = fs::system_complete(mapArgs["-datadir"]);
         if (!fs::is_directory(path)) {
             path = GetDefaultDataDir(chainName);
@@ -776,15 +783,20 @@ void ClearDatadirCache()
 
 boost::filesystem::path GetConfigFile()
 {
-    char confname[512];
+    char confname[2048];
+    std::string chainName(ASSETCHAINS_SYMBOL);
+    if (chainName != "VRSC")
+    {
+        chainName = boost::to_lower_copy(chainName);
+    }
     if ( ASSETCHAINS_SYMBOL[0] != 0 )
-        sprintf(confname,"%s.conf",ASSETCHAINS_SYMBOL);
+        sprintf(confname,"%s.conf", chainName.c_str());
     else
     {
 #ifdef __APPLE__
-        strcpy(confname,"Komodo.conf");
+        strcpy(confname, "Komodo.conf");
 #else
-        strcpy(confname,"komodo.conf");
+        strcpy(confname, "komodo.conf");
 #endif
     }
     boost::filesystem::path pathConfigFile(GetArg("-conf",confname));
@@ -796,6 +808,10 @@ boost::filesystem::path GetConfigFile()
 
 boost::filesystem::path GetConfigFile(std::string chainName)
 {
+    if (chainName != "VRSC")
+    {
+        chainName = boost::to_lower_copy(chainName);
+    }
     char confname[512];
     if (chainName.size() >= KOMODO_ASSETCHAIN_MAXLEN)
         chainName.resize(KOMODO_ASSETCHAIN_MAXLEN - 1);
@@ -840,7 +856,8 @@ bool ReadConfigFile(std::string chainName,
                     map<string, string>& mapSettingsRet,
                     map<string, vector<string> >& mapMultiSettingsRet)
 {
-    boost::filesystem::ifstream streamConfig(GetConfigFile(chainName));
+    auto filePath = GetConfigFile(chainName);
+    boost::filesystem::ifstream streamConfig(filePath);
     if (!streamConfig.good())
         return false;
 

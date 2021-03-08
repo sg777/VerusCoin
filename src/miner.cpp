@@ -784,7 +784,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     std::set<uint160> convertersToCreate;
 
     CPBaaSNotarization converterNotarization;
-    uint160 converterCurrencyID = CIdentity::GetID(thisChain.gatewayConverterName, thisChainID);
+    uint160 converterCurrencyID = thisChain.GatewayConverterID();
 
     // if we have a converter currency, ensure that it also meets requirements for currency launch
     if (!thisChain.gatewayConverterName.empty())

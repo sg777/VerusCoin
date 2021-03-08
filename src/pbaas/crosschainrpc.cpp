@@ -477,6 +477,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 nVersion = PBAAS_VERSION_INVALID;
                 return;
             }
+            gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
         }
 
         notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_NOTARY_CONFIRM);
@@ -531,7 +532,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             {
                 preLaunchDiscount = AmountFromValueNoErr(find_value(obj, "prelaunchdiscount"));
                 initialFractionalSupply = AmountFromValueNoErr(find_value(obj, "initialsupply"));
-                gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
 
                 if (!initialFractionalSupply)
                 {
@@ -657,13 +657,13 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             {
                 // if we are fractional, explicit conversion values are not valid
                 // and are based on non-zero, initial contributions relative to supply
-                if ((conversionArr.isArray() && conversionArr.size()) ||
+                if ((conversionArr.isArray() && conversionArr.size() != currencyArr.size()) ||
                     !initialContributionArr.isArray() || 
                     initialContributionArr.size() != currencyArr.size() ||
                     weights.size() != currencyArr.size() ||
                     !IsFractional())
                 {
-                    LogPrintf("%s: reserve currencies must have weights, initial contributions in at least one currency, and no explicit conversion rates\n", __func__);
+                    LogPrintf("%s: reserve currencies must have weights, initial contributions in at least one currency\n", __func__);
                     nVersion = PBAAS_VERSION_INVALID;
                 }
             }
@@ -709,13 +709,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             bool isInitialContributions = initialContributionArr.isArray() && initialContributionArr.size();
             bool isPreconvertMin = minPreconvertArr.isArray() && minPreconvertArr.size();
             bool isPreconvertMax = maxPreconvertArr.isArray() && maxPreconvertArr.size();
-            bool explicitConversions = conversionArr.isArray() && conversionArr.size();
-
-            if (IsFractional() && explicitConversions)
-            {
-                LogPrintf("%s: cannot specify explicit conversion values for reserve currencies\n", __func__);
-                nVersion = PBAAS_VERSION_INVALID;
-            }
+            bool explicitConversions = (!IsFractional() && conversionArr.isArray()) && conversionArr.size();
 
             for (int i = 0; nVersion != PBAAS_VERSION_INVALID && i < currencyArr.size(); i++)
             {

@@ -563,9 +563,9 @@ CCurrencyState::CCurrencyState(const UniValue &obj) : version(VERSION_CURRENT)
                             version = VERSION_INVALID;
                             break;
                         }
-                        currencies[i] = currencyID;
-                        weights[i] = AmountFromValue(find_value(CurrenciesArr[i], "weight"));
-                        reserves[i] = AmountFromValue(find_value(CurrenciesArr[i], "reserves"));
+                        currencies.push_back(currencyID);
+                        weights.push_back(AmountFromValue(find_value(CurrenciesArr[i], "weight")));
+                        reserves.push_back(AmountFromValue(find_value(CurrenciesArr[i], "reserves")));
                     }
                 }
                 catch(const std::exception& e)

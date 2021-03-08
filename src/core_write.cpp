@@ -697,7 +697,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("preallocations", preAllocationArr));
     }
 
-    if ((IsPBaaSChain() || IsGateway()))
+    if ((IsPBaaSChain() || IsGateway()) && !GatewayConverterID().IsNull())
     {
         obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
         obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
@@ -723,7 +723,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("preconversions", preconversionArr));
     }
 
-    if (IsGateway() || IsPBaaSChain() || IsPBaaSConverter())
+    if (IsGateway() || IsPBaaSChain())
     {
         // notaries are identities that perform specific functions for the currency's operation
         // related to notarizing an external currency source, as well as proving imports
