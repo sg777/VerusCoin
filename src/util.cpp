@@ -120,7 +120,8 @@ extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 
 bool _IsVerusActive()
 {
-    return (strcmp(ASSETCHAINS_SYMBOL, "VRSC") == 0 || strcmp(ASSETCHAINS_SYMBOL, "VRSCTEST") == 0);
+    std::string normalName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
+    return normalName == "vrsc" || normalName == "vrsctest";
 }
 
 bool _IsVerusMainnetActive()

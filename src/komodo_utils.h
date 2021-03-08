@@ -1875,14 +1875,14 @@ void komodo_args(char *argv0)
     }
     else
     {
+        map<string, string> settings;
+        map<string, vector<string>> settingsmulti;
+
         // this is a PBaaS chain, so look for an installation on the local file system or check the Verus daemon if it's running
         // printf("Reading config file for %s\n", name.c_str());
         name = boost::to_lower_copy(name);
         if (!ReadConfigFile(name, mapArgs, mapMultiArgs))
         {
-            map<string, string> settings;
-            map<string, vector<string>> settingsmulti;
-
             // if we are requested to automatically load the information from the Verus chain, do it if we can find the daemon
             if (ReadConfigFile(PBAAS_TESTMODE ? "VRSCTEST" : "VRSC", settings, settingsmulti))
             {
@@ -1936,6 +1936,25 @@ void komodo_args(char *argv0)
             {
                 printf("Config file for %s not found. Cannot load %s information from blockchain.\n", PBAAS_TESTMODE ? "VRSCTEST" : "VRSC", name.c_str());
                 exit(1);
+            }
+        }
+        else
+        {
+            // if we are requested to automatically load the information from the Verus chain, do it if we can find the daemon
+            if (ReadConfigFile(PBAAS_TESTMODE ? "VRSCTEST" : "VRSC", settings, settingsmulti))
+            {
+                auto user = settingsmulti.find("-rpcuser");
+                auto pwd = settingsmulti.find("-rpcpassword");
+                auto host = settingsmulti.find("-rpchost");
+                auto port = settingsmulti.find("-rpcport");
+                auto multiEnd = settingsmulti.end();
+                PBAAS_USERPASS = (user == multiEnd ? "" : user->second[0]) + ":" + ((pwd == multiEnd) ? "" : pwd->second[0]);
+                PBAAS_PORT = port == multiEnd ? 0 : atoi(port->second[0]);
+                PBAAS_HOST = host == multiEnd ? "" : host->second[0];
+                if (!PBAAS_HOST.size())
+                {
+                    PBAAS_HOST = "127.0.0.1";
+                }
             }
         }
     }

@@ -302,11 +302,15 @@ bool SetThisChain(const UniValue &chainDefinition)
     }
     SetPeerNodes(find_value(chainDefinition, "nodes"));
 
+    memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
+    assert(ConnectedChains.ThisChain().name.size() < sizeof(ASSETCHAINS_SYMBOL));
+    strcpy(ASSETCHAINS_SYMBOL, ConnectedChains.ThisChain().name.c_str());
+
     if (!IsVerusActive())
     {
         CCurrencyDefinition notaryChainDef;
         // we set the notary chain to either Verus or VerusTest
-        notaryChainDef.nVersion = PBAAS_VERSION;
+        notaryChainDef.nVersion = CCurrencyDefinition::VERSION_CURRENT;
         if (PBAAS_TESTMODE)
         {
             // setup Verus test parameters
@@ -349,10 +353,6 @@ bool SetThisChain(const UniValue &chainDefinition)
         ConnectedChains.ThisChain().options = (CCurrencyDefinition::OPTION_PBAAS | CCurrencyDefinition::OPTION_CANBERESERVE | CCurrencyDefinition::OPTION_ID_REFERRALS);
         ConnectedChains.ThisChain().systemID = ConnectedChains.ThisChain().GetID();   
     }
-
-    memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
-    assert(ConnectedChains.ThisChain().name.size() < sizeof(ASSETCHAINS_SYMBOL));
-    strcpy(ASSETCHAINS_SYMBOL, ConnectedChains.ThisChain().name.c_str());
 
     auto numEras = ConnectedChains.ThisChain().rewards.size();
     ASSETCHAINS_LASTERA = numEras - 1;
@@ -504,10 +504,10 @@ bool CConnectedChains::GetNotaryIDs(const CRPCChainData notaryChain, const std::
 
         if (!result.isNull())
         {
-            oneDef = CIdentity(result);
+            oneDef = CIdentity(find_value(result, "identity"));
         }
 
-        if (result.isNull() || !oneDef.IsValid())
+        if (!oneDef.IsValid())
         {
             // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
             LogPrintf("Unable to get identity for %s\n", EncodeDestination(CIdentityID(curID)).c_str());

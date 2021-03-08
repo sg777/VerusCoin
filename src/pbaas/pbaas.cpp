@@ -20,7 +20,8 @@ CConnectedChains ConnectedChains;
 
 bool IsVerusActive()
 {
-    return (strcmp(ASSETCHAINS_SYMBOL, "VRSC") == 0 || strcmp(ASSETCHAINS_SYMBOL, "VRSCTEST") == 0);
+    std::string normalName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
+    return normalName == "vrsc" || normalName == "vrsctest";
 }
 
 bool IsVerusMainnetActive()
