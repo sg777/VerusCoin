@@ -879,9 +879,8 @@ bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue
                 */
                 if (notarySystems.count(chainDef.GetID()))
                 {
-                    notarySystems[chainDef.GetID()] = CNotarySystemInfo(uni_get_int64(find_value(chainInfoUni, "blocks")), 
-                                                      CRPCChainData(chainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS),
-                                                      CCurrencyDefinition());
+                    notarySystems[chainDef.GetID()].height = uni_get_int64(find_value(chainInfoUni, "blocks"));
+                    notarySystems[chainDef.GetID()].notaryChain = CRPCChainData(chainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS);
                     notarySystems[chainDef.GetID()].notaryChain.SetLastConnection(GetTime());
                 }
             }
@@ -909,16 +908,11 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
             chainInfo = find_value(RPCCallRoot("getinfo", params), "result");
             if (!chainInfo.isNull())
             {
-                params.push_back(VERUS_CHAINNAME);
+                params.push_back(EncodeDestination(CIdentityID(FirstNotaryChain().chainDefinition.GetID())));
                 chainDef = find_value(RPCCallRoot("getcurrency", params), "result");
 
                 if (!chainDef.isNull() && CheckVerusPBaaSAvailable(chainInfo, chainDef))
                 {
-                    {
-                        LOCK(cs_mergemining);
-                        notarySystems[VERUS_CHAINID].height = uni_get_int64(find_value(chainDef, "lastconfirmedheight"));
-                    }
-
                     // if we have not passed block 1 yet, store the best known update of our current state
                     if ((!chainActive.LastTip() || !chainActive.LastTip()->GetHeight()))
                     {
@@ -1966,6 +1960,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         std::vector<CReserveTransfer> exportTransfers = oneIT.second;
         std::vector<CTxOut> newOutputs;
         CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
+
         // if we are transitioning from export to import, allow the function to set launch clear on the currency
         if (lastNotarization.currencyState.IsLaunchClear() && !lastCCI.IsInitialLaunchImport())
         {
@@ -2864,6 +2859,13 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // or unregistered exports. if same to same chain, all exports are ok.
     if (destSystemID != ASSETCHAINS_CHAINID)
     {
+        // if this is launching a new PBaaS chain or gateway, store the proof root of this chain in the
+        // clear launch notarization
+        if (isClearLaunchExport && newNotarization.IsLaunchConfirmed() && 
+            (_curDef.IsPBaaSChain() || _curDef.IsGateway() || _curDef.IsPBaaSConverter()))
+        {
+            newNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(_curDef.startBlock);
+        }
         for (auto &oneCur : totalExports.valueMap)
         {
             if (oneCur.first == ASSETCHAINS_CHAINID)
@@ -3168,16 +3170,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // if this is a pre-launch export, including clear launch, update notarization and add it to the export outputs
     if (isClearLaunchExport || isPreLaunch)
     {
-        // if we are exporting off chain, add a notarization proof root
-        if (destSystemID != ASSETCHAINS_CHAINID)
-        {
-            newNotarization.notarizationHeight = addHeight;
-            newNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(addHeight);
-        }
-
-        // TODO: check to see if we are connected to a running PBaaS daemon for this currency waiting for it to start,
-        // and if so, share nodes in the notarization
-
         newNotarizationOutNum = exportOutputs.size();
 
         cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);

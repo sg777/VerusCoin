@@ -544,11 +544,13 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem, const uint
 // to setup an import/export thread, transfer the initial issuance of native currency
 // into the converter, and notarize the state of each currency.
 // All outputs to do those things are added to the outputs vector.
-bool AddOneCurrencyImport(CCurrencyDefinition &newCurrency, 
-                          CPBaaSNotarization &notarization, 
+bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency, 
+                          const CPBaaSNotarization &lastNotarization, 
                           std::vector<CTxOut> &outputs)
 {
     uint160 newCurID = newCurrency.GetID();
+    CPBaaSNotarization newNotarization = lastNotarization;
+    newNotarization.prevNotarization = CUTXORef();
 
     // each currency will get:
     // * one currency definition output
@@ -557,6 +559,7 @@ bool AddOneCurrencyImport(CCurrencyDefinition &newCurrency,
     CCcontract_info CC;
     CCcontract_info *cp;
 
+    // make a currency definition
     cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
     std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
     outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newCurrency))));
@@ -567,6 +570,37 @@ bool AddOneCurrencyImport(CCurrencyDefinition &newCurrency,
         !newCurrency.IsToken() ||
         (newCurrency.IsGateway() && newCurrency.GetID() == newCurrency.gatewayID))
     {
+        uint160 firstNotaryID = ConnectedChains.FirstNotaryChain().chainDefinition.GetID();
+
+        if ((newCurID == ASSETCHAINS_CHAINID || newCurID == ConnectedChains.ThisChain().GatewayConverterID()) &&
+            firstNotaryID == newCurrency.launchSystemID)
+        {
+            std::vector<CReserveTransfer> exportTransfers;
+            uint256 transferHash;
+            std::vector<CTxOut> importOutputs;
+            CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
+
+            if (!lastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
+                                                    newCurrency,
+                                                    0,
+                                                    lastNotarization.notarizationHeight,
+                                                    exportTransfers,
+                                                    transferHash,
+                                                    newNotarization,
+                                                    importOutputs,
+                                                    importedCurrency,
+                                                    gatewayDepositsUsed,
+                                                    spentCurrencyOut))
+            {
+                LogPrintf("%s: invalid import for currency %s on system %s\n", __func__,
+                                                                            newCurrency.name.c_str(), 
+                                                                            EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str());
+                return false;
+            }
+            newNotarization.prevNotarization = CUTXORef();
+            newNotarization.prevHeight = 0;
+        }
+
         // create the import thread output
         cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
 
@@ -584,15 +618,11 @@ bool AddOneCurrencyImport(CCurrencyDefinition &newCurrency,
         {
             // create an import based on launch conditions that covers all pre-allocations and uses the initial notarization
             CCrossChainImport cci = CCrossChainImport(newCurrency.launchSystemID,
-                                                      notarization.notarizationHeight,
+                                                      newNotarization.notarizationHeight,
                                                       newCurID,
-                                                      CCurrencyValueMap(),
-                                                      CCurrencyValueMap(),
-                                                      0,
-                                                      uint256(), 
-                                                      uint256(), 
-                                                      0,
-                                                      CCrossChainImport::FLAG_INITIALLAUNCHIMPORT);
+                                                      CCurrencyValueMap());
+            cci.SetSameChain(newCurrency.systemID == ASSETCHAINS_CHAINID);
+            cci.SetDefinitionImport(true);
 
             // now add the import itself
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci))));
@@ -608,10 +638,10 @@ bool AddOneCurrencyImport(CCurrencyDefinition &newCurrency,
             {
                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
             }
-            outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &notarization))));
+            outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
 
             CReserveTransactionDescriptor rtxd;
-            CCoinbaseCurrencyState importState = notarization.currencyState;
+            CCoinbaseCurrencyState importState = newNotarization.currencyState;
             importState.RevertReservesAndSupply();
             CCurrencyValueMap importedCurrency;
             CCurrencyValueMap gatewayDepositsIn;
@@ -686,10 +716,10 @@ bool AddOneCurrencyImport(CCurrencyDefinition &newCurrency,
             {
                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
             }
-            outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &notarization))));
+            outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
 
             CReserveTransactionDescriptor rtxd;
-            CCoinbaseCurrencyState importState = notarization.currencyState;
+            CCoinbaseCurrencyState importState = newNotarization.currencyState;
             importState.RevertReservesAndSupply();
             CCurrencyValueMap importedCurrency;
             CCurrencyValueMap gatewayDepositsIn;
@@ -732,16 +762,16 @@ bool AddOneCurrencyImport(CCurrencyDefinition &newCurrency,
             dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
         }
         // we notarize our notary chain here, not ourselves
-        if (notarization.currencyID == ASSETCHAINS_CHAINID)
+        if (newNotarization.currencyID == ASSETCHAINS_CHAINID)
         {
-            if (!notarization.SetMirror())
+            if (!newNotarization.SetMirror())
             {
                 LogPrintf("Cannot mirror our notarization from notary chain\n");
                 printf("Cannot mirror our notarization from notary chain\n");
                 return false;
             }
         }
-        outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &notarization))));
+        outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
     }
     return true;
 }
@@ -753,6 +783,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
 {
     CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
     uint160 thisChainID = ConnectedChains.ThisChain().GetID();
+    uint160 firstNotaryID = ConnectedChains.FirstNotaryChain().GetID();
     CCoinbaseCurrencyState currencyState;
 
     if (!GetBlockOneLaunchNotarization(ConnectedChains.FirstNotaryChain(), thisChainID, launchNotarization))
@@ -846,6 +877,16 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         LogPrintf("Cannot retrieve identity and currency definitions needed to create block 1\n");
         printf("Cannot retrieve identity and currency definitions needed to create block 1\n");
         return false;
+    }
+
+    // if our notary chain is our launch chain, we will replace its notarization proof root with the proof root from our
+    // final export notarization, which enables proof of all pre-launch exports and provides a deterministic starting 
+    // point for all valid block ones
+    if (firstNotaryID == ConnectedChains.ThisChain().launchSystemID &&
+        currencyImports.count(firstNotaryID) && currencyImports.count(ConnectedChains.ThisChain().launchSystemID))
+    {
+        currencyImports[firstNotaryID].second.proofRoots[firstNotaryID] =
+            currencyImports[ASSETCHAINS_CHAINID].second.proofRoots[firstNotaryID];
     }
 
     // add all imported currency and identity outputs, identity revocaton and recovery IDs must be explicitly imported if needed

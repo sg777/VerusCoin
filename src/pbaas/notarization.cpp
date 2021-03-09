@@ -1124,18 +1124,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     // add this blockchain's info, based on the requested height
     CBlockIndex &curBlkIndex = *chainActive[height];
-    auto mmv = chainActive.GetMMV();
-    if (chainActive.Height() != height)
-    {
-        mmv.resize(height);
-    }
     uint160 thisChainID = ConnectedChains.ThisChain().GetID();
-    notarization.proofRoots[thisChainID] = CProofRoot(thisChainID, 
-                                                      height, 
-                                                      mmv.GetRoot(), 
-                                                      curBlkIndex.GetBlockHash(), 
-                                                      curBlkIndex.chainPower.CompactChainPower(), 
-                                                      CProofRoot::TYPE_PBAAS);
+    notarization.proofRoots[thisChainID] = CProofRoot::GetProofRoot(height);
 
     // add currency states that we should include and then we're done
     // currency states to include are either a gateway currency indicated by the

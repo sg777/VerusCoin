@@ -344,7 +344,7 @@ bool SetThisChain(const UniValue &chainDefinition)
 
         //printf("%s: %s\n", __func__, EncodeDestination(CIdentityID(notaryChainDef.GetID())).c_str());
         ConnectedChains.notarySystems[notaryChainDef.GetID()] = 
-            CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CCurrencyDefinition());
+            CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CCurrencyDefinition(), CPBaaSNotarization());
         CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
         ASSETCHAINS_SUPPLY = currencyState.supply;
     }
@@ -448,7 +448,9 @@ void GetCurrencyDefinitions(vector<CCurrencyDefinition> &chains, bool includeExp
     }
 }
 
-bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain, const std::set<uint160> &currencyIDs, std::map<uint160, std::pair<CCurrencyDefinition,CPBaaSNotarization>> &currencyDefs)
+bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain, 
+                                           const std::set<uint160> &currencyIDs, std::map<uint160, std::pair<CCurrencyDefinition, 
+                                           CPBaaSNotarization>> &currencyDefs)
 {
     for (auto &curID : currencyIDs)
     {
@@ -470,7 +472,7 @@ bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain, cons
             oneDef = CCurrencyDefinition(result);
         }
 
-        if (result.isNull() || !oneDef.IsValid())
+        if (!oneDef.IsValid())
         {
             // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
             LogPrintf("Unable to get currency definition for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
@@ -479,7 +481,34 @@ bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain, cons
         }
 
         {
+            CChainNotarizationData cnd;
+            UniValue result;
+            try
+            {
+                result = find_value(RPCCallRoot("getnotarizationdata", params), "result");
+            } catch (exception e)
+            {
+                result = NullUniValue;
+            }
+
+            if (!result.isNull())
+            {
+                cnd = CChainNotarizationData(result);
+            }
+
+            if (!cnd.IsValid())
+            {
+                // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
+                LogPrintf("Invalid notarization data for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+                printf("Invalid notarization data for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+                return false;
+            }
+            LOCK(cs_mergemining);
             currencyDefs[oneDef.GetID()].first = oneDef;
+            if (cnd.IsConfirmed())
+            {
+                currencyDefs[oneDef.GetID()].second = cnd.vtx[cnd.lastConfirmed].second;
+            }
         }
     }
     return true;
