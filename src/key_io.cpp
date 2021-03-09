@@ -566,7 +566,7 @@ CProofRoot::CProofRoot(const UniValue &uni) :
 
 UniValue CProofRoot::ToUniValue() const
 {
-    UniValue obj;
+    UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int64_t)version));
     obj.push_back(Pair("type", (int64_t)type));
     obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));

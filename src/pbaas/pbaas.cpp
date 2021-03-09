@@ -3066,7 +3066,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         else
         {
             newNotarization.currencyState.SetLaunchClear();
-
             // set final numbers for notarization
 
             // if this is a PBaaS fractional gateway launch, the issued reserves for the gateway must be considered
@@ -3171,7 +3170,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     if (isClearLaunchExport || isPreLaunch)
     {
         newNotarizationOutNum = exportOutputs.size();
-
         cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
         exportOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &newNotarization))));
