@@ -1594,6 +1594,33 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         return false;
     }
 
+    // if we are being asked for a notarization of the current chain, we fake one
+    if (currencyID == ASSETCHAINS_CHAINID)
+    {
+        CIdentityID proposer = VERUS_NOTARYID.IsNull() ? (VERUS_DEFAULTID.IsNull() ? VERUS_NODEID : VERUS_DEFAULTID) : VERUS_NOTARYID;
+
+        uint32_t height = chainActive.Height();
+        std::map<uint160, CProofRoot> proofRoots;
+        proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(height);
+        
+        CPBaaSNotarization bestNotarization(currencyID,
+                                            ConnectedChains.GetCurrencyState(height),
+                                            height,
+                                            CUTXORef(),
+                                            0,
+                                            std::vector<CNodeData>(),
+                                            std::map<uint160, CCoinbaseCurrencyState>(),
+                                            DestinationToTransferDestination(proposer),
+                                            proofRoots,
+                                            CPBaaSNotarization::VERSION_CURRENT,
+                                            CPBaaSNotarization::FLAG_LAUNCH_CONFIRMED);
+        notarizationData.vtx.push_back(std::make_pair(CUTXORef(), bestNotarization));
+        notarizationData.lastConfirmed = 0;
+        notarizationData.forks.push_back(std::vector<int>({0}));
+        notarizationData.bestChain = 0;
+        return true;
+    }
+
     // look for unspent, confirmed finalizations first
     uint160 finalizeNotarizationKey = CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey());
 

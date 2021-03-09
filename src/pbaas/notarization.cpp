@@ -667,13 +667,15 @@ CObjectFinalization::CObjectFinalization(const CTransaction &tx, uint32_t *pEcod
 CChainNotarizationData::CChainNotarizationData(UniValue &obj)
 {
     version = (uint32_t)uni_get_int(find_value(obj, "version"));
-    UniValue vtxUni = find_value(obj, "vtx");
+    UniValue vtxUni = find_value(obj, "notarizations");
     if (vtxUni.isArray())
     {
         vector<UniValue> vvtx = vtxUni.getValues();
         for (auto o : vvtx)
         {
-            vtx.push_back(make_pair(uint256S(uni_get_str(find_value(o, "txid"))), CPBaaSNotarization(find_value(o, "notarization"))));
+            vtx.push_back(make_pair(CUTXORef(uint256S(uni_get_str(find_value(o, "txid"))),
+                                             uni_get_int(find_value(o, "vout"))),
+                                    CPBaaSNotarization(find_value(o, "notarization"))));
         }
     }
 
