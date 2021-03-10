@@ -1809,16 +1809,7 @@ void komodo_args(char *argv0)
         // upper case name
         name = "VRSCTEST";
     }
-
     else if (lowerName == "vrsc")
-    {
-        PBAAS_TESTMODE = true;
-        if (name == "vrsctest")
-        {
-            name = "VRSCTEST";
-        }
-    }
-    else
     {
         name = "VRSC";
     }
