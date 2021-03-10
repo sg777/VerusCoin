@@ -571,10 +571,10 @@ UniValue CPBaaSNotarization::ToUniValue() const
     }
     obj.push_back(Pair("currencystates", curStateArr));
 
-    UniValue proofRootsUni(UniValue::VOBJ);
+    UniValue proofRootsUni(UniValue::VARR);
     for (auto &oneRoot : proofRoots)
     {
-        proofRootsUni.push_back(Pair(EncodeDestination(CIdentityID(oneRoot.first)), oneRoot.second.ToUniValue()));
+        proofRootsUni.push_back(oneRoot.second.ToUniValue());
     }
     obj.push_back(Pair("proofroots", proofRootsUni));
 

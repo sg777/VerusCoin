@@ -989,7 +989,11 @@ public:
 
     bool IsValid() const
     {
-        return !systemID.IsNull() && !stateRoot.IsNull() && !blockHash.IsNull();
+        return version >= VERSION_FIRST &&
+               version <= VERSION_LAST &&
+               !systemID.IsNull() &&
+               !stateRoot.IsNull() &&
+               !blockHash.IsNull();
     }
 
     friend bool operator==(const CProofRoot &op1, const CProofRoot &op2);

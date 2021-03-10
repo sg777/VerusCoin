@@ -512,7 +512,11 @@ void PrintExceptionContinue(const std::exception* pex, const char* pszThread)
 boost::filesystem::path GetDefaultDataDir()
 {
     namespace fs = boost::filesystem;
-    std::string chainName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
+    std::string chainName = std::string(ASSETCHAINS_SYMBOL);
+    if (chainName != "VRSC")
+    {
+        chainName = boost::to_lower_copy(chainName);
+    }
     const char *symbol = chainName.c_str();
 
     // Windows < Vista: C:\Documents and Settings\Username\Application Data\Zcash
@@ -736,7 +740,10 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
     // This can be called during exceptions by LogPrintf(), so we cache the
     // value so we don't have to do memory allocations after that.
     if (!path.empty())
+    {
+        printf("%s: ck1 returning path: %s\n", __func__, path.c_str());
         return path;
+    }
 
     if (mapArgs.count("-datadir")) {
         path = fs::system_complete(mapArgs["-datadir"]);
@@ -753,6 +760,7 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
     fs::create_directories(path);
     //std::string assetpath = path + "/assets";
     //boost::filesystem::create_directory(assetpath);
+    printf("%s: ck2 returning path: %s\n", __func__, path.c_str());
     return path;
 }
 

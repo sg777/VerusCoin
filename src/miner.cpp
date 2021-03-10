@@ -513,7 +513,7 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem, const uint
     params.push_back(EncodeDestination(CIdentityID(currencyID)));
 
     // VRSC and VRSCTEST do not start with a notary chain
-    if (!IsVerusActive())
+    if (!IsVerusActive() && ConnectedChains.IsNotaryAvailable())
     {
         // we are starting a PBaaS chain. We only assume that our chain definition and the first notary chain, if there is one, are setup
         // in ConnectedChains. All other currencies and identities necessary to start have not been populated and must be in block 1 by
@@ -580,23 +580,39 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             std::vector<CTxOut> importOutputs;
             CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
 
-            if (!lastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
-                                                    newCurrency,
-                                                    0,
-                                                    lastNotarization.notarizationHeight,
-                                                    exportTransfers,
-                                                    transferHash,
-                                                    newNotarization,
-                                                    importOutputs,
-                                                    importedCurrency,
-                                                    gatewayDepositsUsed,
-                                                    spentCurrencyOut))
+            CPBaaSNotarization tempLastNotarization = lastNotarization;
+            tempLastNotarization.SetPreLaunch();
+            tempLastNotarization.currencyState.SetLaunchClear(false);
+            tempLastNotarization.currencyState.SetPrelaunch(true);
+
+            if (!tempLastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
+                                                           newCurrency,
+                                                           0,
+                                                           tempLastNotarization.notarizationHeight,
+                                                           exportTransfers,
+                                                           transferHash,
+                                                           newNotarization,
+                                                           importOutputs,
+                                                           importedCurrency,
+                                                           gatewayDepositsUsed,
+                                                           spentCurrencyOut))
             {
                 LogPrintf("%s: invalid import for currency %s on system %s\n", __func__,
                                                                             newCurrency.name.c_str(), 
                                                                             EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str());
                 return false;
             }
+
+            // display inport outputs
+            CMutableTransaction debugTxOut;
+            debugTxOut.vout = importOutputs;
+            UniValue jsonTxOut(UniValue::VOBJ);
+            TxToUniv(debugTxOut, uint256(), jsonTxOut);
+            printf("%s: launch outputs: %s\nlast notarization: %s\nnew notarization: %s\n", __func__, 
+                                                                                            jsonTxOut.write(1,2).c_str(),
+                                                                                            lastNotarization.ToUniValue().write(1,2).c_str(),
+                                                                                            newNotarization.ToUniValue().write(1,2).c_str());
+
             newNotarization.prevNotarization = CUTXORef();
             newNotarization.prevHeight = 0;
         }
@@ -622,7 +638,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                       newCurID,
                                                       CCurrencyValueMap());
             cci.SetSameChain(newCurrency.systemID == ASSETCHAINS_CHAINID);
-            cci.SetDefinitionImport(true);
+            cci.SetInitialLaunchImport();
 
             // now add the import itself
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci))));

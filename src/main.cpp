@@ -1082,7 +1082,7 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
         }
     }
 
-    // if there is a premine, make sure it is the right amount and goes to the correct recipient
+    // if there is a new, block one launch, make sure it is the right amount and goes to the correct recipients
     if (!IsVerusActive() && valid && nHeight == 1)
     {
         if (ConnectedChains.ThisChain().preAllocation.size())
@@ -1095,6 +1095,14 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
             {
                 preAllocations.insert(make_pair(preAlloc.first, make_pair(counter++, preAlloc.second)));
             }
+
+            {
+                UniValue debugUniTx(UniValue::VOBJ);
+                uint256 blkHash;
+                TxToUniv(tx, blkHash, debugUniTx);
+                printf("%s: %s\n", __func__, debugUniTx.write(1,2).c_str());
+            }
+
             // all pre-allocations are done with smart transactions
             for (int i; i < tx.vout.size(); i++)
             {
@@ -1279,8 +1287,8 @@ bool ContextualCheckTransaction(
     if (tx.IsCoinBase())
     {
         if (!ContextualCheckCoinbaseTransaction(tx, nHeight))
-            return state.DoS(100, error("CheckTransaction(): invalid script data for coinbase time lock"),
-                                REJECT_INVALID, "bad-txns-invalid-script-data-for-coinbase-time-lock");
+            return state.DoS(100, error("CheckTransaction(): invalid script data for coinbase"),
+                                REJECT_INVALID, "bad-txns-invalid-script-data-for-coinbase");
     }
 
     if (!tx.vShieldedSpend.empty() ||

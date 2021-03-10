@@ -1762,9 +1762,6 @@ void komodo_args(char *argv0)
         //KOMODO_PAX = 1;
     } //else KOMODO_PAX = GetArg("-pax",0);
 
-    // either the testmode parameter or calling this chain VRSCTEST will put us into testmode
-    PBAAS_TESTMODE = GetBoolArg("-testmode", false);
-
     /*
     if ( argv0 != 0 )
     {
@@ -1782,25 +1779,33 @@ void komodo_args(char *argv0)
     }
     */
 
+    // either the testmode parameter or calling this chain VRSCTEST will put us into testmode
+    PBAAS_TESTMODE = GetBoolArg("-testmode", false);
+
     // setting test mode also prevents the name of this chain from being set to VRSC
+
+    //printf("%s: initial name: %s\n", __func__, name.c_str());
 
     // for testnet release, default to testnet
     name = GetArg("-chain", name == "" ? "VRSC" : name);
-    //name = GetArg("-chain", name == "" ? "VRSC" : name);
-
     name = GetArg("-ac_name", name);
 
     std::string lowerName = boost::to_lower_copy(name);
 
+    if (lowerName != "vrsc")
+    {
+        PBAAS_TESTMODE = true;
+    }
+
     // both VRSC and VRSCTEST are names that cannot be
     // used as alternate chain names
-    if (PBAAS_TESTMODE && lowerName == "vrsc")
+    if ((PBAAS_TESTMODE && lowerName == "vrsc") || lowerName == "vrsctest")
     {
-        // for testnet release, default to testnet
+        // upper case name
         name = "VRSCTEST";
-        PBAAS_TESTMODE = false;
     }
-    else if (lowerName != "vrsc")
+
+    else if (lowerName == "vrsc")
     {
         PBAAS_TESTMODE = true;
         if (name == "vrsctest")
@@ -1812,6 +1817,8 @@ void komodo_args(char *argv0)
     {
         name = "VRSC";
     }
+
+    //printf("%s: chain name: %s\n", __func__, name.c_str());
 
     mapArgs["-ac_name"] = name;
     memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));

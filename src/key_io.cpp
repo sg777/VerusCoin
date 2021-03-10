@@ -557,7 +557,7 @@ CProofRoot::CProofRoot(const UniValue &uni) :
 {
     version = (uint32_t)uni_get_int(find_value(uni, "version"));
     type = (uint32_t)uni_get_int(find_value(uni, "type"));
-    systemID = GetDestinationID(DecodeDestination(uni_get_str(uni, "systemid")));
+    systemID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "systemid"))));
     rootHeight = (uint32_t)uni_get_int(find_value(uni, "height"));
     stateRoot = uint256S(uni_get_str(find_value(uni, "stateroot")));
     blockHash = uint256S(uni_get_str(find_value(uni, "blockhash")));

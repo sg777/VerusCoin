@@ -2864,7 +2864,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         if (isClearLaunchExport && newNotarization.IsLaunchConfirmed() && 
             (_curDef.IsPBaaSChain() || _curDef.IsGateway() || _curDef.IsPBaaSConverter()))
         {
-            newNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(_curDef.startBlock);
+            newNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(_curDef.startBlock - 1);
         }
         for (auto &oneCur : totalExports.valueMap)
         {
@@ -2889,18 +2889,19 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                 oneCurID = oneCur.first;
             }
 
-            // if we are exporting a gateway currency back to its gateway, we do not store it in reserve deposits
-            if (oneCurDef.IsGateway() && oneCurDef.systemID == ASSETCHAINS_CHAINID && oneCurDef.gatewayID == destSystemID)
+            // if we are exporting a gateway or PBaaS currency back to its system, we do not store it in reserve deposits
+            if ((oneCurDef.IsGateway() && oneCurDef.systemID == ASSETCHAINS_CHAINID && oneCurDef.gatewayID == destSystemID) ||
+                (oneCurDef.systemID != ASSETCHAINS_CHAINID && oneCurDef.systemID == destSystemID))
             {
+                
+                // TODO: if we're exporting to a gateway or other chain, ensure that our export currency is registered for import
+                //
                 continue;
             }
             else if (oneCurDef.systemID == ASSETCHAINS_CHAINID)
             {
                 // exporting from one currency on this system to another currency on this system, store reserve deposits
                 newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
-                
-                // TODO: if we're exporting to a gateway or other chain, ensure that our export currency is registered for import
-                //
             }
             else if (destSystemID != oneCurDef.systemID)
             {

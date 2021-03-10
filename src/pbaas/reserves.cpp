@@ -2176,10 +2176,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // convert all fees to the system currency of the import
                 // fees that started in fractional are already converted, so not considered
                 CAmount totalNativeFee = 0;
-                if (importCurrencyState.IsLaunchConfirmed() && isFractional)
+
+                if (importCurrencyState.IsLaunchConfirmed() && isFractional && importCurrencyState.reserves[systemDestIdx])
                 {
                     // setup conversion matrix for fees that are converted to
-                    // native from another reserve
+                    // native (or launch currency of a PBaaS chain) from another reserve
                     for (auto &oneFee : transferFees.valueMap)
                     {
                         // only convert in second stage if we are going from one reserve to the system ID
@@ -2197,8 +2198,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             CAmount oneFeeValue = 0;
                             reserveConverted.valueMap[oneFee.first] += oneFee.second;
                             crossConversions[curIdx][systemDestIdx] += oneFee.second;
-                            oneFeeValue = importCurrencyState.ReserveToNativeRaw(oneFee.second,
-                                                                        importCurrencyState.conversionPrice[currencyIndexMap[oneFee.first]]);
+                            CAmount conversionPrice = importCurrencyState.IsLaunchCompleteMarker() ? 
+                                                        importCurrencyState.conversionPrice[currencyIndexMap[oneFee.first]] :
+                                                        importCurrencyState.viaConversionPrice[currencyIndexMap[oneFee.first]];
+                            oneFeeValue = importCurrencyState.ReserveToNativeRaw(oneFee.second, conversionPrice);
 
                             if (systemDestID == importCurrencyID)
                             {
@@ -2908,9 +2911,34 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     // launch clear or not confirmed, we have straight prices, fees get formula based conversion, but
     // price is not recorded in state so that initial currency always has initial prices
-    if (isFractional && (newCurrencyState.IsLaunchClear() || !newCurrencyState.IsLaunchConfirmed()))
+    if (isFractional &&
+        importCurrencyDef.gatewayConverterIssuance &&
+        importCurrencyDef.systemID == systemDestID &&
+        (newCurrencyState.IsPrelaunch() || newCurrencyState.IsLaunchClear()))
     {
+        // via prices are used for fees on launch clear and include the converter issued currency
+        // normal prices on launch clear for a gateway or PBaaS converter do not include the new native
+        // currency until after pre-conversions are processed
         newCurrencyState.viaConversionPrice = newCurrencyState.conversionPrice = newCurrencyState.PricesInReserve();
+        CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
+        tempCurrencyState.currencies.erase(tempCurrencyState.currencies.begin() + systemDestIdx);
+        tempCurrencyState.reserves.erase(tempCurrencyState.reserves.begin() + systemDestIdx);
+        int32_t sysWeight = tempCurrencyState.weights[systemDestIdx];
+        tempCurrencyState.weights.erase(tempCurrencyState.weights.begin() + systemDestIdx);
+        int32_t oneExtraWeight = sysWeight / tempCurrencyState.weights.size();
+        int32_t weightRemainder = sysWeight % tempCurrencyState.weights.size();
+        for (auto &oneWeight : tempCurrencyState.weights)
+        {
+            oneWeight += oneExtraWeight;
+            if (weightRemainder)
+            {
+                oneWeight++;
+                weightRemainder--;
+            }
+        }
+        std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
+        launchPrices.insert(launchPrices.begin() + systemDestIdx, 0);
+        newCurrencyState.conversionPrice = launchPrices;
     }
 
     newCurrencyState.supply += preAllocTotal;

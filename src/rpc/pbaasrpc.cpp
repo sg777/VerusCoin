@@ -1602,7 +1602,8 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         uint32_t height = chainActive.Height();
         std::map<uint160, CProofRoot> proofRoots;
         proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(height);
-        
+        //printf("%s: returning proof root: %s\n", __func__, proofRoots[ASSETCHAINS_CHAINID].ToUniValue().write(1,2).c_str());
+
         CPBaaSNotarization bestNotarization(currencyID,
                                             ConnectedChains.GetCurrencyState(height),
                                             height,
@@ -3910,7 +3911,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 }
             }
 
+            // set start block and gateway converter issuance
             gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
+            gatewayConverterMap.insert(std::make_pair("gatewayconverterissuance", newChain.gatewayConverterIssuance));
 
             UniValue newCurUni(UniValue::VOBJ);
             for (auto oneProp : gatewayConverterMap)

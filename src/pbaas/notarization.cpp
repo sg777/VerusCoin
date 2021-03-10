@@ -249,8 +249,8 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     hashPrevNotarization = uint256S(uni_get_str(find_value(obj, "hashprevnotarizationobject")));
     prevHeight = uni_get_int(find_value(obj, "prevheight"));
 
-    auto curStateArr = find_value(obj, "prevheight");
-    auto proofRootArr = find_value(obj, "prevheight");
+    auto curStateArr = find_value(obj, "currencystates");
+    auto proofRootArr = find_value(obj, "proofroots");
     auto nodesUni = find_value(obj, "nodes");
 
     if (curStateArr.isArray())
@@ -272,14 +272,13 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     {
         for (int i = 0; i < proofRootArr.size(); i++)
         {
-            std::vector<std::string> keys = proofRootArr[i].getKeys();
-            std::vector<UniValue> values = proofRootArr[i].getValues();
-            if (keys.size() != 1 or values.size() != 1)
+            CProofRoot oneRoot(proofRootArr[i]);
+            if (!oneRoot.IsValid())
             {
                 nVersion = VERSION_INVALID;
                 return;
             }
-            proofRoots.insert(std::make_pair(GetDestinationID(DecodeDestination(keys[0])), CProofRoot(values[0])));
+            proofRoots.insert(std::make_pair(oneRoot.systemID, oneRoot));
         }
     }
 
@@ -570,6 +569,17 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            spentCurrencyOut,
                                                            &tempState);
 
+        // if we are in the pre-launch phase, all reserves in are cumulative and then calculated together at launch
+        // reserves in represent all reserves in, and fees are taken out after launch or refund as well
+        if (tempState.IsPrelaunch())
+        {
+            tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
+        }
+        else if (tempState.IsLaunchClear())
+        {
+            // non-prelaunch launch clear notarization gets the same reserves in as the last prelaunch
+            tempState.reserveIn = this->currencyState.reserveIn;
+        }
         newNotarization.currencyState = tempState;
         return retVal;
     }
