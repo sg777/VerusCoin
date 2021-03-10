@@ -1359,7 +1359,12 @@ uint16_t _komodo_userpass(char *username,char *password,FILE *fp)
 void komodo_statefname(char *fname,char *symbol,char *str)
 {
     int32_t n,len;
-    std::string checkName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
+    std::string checkName = std::string(ASSETCHAINS_SYMBOL);
+    if (checkName != "VRSC")
+    {
+        checkName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
+    }
+
     const char *chkName = checkName.c_str();
     sprintf(fname, "%s", GetDataDir(false).string().c_str());
     if ( (n = (int32_t)strlen(chkName)) != 0 )

@@ -741,7 +741,6 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
     // value so we don't have to do memory allocations after that.
     if (!path.empty())
     {
-        printf("%s: ck1 returning path: %s\n", __func__, path.c_str());
         return path;
     }
 
@@ -760,7 +759,6 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
     fs::create_directories(path);
     //std::string assetpath = path + "/assets";
     //boost::filesystem::create_directory(assetpath);
-    printf("%s: ck2 returning path: %s\n", __func__, path.c_str());
     return path;
 }
 
