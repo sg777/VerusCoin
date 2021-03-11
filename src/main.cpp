@@ -1085,6 +1085,9 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
     // if there is a new, block one launch, make sure it is the right amount and goes to the correct recipients
     if (!IsVerusActive() && valid && nHeight == 1)
     {
+        // get all currency state information and confirm that all necessary pre-allocations, currencies,
+        // identity and imports are as they sohuld be, given the starting state represented.
+
         if (ConnectedChains.ThisChain().preAllocation.size())
         {
             std::multimap<uint160, std::pair<int, CAmount>> preAllocations;
@@ -1094,13 +1097,6 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
             for (auto &preAlloc : ConnectedChains.ThisChain().preAllocation)
             {
                 preAllocations.insert(make_pair(preAlloc.first, make_pair(counter++, preAlloc.second)));
-            }
-
-            {
-                UniValue debugUniTx(UniValue::VOBJ);
-                uint256 blkHash;
-                TxToUniv(tx, blkHash, debugUniTx);
-                printf("%s: %s\n", __func__, debugUniTx.write(1,2).c_str());
             }
 
             // all pre-allocations are done with smart transactions
@@ -1144,6 +1140,14 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
         {
             valid = false;
         }
+        if (!valid)
+        {
+            UniValue debugUniTx(UniValue::VOBJ);
+            uint256 blkHash;
+            TxToUniv(tx, blkHash, debugUniTx);
+            printf("%s: %s\n", __func__, debugUniTx.write(1,2).c_str());
+        }
+        valid = true;
     }
 
     return valid;

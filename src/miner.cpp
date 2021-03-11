@@ -582,13 +582,14 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
             CPBaaSNotarization tempLastNotarization = lastNotarization;
             tempLastNotarization.SetPreLaunch();
+            tempLastNotarization.currencyState.SetLaunchCompleteMarker(false);
             tempLastNotarization.currencyState.SetLaunchClear(false);
             tempLastNotarization.currencyState.SetPrelaunch(true);
 
             if (!tempLastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
                                                            newCurrency,
                                                            0,
-                                                           tempLastNotarization.notarizationHeight,
+                                                           1,
                                                            exportTransfers,
                                                            transferHash,
                                                            newNotarization,
@@ -603,7 +604,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 return false;
             }
 
-            // display inport outputs
+            /* // display inport outputs
             CMutableTransaction debugTxOut;
             debugTxOut.vout = importOutputs;
             UniValue jsonTxOut(UniValue::VOBJ);
@@ -612,6 +613,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                                                             jsonTxOut.write(1,2).c_str(),
                                                                                             lastNotarization.ToUniValue().write(1,2).c_str(),
                                                                                             newNotarization.ToUniValue().write(1,2).c_str());
+            */
 
             newNotarization.prevNotarization = CUTXORef();
             newNotarization.prevHeight = 0;
@@ -827,7 +829,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
 
     // get all currencies/IDs that we will need to retrieve from our notary chain
     std::set<uint160> blockOneCurrencies = {ASSETCHAINS_CHAINID};
-    std::set<uint160> blockOneIDs;
+    std::set<uint160> blockOneIDs = {ASSETCHAINS_CHAINID};;
     std::set<uint160> convertersToCreate;
 
     CPBaaSNotarization converterNotarization;
@@ -871,13 +873,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     {
         // first, we need to have the native notary currency itself
         blockOneCurrencies.insert(oneNotary.first);
-        // the only currencies that need an associated ID are fractional or centralized
-        if (oneNotary.second.notaryChain.chainDefinition.IsFractional() ||
-            oneNotary.second.notaryChain.chainDefinition.proofProtocol == oneNotary.second.notaryChain.chainDefinition.PROOF_CHAINID ||
-            oneNotary.second.notaryChain.chainDefinition.notarizationProtocol == oneNotary.second.notaryChain.chainDefinition.NOTARIZATION_NOTARY_CHAINID)
-        {
-            blockOneIDs.insert(oneNotary.first);
-        }
+        blockOneIDs.insert(oneNotary.first);
     }
 
     auto &notaryIDs = ConnectedChains.ThisChain().notaries;

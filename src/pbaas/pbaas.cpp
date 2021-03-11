@@ -1965,6 +1965,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         if (lastNotarization.currencyState.IsLaunchClear() && !lastCCI.IsInitialLaunchImport())
         {
             lastNotarization.SetPreLaunch();
+            lastNotarization.currencyState.SetLaunchCompleteMarker(false);
             lastNotarization.currencyState.SetLaunchClear(false);
             lastNotarization.currencyState.SetPrelaunch(true);
         }

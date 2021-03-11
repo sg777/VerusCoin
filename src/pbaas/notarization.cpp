@@ -489,14 +489,18 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     CReserveTransactionDescriptor rtxd;
     std::vector<CTxOut> dummyImportOutputs;
+    bool thisIsLaunchSys = destCurrency.launchSystemID == ASSETCHAINS_CHAINID;
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
-    if (destCurrency.launchSystemID == sourceSystemID && currentHeight <= (destCurrency.startBlock - 1))
+    if (destCurrency.launchSystemID == sourceSystemID &&
+        ((thisIsLaunchSys && currentHeight <= (destCurrency.startBlock - 1)) ||
+         (!thisIsLaunchSys &&
+          destCurrency.systemID == ASSETCHAINS_CHAINID &&
+          currentHeight == 1)))
     {
         // we get one pre-launch coming through here, initial supply is set and ready for pre-convert
-        // don't revert or emit initial supply, it will be emitted for valid pre-conversions, which must already
-        // be included in the currency state
-        if (currentHeight == (destCurrency.startBlock - 1) && newNotarization.IsPreLaunch())
+        if (((thisIsLaunchSys && currentHeight == (destCurrency.startBlock - 1)) || sourceSystemID != ASSETCHAINS_CHAINID) && 
+            newNotarization.IsPreLaunch())
         {
             // the first block executes the second time through
             if (newNotarization.IsLaunchCleared())
@@ -538,7 +542,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 }
             }
         }
-        else if (currentHeight < (destCurrency.startBlock - 1))
+        else if (thisIsLaunchSys && currentHeight < (destCurrency.startBlock - 1))
         {
             newNotarization.currencyState.SetPrelaunch();
             // if we are about to get the notarization just after the definition notarization,

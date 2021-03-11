@@ -2153,6 +2153,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             {
                                 AddReserveOutConverted(importCurrencyID, onePreAlloc.second);
                             }
+                            
                             preAllocTotal += onePreAlloc.second;
 
                             std::vector<CTxDestination> dests;
@@ -2165,8 +2166,15 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             {
                                 dests = std::vector<CTxDestination>({CTxDestination(CIdentityID(onePreAlloc.first))});
                             }
-                            CTokenOutput ro = CTokenOutput(importCurrencyID, onePreAlloc.second);
-                            vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
+                            if (importCurrencyID == systemDestID)
+                            {
+                                vOutputs.push_back(CTxOut(onePreAlloc.second, GetScriptForDestination(dests[0])));
+                            }
+                            else
+                            {
+                                CTokenOutput ro = CTokenOutput(importCurrencyID, onePreAlloc.second);
+                                vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
+                            }
                         }
                     }
                 }
@@ -2887,58 +2895,77 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
-    CCurrencyValueMap adjustedReserveConverted = reserveConverted;
-    CCurrencyValueMap adjustedFracOutConverted = NativeOutConvertedMap();
+    std::vector<CAmount> vResConverted;
+    std::vector<CAmount> vResOutConverted;
+    std::vector<CAmount> vFracConverted;
+    std::vector<CAmount> vFracOutConverted;
 
     if (newCurrencyState.IsLaunchConfirmed())
     {
-        adjustedReserveConverted -= preConvertedReserves;
+        std::vector<CAmount> vResConverted = (reserveConverted - preConvertedReserves).AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap(importCurrencyID).AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
+        for (int i = 0; i < newCurrencyState.currencies.size(); i++)
+        {
+            newCurrencyState.reserveIn[i] = vResConverted[i];
+            newCurrencyState.reserveOut[i] = vResOutConverted[i];
+            newCurrencyState.reserves[i] += isFractional ? vResConverted[i] - vResOutConverted[i] : 0;
+            newCurrencyState.nativeIn[i] = vFracConverted[i];
+            newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]);
+        }
     }
-
-    std::vector<CAmount> vResConverted = adjustedReserveConverted.AsCurrencyVector(newCurrencyState.currencies);
-    std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap(importCurrencyID).AsCurrencyVector(newCurrencyState.currencies);
-    std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
-    std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
-
-    for (int i = 0; i < newCurrencyState.currencies.size(); i++)
+    else
     {
-        newCurrencyState.reserveIn[i] = vResConverted[i];
-        newCurrencyState.reserveOut[i] = vResOutConverted[i];
-        newCurrencyState.reserves[i] += isFractional ? vResConverted[i] - vResOutConverted[i] : 0;
-        newCurrencyState.nativeIn[i] = vFracConverted[i];
-        newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]);
+        std::vector<CAmount> vResConverted = reserveConverted.AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap(importCurrencyID).AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
+        for (int i = 0; i < newCurrencyState.currencies.size(); i++)
+        {
+            newCurrencyState.reserveIn[i] = vResConverted[i];
+            newCurrencyState.reserves[i] += isFractional ? vResConverted[i] - vResOutConverted[i] : 0;
+            newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]);
+        }
     }
 
     // launch clear or not confirmed, we have straight prices, fees get formula based conversion, but
     // price is not recorded in state so that initial currency always has initial prices
     if (isFractional &&
-        importCurrencyDef.gatewayConverterIssuance &&
-        importCurrencyDef.systemID == systemDestID &&
-        (newCurrencyState.IsPrelaunch() || newCurrencyState.IsLaunchClear()))
+        !newCurrencyState.IsLaunchCompleteMarker())
     {
-        // via prices are used for fees on launch clear and include the converter issued currency
-        // normal prices on launch clear for a gateway or PBaaS converter do not include the new native
-        // currency until after pre-conversions are processed
-        newCurrencyState.viaConversionPrice = newCurrencyState.conversionPrice = newCurrencyState.PricesInReserve();
-        CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
-        tempCurrencyState.currencies.erase(tempCurrencyState.currencies.begin() + systemDestIdx);
-        tempCurrencyState.reserves.erase(tempCurrencyState.reserves.begin() + systemDestIdx);
-        int32_t sysWeight = tempCurrencyState.weights[systemDestIdx];
-        tempCurrencyState.weights.erase(tempCurrencyState.weights.begin() + systemDestIdx);
-        int32_t oneExtraWeight = sysWeight / tempCurrencyState.weights.size();
-        int32_t weightRemainder = sysWeight % tempCurrencyState.weights.size();
-        for (auto &oneWeight : tempCurrencyState.weights)
+        if (importCurrencyState.IsPrelaunch())
         {
-            oneWeight += oneExtraWeight;
-            if (weightRemainder)
+            // via prices are used for fees on launch clear and include the converter issued currency
+            // normal prices on launch clear for a gateway or PBaaS converter do not include the new native
+            // currency until after pre-conversions are processed
+            newCurrencyState.viaConversionPrice = newCurrencyState.PricesInReserve();
+            CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
+            tempCurrencyState.currencies.erase(tempCurrencyState.currencies.begin() + systemDestIdx);
+            tempCurrencyState.reserves.erase(tempCurrencyState.reserves.begin() + systemDestIdx);
+            int32_t sysWeight = tempCurrencyState.weights[systemDestIdx];
+            tempCurrencyState.weights.erase(tempCurrencyState.weights.begin() + systemDestIdx);
+            int32_t oneExtraWeight = sysWeight / tempCurrencyState.weights.size();
+            int32_t weightRemainder = sysWeight % tempCurrencyState.weights.size();
+            for (auto &oneWeight : tempCurrencyState.weights)
             {
-                oneWeight++;
-                weightRemainder--;
+                oneWeight += oneExtraWeight;
+                if (weightRemainder)
+                {
+                    oneWeight++;
+                    weightRemainder--;
+                }
             }
+            std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
+            launchPrices.insert(launchPrices.begin() + systemDestIdx, newCurrencyState.viaConversionPrice[systemDestIdx]);
+            newCurrencyState.conversionPrice = launchPrices;
         }
-        std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
-        launchPrices.insert(launchPrices.begin() + systemDestIdx, 0);
-        newCurrencyState.conversionPrice = launchPrices;
+        else
+        {
+            // these values stay constant until launch complete market
+            newCurrencyState.viaConversionPrice = importCurrencyState.viaConversionPrice;
+            newCurrencyState.conversionPrice = importCurrencyState.conversionPrice;
+        }
     }
 
     newCurrencyState.supply += preAllocTotal;
@@ -3416,7 +3443,7 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
     bool launchClear = IsLaunchClear();
     if (!launchClear)
     {
-        // add reserves out to reserves
+        // reverse last changes and add reserves out to reserves
         auto currencyMap = GetReserveMap();
 
         // revert changes in reserves and supply to pre conversion state, add reserve outs and subtract reserve ins
