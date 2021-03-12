@@ -2435,7 +2435,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 bool CConnectedChains::GetSystemExports(const uint160 &systemID,
                                         std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> &exports,
                                         uint32_t fromHeight,
-                                        uint32_t toHeight)
+                                        uint32_t toHeight,
+                                        bool withProofs)
 {
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
@@ -2487,6 +2488,19 @@ bool CConnectedChains::GetSystemExports(const uint160 &systemID,
                                 LogPrintf("%s: invalid reserve transfer input 1 %s, %lu\n", __func__, exportTx.vin[i].prevout.hash.GetHex().c_str(), exportTx.vin[i].prevout.n);
                                 return false;
                             }
+                        }
+                        // if we should make a partial transaction proof, do it
+                        if (withProofs &&
+                            ccx.destSystemID != ASSETCHAINS_CHAINID)
+                        {
+                            std::vector<int> outputsToProve({(int)idx.first.index});
+                            auto it = mapBlockIndex.find(blkHash);
+                            if (it == mapBlockIndex.end())
+                            {
+                                LogPrintf("%s: possible corruption, cannot locate block %s for export tx\n", __func__, blkHash.GetHex().c_str());
+                                return false;
+                            }
+                            exportProof = CPartialTransactionProof(exportTx, outputsToProve, it->second, toHeight);
                         }
                     }
                     else

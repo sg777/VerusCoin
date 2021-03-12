@@ -1502,12 +1502,14 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     }
 
     int32_t solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
+
     // reserve descriptor transactions cannot run until identity activates
     if (!chainActive.LastTip() || solutionVersion < CConstVerusSolutionVector::activationHeight.ACTIVATE_IDENTITY)
     {
         return;
     }
 
+    bool isPBaaS = solutionVersion >= CActivationHeight::ACTIVATE_PBAAS;
     bool isPBaaSActivation = CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight);
 
     CNameReservation nameReservation;
@@ -1554,7 +1556,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                 case EVAL_IDENTITY_PRIMARY:
                 {
-                    // one identity per transaction
+                    // one identity per transaction, unless we are first block coinbase on a PBaaS chain
+                    // or import
                     if (p.version < p.VERSION_V3 ||
                         !p.vData.size() ||
                         (solutionVersion < CActivationHeight::ACTIVATE_PBAAS && identity.IsValid()) ||

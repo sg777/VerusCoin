@@ -1140,13 +1140,13 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
         {
             valid = false;
         }
-        if (!valid)
-        {
-            UniValue debugUniTx(UniValue::VOBJ);
-            uint256 blkHash;
-            TxToUniv(tx, blkHash, debugUniTx);
-            printf("%s: %s\n", __func__, debugUniTx.write(1,2).c_str());
-        }
+        //if (!valid)
+        //{
+            //UniValue debugUniTx(UniValue::VOBJ);
+            //uint256 blkHash;
+            //TxToUniv(tx, blkHash, debugUniTx);
+            //printf("%s: %s\n", __func__, debugUniTx.write(1,2).c_str());
+        //}
         valid = true;
     }
 

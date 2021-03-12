@@ -1376,7 +1376,8 @@ public:
     bool GetSystemExports(const uint160 &systemID,                                 // transactions exported to system
                           std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> &exports,
                           uint32_t fromHeight,
-                          uint32_t toHeight);
+                          uint32_t toHeight,
+                          bool withProofs=false);
 
     // get the exports to a specific system on this chain from a specific height up to a specific height
     bool GetCurrencyExports(const uint160 &currencyID,                             // transactions exported to system

@@ -1009,13 +1009,13 @@ UniValue getexports(const UniValue& params, bool fHelp)
     if ((curDef.IsGateway() && curDef.gatewayID == currencyID) ||
         (curDef.systemID == currencyID))
     {
-        ConnectedChains.GetSystemExports(currencyID, exports, fromHeight, toHeight);
+        ConnectedChains.GetSystemExports(currencyID, exports, fromHeight, toHeight, true);
     }
     else
     {
         ConnectedChains.GetCurrencyExports(currencyID, exports, fromHeight, toHeight);
     }
-    
+
     UniValue retVal(UniValue::VARR);
 
     for (auto &oneExport : exports)
