@@ -930,6 +930,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     uint160 thisChainID = ConnectedChains.ThisChain().GetID();
     uint160 firstNotaryID = ConnectedChains.FirstNotaryChain().GetID();
     CCoinbaseCurrencyState currencyState;
+    std::map<uint160, std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>>> blockOneExportImports;
 
     if (!GetBlockOneLaunchNotarization(ConnectedChains.FirstNotaryChain(), thisChainID, launchNotarization))
     {
@@ -951,6 +952,15 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         // we must reach minimums in all currencies to launch
         LogPrintf("This chain did not receive the minimum currency contributions and cannot launch. Pre-launch contributions to this chain can be refunded.\n");
         printf("This chain did not receive the minimum currency contributions and cannot launch. Pre-launch contributions to this chain can be refunded.\n");
+        return false;
+    }
+
+    // get initial imports
+    if (!GetBlockOneImports(ConnectedChains.FirstNotaryChain(), blockOneExportImports))
+    {
+        // we must reach minimums in all currencies to launch
+        LogPrintf("Cannot retrieve initial export imports from notary system\n");
+        printf("Cannot retrieve initial export imports from notary system\n");
         return false;
     }
 
@@ -1037,7 +1047,11 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     bool success = true;
     for (auto &oneCurrency : currencyImports)
     {
-        success = AddOneCurrencyImport(oneCurrency.second.first, oneCurrency.second.second, outputs);
+        success = AddOneCurrencyImport(oneCurrency.second.first, 
+                                       oneCurrency.second.second,
+                                       blockOneExportImports[oneCurrency.first].size() ? &(blockOneExportImports[oneCurrency.first][0]) : 
+                                                                                         nullptr,
+                                       outputs);
         if (!success)
         {
             break;
