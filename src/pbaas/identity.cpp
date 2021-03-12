@@ -708,7 +708,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
             {
                 return state.Error("Invalid multiple identity definitions on one transaction");
             }
-            if (i = outNum)
+            if (i == outNum)
             {
                 identityP = p;
             }
