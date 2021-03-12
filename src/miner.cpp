@@ -617,7 +617,7 @@ bool GetBlockOneImports(const CRPCChainData &notarySystem, std::map<uint160, std
             {
                 CCrossChainExport ccx;
                 std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>> oneExport;
-                if (DecodeOneExport(result, ccx, oneExport))
+                if (DecodeOneExport(result[i], ccx, oneExport))
                 {
                     exports[ccx.destCurrencyID].push_back(oneExport);
                 }
