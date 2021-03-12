@@ -2740,7 +2740,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     bool crossSystem = destSystemID != ASSETCHAINS_CHAINID;
     bool isPreLaunch = _curDef.launchSystemID == ASSETCHAINS_CHAINID &&
                        _curDef.startBlock > sinceHeight &&
-                       !(_curDef.systemID == ASSETCHAINS_CHAINID && sinceHeight == _curDef.startBlock - 1 && curHeight > _curDef.startBlock);
+                       !(_curDef.systemID == ASSETCHAINS_CHAINID && sinceHeight == (_curDef.startBlock - 1) && curHeight > _curDef.startBlock);
     bool isClearLaunchExport = isPreLaunch && curHeight >= _curDef.startBlock && !lastNotarization.IsLaunchCleared();
 
     if (!isClearLaunchExport && !_txInputs.size() && !addInputTx)
