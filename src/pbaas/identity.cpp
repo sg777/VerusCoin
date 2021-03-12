@@ -686,8 +686,12 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     CIdentity identity;
     COptCCParams p, identityP;
 
-    for (auto &output : tx.vout)
+    uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS;
+
+    for (int i = 0; i < tx.vout.size(); i++)
     {
+        auto &output = tx.vout[i];
         if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1 && (nameRes = CNameReservation(p.vData[0])).IsValid())
         {
             // twice through makes it invalid
@@ -700,11 +704,14 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         else if (p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (identity = CIdentity(p.vData[0])).IsValid())
         {
             // twice through makes it invalid
-            if (validIdentity)
+            if (!(isPBaaS && height == 1) && validIdentity)
             {
                 return state.Error("Invalid multiple identity definitions on one transaction");
             }
-            identityP = p;
+            if (i = outNum)
+            {
+                identityP = p;
+            }
             validIdentity = true;
         }
     }

@@ -2441,7 +2441,7 @@ bool CConnectedChains::GetSystemExports(const uint160 &systemID,
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
     // get all export transactions including and since this one up to the confirmed cross-notarization
-    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(systemID, CCrossChainExport::CurrencyExportKey()), 
+    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(systemID, CCrossChainExport::SystemExportKey()), 
                         CScript::P2IDX, 
                         addressIndex, 
                         fromHeight,

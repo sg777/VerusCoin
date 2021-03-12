@@ -1150,10 +1150,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (ccx = CCrossChainExport(vData[0])).IsValid())
             {
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destCurrencyID, ccx.CurrencyExportKey())));
-                if (ccx.destCurrencyID == ccx.destSystemID && ccx.destCurrencyID != ASSETCHAINS_CHAINID)
-                {
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destSystemID, ccx.SystemExportKey())));
-                }
+                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destSystemID, ccx.SystemExportKey())));
             }
             break;
         }
