@@ -898,7 +898,8 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     LOCK(mempool.cs);
     for (auto &input : tx.vin)
     {
-        if (input.prevout.hash == inTx.GetHash() || myGetTransaction(input.prevout.hash, inTx, blkHash))
+        // first time through may be null
+        if ((!input.prevout.hash.IsNull() && input.prevout.hash == inTx.GetHash()) || myGetTransaction(input.prevout.hash, inTx, blkHash))
         {
             if (inTx.vout[input.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (identity = CIdentity(p.vData[0])).IsValid())
             {
