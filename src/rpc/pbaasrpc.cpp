@@ -1293,7 +1293,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
                     }
 
                     if ((cci = CCrossChainImport(importTx)).IsValid() &&
-                        cci.GetImportInfo(importTx, idx.first.index, ccx, cci, sysCCIOut, importNotarization, importNotOut, evidenceOutStart, evidenceOutEnd, reserveTransfers))
+                        cci.GetImportInfo(importTx, importHeight, idx.first.index, ccx, cci, sysCCIOut, importNotarization, importNotOut, evidenceOutStart, evidenceOutEnd, reserveTransfers))
                     {
                         UniValue oneImportUni(UniValue::VOBJ);
 

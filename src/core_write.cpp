@@ -921,7 +921,7 @@ UniValue CCrossChainExport::ToUniValue() const
         obj.push_back(Pair("sourceheightstart", (int64_t)sourceHeightStart));
         obj.push_back(Pair("sourceheightend", (int64_t)sourceHeightEnd));
         obj.push_back(Pair("sourcesystemid", EncodeDestination(CIdentityID(sourceSystemID))));
-        obj.push_back(Pair("destinationsystemid", EncodeDestination(CIdentityID(destCurrencyID))));
+        obj.push_back(Pair("destinationsystemid", EncodeDestination(CIdentityID(destSystemID))));
         obj.push_back(Pair("destinationcurrencyid", EncodeDestination(CIdentityID(destCurrencyID))));
         obj.push_back(Pair("numinputs", numInputs));
         obj.push_back(Pair("totalamounts", totalAmounts.ToUniValue()));
@@ -933,15 +933,15 @@ UniValue CCrossChainExport::ToUniValue() const
     else
     {
         obj.push_back(Pair("issuplemental", true));
-        UniValue transfers(UniValue::VARR);
-        for (auto &oneTransfer : reserveTransfers)
-        {
-            transfers.push_back(oneTransfer.ToUniValue());
-        }
-        if (transfers.size())
-        {
-            obj.push_back(Pair("transfers", transfers));
-        }
+    }
+    UniValue transfers(UniValue::VARR);
+    for (auto &oneTransfer : reserveTransfers)
+    {
+        transfers.push_back(oneTransfer.ToUniValue());
+    }
+    if (transfers.size())
+    {
+        obj.push_back(Pair("transfers", transfers));
     }
     return obj;
 }

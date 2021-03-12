@@ -387,6 +387,45 @@ CCrossChainExport::CCrossChainExport(const CScript &script)
     }
 }
 
+CCrossChainExport::CCrossChainExport(const UniValue &obj) :
+    nVersion(CCrossChainExport::VERSION_CURRENT),
+    sourceHeightStart(0),
+    sourceHeightEnd(0),
+    firstInput(0),
+    numInputs(0)
+{
+    nVersion = uni_get_int(find_value(obj, "version"));
+    flags = uni_get_int(find_value(obj, "flags"));
+    if (!this->IsSupplemental())
+    {
+        sourceHeightStart = uni_get_int64(find_value(obj, "sourceheightstart"));
+        sourceHeightEnd = uni_get_int64(find_value(obj, "sourceheightend"));
+        sourceSystemID = GetDestinationID(DecodeDestination(uni_get_str(find_value(obj, "sourcesystemid"))));
+        destSystemID = GetDestinationID(DecodeDestination(uni_get_str(find_value(obj, "destinationsystemid"))));
+        destCurrencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(obj, "destinationcurrencyid"))));
+        firstInput = uni_get_int(find_value(obj, "firstinput"));
+        numInputs = uni_get_int(find_value(obj, "numinputs"));
+        totalAmounts = CCurrencyValueMap(find_value(obj, "totalamounts"));
+        totalFees = CCurrencyValueMap(find_value(obj, "totalfees"));
+        hashReserveTransfers = uint256S(uni_get_str(find_value(obj, "hashtransfers")));
+        exporter = DestinationToTransferDestination(DecodeDestination(uni_get_str(find_value(obj, "rewardaddress"))));
+    }
+
+    UniValue transfers = find_value(obj, "transfers");
+    if (transfers.isArray() && transfers.size())
+    {
+        for (int i = 0; i < transfers.size(); i++)
+        {
+            CReserveTransfer rt(transfers[i]);
+            if (rt.IsValid())
+            {
+                reserveTransfers.push_back(rt);
+            }
+        }
+    }
+}
+
+
 CCrossChainExport::CCrossChainExport(const CTransaction &tx, int32_t *pCCXOutputNum)
 {
     int32_t _ccxOutputNum = 0;
@@ -1880,6 +1919,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         if (nHeight && lastCCI.IsPostLaunch())
         {
             if (!lastCCI.GetImportInfo(lastImportTx,
+                                       nHeight,
                                        outputNum,
                                        lastCCX,
                                        lastSysCCI,

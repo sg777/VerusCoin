@@ -766,7 +766,8 @@ public:
 
     // returns false if the information is unavailable, indicating an invalid, out of context, or
     // incomplete import transaction
-    bool GetImportInfo(const CTransaction &importTx, 
+    bool GetImportInfo(const CTransaction &importTx,
+                       uint32_t nHeight,
                        int numImportOut, 
                        CCrossChainExport &ccx,
                        CCrossChainImport &sysCCI,
@@ -778,6 +779,7 @@ public:
                        std::vector<CReserveTransfer> &reserveTransfers,
                        CValidationState &state) const;
     bool GetImportInfo(const CTransaction &importTx, 
+                       uint32_t nHeight,
                        int numImportOut, 
                        CCrossChainExport &ccx,
                        CCrossChainImport &sysCCI,
@@ -897,7 +899,8 @@ public:
                       reserveTransfers(ReserveTransfers)
     {}
 
-    CCrossChainExport(const CScript &script);    
+    CCrossChainExport(const CScript &script);
+    CCrossChainExport(const UniValue &obj);
     CCrossChainExport(const CTransaction &tx, int32_t *pCCXOutputNum=nullptr);
 
     ADD_SERIALIZE_METHODS;

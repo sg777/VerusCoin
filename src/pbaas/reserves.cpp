@@ -344,6 +344,7 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
 
 
 bool CCrossChainImport::GetImportInfo(const CTransaction &importTx, 
+                                      uint32_t nHeight,
                                       int numImportOut, 
                                       CCrossChainExport &ccx,
                                       CCrossChainImport &sysCCI,
@@ -373,7 +374,12 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     evidenceOutStart = -1;
     evidenceOutEnd = -1;
 
+    // we cannot assert that cs_main is held or take cs_main here due to the multi-threaded validation model, 
+    // but we must either be holding the lock to enter here or in service of a smart transaction at this point.
     LOCK(mempool.cs);
+
+    uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool isPBaaSLaunch = !IsVerusActive() && solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && nHeight == 1;
 
     importNotarizationOut = numImportOut + 1;
 
@@ -411,22 +417,28 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     }
     else
     {
-        // next output should be the import for the system from which this export comes
-        uint256 hashBlk;
         COptCCParams p;
-        sysCCIOut = numImportOut + 1;
-        if (!(sysCCIOut >= 0 &&
-              importTx.vout.size() > sysCCIOut &&
-              importTx.vout[sysCCIOut].scriptPubKey.IsPayToCryptoCondition(p) &&
-              p.IsValid() &&
-              p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
-              p.vData.size() &&
-              (sysCCI = CCrossChainImport(p.vData[0])).IsValid()))
-        {
-            return state.Error(strprintf("%s: cannot retrieve export evidence for import",__func__));
-        }
 
-        importNotarizationOut++;
+        // PBaaS launch imports do not spend a separate sys import thread, since we are also importing 
+        // system currency on the same tx and and the coinbase has no inputs anyhow
+        if (!isPBaaSLaunch)
+        {
+            // next output should be the import for the system from which this export comes
+            uint256 hashBlk;
+            sysCCIOut = numImportOut + 1;
+            if (!(sysCCIOut >= 0 &&
+                importTx.vout.size() > sysCCIOut &&
+                importTx.vout[sysCCIOut].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                p.vData.size() &&
+                (sysCCI = CCrossChainImport(p.vData[0])).IsValid()))
+            {
+                return state.Error(strprintf("%s: cannot retrieve export evidence for import",__func__));
+            }
+
+            importNotarizationOut++;
+        }
 
         // next output should be export in evidence output followed by supplemental reserve transfers for the export
         evidenceOutStart = importNotarizationOut + 1;
@@ -463,6 +475,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             return state.Error(strprintf("%s: invalid export evidence for import 1",__func__));
         }
 
+        // evidence out end points to the last evidence out, not beyond
         evidenceOutEnd = nextOutput - 1;
     }
     COptCCParams p;
@@ -479,6 +492,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 }
 
 bool CCrossChainImport::GetImportInfo(const CTransaction &importTx, 
+                                    uint32_t nHeight,
                                     int numImportOut, 
                                     CCrossChainExport &ccx,
                                     CCrossChainImport &sysCCI,
@@ -491,6 +505,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 {
     CValidationState state;
     return GetImportInfo(importTx, 
+                            nHeight,
                             numImportOut, 
                             ccx, 
                             sysCCI, 
@@ -1676,7 +1691,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                     if (!cci.IsDefinitionImport())
                     {
-                        if (!cci.GetImportInfo(tx, i, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutStart, eOutEnd, importTransfers))
+                        if (!cci.GetImportInfo(tx, nHeight, i, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutStart, eOutEnd, importTransfers))
                         {
                             flags &= ~IS_VALID;
                             flags |= IS_REJECT;
