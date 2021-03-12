@@ -873,7 +873,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     {
         // first, we need to have the native notary currency itself
         blockOneCurrencies.insert(oneNotary.first);
-        blockOneIDs.insert(oneNotary.first);
+        blockOneIDs.insert(oneNotary.second.notaryChain.chainDefinition.notaries.begin(), oneNotary.second.notaryChain.chainDefinition.notaries.end());
     }
 
     auto &notaryIDs = ConnectedChains.ThisChain().notaries;

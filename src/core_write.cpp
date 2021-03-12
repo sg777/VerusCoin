@@ -1012,10 +1012,10 @@ UniValue CPrincipal::ToUniValue() const
 UniValue CIdentity::ToUniValue() const
 {
     UniValue obj = ((CPrincipal *)this)->ToUniValue();
+    obj.push_back(Pair("name", name));
 
     obj.push_back(Pair("identityaddress", EncodeDestination(CIdentityID(GetID()))));
     obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
-    obj.push_back(Pair("name", name));
 
     UniValue hashes(UniValue::VOBJ);
     for (auto &entry : contentMap)

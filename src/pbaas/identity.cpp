@@ -691,6 +691,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 
     for (int i = 0; i < tx.vout.size(); i++)
     {
+        CIdentity checkIdentity;
         auto &output = tx.vout[i];
         if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1 && (nameRes = CNameReservation(p.vData[0])).IsValid())
         {
@@ -701,7 +702,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
             }
             validReservation = true;
         }
-        else if (p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (identity = CIdentity(p.vData[0])).IsValid())
+        else if (p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (checkIdentity = CIdentity(p.vData[0])).IsValid())
         {
             // twice through makes it invalid
             if (!(isPBaaS && height == 1) && validIdentity)
@@ -711,6 +712,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
             if (i == outNum)
             {
                 identityP = p;
+                identity = checkIdentity;
             }
             validIdentity = true;
         }
@@ -903,6 +905,12 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                 return true;
             }
         }
+    }
+
+    // TODO: HARDENING at block one, a new PBaaS chain can mint IDs
+    if (isPBaaS && height == 1)
+    {
+        return true;
     }
 
     return state.Error("Invalid primary identity - does not include identity reservation or spend matching identity");
