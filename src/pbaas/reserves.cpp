@@ -454,7 +454,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
               evidence.IsPartialTxProof() &&
               evidence.evidence.size()))
         {
-            return state.Error(strprintf("%s: cannot retrieve export evidence for import",__func__));
+            return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
         }
         CTransaction exportTx;
         p = COptCCParams();
