@@ -1775,7 +1775,11 @@ public:
 
     bool IsValid() const
     {
-        return version >= VERSION_FIRST && version <= VERSION_LAST && !systemID.IsNull() && output.IsValid() && signatures.size();
+        return version >= VERSION_FIRST && 
+               version <= VERSION_LAST && 
+               !systemID.IsNull() && 
+               output.IsValid() && 
+               (signatures.size() || evidence.size());
     }
 };
 

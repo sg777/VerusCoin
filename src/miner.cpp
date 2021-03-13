@@ -426,10 +426,11 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                     auto proofRootIt = lastConfirmed.proofRoots.find(sourceChainID);
                     if (!isSameChain &&
                         !(txProof.IsValid() &&
-                        exportTxId == txProof.GetPartialTransaction(exportTx) &&
-                        proofRootIt != lastConfirmed.proofRoots.end() &&
-                        proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
-                        exportTx.vout.size() > exportTxOutNum))
+                          !txProof.GetPartialTransaction(exportTx).IsNull() &&
+                          txProof.TransactionHash() == exportTxId &&
+                          proofRootIt != lastConfirmed.proofRoots.end() &&
+                          proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
+                          exportTx.vout.size() > exportTxOutNum))
                     {
                         printf("Invalid export from %s\n", uni_get_str(params[0]).c_str());
                         return;
@@ -561,13 +562,19 @@ bool DecodeOneExport(const UniValue obj, CCrossChainExport &ccx,
 
     // TODO: HARDENING - we may want to check the proof against the actual notarization here
     if (!partialTxProof.IsValid() ||
-        partialTxProof.GetPartialTransaction(exportTx) != txId ||
+        partialTxProof.GetPartialTransaction(exportTx).IsNull() ||
+        partialTxProof.TransactionHash() != txId ||
         exportTx.vout.size() <= outNum ||
         !exportTx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) ||
         !p.IsValid() ||
         !p.evalCode == EVAL_CROSSCHAIN_EXPORT ||
         (outputValue = exportTx.vout[outNum].nValue) == -1)
     {
+        UniValue jsonTxOut(UniValue::VOBJ);
+        TxToUniv(exportTx, uint256(), jsonTxOut);
+        //printf("%s: proofTxRoot:%s\npartialTx: %s\n", __func__, 
+        //                                            partialTxProof.GetPartialTransaction(exportTx).GetHex().c_str(),
+        //                                            jsonTxOut.write(1,2).c_str());
         LogPrintf("%s: invalid partial transaction proof from notary chain\n", __func__);
         printf("%s: invalid partial transaction proof from notary chain\n", __func__);
         return false;
