@@ -2563,6 +2563,47 @@ bool CConnectedChains::GetSystemExports(const uint160 &systemID,
 }
 
 // get the exports to a specific system from this chain, starting from a specific height up to a specific height
+// export proofs are all returned as null
+bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
+                                             std::pair<CInputDescriptor, CPartialTransactionProof> &notarizationRef,
+                                             CPBaaSNotarization &launchNotarization)
+{
+    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+    uint160 currencyID = curDef.GetID();
+    bool retVal = false;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(currencyID, CPBaaSNotarization::LaunchNotarizationKey()), 
+                        CScript::P2IDX, 
+                        addressIndex))
+    {
+        for (auto &idx : addressIndex)
+        {
+            uint256 blkHash;
+            CTransaction notarizationTx;
+            if (!idx.first.spending && myGetTransaction(idx.first.txhash, notarizationTx, blkHash))
+            {
+                CPBaaSNotarization launchNotarization;
+                if ((launchNotarization = CPBaaSNotarization(notarizationTx.vout[idx.first.index].scriptPubKey)).IsValid())
+                {
+                    auto blockIt = mapBlockIndex.find(blkHash);
+                    if (blockIt != mapBlockIndex.end() &&
+                        chainActive.Contains(blockIt->second))
+                    {
+                        notarizationRef.first = CInputDescriptor(notarizationTx.vout[idx.first.index].scriptPubKey,
+                                                                 notarizationTx.vout[idx.first.index].nValue,
+                                                                 CTxIn(idx.first.txhash, idx.first.index));
+                        notarizationRef.second = CPartialTransactionProof(notarizationTx, std::vector<int>({(int)idx.first.index}), blockIt->second, blockIt->second->GetHeight());
+                        retVal = true;
+                    }
+                }
+            }
+        }
+    }
+    return retVal;
+}
+
+// get the exports to a specific system from this chain, starting from a specific height up to a specific height
 // proofs are returned as null
 bool CConnectedChains::GetCurrencyExports(const uint160 &currencyID,
                                           std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> &exports,

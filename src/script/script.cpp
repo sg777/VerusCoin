@@ -1031,6 +1031,11 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 // always index a notarization, without regard to its status
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey())));
 
+                if (notarization.IsPreLaunch() && notarization.IsLaunchCleared())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::LaunchNotarizationKey())));
+                }
+
                 // determine if the new notarization is automatically final, and if so, store a finalization index key as well
                 CCoinbaseCurrencyState &curState = notarization.currencyState;
                 if (curState.IsValid() &&

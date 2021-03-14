@@ -992,6 +992,17 @@ public:
         return notaryNotarizationKey;
     }
 
+    static std::string LaunchNotarizationKeyName()
+    {
+        return "vrsc::system.currency.gatewaydefinition";
+    }
+    static uint160 LaunchNotarizationKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(LaunchNotarizationKeyName(), nameSpace);
+        return signatureKey;
+    }
+
     // if false, *this is unmodifed, otherwise, it is set to the last valid notarization in the requested range
     bool GetLastNotarization(const uint160 &currencyID, 
                              uint32_t eCode, 
@@ -1378,6 +1389,11 @@ public:
                           uint32_t fromHeight,
                           uint32_t toHeight,
                           bool withProofs=false);
+    
+    // gets both the launch notarization and its partial transaction proof if launching to a new system
+    bool GetLaunchNotarization(const CCurrencyDefinition &curDef,
+                               std::pair<CInputDescriptor, CPartialTransactionProof> &notarizationTx,
+                               CPBaaSNotarization &launchNotarization);
 
     // get the exports to a specific system on this chain from a specific height up to a specific height
     bool GetCurrencyExports(const uint160 &currencyID,                             // transactions exported to system

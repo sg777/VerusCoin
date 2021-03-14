@@ -458,7 +458,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
         CTransaction exportTx;
         p = COptCCParams();
-        if (!(evidence.evidence[0].GetPartialTransaction(exportTx) == exportTxId &&
+        if (!(!evidence.evidence[0].GetPartialTransaction(exportTx).IsNull() &&
+              evidence.evidence[0].TransactionHash() == exportTxId &&
               exportTx.vout.size() > exportTxOutNum &&
               exportTx.vout[exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
               p.IsValid() &&
@@ -1347,6 +1348,9 @@ UniValue CReserveTransactionDescriptor::ToUniValue() const
         inOuts.push_back(oneIOUni);
     }
     retVal.push_back(Pair("inouts", inOuts));
+    retVal.push_back(Pair("nativein", nativeIn));
+    retVal.push_back(Pair("nativeout", nativeOut));
+    retVal.push_back(Pair("nativeconversionfees", nativeConversionFees));
     return retVal;
 }
 
@@ -1526,6 +1530,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
     bool isPBaaS = solutionVersion >= CActivationHeight::ACTIVATE_PBAAS;
     bool isPBaaSActivation = CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight);
+    bool loadedCurrencies = false;
 
     CNameReservation nameReservation;
     CIdentity identity;
@@ -1660,6 +1665,32 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                 case EVAL_CROSSCHAIN_IMPORT:
                 {
+                    if (isPBaaS &&
+                        nHeight == 1 &&
+                        tx.IsCoinBase() &&
+                        !loadedCurrencies)
+                    {
+                        // load currencies
+                        //UniValue jsonTx(UniValue::VOBJ);
+                        //TxToUniv(tx, uint256(), jsonTx);
+                        //printf("%s: Coinbase transaction:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                        CCurrencyDefinition oneCurDef;
+                        COptCCParams tempP;
+                        for (int j = 0; j < tx.vout.size(); j++)
+                        {
+                            if (tx.vout[j].scriptPubKey.IsPayToCryptoCondition(tempP) &&
+                                tempP.IsValid() &&
+                                tempP.evalCode == EVAL_CURRENCY_DEFINITION &&
+                                tempP.vData.size() &&
+                                (oneCurDef = CCurrencyDefinition(tempP.vData[0])).IsValid())
+                            {
+                                //printf("%s: Adding currency:\n%s\n", __func__, oneCurDef.ToUniValue().write(1,2).c_str());
+                                ConnectedChains.currencyDefCache.insert(std::make_pair(oneCurDef.GetID(), oneCurDef));
+                            }
+                        }
+                        loadedCurrencies = true;
+                    }
+
                     CCrossChainImport cci, sysCCI;
 
                     // if this is an import, add the amount imported to the reserve input and the amount of reserve output as
@@ -1715,15 +1746,20 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         CCoinbaseCurrencyState checkState = importNotarization.currencyState;
                         CCoinbaseCurrencyState newState;
 
-                        /*
-                        printf("%s: checkState:\n%s\n", 
-                                __func__, 
-                                checkState.ToUniValue().write(1,2).c_str());
-                        */
+                        if (tx.IsCoinBase())
+                        {
+                            printf("%s: currency state before revert: %s\n", __func__, checkState.ToUniValue().write(1,2).c_str());
+                        }
+
                         checkState.RevertReservesAndSupply();
                         if (cci.IsInitialLaunchImport())
                         {
                             checkState.SetLaunchClear();
+                        }
+
+                        if (tx.IsCoinBase())
+                        {
+                            printf("%s: currency state after revert: %s\n", __func__, checkState.ToUniValue().write(1,2).c_str());
                         }
 
                         CReserveTransactionDescriptor rtxd;
@@ -1741,6 +1777,16 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             flags &= ~IS_VALID;
                             flags |= IS_REJECT;
                             return;
+                        }
+
+                        if (tx.IsCoinBase())
+                        {
+                            printf("%s: currency state after import: %s\n", __func__, newState.ToUniValue().write(1,2).c_str());
+                        }
+
+                        if (tx.IsCoinBase())
+                        {
+                            printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
                         }
 
                         importGeneratedCurrency += importedCurrency;
@@ -2152,6 +2198,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     transferFees.valueMap[importCurrencyDef.launchSystemID] += systemSource.GetCurrencyRegistrationFee();
                     if (importCurrencyDef.launchSystemID != systemDestID)
                     {
+                        reserveConverted.valueMap[importCurrencyDef.launchSystemID] += systemSource.GetCurrencyRegistrationFee();
                         importedCurrency.valueMap[importCurrencyDef.launchSystemID] += systemSource.GetCurrencyRegistrationFee();
                         AddReserveInput(importCurrencyDef.launchSystemID, transferFees.valueMap[importCurrencyDef.launchSystemID]);
                     }

@@ -1856,16 +1856,14 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
 
 UniValue getnotarizationdata(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 2)
+    if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "getnotarizationdata \"currencyid\" accepted\n"
+            "getnotarizationdata \"currencyid\"\n"
             "\nReturns the latest PBaaS notarization data for the specifed currencyid.\n"
 
             "\nArguments\n"
             "1. \"currencyid\"                  (string, required) the hex-encoded ID or string name  search for notarizations on\n"
-            "2. \"accepted\"                    (bool, optional) accepted, not earned notarizations, default: true if on\n"
-            "                                                    VRSC or VRSCTEST, false otherwise\n"
 
             "\nResult:\n"
             "{\n"
@@ -1873,7 +1871,7 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getnotarizationdata", "\"currencyid\" true")
+            + HelpExampleCli("getnotarizationdata", "\"currencyid\"")
             + HelpExampleRpc("getnotarizationdata", "\"currencyid\"")
         );
     }
@@ -1918,6 +1916,62 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
     {
         return NullUniValue;
     }
+}
+
+UniValue getlaunchinfo(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+    {
+        throw runtime_error(
+            "getlaunchinfo \"currencyid\"\n"
+            "\nReturns the launch notarization data and partial transaction proof of the \n"
+            "launch notarization for the specifed currencyid.\n"
+
+            "\nArguments\n"
+            "1. \"currencyid\"                  (string, required) the hex-encoded ID or string name  search for notarizations on\n"
+
+            "\nResult:\n"
+            "{\n"
+            "  \"currencydefinition\" : {},     (json) Full currency definition\n"
+            "  \"txid\" : \"hexstr\",           (hexstr) transaction ID\n"
+            "  \"voutnum\" : \"n\",             (number) vout index of the launch notarization\n"
+            "  \"transactionproof\" : {},       (json) Partial transaction proof of the launch transaction and output\n"
+            "  \"notarization\" : {},           (json) Final CPBaaSNotarization clearing launch or refund\n"
+            "}\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getlaunchinfo", "\"currencyid\"")
+            + HelpExampleRpc("getlaunchinfo", "\"currencyid\"")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+
+    uint160 chainID;
+    LOCK(cs_main);
+
+    CCurrencyDefinition curDef;
+    chainID = ValidateCurrencyName(uni_get_str(params[0]), true, &curDef);
+
+    if (chainID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currencyid or name");
+    }
+
+    std::pair<CInputDescriptor, CPartialTransactionProof> notarizationTx;
+    CPBaaSNotarization launchNotarization;
+    if (!ConnectedChains.GetLaunchNotarization(curDef, notarizationTx, launchNotarization))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Valid notarization not found");
+    }
+
+    UniValue retVal(UniValue::VOBJ);
+    retVal.pushKV("currencydefinition", curDef.ToUniValue());
+    retVal.pushKV("txid", notarizationTx.first.txIn.prevout.hash.GetHex());
+    retVal.pushKV("voutnum", (int64_t)notarizationTx.first.txIn.prevout.n);
+    retVal.pushKV("transactionproof", notarizationTx.second.ToUniValue());
+    retVal.pushKV("notarization", launchNotarization.ToUniValue());
+    return retVal;
 }
 
 UniValue getbestproofroot(const UniValue& params, bool fHelp)
@@ -5797,6 +5851,7 @@ static const CRPCCommand commands[] =
     { "multichain",   "getcurrencyconverters",        &getcurrencyconverters,  true  },
     { "multichain",   "getcurrency",                  &getcurrency,            true  },
     { "multichain",   "getnotarizationdata",          &getnotarizationdata,    true  },
+    { "multichain",   "getlaunchinfo",                &getlaunchinfo,          true  },
     { "multichain",   "getbestproofroot",             &getbestproofroot,       true  },
     { "multichain",   "submitacceptednotarization",   &submitacceptednotarization, true },
     { "multichain",   "getinitialcurrencystate",      &getinitialcurrencystate, true  },

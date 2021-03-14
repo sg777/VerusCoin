@@ -3687,7 +3687,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
 
     // on non-Verus reserve chains, we'll want a block-wide currency state for calculations
-    CReserveTransactionDescriptor rtxd;
     CCoinbaseCurrencyState prevCurrencyState = ConnectedChains.GetCurrencyState(nHeight ? nHeight - 1 : 0);
     CCurrencyDefinition thisChain = ConnectedChains.ThisChain();
     CCurrencyValueMap totalReserveTxFees;
@@ -3709,6 +3708,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (nSigOps > MAX_BLOCK_SIGOPS)
             return state.DoS(100, error("ConnectBlock(): too many sigops"),
                              REJECT_INVALID, "bad-blk-sigops");
+
+        CReserveTransactionDescriptor rtxd(tx, view, nHeight);
+        if (rtxd.IsReject())
+        {
+            return state.DoS(100, error(strprintf("%s: Invalid reserve transaction", __func__).c_str()), REJECT_INVALID, "bad-txns-invalid-reserve");
+        }
 
         //fprintf(stderr,"ht.%d vout0 t%u\n",pindex->GetHeight(),tx.nLockTime);
         bool isBlockBoundTx = (IsBlockBoundTransaction(tx, block.vtx[0].GetHash()));
@@ -3824,6 +3829,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         
         txdata.emplace_back(tx);
 
+        /*
         if (!isVerusActive)
         {
             // we get the currency state, and if reserve, add any appropriate converted fees that are the difference between
@@ -3838,16 +3844,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 }
             }
         }
+        */
 
         if (!tx.IsCoinBase())
         {
-            rtxd = CReserveTransactionDescriptor(tx, view, nHeight);
-            if (rtxd.IsReject())
-            {
-                return state.DoS(100, error("ConnectBlock(): Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reserve");
-            }
-
-            //if (rtxd.IsReserve() && rtxd.IsValid())
             if (rtxd.IsValid())
             {
                 if (isVerusActive)
@@ -3869,7 +3869,17 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             if (!ContextualCheckInputs(tx, state, view, nHeight, fExpensiveChecks, flags, fCacheResults, txdata[i], chainparams.GetConsensus(), consensusBranchId, nScriptCheckThreads ? &vChecks : NULL))
                 return false;
             control.Add(vChecks);
-        }        
+        }
+        else if (nHeight == 1 && !IsVerusActive())
+        {
+            // at block one of a PBaaS chain, we have additional funds coming out of the coinbase for pre-allocation,
+            // reserve deposit into the PBaaS converter currency, launch fees, and potentially other reasons over time
+            // block 1 contains the initial currencies and identities that we start with at launch.
+            UniValue jsonTx(UniValue::VOBJ);
+            TxToUniv(tx, uint256(), jsonTx);
+            printf("%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
+            printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
+        }
 
         if (fAddressIndex) {
             for (unsigned int k = 0; k < tx.vout.size(); k++) {
