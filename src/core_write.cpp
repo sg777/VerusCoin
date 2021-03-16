@@ -516,6 +516,8 @@ UniValue CCoinbaseCurrencyState::ToUniValue() const
     ret.push_back(Pair("currencies", ValueVectorsToUniValue(rowNames, columnNames, data, true)));
     ret.push_back(Pair("nativefees", nativeFees));
     ret.push_back(Pair("nativeconversionfees", nativeConversionFees));
+    ret.push_back(Pair("nativeout", nativeOut));
+    ret.push_back(Pair("preconvertedout", preConvertedOut));
     return ret;
 }
 
@@ -540,7 +542,7 @@ UniValue CPBaaSNotarization::ToUniValue() const
 
     if (IsLaunchCleared())
     {
-        obj.push_back(Pair("launchclear", true));
+        obj.push_back(Pair("launchcleared", true));
     }
 
     if (IsRefunding())
@@ -551,6 +553,16 @@ UniValue CPBaaSNotarization::ToUniValue() const
     if (IsLaunchConfirmed())
     {
         obj.push_back(Pair("launchconfirmed", true));
+    }
+
+    if (IsMirror())
+    {
+        obj.push_back(Pair("ismirror", true));
+    }
+
+    if (IsSameChain())
+    {
+        obj.push_back(Pair("samechain", true));
     }
 
     obj.push_back(Pair("proposer", proposer.ToUniValue()));

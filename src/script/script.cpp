@@ -1154,8 +1154,17 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
 
             if (vData.size() && (ccx = CCrossChainExport(vData[0])).IsValid())
             {
-                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destCurrencyID, ccx.CurrencyExportKey())));
-                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destSystemID, ccx.SystemExportKey())));
+                // when looking for a currency, not system, we don't need to record system thread exports
+                if (!ccx.IsSystemThreadExport())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destCurrencyID, ccx.CurrencyExportKey())));
+                }
+                // we will find one of these either in its own exports to another system or after any export to a currency
+                // on that system. we record this for all system exports, whether system thread or not
+                if (ccx.destCurrencyID == ccx.destSystemID)
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destSystemID, ccx.SystemExportKey())));
+                }
             }
             break;
         }

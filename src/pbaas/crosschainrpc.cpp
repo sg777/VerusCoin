@@ -222,7 +222,7 @@ UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeou
     {
         return RPCCall(strMethod, params, PBAAS_USERPASS, PBAAS_PORT, PBAAS_HOST);
     }
-    else if (ReadConfigFile(PBAAS_TESTMODE ? "VRSCTEST" : "VRSC", settings, settingsmulti))
+    else if (ReadConfigFile(PBAAS_TESTMODE ? "vrsctest" : "VRSC", settings, settingsmulti))
     {
         PBAAS_USERPASS = settingsmulti.find("-rpcuser")->second[0] + ":" + settingsmulti.find("-rpcpassword")->second[0];
         PBAAS_PORT = atoi(settingsmulti.find("-rpcport")->second[0]);

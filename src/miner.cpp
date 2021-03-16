@@ -535,7 +535,12 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
                 !proof.IsValid())
             {
                 LogPrintf("%s: invalid launch notarization for currency %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
-                printf("%s: invalid launch notarization for currency %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
+                printf("%s: invalid launch notarization for currency %s\ncurrencydefinition: %s\nnotarization: %s\ntransactionproof: %s\n", 
+                    __func__, 
+                    EncodeDestination(CIdentityID(currencyID)).c_str(),
+                    currency.ToUniValue().write(1,2).c_str(),
+                    notarization.ToUniValue().write(1,2).c_str(),
+                    proof.ToUniValue().write(1,2).c_str());
             }
             else
             {
@@ -714,8 +719,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             CPBaaSNotarization tempLastNotarization = lastNotarization;
             tempLastNotarization.SetPreLaunch();
             tempLastNotarization.currencyState.SetLaunchCompleteMarker(false);
-            tempLastNotarization.currencyState.SetLaunchClear(false);
-            tempLastNotarization.currencyState.SetPrelaunch(true);
 
             if (!tempLastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
                                                            newCurrency,
@@ -735,7 +738,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 return false;
             }
 
-            /* // display import outputs
+            // display import outputs
             CMutableTransaction debugTxOut;
             debugTxOut.vout = importOutputs;
             UniValue jsonTxOut(UniValue::VOBJ);
@@ -744,7 +747,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                                                             jsonTxOut.write(1,2).c_str(),
                                                                                             lastNotarization.ToUniValue().write(1,2).c_str(),
                                                                                             newNotarization.ToUniValue().write(1,2).c_str());
-            */
 
             newNotarization.prevNotarization = CUTXORef();
             newNotarization.prevHeight = 0;
@@ -1093,7 +1095,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     // now, the converter
     if (success && converterCurDef.IsValid())
     {
-        success = AddOneCurrencyImport(thisChain, 
+        success = AddOneCurrencyImport(converterCurDef, 
                                        converterNotarization,
                                        &converterNotarizationProof,
                                        blockOneExportImports[converterCurrencyID].size() ? &(blockOneExportImports[converterCurrencyID][0]) : 

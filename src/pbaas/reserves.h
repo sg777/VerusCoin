@@ -1476,7 +1476,7 @@ public:
         }
 
         NUMBERVECTOR ret;
-        ret.reserve(max);
+        ret.resize(max);
         for (int i = 0; i < count; i++)
         {
             ret[i] = (*longVec)[i] + (*shortVec)[i];

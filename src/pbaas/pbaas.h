@@ -880,7 +880,7 @@ public:
 
     std::vector<CNodeData> nodes;           // if cross chain notarization, network nodes
 
-    CPBaaSNotarization() : nVersion(PBAAS_VERSION_INVALID) {}
+    CPBaaSNotarization() : nVersion(PBAAS_VERSION_INVALID), flags(0), notarizationHeight(0), prevHeight(0) {}
 
     CPBaaSNotarization(const uint160 &currencyid,
                        const CCoinbaseCurrencyState CurrencyState,

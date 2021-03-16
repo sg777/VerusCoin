@@ -2190,7 +2190,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
         cState = CCurrencyState(cID,
                                 chainDef.currencies,
                                 chainDef.weights,
-                                chainDef.contributions.size() ? chainDef.contributions : std::vector<int64_t>(chainDef.currencies.size(), 0),
+                                std::vector<int64_t>(chainDef.currencies.size(), 0),
                                 chainDef.initialFractionalSupply,
                                 0,
                                 chainDef.initialFractionalSupply,

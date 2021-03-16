@@ -226,9 +226,14 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     SetDefinitionNotarization(uni_get_bool(find_value(obj, "isdefinition")));
     SetBlockOneNotarization(uni_get_bool(find_value(obj, "isblockonenotarization")));
     SetPreLaunch(uni_get_bool(find_value(obj, "prelaunch")));
-    SetLaunchCleared(uni_get_bool(find_value(obj, "launchclear")));
+    SetLaunchCleared(uni_get_bool(find_value(obj, "launchcleared")));
     SetRefunding(uni_get_bool(find_value(obj, "refunding")));
     SetLaunchConfirmed(uni_get_bool(find_value(obj, "launchconfirmed")));
+    if (uni_get_bool(find_value(obj, "ismirror")))
+    {
+        flags |= FLAG_ACCEPTED_MIRROR;
+    }
+    SetSameChain(uni_get_bool(find_value(obj, "samechain")));
 
     currencyID = ValidateCurrencyName(uni_get_str(find_value(obj, "currencyid")));
     if (currencyID.IsNull())
@@ -514,8 +519,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             {
                 newNotarization.SetLaunchCleared();
                 newNotarization.currencyState.SetLaunchClear();
-                newNotarization.currencyState.RevertReservesAndSupply();
-                newNotarization.currencyState.SetPrelaunch(false);
 
                 // first time through is export, second is import, then we finish clearing the launch
                 // check if the chain is qualified to launch or should refund
@@ -545,24 +548,32 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         else if (thisIsLaunchSys && currentHeight < (destCurrency.startBlock - 1))
         {
             newNotarization.currencyState.SetPrelaunch();
-            // if we are about to get the notarization just after the definition notarization,
-            // remove the initial contribution amount before continuing
-            if (IsDefinitionNotarization())
-            {
-                if (destCurrency.contributions.size())
-                {
-                    for (int i = 0; i < destCurrency.contributions.size(); i++)
-                    {
-                        newNotarization.currencyState.reserves[i] -= destCurrency.contributions[i];
-                    }
-                }
-            }
         }
 
         CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
         CCoinbaseCurrencyState tempState = newNotarization.currencyState;
+        std::vector<CTxOut> tempOutputs;
         bool retVal = rtxd.AddReserveTransferImportOutputs(sourceSystem,
+                                                           destSystem,
+                                                           destCurrency, 
+                                                           newNotarization.currencyState, 
+                                                           exportTransfers, 
+                                                           tempOutputs, 
+                                                           importedCurrency,
+                                                           gatewayDepositsUsed, 
+                                                           spentCurrencyOut,
+                                                           &tempState);
+
+        if (retVal)
+        {
+            importedCurrency.valueMap.clear();
+            gatewayDepositsUsed.valueMap.clear();
+            spentCurrencyOut.valueMap.clear();
+            newNotarization.currencyState.conversionPrice = tempState.conversionPrice;
+            newNotarization.currencyState.viaConversionPrice = tempState.viaConversionPrice;
+            rtxd = CReserveTransactionDescriptor();
+            retVal = rtxd.AddReserveTransferImportOutputs(sourceSystem,
                                                            destSystem,
                                                            destCurrency, 
                                                            newNotarization.currencyState, 
@@ -572,6 +583,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            gatewayDepositsUsed, 
                                                            spentCurrencyOut,
                                                            &tempState);
+        }
+        else
+        {
+            return retVal;
+        }
 
         // if we are in the pre-launch phase, all reserves in are cumulative and then calculated together at launch
         // reserves in represent all reserves in, and fees are taken out after launch or refund as well
