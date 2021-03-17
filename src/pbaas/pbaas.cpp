@@ -3481,9 +3481,19 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 // enforcement of sequential exports. get unspent currency export, and if not on the current
                 // system, the external system export as well
 
-                if ((ConnectedChains.GetUnspentCurrencyExports(view, lastChain, exportOutputs) && exportOutputs.size()) &&
-                    (isSameChain || ConnectedChains.GetUnspentSystemExports(view, destDef.systemID, sysExportOutputs) && sysExportOutputs.size()))
+                bool newSystem = false;
+                if (launchCurrencies.count(lastChain) && destDef.systemID == lastChain)
                 {
+                    newSystem = true;
+                }
+
+                if (((ConnectedChains.GetUnspentCurrencyExports(view, lastChain, exportOutputs) && exportOutputs.size()) || newSystem) &&
+                    (isSameChain || (ConnectedChains.GetUnspentSystemExports(view, destDef.systemID, sysExportOutputs) && sysExportOutputs.size())))
+                {
+                    if (!exportOutputs.size())
+                    {
+                        exportOutputs.push_back(sysExportOutputs[0]);
+                    }
                     assert(exportOutputs.size() == 1);
                     std::pair<int, CInputDescriptor> lastExport = exportOutputs[0];
                     allExportOutputs.push_back(lastExport.second);
