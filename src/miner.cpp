@@ -1993,14 +1993,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             coinbaseTx.vout.push_back(CTxOut(0,MakeMofNCCScript(CConditionObj<CFeePool>(EVAL_FEE_POOL,{pkCC.GetID()},1,&feePool))));
         }
         CAmount rewardTotal = blockSubsidy + rewardFees;
-
-
-
-
         CAmount rewardLeft = notarizationTxIndex ? rewardTotal - notarizationOut.nValue : rewardTotal;
-
-
-
 
         // now that we have the total reward, update the coinbase outputs
         if (isStake)

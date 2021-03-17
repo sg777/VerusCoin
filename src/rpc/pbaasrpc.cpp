@@ -759,6 +759,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
     LOCK2(cs_main, mempool.cs);
 
     UniValue ret(UniValue::VOBJ);
+    uint32_t height = chainActive.Height();
 
     CCurrencyDefinition chainDef;
     uint160 chainID = GetChainIDFromParam(params[0], &chainDef);
@@ -788,7 +789,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
         if (chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID)
         {
             ret.push_back(Pair("bestheight", chainActive.Height()));
-            ret.push_back(Pair("bestcurrencystate", ConnectedChains.GetCurrencyState(chainID, chainActive.Height() + 1).ToUniValue()));
+            ret.push_back(Pair("bestcurrencystate", ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue()));
         }
         else
         {

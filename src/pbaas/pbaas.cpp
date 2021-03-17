@@ -1088,16 +1088,19 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         std::vector<int64_t> fractionalToConvert(numCurrencies, 0);
         std::vector<int64_t> reserveAdjustments(numCurrencies, 0);
 
-        for (int i = 0; i < numCurrencies; i++)
+        if (!currencyState.IsPrelaunch() || currencyState.IsLaunchClear())
         {
-            curDef.conversions[i] = currencyState.conversionPrice[i] = currencyState.PriceInReserve(i, true);
-
-            // all currencies except the native currency of the system will be converted to the native currency
-            if (currencyState.fees[i] && curDef.currencies[i] != curDef.systemID)
+            for (int i = 0; i < numCurrencies; i++)
             {
-                fractionalToConvert[nativeIdx] += currencyState.ReserveToNativeRaw(currencyState.fees[i], currencyState.conversionPrice[i]);
-                reserveAdjustments[i] += currencyState.fees[i];
-                isFeeConversion = true;
+                curDef.conversions[i] = currencyState.conversionPrice[i] = currencyState.PriceInReserve(i, true);
+
+                // all currencies except the native currency of the system will be converted to the native currency
+                if (currencyState.fees[i] && curDef.currencies[i] != curDef.systemID)
+                {
+                    fractionalToConvert[nativeIdx] += currencyState.ReserveToNativeRaw(currencyState.fees[i], currencyState.conversionPrice[i]);
+                    reserveAdjustments[i] += currencyState.fees[i];
+                    isFeeConversion = true;
+                }
             }
         }
 
@@ -3554,6 +3557,15 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     CUTXORef lastNotarizationUTXO = cnd.vtx[cnd.lastConfirmed].first;
                     CPBaaSNotarization newNotarization;
                     int newNotarizationOutNum;
+
+                    if (lastNotarization.currencyState.IsFractional() && lastNotarization.IsPreLaunch() && destDef.startBlock > nHeight)
+                    {
+                        // on pre-launch, we need to ensure no overflow in first pass, so we normalize expected pricing
+                        // on the way in
+                        CCoinbaseCurrencyState pricesState = ConnectedChains.GetCurrencyState(destDef, nHeight);
+                        assert(lastNotarization.currencyState.IsValid() && lastNotarization.currencyState.GetID() == lastChain);
+                        lastNotarization.currencyState.conversionPrice = pricesState.PricesInReserve();
+                    }
 
                     while (txInputs.size() || launchCurrencies.count(lastChain))
                     {
