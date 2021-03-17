@@ -595,6 +595,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         {
             tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
         }
+        else
+        {
+            tempState.conversionPrice = newNotarization.currencyState.conversionPrice;
+        }
+        
         newNotarization.currencyState = tempState;
         return retVal;
     }

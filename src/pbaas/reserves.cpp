@@ -3040,34 +3040,89 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     newCurrencyState.viaConversionPrice[i] = newCurrencyState.conversionPrice[i];
                 }
             }
+
             // refresh these values to stay constant until launch complete marker
-            newCurrencyState.conversionPrice = importCurrencyState.conversionPrice;
+            if (newCurrencyState.IsLaunchClear())
+            {
+                CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
+
+                // undo fees in
+                for (auto &oneFee : transferFees.valueMap)
+                {
+                    // system fees will not be converted
+                    if (oneFee.first != importCurrencyDef.systemID && currencyIndexMap.count(oneFee.first))
+                    {
+                        tempCurrencyState.reserves[currencyIndexMap[oneFee.first]] -= oneFee.second;
+                    }
+                }
+                //  restore native reserves for fees as well
+                tempCurrencyState.reserves[currencyIndexMap[importCurrencyDef.systemID]] += 
+                    (tempCurrencyState.nativeFees - transferFees.valueMap[importCurrencyDef.systemID]);
+
+                if (importCurrencyDef.launchSystemID == importCurrencyDef.systemID)
+                {
+                    newCurrencyState.conversionPrice = tempCurrencyState.PricesInReserve();
+                }
+                else
+                {
+                    CAmount systemDestPrice = tempCurrencyState.PriceInReserve(systemDestIdx);
+                    tempCurrencyState.currencies.erase(tempCurrencyState.currencies.begin() + systemDestIdx);
+                    tempCurrencyState.reserves.erase(tempCurrencyState.reserves.begin() + systemDestIdx);
+                    int32_t sysWeight = tempCurrencyState.weights[systemDestIdx];
+                    tempCurrencyState.weights.erase(tempCurrencyState.weights.begin() + systemDestIdx);
+                    int32_t oneExtraWeight = sysWeight / tempCurrencyState.weights.size();
+                    int32_t weightRemainder = sysWeight % tempCurrencyState.weights.size();
+                    for (auto &oneWeight : tempCurrencyState.weights)
+                    {
+                        oneWeight += oneExtraWeight;
+                        if (weightRemainder)
+                        {
+                            oneWeight++;
+                            weightRemainder--;
+                        }
+                    }
+                    std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
+                    launchPrices.insert(launchPrices.begin() + systemDestIdx, systemDestPrice);
+                    newCurrencyState.conversionPrice = launchPrices;
+                }
+            }
+            else
+            {
+                newCurrencyState.conversionPrice = importCurrencyState.conversionPrice;
+            }
         }
         else if (importCurrencyState.IsPrelaunch())
         {
+            newCurrencyState.viaConversionPrice = newCurrencyState.PricesInReserve();
+            CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
             // via prices are used for fees on launch clear and include the converter issued currency
             // normal prices on launch clear for a gateway or PBaaS converter do not include the new native
             // currency until after pre-conversions are processed
-            newCurrencyState.viaConversionPrice = newCurrencyState.PricesInReserve();
-            CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
-            tempCurrencyState.currencies.erase(tempCurrencyState.currencies.begin() + systemDestIdx);
-            tempCurrencyState.reserves.erase(tempCurrencyState.reserves.begin() + systemDestIdx);
-            int32_t sysWeight = tempCurrencyState.weights[systemDestIdx];
-            tempCurrencyState.weights.erase(tempCurrencyState.weights.begin() + systemDestIdx);
-            int32_t oneExtraWeight = sysWeight / tempCurrencyState.weights.size();
-            int32_t weightRemainder = sysWeight % tempCurrencyState.weights.size();
-            for (auto &oneWeight : tempCurrencyState.weights)
+            if (importCurrencyDef.launchSystemID == importCurrencyDef.systemID)
             {
-                oneWeight += oneExtraWeight;
-                if (weightRemainder)
-                {
-                    oneWeight++;
-                    weightRemainder--;
-                }
+                newCurrencyState.conversionPrice = tempCurrencyState.PricesInReserve();
             }
-            std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
-            launchPrices.insert(launchPrices.begin() + systemDestIdx, newCurrencyState.viaConversionPrice[systemDestIdx]);
-            newCurrencyState.conversionPrice = launchPrices;
+            else
+            {
+                tempCurrencyState.currencies.erase(tempCurrencyState.currencies.begin() + systemDestIdx);
+                tempCurrencyState.reserves.erase(tempCurrencyState.reserves.begin() + systemDestIdx);
+                int32_t sysWeight = tempCurrencyState.weights[systemDestIdx];
+                tempCurrencyState.weights.erase(tempCurrencyState.weights.begin() + systemDestIdx);
+                int32_t oneExtraWeight = sysWeight / tempCurrencyState.weights.size();
+                int32_t weightRemainder = sysWeight % tempCurrencyState.weights.size();
+                for (auto &oneWeight : tempCurrencyState.weights)
+                {
+                    oneWeight += oneExtraWeight;
+                    if (weightRemainder)
+                    {
+                        oneWeight++;
+                        weightRemainder--;
+                    }
+                }
+                std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
+                launchPrices.insert(launchPrices.begin() + systemDestIdx, newCurrencyState.viaConversionPrice[systemDestIdx]);
+                newCurrencyState.conversionPrice = launchPrices;
+            }
         }
     }
 
