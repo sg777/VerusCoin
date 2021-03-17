@@ -591,14 +591,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
         // if we are in the pre-launch phase, all reserves in are cumulative and then calculated together at launch
         // reserves in represent all reserves in, and fees are taken out after launch or refund as well
-        if (tempState.IsPrelaunch())
+        if (tempState.IsPrelaunch() && !tempState.IsLaunchClear())
         {
             tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
-        }
-        else if (tempState.IsLaunchClear())
-        {
-            // non-prelaunch launch clear notarization gets the same reserves in as the last prelaunch
-            tempState.reserveIn = this->currencyState.reserveIn;
         }
         newNotarization.currencyState = tempState;
         return retVal;

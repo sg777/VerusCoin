@@ -3539,20 +3539,14 @@ CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount toEmit)
 
 void CCoinbaseCurrencyState::RevertReservesAndSupply()
 {
-    // if this is the launch clear notarization, we have only the starting condition
-    // and we don't revert anything
-    bool launchClear = IsLaunchClear();
-    if (!launchClear)
-    {
-        // reverse last changes and add reserves out to reserves
-        auto currencyMap = GetReserveMap();
+    // reverse last changes and add reserves out to reserves
+    auto currencyMap = GetReserveMap();
 
-        // revert changes in reserves and supply to pre conversion state, add reserve outs and subtract reserve ins
-        for (auto &oneCur : currencyMap)
-        {
-            reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
-            supply += nativeIn[oneCur.second];
-        }
+    // revert changes in reserves and supply to pre conversion state, add reserve outs and subtract reserve ins
+    for (auto &oneCur : currencyMap)
+    {
+        reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
+        supply += nativeIn[oneCur.second];
     }
 
     supply -= (std::max(nativeOut, emitted) - preConvertedOut);
