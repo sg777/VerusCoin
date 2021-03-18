@@ -627,7 +627,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                   gatewayDepositsUsed, 
                                                                   spentCurrencyOut,
                                                                   &newNotarization.currencyState);
-        if (!newNotarization.currencyState.IsPrelaunch() && isValidExport && destCurrency.IsFractional())
+        if (!newNotarization.currencyState.IsPrelaunch() &&
+            isValidExport &&
+            destCurrency.IsFractional())
         {
             // we want the new price and the old state as a starting point to ensure no rounding error impact
             // on reserves
@@ -653,6 +655,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 newNotarization.currencyState.viaConversionPrice = tempCurState.viaConversionPrice;
             }
         }
+        else if (isValidExport)
+        {
+            importOutputs.insert(importOutputs.end(), dummyImportOutputs.begin(), dummyImportOutputs.end());
+        }
+        
         if (!isValidExport)
         {
             LogPrintf("%s: invalid export\n", __func__);
