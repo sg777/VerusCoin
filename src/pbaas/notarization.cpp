@@ -532,9 +532,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
                 if (minPreMap.valueMap.size() && preConvertedMap < minPreMap)
                 {
-                    // we force the supply to zero
+                    // we force the reserves and supply to zero
                     // in any case where there was less than minimum participation,
                     newNotarization.currencyState.supply = 0;
+                    newNotarization.currencyState.reserves = std::vector<int64_t>(newNotarization.currencyState.reserves.size(), 0);
                     newNotarization.currencyState.SetRefunding(true);
                     newNotarization.SetRefunding(true);
                 }
