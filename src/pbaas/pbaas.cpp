@@ -1045,162 +1045,35 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
 
     if (GetChainTransfers(unspentTransfers, curDef.GetID(), fromHeight, height < curDef.startBlock ? height : curDef.startBlock - 1))
     {
-        currencyState.ClearForNextBlock();
-
-        for (auto &transfer : unspentTransfers)
+        std::vector<CReserveTransfer> transfers;
+        for (auto &oneTransfer : unspentTransfers)
         {
-            if (transfer.second.second.IsPreConversion())
-            {
-                CAmount conversionFee = CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.FirstValue());
-                CAmount valueIn = transfer.second.second.FirstValue() - conversionFee;
-                int32_t curIdx = currencyIndexes[transfer.second.second.FirstCurrency()];
-
-                currencyState.reserveIn[curIdx] += valueIn;
-                curDef.preconverted[curIdx] += valueIn;
-                if (curDef.IsFractional())
-                {
-                    currencyState.reserves[curIdx] += valueIn;
-                }
-                else
-                {
-                    currencyState.supply += CCurrencyState::ReserveToNativeRaw(valueIn, currencyState.PriceInReserve(curIdx));
-                }
-
-                if (transfer.second.second.FirstCurrency() == curDef.systemID)
-                {
-                    currencyState.nativeConversionFees += conversionFee;
-                    currencyState.nativeFees += conversionFee;
-                }
-                currencyState.fees[curIdx] += conversionFee;
-                currencyState.nativeFees +=  transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                currencyState.fees[nativeIdx] +=  transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                currencyState.conversionFees[curIdx] += conversionFee;
-            }
+            transfers.push_back(oneTransfer.second.second);
+        }
+        uint256 transferHash;
+        CPBaaSNotarization newNotarization;
+        std::vector<CTxOut> importOutputs;
+        CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
+        CPBaaSNotarization workingNotarization = CPBaaSNotarization(currencyState.GetID(),
+                                                                    currencyState,
+                                                                    fromHeight,
+                                                                    CUTXORef(),
+                                                                    curDefHeight);
+        if (workingNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
+                                                     curDef,
+                                                     fromHeight,
+                                                     height,
+                                                     transfers,
+                                                     transferHash,
+                                                     newNotarization,
+                                                     importOutputs,
+                                                     importedCurrency,
+                                                     gatewayDepositsUsed,
+                                                     spentCurrencyOut))
+        {
+            return newNotarization.currencyState;
         }
     }
-
-    if (curDef.IsFractional())
-    {
-        // convert all non-native fees to native and update the price as a result
-        bool isFeeConversion = false;
-        int numCurrencies = curDef.currencies.size();
-        std::vector<int64_t> reservesToConvert(numCurrencies, 0);
-        std::vector<int64_t> fractionalToConvert(numCurrencies, 0);
-        std::vector<int64_t> reserveAdjustments(numCurrencies, 0);
-
-        if (!currencyState.IsPrelaunch() || currencyState.IsLaunchClear())
-        {
-            for (int i = 0; i < numCurrencies; i++)
-            {
-                curDef.conversions[i] = currencyState.conversionPrice[i] = currencyState.PriceInReserve(i, true);
-
-                // all currencies except the native currency of the system will be converted to the native currency
-                if (currencyState.fees[i] && curDef.currencies[i] != curDef.systemID)
-                {
-                    fractionalToConvert[nativeIdx] += currencyState.ReserveToNativeRaw(currencyState.fees[i], currencyState.conversionPrice[i]);
-                    reserveAdjustments[i] += currencyState.fees[i];
-                    isFeeConversion = true;
-                }
-            }
-        }
-
-        // convert all non-native fee currencies to native and adjust prices
-        if (isFeeConversion)
-        {
-            for (int i = 0; i < numCurrencies; i++)
-            {
-                if (reserveAdjustments[i])
-                {
-                    currencyState.reserveIn[i] += reserveAdjustments[i];
-                    currencyState.reserves[i] += reserveAdjustments[i];
-                }
-            }
-            currencyState.supply += fractionalToConvert[nativeIdx];
-
-            CCurrencyState converterState = static_cast<CCurrencyState>(currencyState);
-            currencyState.viaConversionPrice = converterState.ConvertAmounts(reservesToConvert, fractionalToConvert, currencyState);
-
-            for (int j = 0; j < numCurrencies; j++)
-            {
-                currencyState.reserves[j] = converterState.reserves[j];
-            }
-            currencyState.supply = converterState.supply - fractionalToConvert[nativeIdx];
-
-            // to ensure no rounding errors, use the resulting native price to convert the fee fractional to native,
-            // subtract from supply, and subtract from native reserves
-            CAmount nativeFeeOutput = currencyState.NativeToReserveRaw(fractionalToConvert[nativeIdx], currencyState.viaConversionPrice[nativeIdx]);
-            currencyState.nativeConversionFees += nativeFeeOutput;
-            currencyState.nativeFees += nativeFeeOutput;
-            currencyState.reserves[nativeIdx] -= nativeFeeOutput;
-            currencyState.reserveOut[nativeIdx] += nativeFeeOutput;
-        }
-    }
-
-    // set initial supply from actual conversions if this is first update
-    if (firstUpdate && curDef.IsFractional())
-    {
-        CAmount calculatedSupply = 0;
-        for (auto &transfer : unspentTransfers)
-        {
-            if (transfer.second.second.IsPreConversion())
-            {
-                CAmount toConvert = transfer.second.second.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.FirstValue());
-                calculatedSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.FirstCurrency()]]);
-            }
-        }
-
-        if (calculatedSupply > curDef.initialFractionalSupply)
-        {            
-            // get a ratio and reduce all prices by that ratio
-            static arith_uint256 bigSatoshi(SATOSHIDEN);
-            arith_uint256 bigMultipliedSupply(calculatedSupply * bigSatoshi);
-            arith_uint256 newRatio(bigMultipliedSupply / curDef.initialFractionalSupply);
-            // truncate up, not down, to prevent any overflow at all
-            if (newRatio * curDef.initialFractionalSupply < bigMultipliedSupply)
-            {
-                newRatio++;
-            }
-            for (auto &rate : currencyState.conversionPrice)
-            {
-                arith_uint256 numerator = rate * newRatio;
-                rate = (numerator / bigSatoshi).GetLow64();
-                if ((numerator - (bigSatoshi * rate)) > 0)
-                {
-                    rate++;
-                }
-            }
-        }
-
-        /* calculatedSupply = 0;
-        for (auto &transfer : unspentTransfers)
-        {
-            if (transfer.second.second.IsPreConversion())
-            {
-                CAmount toConvert = transfer.second.second.nValue - CReserveTransactionDescriptor::CalculateConversionFee(transfer.second.second.nValue);
-                calculatedSupply += CCurrencyState::ReserveToNativeRaw(toConvert, currencyState.conversionPrice[currencyIndexes[transfer.second.second.currencyID]]);
-            }
-        }
-        printf("Calculated supply %s\n", ValueFromAmount(calculatedSupply).write().c_str()); */
-
-        // now, remove carveout percentage from each weight & reserve
-        // for currency state
-        int32_t preLaunchCarveOutTotal = 0;
-        for (auto &carveout : curDef.preLaunchCarveOuts)
-        {
-            preLaunchCarveOutTotal += carveout.second;
-            
-        }
-        static arith_uint256 bigSatoshi(SATOSHIDEN);
-        for (auto &oneReserve : currencyState.reserves)
-        {
-            oneReserve =  ((arith_uint256(oneReserve) * arith_uint256(SATOSHIDEN - preLaunchCarveOutTotal)) / bigSatoshi).GetLow64();
-        }
-        for (auto &oneWeight : currencyState.weights)
-        {
-            oneWeight = ((arith_uint256(oneWeight) * arith_uint256(CCurrencyDefinition::CalculateRatioOfValue((SATOSHIDEN - preLaunchCarveOutTotal), SATOSHIDEN - curDef.preLaunchDiscount))) / bigSatoshi).GetLow64();
-        }
-    }
-
     return currencyState;
 }
 

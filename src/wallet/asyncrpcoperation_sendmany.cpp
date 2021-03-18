@@ -327,10 +327,11 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         }
     }
 
-    // printf("Transparent funds, have %s, need %s", t_all_inputs_total.ToUniValue().write(1,2).c_str(), targetAllAmounts.ToUniValue().write(1,2).c_str());
-
-    t_all_inputs_total.valueMap[ASSETCHAINS_CHAINID] = t_inputs_total;
-    t_all_inputs_total = t_all_inputs_total.CanonicalMap();
+    if (t_inputs_total)
+    {
+        t_all_inputs_total.valueMap[ASSETCHAINS_CHAINID] = t_inputs_total;
+    }
+    //printf("Transparent funds, have %s, need %s\n", t_all_inputs_total.ToUniValue().write(1,2).c_str(), targetAllAmounts.ToUniValue().write(1,2).c_str());
 
     CAmount z_inputs_total = 0;
     for (SendManyInputJSOP & t : z_sprout_inputs_) {
@@ -406,9 +407,9 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             CCurrencyValueMap targetReserveAmounts = targetAllAmounts;
             targetReserveAmounts.valueMap.erase(ASSETCHAINS_CHAINID);
 
-            // printf("total currency:\n%s\n", t_all_inputs_total.ToUniValue().write(1,2).c_str());
-            // printf("target reserve:\n%s\n", targetReserveAmounts.ToUniValue().write(1,2).c_str());
-            // printf("target native:\n%s\n", ValueFromAmount(targetNativeAmount).write(1,2).c_str());
+            //printf("total currency:\n%s\n", t_all_inputs_total.ToUniValue().write(1,2).c_str());
+            //printf("target reserve:\n%s\n", targetReserveAmounts.ToUniValue().write(1,2).c_str());
+            //printf("target native:\n%s\n", ValueFromAmount(targetNativeAmount).write(1,2).c_str());
 
             success = 
               pwalletMain->SelectReserveCoinsMinConf(targetReserveAmounts, targetNativeAmount, 0, 0, t_inputs_, setCoinsRet, reserveValueRet, nativeValueRet);

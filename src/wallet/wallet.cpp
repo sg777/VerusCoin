@@ -93,6 +93,19 @@ public:
     {
         // if we have a target to compare against,
         // check to see if one leaves less change after meeting the target
+        CCurrencyValueMap m1LeftOver = totalTargetValues.SubtractToZero(m1).CanonicalMap();
+        CCurrencyValueMap m2LeftOver = totalTargetValues.SubtractToZero(m2).CanonicalMap();
+        if (m1LeftOver == CCurrencyValueMap())
+        {
+            if (m2LeftOver != CCurrencyValueMap())
+            {
+                return false;
+            }
+        }
+        else if (m2LeftOver == CCurrencyValueMap())
+        {
+            return true;
+        }
         if (totalTargetValues.valueMap.size())
         {
             CCurrencyValueMap leftover1 = m1.SubtractToZero(totalTargetValues);
@@ -125,18 +138,13 @@ public:
                 return false;
             }
             checkMap2 = checkMap1 - m2.IntersectingValues(m1);
-            CAmount total = 0;
-            for (auto &oneCur : checkMap2.valueMap)
+            if (!(checkMap2 < checkMap1))
             {
-                total += oneCur.second;
-            }
-            if (total < 0)
-            {
-                return true;
+                return false;
             }
             else
             {
-                return false;
+                return true;
             }
         }
         return m1 < m2;
@@ -5804,7 +5812,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
 
     std::map<std::pair<const CWalletTx *, int>, CReserveOutSelectionInfo> added;
     largerTotal.valueMap.clear();
-    CCurrencyValueMap adjustedTarget;
+    CCurrencyValueMap adjustedTarget(nTotalTarget);
     std::set<uint160> satisfied;
 
     // short circuit best fit check with any exact amounts we may have
@@ -5852,10 +5860,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
             largerTotal += newAdded;
             largerOuts.erase(outPair);
 
-            // printf("adjustedTarget:\n%s\ntotalAdded:\n%s\n", adjustedTarget.ToUniValue().write().c_str(), totalAdded.ToUniValue().write().c_str());
-
-            // printf("adjustedTarget:\n%s\n", adjustedTarget.ToUniValue().write().c_str());
-            // printf("nTotalTarget.NonIntersectingValues(adjustedTarget):\n%s\n", nTotalTarget.NonIntersectingValues(adjustedTarget).ToUniValue().write().c_str());
+            //printf("adjustedTarget:\n%s\n", adjustedTarget.ToUniValue().write().c_str());
+            //printf("nTotalTarget.NonIntersectingValues(adjustedTarget):\n%s\n", nTotalTarget.NonIntersectingValues(adjustedTarget).ToUniValue().write().c_str());
 
             adjustedTarget = nTotalTarget.SubtractToZero(largerTotal);
 
@@ -5944,7 +5950,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     }
 
     //printf("\nlargerTotal:\n%s\n", largerTotal.ToUniValue().write().c_str());
-    // printf("adjustedTarget:\n%s\n", adjustedTarget.ToUniValue().write().c_str());
+    //printf("adjustedTarget:\n%s\n", adjustedTarget.ToUniValue().write().c_str());
 
     // make new vector without those we have added due to exact fit, and use remaining and adjusted target to satisfy requests
     std::vector<int> vOutputsToRemove;
@@ -5982,8 +5988,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     totalToOptimize = totalToOptimize.SubtractToZero(removedValue);
     CCurrencyValueMap newOptimizationTarget = nTotalTarget.SubtractToZero(largerTotal);
 
-    //printf("totalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", totalToOptimize.ToUniValue().write().c_str(), newOptimizationTarget.ToUniValue().write().c_str());
-    /* for (int i = 0; i < vOutputsToOptimize.size(); i++)
+    /* printf("totalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", totalToOptimize.ToUniValue().write().c_str(), newOptimizationTarget.ToUniValue().write().c_str());
+    for (int i = 0; i < vOutputsToOptimize.size(); i++)
     {
         printf("output #%d:\nreserves:\n%s\nnative:\n%s\n", 
             i, 
@@ -5995,7 +6001,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     CCurrencyValueMap bestTotals;
 
     ApproximateBestReserveSubset(vOutputsToOptimize, totalToOptimize, newOptimizationTarget, vfBest, bestTotals, 1000);
-    if (bestTotals != newOptimizationTarget && totalToOptimize >= newOptimizationTarget + nativeCent)
+    if (bestTotals != newOptimizationTarget && totalToOptimize >= (newOptimizationTarget + nativeCent))
     {
         //printf("bestTotals:\n%s\ntotalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", bestTotals.ToUniValue().write().c_str(), totalToOptimize.ToUniValue().write().c_str(), (newOptimizationTarget + nativeCent).ToUniValue().write().c_str());
         ApproximateBestReserveSubset(vOutputsToOptimize, totalToOptimize, newOptimizationTarget + nativeCent, vfBest, bestTotals, 1000);
