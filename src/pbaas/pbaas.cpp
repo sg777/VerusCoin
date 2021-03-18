@@ -1661,7 +1661,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
 
         // if we have inputs, break
-        if (ccx.numInputs)
+        if (ccx.numInputs && nHeight == 0)
         {
             printf("%s:break for debugger on import for export: %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
         }
