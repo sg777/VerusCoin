@@ -2275,10 +2275,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         TransactionBuilderResult result = tb.Build();
         if (result.IsError())
         {
-            //UniValue jsonTx(UniValue::VOBJ);
-            //uint256 hashBlk;
-            //TxToUniv(tb.mtx, hashBlk, jsonTx);
-            //printf("%s\n", jsonTx.write(1,2).c_str());
+            /* UniValue jsonTx(UniValue::VOBJ);
+            uint256 hashBlk;
+            TxToUniv(tb.mtx, hashBlk, jsonTx);
+            printf("%s\n", jsonTx.write(1,2).c_str()); */
             printf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             LogPrintf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             return false;

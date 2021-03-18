@@ -298,7 +298,7 @@ TransactionBuilderResult TransactionBuilder::Build()
 
         if (hasReserveChange && !tChangeAddr)
         {
-            //printf("%s: reserveChange: %s\n", __func__, reserveChange.ToUniValue().write(1,2).c_str());
+            printf("%s: reserveChange: %s\n", __func__, reserveChange.ToUniValue().write(1,2).c_str());
             return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
         }
 

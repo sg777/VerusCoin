@@ -1941,6 +1941,11 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer() const
         rt.destination = CTransferDestination(CTransferDestination::DEST_ID, rt.destination.destination);
     }
 
+    if (IsPreConversion())
+    {
+        rt.destCurrencyID = rt.FirstCurrency();
+    }
+
     // turn it into a normal transfer, which will create an unconverted output
     rt.flags &= ~(CReserveTransfer::DOUBLE_SEND | CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT);
 
@@ -2907,7 +2912,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         }
                     }
                     AddReserveOutput(curTransfer.destCurrencyID, curTransfer.FirstValue());
-                    curTransfer.GetTxOut(CCurrencyValueMap(std::vector<uint160>({curTransfer.destCurrencyID}), std::vector<int64_t>(curTransfer.FirstValue())), 
+                    curTransfer.GetTxOut(CCurrencyValueMap(std::vector<uint160>({curTransfer.destCurrencyID}), std::vector<int64_t>({curTransfer.FirstValue()})), 
                                             0, newOut);
                 }
             }
@@ -3091,7 +3096,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 newCurrencyState.conversionPrice = importCurrencyState.conversionPrice;
             }
         }
-        else if (importCurrencyState.IsPrelaunch())
+        else if (importCurrencyState.IsPrelaunch() && !importCurrencyState.IsRefunding())
         {
             newCurrencyState.viaConversionPrice = newCurrencyState.PricesInReserve();
             CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
