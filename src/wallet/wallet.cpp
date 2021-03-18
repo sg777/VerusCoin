@@ -5317,7 +5317,16 @@ static void ApproximateBestSubset(vector<pair<CAmount, pair<const CWalletTx*,uns
 // true.
 bool CloserToTarget(const CCurrencyValueMap &target, const CCurrencyValueMap &current, const CCurrencyValueMap &candidate)
 {
-    CCurrencyValueMap workingTarget = target.SubtractToZero(current);   // whatever is left is what we still need
+    CCurrencyValueMap workingTarget = target.SubtractToZero(current);
+    CCurrencyValueMap candidateTarget = target.SubtractToZero(candidate);
+    if (candidateTarget < workingTarget)
+    {
+        return true;
+    }
+    else if (workingTarget < candidateTarget)
+    {
+        return false;
+    }
     return workingTarget.SubtractToZero(candidate) < workingTarget;
 }
 
