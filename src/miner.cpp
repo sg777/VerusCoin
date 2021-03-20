@@ -1775,7 +1775,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     nTotalIn += rtxd.nativeIn;
                     totalReserveIn = rtxd.ReserveInputMap();
                     assert(!totalReserveIn.valueMap.count(ASSETCHAINS_CHAINID));
-                    additionalFees += (totalReserveIn - rtxd.ReserveOutputMap());
                     if (rtxd.IsIdentity() && CNameReservation(tx).IsValid())
                     {
                         nCurrentIDSize += GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
@@ -1975,6 +1974,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             {
                 reservePositions.push_back(nBlockTx);
                 haveReserveTransactions = true;
+                additionalFees += txDesc.ReserveFees();
             }
 
             BOOST_FOREACH(const OutputDescription &outDescription, tx.vShieldedOutput) {
@@ -1989,7 +1989,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             ++nBlockTx;
             nBlockSigOps += nTxSigOps;
             nFees += nTxFees;
-            
             if (fPrintPriority)
             {
                 LogPrintf("priority %.1f fee %s txid %s\n",dPriority, feeRate.ToString(), tx.GetHash().ToString());
@@ -2023,7 +2022,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         }
 
         CAmount verusFees = 0;
-        if (!isVerusActive && additionalFees.valueMap.count(VERUS_CHAINID))
+        if (VERUS_CHAINID != ASSETCHAINS_CHAINID && additionalFees.valueMap.count(VERUS_CHAINID))
         {
             verusFees += additionalFees.valueMap[VERUS_CHAINID];
             additionalFees.valueMap.erase(VERUS_CHAINID);
@@ -2046,7 +2045,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             rewardFees = oneFeeShare.reserveValues.valueMap[thisChainID];
             feePool.reserveValues.valueMap[thisChainID] -= rewardFees;
 
-            if (oneFeeShare.reserveValues.valueMap.count(VERUS_CHAINID))
+            if (VERUS_CHAINID != ASSETCHAINS_CHAINID && oneFeeShare.reserveValues.valueMap.count(VERUS_CHAINID))
             {
                 verusFees = oneFeeShare.reserveValues.valueMap[VERUS_CHAINID];
                 feePool.reserveValues.valueMap[VERUS_CHAINID] -= verusFees;
@@ -2056,6 +2055,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             pkCC = CPubKey(ParseHex(CC.CChexstr));
             coinbaseTx.vout.push_back(CTxOut(0,MakeMofNCCScript(CConditionObj<CFeePool>(EVAL_FEE_POOL,{pkCC.GetID()},1,&feePool))));
         }
+
+        // printf("%s: rewardfees: %ld, verusfees: %ld\n", __func__, rewardFees, verusFees);
+
         CAmount rewardTotal = blockSubsidy + rewardFees;
 
         // now that we have the total reward, update the coinbase outputs

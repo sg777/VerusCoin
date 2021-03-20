@@ -3688,8 +3688,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     // on non-Verus reserve chains, we'll want a block-wide currency state for calculations
     CCoinbaseCurrencyState prevCurrencyState = ConnectedChains.GetCurrencyState(nHeight ? nHeight - 1 : 0);
     CCurrencyDefinition thisChain = ConnectedChains.ThisChain();
+
     CCurrencyValueMap totalReserveTxFees;
     CCurrencyValueMap reserveRewardTaken;
+    CCurrencyValueMap totalReserveDeposits;
 
     // emit new currency before other calculations
     prevCurrencyState.UpdateWithEmission(GetBlockSubsidy(nHeight, consensus));
@@ -3848,7 +3850,18 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         {
             if (rtxd.IsValid())
             {
-                nFees += rtxd.NativeFees();
+                CAmount dummy = rtxd.NativeFees();
+                nFees += dummy;
+
+                CAmount interest;
+                if (dummy != view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut())
+                {
+                    printf("%s: failure for rtxd (%s) to match native fees (%ld)\n", 
+                            __func__, 
+                            rtxd.ToUniValue().write(1,2).c_str(),
+                            view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut());
+                }
+
                 totalReserveTxFees += rtxd.ReserveFees();
             } else
             {
@@ -3879,11 +3892,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 CCrossChainExport ccx;
                 CCrossChainImport dummySysCCI;
                 CPBaaSNotarization importNotarization;
+                CReserveDeposit resDeposit;
                 int32_t sysCCIOut, notarizationOut, evidenceStart, evidenceEnd;
                 std::vector<CReserveTransfer> reserveTransfers;
                 if (tx.vout[j].scriptPubKey.IsPayToCryptoCondition(p) &&
                     p.IsValid() &&
-                    (p.evalCode == EVAL_CROSSCHAIN_IMPORT || p.evalCode == EVAL_CURRENCY_DEFINITION) &&
+                    (p.evalCode == EVAL_CROSSCHAIN_IMPORT || p.evalCode == EVAL_CURRENCY_DEFINITION || p.evalCode == EVAL_RESERVE_DEPOSIT) &&
                     p.vData.size())
                 {
                     if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
@@ -3929,12 +3943,35 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         }
                                     }
                                 }
+                                if (importNotarization.currencyState.emitted)
+                                {
+                                    totalReserveTxFees.valueMap[importNotarization.currencyID] += 
+                                        importNotarization.currencyState.emitted;
+                                    totalReserveDeposits.valueMap[importNotarization.currencyID] += 
+                                        importNotarization.currencyState.emitted;
+                                }
                             }
                         }
                     }
-                    else
+                    else if (p.evalCode == EVAL_CURRENCY_DEFINITION)
                     {
                         cbCurDef = CCurrencyDefinition(p.vData[0]);
+                    }
+                    else
+                    {
+                        if (!(p.vData.size() &&
+                            (resDeposit = CReserveDeposit(p.vData[0])).IsValid() &&
+                            resDeposit.controllingCurrencyID == cbCurDef.GetID()))
+                        {
+                            return state.DoS(100,
+                                        error("ConnectBlock(): block's reserve deposits are incorrect"),
+                                            REJECT_INVALID, "bad-reserve-deposits");
+                        }
+                        if (tx.vout[j].nValue)
+                        totalReserveDeposits += resDeposit.reserveValues;
+                        {
+                            totalReserveDeposits.valueMap[ASSETCHAINS_CHAINID] += tx.vout[j].nValue;
+                        }
                     }
                 }
             }
@@ -3943,16 +3980,15 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             TxToUniv(tx, uint256(), jsonTx);
             printf("%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
             printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
-            printf("%s: nativeFees: %ld, reserve fees: %s\ncb reserve out: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str());
+            printf("%s: nativeFees: %ld, reserve fees: %s\nreserve deposits: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), totalReserveDeposits.ToUniValue().write(1,2).c_str());
         }
         else if (!isVerusActive)
         {
             // we are not at block height #1, so all coinbase reserve outputs are
             // considered taking of fees
             reserveRewardTaken = rtxd.ReserveOutputMap();
+            printf("%s: reserve reward taken: %s\n", __func__, reserveRewardTaken.ToUniValue().write(1,2).c_str());
         }
-
-        printf("%s: reserve reward taken: %s\n", __func__, reserveRewardTaken.ToUniValue().write(1,2).c_str());
 
         if (fAddressIndex) {
             for (unsigned int k = 0; k < tx.vout.size(); k++) {
@@ -4089,28 +4125,35 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             
             if (verusFees)
             {
-                feePoolCheck.reserveValues.valueMap[VERUS_CHAINID] = verusFees;
+                feePoolCheck.reserveValues.valueMap[VERUS_CHAINID] += verusFees;
             }
-            
+
             CAmount verusCheckVal = (!isVerusActive && feePoolCheck.reserveValues.valueMap.count(VERUS_CHAINID)) ?
                                         feePoolCheck.reserveValues.valueMap[VERUS_CHAINID] : 0;
 
             CFeePool oneFeeShare = feePoolCheck.OneFeeShare();
             rewardFees = oneFeeShare.reserveValues.valueMap[ASSETCHAINS_CHAINID];
-            verusFees = oneFeeShare.reserveValues.valueMap[VERUS_CHAINID];
+            verusFees = isVerusActive ? 0 : oneFeeShare.reserveValues.valueMap[VERUS_CHAINID];
 
             CFeePool feePool;
             CAmount feePoolVal;
             if (!(feePool = CFeePool(block.vtx[0])).IsValid() ||
                 (feePoolVal = feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID]) < (feePoolCheckVal - rewardFees) ||
                 feePoolVal > feePoolCheckVal ||
-                (feePoolVal = feePool.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
-                feePoolVal > verusCheckVal)
+                (!isVerusActive && ((feePoolVal = feePoolCheck.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
+                feePoolVal > verusCheckVal)))
             {
+                /* printf("%s: rewardfees: %ld, verusfees: %ld, feePool: %s\nfeepoolcheck: %s\n", 
+                        __func__, 
+                        rewardFees, 
+                        verusFees, 
+                        feePool.ToUniValue().write(1,2).c_str(), 
+                        feePoolCheck.ToUniValue().write(1,2).c_str()); */
                 return state.DoS(100, error("ConnectBlock(): invalid fee pool usage in block"), REJECT_INVALID, "bad-blk-fees");
             }
             rewardFees = feePoolCheckVal - feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID];
-            verusFees = verusCheckVal - feePool.reserveValues.valueMap[VERUS_CHAINID];
+            verusFees = isVerusActive ? 0 : verusCheckVal - feePool.reserveValues.valueMap[VERUS_CHAINID];
+            //printf("%s: rewardfees: %ld, verusfees: %ld\n", __func__, rewardFees, verusFees);
         }
         else 
         {

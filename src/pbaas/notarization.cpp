@@ -592,9 +592,18 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
         // if we are in the pre-launch phase, all reserves in are cumulative and then calculated together at launch
         // reserves in represent all reserves in, and fees are taken out after launch or refund as well
-        if (tempState.IsPrelaunch() && !tempState.IsLaunchClear())
+        //
+        // we add up until the end, then stop adding reserves at launch clear. this gives us the ability to reverse the 
+        // pre-launch state for validation. we continue adding fees up to pre-launch to easily get a total of unconverted 
+        // fees, which we need when creating a PBaaS chain, as all currency, both reserves and fees exported to the new
+        // chain must be either output to specific addresses, taken as fees by miners, or stored in reserve deposits.
+        if (tempState.IsPrelaunch())
         {
-            tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
+            if (!tempState.IsLaunchClear())
+            {
+                tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
+            }
+            tempState.fees = tempState.AddVectors(tempState.fees, this->currencyState.fees);
         }
         else if (tempState.IsLaunchConfirmed())
         {

@@ -2257,7 +2257,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // fees that started in fractional are already converted, so not considered
                 CAmount totalNativeFee = 0;
 
-                if (importCurrencyState.IsLaunchConfirmed() && isFractional && importCurrencyState.reserves[systemDestIdx])
+                if (importCurrencyState.IsLaunchConfirmed() &&
+                    isFractional &&
+                    importCurrencyState.reserves[systemDestIdx] &&
+                    !importCurrencyState.IsPrelaunch())
                 {
                     // setup conversion matrix for fees that are converted to
                     // native (or launch currency of a PBaaS chain) from another reserve
@@ -2338,7 +2341,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 }
                 else
                 {
-                    // since there is no support for taking reserves as fees yet, split any available 
+                    // since there is no support for taking reserves as fees, split any available 
                     // reserves fee from the launch chain, for example, between us and the exporter. for now,
                     // we send it to ourselves if possible and the currency ID, if not
                     CTxDestination addr = CIdentityID(importCurrencyID);
@@ -2381,13 +2384,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             AddReserveOutput(oneFee.first, oneFee.second);
 
                             CTokenOutput ro = CTokenOutput(oneFee.first, oneFee.second);
-                            vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
+                            //vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
                         }
                         else if (oneFee.second)
                         {
-                            totalNativeFee = oneFee.second;
+                            totalNativeFee += oneFee.second;
                         }
                     }
+                    convertedFees = transferFees;
                 }
 
                 // export fee is sent to the export pool of the sending

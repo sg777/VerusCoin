@@ -1043,7 +1043,8 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
     std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
     int32_t nativeIdx = currencyIndexes.count(curDef.systemID) ? currencyIndexes[curDef.systemID] : -1;
 
-    if (GetChainTransfers(unspentTransfers, curDef.GetID(), fromHeight, height < curDef.startBlock ? height : curDef.startBlock - 1))
+    if (GetChainTransfers(unspentTransfers, curDef.GetID(), fromHeight, height < curDef.startBlock ? height : curDef.startBlock - 1) &&
+        unspentTransfers.size())
     {
         std::vector<CReserveTransfer> transfers;
         for (auto &oneTransfer : unspentTransfers)
