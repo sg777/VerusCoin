@@ -2760,14 +2760,13 @@ namespace Consensus {
             return state.Invalid(error("CheckInputs(): %s JoinSplit requirements not met", tx.GetHash().ToString()));
         
         CAmount nValueIn = 0;
-        CCurrencyValueMap ReserveValueIn;
         CCurrencyValueMap inputValueIn;
         int32_t outNum;
         CCrossChainImport cci(tx, &outNum);
 
         CReserveTransactionDescriptor rtxd(tx, inputs, nSpendHeight);
 
-        ReserveValueIn = rtxd.ReserveInputMap();
+        CCurrencyValueMap ReserveValueIn = rtxd.ReserveInputMap();
 
         CAmount nFees = 0;
         for (unsigned int i = 0; i < tx.vin.size(); i++)
@@ -3690,8 +3689,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CCoinbaseCurrencyState prevCurrencyState = ConnectedChains.GetCurrencyState(nHeight ? nHeight - 1 : 0);
     CCurrencyDefinition thisChain = ConnectedChains.ThisChain();
     CCurrencyValueMap totalReserveTxFees;
-    CCurrencyValueMap reserveIn;
-    CCurrencyValueMap nativeIn;
+    CCurrencyValueMap reserveRewardTaken;
 
     // emit new currency before other calculations
     prevCurrencyState.UpdateWithEmission(GetBlockSubsidy(nHeight, consensus));
@@ -3850,14 +3848,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         {
             if (rtxd.IsValid())
             {
-                if (isVerusActive)
-                {
-                    nFees += rtxd.NativeFees();
-                }
-                else
-                {
-                    // TODO : complete for PBaaS chain
-                }
+                nFees += rtxd.NativeFees();
+                totalReserveTxFees += rtxd.ReserveFees();
             } else
             {
                 CAmount interest;
@@ -3870,16 +3862,97 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 return false;
             control.Add(vChecks);
         }
-        else if (nHeight == 1 && !IsVerusActive())
+        else if (nHeight == 1 && !isVerusActive)
         {
             // at block one of a PBaaS chain, we have additional funds coming out of the coinbase for pre-allocation,
             // reserve deposit into the PBaaS converter currency, launch fees, and potentially other reasons over time
             // block 1 contains the initial currencies and identities that we start with at launch.
+
+            // this is always the last currency we load
+            CCurrencyDefinition cbCurDef;
+
+            // move through block one imports and add associated fee to the coinbase fees
+            for (int j = 0; j < tx.vout.size(); j++)
+            {
+                COptCCParams p;
+                CCrossChainImport cci;
+                CCrossChainExport ccx;
+                CCrossChainImport dummySysCCI;
+                CPBaaSNotarization importNotarization;
+                int32_t sysCCIOut, notarizationOut, evidenceStart, evidenceEnd;
+                std::vector<CReserveTransfer> reserveTransfers;
+                if (tx.vout[j].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    (p.evalCode == EVAL_CROSSCHAIN_IMPORT || p.evalCode == EVAL_CURRENCY_DEFINITION) &&
+                    p.vData.size())
+                {
+                    if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
+                    {
+                        uint160 cbCurID = cbCurDef.GetID();
+                        if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                            cbCurDef.IsValid() &&
+                            cci.importCurrencyID == cbCurID &&
+                            (cbCurID == ASSETCHAINS_CHAINID || cbCurID == ConnectedChains.ThisChain().GatewayConverterID()) &&
+                            cci.GetImportInfo(tx, 1, j, ccx, 
+                                            dummySysCCI, sysCCIOut,
+                                            importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
+                            importNotarization.currencyState.IsValid())
+                        {
+                            printf("%s: import notarization: %s\n", __func__, importNotarization.ToUniValue().write(1,2).c_str());
+
+                            totalReserveTxFees += 
+                                CCurrencyValueMap(importNotarization.currencyState.currencies, importNotarization.currencyState.fees);
+                            // right now, preallocations for native are accounted for differently, so we remove native from this
+                            totalReserveTxFees.valueMap.erase(ASSETCHAINS_CHAINID);
+                            if (importNotarization.currencyState.emitted && cbCurID != ASSETCHAINS_CHAINID)
+                            {
+                                totalReserveTxFees.valueMap[cbCurID] += importNotarization.currencyState.emitted;
+                            }
+                            nFees += importNotarization.currencyState.nativeFees;
+
+                            // add the initial reserve deposits as "fees" for
+                            // validation of the block 1 coinbase
+                            if (cbCurDef.IsFractional())
+                            {
+                                for (int i = 0; i < importNotarization.currencyState.currencies.size(); i++)
+                                {
+                                    if (importNotarization.currencyState.reserves[i])
+                                    {
+                                        if (importNotarization.currencyState.currencies[i] == ASSETCHAINS_CHAINID)
+                                        {
+                                            nFees += importNotarization.currencyState.reserves[i];
+                                        }
+                                        else
+                                        {
+                                            totalReserveTxFees.valueMap[importNotarization.currencyState.currencies[i]] += 
+                                                importNotarization.currencyState.reserves[i];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        cbCurDef = CCurrencyDefinition(p.vData[0]);
+                    }
+                }
+            }
+
             UniValue jsonTx(UniValue::VOBJ);
             TxToUniv(tx, uint256(), jsonTx);
             printf("%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
             printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
+            printf("%s: nativeFees: %ld, reserve fees: %s\ncb reserve out: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str());
         }
+        else if (!isVerusActive)
+        {
+            // we are not at block height #1, so all coinbase reserve outputs are
+            // considered taking of fees
+            reserveRewardTaken = rtxd.ReserveOutputMap();
+        }
+
+        printf("%s: reserve reward taken: %s\n", __func__, reserveRewardTaken.ToUniValue().write(1,2).c_str());
 
         if (fAddressIndex) {
             for (unsigned int k = 0; k < tx.vout.size(); k++) {
@@ -3999,57 +4072,45 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTime1 = GetTimeMicros(); nTimeConnect += nTime1 - nTimeStart;
     LogPrint("bench", "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs]\n", (unsigned)block.vtx.size(), 0.001 * (nTime1 - nTimeStart), 0.001 * (nTime1 - nTimeStart) / block.vtx.size(), nInputs <= 1 ? 0 : 0.001 * (nTime1 - nTimeStart) / (nInputs-1), nTimeConnect * 0.000001);
 
-    CCoinbaseCurrencyState checkState = prevCurrencyState;
-
-    std::vector<CAmount> conversionPrices;
-    if (reserveIn.valueMap.size() || nativeIn.valueMap.size())
-    {
-        int32_t numCurrencies = prevCurrencyState.currencies.size();
-        static_cast<CCurrencyState>(checkState) = CCurrencyState();
-        conversionPrices = prevCurrencyState.ConvertAmounts(reserveIn.AsCurrencyVector(prevCurrencyState.currencies), 
-                                                            nativeIn.AsCurrencyVector(prevCurrencyState.currencies),
-                                                            checkState);
-
-        if (!checkState.IsValid() ||
-            (currencyState.conversionPrice != conversionPrices) || 
-            (nHeight != 1 && currencyState.supply != checkState.supply) || 
-            (nHeight != 1 && currencyState.reserveIn != reserveIn.AsCurrencyVector(currencyState.currencies)) || 
-            (nHeight == 1 && !thisChain.preconverted.size() && currencyState.supply - currencyState.initialSupply != checkState.supply) || 
-            currencyState.nativeIn != nativeIn.AsCurrencyVector(currencyState.currencies))
-        {
-            // do it again for debugging only
-            //conversionPrices = prevCurrencyState.ConvertAmounts(reserveIn.AsCurrencyVector(prevCurrencyState.currencies), 
-            //                                                    nativeIn.AsCurrencyVector(prevCurrencyState.currencies),
-            //                                                    checkState, nullptr);
-            return state.DoS(100, error("ConnectBlock(): currency state does not match block transactions"), REJECT_INVALID, "bad-blk-currency");
-        }
-    }
-
     // enforce fee pooling if we are at PBAAS or past
     CAmount rewardFees = nFees;
+    CAmount verusFees = (!isVerusActive && totalReserveTxFees.valueMap.count(VERUS_CHAINID)) ? totalReserveTxFees.valueMap[VERUS_CHAINID] : 0;
     if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS)
     {
         // all fees must be taken and no more
         CFeePool feePoolCheck;
+
         if (CConstVerusSolutionVector::GetVersionByHeight(nHeight - 1) < CActivationHeight::ACTIVATE_PBAAS ||
             (CFeePool::GetCoinbaseFeePool(feePoolCheck, nHeight - 1) && feePoolCheck.IsValid()))
         {
             CAmount feePoolCheckVal = 
                 feePoolCheck.reserveValues.valueMap[ASSETCHAINS_CHAINID] = 
                     feePoolCheck.reserveValues.valueMap[ASSETCHAINS_CHAINID] + nFees;
+            
+            if (verusFees)
+            {
+                feePoolCheck.reserveValues.valueMap[VERUS_CHAINID] = verusFees;
+            }
+            
+            CAmount verusCheckVal = (!isVerusActive && feePoolCheck.reserveValues.valueMap.count(VERUS_CHAINID)) ?
+                                        feePoolCheck.reserveValues.valueMap[VERUS_CHAINID] : 0;
 
-            rewardFees = feePoolCheck.OneFeeShare().reserveValues.valueMap[ASSETCHAINS_CHAINID];
+            CFeePool oneFeeShare = feePoolCheck.OneFeeShare();
+            rewardFees = oneFeeShare.reserveValues.valueMap[ASSETCHAINS_CHAINID];
+            verusFees = oneFeeShare.reserveValues.valueMap[VERUS_CHAINID];
 
             CFeePool feePool;
             CAmount feePoolVal;
             if (!(feePool = CFeePool(block.vtx[0])).IsValid() ||
-                !feePool.IsValid() ||
                 (feePoolVal = feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID]) < (feePoolCheckVal - rewardFees) ||
-                feePoolVal > feePoolCheckVal)
+                feePoolVal > feePoolCheckVal ||
+                (feePoolVal = feePool.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
+                feePoolVal > verusCheckVal)
             {
                 return state.DoS(100, error("ConnectBlock(): invalid fee pool usage in block"), REJECT_INVALID, "bad-blk-fees");
             }
             rewardFees = feePoolCheckVal - feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID];
+            verusFees = verusCheckVal - feePool.reserveValues.valueMap[VERUS_CHAINID];
         }
         else 
         {
@@ -4059,28 +4120,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     CAmount nativeBlockReward = rewardFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus());
     // reserve reward is in totalReserveTxFees
-
-    if (!isVerusActive)
-    {
-        bool isBlock1 = pindex->GetHeight() == 1;
-        if (isBlock1 && thisChain.preconverted.size() && thisChain.conversions.size())
-        {
-            // if we can have a pre-conversion output on block 1, add pre-conversion
-            nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(thisChain.currencies, thisChain.preconverted),
-                                                                    thisChain.currencies,
-                                                                    thisChain.conversions) + currencyState.nativeFees;
-        }
-        else
-        {
-            if (!isBlock1 && totalReserveTxFees.AsCurrencyVector(currencyState.currencies) != currencyState.fees)
-            {
-                return state.DoS(100, error(("ConnectBlock(): invalid currency state fee does not match block total of " + totalReserveTxFees.ToUniValue().write()).c_str()), REJECT_INVALID, "bad-blk-currency-fee");
-            }
-            nativeBlockReward += CCurrencyState::ReserveToNativeRaw(CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn),
-                                                                    currencyState.currencies,
-                                                                    currencyState.conversionPrice) + currencyState.nativeFees;
-        }
-    }
 
     if ( ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 && ASSETCHAINS_COMMISSION != 0 )
     {
@@ -4111,6 +4150,17 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             fprintf(stderr,"allow nHeight.%d coinbase %.8f vs %.8f\n",(int32_t)pindex->GetHeight(),dstr(block.vtx[0].GetValueOut()),dstr(nativeBlockReward));
     }
 
+    if (reserveRewardTaken.valueMap.size() &&
+        (reserveRewardTaken.valueMap.size() > 1 || 
+         !reserveRewardTaken.valueMap.count(VERUS_CHAINID) || 
+         reserveRewardTaken.valueMap[VERUS_CHAINID] > verusFees))
+    {
+        return state.DoS(100,
+                            error("ConnectBlock(): coinbase pays too much Verus reserve currency (actual=%ld vs limit=%ld)",
+                                reserveRewardTaken.valueMap[VERUS_CHAINID], verusFees),
+                            REJECT_INVALID, "bad-cb-amount");
+    }
+
     if (!control.Wait())
         return state.DoS(100, false);
     int64_t nTime2 = GetTimeMicros(); nTimeVerify += nTime2 - nTimeStart;
@@ -4133,7 +4183,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             pindex->nUndoPos = pos.nPos;
             pindex->nStatus |= BLOCK_HAVE_UNDO;
         }
-        
+
         // Now that all consensus rules have been validated, set nCachedBranchId.
         // Move this if BLOCK_VALID_CONSENSUS is ever altered.
         static_assert(BLOCK_VALID_CONSENSUS == BLOCK_VALID_SCRIPTS,

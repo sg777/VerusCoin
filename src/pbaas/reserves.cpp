@@ -2131,6 +2131,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     CCcontract_info *cp;
 
     CCurrencyValueMap transferFees;                     // calculated fees based on all transfers/conversions, etc.
+    CCurrencyValueMap convertedFees;                    // post conversion transfer fees
     CCurrencyValueMap passThroughFees;                  // preserved, but converted if possible
 
     bool feeOutputStart = false;                        // fee outputs must come after all others, this indicates they have started
@@ -2260,6 +2261,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 {
                     // setup conversion matrix for fees that are converted to
                     // native (or launch currency of a PBaaS chain) from another reserve
+                    std::vector<std::pair<std::pair<uint160,CAmount>, std::pair<uint160,CAmount>>> feeConversions;
                     for (auto &oneFee : transferFees.valueMap)
                     {
                         // only convert in second stage if we are going from one reserve to the system ID
@@ -2292,13 +2294,15 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             else
                             {
                                 // if fractional currency is not native, one more conversion to native
-                                CAmount reserveFromFrac = 
+                                oneFeeValue = 
                                     CCurrencyState::NativeToReserveRaw(oneFeeValue, importCurrencyState.viaConversionPrice[systemDestIdx]);
-                                totalNativeFee += reserveFromFrac;
-                                nativeIn += reserveFromFrac;
-                                AddReserveOutConverted(systemDestID, reserveFromFrac);
+                                totalNativeFee += oneFeeValue;
+                                nativeIn += oneFeeValue;
+                                AddReserveOutConverted(systemDestID, oneFeeValue);
                             }
 
+                            feeConversions.push_back(std::make_pair(std::make_pair(oneFee.first, oneFee.second), 
+                                                                    std::make_pair(systemDestID, oneFeeValue)));
                             // printf("%s: *this 2: %s\n", __func__, ToUniValue().write(1,2).c_str());
                         }
                         else if (oneFee.first == systemDestID)
@@ -2316,14 +2320,54 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             totalNativeFee += convertedFractionalFee;
                             nativeIn += convertedFractionalFee;
                             AddReserveOutConverted(systemDestID, convertedFractionalFee);
+                            feeConversions.push_back(std::make_pair(std::make_pair(oneFee.first, oneFee.second), 
+                                                                    std::make_pair(systemDestID, convertedFractionalFee)));
                         }
+                    }
+                    // loop through, subtract "from" and add "to"
+                    convertedFees = transferFees;
+                    if (feeConversions.size())
+                    {
+                        for (auto &conversionPairs : feeConversions)
+                        {
+                            convertedFees.valueMap[conversionPairs.first.first] -= conversionPairs.first.second;
+                            convertedFees.valueMap[conversionPairs.second.first] += conversionPairs.second.second;
+                        }
+                        convertedFees = convertedFees.CanonicalMap();
                     }
                 }
                 else
                 {
                     // since there is no support for taking reserves as fees yet, split any available 
-                    // reserves fee from the launch chain, for example, between us and the exporter
-                    std::vector<CTxDestination> dests({CIdentityID(importCurrencyID)});
+                    // reserves fee from the launch chain, for example, between us and the exporter. for now,
+                    // we send it to ourselves if possible and the currency ID, if not
+                    CTxDestination addr = CIdentityID(importCurrencyID);
+                    extern std::string NOTARY_PUBKEY;
+                    if (mapArgs.count("-mineraddress"))
+                    {
+                        addr = DecodeDestination(mapArgs["-mineraddress"]);
+                    }
+                    else if (!VERUS_NOTARYID.IsNull())
+                    {
+                        addr = VERUS_NOTARYID;
+                    }
+                    else if (!VERUS_DEFAULTID.IsNull())
+                    {
+                        addr = VERUS_DEFAULTID;
+                    }
+                    else if (!VERUS_NODEID.IsNull())
+                    {
+                        addr = CIdentityID(VERUS_NODEID);
+                    }
+                    else if (!NOTARY_PUBKEY.empty())
+                    {
+                        CPubKey pkey;
+                        std::vector<unsigned char> hexKey = ParseHex(NOTARY_PUBKEY);
+                        pkey.Set(hexKey.begin(), hexKey.end());
+                        addr = pkey.GetID();
+                    }
+
+                    std::vector<CTxDestination> dests({addr});
                     for (auto &oneFee : transferFees.valueMap)
                     {
                         if (oneFee.first != systemDestID && oneFee.second)
@@ -3149,7 +3193,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         newCurrencyState.nativeConversionFees = fractionalInOuts.reserveConversionFees;
     }
     newCurrencyState.conversionFees = ReserveConversionFeesMap().AsCurrencyVector(newCurrencyState.currencies);
-    newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
+    newCurrencyState.fees = convertedFees.AsCurrencyVector(newCurrencyState.currencies);
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
     CCurrencyValueMap ReserveInputs;

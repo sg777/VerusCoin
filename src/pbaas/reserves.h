@@ -443,6 +443,7 @@ public:
     enum
     {
         PER_BLOCK_RATIO = 1000000,
+        MIN_SHARE_SIZE = 10000,
         FLAG_COINBASE_POOL = 1,
         FLAG_CURRENCY_NOTARY_POOL = 2
     };
@@ -485,7 +486,11 @@ public:
         CFeePool retVal;
         for (auto &oneCur : reserveValues.valueMap)
         {
-            CAmount share = CCurrencyDefinition::CalculateRatioOfValue(oneCur.second, PER_BLOCK_RATIO);
+            CAmount share = (oneCur.second <= MIN_SHARE_SIZE) ? oneCur.second : CCurrencyDefinition::CalculateRatioOfValue(oneCur.second, PER_BLOCK_RATIO);
+            if (oneCur.second > MIN_SHARE_SIZE && share < MIN_SHARE_SIZE)
+            {
+                share = MIN_SHARE_SIZE;
+            }
             if (share)
             {
                 retVal.reserveValues.valueMap[oneCur.first] = share;
