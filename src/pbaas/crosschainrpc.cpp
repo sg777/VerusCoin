@@ -477,6 +477,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 nVersion = PBAAS_VERSION_INVALID;
                 return;
             }
+        }
+
+        if (IsPBaaSChain() || IsGateway() || IsPBaaSConverter())
+        {
             gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
         }
 

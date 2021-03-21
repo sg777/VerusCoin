@@ -869,7 +869,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 gatewayDeposits.valueMap[newCurrency.systemID] += newCurrency.gatewayConverterIssuance;
             }
             gatewayDeposits.valueMap[newCurrency.systemID] += newCurrencyState.emitted;
-            gatewayDeposits = (gatewayDeposits + importedCurrency) - spentCurrencyOut;
+            gatewayDeposits = ((gatewayDeposits + importedCurrency) - spentCurrencyOut).CanonicalMap();
 
             printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
