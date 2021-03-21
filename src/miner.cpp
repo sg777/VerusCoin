@@ -866,7 +866,13 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             // to determine left over reserves for deposit, consider imported and emitted as the same
             if (newCurrency.IsPBaaSConverter())
             {
-                gatewayDeposits.valueMap[newCurrency.systemID] += newCurrency.gatewayConverterIssuance;
+                CCoinbaseCurrencyState revertConverter = newCurrencyState;
+                revertConverter.RevertReservesAndSupply();
+                gatewayDeposits = CCurrencyValueMap(revertConverter.currencies, revertConverter.reserves);
+                if (revertConverter.supply)
+                {
+                    gatewayDeposits.valueMap[newCurID] = revertConverter.supply;
+                }
             }
             gatewayDeposits.valueMap[newCurrency.systemID] += newCurrencyState.emitted;
             gatewayDeposits = ((gatewayDeposits + importedCurrency) - spentCurrencyOut).CanonicalMap();
