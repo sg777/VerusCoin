@@ -666,6 +666,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                           const CPBaaSNotarization &lastNotarization,
                           const std::pair<CUTXORef, CPartialTransactionProof> *pLaunchProof,
                           const std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>> *pFirstExport,
+                          CCurrencyValueMap &gatewayDeposits,
                           std::vector<CTxOut> &outputs,
                           CCurrencyValueMap &additionalFees)
 {
@@ -857,6 +858,24 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 return false;
             }
 
+            // anything we had before plus anything imported and minus all spent currency out should
+            // be all reserve deposits remaining under control of this currency
+
+            printf("%s: gatewaydeposits %s\n", __func__, gatewayDeposits.ToUniValue().write(1,2).c_str());
+
+            // to determine left over reserves for deposit, consider imported and emitted as the same
+            if (newCurrency.IsPBaaSConverter())
+            {
+                gatewayDeposits.valueMap[newCurrency.systemID] += newCurrency.gatewayConverterIssuance;
+            }
+            gatewayDeposits.valueMap[newCurrency.systemID] += newCurrencyState.emitted;
+            gatewayDeposits = (gatewayDeposits + importedCurrency) - spentCurrencyOut;
+
+            printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
+                importedCurrency.ToUniValue().write(1,2).c_str(),
+                spentCurrencyOut.ToUniValue().write(1,2).c_str(),
+                gatewayDeposits.ToUniValue().write(1,2).c_str());
+
             cci.numOutputs = importOutputs.size();
 
             // now add the import itself
@@ -1046,7 +1065,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
 
     // get all currencies/IDs that we will need to retrieve from our notary chain
     std::set<uint160> blockOneCurrencies = {ASSETCHAINS_CHAINID};
-    std::set<uint160> blockOneIDs = {ASSETCHAINS_CHAINID};;
+    std::set<uint160> blockOneIDs = {ASSETCHAINS_CHAINID};
     std::set<uint160> convertersToCreate;
 
     CPBaaSNotarization converterNotarization;
@@ -1128,22 +1147,33 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         outputs.push_back(CTxOut(0, oneIdentity.second.IdentityUpdateOutputScript(1)));
     }
 
+    // calculate all issued currency on this chain for both the native and converter currencies,
+    // which is the only currency that can be considered a gateway deposit at launch. this can
+    // be used for native currency fee conversions
+    CCurrencyValueMap gatewayDeposits;
+
     bool success = AddOneCurrencyImport(thisChain, 
                                         launchNotarization,
                                         &launchNotarizationProof,
                                         blockOneExportImports[thisChainID].size() ? &(blockOneExportImports[thisChainID][0]) : 
                                                                                             nullptr,
+                                        gatewayDeposits,
                                         outputs,
                                         additionalFees);
 
     // now, the converter
     if (success && converterCurDef.IsValid())
     {
+        // TODO: add a new ID for the converter currency, controlled by the same primary addresses as the
+        // ID for this chain
+        CCurrencyValueMap converterDeposits;
+
         success = AddOneCurrencyImport(converterCurDef, 
                                        converterNotarization,
                                        &converterNotarizationProof,
                                        blockOneExportImports[converterCurrencyID].size() ? &(blockOneExportImports[converterCurrencyID][0]) : 
                                                                                         nullptr,
+                                       converterDeposits,
                                        outputs,
                                        additionalFees);
     }
@@ -1160,6 +1190,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                                            nullptr,
                                            blockOneExportImports[oneCurrency.first].size() ? &(blockOneExportImports[oneCurrency.first][0]) : 
                                                                                             nullptr,
+                                           gatewayDeposits,
                                            outputs,
                                            additionalFees);
             if (!success)
@@ -2199,7 +2230,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         {
             CValidationState state;
             //fprintf(stderr,"check validity\n");
-            if ( !TestBlockValidity(state, chainparams, *pblock, pindexPrev, false, false)) // invokes CC checks
+            if (!TestBlockValidity(state, chainparams, *pblock, pindexPrev, false, false)) // invokes CC checks
             {
                 throw std::runtime_error("CreateNewBlock(): TestBlockValidity failed");
             }

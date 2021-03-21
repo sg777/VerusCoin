@@ -4152,6 +4152,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // now, setup the gateway converter currency, if appropriate
     if ((newChain.IsPBaaSChain() || newChain.IsGateway()) && newGatewayConverter.IsValid())
     {
+        newGatewayConverter.gatewayConverterIssuance = newChain.gatewayConverterIssuance;
+
         cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
         std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
         vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newGatewayConverter)), 
