@@ -756,7 +756,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             }
 
             // display import outputs
-            CMutableTransaction debugTxOut;
+            /*CMutableTransaction debugTxOut;
             debugTxOut.vout = outputs;
             debugTxOut.vout.insert(debugTxOut.vout.end(), importOutputs.begin(), importOutputs.end());
             UniValue jsonTxOut(UniValue::VOBJ);
@@ -765,7 +765,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                                                             jsonTxOut.write(1,2).c_str(),
                                                                                             lastNotarization.ToUniValue().write(1,2).c_str(),
                                                                                             newNotarization.ToUniValue().write(1,2).c_str());
-
+            */
             newNotarization.prevNotarization = CUTXORef();
             newNotarization.prevHeight = 0;
         }
@@ -841,7 +841,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             // anything we had before plus anything imported and minus all spent currency out should
             // be all reserve deposits remaining under control of this currency
 
-            printf("%s: gatewaydeposits %s\n", __func__, gatewayDeposits.ToUniValue().write(1,2).c_str());
+            //printf("%s: gatewaydeposits %s\n", __func__, gatewayDeposits.ToUniValue().write(1,2).c_str());
 
             // to determine left over reserves for deposit, consider imported and emitted as the same
             if (newCurrency.IsPBaaSConverter())
@@ -853,11 +853,12 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             gatewayDeposits.valueMap[newCurID] += newCurrencyState.emitted;
             gatewayDeposits = ((gatewayDeposits + importedCurrency) - spentCurrencyOut).CanonicalMap();
 
-            printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydepositsin %s\nnewgatewaydeposits %s\n", 
+            /*printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydepositsin %s\nnewgatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
                 gatewayDepositsIn.ToUniValue().write(1,2).c_str(),
                 gatewayDeposits.ToUniValue().write(1,2).c_str());
+            */
 
             // add the reserve deposit output with all deposits for this currency for the new chain
             if (gatewayDeposits.valueMap.size())
