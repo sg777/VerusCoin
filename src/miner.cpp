@@ -740,39 +740,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 return false;
             }
 
-            // if this is a fractional currency, make reserve deposits for all reserves in currencies on this chain
-            if (newCurrency.IsFractional())
-            {
-                // pay currency launch fee directly into currency reserve deposits
-                cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
-                dests = std::vector<CTxDestination>({ParseHex(CC.CChexstr)});
-                CReserveDeposit launchDeposit = CReserveDeposit(newCurID, CCurrencyValueMap());
-                CAmount nativeDeposit;
-
-                for (int i = 0; i < newNotarization.currencyState.currencies.size(); i++)
-                {
-                    if (newNotarization.currencyState.reserves[i])
-                    {
-                        if (newNotarization.currencyState.currencies[i] == ASSETCHAINS_CHAINID)
-                        {
-                            nativeDeposit = newNotarization.currencyState.reserves[i];
-                        }
-                        else
-                        {
-                            nativeDeposit = 0;
-                            launchDeposit.reserveValues.valueMap[newNotarization.currencyState.currencies[i]] = newNotarization.currencyState.reserves[i];
-                        }
-                    }
-                }
-                // if we have reserves, make deposit outputs
-                if (nativeDeposit || launchDeposit.reserveValues.valueMap.size())
-                {
-                    outputs.push_back(
-                        {CTxOut(nativeDeposit, 
-                                MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)))});
-                }
-            }
-
             additionalFees += CCurrencyValueMap(newNotarization.currencyState.currencies, newNotarization.currencyState.fees);
             if (newNotarization.currencyState.nativeFees &&
                 !newCurrency.GetCurrenciesMap().count(ASSETCHAINS_CHAINID))
@@ -797,7 +764,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
         // create the import thread output
         cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
-
         if (newCurrency.proofProtocol == newCurrency.PROOF_CHAINID)
         {
             dests = std::vector<CTxDestination>({CIdentityID(newCurID)});
@@ -869,18 +835,29 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 CCoinbaseCurrencyState revertConverter = newCurrencyState;
                 revertConverter.RevertReservesAndSupply();
                 gatewayDeposits = CCurrencyValueMap(revertConverter.currencies, revertConverter.reserves);
-                if (revertConverter.supply)
-                {
-                    gatewayDeposits.valueMap[newCurID] = revertConverter.supply;
-                }
             }
-            gatewayDeposits.valueMap[newCurrency.systemID] += newCurrencyState.emitted;
+            gatewayDeposits.valueMap[newCurID] += newCurrencyState.emitted;
             gatewayDeposits = ((gatewayDeposits + importedCurrency) - spentCurrencyOut).CanonicalMap();
 
-            printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
+            printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydepositsin %s\nnewgatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
+                gatewayDepositsIn.ToUniValue().write(1,2).c_str(),
                 gatewayDeposits.ToUniValue().write(1,2).c_str());
+
+            // add the reserve deposit output with all deposits for this currency for the new chain
+            if (gatewayDeposits.valueMap.size())
+            {
+                CCcontract_info *depositCp;
+                CCcontract_info depositCC;
+
+                // create the import thread output
+                depositCp = CCinit(&depositCC, EVAL_RESERVE_DEPOSIT);
+                std::vector<CTxDestination> depositDests({CPubKey(ParseHex(CC.CChexstr))});
+                CReserveDeposit rd(newCurID, gatewayDeposits);
+                CAmount nativeOut = gatewayDeposits.valueMap.count(ASSETCHAINS_CHAINID) ? gatewayDeposits.valueMap[ASSETCHAINS_CHAINID] : 0;
+                outputs.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, depositDests, 1, &rd))));
+            }
 
             cci.numOutputs = importOutputs.size();
 
@@ -2072,7 +2049,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
         if (feePool.IsValid())
         {
-            // we support only the current native currency in the fee pool for now
+            // we support only the current native currency or VRSC on PBaaS chains in the fee pool for now
             feePool.reserveValues.valueMap[thisChainID] += rewardFees;
             if (verusFees)
             {

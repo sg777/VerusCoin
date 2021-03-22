@@ -2254,7 +2254,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             preAllocTotal += importCurrencyDef.gatewayConverterIssuance;
                             AddNativeOutConverted(importCurrencyID, importCurrencyDef.gatewayConverterIssuance);
                             nativeOut += importCurrencyDef.gatewayConverterIssuance;
-                            gatewayDepositsIn.valueMap[importCurrencyID] += importCurrencyDef.gatewayConverterIssuance;
                         }
                         else if (importCurrencyDef.IsPBaaSConverter() && importCurrencyDef.systemID == systemDestID)
                         {

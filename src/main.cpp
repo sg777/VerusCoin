@@ -3691,7 +3691,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     CCurrencyValueMap totalReserveTxFees;
     CCurrencyValueMap reserveRewardTaken;
-    CCurrencyValueMap totalReserveDeposits;
+    CCurrencyValueMap validExtraCoinbaseOutputs;
 
     // emit new currency before other calculations
     prevCurrencyState.UpdateWithEmission(GetBlockSubsidy(nHeight, consensus));
@@ -3850,18 +3850,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         {
             if (rtxd.IsValid())
             {
-                CAmount dummy = rtxd.NativeFees();
-                nFees += dummy;
-
-                CAmount interest;
-                if (dummy != view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut())
-                {
-                    printf("%s: failure for rtxd (%s) to match native fees (%ld)\n", 
-                            __func__, 
-                            rtxd.ToUniValue().write(1,2).c_str(),
-                            view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut());
-                }
-
+                nFees += rtxd.NativeFees();
                 totalReserveTxFees += rtxd.ReserveFees();
             } else
             {
@@ -3883,6 +3872,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
             // this is always the last currency we load
             CCurrencyDefinition cbCurDef;
+            CAmount converterIssuance = 0;
 
             // move through block one imports and add associated fee to the coinbase fees
             for (int j = 0; j < tx.vout.size(); j++)
@@ -3897,7 +3887,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 std::vector<CReserveTransfer> reserveTransfers;
                 if (tx.vout[j].scriptPubKey.IsPayToCryptoCondition(p) &&
                     p.IsValid() &&
-                    (p.evalCode == EVAL_CROSSCHAIN_IMPORT || p.evalCode == EVAL_CURRENCY_DEFINITION || p.evalCode == EVAL_RESERVE_DEPOSIT) &&
+                    (p.evalCode == EVAL_CROSSCHAIN_IMPORT || p.evalCode == EVAL_CURRENCY_DEFINITION) &&
                     p.vData.size())
                 {
                     if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
@@ -3914,64 +3904,91 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                         {
                             printf("%s: import notarization: %s\n", __func__, importNotarization.ToUniValue().write(1,2).c_str());
 
-                            totalReserveTxFees += 
-                                CCurrencyValueMap(importNotarization.currencyState.currencies, importNotarization.currencyState.fees);
-                            // right now, preallocations for native are accounted for differently, so we remove native from this
-                            totalReserveTxFees.valueMap.erase(ASSETCHAINS_CHAINID);
-                            if (importNotarization.currencyState.emitted && cbCurID != ASSETCHAINS_CHAINID)
-                            {
-                                totalReserveTxFees.valueMap[cbCurID] += importNotarization.currencyState.emitted;
-                            }
-                            nFees += importNotarization.currencyState.nativeFees;
+                            std::vector<CTxOut> importOutputs;
+                            CReserveTransactionDescriptor rtxd;
+                            CCoinbaseCurrencyState importState = importNotarization.currencyState;
+                            importState.RevertReservesAndSupply();
 
-                            // add the initial reserve deposits as "fees" for
-                            // validation of the block 1 coinbase
-                            if (cbCurDef.IsFractional())
+                            printf("%s: reverted notarization: %s\n", __func__, importState.ToUniValue().write(1,2).c_str());
+
+                            CCurrencyValueMap importedCurrency;
+                            CCurrencyValueMap extraCurrencyOut, gatewayDepositsIn;
+                            CCurrencyValueMap spentCurrencyOut;
+                            CCoinbaseCurrencyState newCurrencyState;
+                            if (!rtxd.AddReserveTransferImportOutputs(ConnectedChains.FirstNotaryChain().chainDefinition,
+                                                                    ConnectedChains.ThisChain(),
+                                                                    cbCurDef,
+                                                                    importState,
+                                                                    std::vector<CReserveTransfer>(),
+                                                                    importOutputs,
+                                                                    importedCurrency,
+                                                                    gatewayDepositsIn,
+                                                                    spentCurrencyOut,
+                                                                    &newCurrencyState))
                             {
-                                for (int i = 0; i < importNotarization.currencyState.currencies.size(); i++)
+                                LogPrintf("Invalid starting currency import for %s\n", ConnectedChains.ThisChain().name.c_str());
+                                printf("Invalid starting currency import for %s\n", ConnectedChains.ThisChain().name.c_str());
+                                return false;
+                            }
+
+                            printf("%s: new currency state: %s\n", __func__, newCurrencyState.ToUniValue().write(1,2).c_str());
+
+                            // to determine left over reserves for deposit, consider imported and emitted as the same
+
+                            if (cbCurDef.IsPBaaSConverter())
+                            {
+                                extraCurrencyOut = CCurrencyValueMap(importState.currencies, importState.reserves);
+                            }
+                            extraCurrencyOut.valueMap[cbCurID] += newCurrencyState.emitted;
+
+                            extraCurrencyOut = (extraCurrencyOut + importedCurrency).CanonicalMap();
+
+                            CCurrencyValueMap cbFees = CCurrencyValueMap(importNotarization.currencyState.currencies, importNotarization.currencyState.fees);
+
+                            if (cbCurDef.gatewayConverterIssuance)
+                            {
+                                if (cbCurDef.IsPBaaSConverter())
                                 {
-                                    if (importNotarization.currencyState.reserves[i])
+                                    // this should be set to the correct value already
+                                    if (cbCurDef.gatewayConverterIssuance != converterIssuance)
                                     {
-                                        if (importNotarization.currencyState.currencies[i] == ASSETCHAINS_CHAINID)
-                                        {
-                                            nFees += importNotarization.currencyState.reserves[i];
-                                        }
-                                        else
-                                        {
-                                            totalReserveTxFees.valueMap[importNotarization.currencyState.currencies[i]] += 
-                                                importNotarization.currencyState.reserves[i];
-                                        }
+                                        return state.DoS(100,
+                                                    error("ConnectBlock(): convert issuance is incorrect"), REJECT_INVALID, "bad-converter-issuance");
                                     }
                                 }
-                                if (importNotarization.currencyState.emitted)
+                                else
                                 {
-                                    totalReserveTxFees.valueMap[importNotarization.currencyID] += 
-                                        importNotarization.currencyState.emitted;
-                                    totalReserveDeposits.valueMap[importNotarization.currencyID] += 
-                                        importNotarization.currencyState.emitted;
+                                    converterIssuance = cbCurDef.gatewayConverterIssuance;
+                                    spentCurrencyOut.valueMap[cbCurID] -= converterIssuance;
+                                    extraCurrencyOut.valueMap[cbCurID] -= converterIssuance;
                                 }
                             }
+
+                            printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydepositsin %s\nextraCurrencyOut %s\nvalidExtraCoinbaseOutputs %s\n",
+                                importedCurrency.ToUniValue().write(1,2).c_str(),
+                                spentCurrencyOut.ToUniValue().write(1,2).c_str(),
+                                gatewayDepositsIn.ToUniValue().write(1,2).c_str(),
+                                extraCurrencyOut.ToUniValue().write(1,2).c_str(), 
+                                validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
+
+                            // total output can be up to gateway deposits + spentcurrencyout
+                            // that minus fees is valid output and fees go into the fee pool
+
+                            validExtraCoinbaseOutputs += extraCurrencyOut - cbFees;
+                            nFees += cbFees.valueMap[ASSETCHAINS_CHAINID];
+
+                            printf("validExtraCoinbaseOutputs %s\ntotalReserveTxFees %s\ncbFees %s\n", 
+                                validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str(),
+                                totalReserveTxFees.ToUniValue().write(1,2).c_str(),
+                                cbFees.ToUniValue().write(1,2).c_str());
+
+                            cbFees.valueMap.erase(ASSETCHAINS_CHAINID);
+                            totalReserveTxFees += cbFees;
                         }
-                    }
-                    else if (p.evalCode == EVAL_CURRENCY_DEFINITION)
-                    {
-                        cbCurDef = CCurrencyDefinition(p.vData[0]);
                     }
                     else
                     {
-                        if (!(p.vData.size() &&
-                            (resDeposit = CReserveDeposit(p.vData[0])).IsValid() &&
-                            resDeposit.controllingCurrencyID == cbCurDef.GetID()))
-                        {
-                            return state.DoS(100,
-                                        error("ConnectBlock(): block's reserve deposits are incorrect"),
-                                            REJECT_INVALID, "bad-reserve-deposits");
-                        }
-                        if (tx.vout[j].nValue)
-                        totalReserveDeposits += resDeposit.reserveValues;
-                        {
-                            totalReserveDeposits.valueMap[ASSETCHAINS_CHAINID] += tx.vout[j].nValue;
-                        }
+                        cbCurDef = CCurrencyDefinition(p.vData[0]);
                     }
                 }
             }
@@ -3980,7 +3997,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             TxToUniv(tx, uint256(), jsonTx);
             printf("%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
             printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
-            printf("%s: nativeFees: %ld, reserve fees: %s\nreserve deposits: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), totalReserveDeposits.ToUniValue().write(1,2).c_str());
+            printf("%s: nativeFees: %ld, reserve fees: %s\nextra coinbase outputs: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
+
         }
         else if (!isVerusActive)
         {
@@ -4161,7 +4179,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         }
     }
 
-    CAmount nativeBlockReward = rewardFees + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus());
+    CAmount validExtraNative = 0;
+    if (validExtraCoinbaseOutputs.valueMap.count(ASSETCHAINS_CHAINID))
+    {
+        validExtraNative = validExtraCoinbaseOutputs.valueMap[ASSETCHAINS_CHAINID];
+        validExtraCoinbaseOutputs.valueMap.erase(ASSETCHAINS_CHAINID);
+    }
+
+    CAmount nativeBlockReward = rewardFees + validExtraNative + GetBlockSubsidy(pindex->GetHeight(), chainparams.GetConsensus());
     // reserve reward is in totalReserveTxFees
 
     if ( ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 && ASSETCHAINS_COMMISSION != 0 )
@@ -4177,12 +4202,29 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     if (ASSETCHAINS_SYMBOL[0] != 0 && pindex->GetHeight() == 1 && block.vtx[0].GetValueOut() != nativeBlockReward)
     {
+        printf("%s: block.vtx[0].GetValueOut(): %ld, nativeBlockReward: %ld\nreservevalueout: %s\nvalidextracoinbaseoutputs: %s\n",
+            __func__,
+            block.vtx[0].GetValueOut(),
+            nativeBlockReward,
+            block.vtx[0].GetReserveValueOut().ToUniValue().write(1,2).c_str(),
+            validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
         return state.DoS(100, error("ConnectBlock(): coinbase for block 1 pays wrong amount (actual=%d vs correct=%d)", block.vtx[0].GetValueOut(), nativeBlockReward),
                             REJECT_INVALID, "bad-cb-amount");
     }
 
-    if ( block.vtx[0].GetValueOut() > nativeBlockReward )
+    if (verusFees)
     {
+        validExtraCoinbaseOutputs.valueMap[VERUS_CHAINID] += verusFees;
+    }
+
+    if ( block.vtx[0].GetValueOut() > nativeBlockReward || (block.vtx[0].GetReserveValueOut() > validExtraCoinbaseOutputs) )
+    {
+        printf("%s: block.vtx[0].GetValueOut(): %ld, nativeBlockReward: %ld\nreservevalueout: %s\nvalidextracoinbaseoutputs: %s\n",
+            __func__,
+            block.vtx[0].GetValueOut(),
+            nativeBlockReward,
+            block.vtx[0].GetReserveValueOut().ToUniValue().write(1,2).c_str(),
+            validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
         if ( ASSETCHAINS_SYMBOL[0] != 0 || pindex->GetHeight() >= KOMODO_NOTARIES_HEIGHT1 || block.vtx[0].vout[0].nValue > nativeBlockReward )
         {
             return state.DoS(100,
