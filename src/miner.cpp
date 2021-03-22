@@ -786,7 +786,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
         {
             // get the first export for launch from the notary chain
             CTransaction firstExportTx;
-            if (!pFirstExport || !pFirstExport->second.IsValid() && !pFirstExport->second.GetPartialTransaction(firstExportTx).IsNull())
+            if (!pFirstExport || !(pFirstExport->second.IsValid() && !pFirstExport->second.GetPartialTransaction(firstExportTx).IsNull()))
             {
                 LogPrintf("%s: invalid first export for PBaaS or converter launch\n");
                 return false;
@@ -809,7 +809,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                       CCurrencyValueMap(),
                                                       0,
                                                       ccx.hashReserveTransfers,
-                                                      uint256(),
+                                                      pFirstExport->first.hash,
                                                       pFirstExport->first.n);
             cci.SetSameChain(newCurrency.launchSystemID == ASSETCHAINS_CHAINID);
             cci.SetInitialLaunchImport();
