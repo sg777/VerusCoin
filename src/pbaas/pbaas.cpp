@@ -1060,6 +1060,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                                                                     fromHeight,
                                                                     CUTXORef(),
                                                                     curDefHeight);
+        workingNotarization.SetPreLaunch();
         if (workingNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
                                                      curDef,
                                                      fromHeight,

@@ -1966,11 +1966,38 @@ UniValue getlaunchinfo(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Valid notarization not found");
     }
 
+    std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
+    ConnectedChains.GetSystemExports(curDef.systemID, exports, 0, notarizationTx.second.GetBlockHeight(), true);
+
+    std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>> foundExport;
+    bool isExportFound = false;
+    if (exports.size())
+    {
+        for (auto &oneExport : exports)
+        {
+            CCrossChainExport oneCCX(oneExport.first.first.scriptPubKey);
+            if (oneCCX.IsValid() &&
+                oneCCX.destCurrencyID == chainID)
+            {
+                foundExport = oneExport;
+                isExportFound = true;
+                break;
+            }
+        }
+    }
+    if (!isExportFound)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "No valid export found");
+    }
+
     UniValue retVal(UniValue::VOBJ);
     retVal.pushKV("currencydefinition", curDef.ToUniValue());
-    retVal.pushKV("txid", notarizationTx.first.txIn.prevout.hash.GetHex());
-    retVal.pushKV("voutnum", (int64_t)notarizationTx.first.txIn.prevout.n);
-    retVal.pushKV("transactionproof", notarizationTx.second.ToUniValue());
+    retVal.pushKV("notarizationtxid", notarizationTx.first.txIn.prevout.hash.GetHex());
+    retVal.pushKV("notarizationvoutnum", (int64_t)notarizationTx.first.txIn.prevout.n);
+    retVal.pushKV("notarizationproof", notarizationTx.second.ToUniValue());
+    retVal.pushKV("exporttxid", foundExport.first.first.txIn.prevout.hash.GetHex());
+    retVal.pushKV("exportvoutnum", (int64_t)foundExport.first.first.txIn.prevout.n);
+    retVal.pushKV("exportproof", foundExport.first.second.ToUniValue());
     retVal.pushKV("notarization", launchNotarization.ToUniValue());
     return retVal;
 }

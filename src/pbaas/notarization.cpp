@@ -442,6 +442,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     hw = CMMRNode<>::GetHashWriter();
 
+    CCurrencyValueMap newPreConversionReservesIn;
+
     for (int i = 0; i < exportTransfers.size(); i++)
     {
         CReserveTransfer &reserveTransfer = exportTransfers[i];
@@ -468,12 +470,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 // check if it exceeds pre-conversion maximums, and refund if so
                 CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({reserveTransfer.FirstCurrency()}), 
                                                                    std::vector<int64_t>({reserveTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(reserveTransfer.FirstValue())}));
-                CCurrencyValueMap newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn;
+                CCurrencyValueMap newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + newPreConversionReservesIn;
                 if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
                 {
                     LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
                     reserveTransfer = reserveTransfer.GetRefundTransfer();
                 }
+                newPreConversionReservesIn += newReserveIn;
             }
         }
         else if (reserveTransfer.IsConversion())
@@ -554,6 +557,15 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
         CCoinbaseCurrencyState tempState = newNotarization.currencyState;
+        if (newNotarization.IsPreLaunch())
+        {
+            // normalize prices on the way in to prevent overflows on first pass
+            std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(tempState.currencies);
+            tempState.reserves = tempState.AddVectors(tempState.reserves, newReservesVector);
+            newNotarization.currencyState.conversionPrice = tempState.PricesInReserve();
+            tempState.reserves = tempState.AddVectors(tempState.reserves, (newPreConversionReservesIn * -1).AsCurrencyVector(tempState.currencies));
+        }
+
         std::vector<CTxOut> tempOutputs;
         bool retVal = rtxd.AddReserveTransferImportOutputs(sourceSystem,
                                                            destSystem,
