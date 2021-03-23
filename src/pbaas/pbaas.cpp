@@ -2886,8 +2886,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         totalExports += exportTransfers[i].TotalCurrencyOut();
     }
 
+    //printf("%s: num transfers %ld, totalExports: %s\n", __func__, exportTransfers.size(), totalExports.ToUniValue().write(1,2).c_str());
+
     // if we are exporting off of this system to a gateway or PBaaS chain, don't allow 3rd party 
-    // or unregistered exports. if same to same chain, all exports are ok.
+    // or unregistered currencies to export. if same to same chain, all exports are ok.
     if (destSystemID != ASSETCHAINS_CHAINID)
     {
         // if this is launching a new PBaaS chain or gateway, store the proof root of this chain in the
@@ -2924,7 +2926,9 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
             if ((oneCurDef.IsGateway() && oneCurDef.systemID == ASSETCHAINS_CHAINID && oneCurDef.gatewayID == destSystemID) ||
                 (oneCurDef.systemID != ASSETCHAINS_CHAINID && oneCurDef.systemID == destSystemID))
             {
-                
+                // we need to burn this currency here, since it will be sent back to where it was originally minted for us to keep
+                // track of on this system
+
                 // TODO: if we're exporting to a gateway or other chain, ensure that our export currency is registered for import
                 //
                 continue;
@@ -2951,7 +2955,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         // we record the reserve deposits for the destination currency to ensure they are available for imports
         // which take them as inputs.
         newReserveDeposits = totalExports;
-        newReserveDeposits.valueMap.erase(currencyID);
     }
 
     // now, we have:
