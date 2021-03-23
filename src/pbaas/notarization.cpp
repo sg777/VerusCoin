@@ -1231,6 +1231,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
         if (goodNodes.size() > 1)
         {
+            seed_insecure_rand();
             std::vector<CNode *> finalists;
             auto it = goodNodes.begin();
             int dropCount = goodNodes.size() >> 1;

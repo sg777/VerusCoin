@@ -5318,16 +5318,12 @@ static void ApproximateBestSubset(vector<pair<CAmount, pair<const CWalletTx*,uns
 bool CloserToTarget(const CCurrencyValueMap &target, const CCurrencyValueMap &current, const CCurrencyValueMap &candidate)
 {
     CCurrencyValueMap workingTarget = target.SubtractToZero(current);
-    CCurrencyValueMap candidateTarget = target.SubtractToZero(candidate);
+    CCurrencyValueMap candidateTarget = workingTarget.SubtractToZero(candidate);
     if (candidateTarget < workingTarget)
     {
         return true;
     }
-    else if (workingTarget < candidateTarget)
-    {
-        return false;
-    }
-    return workingTarget.SubtractToZero(candidate) < workingTarget;
+    return false;
 }
 
 static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<const CWalletTx*,unsigned int>>> vValue, 
@@ -5356,22 +5352,22 @@ static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<con
             CCurrencyValueMap presentValues;
             for (unsigned int i = 0; i < vValue.size(); i++)
             {
+                std::set<uint160> satisfied;
                 //The solver here uses a randomized algorithm,
                 //the randomness serves no real security purpose but is just
                 //needed to prevent degenerate behavior and it is important
                 //that the rng is fast. We do not use a constant random sequence,
                 //because there may be some privacy improvement by making
                 //the selection random.
-                /*
-                printf("targetValues\n%s\ntotals\n%s\nvValue[i].first\n%s\n", targetValues.ToUniValue().write(1,2).c_str(), 
+                /* printf("targetValues\n%s\ntotals\n%s\nvValue[i].first\n%s\n", targetValues.ToUniValue().write(1,2).c_str(), 
                                                                               totals.ToUniValue().write(1,2).c_str(), 
                                                                               vValue[i].first.ToUniValue().write(1,2).c_str());
-                printf("iscloser: %d\n", CloserToTarget(targetValues, totals, vValue[i].first));
-                */
+                printf("iscloser: %d\n", CloserToTarget(targetValues, totals, vValue[i].first)); */
 
                 if ((nPass == 0 ? insecure_rand()&1 : !vfIncluded[i]) && CloserToTarget(targetValues, totals, vValue[i].first))
                 {
-                    totals += vValue[i].first.IntersectingValues(targetValues);
+                    CCurrencyValueMap relevantDelta = vValue[i].first.IntersectingValues(targetValues);
+                    totals += relevantDelta;
                     vfIncluded[i] = true;
                     // we reached the target if we fulfill all currencies
 
@@ -5391,8 +5387,14 @@ static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<con
                         {
                             bestTotals = totals;
                             vfBest = vfIncluded;
+
+                            int bestcount = 0;
+                            for (auto oneBool : vfBest)
+                            {
+                                if (oneBool) bestcount++;
+                            }
                         }
-                        totals -= vValue[i].first;
+                        totals = (totals - relevantDelta).CanonicalMap();
                         vfIncluded[i] = false;
                     }
                 }
@@ -5667,7 +5669,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
 
     CCurrencyValueMap nTotalTarget = (targetValues + CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({targetNativeValue}))).CanonicalMap();
 
-    //printf("totaltarget: %s\n", nTotalTarget.ToUniValue().write().c_str());
+    // printf("totaltarget: %s\n", nTotalTarget.ToUniValue().write().c_str());
 
     // currencies in the target that are satisfied x4 in the lower list
     std::set<uint160> satisfied_x4;
@@ -5702,7 +5704,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
             continue;
         }
 
-        //printf("nTotal: %s\n", nTotal.ToUniValue().write().c_str());
+        // printf("nTotal: %s\n", nTotal.ToUniValue().write().c_str());
 
         CReserveOutSelectionInfo coin(pcoin, i, nAll);
 
@@ -5793,7 +5795,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         return false;
     }
 
-    //printf("\nlowerTotal:\n%s\nlargerTotal:\n%s\nnewLargerTotal:\n%s\nTotalTarget:\n%s\n", lowerTotal.ToUniValue().write().c_str(), largerTotal.ToUniValue().write().c_str(), newLargerTotal.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
+    // printf("\nlowerTotal:\n%s\nlargerTotal:\n%s\nnewLargerTotal:\n%s\nTotalTarget:\n%s\n", lowerTotal.ToUniValue().write().c_str(), largerTotal.ToUniValue().write().c_str(), newLargerTotal.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
 
     for (auto &lowerOut : lowerOuts)
     {
@@ -5817,7 +5819,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         return true;
     }
 
-    //printf("\nlowerTotal:\n%s\nlargerTotal:\n%s\nTotalTarget:\n%s\n", lowerTotal.ToUniValue().write().c_str(), largerTotal.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
+    // printf("\nlowerTotal:\n%s\nlargerTotal:\n%s\nTotalTarget:\n%s\n", lowerTotal.ToUniValue().write().c_str(), largerTotal.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
 
     std::map<std::pair<const CWalletTx *, int>, CReserveOutSelectionInfo> added;
     largerTotal.valueMap.clear();
@@ -5997,17 +5999,19 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     totalToOptimize = totalToOptimize.SubtractToZero(removedValue);
     CCurrencyValueMap newOptimizationTarget = nTotalTarget.SubtractToZero(largerTotal);
 
-    /* printf("totalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", totalToOptimize.ToUniValue().write().c_str(), newOptimizationTarget.ToUniValue().write().c_str());
+    /*printf("totalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", totalToOptimize.ToUniValue().write().c_str(), newOptimizationTarget.ToUniValue().write().c_str());
     for (int i = 0; i < vOutputsToOptimize.size(); i++)
     {
         printf("output #%d:\nreserves:\n%s\nnative:\n%s\n", 
             i, 
             vOutputsToOptimize[i].first.ToUniValue().write().c_str(), 
             ValueFromAmount(vOutputsToOptimize[i].second.first->vout[vOutputsToOptimize[i].second.second].nValue).write().c_str());
-    } */
+    }*/
 
     vector<char> vfBest;
     CCurrencyValueMap bestTotals;
+
+    //printf("totalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", totalToOptimize.ToUniValue().write().c_str(), (newOptimizationTarget + nativeCent).ToUniValue().write().c_str());
 
     ApproximateBestReserveSubset(vOutputsToOptimize, totalToOptimize, newOptimizationTarget, vfBest, bestTotals, 1000);
     if (bestTotals != newOptimizationTarget && totalToOptimize >= (newOptimizationTarget + nativeCent))
@@ -6023,10 +6027,11 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
             setCoinsRet.insert(vOutputsToOptimize[i].second);
             valueRet += vOutputsToOptimize[i].second.first->vout[vOutputsToOptimize[i].second.second].ReserveOutValue();
             nativeValueRet += vOutputsToOptimize[i].second.first->vout[vOutputsToOptimize[i].second.second].nValue;
-            /* printf("one selected\ntxid: %s, output: %d\nvalueOut: %s\n", 
+            /*printf("one selected\ntxid: %s, output: %d\nvalueOut: %s\n", 
                     vOutputsToOptimize[i].second.first->GetHash().GetHex().c_str(), 
                     vOutputsToOptimize[i].second.second, 
-                    vOutputsToOptimize[i].first.ToUniValue().write(1,2).c_str()); */
+                    vOutputsToOptimize[i].first.ToUniValue().write(1,2).c_str());
+            */
         }
     }
 
