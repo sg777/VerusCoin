@@ -3020,7 +3020,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
 
-    printf("%s: adjustedReserveConverted: %s\nreserveConverted: %s\n", __func__, adjustedReserveConverted.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
+    // printf("%s: adjustedReserveConverted: %s\nreserveConverted: %s\n", __func__, adjustedReserveConverted.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
 
     if (isFractional &&
         newCurrencyState.IsLaunchConfirmed() &&
