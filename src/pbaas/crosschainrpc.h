@@ -259,6 +259,7 @@ public:
     friend CCurrencyValueMap operator+(const CCurrencyValueMap& a, int b);
     friend CCurrencyValueMap operator-(const CCurrencyValueMap& a, int b);
     friend CCurrencyValueMap operator*(const CCurrencyValueMap& a, int b);
+    friend CCurrencyValueMap operator/(const CCurrencyValueMap& a, int b);
 
     const CCurrencyValueMap &operator=(const CCurrencyValueMap& operand)
     {

@@ -2132,7 +2132,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap transferFees;                     // calculated fees based on all transfers/conversions, etc.
     CCurrencyValueMap convertedFees;                    // post conversion transfer fees
-    CCurrencyValueMap passThroughFees;                  // preserved, but converted if possible
+    CCurrencyValueMap liquidityFees;                    // for fractionals, this value is added to the currency itself
 
     bool feeOutputStart = false;                        // fee outputs must come after all others, this indicates they have started
     int nFeeOutputs = 0;                                // number of fee outputs
@@ -2277,12 +2277,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     isFractional &&
                     importCurrencyState.reserves[systemDestIdx])
                 {
+                    // 1/2 of all fees go directly into the fractional currency itself
+                    liquidityFees = transferFees / 2;
+                    transferFees -= liquidityFees;
+
                     // setup conversion matrix for fees that are converted to
                     // native (or launch currency of a PBaaS chain) from another reserve
                     std::vector<std::pair<std::pair<uint160,CAmount>, std::pair<uint160,CAmount>>> feeConversions;
+                    printf("%s: transferFees: %s\nreserveConverted: %s\n", __func__, transferFees.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
                     for (auto &oneFee : transferFees.valueMap)
                     {
-                        // only convert in second stage if we are going from one reserve to the system ID
+                        // only convert through "via" if we are going from one reserve to the system ID
                         if (oneFee.first != importCurrencyID && oneFee.first != systemDestID)
                         {
                             auto curIt = currencyIndexMap.find(oneFee.first);
@@ -2465,15 +2470,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         int feeCurIdx = currencyIndexMap[curTransfer.feeCurrencyID];
                         int nextDestIdx = currencyIndexMap[nextDestSysID];
 
-                        // all pass-through conversions leave a reserve-to-reserve fee behind for the conversion
+                        // all pass-through conversions pay a reserve-to-reserve fee for the conversion
                         CAmount passThroughFee = CalculateConversionFeeNoMin(curTransfer.destination.fees) << 1;
                         curTransfer.destination.fees -= passThroughFee;
 
-                        passThroughFees.valueMap[curTransfer.feeCurrencyID] += passThroughFee;
                         AddReserveConversionFees(curTransfer.feeCurrencyID, passThroughFee);
 
-                        // half the fee comes out as a mining fee, and by leaving the rest as input, it goes directly into the currency
-                        transferFees.valueMap[curTransfer.feeCurrencyID] += passThroughFee >> 1;
+                        transferFees.valueMap[curTransfer.feeCurrencyID] += passThroughFee;
 
                         reserveConverted.valueMap[curTransfer.feeCurrencyID] += curTransfer.destination.fees;
                         crossConversions[feeCurIdx][nextDestIdx] += curTransfer.destination.fees;
@@ -2818,7 +2821,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                     valueOut -= oneConversionFee;
                     AddReserveConversionFees(curTransfer.FirstCurrency(), oneConversionFee);
-                    transferFees.valueMap[curTransfer.FirstCurrency()] +=  curTransfer.IsReserveToReserve() ? oneConversionFee >> 1 : oneConversionFee;
+                    transferFees.valueMap[curTransfer.FirstCurrency()] += oneConversionFee;
                 }
 
                 if (toFractional)
@@ -2996,6 +2999,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     // remove burned currency from supply
+    //
+    // check to see if liquidity fees include currency to burn and burn if so
+    if (liquidityFees.valueMap.count(importCurrencyID))
+    {
+        burnedChangePrice += liquidityFees.valueMap[importCurrencyID];
+        liquidityFees.valueMap.erase(importCurrencyID);
+    }
     if (burnedChangePrice > 0)
     {
         if (!(burnedChangePrice <= newCurrencyState.supply))
@@ -3009,7 +3019,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
 
-    //printf("%s: *this 3: %s\n", __func__, ToUniValue().write(1,2).c_str());
+    printf("%s: adjustedReserveConverted: %s\nreserveConverted: %s\n", __func__, adjustedReserveConverted.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
 
     if (isFractional &&
         newCurrencyState.IsLaunchConfirmed() &&
@@ -3049,6 +3059,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     std::vector<CAmount> vResOutConverted;
     std::vector<CAmount> vFracConverted;
     std::vector<CAmount> vFracOutConverted;
+    std::vector<CAmount> vLiquidityFees = liquidityFees.AsCurrencyVector(newCurrencyState.currencies);
 
     if (newCurrencyState.IsLaunchConfirmed())
     {
@@ -3058,9 +3069,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
-            newCurrencyState.reserveIn[i] = vResConverted[i];
+            newCurrencyState.reserveIn[i] = vResConverted[i] + vLiquidityFees[i];
             newCurrencyState.reserveOut[i] = vResOutConverted[i];
-            newCurrencyState.reserves[i] += isFractional ? vResConverted[i] - vResOutConverted[i] : 0;
+            newCurrencyState.reserves[i] += isFractional ? (vResConverted[i] - vResOutConverted[i]) + vLiquidityFees[i] : 0;
             newCurrencyState.nativeIn[i] = vFracConverted[i];
             newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]);
         }

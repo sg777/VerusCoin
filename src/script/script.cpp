@@ -1559,6 +1559,16 @@ CCurrencyValueMap operator*(const CCurrencyValueMap& a, int b)
     return retVal;
 }
 
+CCurrencyValueMap operator/(const CCurrencyValueMap& a, int b)
+{
+    CCurrencyValueMap retVal = a;
+    for (auto &oneVal : retVal.valueMap)
+    {
+        oneVal.second /= b;
+    }
+    return retVal;
+}
+
 const CCurrencyValueMap &CCurrencyValueMap::operator-=(const CCurrencyValueMap& operand)
 {
     return *this = *this - operand;

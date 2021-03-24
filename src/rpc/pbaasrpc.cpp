@@ -786,7 +786,8 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             ret.push_back(Pair("definitiontxid", defTxId.GetHex()));
         }
 
-        if (chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID)
+        if ((chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID) || 
+            (chainDef.launchSystemID == ASSETCHAINS_CHAINID && height < chainDef.startBlock))
         {
             ret.push_back(Pair("bestheight", chainActive.Height()));
             ret.push_back(Pair("bestcurrencystate", ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue()));
