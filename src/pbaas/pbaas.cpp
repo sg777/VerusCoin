@@ -2113,7 +2113,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // this will take fees into account, which do not intersect with other currencies
         CCurrencyValueMap requiredDeposits;
 
-        if (!newNotarization.currencyState.IsLaunchConfirmed() || newNotarization.currencyState.IsLaunchCompleteMarker())
+        // if this import is from another system, we will need local imports or gateway deposits to
+        // cover the imported currency amount. if it is from this system, the reserve deposits are already
+        // present from the export, which is also on this chain
+        if (cci.sourceSystemID != destCur.systemID &&
+            (!newNotarization.currencyState.IsLaunchConfirmed() || newNotarization.currencyState.IsLaunchCompleteMarker()))
         {
             requiredDeposits = cci.importValue;
         }
@@ -2122,12 +2126,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // as determined by reserves in. any excess in required deposits beyond what is spent will go to
         // reserve deposits change
         requiredDeposits += spentCurrencyOut.SubtractToZero(requiredDeposits);
-
         CCurrencyValueMap newCurrencyIn = gatewayDepositsUsed + importedCurrency;
         CCurrencyValueMap localDepositRequirements = requiredDeposits.SubtractToZero(newCurrencyIn);
         CCurrencyValueMap localDepositChange;
 
-        /*
+        /* printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: requireddeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, newCurrencyIn.ToUniValue().write(1,2).c_str());

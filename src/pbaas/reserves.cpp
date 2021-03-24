@@ -2284,7 +2284,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // setup conversion matrix for fees that are converted to
                     // native (or launch currency of a PBaaS chain) from another reserve
                     std::vector<std::pair<std::pair<uint160,CAmount>, std::pair<uint160,CAmount>>> feeConversions;
-                    printf("%s: transferFees: %s\nreserveConverted: %s\n", __func__, transferFees.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
+
+                    //printf("%s: transferFees: %s\nreserveConverted: %s\nliquidityFees: %s\n", __func__, transferFees.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str(), liquidityFees.ToUniValue().write(1,2).c_str());
                     for (auto &oneFee : transferFees.valueMap)
                     {
                         // only convert through "via" if we are going from one reserve to the system ID
