@@ -2151,11 +2151,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         {
             // this will be the primary fee output
             curTransfer = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT,
-                                           ASSETCHAINS_CHAINID,
+                                           systemDestID,
                                            0,
-                                           ASSETCHAINS_CHAINID,
+                                           systemDestID,
                                            0,
-                                           ASSETCHAINS_CHAINID,
+                                           systemDestID,
                                            CTransferDestination());
         }
         else if (importCurrencyState.IsRefunding())
