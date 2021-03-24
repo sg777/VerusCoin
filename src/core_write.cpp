@@ -949,7 +949,7 @@ UniValue CCrossChainExport::ToUniValue() const
     }
     else
     {
-        obj.push_back(Pair("issuplemental", true));
+        obj.push_back(Pair("issupplemental", true));
     }
     UniValue transfers(UniValue::VARR);
     for (auto &oneTransfer : reserveTransfers)

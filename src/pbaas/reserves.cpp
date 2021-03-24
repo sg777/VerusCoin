@@ -3016,7 +3016,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         (adjustedReserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size()))
     {
         CCurrencyState dummyCurState;
-        newCurrencyState.conversionPrice = 
+        std::vector<int64_t> newPrices =
             importCurrencyState.ConvertAmounts(adjustedReserveConverted.AsCurrencyVector(importCurrencyState.currencies),
                                                fractionalConverted.AsCurrencyVector(importCurrencyState.currencies),
                                                dummyCurState,
@@ -3027,6 +3027,21 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             printf("%s: Invalid currency conversions for import to %s : %s\n", __func__, importCurrencyDef.name.c_str(), EncodeDestination(CIdentityID(importCurrencyDef.GetID())).c_str());
             LogPrintf("%s: Invalid currency conversions for import to %s : %s\n", __func__, importCurrencyDef.name.c_str(), EncodeDestination(CIdentityID(importCurrencyDef.GetID())).c_str());
             return false;
+        }
+        if (!newCurrencyState.IsLaunchCompleteMarker())
+        {
+            // make viaconversion prices the dynamic prices and conversion prices remain initial pricing
+            for (int i = 0; i < newPrices.size(); i++)
+            {
+                if (i != systemDestIdx)
+                {
+                    newCurrencyState.viaConversionPrice[i] = newPrices[i];
+                }
+            }
+        }
+        else
+        {
+            newCurrencyState.conversionPrice = newPrices;
         }
     }
 
@@ -3071,19 +3086,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     {
         if (newCurrencyState.IsLaunchConfirmed())
         {
-            // all currencies are going in and native currency is going out for pre-conversions
-            // set via prices to be both reserve prices for reservesIn from fees and via out for
-            // native currency
-            // then reset conversion prices to launch clear price for pre-conversions
-            int nativeIdx = currencyIndexMap[systemDestID];
-            for (int i = 0; i < newCurrencyState.conversionPrice.size(); i++)
-            {
-                if (i != nativeIdx)
-                {
-                    newCurrencyState.viaConversionPrice[i] = newCurrencyState.conversionPrice[i];
-                }
-            }
-
             // refresh these values to stay constant until launch complete marker
             if (newCurrencyState.IsLaunchClear())
             {
