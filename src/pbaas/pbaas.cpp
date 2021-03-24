@@ -408,6 +408,7 @@ CCrossChainExport::CCrossChainExport(const UniValue &obj) :
         totalAmounts = CCurrencyValueMap(find_value(obj, "totalamounts"));
         totalFees = CCurrencyValueMap(find_value(obj, "totalfees"));
         hashReserveTransfers = uint256S(uni_get_str(find_value(obj, "hashtransfers")));
+        totalBurned = CCurrencyValueMap(find_value(obj, "totalburned"));
         exporter = DestinationToTransferDestination(DecodeDestination(uni_get_str(find_value(obj, "rewardaddress"))));
     }
 
@@ -2880,6 +2881,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     CCurrencyValueMap totalExports;
     CCurrencyValueMap newReserveDeposits;
+    CCurrencyValueMap exportBurn;
 
     for (int i = 0; i < exportTransfers.size(); i++)
     {
@@ -2928,10 +2930,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
             {
                 // we need to burn this currency here, since it will be sent back to where it was originally minted for us to keep
                 // track of on this system
+                exportBurn.valueMap[oneCur.first] += oneCur.second;
 
                 // TODO: if we're exporting to a gateway or other chain, ensure that our export currency is registered for import
                 //
-                continue;
             }
             else if (oneCurDef.systemID == ASSETCHAINS_CHAINID)
             {
@@ -2995,6 +2997,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                           totalExports.CanonicalMap(), 
                           estimatedFees,
                           transferHash,
+                          exportBurn,
                           inputStartNum,
                           DestinationToTransferDestination(feeOutput));
 
@@ -3032,6 +3035,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                    totalExports.CanonicalMap(), 
                                    estimatedFees,
                                    transferHash,
+                                   CCurrencyValueMap(),
                                    inputStartNum,
                                    DestinationToTransferDestination(feeOutput),
                                    std::vector<CReserveTransfer>(),

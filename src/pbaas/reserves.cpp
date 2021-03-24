@@ -1823,6 +1823,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
+                    importGeneratedCurrency -= ccx.totalBurned;
                     flags |= IS_EXPORT;
                 }
                 break;

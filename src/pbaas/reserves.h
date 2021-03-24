@@ -863,6 +863,7 @@ public:
     CCurrencyValueMap totalAmounts;             // total amount exported of each currency, including fees
     CCurrencyValueMap totalFees;                // total fees in all currencies to split between this export and import
     uint256 hashReserveTransfers;               // hash of complete reserve transfer list in order of (txinputs, m=0, m=1, ..., m=(n-1))
+    CCurrencyValueMap totalBurned;              // if this is a cross chain export, some currencies will be burned, the rest held in deposits
     CTransferDestination exporter;              // typically the exporting miner or staker's address, to accept deferred payment for the export
 
     int32_t firstInput;                         // if export is from inputs, on chain of reserveTransfers, this is first input
@@ -884,6 +885,7 @@ public:
                       const CCurrencyValueMap &values, 
                       const CCurrencyValueMap &transferFees, 
                       const uint256 &HashReserveTransfers,
+                      const CCurrencyValueMap &TotalBurned=CCurrencyValueMap(),
                       int32_t firstin=-1, 
                       const CTransferDestination Exporter=CTransferDestination(),
                       const std::vector<CReserveTransfer> &ReserveTransfers=std::vector<CReserveTransfer>(),
@@ -895,11 +897,13 @@ public:
                       sourceHeightEnd(SourceHeightEnd), 
                       destSystemID(DestSystemID), 
                       destCurrencyID(DestCurrencyID), 
-                      numInputs(numin), 
+                      numInputs(numin),
+                      totalBurned(TotalBurned),
                       firstInput(firstin), 
                       totalAmounts(values), 
                       totalFees(transferFees), 
-                      hashReserveTransfers(HashReserveTransfers), 
+                      hashReserveTransfers(HashReserveTransfers),
+
                       exporter(Exporter), 
                       reserveTransfers(ReserveTransfers)
     {}
@@ -925,6 +929,7 @@ public:
             READWRITE(totalAmounts);
             READWRITE(totalFees);
             READWRITE(hashReserveTransfers);
+            READWRITE(totalBurned);
             READWRITE(exporter);
             READWRITE(firstInput);
         }

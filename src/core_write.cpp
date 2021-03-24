@@ -943,6 +943,7 @@ UniValue CCrossChainExport::ToUniValue() const
         obj.push_back(Pair("totalamounts", totalAmounts.ToUniValue()));
         obj.push_back(Pair("totalfees", totalFees.ToUniValue()));
         obj.push_back(Pair("hashtransfers", hashReserveTransfers.GetHex()));
+        obj.push_back(Pair("totalburned", totalBurned.ToUniValue()));
         obj.push_back(Pair("rewardaddress", EncodeDestination(TransferDestinationToDestination(exporter))));
         obj.push_back(Pair("firstinput", firstInput));
     }
