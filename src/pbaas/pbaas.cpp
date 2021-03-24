@@ -1028,6 +1028,11 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         {
             currencyState.supply = curDef.initialFractionalSupply;
             currencyState.reserves = std::vector<int64_t>(currencyState.reserves.size(), 0);
+            currencyState.reserveIn = currencyState.reserves;
+            if (curDef.IsPBaaSConverter() && curDef.gatewayConverterIssuance)
+            {
+                currencyState.reserves[curDef.GetCurrenciesMap()[curDef.systemID]] = curDef.gatewayConverterIssuance;
+            }
             currencyState.weights = curDef.weights;
         }
         else
