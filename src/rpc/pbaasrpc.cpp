@@ -508,6 +508,7 @@ bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain,
             if (cnd.IsConfirmed())
             {
                 currencyDefs[oneDef.GetID()].second = cnd.vtx[cnd.lastConfirmed].second;
+                currencyDefs[oneDef.GetID()].second.SetBlockOneNotarization();
             }
         }
     }

@@ -1113,11 +1113,12 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     // native currency of system launching the chain.
     for (auto &oneNotary : ConnectedChains.notarySystems)
     {
-        // first, we need to have the native notary currency itself
+        // first, we need to have the native notary currency itself and its notaries, if it has them
         blockOneCurrencies.insert(oneNotary.first);
         blockOneIDs.insert(oneNotary.second.notaryChain.chainDefinition.notaries.begin(), oneNotary.second.notaryChain.chainDefinition.notaries.end());
     }
 
+    // get this chain's notaries
     auto &notaryIDs = ConnectedChains.ThisChain().notaries;
     blockOneIDs.insert(notaryIDs.begin(), notaryIDs.end());
 

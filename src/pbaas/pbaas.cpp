@@ -1114,7 +1114,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                 currencyState.SetPrelaunch();
             }
         }
-        if (currencyState.IsValid() && notarization.notarizationHeight < (curDef.startBlock - 1))
+        if (currencyState.IsValid() && (curDef.launchSystemID == ASSETCHAINS_CHAINID && notarization.notarizationHeight < (curDef.startBlock - 1)))
         {
             // pre-launch
             currencyState.SetPrelaunch(true);
