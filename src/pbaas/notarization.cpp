@@ -1392,7 +1392,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
     UniValue params(UniValue::VARR);
     params.push_back(firstParam);
 
-    printf("%s: about to getbestproofroot with:\n%s\n", __func__, params.write(1,2).c_str());
+    //printf("%s: about to getbestproofroot with:\n%s\n", __func__, params.write(1,2).c_str());
 
     UniValue result;
     try
@@ -1403,7 +1403,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
         result = NullUniValue;
     }
 
-    int32_t notaryIdx = uni_get_int(find_value(result, "bestproofrootindex"), -1);
+    int32_t notaryIdx = uni_get_int(find_value(result, "bestindex"), -1);
 
     if (result.isNull() || notaryIdx == -1)
     {
@@ -1421,7 +1421,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
     // now, get the list of unconfirmed matches, and sign the latest one that
     // may be signed
-    UniValue proofRootArr = find_value(result, "validproofroots");
+    UniValue proofRootArr = find_value(result, "validindexes");
     if (!proofRootArr.isArray() || !proofRootArr.size())
     {
         return state.Error("no-valid-unconfirmed");

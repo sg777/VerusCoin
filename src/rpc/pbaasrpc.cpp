@@ -2043,7 +2043,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nResult:\n"
-            "\"bestproofrootindex\"             (int) index of best proof root not confirmed that is provided, confirmed index, or -1"
+            "\"bestindex\"                      (int) index of best proof root not confirmed that is provided, confirmed index, or -1"
             "\"latestproofroot\"                (object) latest valid proof root of chain"
             "\"currencystates\"                 (int) currency states of target currency and published bridges"
 
