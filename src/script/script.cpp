@@ -1704,6 +1704,17 @@ CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& ope
             }
         }
     }
+    // if we are subtracting a negative in non-intersecting values, they may add to above zero, so consider them
+    for (auto &oneVal : operand.NonIntersectingValues(retVal).valueMap)
+    {
+        if (oneVal.second < 0)
+        {
+            if ((retVal.valueMap[oneVal.first] -= oneVal.second) <= 0)
+            {
+                toRemove.push_back(oneVal.first);
+            }
+        }
+    }
     for (auto &toErase : toRemove)
     {
         retVal.valueMap.erase(toErase);

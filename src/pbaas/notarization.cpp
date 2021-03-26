@@ -1343,7 +1343,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
         std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> imsigner, watchonly;
         LOCK(pWallet->cs_wallet);
         // sign with all IDs under our control that are eligible for this currency
-        pWallet->GetIdentities(externalSystem.chainDefinition.notaries, mine, imsigner, watchonly);
+        pWallet->GetIdentities(ConnectedChains.ThisChain().notaries, mine, imsigner, watchonly);
         if (!mine.size())
         {
             return state.Error("no-notary");

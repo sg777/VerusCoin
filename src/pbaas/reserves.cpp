@@ -1823,6 +1823,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
+                    //printf("%s: ccx: %s\n", __func__, ccx.ToUniValue().write(1,2).c_str());
                     importGeneratedCurrency -= ccx.totalBurned;
                     flags |= IS_EXPORT;
                 }
@@ -1852,8 +1853,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 }
             }
         }
-        /*
-        if (flags & IS_IMPORT)
+        /*if (flags & IS_IMPORT)
         {
             printf("currencies after proccessing code %d:\n", p.evalCode);
             for (auto &oneInOut : currencies)
@@ -1866,8 +1866,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         oneInOut.second.reserveOut,
                         oneInOut.second.reserveOutConverted);
             }
-        }
-        */
+        }*/
     }
 
     // we have all inputs, outputs, and fees, if check inputs, we can check all for consistency
@@ -1886,11 +1885,12 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     // the native PBaaS coin, the amount input is a sum of all the reserve token values of all of the inputs
     auto reservesIn = (view.GetReserveValueIn(nHeight, tx) + importGeneratedCurrency).CanonicalMap();
 
-    /* if (flags & IS_IMPORT)
+    /* if (flags & IS_IMPORT || flags & IS_EXPORT)
     {
-        printf("%s: imported currency:\n%s\nreservesIn:\n%s\n", __func__, importGeneratedCurrency.ToUniValue().write(1,2).c_str(),
+        printf("%s: importGeneratedCurrency:\n%s\nreservesIn:\n%s\n", __func__, importGeneratedCurrency.ToUniValue().write(1,2).c_str(),
                                                                           reservesIn.ToUniValue().write(1,2).c_str());
     } */
+
     for (auto &oneCur : currencies)
     {
         oneCur.second.reserveIn = 0;
@@ -3204,8 +3204,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     newCurrencyState.fees = convertedFees.AsCurrencyVector(newCurrencyState.currencies);
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
-    CCurrencyValueMap ReserveInputs;
     spentCurrencyOut.valueMap.clear();
+    CCurrencyValueMap ReserveInputs;
     CAmount systemOutConverted = 0;
 
     //printf("%s currencies: %s\n", __func__, ToUniValue().write(1,2).c_str());

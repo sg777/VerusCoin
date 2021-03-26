@@ -104,7 +104,9 @@ protected:
 
 bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight, bool checkMempool, uint256 *pTxid)
 {
-    if (chainID == ConnectedChains.ThisChain().GetID())
+    bool isVerusActive = IsVerusActive();
+    static bool thisChainLoaded = false;
+    if ((thisChainLoaded || chainActive.Height() < 1) || (isVerusActive && chainID == ConnectedChains.ThisChain().GetID()))
     {
         chainDef = ConnectedChains.ThisChain();
         if (pDefHeight)
@@ -117,7 +119,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
         }
         return true;
     }
-    else if (!IsVerusActive())
+    else if (!isVerusActive)
     {
         if (ConnectedChains.FirstNotaryChain().IsValid() && (chainID == ConnectedChains.FirstNotaryChain().chainDefinition.GetID()))
         {
@@ -180,6 +182,11 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
                 break;
             }
         }
+    }
+    if (chainID == ASSETCHAINS_CHAINID && foundDef.IsValid())
+    {
+        thisChainLoaded = true;
+        ConnectedChains.ThisChain() = foundDef;
     }
     return foundDef.IsValid();
 }
@@ -662,7 +669,7 @@ uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=f
     {
         return retVal;
     }
-    if (CCurrencyDefinition::GetID(currencyStr) == ConnectedChains.ThisChain().GetID())
+    if (chainActive.Height() < 1 || (_IsVerusActive() && CCurrencyDefinition::GetID(currencyStr) == ConnectedChains.ThisChain().GetID()))
     {
         if (pCurrencyDef)
         {

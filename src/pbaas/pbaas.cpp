@@ -2127,10 +2127,19 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             requiredDeposits = cci.importValue;
         }
 
+        // printf("%s: requiredDeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
+        // printf("%s: nativeOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.nativeOut})).ToUniValue().write(1,2).c_str());
+
+        if (newNotarization.currencyState.nativeOut)
+        {
+            importedCurrency.valueMap[cci.importCurrencyID] = newNotarization.currencyState.nativeOut;
+        }
+
         // we must also come up with anything spent that is not satisfied via standard required deposits, 
         // as determined by reserves in. any excess in required deposits beyond what is spent will go to
         // reserve deposits change
         requiredDeposits += spentCurrencyOut.SubtractToZero(requiredDeposits);
+
         CCurrencyValueMap newCurrencyIn = gatewayDepositsUsed + importedCurrency;
         CCurrencyValueMap localDepositRequirements = requiredDeposits.SubtractToZero(newCurrencyIn);
         CCurrencyValueMap localDepositChange;
@@ -2162,6 +2171,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                     depositsToUse.push_back(oneDeposit);
                 }
             }
+
+            // printf("%s: totalDepositsInput: %s\n", __func__, totalDepositsInput.ToUniValue().write(1,2).c_str());
 
             localDepositChange = totalDepositsInput - localDepositRequirements;
 
@@ -2897,7 +2908,11 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         totalExports += exportTransfers[i].TotalCurrencyOut();
     }
 
-    //printf("%s: num transfers %ld, totalExports: %s\n", __func__, exportTransfers.size(), totalExports.ToUniValue().write(1,2).c_str());
+    printf("%s: num transfers %ld, totalExports: %s\nnewNotarization: %s\n",
+        __func__,
+        exportTransfers.size(),
+        totalExports.ToUniValue().write(1,2).c_str(),
+        newNotarization.ToUniValue().write(1,2).c_str());
 
     // if we are exporting off of this system to a gateway or PBaaS chain, don't allow 3rd party 
     // or unregistered currencies to export. if same to same chain, all exports are ok.
@@ -3064,6 +3079,11 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     if (nativeReserveDeposit || newReserveDeposits.valueMap.size())
     {
+        printf("%s: nativeDeposit %ld, reserveDeposits: %s\n",
+            __func__,
+            nativeReserveDeposit,
+            newReserveDeposits.ToUniValue().write(1,2).c_str());
+
         // now send transferred currencies to a reserve deposit
         cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
 

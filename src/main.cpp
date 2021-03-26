@@ -4005,7 +4005,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             // we are not at block height #1, so all coinbase reserve outputs are
             // considered taking of fees
             reserveRewardTaken = rtxd.ReserveOutputMap();
-            printf("%s: reserve reward taken: %s\n", __func__, reserveRewardTaken.ToUniValue().write(1,2).c_str());
+            //printf("%s: reserve reward taken: %s\n", __func__, reserveRewardTaken.ToUniValue().write(1,2).c_str());
         }
 
         if (fAddressIndex) {
