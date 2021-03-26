@@ -4219,7 +4219,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height());
         int currencyIndex = gatewayCurrencyState.GetReserveMap()[newChainID];
 
-        gatewayCurrencyState.reserves[currencyIndex] += newChain.gatewayConverterIssuance;
         gatewayCurrencyState.reserveIn[currencyIndex] += newChain.gatewayConverterIssuance;
 
         uint160 gatewayCurrencyID = newGatewayConverter.GetID();
