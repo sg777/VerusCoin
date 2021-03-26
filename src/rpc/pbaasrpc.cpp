@@ -703,7 +703,6 @@ uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=f
         {
             retVal = currencyID;
         }
-        
     }
     return retVal;
 }
