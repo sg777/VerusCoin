@@ -679,6 +679,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
     uint160 newCurID = newCurrency.GetID();
     CPBaaSNotarization newNotarization = lastNotarization;
     newNotarization.prevNotarization = CUTXORef();
+    newNotarization.SetBlockOneNotarization();
 
     // each currency will get:
     // * one currency definition output
@@ -754,6 +755,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             {
                 additionalFees.valueMap[ASSETCHAINS_CHAINID] += newNotarization.currencyState.nativeFees;
             }
+
+            newNotarization.SetBlockOneNotarization();
 
             // display import outputs
             /*CMutableTransaction debugTxOut;
@@ -1006,6 +1009,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 return false;
             }
         }
+        newNotarization.SetBlockOneNotarization();
         outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
     }
     return true;

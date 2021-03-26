@@ -106,7 +106,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
 {
     bool isVerusActive = IsVerusActive();
     static bool thisChainLoaded = false;
-    if ((thisChainLoaded || chainActive.Height() < 1) || (isVerusActive && chainID == ConnectedChains.ThisChain().GetID()))
+    if (chainID == ConnectedChains.ThisChain().GetID() && (thisChainLoaded || chainActive.Height() < 1 || isVerusActive))
     {
         chainDef = ConnectedChains.ThisChain();
         if (pDefHeight)
