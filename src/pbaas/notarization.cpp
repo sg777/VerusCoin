@@ -1368,6 +1368,14 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
         }
     }
 
+    if (height <= (CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED + 1))
+    {
+        return state.Error(errorPrefix + "too early");
+    }
+
+    // latest height we are eligible to notarize
+    uint32_t eligibleHeight = height - CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED;
+
     // all we really want is the system proof roots for each notarization to make the JSON for the API smaller
     UniValue proofRootsUni(UniValue::VARR);
     for (auto &oneNot : cnd.vtx)
@@ -1426,11 +1434,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
     {
         return state.Error("no-valid-unconfirmed");
     }
-
-    // latest height we are eligible to notarize
-    uint32_t eligibleHeight = height <= (CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED + 1) ?
-                                0 :
-                                height - CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED;
 
     if (!proofRootArr.isArray() || !proofRootArr.size())
     {

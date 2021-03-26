@@ -1177,7 +1177,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             {
                 if (cci.sourceSystemID != ASSETCHAINS_CHAINID)
                 {
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.importCurrencyID, cci.CurrencySystemImportKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.sourceSystemID, cci.CurrencySystemImportKey())));
                 }
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.importCurrencyID, cci.CurrencyImportKey())));
             }
