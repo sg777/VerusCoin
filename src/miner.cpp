@@ -320,6 +320,7 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
 
     // get any pending imports from the source chain. if the source chain is this chain, we don't need notarization
     CCurrencyDefinition thisChain = ConnectedChains.ThisChain();
+    uint160 thisChainID = thisChain.GetID();
     CCurrencyDefinition sourceChain = ConnectedChains.GetCachedCurrency(sourceChainID);
     if (!sourceChain.IsValid())
     {
@@ -377,7 +378,7 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
             {
                 UniValue params(UniValue::VARR);
 
-                params.push_back(EncodeDestination(CIdentityID(sourceChainID)));
+                params.push_back(EncodeDestination(CIdentityID(thisChainID)));
                 params.push_back((int64_t)lastCCI.sourceSystemHeight);
                 params.push_back((int64_t)lastConfirmed.notarizationHeight);
 
