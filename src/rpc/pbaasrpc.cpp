@@ -2076,6 +2076,15 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid proof root array parameter");
     }
 
+    for (int i = 0; i < uniProofRoots.size(); i++)
+    {
+        proofRootArr.push_back(CProofRoot(uniProofRoots[i]));
+        if (!proofRootArr.back().IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid proof root in array");
+        }
+    }
+
     LOCK(cs_main);
 
     uint32_t nHeight = chainActive.Height();
@@ -2084,10 +2093,9 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     std::map<uint32_t, int32_t> validRoots;       // height, index (only return the first valid at each height)
     for (int i = 0; i < proofRootArr.size(); i++)
     {
-        CProofRoot checkRoot = CProofRoot(proofRootArr[i]);
         // proof roots must be valid and in height order, though heights can overlap
-        if (!checkRoot.IsValid() ||
-            checkRoot.rootHeight < curHeight ||
+        const CProofRoot &checkRoot = proofRootArr[i];
+        if (checkRoot.rootHeight <= curHeight ||
             checkRoot.systemID != ASSETCHAINS_CHAINID)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid proof root array parameter for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
@@ -2105,6 +2113,17 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
 
     UniValue retVal(UniValue::VOBJ);
 
+    if (validRoots.size())
+    {
+        UniValue validArr(UniValue::VARR);
+        for (auto &oneRoot : validRoots)
+        {
+            validArr.push_back(oneRoot.second);
+        }
+        retVal.pushKV("validindexes", validArr);
+        retVal.pushKV("bestindex", validRoots.rbegin()->second);
+    }
+
     // get the latest proof root and currency states
     retVal.pushKV("latestproofroot", CProofRoot::GetProofRoot(nHeight).ToUniValue());
 
@@ -2120,7 +2139,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         currencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, nHeight).ToUniValue());
     }
 
-    return NullUniValue;
+    return retVal;
 }
 
 UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
