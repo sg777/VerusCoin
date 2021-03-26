@@ -456,8 +456,8 @@ void GetCurrencyDefinitions(vector<CCurrencyDefinition> &chains, bool includeExp
 }
 
 bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain, 
-                                           const std::set<uint160> &currencyIDs, std::map<uint160, std::pair<CCurrencyDefinition, 
-                                           CPBaaSNotarization>> &currencyDefs)
+                                           const std::set<uint160> &currencyIDs,
+                                           std::map<uint160, std::pair<CCurrencyDefinition,CPBaaSNotarization>> &currencyDefs)
 {
     for (auto &curID : currencyIDs)
     {
@@ -669,7 +669,7 @@ uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=f
     {
         return retVal;
     }
-    if (chainActive.Height() < 1 || (_IsVerusActive() && CCurrencyDefinition::GetID(currencyStr) == ConnectedChains.ThisChain().GetID()))
+    if (CCurrencyDefinition::GetID(currencyStr) == ConnectedChains.ThisChain().GetID() && (chainActive.Height() < 1 || _IsVerusActive()))
     {
         if (pCurrencyDef)
         {
