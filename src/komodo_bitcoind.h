@@ -1892,7 +1892,9 @@ void GetImmatureCoins(std::map<uint32_t, int64_t> *pimmatureBlockAmounts, CBlock
     std::map<uint32_t, int64_t> &unlockBlockAmounts = pimmatureBlockAmounts ? *pimmatureBlockAmounts : _unlockBlockAmounts;
     amount = 0;
 
-    if (block.vtx.size())
+    // PBaaS chains release block one outputs without maturity, since the entire chain is either
+    // valid or not
+    if (block.vtx.size() && IsVerusActive() || height != 1)
     {
         const CTransaction &tx = block.vtx[0];
         uint32_t unlockHeight = 0;

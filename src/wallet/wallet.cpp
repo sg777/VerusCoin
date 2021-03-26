@@ -7981,6 +7981,11 @@ int CMerkleTx::GetBlocksToMaturity() const
     if (!IsCoinBase())
         return 0;
     int32_t depth = GetDepthInMainChain();
+    if (!IsVerusActive() &&
+        (chainActive.Height() - depth) == 1)
+    {
+        return 0;
+    }
     int32_t ut = UnlockTime(0);
     int32_t toMaturity = (ut - chainActive.Height()) < 0 ? 0 : ut - chainActive.Height();
     //printf("depth.%i, unlockTime.%i, toMaturity.%i\n", depth, ut, toMaturity);

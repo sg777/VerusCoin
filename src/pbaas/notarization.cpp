@@ -1321,7 +1321,7 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
 }
 
 // this is called by notaries to locate any notarizations of a specific system that they can notarize, to determine if we
-// agree with the notarization ni question, and to confirm or reject the notarization
+// agree with the notarization in question, and to confirm or reject the notarization
 bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                                                       const CRPCChainData &externalSystem,
                                                       CValidationState &state,
@@ -1428,7 +1428,14 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
     }
 
     // latest height we are eligible to notarize
-    uint32_t eligibleHeight = height - CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED;
+    uint32_t eligibleHeight = height <= (CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED + 1) ?
+                                0 :
+                                height - CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED;
+
+    if (!proofRootArr.isArray() || !proofRootArr.size())
+    {
+        return state.Error("no-valid-unconfirmed");
+    }
 
     bool retVal = false;
 

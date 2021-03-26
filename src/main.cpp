@@ -1966,10 +1966,13 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // Keep track of transactions that spend a coinbase and are not "InstantSpend:", which we re-scan
         // during reorgs to ensure COINBASE_MATURITY is still met.
         bool fSpendsCoinbase = false;
-        if (!iscoinbase && !tx.IsCoinImport()) {
+        if (!iscoinbase) {
             BOOST_FOREACH(const CTxIn &txin, tx.vin) {
                 const CCoins *coins = view.AccessCoins(txin.prevout.hash);
-                if (coins->IsCoinBase() && !coins->vout[txin.prevout.n].scriptPubKey.IsInstantSpend()) {
+                if (coins->IsCoinBase() &&
+                    !coins->vout[txin.prevout.n].scriptPubKey.IsInstantSpend() &&
+                    !(coins->nHeight == 1 && !IsVerusActive()))
+                {
                     fSpendsCoinbase = true;
                     break;
                 }
@@ -2747,6 +2750,25 @@ int GetSpendHeight(const CCoinsViewCache& inputs)
     return pindexPrev->GetHeight() + 1;
 }
 
+bool IsCoinbaseFromBlockN(const CTransaction &cbTx, uint32_t N)
+{
+    CScript expect = CScript() << N;
+    opcodetype opcode = (opcodetype)*expect.begin();
+
+    int heightmatches = false;
+
+    if (opcode >= OP_1 && opcode <= OP_16)
+    {
+        heightmatches = (cbTx.vin[0].scriptSig.size() >= 1 && CScript::DecodeOP_N(opcode) == N) || 
+                        (cbTx.vin[0].scriptSig.size() >= 2 && cbTx.vin[0].scriptSig[0] == OP_PUSHDATA1 && (int)cbTx.vin[0].scriptSig[1] == N);
+    }
+    else
+    {
+        heightmatches = cbTx.vin[0].scriptSig.size() >= expect.size() && std::equal(expect.begin(), expect.end(), cbTx.vin[0].scriptSig.begin());
+    }
+    return heightmatches;
+}
+
 namespace Consensus {
     bool CheckTxInputs(const CTransaction& tx, CValidationState& state, const CCoinsViewCache& inputs, uint32_t nSpendHeight, const Consensus::Params& consensusParams)
     {
@@ -2777,11 +2799,13 @@ namespace Consensus {
 
             if (coins->IsCoinBase()) {
                 // ensure that output of coinbases are not still time locked, or are the outputs that are instant spend
-                if ((uint64_t)coins->TotalTxValue() >= ASSETCHAINS_TIMELOCKGTE &&
+                if (IsVerusMainnetActive() &&
+                    nSpendHeight < ASSETCHAINS_TIMEUNLOCKTO &&
+                    (uint64_t)coins->TotalTxValue() >= ASSETCHAINS_TIMELOCKGTE &&
                     !coins->vout[prevout.n].scriptPubKey.IsInstantSpend())
                 {
                     uint64_t unlockTime = komodo_block_unlocktime(coins->nHeight);
-                    if ((coins->nHeight >= 31680 && coins->nHeight <= 129600) && IsVerusMainnetActive() && nSpendHeight < unlockTime)
+                    if ((coins->nHeight >= 31680 && coins->nHeight <= 129600) && nSpendHeight < unlockTime)
                     {
                         if (CConstVerusSolutionVector::GetVersionByHeight(nSpendHeight) < CActivationHeight::ACTIVATE_IDENTITY)
                         {
@@ -2799,10 +2823,14 @@ namespace Consensus {
                 // Ensure that coinbases are matured, no DoS as retry may work later
                 // some crypto-condition outputs get around the rules by being used only to create threads
                 // of transactions, such as notarization, rather than being converted to fungible coins
-                if (nSpendHeight - coins->nHeight < COINBASE_MATURITY && !coins->vout[prevout.n].scriptPubKey.IsInstantSpend()) {
+                // block one outputs (preallocations) on a PBaaS chain are immediately spendable.
+                if (!(!IsVerusActive() && coins->nHeight == 1) &&
+                    (nSpendHeight - coins->nHeight) < COINBASE_MATURITY &&
+                    !coins->vout[prevout.n].scriptPubKey.IsInstantSpend())
+                {
                     return state.DoS(0,
-                                     error("CheckInputs(): tried to spend coinbase at depth %d", nSpendHeight - coins->nHeight),
-                                     REJECT_INVALID, "bad-txns-premature-spend-of-coinbase");
+                        error("CheckInputs(): tried to spend coinbase at depth %d", nSpendHeight - coins->nHeight),
+                        REJECT_INVALID, "bad-txns-premature-spend-of-coinbase");
                 }
 
                 // As of solution version 5, we're done with the Zcash coinbase protection.
@@ -5831,22 +5859,8 @@ bool ContextualCheckBlock(
     // section '6.8 Bitcoin Improvement Proposals').
     if (nHeight > 0)
     {
-        CScript expect = CScript() << nHeight;
-        opcodetype opcode = (opcodetype)*expect.begin();
-
-        int heightmatches = false;
-
-        if (opcode >= OP_1 && opcode <= OP_16)
+        if (!IsCoinbaseFromBlockN(block.vtx[0], nHeight))
         {
-            heightmatches = (block.vtx[0].vin[0].scriptSig.size() >= 1 && CScript::DecodeOP_N(opcode) == nHeight) || 
-                            (block.vtx[0].vin[0].scriptSig.size() >= 2 && block.vtx[0].vin[0].scriptSig[0] == OP_PUSHDATA1 && (int)block.vtx[0].vin[0].scriptSig[1] == nHeight);
-        }
-        else
-        {
-            heightmatches = block.vtx[0].vin[0].scriptSig.size() >= expect.size() && std::equal(expect.begin(), expect.end(), block.vtx[0].vin[0].scriptSig.begin());
-        }
-
-        if (!heightmatches) {
             return state.DoS(100, error("%s: block height mismatch in coinbase", __func__), REJECT_INVALID, "bad-cb-height");
         }
     }
