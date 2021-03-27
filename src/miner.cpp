@@ -354,7 +354,8 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
         LOCK(cs_main);
 
         if (!isSameChain &&
-            GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs))
+            GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs) &&
+            lastConfirmed.proofRoots.count(sourceChainID))
         {
             // if one spends the prior one, get the one that is not spent
             for (auto &txidx : unspentOutputs)
@@ -380,7 +381,7 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
 
                 params.push_back(EncodeDestination(CIdentityID(thisChainID)));
                 params.push_back((int64_t)lastCCI.sourceSystemHeight);
-                params.push_back((int64_t)lastConfirmed.notarizationHeight);
+                params.push_back((int64_t)lastConfirmed.proofRoots[sourceChainID].rootHeight);
 
                 UniValue result = NullUniValue;
                 try
@@ -433,6 +434,13 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                           proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
                           exportTx.vout.size() > exportTxOutNum))
                     {
+                        printf("%s: proofRoot: %s, checkPartialRoot: %s, proofheight: %u, ischainproof: %s, blockhash: %s\n", 
+                            __func__,
+                            proofRootIt->second.ToUniValue().write(1,2).c_str(),
+                            txProof.CheckPartialTransaction(exportTx).GetHex().c_str(),
+                            txProof.GetBlockHeight(),
+                            txProof.IsChainProof() ? "true" : "false",
+                            txProof.GetBlockHash().GetHex().c_str());
                         printf("Invalid export from %s\n", uni_get_str(params[0]).c_str());
                         return;
                     }

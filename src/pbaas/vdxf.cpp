@@ -324,6 +324,10 @@ int32_t uni_get_int(UniValue uv, int32_t def)
 {
     try
     {
+        if (uv.isStr())
+        {
+            return atoi(uv.get_str());
+        }
         return uv.get_int();
     }
     catch(const std::exception& e)
@@ -336,6 +340,10 @@ int64_t uni_get_int64(UniValue uv, int64_t def)
 {
     try
     {
+        if (uv.isStr())
+        {
+            return atoi64(uv.get_str());
+        }
         return uv.get_int64();
     }
     catch(const std::exception& e)

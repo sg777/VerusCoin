@@ -37,18 +37,6 @@ uint256 CurrencyDefHash(UniValue &chainDefinition)
     return uint256();
 }
 
-int32_t uni_get_int(UniValue uv, int32_t def)
-{
-    try
-    {
-        return uv.get_int();
-    }
-    catch(const std::exception& e)
-    {
-        return def;
-    }
-}
-
 bool uni_get_bool(UniValue uv, bool def)
 {
     try
@@ -82,10 +70,30 @@ bool uni_get_bool(UniValue uv, bool def)
     }
 }
 
+int32_t uni_get_int(UniValue uv, int32_t def)
+{
+    try
+    {
+        if (uv.isStr())
+        {
+            return atoi(uv.get_str());
+        }
+        return uv.get_int();
+    }
+    catch(const std::exception& e)
+    {
+        return def;
+    }
+}
+
 int64_t uni_get_int64(UniValue uv, int64_t def)
 {
     try
     {
+        if (uv.isStr())
+        {
+            return atoi64(uv.get_str());
+        }
         return uv.get_int64();
     }
     catch(const std::exception& e)
