@@ -328,6 +328,8 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
         return;
     }
 
+    printf("%s: processing imports for %s\n", __func__, sourceChain.name.c_str());
+
     bool isSameChain = thisChain.GetID() == sourceChainID;
 
     CChainNotarizationData cnd;
@@ -467,6 +469,7 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                             return;
                         }
                     }
+                    exports.push_back(oneExport);
                 }
             }
             std::map<uint160, std::vector<std::pair<int, CTransaction>>> newImports;
@@ -837,6 +840,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                       pFirstExport->first.hash,
                                                       pFirstExport->first.n);
             cci.SetSameChain(newCurrency.launchSystemID == ASSETCHAINS_CHAINID);
+            cci.SetPostLaunch();
             cci.SetInitialLaunchImport();
 
             std::vector<CTxOut> importOutputs;

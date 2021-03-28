@@ -719,6 +719,18 @@ public:
         return flags & FLAG_POSTLAUNCH;
     }
 
+    void SetPostLaunch(bool isPostLaunch=true)
+    {
+        if (isPostLaunch)
+        {
+            flags |= FLAG_POSTLAUNCH;
+        }
+        else
+        {
+            flags &= ~FLAG_POSTLAUNCH;
+        }
+    }
+
     bool IsSourceSystemImport() const
     {
         return flags & FLAG_SOURCESYSTEM;
