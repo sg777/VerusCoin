@@ -1438,7 +1438,6 @@ bool CConnectedChains::GetPendingCurrencyExports(const uint160 currencyID,
     }
 }
 
-
 CPartialTransactionProof::CPartialTransactionProof(const CTransaction tx, const std::vector<int32_t> outputNums, const CBlockIndex *pIndex, uint32_t proofAtHeight)
 {
     // get map and MMR for transaction
@@ -1498,8 +1497,19 @@ CPartialTransactionProof::CPartialTransactionProof(const CTransaction tx, const 
     mmv.resize(proofAtHeight);
     chainActive.GetMerkleProof(mmv, txRootProof, pIndex->GetHeight());
     *this = CPartialTransactionProof(txRootProof, txProofVec);
-}
 
+    /*printf("%s: MMR root at height %u: %s\n", __func__, proofAtHeight, mmv.GetRoot().GetHex().c_str());
+    CTransaction outTx;
+    if (CheckPartialTransaction(outTx) != mmv.GetRoot())
+    {
+        printf("%s: invalid proof result: %s\n", __func__, CheckPartialTransaction(outTx).GetHex().c_str());
+    }
+    CPartialTransactionProof checkProof(ToUniValue());
+    if (checkProof.CheckPartialTransaction(outTx) != mmv.GetRoot())
+    {
+        printf("%s: invalid proof after univalue: %s\n", __func__, checkProof.CheckPartialTransaction(outTx).GetHex().c_str());
+    }*/
+}
 
 // given exports on this chain, provide the proofs of those export outputs with the MMR root at height "height"
 // proofs are added in place
@@ -2494,8 +2504,10 @@ bool CConnectedChains::GetSystemExports(const uint160 &systemID,
                                                                                     std::vector<int>({(int)oneCoLaunch.first.first.txIn.prevout.n}), 
                                                                                     it->second,
                                                                                     toHeight);
+                                //printf("%s: co-launch proof: %s\n", __func__, oneCoLaunch.first.second.ToUniValue().write(1,2).c_str());
                             }
                             exportProof = CPartialTransactionProof(exportTx, outputsToProve, it->second, toHeight);
+                            //printf("%s: toheight: %u, export proof: %s\n", __func__, toHeight, exportProof.ToUniValue().write(1,2).c_str());
                         }
                     }
                     else
@@ -2918,13 +2930,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // or unregistered currencies to export. if same to same chain, all exports are ok.
     if (destSystemID != ASSETCHAINS_CHAINID)
     {
-        // if this is launching a new PBaaS chain or gateway, store the proof root of this chain in the
-        // clear launch notarization
-        if (isClearLaunchExport && newNotarization.IsLaunchConfirmed() && 
-            (_curDef.IsPBaaSChain() || _curDef.IsGateway() || _curDef.IsPBaaSConverter()))
-        {
-            newNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(_curDef.startBlock - 1);
-        }
         for (auto &oneCur : totalExports.valueMap)
         {
             if (oneCur.first == ASSETCHAINS_CHAINID)

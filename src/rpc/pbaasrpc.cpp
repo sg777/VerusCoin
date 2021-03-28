@@ -1011,7 +1011,7 @@ UniValue getexports(const UniValue& params, bool fHelp)
     if (params.size() > 2)
     {
         toHeight = uni_get_int64(params[2]);
-        proofHeight = toHeight < nHeight ? toHeight : nHeight;
+        proofHeight = toHeight != 0 && (toHeight < nHeight) ? toHeight : nHeight;
         toHeight = proofHeight;
     }
 
@@ -1046,16 +1046,15 @@ UniValue getexports(const UniValue& params, bool fHelp)
         oneObj.push_back(Pair("txoutnum", (int64_t)oneExport.first.first.txIn.prevout.n));
         CCrossChainExport ccx(oneExport.first.first.scriptPubKey);
         oneObj.push_back(Pair("exportinfo", ccx.ToUniValue()));
-        // if we have a proof height to use for making proofs, make them
-        if (proofHeight)
+        if (oneExport.first.second.IsValid())
         {
-            oneExport.first.second = CPartialTransactionProof(tx, std::vector<int>({(int)oneExport.first.first.txIn.prevout.n}), indexIt->second, proofHeight);
+            oneObj.push_back(Pair("partialtransactionproof", oneExport.first.second.ToUniValue()));
         }
-        oneObj.push_back(Pair("partialtransactionproof", oneExport.first.second.ToUniValue()));
 
         UniValue transferArr(UniValue::VARR);
         for (auto &oneTransfer : oneExport.second)
         {
+            //printf("%s: onetransfer: %s\n", __func__, oneTransfer.ToUniValue().write(1,2).c_str());
             transferArr.push_back(oneTransfer.ToUniValue());
         }
         oneObj.push_back(Pair("transfers", transferArr));
@@ -1190,7 +1189,7 @@ UniValue submitimports(const UniValue& params, bool fHelp)
 
         for (int j = 0; j < transferArrUni.size(); j++)
         {
-            oneExport.second.push_back(CReserveTransfer(transferArrUni));
+            oneExport.second.push_back(CReserveTransfer(transferArrUni[j]));
             if (!oneExport.second.back().IsValid())
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid reserve transfers from export of " + uni_get_str(params[0]));
@@ -2007,6 +2006,7 @@ UniValue getlaunchinfo(const UniValue& params, bool fHelp)
     retVal.pushKV("exportvoutnum", (int64_t)foundExport.first.first.txIn.prevout.n);
     retVal.pushKV("exportproof", foundExport.first.second.ToUniValue());
     retVal.pushKV("notarization", launchNotarization.ToUniValue());
+    retVal.pushKV("latestproofroot", CProofRoot::GetProofRoot(chainActive.Height()).ToUniValue());
     return retVal;
 }
 

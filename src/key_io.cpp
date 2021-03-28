@@ -577,11 +577,11 @@ UniValue CProofRoot::ToUniValue() const
     return obj;
 }
 
-CReserveTransfer::CReserveTransfer(const UniValue &uni) : nFees(0)
+CReserveTransfer::CReserveTransfer(const UniValue &uni) : CTokenOutput(uni), nFees(0)
 {
     flags = uni_get_int64(find_value(uni, "flags"), 0);
     feeCurrencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "feecurrencyid"))));
-    nFees = uni_get_int64(find_value(uni, "fees"), 0);
+    nFees = AmountFromValueNoErr(find_value(uni, "fees"));
 
     if (IsReserveToReserve())
     {

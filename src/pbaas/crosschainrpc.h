@@ -992,6 +992,7 @@ public:
     {
         return version >= VERSION_FIRST &&
                version <= VERSION_LAST &&
+               rootHeight != 0 &&
                !systemID.IsNull() &&
                !stateRoot.IsNull() &&
                !blockHash.IsNull();

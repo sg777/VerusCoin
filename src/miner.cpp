@@ -354,8 +354,8 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
         LOCK(cs_main);
 
         if (!isSameChain &&
-            GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs) &&
-            lastConfirmed.proofRoots.count(sourceChainID))
+            lastConfirmed.proofRoots.count(sourceChainID) &&
+            GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs))
         {
             // if one spends the prior one, get the one that is not spent
             for (auto &txidx : unspentOutputs)
@@ -434,14 +434,14 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                           proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
                           exportTx.vout.size() > exportTxOutNum))
                     {
-                        printf("%s: proofRoot: %s, checkPartialRoot: %s, proofheight: %u, ischainproof: %s, blockhash: %s\n", 
+                        /*printf("%s: proofRoot: %s, checkPartialRoot: %s, proofheight: %u, ischainproof: %s, blockhash: %s\n", 
                             __func__,
                             proofRootIt->second.ToUniValue().write(1,2).c_str(),
                             txProof.CheckPartialTransaction(exportTx).GetHex().c_str(),
-                            txProof.GetBlockHeight(),
+                            txProof.GetProofHeight(),
                             txProof.IsChainProof() ? "true" : "false",
-                            txProof.GetBlockHash().GetHex().c_str());
-                        printf("Invalid export from %s\n", uni_get_str(params[0]).c_str());
+                            txProof.GetBlockHash().GetHex().c_str());*/
+                        printf("Invalid export for %s\n", uni_get_str(params[0]).c_str());
                         return;
                     }
                     else if (isSameChain &&
@@ -459,10 +459,11 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                                         std::vector<CReserveTransfer>());
                     for (int j = 0; j < transferArrUni.size(); j++)
                     {
-                        oneExport.second.push_back(CReserveTransfer(transferArrUni));
+                        //printf("%s: onetransfer: %s\n", __func__, transferArrUni[j].write(1,2).c_str());
+                        oneExport.second.push_back(CReserveTransfer(transferArrUni[j]));
                         if (!oneExport.second.back().IsValid())
                         {
-                            printf("Invalid reserve transfers from export of %s\n", uni_get_str(params[0]).c_str());
+                            printf("Invalid reserve transfers in export from %s\n", sourceChain.name.c_str());
                             return;
                         }
                     }
@@ -538,6 +539,7 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
         {
             CCurrencyDefinition currency(find_value(result, "currencydefinition"));
             CPBaaSNotarization notarization(find_value(result, "notarization"));
+            CProofRoot latestProofRoot(find_value(result, "latestproofroot"));
             CPartialTransactionProof notarizationProof(find_value(result, "notarizationproof"));
             CUTXORef notarizationUtxo(uint256S(uni_get_str(find_value(result, "notarizationtxid"))), uni_get_int(find_value(result, "notarizationvoutnum")));
 
@@ -546,7 +548,8 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
 
             if (!currency.IsValid() ||
                 !notarization.IsValid() ||
-                !notarizationProof.IsValid())
+                !notarizationProof.IsValid() ||
+                !latestProofRoot.IsValid())
             {
                 LogPrintf("%s: invalid launch notarization for currency %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
                 printf("%s: invalid launch notarization for currency %s\ncurrencydefinition: %s\nnotarization: %s\ntransactionproof: %s\n", 
@@ -558,8 +561,10 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
             }
             else
             {
+                //printf("%s: proofroot: %s\n", __func__, latestProofRoot.ToUniValue().write(1,2).c_str());
                 curDef = currency;
                 launchNotarization = notarization;
+                launchNotarization.proofRoots[latestProofRoot.systemID] = latestProofRoot;
                 notarizationOutputProof = std::make_pair(notarizationUtxo, notarizationProof);
                 exportOutputProof = std::make_pair(exportUtxo, exportProof);
                 retVal = true;
@@ -634,12 +639,17 @@ bool DecodeOneExport(const UniValue obj, CCrossChainExport &ccx,
 }
 
 // get initial currency state from the notary system specified
-bool GetBlockOneImports(const CRPCChainData &notarySystem, std::map<uint160, std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>>> &exports)
+bool GetBlockOneImports(const CRPCChainData &notarySystem, const CPBaaSNotarization &launchNotarization, std::map<uint160, std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>>> &exports)
 {
     UniValue result, error;
 
     UniValue params(UniValue::VARR);
     params.push_back(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+    params.push_back((int)0);
+    if (launchNotarization.proofRoots.count(ConnectedChains.ThisChain().launchSystemID))
+    {
+        params.push_back((int64_t)launchNotarization.proofRoots.find(ConnectedChains.ThisChain().launchSystemID)->second.rootHeight);
+    }
 
     // VRSC and VRSCTEST do not start with a notary chain
     if (!IsVerusActive() && ConnectedChains.IsNotaryAvailable())
@@ -781,6 +791,9 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             newNotarization.prevNotarization = CUTXORef();
             newNotarization.prevHeight = 0;
         }
+
+        /* printf("%s: last notarization: %s\nnew notarization: %s\n", __func__, lastNotarization.ToUniValue().write(1,2).c_str(),
+                                                                                newNotarization.ToUniValue().write(1,2).c_str()); */
 
         // create the import thread output
         cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
@@ -1068,7 +1081,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     }
 
     // get initial imports
-    if (!GetBlockOneImports(ConnectedChains.FirstNotaryChain(), blockOneExportImports))
+    if (!GetBlockOneImports(ConnectedChains.FirstNotaryChain(), launchNotarization, blockOneExportImports))
     {
         // we must reach minimums in all currencies to launch
         LogPrintf("Cannot retrieve initial export imports from notary system\n");
@@ -1077,7 +1090,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     }
 
     // get all currencies/IDs that we will need to retrieve from our notary chain
-    std::set<uint160> blockOneCurrencies = {ASSETCHAINS_CHAINID};
+    std::set<uint160> blockOneCurrencies;
     std::set<uint160> blockOneIDs = {ASSETCHAINS_CHAINID};
     std::set<uint160> convertersToCreate;
 
@@ -1118,7 +1131,6 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         }
 
         convertersToCreate.insert(converterCurrencyID);
-        blockOneCurrencies.insert(converterCurrencyID);
     }
 
     // Now, add block 1 imports, which provide a foundation of all IDs and currencies needed to launch the
@@ -1145,16 +1157,6 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         LogPrintf("Cannot retrieve identity and currency definitions needed to create block 1\n");
         printf("Cannot retrieve identity and currency definitions needed to create block 1\n");
         return false;
-    }
-
-    // if our notary chain is our launch chain, we will replace its notarization proof root with the proof root from our
-    // final export notarization, which enables proof of all pre-launch exports and provides a deterministic starting 
-    // point for all valid block ones
-    if (firstNotaryID == ConnectedChains.ThisChain().launchSystemID &&
-        currencyImports.count(firstNotaryID) && currencyImports.count(ConnectedChains.ThisChain().launchSystemID))
-    {
-        currencyImports[firstNotaryID].second.proofRoots[firstNotaryID] =
-            currencyImports[ASSETCHAINS_CHAINID].second.proofRoots[firstNotaryID];
     }
 
     // add all imported currency and identity outputs, identity revocaton and recovery IDs must be explicitly imported if needed

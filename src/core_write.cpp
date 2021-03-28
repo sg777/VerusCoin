@@ -892,7 +892,7 @@ UniValue CReserveTransfer::ToUniValue() const
     if (IsPreallocate())
         ret.push_back(Pair("preallocate", true));
 
-    ret.push_back(Pair("feecurrencyid", EncodeDestination(CIdentityID(secondReserveID))));
+    ret.push_back(Pair("feecurrencyid", EncodeDestination(CIdentityID(feeCurrencyID))));
     ret.push_back(Pair("fees", ValueFromAmount(nFees)));
     if (IsReserveToReserve())
     {
@@ -1064,7 +1064,7 @@ UniValue CMMRProof::ToUniValue() const
             case CMerkleBranchBase::BRANCH_BTC:
             {
                 CBTCMerkleBranch &branch = *(CBTCMerkleBranch *)(proof);
-                retObj.push_back(Pair("branchtype", "BTC"));
+                retObj.push_back(Pair("branchtype", (int)CMerkleBranchBase::BRANCH_BTC));
                 retObj.push_back(Pair("index", (int64_t)(branch.nIndex)));
                 for (auto &oneHash : branch.branch)
                 {
@@ -1076,7 +1076,7 @@ UniValue CMMRProof::ToUniValue() const
             case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
             {
                 CMMRNodeBranch &branch = *(CMMRNodeBranch *)(proof);
-                retObj.push_back(Pair("branchtype", "MMRBLAKENODE"));
+                retObj.push_back(Pair("branchtype", (int)CMerkleBranchBase::BRANCH_MMRBLAKE_NODE));
                 retObj.push_back(Pair("index", (int64_t)(branch.nIndex)));
                 retObj.push_back(Pair("mmvsize", (int64_t)(branch.nSize)));
                 for (auto &oneHash : branch.branch)
@@ -1089,7 +1089,7 @@ UniValue CMMRProof::ToUniValue() const
             case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
             {
                 CMMRPowerNodeBranch &branch = *(CMMRPowerNodeBranch *)(proof);
-                retObj.push_back(Pair("branchtype", "MMRBLAKEPOWERNODE"));
+                retObj.push_back(Pair("branchtype", (int)CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE));
                 retObj.push_back(Pair("index", (int64_t)(branch.nIndex)));
                 retObj.push_back(Pair("mmvsize", (int64_t)(branch.nSize)));
                 for (auto &oneHash : branch.branch)

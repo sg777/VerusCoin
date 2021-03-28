@@ -644,7 +644,11 @@ UniValue CPartialTransactionProof::ToUniValue() const
 CPartialTransactionProof::CPartialTransactionProof(const UniValue &uni)
 {
     // univalue of this is just hex
-    ::FromVector(ParseHex(uni_get_str(uni)), *this);
+    std::vector<unsigned char> serializedBytes = ParseHex(uni_get_str(uni));
+    if (serializedBytes.size())
+    {
+        ::FromVector(serializedBytes, *this);
+    }
 }
 
 // this validates that all parts of a transaction match and either returns a full transaction

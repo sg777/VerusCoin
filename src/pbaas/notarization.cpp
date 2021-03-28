@@ -1134,7 +1134,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     {
         return state.Error("no-latest-proof-root");
     }
-    notarization.proofRoots[SystemID] = latestProofRoot;
+    notarization.proofRoots[latestProofRoot.systemID] = latestProofRoot;
 
     UniValue currencyStatesUni = find_value(result, "currencystates");
     if (!(currencyStatesUni.isArray() && currencyStatesUni.size()))

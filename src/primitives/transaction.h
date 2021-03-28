@@ -1357,6 +1357,15 @@ public:
         return 0;
     }
 
+    uint32_t GetProofHeight() const
+    {
+        if (IsChainProof())
+        {
+            return ((CMMRPowerNodeBranch *)(txProof.proofSequence[2]))->nSize;
+        }
+        return 0;
+    }
+
     UniValue ToUniValue() const;
 };
 
