@@ -577,6 +577,16 @@ UniValue CProofRoot::ToUniValue() const
     return obj;
 }
 
+CTokenOutput::CTokenOutput(const UniValue &obj)
+{
+    nVersion = (uint32_t)uni_get_int(find_value(obj, "version"), VERSION_CURRENT);
+    UniValue values = find_value(obj, "currencyvalues");
+    if (values.isObject())
+    {
+        reserveValues = CCurrencyValueMap(values);
+    }
+}
+
 CReserveTransfer::CReserveTransfer(const UniValue &uni) : CTokenOutput(uni), nFees(0)
 {
     flags = uni_get_int64(find_value(uni, "flags"), 0);

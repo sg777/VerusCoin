@@ -17,16 +17,6 @@
 #include <random>
 
 
-CTokenOutput::CTokenOutput(const UniValue &obj)
-{
-    nVersion = (uint32_t)uni_get_int(find_value(obj, "version"), VERSION_CURRENT);
-    UniValue values = find_value(obj, "currencyvalues");
-    if (values.isObject())
-    {
-        reserveValues = CCurrencyValueMap(values);
-    }
-}
-
 // calculate fees required in one currency to pay in another
 CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination, uint32_t flags)
 {
