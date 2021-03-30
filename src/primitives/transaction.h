@@ -1254,7 +1254,11 @@ public:
                              txProof(proof), 
                              components(Components) {}
 
-    CPartialTransactionProof(const CTransaction tx, const std::vector<int32_t> outputNums, const CBlockIndex *pIndex, uint32_t proofAtHeight);
+    CPartialTransactionProof(const CTransaction tx,
+                             const std::vector<int32_t> &inputNums,
+                             const std::vector<int32_t> &outputNums,
+                             const CBlockIndex *pIndex,
+                             uint32_t proofAtHeight);
 
     // This creates a proof for older blocks and full transactions, typically where the root proof is a standard
     // merkle proof
@@ -1616,7 +1620,7 @@ public:
     };
 
     enum EConstants {
-        DEFAULT_OUTPUT_VALUE = 1000,        // every output carries a small amount that comes out as a fee for the finalization tx
+        DEFAULT_OUTPUT_VALUE = 0,
         MAX_EVIDENCE_SUPPLEMENTALS = 25     // how many reserve transfers can be max in each output
     };
 

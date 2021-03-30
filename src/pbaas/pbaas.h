@@ -1375,6 +1375,10 @@ public:
                        CTransaction &lastImport, 
                        int32_t &outputNum);
 
+    bool GetLastSourceImport(const uint160 &currencyID, 
+                             CTransaction &lastImport, 
+                             int32_t &outputNum);
+
     bool GetUnspentSystemExports(const CCoinsViewCache &view,
                                  const uint160 systemID, 
                                  std::vector<pair<int, CInputDescriptor>> &exportOutputs);

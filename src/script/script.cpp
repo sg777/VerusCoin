@@ -1175,7 +1175,9 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
 
             if (vData.size() && (cci = CCrossChainImport(vData[0])).IsValid())
             {
-                if (cci.sourceSystemID != ASSETCHAINS_CHAINID)
+                // if source is same as import currency, this is a system import
+                // thread. otherwise, not
+                if (cci.sourceSystemID == cci.importCurrencyID)
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.sourceSystemID, cci.CurrencySystemImportKey())));
                 }

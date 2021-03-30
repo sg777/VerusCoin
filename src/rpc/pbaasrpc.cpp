@@ -636,6 +636,83 @@ bool CConnectedChains::GetLastImport(const uint160 &currencyID,
     return true;
 }
 
+bool CConnectedChains::GetLastSourceImport(const uint160 &sourceSystemID, 
+                                            CTransaction &lastImport, 
+                                            int32_t &outputNum)
+{
+    std::vector<CAddressUnspentDbEntry> unspentOutputs;
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> memPoolOutputs;
+
+    LOCK2(cs_main, mempool.cs);
+
+    uint160 importKey = CCrossChainRPCData::GetConditionID(sourceSystemID, CCrossChainImport::CurrencySystemImportKey());
+
+    if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({std::make_pair(importKey, CScript::P2IDX)}), memPoolOutputs) &&
+        memPoolOutputs.size())
+    {
+        // make sure it isn't just a burned transaction to that address, drop out on first match
+        COptCCParams p;
+        CAddressUnspentDbEntry foundOutput;
+        std::set<uint256> spentTxOuts;
+        std::set<uint256> txOuts;
+        
+        for (const auto &oneOut : memPoolOutputs)
+        {
+            // get last one in spending list
+            if (oneOut.first.spending)
+            {
+                spentTxOuts.insert(oneOut.first.txhash);
+            }
+        }
+        for (auto &oneOut : memPoolOutputs)
+        {
+            if (!spentTxOuts.count(oneOut.first.txhash))
+            {
+                lastImport = mempool.mapTx.find(oneOut.first.txhash)->GetTx();
+                outputNum = oneOut.first.index;
+                return true;
+            }
+        }
+    }
+
+    // get last import from the specified chain
+    if (!GetAddressUnspent(importKey, CScript::P2IDX, unspentOutputs))
+    {
+        return false;
+    }
+
+    // make sure it isn't just a burned transaction to that address, drop out on first match
+    const std::pair<CAddressUnspentKey, CAddressUnspentValue> *pOutput = NULL;
+    COptCCParams p;
+    CAddressUnspentDbEntry foundOutput;
+    for (const auto &output : unspentOutputs)
+    {
+        if (output.second.script.IsPayToCryptoCondition(p) && p.IsValid() && 
+            p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+            p.vData.size())
+        {
+            foundOutput = output;
+            pOutput = &foundOutput;
+            break;
+        }
+    }
+    if (!pOutput)
+    {
+        return false;
+    }
+    uint256 hashBlk;
+    CCurrencyDefinition newCur;
+
+    if (!myGetTransaction(pOutput->first.txhash, lastImport, hashBlk))
+    {
+        return false;
+    }
+
+    outputNum = pOutput->first.index;
+
+    return true;
+}
+
 void CheckPBaaSAPIsValid()
 {
     //printf("Solution version running: %d\n\n", CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()));
@@ -1300,7 +1377,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
                         continue;
                     }
 
-                    if ((cci = CCrossChainImport(importTx)).IsValid() &&
+                    if ((cci = CCrossChainImport(importTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
                         cci.GetImportInfo(importTx, importHeight, idx.first.index, ccx, cci, sysCCIOut, importNotarization, importNotOut, evidenceOutStart, evidenceOutEnd, reserveTransfers))
                     {
                         UniValue oneImportUni(UniValue::VOBJ);

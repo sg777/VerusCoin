@@ -1438,7 +1438,7 @@ bool CConnectedChains::GetPendingCurrencyExports(const uint160 currencyID,
     }
 }
 
-CPartialTransactionProof::CPartialTransactionProof(const CTransaction tx, const std::vector<int32_t> outputNums, const CBlockIndex *pIndex, uint32_t proofAtHeight)
+CPartialTransactionProof::CPartialTransactionProof(const CTransaction tx, const std::vector<int32_t> &inputNums, const std::vector<int32_t> &outputNums, const CBlockIndex *pIndex, uint32_t proofAtHeight)
 {
     // get map and MMR for transaction
     CTransactionMap txMap(tx);
@@ -1447,6 +1447,11 @@ CPartialTransactionProof::CPartialTransactionProof(const CTransaction tx, const 
 
     std::vector<CTransactionComponentProof> txProofVec;
     txProofVec.push_back(CTransactionComponentProof(txView, txMap, tx, CTransactionHeader::TX_HEADER, 0));
+    for (auto oneInNum : inputNums)
+    {
+        txProofVec.push_back(CTransactionComponentProof(txView, txMap, tx, CTransactionHeader::TX_PREVOUTSEQ, oneInNum));
+    }
+
     for (auto oneOutNum : outputNums)
     {
         txProofVec.push_back(CTransactionComponentProof(txView, txMap, tx, CTransactionHeader::TX_OUTPUT, oneOutNum));
@@ -1548,7 +1553,9 @@ bool CConnectedChains::GetExportProofs(uint32_t height,
             LogPrintf("%s: cannot validate block of export tx %s\n", __func__, oneExport.first.first.txIn.prevout.hash.GetHex().c_str());
             return false;
         }
-        oneExport.first.second = CPartialTransactionProof(exportTx, 
+        std::vector<int32_t> inputsToProve;
+        oneExport.first.second = CPartialTransactionProof(exportTx,
+                                                          inputsToProve,
                                                           std::vector<int32_t>({(int32_t)oneExport.first.first.txIn.prevout.n}), 
                                                           blockIt->second, 
                                                           height);
@@ -1678,7 +1685,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
-        // if we have inputs, break
+        // TODO: REMOVE - if we have inputs, break
         if (ccx.numInputs && nHeight == 0)
         {
             printf("%s:break for debugger on import for export: %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
@@ -1759,7 +1766,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             !(destCur.IsPBaaSChain() &&
                 (sourceSystemID == ccx.destCurrencyID ||
                   (ccx.destCurrencyID == ASSETCHAINS_CHAINID && 
-                   sourceSystemID == ConnectedChains.FirstNotaryChain().chainDefinition.GetID()))))
+                   sourceSystemID == ConnectedChains.FirstNotaryChain().chainDefinition.GetID()))) &&
+            !(sourceSystemID != ccx.destSystemID &&
+              ccx.destSystemID != ccx.destCurrencyID))
         {
             LogPrintf("%s: invalid currency for export/import %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), outputNum);
             return false;
@@ -1783,9 +1792,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 lastSourceCCI = CCrossChainImport(lastSourceImportTx.vout[sourceOutputNum].scriptPubKey);
                 lastSourceImportTxID = lastSourceImportTx.GetHash();
             }
-            else if (nHeight && !GetLastImport(ccx.sourceSystemID, lastSourceImportTx, sourceOutputNum))
+            else if (nHeight && !GetLastSourceImport(ccx.sourceSystemID, lastSourceImportTx, sourceOutputNum))
             {
-                LogPrintf("%s: cannot find last system import for export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), sourceOutputNum);
+                LogPrintf("%s: cannot find last source system import for export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), sourceOutputNum);
                 return false;
             }
             else if (nHeight)
@@ -1824,7 +1833,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                        lastReserveTransfers,
                                        state))
             {
-                LogPrintf("%s: %u - %s\n", __func__, destCur.name.c_str(), state.GetRejectCode(), state.GetRejectReason().c_str());
+                LogPrintf("%s: currency: %s, %u - %s\n", __func__, destCur.name.c_str(), state.GetRejectCode(), state.GetRejectReason().c_str());
                 return false;
             }
 
@@ -1834,9 +1843,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             // verify that the current export from the source system spends the prior export from the source system
             if (useProofs &&
-                !(ccx.firstInput > 0 &&
-                  exportTx.vin[ccx.firstInput - 1].prevout.hash == lastSysCCI.exportTxId &&
-                  exportTx.vin[ccx.firstInput - 1].prevout.n == lastSysCCI.exportTxOutNum))
+                !(ccx.IsChainDefinition() ||
+                  (lastCCI.IsInitialLaunchImport() && lastSysCCI.exportTxId.IsNull()) ||
+                  (ccx.firstInput > 0 &&
+                   exportTx.vin[ccx.firstInput - 1].prevout.hash == lastSysCCI.exportTxId &&
+                   exportTx.vin[ccx.firstInput - 1].prevout.n == lastSysCCI.exportTxOutNum)))
             {
                 LogPrintf("%s: out of order export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), sourceOutputNum);
                 return false;
@@ -1989,8 +2000,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // add notarization first, so it will be after the import
             cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
             dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-            tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)),
-                                    CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
+            tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)), 0);
 
             // supplemental export evidence is posted as a supplemental export
             cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
@@ -2159,8 +2169,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: requireddeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, newCurrencyIn.ToUniValue().write(1,2).c_str());
-        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str());
-        */
+        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str()); */
 
         // add local reserve deposit inputs and determine change
         if (localDepositRequirements.valueMap.size())
@@ -2308,10 +2317,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         TransactionBuilderResult result = tb.Build();
         if (result.IsError())
         {
-            /* UniValue jsonTx(UniValue::VOBJ);
+            UniValue jsonTx(UniValue::VOBJ);
             uint256 hashBlk;
             TxToUniv(tb.mtx, hashBlk, jsonTx);
-            printf("%s\n", jsonTx.write(1,2).c_str()); */
+            printf("%s\n", jsonTx.write(1,2).c_str());
             printf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             LogPrintf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             return false;
@@ -2334,6 +2343,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 if (!view.HaveCoins(oneIn.prevout.hash))
                 {
+                    UniValue jsonTx(UniValue::VOBJ);
+                    uint256 hashBlk;
+                    TxToUniv(newImportTx, hashBlk, jsonTx);
+                    printf("%s\n", jsonTx.write(1,2).c_str());
                     printf("%s: cannot find input in view %s\n", __func__, oneIn.prevout.hash.GetHex().c_str());
                 }
             }
@@ -2489,6 +2502,11 @@ bool CConnectedChains::GetSystemExports(const uint160 &systemID,
                         if (withProofs &&
                             ccx.destSystemID != ASSETCHAINS_CHAINID)
                         {
+                            std::vector<int> inputsToProve;
+                            if (!ccx.IsChainDefinition() && ccx.firstInput > 0)
+                            {
+                                inputsToProve.push_back(ccx.firstInput - 1);
+                            }
                             std::vector<int> outputsToProve({exportOutputNum});
                             auto it = mapBlockIndex.find(blkHash);
                             if (it == mapBlockIndex.end())
@@ -2500,14 +2518,16 @@ bool CConnectedChains::GetSystemExports(const uint160 &systemID,
                             for (auto &oneCoLaunch : coLaunchExports)
                             {
                                 assert(oneCoLaunch.first.first.txIn.prevout.hash == exportTx.GetHash());
-                                oneCoLaunch.first.second = CPartialTransactionProof(exportTx, 
+                                oneCoLaunch.first.second = CPartialTransactionProof(exportTx,
+                                                                                    std::vector<int>(),
                                                                                     std::vector<int>({(int)oneCoLaunch.first.first.txIn.prevout.n}), 
                                                                                     it->second,
                                                                                     toHeight);
                                 //printf("%s: co-launch proof: %s\n", __func__, oneCoLaunch.first.second.ToUniValue().write(1,2).c_str());
                             }
-                            exportProof = CPartialTransactionProof(exportTx, outputsToProve, it->second, toHeight);
-                            //printf("%s: toheight: %u, export proof: %s\n", __func__, toHeight, exportProof.ToUniValue().write(1,2).c_str());
+                            exportProof = CPartialTransactionProof(exportTx, inputsToProve, outputsToProve, it->second, toHeight);
+                            //CPartialTransactionProof checkSerProof(exportProof.ToUniValue());
+                            //printf("%s: toheight: %u, txhash: %s\nserialized export proof: %s\n", __func__, toHeight, checkSerProof.TransactionHash().GetHex().c_str(), checkSerProof.ToUniValue().write(1,2).c_str());
                         }
                     }
                     else
@@ -2560,7 +2580,11 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
                         notarizationRef.first = CInputDescriptor(notarizationTx.vout[idx.first.index].scriptPubKey,
                                                                  notarizationTx.vout[idx.first.index].nValue,
                                                                  CTxIn(idx.first.txhash, idx.first.index));
-                        notarizationRef.second = CPartialTransactionProof(notarizationTx, std::vector<int>({(int)idx.first.index}), blockIt->second, blockIt->second->GetHeight());
+                        notarizationRef.second = CPartialTransactionProof(notarizationTx,
+                                                                          std::vector<int>(),
+                                                                          std::vector<int>({(int)idx.first.index}),
+                                                                          blockIt->second,
+                                                                          blockIt->second->GetHeight());
                         retVal = true;
                     }
                 }
@@ -3496,7 +3520,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                                                 feeOutput,
                                                                 ccx.sourceHeightEnd,
                                                                 nHeight,
-                                                                isSameChain ? 1 : 2, // reserve transfers start at input 1 on same chain or after sys
+                                                                (!isSameChain && !mergedSysExport) ? 2 : 1, // reserve transfers start at input 1 on same chain or after sys
                                                                 numInputsUsed,
                                                                 exportTxOuts,
                                                                 exportTransfers,

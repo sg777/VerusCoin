@@ -253,7 +253,8 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                 hw << oneRt;
                 reserveTransfers.push_back(oneRt);
             }
-            if (rtExport.HasSupplement())
+            if (rtExport.HasSupplement() ||
+                (!rtExport.IsSameChain() && rtExport.numInputs > 0))
             {
                 numOutput++;
                 if (!(exportTx.vout.size() > numOutput &&
@@ -264,7 +265,7 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                       (rtExport = CCrossChainExport(p.vData[0])).IsValid() &&
                       rtExport.IsSupplemental()))
                 {
-                    return state.Error(strprintf("%s: invalid supplemental reserve transfer data for export",__func__));
+                    rtExport = CCrossChainExport();
                 }
             }
             else
@@ -369,22 +370,38 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     LOCK(mempool.cs);
 
     uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
-    bool isPBaaSLaunch = !IsVerusActive() && solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && nHeight == 1;
+
+    CCrossChainImport altImport;
+    const CCrossChainImport *pBaseImport = this;
+
+    // if this is a source system import, it comes after the actual import
+    // that we can parse on a transaction
+    if (pBaseImport->IsSourceSystemImport()) 
+    {
+        if (!(numImportOut-- > 0 &&
+              (altImport = CCrossChainImport(importTx.vout[numImportOut].scriptPubKey)).IsValid() &&
+              !(pBaseImport = &altImport)->IsSourceSystemImport()))
+        {
+            return state.Error(strprintf("%s: invalid import",__func__));
+        }
+    }
+
+    bool isPBaaSLaunch = !IsVerusActive() && pBaseImport->IsInitialLaunchImport();
 
     importNotarizationOut = numImportOut + 1;
 
-    if (IsSameChain())
+    if (pBaseImport->IsSameChain())
     {
         // reserve transfers are available via the inputs to the matching export
-        CTransaction exportTx = exportTxId.IsNull() ? importTx : CTransaction();
+        CTransaction exportTx = pBaseImport->exportTxId.IsNull() ? importTx : CTransaction();
         uint256 hashBlk;
         COptCCParams p;
 
-        if (!((exportTxId.IsNull() ? true : myGetTransaction(exportTxId, exportTx, hashBlk)) &&
-              IsDefinitionImport() ||
-              (exportTxOutNum >= 0 &&
-              exportTx.vout.size() > exportTxOutNum &&
-              exportTx.vout[exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+        if (!((pBaseImport->exportTxId.IsNull() ? true : myGetTransaction(pBaseImport->exportTxId, exportTx, hashBlk)) &&
+              pBaseImport->IsDefinitionImport() ||
+              (pBaseImport->exportTxOutNum >= 0 &&
+              exportTx.vout.size() > pBaseImport->exportTxOutNum &&
+              exportTx.vout[pBaseImport->exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
               p.IsValid() &&
               p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
               p.vData.size() &&
@@ -393,12 +410,12 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             return state.Error(strprintf("%s: cannot retrieve export transaction for import",__func__));
         }
 
-        if (!IsDefinitionImport())
+        if (!pBaseImport->IsDefinitionImport())
         {
             int32_t nextOutput;
             CPBaaSNotarization xNotarization;
             int primaryOutNumOut;
-            if (!ccx.GetExportInfo(exportTx, exportTxOutNum, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers, state))
+            if (!ccx.GetExportInfo(exportTx, pBaseImport->exportTxOutNum, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers, state))
             {
                 return false;
             }
@@ -430,44 +447,53 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             importNotarizationOut++;
         }
 
-        // next output should be export in evidence output followed by supplemental reserve transfers for the export
-        evidenceOutStart = importNotarizationOut + 1;
-        CNotaryEvidence evidence;
-        CPartialTransactionProof evidenceProof;
-        if (!(evidenceOutStart >= 0 &&
-              importTx.vout.size() > evidenceOutStart &&
-              importTx.vout[evidenceOutStart].scriptPubKey.IsPayToCryptoCondition(p) &&
-              p.IsValid() &&
-              p.evalCode == EVAL_NOTARY_EVIDENCE &&
-              p.vData.size() &&
-              (evidence = CNotaryEvidence(p.vData[0])).IsValid() &&
-              evidence.IsPartialTxProof() &&
-              evidence.evidence.size()))
+        if (!isPBaaSLaunch ||
+            pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
+            (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID()))
         {
-            return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
-        }
-        CTransaction exportTx;
-        p = COptCCParams();
-        if (!(!evidence.evidence[0].GetPartialTransaction(exportTx).IsNull() &&
-              evidence.evidence[0].TransactionHash() == exportTxId &&
-              exportTx.vout.size() > exportTxOutNum &&
-              exportTx.vout[exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-              p.IsValid() &&
-              p.vData.size() &&
-              (ccx = CCrossChainExport(p.vData[0])).IsValid()))
-        {
-            return state.Error(strprintf("%s: invalid export evidence for import",__func__));
-        }
-        int32_t nextOutput;
-        CPBaaSNotarization xNotarization;
-        int primaryOutNumOut;
-        if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers))
-        {
-            return state.Error(strprintf("%s: invalid export evidence for import 1",__func__));
-        }
+            // next output should be export in evidence output followed by supplemental reserve transfers for the export
+            evidenceOutStart = importNotarizationOut + 1;
+            CNotaryEvidence evidence;
 
-        // evidence out end points to the last evidence out, not beyond
-        evidenceOutEnd = nextOutput - 1;
+            if (!(evidenceOutStart >= 0 &&
+                importTx.vout.size() > evidenceOutStart &&
+                importTx.vout[evidenceOutStart].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_NOTARY_EVIDENCE &&
+                p.vData.size() &&
+                (evidence = CNotaryEvidence(p.vData[0])).IsValid() &&
+                evidence.IsPartialTxProof() &&
+                evidence.evidence.size()))
+            {
+                return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
+            }
+
+            CTransaction exportTx;
+            p = COptCCParams();
+            if (!(!evidence.evidence[0].GetPartialTransaction(exportTx).IsNull() &&
+                evidence.evidence[0].TransactionHash() == exportTxId &&
+                exportTx.vout.size() > exportTxOutNum &&
+                exportTx.vout[exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.vData.size() &&
+                (ccx = CCrossChainExport(p.vData[0])).IsValid()))
+            {
+                return state.Error(strprintf("%s: invalid export evidence for import", __func__));
+            }
+            int32_t nextOutput;
+            CPBaaSNotarization xNotarization;
+            int primaryOutNumOut;
+            if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers))
+            {
+                UniValue jsonTx(UniValue::VOBJ);
+                TxToUniv(importTx, uint256(), jsonTx);
+                printf("%s: importTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                return state.Error(strprintf("%s: invalid export evidence for import 1",__func__));
+            }
+
+            // evidence out end points to the last evidence out, not beyond
+            evidenceOutEnd = nextOutput - 1;
+        }
     }
     COptCCParams p;
     if (!(importTx.vout.size() > importNotarizationOut &&
@@ -3093,8 +3119,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
 
+                /* printf("%s: importCurrencyState:\n%s\nnewCurrencyState:\n%s\ntransferFees:\n%s\n", 
+                    __func__, 
+                    importCurrencyState.ToUniValue().write(1,2).c_str(), 
+                    newCurrencyState.ToUniValue().write(1,2).c_str(), 
+                    transferFees.ToUniValue().write(1,2).c_str()); */
+
                 // undo fees in
-                for (auto &oneFee : transferFees.valueMap)
+                for (auto &oneFee : (liquidityFees + transferFees).valueMap)
                 {
                     // system fees will not be converted
                     if (oneFee.first != importCurrencyDef.systemID && currencyIndexMap.count(oneFee.first))

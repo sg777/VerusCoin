@@ -408,11 +408,22 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                 {
                     return;
                 }
+                bool foundCurrent = false;
                 for (int i = 0; i < result.size(); i++)
                 {
+                    uint256 exportTxId = uint256S(uni_get_str(find_value(result[i], "txid")));
+                    if (!foundCurrent && !lastCCI.exportTxId.IsNull())
+                    {
+                        // when we find our export, take the next
+                        if (exportTxId == lastCCI.exportTxId)
+                        {
+                            foundCurrent = true;
+                        }
+                        continue;
+                    }
+
                     // create one import at a time
                     uint32_t notarizationHeight = uni_get_int64(find_value(result[i], "height"));
-                    uint256 exportTxId = uint256S(uni_get_str(find_value(result[i], "txid")));
                     int32_t exportTxOutNum = uni_get_int(find_value(result[i], "txoutnum"));
                     CPartialTransactionProof txProof = CPartialTransactionProof(find_value(result[i], "partialtransactionproof"));
                     UniValue transferArrUni = find_value(result[i], "transfers");
@@ -452,6 +463,19 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                     {
                         printf("Invalid export msg2 from %s\n", uni_get_str(params[0]).c_str());
                         return;
+                    }
+                    if (!foundCurrent)
+                    {
+                        CCrossChainExport ccx(exportTx.vout[exportTxOutNum].scriptPubKey);
+                        if (!ccx.IsValid())
+                        {
+                            printf("Invalid export msg3 from %s\n", uni_get_str(params[0]).c_str());
+                            return;
+                        }
+                        if (ccx.IsChainDefinition())
+                        {
+                            continue;
+                        }
                     }
                     std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>> oneExport =
                         std::make_pair(std::make_pair(CInputDescriptor(exportTx.vout[exportTxOutNum].scriptPubKey, 
@@ -958,11 +982,13 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             }
             else
             {
-                registrationAmount = ConnectedChains.ThisChain().currencyImportFee;
+                registrationAmount = 0;
             }
 
-            // TODO: this should actually import the first notarization
-            CCrossChainImport cci = CCrossChainImport(ASSETCHAINS_CHAINID,
+            // only the first notary ID import gets a thread sourced from the launch chain.
+            // this allows the requirement that any import from that system spend an import sourced
+            // from that system to be an in-order, system-to-system, export/import thread of transactions.
+            CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().launchSystemID,
                                                       1,
                                                       newCurID,
                                                       CCurrencyValueMap());

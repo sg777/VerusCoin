@@ -557,7 +557,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
         CCoinbaseCurrencyState tempState = newNotarization.currencyState;
-        if (newNotarization.IsPreLaunch())
+        if (!(newNotarization.IsLaunchCleared() && !newNotarization.currencyState.IsLaunchCompleteMarker()) && exportTransfers.size())
         {
             // normalize prices on the way in to prevent overflows on first pass
             std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(tempState.currencies);
@@ -617,11 +617,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             }
             tempState.fees = tempState.AddVectors(tempState.fees, this->currencyState.fees);
         }
-        else if (tempState.IsLaunchConfirmed())
+        else if (tempState.IsLaunchConfirmed() && !tempState.IsLaunchCompleteMarker())
         {
             tempState.conversionPrice = newNotarization.currencyState.conversionPrice;
         }
-        
+
         newNotarization.currencyState = tempState;
         return retVal;
     }
@@ -1000,7 +1000,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     // make the earned notarization output
     cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-    txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &notaryEvidence)), CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
+    txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &notaryEvidence)), 0);
 
     if (externalSystem.notarizationProtocol != externalSystem.NOTARIZATION_NOTARY_CHAINID)
     {
