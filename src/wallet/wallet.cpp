@@ -4525,9 +4525,8 @@ CCurrencyValueMap CWalletTx::GetImmatureReserveCredit(bool fUseCache) const
 {
     if (IsCoinBase() && GetBlocksToMaturity() > 0 && IsInMainChain())
     {
-        pwallet->GetReserveCredit(*this, ISMINE_SPENDABLE);
+        return pwallet->GetReserveCredit(*this, ISMINE_SPENDABLE);
     }
-
     return CCurrencyValueMap();
 }
 

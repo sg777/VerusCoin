@@ -3168,7 +3168,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
             "  \"keypoolsize\": xxxx,        (numeric) how many new keys are pre-generated\n"
             "  \"unlocked_until\": ttt,      (numeric) the timestamp in seconds since epoch (midnight Jan 1 1970 GMT) that the wallet is unlocked for transfers, or 0 if the wallet is locked\n"
             "  \"paytxfee\": x.xxxx,         (numeric) the transaction fee configuration, set in " + CURRENCY_UNIT + "/kB\n"
-            "  \"seedfp\": \"uint256\",        (string) the BLAKE2b-256 hash of the HD seed\n"
+            "  \"seedfp\": \"uint256\",      (string) the BLAKE2b-256 hash of the HD seed\n"
             "}\n"
             "\nExamples:\n"
             + HelpExampleCli("getwalletinfo", "")
@@ -3234,11 +3234,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     UniValue reserveBal(UniValue::VOBJ);
     UniValue immatureReserveBal(UniValue::VOBJ);
     CCurrencyValueMap resBal = pwalletMain->GetReserveBalance();
-    CCurrencyValueMap immatureResBal;
-    if (!IsVerusActive())
-    {
-        immatureResBal = pwalletMain->GetImmatureReserveBalance();
-    }
+
     for (auto &oneBalance : resBal.valueMap)
     {
         reserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
@@ -3259,15 +3255,6 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
                 obj.push_back(Pair("unlocked_reserve_balance", unlockedReserveBal));
             }
         }
-    }
-
-    for (auto &oneBalance : immatureResBal.valueMap)
-    {
-        immatureReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
-    }
-    if (immatureReserveBal.size())
-    {
-        obj.push_back(Pair("immature_reserve_balance", immatureReserveBal));
     }
 
     UniValue unconfirmedReserveBal(UniValue::VOBJ);
