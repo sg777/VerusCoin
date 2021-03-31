@@ -422,14 +422,17 @@ void GetCurrencyDefinitions(vector<CCurrencyDefinition> &chains, bool includeExp
 
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
+    std::set<uint256> processedTransactions;
+
     if (GetAddressIndex(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), CCurrencyDefinition::CurrencySystemKey()), CScript::P2IDX, addressIndex))
     {
         for (auto txidx : addressIndex)
         {
             CTransaction tx;
             uint256 blkHash;
-            if (GetTransaction(txidx.first.txhash, tx, blkHash))
+            if (!processedTransactions.count(txidx.first.txhash) && GetTransaction(txidx.first.txhash, tx, blkHash))
             {
+                processedTransactions.insert(txidx.first.txhash);
                 std::vector<CCurrencyDefinition> newChains = CCurrencyDefinition::GetCurrencyDefinitions(tx);
                 chains.insert(chains.begin(), newChains.begin(), newChains.end());
 
@@ -1387,6 +1390,10 @@ UniValue getimports(const UniValue& params, bool fHelp)
                     {
                         continue;
                     }
+
+                    UniValue scrOut(UniValue::VOBJ);
+                    ScriptPubKeyToUniv(importTx.vout[idx.first.index].scriptPubKey, scrOut, false);
+                    printf("%s: scriptOut: %s\n", __func__, scrOut.write(1,2).c_str());
 
                     if ((cci = CCrossChainImport(importTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
                         cci.GetImportInfo(importTx, importHeight, idx.first.index, ccx, cci, sysCCIOut, importNotarization, importNotOut, evidenceOutStart, evidenceOutEnd, reserveTransfers))

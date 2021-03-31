@@ -2183,8 +2183,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
                 // we had to wait to update this here to ensure it represented a correct distribution ratio
                 coinbaseTx.vout[cbOutIdx].nValue = amount;
-
-                // the only valid CC output we currently support on coinbases is stake guard, which does not need to be modified for this
             }
         }
 
@@ -2291,7 +2289,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
     return pblocktemplate.release();
 }
- 
+
 CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _scriptPubKeyIn, bool isStake)
 {
     std::vector<CTxOut> minerOutputs = _scriptPubKeyIn.size() ? std::vector<CTxOut>({CTxOut(1, _scriptPubKeyIn)}) : std::vector<CTxOut>();
