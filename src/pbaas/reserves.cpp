@@ -2519,6 +2519,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 }
 
                 // if it's from a gateway, we need to be sure that the currency it is importing is valid for the current chain
+                // all pre-conversions
                 if (isCrossSystemImport)
                 {
                     uint160 inputID = curTransfer.FirstCurrency();
@@ -2706,8 +2707,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 if (newCurrencyConverted)
                 {
-                    reserveConverted.valueMap[curTransfer.FirstCurrency()] += valueOut;
-                    preConvertedReserves.valueMap[curTransfer.FirstCurrency()] += valueOut;
+                    uint160 firstCurID = curTransfer.FirstCurrency();
+                    reserveConverted.valueMap[firstCurID] += valueOut;
+                    preConvertedReserves.valueMap[firstCurID] += valueOut;
+                    if (isCrossSystemImport && importedCurrency.valueMap.count(firstCurID))
+                    {
+                        // TODO: check this for 100% rollup of launch fees and
+                        // resolution at launch. now, only fees are imported after the first coinbase
+                        // reserves in the currency are already on chain as of block 1 and fees come in 
+                        // and get converted with imports
+                        importedCurrency.valueMap[firstCurID] -= valueOut;
+                    }
 
                     if (totalCarveOut > 0 && totalCarveOut < SATOSHIDEN)
                     {
@@ -3109,42 +3119,82 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     // launch clear or not confirmed, we have straight prices, fees get formula based conversion, but
     // price is not recorded in state so that initial currency always has initial prices
-    if (isFractional &&
-        !newCurrencyState.IsLaunchCompleteMarker())
+    if (!newCurrencyState.IsLaunchCompleteMarker())
     {
-        if (newCurrencyState.IsLaunchConfirmed())
+        if (isFractional)
         {
-            // refresh these values to stay constant until launch complete marker
-            if (newCurrencyState.IsLaunchClear())
+            if (newCurrencyState.IsLaunchConfirmed())
             {
-                CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
-
-                /* printf("%s: importCurrencyState:\n%s\nnewCurrencyState:\n%s\ntransferFees:\n%s\n", 
-                    __func__, 
-                    importCurrencyState.ToUniValue().write(1,2).c_str(), 
-                    newCurrencyState.ToUniValue().write(1,2).c_str(), 
-                    transferFees.ToUniValue().write(1,2).c_str()); */
-
-                // undo fees in
-                for (auto &oneFee : (liquidityFees + transferFees).valueMap)
+                // refresh these values to stay constant until launch complete marker
+                if (newCurrencyState.IsLaunchClear())
                 {
-                    // system fees will not be converted
-                    if (oneFee.first != importCurrencyDef.systemID && currencyIndexMap.count(oneFee.first))
+                    CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
+
+                    /* printf("%s: importCurrencyState:\n%s\nnewCurrencyState:\n%s\ntransferFees:\n%s\n", 
+                        __func__, 
+                        importCurrencyState.ToUniValue().write(1,2).c_str(), 
+                        newCurrencyState.ToUniValue().write(1,2).c_str(), 
+                        transferFees.ToUniValue().write(1,2).c_str()); */
+
+                    // undo fees in
+                    CCurrencyValueMap allFees = liquidityFees + transferFees;
+                    for (auto &oneFee : allFees.valueMap)
                     {
-                        tempCurrencyState.reserves[currencyIndexMap[oneFee.first]] -= oneFee.second;
+                        // system fees will not be converted
+                        if (oneFee.first != importCurrencyDef.systemID && currencyIndexMap.count(oneFee.first))
+                        {
+                            tempCurrencyState.reserves[currencyIndexMap[oneFee.first]] -= oneFee.second;
+                        }
+                    }
+                    //  restore native reserves for fees as well
+                    tempCurrencyState.reserves[currencyIndexMap[importCurrencyDef.systemID]] += 
+                        (tempCurrencyState.nativeFees - allFees.valueMap[importCurrencyDef.systemID]);
+
+                    if (importCurrencyDef.launchSystemID == importCurrencyDef.systemID)
+                    {
+                        newCurrencyState.conversionPrice = tempCurrencyState.PricesInReserve();
+                    }
+                    else
+                    {
+                        CAmount systemDestPrice = tempCurrencyState.PriceInReserve(systemDestIdx);
+                        tempCurrencyState.currencies.erase(tempCurrencyState.currencies.begin() + systemDestIdx);
+                        tempCurrencyState.reserves.erase(tempCurrencyState.reserves.begin() + systemDestIdx);
+                        int32_t sysWeight = tempCurrencyState.weights[systemDestIdx];
+                        tempCurrencyState.weights.erase(tempCurrencyState.weights.begin() + systemDestIdx);
+                        int32_t oneExtraWeight = sysWeight / tempCurrencyState.weights.size();
+                        int32_t weightRemainder = sysWeight % tempCurrencyState.weights.size();
+                        for (auto &oneWeight : tempCurrencyState.weights)
+                        {
+                            oneWeight += oneExtraWeight;
+                            if (weightRemainder)
+                            {
+                                oneWeight++;
+                                weightRemainder--;
+                            }
+                        }
+                        std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
+                        launchPrices.insert(launchPrices.begin() + systemDestIdx, systemDestPrice);
+                        newCurrencyState.conversionPrice = launchPrices;
                     }
                 }
-                //  restore native reserves for fees as well
-                tempCurrencyState.reserves[currencyIndexMap[importCurrencyDef.systemID]] += 
-                    (tempCurrencyState.nativeFees - transferFees.valueMap[importCurrencyDef.systemID]);
-
+                else
+                {
+                    newCurrencyState.conversionPrice = importCurrencyState.conversionPrice;
+                }
+            }
+            else if (importCurrencyState.IsPrelaunch() && !importCurrencyState.IsRefunding())
+            {
+                newCurrencyState.viaConversionPrice = newCurrencyState.PricesInReserve();
+                CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
+                // via prices are used for fees on launch clear and include the converter issued currency
+                // normal prices on launch clear for a gateway or PBaaS converter do not include the new native
+                // currency until after pre-conversions are processed
                 if (importCurrencyDef.launchSystemID == importCurrencyDef.systemID)
                 {
                     newCurrencyState.conversionPrice = tempCurrencyState.PricesInReserve();
                 }
                 else
                 {
-                    CAmount systemDestPrice = tempCurrencyState.PriceInReserve(systemDestIdx);
                     tempCurrencyState.currencies.erase(tempCurrencyState.currencies.begin() + systemDestIdx);
                     tempCurrencyState.reserves.erase(tempCurrencyState.reserves.begin() + systemDestIdx);
                     int32_t sysWeight = tempCurrencyState.weights[systemDestIdx];
@@ -3161,46 +3211,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         }
                     }
                     std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
-                    launchPrices.insert(launchPrices.begin() + systemDestIdx, systemDestPrice);
+                    launchPrices.insert(launchPrices.begin() + systemDestIdx, newCurrencyState.viaConversionPrice[systemDestIdx]);
                     newCurrencyState.conversionPrice = launchPrices;
                 }
-            }
-            else
-            {
-                newCurrencyState.conversionPrice = importCurrencyState.conversionPrice;
-            }
-        }
-        else if (importCurrencyState.IsPrelaunch() && !importCurrencyState.IsRefunding())
-        {
-            newCurrencyState.viaConversionPrice = newCurrencyState.PricesInReserve();
-            CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
-            // via prices are used for fees on launch clear and include the converter issued currency
-            // normal prices on launch clear for a gateway or PBaaS converter do not include the new native
-            // currency until after pre-conversions are processed
-            if (importCurrencyDef.launchSystemID == importCurrencyDef.systemID)
-            {
-                newCurrencyState.conversionPrice = tempCurrencyState.PricesInReserve();
-            }
-            else
-            {
-                tempCurrencyState.currencies.erase(tempCurrencyState.currencies.begin() + systemDestIdx);
-                tempCurrencyState.reserves.erase(tempCurrencyState.reserves.begin() + systemDestIdx);
-                int32_t sysWeight = tempCurrencyState.weights[systemDestIdx];
-                tempCurrencyState.weights.erase(tempCurrencyState.weights.begin() + systemDestIdx);
-                int32_t oneExtraWeight = sysWeight / tempCurrencyState.weights.size();
-                int32_t weightRemainder = sysWeight % tempCurrencyState.weights.size();
-                for (auto &oneWeight : tempCurrencyState.weights)
-                {
-                    oneWeight += oneExtraWeight;
-                    if (weightRemainder)
-                    {
-                        oneWeight++;
-                        weightRemainder--;
-                    }
-                }
-                std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
-                launchPrices.insert(launchPrices.begin() + systemDestIdx, newCurrencyState.viaConversionPrice[systemDestIdx]);
-                newCurrencyState.conversionPrice = launchPrices;
             }
         }
     }

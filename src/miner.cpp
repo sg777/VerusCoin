@@ -852,7 +852,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 return false;
             }
 
-            // create an import based on launch conditions that covers all pre-allocations and uses the initial notarization
+            // create an import based on launch conditions that covers all pre-allocations and uses the initial notarization.
             // generate outputs, then fill in numOutputs
             CCrossChainImport cci = CCrossChainImport(newCurrency.launchSystemID,
                                                       newNotarization.notarizationHeight,
@@ -921,7 +921,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
                 // create the import thread output
                 depositCp = CCinit(&depositCC, EVAL_RESERVE_DEPOSIT);
-                std::vector<CTxDestination> depositDests({CPubKey(ParseHex(CC.CChexstr))});
+                std::vector<CTxDestination> depositDests({CPubKey(ParseHex(depositCC.CChexstr))});
                 CReserveDeposit rd(newCurID, gatewayDeposits);
                 CAmount nativeOut = gatewayDeposits.valueMap.count(ASSETCHAINS_CHAINID) ? gatewayDeposits.valueMap[ASSETCHAINS_CHAINID] : 0;
                 outputs.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, depositDests, 1, &rd))));
