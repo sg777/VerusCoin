@@ -1692,12 +1692,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
-        // TODO: REMOVE - if we have inputs, break
-        if (ccx.numInputs && nHeight == 0)
-        {
-            printf("%s:break for debugger on import for export: %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
-        }
-
         // get reserve deposits for destination currency of export. these will be available whether the source is same chain
         // or an external chain/gateway
         std::vector<CInputDescriptor> localDeposits;
@@ -2391,9 +2385,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         newImports[ccx.destCurrencyID].push_back(std::make_pair(0, newImportTx));
         if (useProofs)
         {
-            UniValue uni(UniValue::VOBJ);
+            /* UniValue uni(UniValue::VOBJ);
             TxToUniv(newImportTx, uint256(), uni);
-            printf("%s: newImportTx:\n%s\n", __func__, uni.write(1,2).c_str());
+            printf("%s: newImportTx:\n%s\n", __func__, uni.write(1,2).c_str()); */
 
             lastSourceImportTx = newImportTx;
             lastSourceCCI = sysCCI;
