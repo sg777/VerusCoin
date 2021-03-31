@@ -3232,7 +3232,6 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
     UniValue reserveBal(UniValue::VOBJ);
-    UniValue immatureReserveBal(UniValue::VOBJ);
     CCurrencyValueMap resBal = pwalletMain->GetReserveBalance();
 
     for (auto &oneBalance : resBal.valueMap)
