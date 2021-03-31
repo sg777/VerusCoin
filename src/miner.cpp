@@ -2139,6 +2139,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         // now that we have the total reward, update the coinbase outputs
         if (isStake)
         {
+            // TODO: need to add reserve output to stake coinbase to prevent burning of VRSC
             coinbaseTx.vout[0].nValue = rewardTotal;
         }
         else
@@ -2163,10 +2164,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 // now make outputs for non-native, VRSC fees
                 if (verusFeeLeft)
                 {
-                    CAmount verusFee = (arith_uint256(rewardTotal) * arith_uint256(minerOutputs[cbOutIdx].nValue) / arith_uint256(rewardTotalShareAmount)).GetLow64();
-                    if (rewardLeft <= verusFee || (cbOutIdx + 1) == minerOutputs.size())
+                    CAmount verusFee = (arith_uint256(verusFees) * arith_uint256(minerOutputs[cbOutIdx].nValue) / arith_uint256(rewardTotalShareAmount)).GetLow64();
+                    if (verusFeeLeft <= verusFee || (cbOutIdx + 1) == minerOutputs.size())
                     {
-                        verusFee = rewardLeft;
+                        verusFee = verusFeeLeft;
                     }
                     CTxDestination minerDestination;
                     if (verusFee >= CFeePool::MIN_SHARE_SIZE && ExtractDestination(coinbaseTx.vout[cbOutIdx].scriptPubKey, minerDestination))

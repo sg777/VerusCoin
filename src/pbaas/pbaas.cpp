@@ -1643,6 +1643,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
     }
 
+    // now, if we are creating an import for an external export, spend and output the import thread for that external system to make it
+    // easy to find the last import for any external system and confirm that we are also not skipping any exports
+    CTransaction lastSourceImportTx;
+    int32_t sourceOutputNum = -1;
+    CCrossChainImport lastSourceCCI;
+    uint256 lastSourceImportTxID;
+
     for (auto &oneIT : exports)
     {
         uint256 blkHash;
@@ -1774,25 +1781,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
-        // now, if we are creating an import for an external export, spend and output the import thread for that external system to make it
-        // easy to find the last import for any external system and confirm that we are also not skipping any exports
-        CTransaction lastSourceImportTx;
-        int32_t sourceOutputNum;
-        CCrossChainImport lastSourceCCI;
-        uint256 lastSourceImportTxID;
-
         // if we are importing from another system, find the last import from that system and consider this another one
         if (useProofs)
         {
-            auto lastSourceImportIt = newImports.find(ccx.sourceSystemID);
-            if (lastSourceImportIt != newImports.end())
-            {
-                lastSourceImportTx = lastSourceImportIt->second.back().second;
-                sourceOutputNum = lastSourceImportIt->second.back().first;
-                lastSourceCCI = CCrossChainImport(lastSourceImportTx.vout[sourceOutputNum].scriptPubKey);
-                lastSourceImportTxID = lastSourceImportTx.GetHash();
-            }
-            else if (nHeight && !GetLastSourceImport(ccx.sourceSystemID, lastSourceImportTx, sourceOutputNum))
+            if (sourceOutputNum == -1 && nHeight && !GetLastSourceImport(ccx.sourceSystemID, lastSourceImportTx, sourceOutputNum))
             {
                 LogPrintf("%s: cannot find last source system import for export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), sourceOutputNum);
                 return false;
@@ -1844,11 +1836,18 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // verify that the current export from the source system spends the prior export from the source system
             if (useProofs &&
                 !(ccx.IsChainDefinition() ||
-                  (lastCCI.IsInitialLaunchImport() && lastSysCCI.exportTxId.IsNull()) ||
+                  (lastCCI.IsInitialLaunchImport() && lastSourceCCI.exportTxId.IsNull()) ||
                   (ccx.firstInput > 0 &&
-                   exportTx.vin[ccx.firstInput - 1].prevout.hash == lastSysCCI.exportTxId &&
-                   exportTx.vin[ccx.firstInput - 1].prevout.n == lastSysCCI.exportTxOutNum)))
+                   exportTx.vin[ccx.firstInput - 1].prevout.hash == lastSourceCCI.exportTxId &&
+                   exportTx.vin[ccx.firstInput - 1].prevout.n == lastSourceCCI.exportTxOutNum)))
             {
+                printf("%s: out of order export for cci:\n%s\n, expected: (%s, %d) found: (%s, %u)\n", 
+                    __func__,
+                    lastSourceCCI.ToUniValue().write(1,2).c_str(),
+                    lastSourceCCI.exportTxId.GetHex().c_str(), 
+                    lastSourceCCI.exportTxOutNum, 
+                    exportTx.vin[ccx.firstInput - 1].prevout.hash.GetHex().c_str(), 
+                    exportTx.vin[ccx.firstInput - 1].prevout.n);
                 LogPrintf("%s: out of order export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), sourceOutputNum);
                 return false;
             }
@@ -1976,6 +1975,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             sysCCI = cci;
             sysCCI.importCurrencyID = sysCCI.sourceSystemID;
             sysCCI.flags |= sysCCI.FLAG_SOURCESYSTEM;
+            // for exports to the native chain, the system export thread is merged with currency export, so no need to go to next
+            if (cci.importCurrencyID != ASSETCHAINS_CHAINID)
+            {
+                sysCCI.exportTxOutNum++;                        // source thread output is +1 from the input
+            }
             tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &sysCCI)), 0);
         }
 
@@ -2384,8 +2388,18 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 printf("%s: cannot find tx in view %s\n", __func__, newImportTx.GetHash().GetHex().c_str());
             }
         }
-
         newImports[ccx.destCurrencyID].push_back(std::make_pair(0, newImportTx));
+        if (useProofs)
+        {
+            UniValue uni(UniValue::VOBJ);
+            TxToUniv(newImportTx, uint256(), uni);
+            printf("%s: newImportTx:\n%s\n", __func__, uni.write(1,2).c_str());
+
+            lastSourceImportTx = newImportTx;
+            lastSourceCCI = sysCCI;
+            lastSourceImportTxID = newImportTx.GetHash();
+            sourceOutputNum = 1;
+        }
     }
     return true;
 }
