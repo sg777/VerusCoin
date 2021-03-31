@@ -3232,7 +3232,13 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
     UniValue reserveBal(UniValue::VOBJ);
+    UniValue immatureReserveBal(UniValue::VOBJ);
     CCurrencyValueMap resBal = pwalletMain->GetReserveBalance();
+    CCurrencyValueMap immatureResBal;
+    if (!IsVerusActive())
+    {
+        immatureResBal = pwalletMain->GetImmatureReserveBalance();
+    }
     for (auto &oneBalance : resBal.valueMap)
     {
         reserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
@@ -3253,6 +3259,15 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
                 obj.push_back(Pair("unlocked_reserve_balance", unlockedReserveBal));
             }
         }
+    }
+
+    for (auto &oneBalance : immatureResBal.valueMap)
+    {
+        immatureReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+    }
+    if (immatureReserveBal.size())
+    {
+        obj.push_back(Pair("immature_reserve_balance", immatureReserveBal));
     }
 
     UniValue unconfirmedReserveBal(UniValue::VOBJ);

@@ -365,6 +365,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     evidenceOutStart = -1;
     evidenceOutEnd = -1;
 
+    CCrossChainImport sysCCITemp;
+
     // we cannot assert that cs_main is held or take cs_main here due to the multi-threaded validation model, 
     // but we must either be holding the lock to enter here or in service of a smart transaction at this point.
     LOCK(mempool.cs);
@@ -439,7 +441,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 p.IsValid() &&
                 p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
                 p.vData.size() &&
-                (sysCCI = CCrossChainImport(p.vData[0])).IsValid()))
+                (sysCCITemp = CCrossChainImport(p.vData[0])).IsValid()))
             {
                 return state.Error(strprintf("%s: cannot retrieve export evidence for import",__func__));
             }
@@ -504,6 +506,10 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
           (importNotarization = CPBaaSNotarization(p.vData[0])).IsValid()))
     {
         return state.Error(strprintf("%s: invalid import notarization for import",__func__));
+    }
+    if (sysCCITemp.IsValid())
+    {
+        sysCCI = sysCCITemp;
     }
     return true;
 }

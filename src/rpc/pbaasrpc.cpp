@@ -1391,12 +1391,13 @@ UniValue getimports(const UniValue& params, bool fHelp)
                         continue;
                     }
 
-                    UniValue scrOut(UniValue::VOBJ);
+                    /* UniValue scrOut(UniValue::VOBJ);
                     ScriptPubKeyToUniv(importTx.vout[idx.first.index].scriptPubKey, scrOut, false);
-                    printf("%s: scriptOut: %s\n", __func__, scrOut.write(1,2).c_str());
+                    printf("%s: scriptOut: %s\n", __func__, scrOut.write(1,2).c_str()); */
 
+                    CCrossChainImport sysCCI;
                     if ((cci = CCrossChainImport(importTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
-                        cci.GetImportInfo(importTx, importHeight, idx.first.index, ccx, cci, sysCCIOut, importNotarization, importNotOut, evidenceOutStart, evidenceOutEnd, reserveTransfers))
+                        cci.GetImportInfo(importTx, importHeight, idx.first.index, ccx, sysCCI, sysCCIOut, importNotarization, importNotOut, evidenceOutStart, evidenceOutEnd, reserveTransfers))
                     {
                         UniValue oneImportUni(UniValue::VOBJ);
 
@@ -1406,7 +1407,6 @@ UniValue getimports(const UniValue& params, bool fHelp)
                         oneImportUni.push_back(Pair("import", cci.ToUniValue()));
                         if (sysCCIOut != -1)
                         {
-                            CCrossChainImport sysCCI(importTx.vout[sysCCIOut].scriptPubKey);
                             oneImportUni.push_back(Pair("sysimport", sysCCI.ToUniValue()));
                         }
                         oneImportUni.push_back(Pair("importnotarization", importNotarization.ToUniValue()));
