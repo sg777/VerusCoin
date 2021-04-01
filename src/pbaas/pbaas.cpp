@@ -2947,6 +2947,20 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     //printf("%s: num transfers %ld\n", __func__, exportTransfers.size());
 
+    // if we are refunding, redirect the export back to the launch chain
+    if (newNotarization.currencyState.IsRefunding())
+    {
+        destSystemID = _curDef.launchSystemID;
+        crossSystem = destSystemID != ASSETCHAINS_CHAINID;
+        destSystem = ConnectedChains.GetCachedCurrency(destSystemID);
+        if (!destSystem.IsValid())
+        {
+            printf("%s: Invalid data for export system or corrupt chain state\n", __func__);
+            LogPrintf("%s: Invalid data for export system or corrupt chain state\n", __func__);
+            return false;
+        }
+    }
+
     newNotarization.prevNotarization = lastNotarizationUTXO;
 
     CCurrencyValueMap totalExports;

@@ -554,7 +554,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.SetPrelaunch();
         }
 
-        CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.systemID);
+        CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) : 
+                                                                         ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
         CCoinbaseCurrencyState tempState = newNotarization.currencyState;
         if (!(newNotarization.IsLaunchCleared() && !newNotarization.currencyState.IsLaunchCompleteMarker()) && exportTransfers.size())
@@ -629,6 +630,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     {
         newNotarization.currencyState.SetLaunchCompleteMarker();
         newNotarization.currencyState.SetLaunchClear(false);
+
         if (destCurrency.systemID != ASSETCHAINS_CHAINID)
         {
             newNotarization.SetSameChain(false);
