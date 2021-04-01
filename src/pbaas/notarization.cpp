@@ -1009,7 +1009,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
         // we need to store the input that we confirmed if we spent finalization outputs
-        CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION, VERUS_CHAINID, uint256(), txBuilder.mtx.vout.size(), height + 15);
+        CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION, VERUS_CHAINID, uint256(), txBuilder.mtx.vout.size() - 2, height + 15);
         if (notaryEvidence.signatures.size() >= externalSystem.notaries.size())
         {
             of.SetConfirmed();
@@ -1081,7 +1081,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     oneParam.push_back(Pair("proofroots", proofRootsUni));
     oneParam.push_back(Pair("lastconfirmed", cnd.lastConfirmed));
     params.push_back(oneParam);
-
+ 
     //printf("%s: about to get cross notarization with %lu notarizations found\n", __func__, cnd.vtx.size());
 
     UniValue result;
@@ -1124,6 +1124,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     }
 
     notarization = priorNotarization;
+    notarization.SetBlockOneNotarization(false);
+    notarization.SetDefinitionNotarization(false);
     notarization.proposer = Proposer;
     notarization.notarizationHeight = height;
 
@@ -1280,7 +1282,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
         // we need to store the input that we confirmed if we spent finalization outputs
-        CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION, VERUS_CHAINID, uint256(), txOutputs.size(), height + 15);
+        CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION, VERUS_CHAINID, uint256(), txOutputs.size() - 1, height + 15);
         txOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of))));
     }
     return true;

@@ -2221,17 +2221,28 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     // get the latest proof root and currency states
     retVal.pushKV("latestproofroot", CProofRoot::GetProofRoot(nHeight).ToUniValue());
 
-    std::vector<UniValue> currencyStatesUni;
+    std::set<uint160> currenciesSet({ASSETCHAINS_CHAINID});
+    CCurrencyDefinition targetCur;
+    uint160 targetCurID;
+    UniValue currencyStatesUni(UniValue::VARR);
+    if ((targetCurID = ValidateCurrencyName(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)), true, &targetCur)).IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid currency state request for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+    }
+    currencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, nHeight).ToUniValue());
+
     for (int i = 0; i < currenciesUni.size(); i++)
     {
-        CCurrencyDefinition targetCur;
-        uint160 targetCurID;
         if ((targetCurID = ValidateCurrencyName(uni_get_str(currenciesUni[i]), true, &targetCur)).IsNull())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid currency state request for %s", uni_get_str(currenciesUni[i])));
         }
-        currencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, nHeight).ToUniValue());
+        if (!currenciesSet.count(targetCurID))
+        {
+            currencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, nHeight).ToUniValue());
+        }
     }
+    retVal.pushKV("currencystates", currencyStatesUni);
 
     return retVal;
 }
