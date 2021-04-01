@@ -1129,7 +1129,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     notarization.SetBlockOneNotarization(false);
     notarization.SetDefinitionNotarization(false);
     notarization.proposer = Proposer;
-    notarization.notarizationHeight = height;
+    notarization.prevHeight = priorNotarization.notarizationHeight;
 
     // get the latest notarization information for the new, earned notarization
     // one system may provide one proof root and multiple currency states
@@ -1139,6 +1139,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         return state.Error("no-latest-proof-root");
     }
     notarization.proofRoots[latestProofRoot.systemID] = latestProofRoot;
+    notarization.notarizationHeight = latestProofRoot.rootHeight;
 
     UniValue currencyStatesUni = find_value(result, "currencystates");
     if (!(currencyStatesUni.isArray() && currencyStatesUni.size()))
