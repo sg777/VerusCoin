@@ -2180,7 +2180,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                            systemDestID,
                                            CTransferDestination());
         }
-        else if (importCurrencyState.IsRefunding())
+        else if (importCurrencyState.IsRefunding() || (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()))
         {
             curTransfer = exportObjects[i].GetRefundTransfer();
         }
