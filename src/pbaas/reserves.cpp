@@ -3288,9 +3288,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     {
         ReserveInputs.valueMap[importCurrencyDef.systemID] = std::max(nativeIn, systemOutConverted);
     }
-    if (nativeOut)
+    if (nativeOut + burnedChangePrice + burnedChangeWeight)
     {
-        spentCurrencyOut.valueMap[importCurrencyDef.systemID] += nativeOut;
+        spentCurrencyOut.valueMap[importCurrencyDef.systemID] += (nativeOut + burnedChangePrice + burnedChangeWeight);
     }
 
     //printf("ReserveInputs: %s\nReserveOutputs: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
