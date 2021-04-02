@@ -265,6 +265,7 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                       (rtExport = CCrossChainExport(p.vData[0])).IsValid() &&
                       rtExport.IsSupplemental()))
                 {
+                    numOutput--;
                     rtExport = CCrossChainExport();
                 }
             }

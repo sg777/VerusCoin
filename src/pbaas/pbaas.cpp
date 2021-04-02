@@ -1702,6 +1702,19 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
+        /* // DEBUG OUTPUT
+        for (auto &oneDepositIn : localDeposits)
+        {
+            UniValue scrUni(UniValue::VOBJ);
+            ScriptPubKeyToUniv(oneDepositIn.scriptPubKey, scrUni, false);
+            printf("%s: one deposit hash: %s, vout: %u, scriptdecode: %s\n",
+                __func__,
+                oneDepositIn.txIn.prevout.hash.GetHex().c_str(), 
+                oneDepositIn.txIn.prevout.n,
+                scrUni.write(1,2).c_str());
+        } // DEBUG OUTPUT END
+        */
+
         // if importing from another system/chain, get reserve deposits of source system to make available to import
         // as well
         if (useProofs)
