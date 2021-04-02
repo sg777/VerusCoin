@@ -1451,7 +1451,9 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
     for (int i = proofRootArr.size() - 1; i >= 0; i--)
     {
         int idx = uni_get_int(proofRootArr[i]);
-        if (cnd.vtx[idx].second.notarizationHeight <= eligibleHeight)
+        auto proofIt = cnd.vtx[idx].second.proofRoots.find(ASSETCHAINS_CHAINID);
+        if (proofIt != cnd.vtx[idx].second.proofRoots.end() &&
+            proofIt->second.rootHeight <= eligibleHeight)
         {
             // this is the one we will notarize
             std::set<CInputDescriptor> myIDSigs;
@@ -1558,6 +1560,12 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
             if (ne.signatures.size())
             {
+                // add evidence outs as inputs
+                for (auto &oneUnspentEO : evidenceOuts)
+                {
+                    txBuilder.AddTransparentInput(oneUnspentEO.second.txIn.prevout, oneUnspentEO.second.scriptPubKey, oneUnspentEO.second.nValue);
+                }
+
                 CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne));
                 myIDSigs.insert(CInputDescriptor(evidenceScript, 0, CTxIn(COutPoint(uint256(), txBuilder.mtx.vout.size()))));
                 txBuilder.AddTransparentOutput(evidenceScript, CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
@@ -1594,7 +1602,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                             sigSet.erase(oneSig.first);
                         }
                     }
-                    txBuilder.AddTransparentInput(oneEvidenceOut.txIn.prevout, oneEvidenceOut.scriptPubKey, oneEvidenceOut.nValue);
+                    if (!oneEvidenceOut.txIn.prevout.hash.IsNull())
+                    {
+                        txBuilder.AddTransparentInput(oneEvidenceOut.txIn.prevout, oneEvidenceOut.scriptPubKey, oneEvidenceOut.nValue);
+                    }
                     if (!haveNeeded)
                     {
                         // until we have enough signatures to confirm, continue to add evidence to the finalization
@@ -1648,6 +1659,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     txBuilder.AddTransparentInput(oneEvidenceOut.txIn.prevout, oneEvidenceOut.scriptPubKey, oneEvidenceOut.nValue);
                 }
             }
+        }
+        if (finalized)
+        {
+            break;
         }
     }
     return retVal;

@@ -1715,9 +1715,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             CTransaction notarizationTx;
             if (CPBaaSNotarization::ConfirmOrRejectNotarizations(pwalletMain, ConnectedChains.FirstNotaryChain(), state, notarizationBuilder, finalized))
             {
+                notarizationBuilder.SetFee(0);
                 LOCK2(cs_main, mempool.cs);
                 TransactionBuilderResult buildResult = notarizationBuilder.Build();
-                try
+                if (buildResult.IsTx())
                 {
                     notarizationTx = buildResult.GetTxOrThrow();
                     std::list<CTransaction> removed;
@@ -1729,9 +1730,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                         RelayTransaction(notarizationTx);
                     }
                 }
-                catch(const std::exception& e)
+                else
                 {
-                    std::cerr << e.what() << '\n';
+                    printf("%s: error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
+                    LogPrintf("%s: error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
                 }
             }
         }
