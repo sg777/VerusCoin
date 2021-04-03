@@ -107,6 +107,10 @@ public:
     void SetExpiryHeight(uint32_t nExpiryHeight);
 
     void SetFee(CAmount fee);
+    CAmount GetFee() const
+    {
+        return fee;
+    }
 
     // Throws if the anchor does not match the anchor used by
     // previously-added Sapling spends.
@@ -151,7 +155,7 @@ public:
 
     void SetLockTime(uint32_t time) { this->mtx.nLockTime = time; }
 
-    void SendChangeTo(CTxDestination& changeAddr);
+    void SendChangeTo(const CTxDestination &changeAddr);
 
     TransactionBuilderResult Build();
 

@@ -235,7 +235,7 @@ void TransactionBuilder::SendChangeTo(libzcash::SproutPaymentAddress changeAddr)
     tChangeAddr = boost::none;
 }
 
-void TransactionBuilder::SendChangeTo(CTxDestination& changeAddr)
+void TransactionBuilder::SendChangeTo(const CTxDestination &changeAddr)
 {
     if (!IsValidDestination(changeAddr)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid change address, not a valid taddr.");

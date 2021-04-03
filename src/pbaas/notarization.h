@@ -95,11 +95,12 @@ public:
     CObjectFinalization() : version(VERSION_INVALID), finalizationType(FINALIZE_INVALID) {}
     CObjectFinalization(uint8_t fType, const uint160 &curID, const uint256 &TxId, uint32_t outNum, uint32_t minFinalHeight=0) : 
         version(VERSION_CURRENT), finalizationType(fType), minFinalizationHeight(minFinalHeight), currencyID(curID), output(TxId, outNum) {}
-    CObjectFinalization(std::vector<unsigned char> vch)
+    CObjectFinalization(const std::vector<unsigned char> &vch)
     {
         ::FromVector(vch, *this);
     }
     CObjectFinalization(const CTransaction &tx, uint32_t *pEcode=nullptr, int32_t *pFinalizationOutNum=nullptr);
+    CObjectFinalization(const CScript &script);
 
     ADD_SERIALIZE_METHODS;
 
@@ -196,7 +197,11 @@ public:
     CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const CNotaryEvidence &signature, const COptCCParams &p, uint32_t height) const;
     CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const CNotaryEvidence &signature, uint32_t height) const;
 
-    std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentNotaryEvidence() const;
+    static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentConfirmedFinalizations(const uint160 &currencyID);
+    static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentPendingFinalizations(const uint160 &currencyID);
+    static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentEvidence(const uint160 &currencyID,
+                                                                                 const uint256 &notarizationTxId,
+                                                                                 int32_t notarizationOutNum);
 
     // enables easily finding all pending finalizations for a
     // currency, either notarizations or exports
