@@ -1628,6 +1628,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     printf("%s: selected notarization already confirmed\n", __func__);
                     break;
                 }
+                printf("%s: adding %s to entry #%d in vtxFinalizations\n", 
+                    __func__, 
+                    CUTXORef(oneConfirmed.second.txIn.prevout).ToUniValue().write(1,2).c_str(), 
+                    vtxFinalizations[oneConfirmedTarget].first);
                 vtxFinalizations[oneConfirmedTarget].second.push_back(oneConfirmed);
             }
 
@@ -1876,6 +1880,8 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 }
 
                 finalized = true;
+                cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
+                dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
                 CScript finalizeScript = MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of));
                 txBuilder.AddTransparentOutput(finalizeScript, 0);

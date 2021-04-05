@@ -1263,7 +1263,8 @@ UniValue submitimports(const UniValue& params, bool fHelp)
         uint256 blkHash;
         auto proofRootIt = lastConfirmed.proofRoots.find(sourceSystemID);
         if (!(txProof.IsValid() &&
-            exportTxId == txProof.GetPartialTransaction(exportTx) &&
+            !txProof.GetPartialTransaction(exportTx).IsNull() &&
+            exportTxId == txProof.TransactionHash() &&
             proofRootIt != lastConfirmed.proofRoots.end() &&
             proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
             exportTx.vout.size() > exportTxOutNum))

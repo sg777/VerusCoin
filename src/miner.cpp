@@ -1715,6 +1715,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             CTransaction notarizationTx;
             if (CPBaaSNotarization::ConfirmOrRejectNotarizations(pwalletMain, ConnectedChains.FirstNotaryChain(), state, notarizationBuilder, finalized))
             {
+                /* expect notaries to pay for their notarizations when required. leave out for now.
                 // get a native currency input capable of paying a fee, and make our notary ID the change address
                 std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
                 {
@@ -1738,8 +1739,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                                             oneInput.first->vout[oneInput.second].nValue);
                 }
                 notarizationBuilder.SendChangeTo(CTxDestination(VERUS_NOTARYID));
+                */
 
                 LOCK2(cs_main, mempool.cs);
+                notarizationBuilder.SetFee(0);
                 TransactionBuilderResult buildResult = notarizationBuilder.Build();
                 if (buildResult.IsTx())
                 {

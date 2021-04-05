@@ -1887,7 +1887,7 @@ bool VerifyScript(
 
     vector<vector<unsigned char> > stack, stackCopy;
     COptCCParams p;
-    if (IsCryptoConditionsEnabled() && scriptPubKey.IsPayToCryptoCondition(p)) {
+    if (scriptPubKey.IsPayToCryptoCondition(p)) {
 
         //UniValue r;
         //printf("eval code: %d, keys:\n", p.evalCode);

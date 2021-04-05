@@ -529,10 +529,10 @@ bool CScript::IsInstantSpend() const
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
         // TODO: fix this check
-        if ((p.evalCode == EVAL_EARNEDNOTARIZATION) || 
-            (p.evalCode == EVAL_CURRENCYSTATE) || 
-            (p.evalCode == EVAL_CROSSCHAIN_IMPORT) ||
-            (p.evalCode == EVAL_CROSSCHAIN_EXPORT))
+        if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
+            p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
+            p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
+            p.evalCode == EVAL_CROSSCHAIN_EXPORT)
         {
             isInstantSpend = true;
         }

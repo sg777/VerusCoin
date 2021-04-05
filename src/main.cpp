@@ -2825,8 +2825,8 @@ namespace Consensus {
                 // of transactions, such as notarization, rather than being converted to fungible coins
                 // block one outputs (preallocations) on a PBaaS chain are immediately spendable.
                 if (!(!IsVerusActive() && coins->nHeight == 1) &&
-                    (nSpendHeight - coins->nHeight) < COINBASE_MATURITY &&
-                    !coins->vout[prevout.n].scriptPubKey.IsInstantSpend())
+                     (nSpendHeight - coins->nHeight) < COINBASE_MATURITY &&
+                     !coins->vout[prevout.n].scriptPubKey.IsInstantSpend())
                 {
                     return state.DoS(0,
                         error("CheckInputs(): tried to spend coinbase at depth %d", nSpendHeight - coins->nHeight),

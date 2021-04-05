@@ -1661,7 +1661,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 LogPrintf("%s: invalid proof for export tx %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
                 return false;
             }
-            uint256 exportTxID = oneIT.first.second.GetPartialTransaction(exportTx);
 
             if (oneIT.first.second.GetBlockHeight() &&
                 proofNotarization.proofRoots[sourceSystemID].stateRoot != oneIT.first.second.CheckPartialTransaction(exportTx))
