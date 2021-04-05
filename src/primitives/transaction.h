@@ -1561,6 +1561,7 @@ class CUTXORef : public COutPoint
 {
 public:
     CUTXORef() : COutPoint(uint256(), UINT32_MAX) {}
+    CUTXORef(const COutPoint &op) : COutPoint(op) {}
     CUTXORef(const UniValue &uni);
     CUTXORef(const uint256 &HashIn, uint32_t nIn=UINT32_MAX) : COutPoint(HashIn, nIn) {}
     CUTXORef(const std::vector<unsigned char> &asVector)

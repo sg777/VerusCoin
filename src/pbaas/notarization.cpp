@@ -1563,6 +1563,8 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 myIDSet.insert(oneID.first.idID);
             }
 
+            // a pending finalization may be either an actual notarization finalization or an earned notarization
+            // a confirmed finalization may be either a finalization or a notarization
             std::vector<std::pair<uint32_t, CInputDescriptor>> unspentConfirmed = CObjectFinalization::GetUnspentConfirmedFinalizations(SystemID);
             std::vector<std::pair<uint32_t, CInputDescriptor>> unspentPending = CObjectFinalization::GetUnspentPendingFinalizations(SystemID);
 
@@ -1581,28 +1583,50 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
             std::map<CUTXORef, std::pair<int, std::vector<std::pair<uint32_t, CInputDescriptor>>>> vtxFinalizations;
             for (int j = 0; j < cnd.vtx.size(); j++)
             {
-                vtxFinalizations.insert(std::make_pair(cnd.vtx[j].first, std::make_pair(j, std::vector<std::pair<uint32_t, CInputDescriptor>>())));
+                COptCCParams oneP;
+                
+                // if any of the notarizations are earned notarizations, we will spend those behind us if we finalize
+                if (txes[j].first.vout[cnd.vtx[j].first.n].scriptPubKey.IsPayToCryptoCondition(oneP) &&
+                    oneP.IsValid() &&
+                    oneP.evalCode == EVAL_EARNEDNOTARIZATION)
+                {
+                    printf("%s: adding %s to vtxFinalizations\n", __func__, cnd.vtx[j].first.ToUniValue().write(1,2).c_str());
+                    vtxFinalizations.insert(std::make_pair(cnd.vtx[j].first, std::make_pair(j, std::vector<std::pair<uint32_t, CInputDescriptor>>())));
+                }
             }
 
             for (auto &oneConfirmed : unspentConfirmed)
             {
-                CObjectFinalization oneOf(oneConfirmed.second.scriptPubKey);
-
-                CUTXORef oneConfirmedTarget = CUTXORef(oneOf.output.hash.IsNull() ? oneConfirmed.second.txIn.prevout.hash : oneOf.output.hash,
-                                                       oneOf.output.n);
-                if (!vtxFinalizations.count(oneConfirmedTarget))
+                CObjectFinalization oneOf;
+                COptCCParams oneP;
+                if (oneConfirmed.second.scriptPubKey.IsPayToCryptoCondition(oneP) &&
+                    oneP.IsValid() &&
+                    oneP.evalCode != EVAL_EARNEDNOTARIZATION &&
+                    oneP.evalCode != EVAL_ACCEPTEDNOTARIZATION)
                 {
-                    printf("%s: confirmed notarization finalization with no matching notarization\n", __func__);
-                    vtxFinalizations[oneConfirmedTarget].first = -1;
+                    oneOf = CObjectFinalization(oneConfirmed.second.scriptPubKey);
+                    if (!oneOf.IsValid())
+                    {
+                        printf("%s: invalid index entry at %s : %u\n", 
+                            __func__, 
+                            oneConfirmed.second.txIn.prevout.hash.GetHex().c_str(),
+                            oneConfirmed.second.txIn.prevout.n);
+                        break;
+                    }
                 }
                 else
                 {
-                    // if the notarization we have selected to confirm is already confirmed, we are done
-                    if (vtxFinalizations[oneConfirmedTarget].first == idx)
-                    {
-                        printf("%s: selected notarization already confirmed\n", __func__);
-                        break;
-                    }
+                    continue;
+                }
+
+                CUTXORef oneConfirmedTarget = CUTXORef(oneOf.output.hash.IsNull() ? oneConfirmed.second.txIn.prevout.hash : oneOf.output.hash,
+                                                       oneOf.output.n);
+
+                // if the notarization we have selected to confirm is already confirmed, we are done
+                if (vtxFinalizations[oneConfirmedTarget].first == idx)
+                {
+                    printf("%s: selected notarization already confirmed\n", __func__);
+                    break;
                 }
                 vtxFinalizations[oneConfirmedTarget].second.push_back(oneConfirmed);
             }
@@ -1614,11 +1638,33 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
             for (auto &onePending : unspentPending)
             {
-                CObjectFinalization oneOf(onePending.second.scriptPubKey);
+                CObjectFinalization oneOf;
+                COptCCParams oneP;
+                if (onePending.second.scriptPubKey.IsPayToCryptoCondition(oneP) &&
+                    oneP.IsValid())
+                {
+                    if (oneP.evalCode == EVAL_EARNEDNOTARIZATION ||
+                        oneP.evalCode == EVAL_ACCEPTEDNOTARIZATION)
+                    {
+                        continue;
+                    }
+                    if (oneP.evalCode == EVAL_FINALIZE_NOTARIZATION && oneP.vData.size())
+                    {
+                        oneOf = CObjectFinalization(oneP.vData[0]);
+                    }
+                    if (!oneOf.IsValid())
+                    {
+                        printf("%s: invalid index entry at %s : %u\n", 
+                            __func__, 
+                            onePending.second.txIn.prevout.hash.GetHex().c_str(),
+                            onePending.second.txIn.prevout.n);
+                        break;
+                    }
+                }
 
                 CUTXORef onePendingTarget = CUTXORef(oneOf.output.hash.IsNull() ? onePending.second.txIn.prevout.hash : oneOf.output.hash,
-                                                       oneOf.output.n);
-                if (vtxFinalizations.count(onePendingTarget))
+                                                     oneOf.output.n);
+                if (!vtxFinalizations.count(onePendingTarget))
                 {
                     printf("%s: pending notarization finalization with no matching notarization - may be mempool only\n", __func__);
                     vtxFinalizations[onePendingTarget].first = -1;
