@@ -1640,7 +1640,7 @@ public:
     std::map<CIdentityID, CIdentitySignature> signatures; // one or more notary signatures with same statements combined
     std::vector<CPartialTransactionProof> evidence; // evidence in the form of cross chain proofs of transactions, block hashes, and power
 
-    CNotaryEvidence() : version(VERSION_INVALID), type(TYPE_INVALID) {}
+    CNotaryEvidence(uint8_t EvidenceType=TYPE_NOTARY_SIGNATURE, uint8_t nVersion=VERSION_CURRENT) : version(nVersion), type(EvidenceType) {}
     CNotaryEvidence(const uint160 &sysID, 
                      const CUTXORef &finalRef,
                      bool Confirmed=true,

@@ -1962,7 +1962,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 }
 
                 // get all notarization evidence and submit the notarization + evidence
-                CNotaryEvidence allEvidence, scratchEvidence;
+                CNotaryEvidence allEvidence(CNotaryEvidence::TYPE_NOTARY_SIGNATURE), scratchEvidence(CNotaryEvidence::TYPE_NOTARY_SIGNATURE);
 
                 // get all inputs with evidence and add it to our evidence
                 for (auto &oneEvidenceIn : of.evidenceInputs)
@@ -1970,6 +1970,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     CTransaction evidenceTx;
                     uint256 eBlkHash;
                     COptCCParams eP;
+
                     if (!(finTx.vin.size() > oneEvidenceIn &&
                           myGetTransaction(finTx.vin[oneEvidenceIn].prevout.hash, evidenceTx, eBlkHash) &&
                           evidenceTx.vout.size() > finTx.vin[oneEvidenceIn].prevout.n &&
