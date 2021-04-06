@@ -111,9 +111,8 @@ CReserveExchange::CReserveExchange(const UniValue &uni) : CTokenOutput(uni)
         nLimit = AmountFromValue(find_value(uni, "limitprice"));
         nValidBefore = uni_get_int(find_value(uni, "validbeforeblock"));
     }
-    catch(const std::exception& e)
+    catch (...)
     {
-        std::cerr << e.what() << '\n';
         nVersion = VERSION_INVALID;
     }
 }
@@ -607,9 +606,8 @@ CCurrencyState::CCurrencyState(const UniValue &obj) : version(VERSION_CURRENT)
                         reserves.push_back(AmountFromValue(find_value(CurrenciesArr[i], "reserves")));
                     }
                 }
-                catch(const std::exception& e)
+                catch (...)
                 {
-                    std::cerr << e.what() << '\n';
                     version = VERSION_INVALID;
                     LogPrintf("Invalid specification of currencies, weights, and/or reserves in initial definition of reserve currency\n");
                 }
@@ -628,12 +626,11 @@ CCurrencyState::CCurrencyState(const UniValue &obj) : version(VERSION_CURRENT)
             supply = AmountFromValue(find_value(obj, "supply"));
         }
     }
-    catch(const std::exception& e)
+    catch (...)
     {
         printf("Invalid currency specification, see debug.log for reason other than invalid flags\n");
         LogPrintf("Invalid currency specification\n");
         version = VERSION_INVALID;
-        LogPrintf("%s: %s\n", __func__, e.what());
     }
 }
 
@@ -672,14 +669,7 @@ std::vector<std::vector<CAmount>> ValueColumnsFromUniValue(const UniValue &uni,
                     retVal.emplace_back();
                 }
                 CAmount columnVal = 0;
-                try
-                {
-                    columnVal = AmountFromValue(find_value(row, columnNames[j]));
-                }
-                catch(const std::exception& e)
-                {
-                    std::cerr << e.what() << '\n';
-                }
+                columnVal = AmountFromValueNoErr(find_value(row, columnNames[j]));
                 retVal[j].push_back(columnVal);
             }
         }

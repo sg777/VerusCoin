@@ -888,7 +888,9 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             (chainDef.launchSystemID == ASSETCHAINS_CHAINID && height < chainDef.startBlock))
         {
             ret.push_back(Pair("bestheight", chainActive.Height()));
+            ret.push_back(Pair("lastconfirmedheight", chainActive.Height()));
             ret.push_back(Pair("bestcurrencystate", ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue()));
+            ret.push_back(Pair("lastconfirmedcurrencystate", ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue()));
         }
         else
         {
@@ -2293,8 +2295,8 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     }
 
     if (!(evidence = CNotaryEvidence(params[1])).IsValid() ||
-        evidence.signatures.size() ||
-        evidence.systemID != pbn.currencyID)
+         evidence.signatures.size() ||
+         evidence.systemID != pbn.currencyID)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "insufficient notarization evidence");
     }
