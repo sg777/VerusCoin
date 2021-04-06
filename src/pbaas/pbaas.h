@@ -1129,6 +1129,7 @@ public:
 
         if (transform)
         {
+            notarizationHeight = proofRoots[newCurrencyID].rootHeight;
             currencyStates.insert(std::make_pair(oldCurrencyID, currencyState));
             currencyState = currencyStates[newCurrencyID];
             currencyStates.erase(newCurrencyID);
