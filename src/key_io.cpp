@@ -835,7 +835,7 @@ UniValue CNotaryEvidence::ToUniValue() const
     {
         evidenceProofs.push_back(oneProof.ToUniValue());
     }
-    retObj.push_back(Pair("evidence", sigObj));
+    retObj.push_back(Pair("evidence", evidenceProofs));
     return retObj;
 }
 
