@@ -1365,7 +1365,7 @@ public:
     {
         if (IsChainProof())
         {
-            return ((CMMRPowerNodeBranch *)(txProof.proofSequence[2]))->nSize;
+            return ((CMMRPowerNodeBranch *)(txProof.proofSequence[2]))->nSize - 1;
         }
         return 0;
     }

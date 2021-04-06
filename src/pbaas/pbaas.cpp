@@ -1499,7 +1499,7 @@ CPartialTransactionProof::CPartialTransactionProof(const CTransaction tx, const 
     }
 
     ChainMerkleMountainView mmv = chainActive.GetMMV();
-    mmv.resize(proofAtHeight);
+    mmv.resize(proofAtHeight + 1);
     chainActive.GetMerkleProof(mmv, txRootProof, pIndex->GetHeight());
     *this = CPartialTransactionProof(txRootProof, txProofVec);
 
@@ -1522,9 +1522,6 @@ bool CConnectedChains::GetExportProofs(uint32_t height,
                                        std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> &exports)
 {
     // fill in proofs of the export outputs for each export at the specified height
-    ChainMerkleMountainView mmv = chainActive.GetMMV();
-    mmv.resize(height);
-
     CBlock proofBlock;
 
     for (auto &oneExport : exports)
@@ -2580,7 +2577,8 @@ bool CConnectedChains::GetSystemExports(const uint160 &systemID,
 // export proofs are all returned as null
 bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
                                              std::pair<CInputDescriptor, CPartialTransactionProof> &notarizationRef,
-                                             CPBaaSNotarization &launchNotarization)
+                                             CPBaaSNotarization &launchNotarization,
+                                             CPBaaSNotarization &notaryNotarization)
 {
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
     uint160 currencyID = curDef.GetID();
@@ -2597,7 +2595,11 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
             CTransaction notarizationTx;
             if (!idx.first.spending && myGetTransaction(idx.first.txhash, notarizationTx, blkHash))
             {
-                if ((launchNotarization = CPBaaSNotarization(notarizationTx.vout[idx.first.index].scriptPubKey)).IsValid())
+                CChainNotarizationData cnd;
+                if ((launchNotarization = CPBaaSNotarization(notarizationTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
+                    GetNotarizationData(ASSETCHAINS_CHAINID, cnd) &&
+                    cnd.IsConfirmed() &&
+                    (notaryNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid())
                 {
                     auto blockIt = mapBlockIndex.find(blkHash);
                     if (blockIt != mapBlockIndex.end() &&

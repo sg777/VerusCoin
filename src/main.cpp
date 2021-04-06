@@ -2738,7 +2738,7 @@ bool CScriptCheck::operator()() {
     ServerTransactionSignatureChecker checker(ptxTo, nIn, amount, cacheStore, *txdata);
     checker.SetIDMap(idMap);
     if (!VerifyScript(scriptSig, scriptPubKey, nFlags, checker, consensusBranchId, &error)) {
-        return ::error("CScriptCheck(): %s:%d VerifySignature failed: %s", ptxTo->GetHash().ToString(), nIn, ScriptErrorString(error));
+        return ::error("CScriptCheck(): %s:%u VerifySignature failed: %s", ptxTo->vin[nIn].prevout.hash.GetHex(), ptxTo->vin[nIn].prevout.n, ScriptErrorString(error));
     }
     return true;
 }

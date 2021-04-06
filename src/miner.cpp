@@ -447,13 +447,13 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                           proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
                           exportTx.vout.size() > exportTxOutNum))
                     {
-                        /*printf("%s: proofRoot: %s, checkPartialRoot: %s, proofheight: %u, ischainproof: %s, blockhash: %s\n", 
+                        /* printf("%s: proofRoot: %s, checkPartialRoot: %s, proofheight: %u, ischainproof: %s, blockhash: %s\n", 
                             __func__,
                             proofRootIt->second.ToUniValue().write(1,2).c_str(),
                             txProof.CheckPartialTransaction(exportTx).GetHex().c_str(),
                             txProof.GetProofHeight(),
                             txProof.IsChainProof() ? "true" : "false",
-                            txProof.GetBlockHash().GetHex().c_str());*/
+                            txProof.GetBlockHash().GetHex().c_str()); */
                         printf("Invalid export for %s\n", uni_get_str(params[0]).c_str());
                         return;
                     }
@@ -547,6 +547,7 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
                                    const uint160 &currencyID,
                                    CCurrencyDefinition &curDef,
                                    CPBaaSNotarization &launchNotarization,
+                                   CPBaaSNotarization &notaryNotarization,
                                    std::pair<CUTXORef, CPartialTransactionProof> &notarizationOutputProof,
                                    std::pair<CUTXORef, CPartialTransactionProof> &exportOutputProof)
 {
@@ -565,8 +566,8 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
         if (CallNotary(notarySystem, "getlaunchinfo", params, result, error))
         {
             CCurrencyDefinition currency(find_value(result, "currencydefinition"));
-            CPBaaSNotarization notarization(find_value(result, "notarization"));
-            CProofRoot latestProofRoot(find_value(result, "latestproofroot"));
+            CPBaaSNotarization notarization(find_value(result, "launchnotarization"));
+            notaryNotarization = CPBaaSNotarization(find_value(result, "notarynotarization"));
             CPartialTransactionProof notarizationProof(find_value(result, "notarizationproof"));
             CUTXORef notarizationUtxo(uint256S(uni_get_str(find_value(result, "notarizationtxid"))), uni_get_int(find_value(result, "notarizationvoutnum")));
 
@@ -576,7 +577,7 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
             if (!currency.IsValid() ||
                 !notarization.IsValid() ||
                 !notarizationProof.IsValid() ||
-                !latestProofRoot.IsValid())
+                !notaryNotarization.IsValid())
             {
                 LogPrintf("%s: invalid launch notarization for currency %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
                 printf("%s: invalid launch notarization for currency %s\ncurrencydefinition: %s\nnotarization: %s\ntransactionproof: %s\n", 
@@ -591,7 +592,9 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
                 //printf("%s: proofroot: %s\n", __func__, latestProofRoot.ToUniValue().write(1,2).c_str());
                 curDef = currency;
                 launchNotarization = notarization;
-                launchNotarization.proofRoots[latestProofRoot.systemID] = latestProofRoot;
+                launchNotarization.proofRoots = notaryNotarization.proofRoots;
+                notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(0);
+                notaryNotarization.currencyStates[ASSETCHAINS_CHAINID] = launchNotarization.currencyState;
                 notarizationOutputProof = std::make_pair(notarizationUtxo, notarizationProof);
                 exportOutputProof = std::make_pair(exportUtxo, exportProof);
                 retVal = true;
@@ -742,7 +745,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
     // import / export capable currencies include the main currency, fractional currencies on any system, 
     // gateway currencies. and non-token currencies. they also get an import / export thread
     if (newCurrency.IsFractional() ||
-        !newCurrency.IsToken() ||
+        newCurrency.systemID == newCurID ||
+        ConnectedChains.ThisChain().launchSystemID == newCurID ||
         (newCurrency.IsGateway() && newCurrency.GetID() == newCurrency.gatewayID))
     {
         uint160 firstNotaryID = ConnectedChains.FirstNotaryChain().chainDefinition.GetID();
@@ -1081,11 +1085,13 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
 
     std::pair<CUTXORef, CPartialTransactionProof> launchNotarizationProof;
     std::pair<CUTXORef, CPartialTransactionProof> launchExportProof;
+    CPBaaSNotarization notaryNotarization;
 
     if (!GetBlockOneLaunchNotarization(ConnectedChains.FirstNotaryChain(), 
                                        thisChainID, 
                                        thisChain, 
                                        launchNotarization,
+                                       notaryNotarization,
                                        launchNotarizationProof,
                                        launchExportProof))
     {
@@ -1137,6 +1143,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                                            converterCurrencyID,
                                            converterCurDef,
                                            converterNotarization,
+                                           notaryNotarization,
                                            converterNotarizationProof,
                                            converterExportProof))
         {
@@ -1187,6 +1194,11 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         LogPrintf("Cannot retrieve identity and currency definitions needed to create block 1\n");
         printf("Cannot retrieve identity and currency definitions needed to create block 1\n");
         return false;
+    }
+
+    if (currencyImports.count(notaryNotarization.currencyID))
+    {
+        currencyImports[notaryNotarization.currencyID].second = notaryNotarization;
     }
 
     // add all imported currency and identity outputs, identity revocaton and recovery IDs must be explicitly imported if needed

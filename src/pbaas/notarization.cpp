@@ -315,7 +315,7 @@ CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
         return CProofRoot();
     }
     auto mmv = chainActive.GetMMV();
-    mmv.resize(blockHeight);
+    mmv.resize(blockHeight + 1);
     return CProofRoot(ASSETCHAINS_CHAINID, 
                       blockHeight, 
                       mmv.GetRoot(), 
@@ -889,7 +889,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     }
 
     auto mmv = chainActive.GetMMV();
-    mmv.resize(ourRoot.rootHeight);
+    mmv.resize(ourRoot.rootHeight + 1);
 
     // we only create accepted notarizations for notarizations that are earned for this chain on another system
     // currently, we support ethereum and PBaaS types.
@@ -1924,7 +1924,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             // the notarization is already posted or in mempool
             for (auto &oneFinalization : finalizedNotarizations)
             {
-                if (oneFinalization.first.spending)
+                if (oneFinalization.first.spending || oneFinalization.first.blockHeight == 1)
                 {
                     continue;
                 }
@@ -1943,14 +1943,15 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 if (!(finTx.vout.size() > oneFinalization.first.index &&
                       finTx.vout[oneFinalization.first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
                       p.IsValid() &&
-                      (p.evalCode == EVAL_FINALIZE_NOTARIZATION) &&
-                      p.vData.size() &&
-                      (of = CObjectFinalization(p.vData[0])).IsValid() &&
-                      of.GetOutputTransaction(finTx, nTx, blkHash) &&
-                      nTx.vout.size() > of.output.n &&
-                      nTx.vout[of.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                      p.IsValid() &&
-                      p.evalCode == EVAL_EARNEDNOTARIZATION &&
+                      ((p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                        p.vData.size() &&
+                        (of = CObjectFinalization(p.vData[0])).IsValid() &&
+                        of.GetOutputTransaction(finTx, nTx, blkHash) &&
+                        nTx.vout.size() > of.output.n &&
+                        nTx.vout[of.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_EARNEDNOTARIZATION) ||
+                       p.evalCode == EVAL_EARNEDNOTARIZATION) &&
                       p.vData.size() &&
                       (pbn = CPBaaSNotarization(p.vData[0])).IsValid()))
                 {
@@ -1993,6 +1994,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         }
                     }
                 }
+
                 // get all outputs with evidence and add
                 for (auto oneEvidenceOut : of.evidenceOutputs)
                 {
@@ -2034,6 +2036,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         std::string strTxId;
         params.push_back(oneNotarization.first.ToUniValue());
         params.push_back(oneNotarization.second.ToUniValue());
+
+        printf("%s: submitting notarization with parameters:\n%s\n%s\n", __func__, params[0].write(1,2).c_str(), params[1].write(1,2).c_str());
+
         if (!CallNotary(externalSystem, "submitacceptednotarization", params, result, error) ||
             !error.isNull() ||
             (strTxId = uni_get_str(result)).empty() ||
@@ -2139,7 +2144,7 @@ CObjectFinalization GetOldFinalization(const CTransaction &spendingTx, uint32_t 
         COptCCParams p;
         if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
             p.IsValid() && 
-            p.evalCode == EVAL_IDENTITY_PRIMARY && 
+            (p.evalCode == EVAL_FINALIZE_NOTARIZATION || p.evalCode == EVAL_FINALIZE_EXPORT) && 
             p.version >= COptCCParams::VERSION_V3 &&
             p.vData.size() > 1)
         {
@@ -2154,12 +2159,11 @@ CObjectFinalization GetOldFinalization(const CTransaction &spendingTx, uint32_t 
  * Ensures that the finalization, either as validated or orphaned, is determined by
  * 10 confirmations, either of this transaction, or of an alternate transaction on the chain that we do not derive
  * from. If the former, then this should be asserted to be validated, otherwise, it should be asserted to be invalidated.
- *  
+ *
  */
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     // to validate a finalization spend, we need to validate the spender's assertion of confirmation or rejection as proven
-
 
     // first, determine our notarization finalization protocol
     CTransaction sourceTx;
@@ -2191,10 +2195,6 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         // get the notarization this finalizes and its index output
         int32_t notaryOutNum;
         CTransaction notarizationTx;
-        if (oldFinalization.IsConfirmed() || oldFinalization.IsRejected())
-        {
-            return eval->Error("already-finalized");
-        }
         
         if (oldFinalization.output.IsOnSameTransaction())
         {
@@ -2267,8 +2267,6 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         {
             return eval->Error("invalid-finalization-spend");
         }
-
-
     }
     return true;
 }

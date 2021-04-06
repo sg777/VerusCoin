@@ -1121,8 +1121,7 @@ public:
         uint160 altCurrencyID = proofRoots.begin()->first == ASSETCHAINS_CHAINID ? (++proofRoots.begin())->first : proofRoots.begin()->first;
         uint160 newCurrencyID = proofRoots.begin()->first == currencyID ? (++proofRoots.begin())->first : proofRoots.begin()->first;
 
-        if ((currencyID == ASSETCHAINS_CHAINID && !currencyStates.count(currencyID)) ||
-            (currencyID != ASSETCHAINS_CHAINID && !currencyStates.count(ASSETCHAINS_CHAINID)))
+        if (currencyID != ASSETCHAINS_CHAINID && !currencyStates.count(ASSETCHAINS_CHAINID))
         {
             LogPrintf("%s: notarization for acceptance must include both currency states\n", __func__);
             return false;
@@ -1397,7 +1396,8 @@ public:
     // gets both the launch notarization and its partial transaction proof if launching to a new system
     bool GetLaunchNotarization(const CCurrencyDefinition &curDef,
                                std::pair<CInputDescriptor, CPartialTransactionProof> &notarizationTx,
-                               CPBaaSNotarization &launchNotarization);
+                               CPBaaSNotarization &launchNotarization,
+                               CPBaaSNotarization &notaryNotarization);
 
     // get the exports to a specific system on this chain from a specific height up to a specific height
     bool GetCurrencyExports(const uint160 &currencyID,                             // transactions exported to system

@@ -2040,7 +2040,8 @@ UniValue getlaunchinfo(const UniValue& params, bool fHelp)
             "  \"txid\" : \"hexstr\",           (hexstr) transaction ID\n"
             "  \"voutnum\" : \"n\",             (number) vout index of the launch notarization\n"
             "  \"transactionproof\" : {},       (json) Partial transaction proof of the launch transaction and output\n"
-            "  \"notarization\" : {},           (json) Final CPBaaSNotarization clearing launch or refund\n"
+            "  \"launchnotarization\" : {},     (json) Final CPBaaSNotarization clearing launch or refund\n"
+            "  \"notarynotarization\" : {},     (json) Current notarization of this chain\n"
             "}\n"
 
             "\nExamples:\n"
@@ -2063,8 +2064,8 @@ UniValue getlaunchinfo(const UniValue& params, bool fHelp)
     }
 
     std::pair<CInputDescriptor, CPartialTransactionProof> notarizationTx;
-    CPBaaSNotarization launchNotarization;
-    if (!ConnectedChains.GetLaunchNotarization(curDef, notarizationTx, launchNotarization))
+    CPBaaSNotarization launchNotarization, notaryNotarization;
+    if (!ConnectedChains.GetLaunchNotarization(curDef, notarizationTx, launchNotarization, notaryNotarization))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Valid notarization not found");
     }
@@ -2101,8 +2102,8 @@ UniValue getlaunchinfo(const UniValue& params, bool fHelp)
     retVal.pushKV("exporttxid", foundExport.first.first.txIn.prevout.hash.GetHex());
     retVal.pushKV("exportvoutnum", (int64_t)foundExport.first.first.txIn.prevout.n);
     retVal.pushKV("exportproof", foundExport.first.second.ToUniValue());
-    retVal.pushKV("notarization", launchNotarization.ToUniValue());
-    retVal.pushKV("latestproofroot", CProofRoot::GetProofRoot(chainActive.Height()).ToUniValue());
+    retVal.pushKV("launchnotarization", launchNotarization.ToUniValue());
+    retVal.pushKV("notarynotarization", notaryNotarization.ToUniValue());
     return retVal;
 }
 
