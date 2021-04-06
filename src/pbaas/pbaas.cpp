@@ -1202,6 +1202,10 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                     {
                         curDef.conversions = std::vector<int64_t>(curDef.currencies.size());
                     }
+                    if (currencyState.conversionPrice.size() < curDef.conversions.size())
+                    {
+                        currencyState.conversionPrice = curDef.conversions;
+                    }
                     for (int i = 0; i < curDef.conversions.size(); i++)
                     {
                         currencyState.conversionPrice[i] = curDef.conversions[i] = currencyState.PriceInReserve(i);

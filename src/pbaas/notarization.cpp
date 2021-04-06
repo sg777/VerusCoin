@@ -30,7 +30,7 @@ extern int32_t PBAAS_PORT;
 
 CNotaryEvidence::CNotaryEvidence(const UniValue &uni)
 {
-    version = uni_get_int(find_value(uni, "version"));
+    version = uni_get_int(find_value(uni, "version"), VERSION_CURRENT);
     type = uni_get_int(find_value(uni, "type"));
     systemID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "systemid"))));
     output = CUTXORef(find_value(uni, "output"));
