@@ -570,7 +570,7 @@ UniValue CPBaaSNotarization::ToUniValue() const
     obj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
     obj.push_back(Pair("notarizationheight", (int64_t)notarizationHeight));
     obj.push_back(Pair("currencystate", currencyState.ToUniValue()));
-    obj.push_back(Pair("prevnotarizationhash", prevNotarization.hash.GetHex()));
+    obj.push_back(Pair("prevnotarizationtxid", prevNotarization.hash.GetHex()));
     obj.push_back(Pair("prevnotarizationout", (int64_t)prevNotarization.n));
     obj.push_back(Pair("hashprevnotarizationobject", hashPrevNotarization.GetHex()));
     obj.push_back(Pair("prevheight", (int64_t)prevHeight));

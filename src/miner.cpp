@@ -328,7 +328,7 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
         return;
     }
 
-    printf("%s: processing imports for %s\n", __func__, sourceChain.name.c_str());
+    // printf("%s: processing imports for %s\n", __func__, sourceChain.name.c_str());
 
     bool isSameChain = thisChain.GetID() == sourceChainID;
 
@@ -1760,7 +1760,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 {
                     notarizationTx = buildResult.GetTxOrThrow();
                     std::list<CTransaction> removed;
-                    LogPrintf("%s: Notarizing cross-chain currency\n", __func__);
+                    UniValue jsonNotaryConfirmations(UniValue::VOBJ);
+                    TxToUniv(notarizationTx, uint256(), jsonNotaryConfirmations);
+                    printf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
+                    LogPrintf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
 
                     // add to mem pool and relay
                     if (myAddtomempool(notarizationTx))
@@ -1770,8 +1773,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 }
                 else
                 {
-                    printf("%s: error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
-                    LogPrintf("%s: error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
+                    printf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
+                    LogPrintf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
                 }
             }
         }

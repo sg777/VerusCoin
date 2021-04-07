@@ -4023,7 +4023,7 @@ void CConnectedChains::SubmissionThread()
                     UniValue result;
                 }
             }
-            sleep(3);
+            sleep(1);
             boost::this_thread::interruption_point();
         }
     }

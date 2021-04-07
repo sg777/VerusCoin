@@ -929,6 +929,7 @@ public:
         READWRITE(currencyState);
         READWRITE(notarizationHeight);
         READWRITE(prevNotarization);
+        READWRITE(hashPrevNotarization);
         READWRITE(prevHeight);
 
         std::vector<std::pair<uint160, CCoinbaseCurrencyState>> vecCurrencyStates;

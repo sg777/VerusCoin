@@ -267,15 +267,22 @@ CNodeData::CNodeData(std::string netAddr, std::string paymentAddr) :
 
 CIdentitySignature::CIdentitySignature(const UniValue &uni)
 {
-    version = uni_get_int(find_value(uni, "version"));
-    blockHeight = uni_get_int64(find_value(uni, "blockheight"));
-    UniValue sigs = find_value(uni, "signatures");
-    if (sigs.isArray() && sigs.size())
+    try
     {
-        for (int i = 0; i < sigs.size(); i++)
+        version = uni_get_int(find_value(uni, "version"));
+        blockHeight = uni_get_int64(find_value(uni, "blockheight"));
+        UniValue sigs = find_value(uni, "signatures");
+        if (sigs.isArray() && sigs.size())
         {
-            signatures.insert(ParseHex(uni_get_str(sigs[i])));
+            for (int i = 0; i < sigs.size(); i++)
+            {
+                signatures.insert(ParseHex(uni_get_str(sigs[i])));
+            }
         }
+    }
+    catch(...)
+    {
+        version = VERSION_INVALID;
     }
 }
 
