@@ -1264,6 +1264,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     // good nodes ordered by time connected
     {
         std::map<int64_t, CNode *> goodNodes;
+        notarization.nodes.clear();
 
         LOCK(cs_vNodes);
         for (auto oneNode : vNodes)
