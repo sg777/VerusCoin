@@ -2360,10 +2360,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 if (!view.HaveCoins(oneIn.prevout.hash))
                 {
-                    UniValue jsonTx(UniValue::VOBJ);
+                    /*UniValue jsonTx(UniValue::VOBJ);
                     uint256 hashBlk;
                     TxToUniv(newImportTx, hashBlk, jsonTx);
-                    printf("%s\n", jsonTx.write(1,2).c_str());
+                    printf("%s\n", jsonTx.write(1,2).c_str()); */
                     printf("%s: cannot find input in view %s\n", __func__, oneIn.prevout.hash.GetHex().c_str());
                 }
             }

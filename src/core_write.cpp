@@ -572,22 +572,21 @@ bool CPBaaSNotarization::SetMirror(bool setTrue)
         __func__,
         currencyStates.size(),
         EncodeDestination(CIdentityID(oldCurrencyID)).c_str(),
-        EncodeDestination(CIdentityID(newCurrencyID)).c_str()); */
-
+        EncodeDestination(CIdentityID(newCurrencyID)).c_str());
     for (auto &oneState : currencyStates)
     {
         printf("%s:\n%s\n", EncodeDestination(CIdentityID(oneState.first)).c_str(), oneState.second.ToUniValue().write(1,2).c_str());
-    }
+    } */
 
     notarizationHeight = proofRoots[newCurrencyID].rootHeight;
     currencyStates.insert(std::make_pair(oldCurrencyID, currencyState));
     currencyState = currencyStates[newCurrencyID];
     currencyStates.erase(newCurrencyID);
 
-    for (auto &oneState : currencyStates)
+    /* for (auto &oneState : currencyStates)
     {
         printf("%s:\n%s\n", EncodeDestination(CIdentityID(oneState.first)).c_str(), oneState.second.ToUniValue().write(1,2).c_str());
-    }
+    } */
 
     currencyID = newCurrencyID;
 
