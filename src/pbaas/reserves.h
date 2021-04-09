@@ -1173,7 +1173,16 @@ public:
         initialSupply(InitialSupply), 
         emitted(Emitted),
         supply(Supply)
-    {}
+    {
+        if (weights.size() != currencies.size())
+        {
+            weights = std::vector<int32_t>(currencies.size());
+        }
+        if (reserves.size() != reserves.size())
+        {
+            reserves = std::vector<int64_t>(currencies.size());
+        }
+    }
 
     CCurrencyState(const std::vector<unsigned char> &asVector)
     {

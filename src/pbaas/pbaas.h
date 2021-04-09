@@ -1006,7 +1006,6 @@ public:
 
     // if false, *this is unmodifed, otherwise, it is set to the last valid notarization in the requested range
     bool GetLastNotarization(const uint160 &currencyID, 
-                             uint32_t eCode, 
                              int32_t startHeight=0, 
                              int32_t endHeight=0, 
                              uint256 *txIDOut=nullptr,
@@ -1014,7 +1013,6 @@ public:
 
     // if false, no matching, unspent notarization found
     bool GetLastUnspentNotarization(const uint160 &currencyID, 
-                                    uint32_t eCode, 
                                     uint256 &txIDOut,
                                     int32_t &txOutNum,
                                     CTransaction *txOut=nullptr);
@@ -1100,53 +1098,7 @@ public:
 
     // both sets the mirror flag and also transforms the notarization
     // between mirror states. returns false if could not change state to requested.
-    bool SetMirror(bool setTrue=true, bool transform=true)
-    {
-        // if we are not changing the mirror state, just return
-        if (setTrue == IsMirror())
-        {
-            return true;
-        }
-
-        // we can only reverse notarizations with two proof roots
-        // one must be the current chain, and the other is to reverse
-        if (proofRoots.size() != 2 ||
-            currencyStates.count(currencyID) ||
-            !(proofRoots.begin()->first == ASSETCHAINS_CHAINID || (++proofRoots.begin())->first == ASSETCHAINS_CHAINID))
-        {
-            LogPrintf("%s: invalid earned notarization for acceptance\n", __func__);
-            return false;
-        }
-
-        uint160 oldCurrencyID = currencyID;
-        uint160 altCurrencyID = proofRoots.begin()->first == ASSETCHAINS_CHAINID ? (++proofRoots.begin())->first : proofRoots.begin()->first;
-        uint160 newCurrencyID = proofRoots.begin()->first == currencyID ? (++proofRoots.begin())->first : proofRoots.begin()->first;
-
-        if (currencyID != ASSETCHAINS_CHAINID && !currencyStates.count(ASSETCHAINS_CHAINID))
-        {
-            LogPrintf("%s: notarization for acceptance must include both currency states\n", __func__);
-            return false;
-        }
-
-        if (transform)
-        {
-            notarizationHeight = proofRoots[newCurrencyID].rootHeight;
-            currencyStates.insert(std::make_pair(oldCurrencyID, currencyState));
-            currencyState = currencyStates[newCurrencyID];
-            currencyStates.erase(newCurrencyID);
-            currencyID = newCurrencyID;
-        }
-
-        if (setTrue)
-        {
-            flags |= FLAG_ACCEPTED_MIRROR;
-        }
-        else
-        {
-            flags &= ~FLAG_ACCEPTED_MIRROR;
-        }
-        return true;
-    }
+    bool SetMirror(bool setTrue=true);
 
     bool IsDefinitionNotarization() const
     {

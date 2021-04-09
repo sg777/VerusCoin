@@ -1100,7 +1100,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     {
         // get the last notarization in the height range for this currency, which is valid by definition for a token
         CPBaaSNotarization notarization;
-        notarization.GetLastNotarization(chainID, EVAL_ACCEPTEDNOTARIZATION, curDefHeight, height);
+        notarization.GetLastNotarization(chainID, curDefHeight, height);
         currencyState = notarization.currencyState;
         if (!currencyState.IsValid())
         {
@@ -3969,6 +3969,8 @@ void CConnectedChains::SubmissionThread()
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
             if (IsNotaryAvailable(true))
             {
+                // TODO: this isn't functioning for somewhat obvious reasons - review
+
                 // check to see if we have recently earned a block with an earned notarization that qualifies for
                 // submitting an accepted notarization
                 if (earnedNotarizationHeight)
@@ -3977,29 +3979,29 @@ void CConnectedChains::SubmissionThread()
                     int32_t txIndex = -1, height;
                     {
                         LOCK(cs_mergemining);
-                    if (txIndex != -1)
-                    {
-                        LOCK(cs_main);
-                        //printf("SubmissionThread: testing notarization\n");
-                        CTransaction lastConfirmed;
-                        CPBaaSNotarization notarization; 
-                        CNotaryEvidence evidence;
-                        CValidationState state;
-                        TransactionBuilder txBuilder(Params().GetConsensus(), chainActive.Height());
-                        // get latest earned notarization
-
-                        bool success = notarization.CreateAcceptedNotarization(ConnectedChains.FirstNotaryChain().chainDefinition,
-                                                                               notarization,
-                                                                               evidence,
-                                                                               state,
-                                                                               txBuilder);
-
-                        if (success)
+                        if (txIndex != -1)
                         {
-                            //printf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
-                            //LogPrintf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
+                            LOCK(cs_main);
+                            //printf("SubmissionThread: testing notarization\n");
+                            CTransaction lastConfirmed;
+                            CPBaaSNotarization notarization; 
+                            CNotaryEvidence evidence;
+                            CValidationState state;
+                            TransactionBuilder txBuilder(Params().GetConsensus(), chainActive.Height());
+                            // get latest earned notarization
+
+                            bool success = notarization.CreateAcceptedNotarization(ConnectedChains.FirstNotaryChain().chainDefinition,
+                                                                                notarization,
+                                                                                evidence,
+                                                                                state,
+                                                                                txBuilder);
+
+                            if (success)
+                            {
+                                //printf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
+                                //LogPrintf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
+                            }
                         }
-                    }
 
                         if (earnedNotarizationHeight && earnedNotarizationHeight <= chainActive.Height() && earnedNotarizationBlock.GetHash() == chainActive[earnedNotarizationHeight]->GetBlockHash())
                         {

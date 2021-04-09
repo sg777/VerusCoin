@@ -213,21 +213,39 @@ UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("flags", (int32_t)flags));
+    ret.push_back(Pair("version", (int32_t)version));
     ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
 
-    if (IsValid() && IsFractional())
+    if (IsValid())
     {
-        UniValue currencyArr(UniValue::VARR);
-        for (int i = 0; i < currencies.size(); i++)
+        if (IsFractional())
         {
-            UniValue currencyObj(UniValue::VOBJ);
-            currencyObj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencies[i]))));
-            currencyObj.push_back(Pair("weight", ValueFromAmount(i < weights.size() ? weights[i] : 0)));
-            currencyObj.push_back(Pair("reserves", ValueFromAmount(i < reserves.size() ? reserves[i] : 0)));
-            currencyObj.push_back(Pair("priceinreserve", ValueFromAmount(PriceInReserve(i))));
-            currencyArr.push_back(currencyObj);
+            UniValue currencyArr(UniValue::VARR);
+            for (int i = 0; i < currencies.size(); i++)
+            {
+                UniValue currencyObj(UniValue::VOBJ);
+                currencyObj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencies[i]))));
+                currencyObj.push_back(Pair("weight", ValueFromAmount(i < weights.size() ? weights[i] : 0)));
+                currencyObj.push_back(Pair("reserves", ValueFromAmount(i < reserves.size() ? reserves[i] : 0)));
+                currencyObj.push_back(Pair("priceinreserve", ValueFromAmount(PriceInReserve(i))));
+                currencyArr.push_back(currencyObj);
+            }
+            ret.push_back(Pair("reservecurrencies", currencyArr));
         }
-        ret.push_back(Pair("reservecurrencies", currencyArr));
+        else
+        {
+            UniValue currencyArr(UniValue::VARR);
+            for (int i = 0; i < currencies.size(); i++)
+            {
+                UniValue currencyObj(UniValue::VOBJ);
+                currencyObj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencies[i]))));
+                currencyObj.push_back(Pair("weight", ValueFromAmount(i < weights.size() ? weights[i] : 0)));
+                currencyObj.push_back(Pair("reserves", ValueFromAmount(i < reserves.size() ? reserves[i] : 0)));
+                currencyObj.push_back(Pair("priceinreserve", ValueFromAmount(PriceInReserve(i))));
+                currencyArr.push_back(currencyObj);
+            }
+            ret.push_back(Pair("launchcurrencies", currencyArr));
+        }
     }
     ret.push_back(Pair("initialsupply", ValueFromAmount(initialSupply)));
     ret.push_back(Pair("emitted", ValueFromAmount(emitted)));
@@ -503,22 +521,85 @@ UniValue ValueVectorsToUniValue(const std::vector<std::string> &rowNames,
 
 UniValue CCoinbaseCurrencyState::ToUniValue() const
 {
-    UniValue ret(UniValue::VOBJ);
-    ret = ((CCurrencyState *)this)->ToUniValue();
-    std::vector<std::string> rowNames;
-    for (int i = 0; i < currencies.size(); i++)
+    UniValue ret = ((CCurrencyState *)this)->ToUniValue();
+    if (currencies.size())
     {
-        rowNames.push_back(EncodeDestination(CIdentityID(currencies[i])));
-    }
-    std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
-    std::vector<const std::vector<CAmount> *> data = {&reserveIn, &nativeIn, &reserveOut, &conversionPrice, &viaConversionPrice, &fees, &conversionFees};
+        std::vector<std::string> rowNames;
+        for (int i = 0; i < currencies.size(); i++)
+        {
+            rowNames.push_back(EncodeDestination(CIdentityID(currencies[i])));
+        }
+        std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
+        std::vector<const std::vector<CAmount> *> data = {&reserveIn, &nativeIn, &reserveOut, &conversionPrice, &viaConversionPrice, &fees, &conversionFees};
 
-    ret.push_back(Pair("currencies", ValueVectorsToUniValue(rowNames, columnNames, data, true)));
+        ret.push_back(Pair("currencies", ValueVectorsToUniValue(rowNames, columnNames, data, true)));
+    }
     ret.push_back(Pair("nativefees", nativeFees));
     ret.push_back(Pair("nativeconversionfees", nativeConversionFees));
     ret.push_back(Pair("nativeout", nativeOut));
     ret.push_back(Pair("preconvertedout", preConvertedOut));
     return ret;
+}
+
+bool CPBaaSNotarization::SetMirror(bool setTrue)
+{
+    // if we are not changing the mirror state, just return
+    if (setTrue == IsMirror())
+    {
+        return true;
+    }
+
+    // we can only reverse notarizations with two proof roots
+    // one must be the current chain, and the other is to reverse
+    if (proofRoots.size() != 2 ||
+        currencyStates.count(currencyID) ||
+        !(proofRoots.begin()->first == ASSETCHAINS_CHAINID || (++proofRoots.begin())->first == ASSETCHAINS_CHAINID))
+    {
+        LogPrintf("%s: invalid earned notarization for acceptance\n", __func__);
+        return false;
+    }
+
+    uint160 oldCurrencyID = currencyID;
+    uint160 newCurrencyID = proofRoots.begin()->first == currencyID ? (++proofRoots.begin())->first : proofRoots.begin()->first;
+
+    if (currencyID != ASSETCHAINS_CHAINID && !currencyStates.count(ASSETCHAINS_CHAINID))
+    {
+        LogPrintf("%s: notarization for acceptance must include both currency states\n", __func__);
+        return false;
+    }
+
+    /* printf("%s: currencyStates.size(): %lu, oldCurrencyID: %s, newCurrencyID: %s\n",
+        __func__,
+        currencyStates.size(),
+        EncodeDestination(CIdentityID(oldCurrencyID)).c_str(),
+        EncodeDestination(CIdentityID(newCurrencyID)).c_str()); */
+
+    for (auto &oneState : currencyStates)
+    {
+        printf("%s:\n%s\n", EncodeDestination(CIdentityID(oneState.first)).c_str(), oneState.second.ToUniValue().write(1,2).c_str());
+    }
+
+    notarizationHeight = proofRoots[newCurrencyID].rootHeight;
+    currencyStates.insert(std::make_pair(oldCurrencyID, currencyState));
+    currencyState = currencyStates[newCurrencyID];
+    currencyStates.erase(newCurrencyID);
+
+    for (auto &oneState : currencyStates)
+    {
+        printf("%s:\n%s\n", EncodeDestination(CIdentityID(oneState.first)).c_str(), oneState.second.ToUniValue().write(1,2).c_str());
+    }
+
+    currencyID = newCurrencyID;
+
+    if (setTrue)
+    {
+        flags |= FLAG_ACCEPTED_MIRROR;
+    }
+    else
+    {
+        flags &= ~FLAG_ACCEPTED_MIRROR;
+    }
+    return true;
 }
 
 UniValue CPBaaSNotarization::ToUniValue() const
@@ -579,7 +660,9 @@ UniValue CPBaaSNotarization::ToUniValue() const
     UniValue curStateArr(UniValue::VARR);
     for (auto &oneState : currencyStates)
     {
-        curStateArr.push_back(Pair(EncodeDestination(CIdentityID(oneState.first)), oneState.second.ToUniValue()));
+        UniValue oneCurState(UniValue::VOBJ);
+        oneCurState.pushKV(EncodeDestination(CIdentityID(oneState.first)), oneState.second.ToUniValue());
+        curStateArr.push_back(oneCurState);
     }
     obj.push_back(Pair("currencystates", curStateArr));
 
@@ -997,14 +1080,14 @@ CUTXORef::CUTXORef(const UniValue &uni)
 UniValue CObjectFinalization::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
-    ret.push_back(Pair("finalizationtype", (finalizationType == FINALIZE_NOTARIZATION) ? 
-                                                "finalizenotarization" : finalizationType == FINALIZE_EXPORT ? 
+    ret.push_back(Pair("finalizationtype", (FinalizationType() == FINALIZE_NOTARIZATION) ? 
+                                                "finalizenotarization" : FinalizationType() == FINALIZE_EXPORT ? 
                                                 "finalizeexport" : "invalid"));
-    ret.push_back(Pair("status", (finalizationType & FINALIZE_CONFIRMED) != 0 ? 
+    ret.push_back(Pair("status", IsConfirmed() ? 
                                     "confirmed" : 
-                                 (finalizationType & FINALIZE_REJECTED) != 0 ? 
-                                    "rejected" : 
-                                    "pending"));
+                                    IsRejected() ? 
+                                        "rejected" : 
+                                        "pending"));
     ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
     ret.push_back(Pair("output", output.ToUniValue()));
     return ret;

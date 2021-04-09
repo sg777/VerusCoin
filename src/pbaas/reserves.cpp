@@ -563,11 +563,12 @@ bool CCrossChainImport::ValidateImport(const CTransaction &tx,
     return ValidateImport(tx, numImportin, numImportOut, ccx, importNotarization, reserveTransfers, state);
 }
 
-CCurrencyState::CCurrencyState(const UniValue &obj) : version(VERSION_CURRENT)
+CCurrencyState::CCurrencyState(const UniValue &obj)
 {
     try
     {
         flags = uni_get_int(find_value(obj, "flags"));
+        version = uni_get_int(find_value(obj, "version"), VERSION_CURRENT);
 
         std::string cIDStr = uni_get_str(find_value(obj, "currencyid"));
         if (cIDStr != "")
@@ -576,41 +577,45 @@ CCurrencyState::CCurrencyState(const UniValue &obj) : version(VERSION_CURRENT)
             currencyID = GetDestinationID(currencyDest);
         }
 
-        if (flags & FLAG_FRACTIONAL)
+        auto CurrenciesArr = IsFractional() ? find_value(obj, "reservecurrencies") : find_value(obj, "launchcurrencies");
+        size_t numCurrencies = 0;
+
+        if (IsFractional() &&
+            (!CurrenciesArr.isArray() ||
+             !(numCurrencies = CurrenciesArr.size())))
         {
-            auto CurrenciesArr = find_value(obj, "reservecurrencies");
-            size_t numCurrencies;
-            if (!CurrenciesArr.isArray() ||
-                !(numCurrencies = CurrenciesArr.size()) ||
-                numCurrencies > MAX_RESERVE_CURRENCIES)
+            version = VERSION_INVALID;
+            LogPrintf("%s: Failed to proplerly specify launch or reserve currencies in currency definition\n", __func__);
+        }
+        if (numCurrencies > MAX_RESERVE_CURRENCIES)
+        {
+            version = VERSION_INVALID;
+            LogPrintf("%s: More than %d launch or reserve currencies in currency definition\n", __func__, MAX_RESERVE_CURRENCIES);
+        }
+
+        // store currencies, weights, and reserves
+        if (CurrenciesArr.size())
+        {
+            try
+            {
+                for (int i = 0; i < CurrenciesArr.size(); i++)
+                {
+                    uint160 currencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(CurrenciesArr[i], "currencyid"))));
+                    if (currencyID.IsNull())
+                    {
+                        LogPrintf("Invalid currency ID\n");
+                        version = VERSION_INVALID;
+                        break;
+                    }
+                    currencies.push_back(currencyID);
+                    weights.push_back(AmountFromValueNoErr(find_value(CurrenciesArr[i], "weight")));
+                    reserves.push_back(AmountFromValueNoErr(find_value(CurrenciesArr[i], "reserves")));
+                }
+            }
+            catch (...)
             {
                 version = VERSION_INVALID;
-                LogPrintf("Failed to proplerly specify currencies in reserve currency definition\n");
-            }
-            else
-            {
-                // store currencies, weights, and reserves
-                try
-                {
-                    for (int i = 0; i < CurrenciesArr.size(); i++)
-                    {
-                        uint160 currencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(CurrenciesArr[i], "currencyid"))));
-                        if (currencyID.IsNull())
-                        {
-                            LogPrintf("Invalid currency ID\n");
-                            version = VERSION_INVALID;
-                            break;
-                        }
-                        currencies.push_back(currencyID);
-                        weights.push_back(AmountFromValue(find_value(CurrenciesArr[i], "weight")));
-                        reserves.push_back(AmountFromValue(find_value(CurrenciesArr[i], "reserves")));
-                    }
-                }
-                catch (...)
-                {
-                    version = VERSION_INVALID;
-                    LogPrintf("Invalid specification of currencies, weights, and/or reserves in initial definition of reserve currency\n");
-                }
+                LogPrintf("Invalid specification of currencies, weights, and/or reserves in initial definition of reserve currency\n");
             }
         }
 
@@ -684,8 +689,12 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
     {
         std::vector<std::vector<CAmount>> columnAmounts;
 
+        std::vector<std::string> rowNames;
         auto currenciesValue = find_value(obj, "currencies");
-        std::vector<std::string> rowNames = currenciesValue.getKeys();
+        if (currenciesValue.isObject())
+        {
+            rowNames = currenciesValue.getKeys();
+        }
         if (!currencies.size() && rowNames.size())
         {
             currencies.resize(rowNames.size());
@@ -720,8 +729,8 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
                 reserveIn = columnAmounts[0];
                 nativeIn = columnAmounts[1];
                 reserveOut = columnAmounts[2];
-                conversionPrice = columnAmounts[4];
-                viaConversionPrice = columnAmounts[3];
+                conversionPrice = columnAmounts[3];
+                viaConversionPrice = columnAmounts[4];
                 fees = columnAmounts[5];
                 conversionFees = columnAmounts[6];
             }
@@ -731,10 +740,10 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
         nativeOut = uni_get_int64(find_value(obj, "nativeout"));
         preConvertedOut = uni_get_int64(find_value(obj, "preconvertedout"));
     }
-    catch(const std::exception& e)
+    catch(...)
     {
         version = VERSION_INVALID;
-        LogPrintf("%s: %s\n", __func__, e.what());
+        LogPrintf("%s: exception reading json CCoinbaseCurrencyState\n", __func__);
     }
 }
 

@@ -94,13 +94,15 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
 
     CIdentitySignature idSignature;
 
-    /* printf("%s: Signing notarization at height %u on system: %s for identity %s\nconfirmedKey: %s\nobjHash %s\n", 
+    CPBaaSNotarization debugNotarization(p.vData[0]);
+    printf("%s: notarization:\n%s\n", __func__, debugNotarization.ToUniValue().write(1,2).c_str());
+    printf("%s: Signing notarization at height %u on system: %s for identity %s\nconfirmedKey: %s\nobjHash: %s\n", 
         __func__,
         height,
         EncodeDestination(CIdentityID(systemID)).c_str(),
         EncodeDestination(CIdentityID(keyAndIdentity.first.idID)).c_str(),
         NotaryConfirmedKey().GetHex().c_str(),
-        objHash.GetHex().c_str()); */
+        objHash.GetHex().c_str());
 
     CIdentitySignature::ESignatureVerification sigResult = idSignature.NewSignature(keyAndIdentity.second, 
                                                                                     std::vector<uint160>({NotaryConfirmedKey()}), 
@@ -230,7 +232,7 @@ uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=f
 
 CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
 {
-    nVersion = (uint32_t)uni_get_int(find_value(obj, "version"));
+    nVersion = (uint32_t)uni_get_int64(find_value(obj, "version"));
     flags = FLAGS_NONE;
     SetDefinitionNotarization(uni_get_bool(find_value(obj, "isdefinition")));
     SetBlockOneNotarization(uni_get_bool(find_value(obj, "isblockonenotarization")));
@@ -257,11 +259,11 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
         proposer = CTransferDestination(transferID);
     }
 
-    notarizationHeight = uni_get_int(find_value(obj, "notarizationheight"));
+    notarizationHeight = (uint32_t)uni_get_int64(find_value(obj, "notarizationheight"));
     currencyState = CCoinbaseCurrencyState(find_value(obj, "currencystate"));
     prevNotarization = CUTXORef(uint256S(uni_get_str(find_value(obj, "prevnotarizationtxid"))), (uint32_t)uni_get_int(find_value(obj, "prevnotarizationout")));
     hashPrevNotarization = uint256S(uni_get_str(find_value(obj, "hashprevnotarizationobject")));
-    prevHeight = uni_get_int(find_value(obj, "prevheight"));
+    prevHeight = (uint32_t)uni_get_int64(find_value(obj, "prevheight"));
 
     auto curStateArr = find_value(obj, "currencystates");
     auto proofRootArr = find_value(obj, "proofroots");
@@ -333,7 +335,6 @@ CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
 }
 
 bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
-                                             uint32_t eCode, 
                                              int32_t startHeight,
                                              int32_t endHeight,
                                              uint256 *txIDOut,
@@ -384,7 +385,6 @@ bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
 }
 
 bool CPBaaSNotarization::GetLastUnspentNotarization(const uint160 &currencyID,
-                                                    uint32_t eCode, 
                                                     uint256 &txIDOut,
                                                     int32_t &txOutNum,
                                                     CTransaction *txOut)
@@ -875,11 +875,11 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     }
 
     auto hw = CMMRNode<>::GetHashWriter();
-    //hw << earnedNotarization;
-    //uint256 objHash = hw.GetHash();
+
     std::vector<unsigned char> notarizationVec = ::AsVector(earnedNotarization);
     uint256 objHash = hw.write((const char *)&(notarizationVec[0]), notarizationVec.size()).GetHash();
 
+    int sigCount = 0;
     for (auto &oneSig : notaryEvidence.signatures)
     {
         if (!notaries.count(oneSig.first))
@@ -891,6 +891,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         {
             return state.Error(errorPrefix + "invalid notary identity");
         }
+
         // we currently require accepted notarizations to be completely authorized by notaries
         printf("%s: Checking signature at sign height %u on system: %s for identity %s\nconfirmedKey: %s\nobjHash %s\n", 
             __func__,
@@ -899,8 +900,8 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             EncodeDestination(CIdentityID(oneSig.first)).c_str(),
             notaryEvidence.NotaryConfirmedKey().GetHex().c_str(),
             objHash.GetHex().c_str());
-        printf("%s: notarization:\n%s\n", __func__, earnedNotarization.ToUniValue().write(1,2).c_str());
-        printf("%s: hex:\n%s\n", __func__, HexBytes(&(notarizationVec[0]), notarizationVec.size()).c_str());
+        /*printf("%s: notarization:\n%s\n", __func__, earnedNotarization.ToUniValue().write(1,2).c_str());
+        printf("%s: hex:\n%s\n", __func__, HexBytes(&(notarizationVec[0]), notarizationVec.size()).c_str()); */
 
         if (oneSig.second.CheckSignature(sigIdentity,
                                          std::vector<uint160>({notaryEvidence.NotaryConfirmedKey()}), 
@@ -911,6 +912,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         {
             return state.Error(errorPrefix + "invalid or incomplete notary signature");
         }
+        sigCount++;
     }
 
     auto mmv = chainActive.GetMMV();
@@ -934,7 +936,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     if (!oldCurState.IsValid() ||
         ::GetHash(oldCurState) != ::GetHash(earnedNotarization.currencyState))
     {
-        return state.Error(errorPrefix + "currecy state is invalid in accepted notarization. is:\n" + 
+        return state.Error(errorPrefix + "currency state is invalid in accepted notarization. is:\n" + 
                                             newNotarization.currencyState.ToUniValue().write(1,2) + 
                                             "\nshould be:\n" + 
                                             oldCurState.ToUniValue().write(1,2) + "\n");
@@ -946,7 +948,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     {
         if (oneCur.first == SystemID)
         {
-            continue;
+            return state.Error(errorPrefix + "cannot accept redundant currency state in notarization for " + EncodeDestination(CIdentityID(SystemID)));
         }
         else if (oneCur.first != ASSETCHAINS_CHAINID)
         {
@@ -975,7 +977,8 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         }
         else
         {
-            return state.Error(errorPrefix + "cannot accept redundant currency state in notarization for " + ConnectedChains.ThisChain().name);
+            // already checked above
+            continue;
         }
     }
     for (auto &oneRoot : newNotarization.proofRoots)
@@ -1010,7 +1013,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     uint256 lastTxId;
     int32_t lastTxOutNum;
     CTransaction lastTx;
-    if (!lastUnspentNotarization.GetLastUnspentNotarization(SystemID, EVAL_ACCEPTEDNOTARIZATION, lastTxId, lastTxOutNum, &lastTx))
+    if (!lastUnspentNotarization.GetLastUnspentNotarization(SystemID, lastTxId, lastTxOutNum, &lastTx))
     {
         return state.Error(errorPrefix + "invalid prior notarization");
     }
@@ -1049,8 +1052,8 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
         // we need to store the input that we confirmed if we spent finalization outputs
-        CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION, VERUS_CHAINID, uint256(), txBuilder.mtx.vout.size() - 2, height + 15);
-        if (notaryEvidence.signatures.size() >= externalSystem.notaries.size())
+        CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION, newNotarization.currencyID, uint256(), txBuilder.mtx.vout.size() - 2, height + 15);
+        if (notaryEvidence.signatures.size() >= externalSystem.minNotariesConfirm)
         {
             of.SetConfirmed();
             of.evidenceOutputs.push_back(txBuilder.mtx.vout.size() - 1);
@@ -1224,6 +1227,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 notarization.currencyStates[oneCurDefID] = oneCurState;
             }
         }
+    }
+    notarization.currencyStates[ASSETCHAINS_CHAINID] = ConnectedChains.GetCurrencyState(height);
+    if (!systemDef.GatewayConverterID().IsNull())
+    {
+        notarization.currencyStates[systemDef.GatewayConverterID()] = ConnectedChains.GetCurrencyState(systemDef.GatewayConverterID(), height);
     }
 
     // add this blockchain's info, based on the requested height
@@ -1653,10 +1661,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     printf("%s: selected notarization already confirmed\n", __func__);
                     break;
                 }
-                printf("%s: adding %s to entry #%d in vtxFinalizations\n", 
+                /* printf("%s: adding %s to entry #%d in vtxFinalizations\n", 
                     __func__, 
                     CUTXORef(oneConfirmed.second.txIn.prevout).ToUniValue().write(1,2).c_str(), 
-                    vtxFinalizations[oneConfirmedTarget].first);
+                    vtxFinalizations[oneConfirmedTarget].first); */
                 vtxFinalizations[oneConfirmedTarget].second.push_back(oneConfirmed);
             }
 
@@ -1803,6 +1811,11 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
             if (ne.signatures.size())
             {
+                /* for (auto &debugOut : ne.signatures)
+                {
+                    printf("%s: onesig - ID: %s, signature: %s\n", __func__, EncodeDestination(debugOut.first).c_str(), debugOut.second.ToUniValue().write(1,2).c_str());
+                } */
+
                 retVal = true;
                 CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne));
                 myIDSigs.push_back(CInputDescriptor(evidenceScript, 0, CTxIn(COutPoint(uint256(), txBuilder.mtx.vout.size()))));
@@ -2023,6 +2036,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     {
                         if (oneSig.second.signatures.size())
                         {
+                            allEvidence.signatures[oneSig.first].version = oneSig.second.version;
+                            allEvidence.signatures[oneSig.first].blockHeight = oneSig.second.blockHeight;
                             for (auto &oneSigEntry : oneSig.second.signatures)
                             {
                                 allEvidence.signatures[oneSig.first].signatures.insert(oneSigEntry);
@@ -2049,6 +2064,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     {
                         if (oneSig.second.signatures.size())
                         {
+                            allEvidence.signatures[oneSig.first].version = oneSig.second.version;
+                            allEvidence.signatures[oneSig.first].blockHeight = oneSig.second.blockHeight;
                             for (auto &oneSigEntry : oneSig.second.signatures)
                             {
                                 allEvidence.signatures[oneSig.first].signatures.insert(oneSigEntry);
@@ -2073,9 +2090,20 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         params.push_back(oneNotarization.first.ToUniValue());
         params.push_back(oneNotarization.second.ToUniValue());
 
+        /*for (auto &debugOut : oneNotarization.second.signatures)
+        {
+            printf("%s: onesig - ID: %s, signature: %s\n", __func__, EncodeDestination(debugOut.first).c_str(), debugOut.second.ToUniValue().write(1,2).c_str());
+        }
         printf("%s: submitting notarization with parameters:\n%s\n%s\n", __func__, params[0].write(1,2).c_str(), params[1].write(1,2).c_str());
-        std::vector<unsigned char> notVec = ::AsVector(oneNotarization.first);
-        printf("%s: hex:\n%s\n", __func__, HexBytes(&(notVec[0]), notVec.size()).c_str());
+        printf("%s: initial notarization:\n%s\n", __func__, oneNotarization.first.ToUniValue().write(1,2).c_str());
+        std::vector<unsigned char> notVec1 = ::AsVector(oneNotarization.first);
+        CPBaaSNotarization checkNotarization(oneNotarization.first.ToUniValue());
+        std::vector<unsigned char> notVec2 = ::AsVector(checkNotarization);
+        printf("%s: processed notarization:\n%s\n", __func__, checkNotarization.ToUniValue().write(1,2).c_str());
+        std::vector<unsigned char> notVec3 = ::AsVector(CPBaaSNotarization(notVec1));
+        printf("%s: hex before univalue:\n%s\n", __func__, HexBytes(&(notVec1[0]), notVec1.size()).c_str());
+        printf("%s: hex after univalue:\n%s\n", __func__, HexBytes(&(notVec2[0]), notVec2.size()).c_str());
+        printf("%s: hex after reserialization:\n%s\n", __func__, HexBytes(&(notVec3[0]), notVec3.size()).c_str()); */
 
         if (!CallNotary(externalSystem, "submitacceptednotarization", params, result, error) ||
             !error.isNull() ||

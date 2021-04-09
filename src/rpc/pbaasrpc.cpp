@@ -1701,7 +1701,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         return false;
     }
 
-    // if we are being asked for a notarization of the current chain, we fake one
+    // if we are being asked for a notarization of the current chain, we make one
     if (currencyID == ASSETCHAINS_CHAINID)
     {
         CIdentityID proposer = VERUS_NOTARYID.IsNull() ? (VERUS_DEFAULTID.IsNull() ? VERUS_NODEID : VERUS_DEFAULTID) : VERUS_NOTARYID;
@@ -1766,7 +1766,11 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         if (p.evalCode == EVAL_FINALIZE_NOTARIZATION)
         {
             CObjectFinalization finalization(p.vData[0]);
-            txInfo = finalization.output;
+            if (!finalization.output.hash.IsNull())
+            {
+                txInfo.hash = finalization.output.hash;
+            }
+            txInfo.n = finalization.output.n;
 
             if (myGetTransaction(txInfo.hash, nTx, blkHash) && nTx.vout.size() > txInfo.n)
             {
@@ -1987,17 +1991,7 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
 
     uint160 chainID;
     CChainNotarizationData nData;
-    uint32_t ecode;
     
-    if (IsVerusActive())
-    {
-        ecode = EVAL_ACCEPTEDNOTARIZATION;
-    }
-    else
-    {
-        ecode = EVAL_EARNEDNOTARIZATION;
-    }
-
     LOCK2(cs_main, mempool.cs);
 
     chainID = GetChainIDFromParam(params[0]);
@@ -2005,14 +1999,6 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
     if (chainID.IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currencyid");
-    }
-
-    if (params.size() > 1)
-    {
-        if (!params[1].get_bool())
-        {
-            ecode = EVAL_EARNEDNOTARIZATION;
-        }
     }
 
     if (GetNotarizationData(chainID, nData))
@@ -2286,6 +2272,13 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     CCurrencyDefinition chainDef;
     int32_t chainDefHeight;
 
+    /* CPBaaSNotarization checkPbn(params[0]);
+    printf("%s: checknotarization before:\n%s\n", __func__, checkPbn.ToUniValue().write(1,2).c_str());
+    checkPbn.SetMirror();
+    printf("%s: checknotarization mirrored:\n%s\n", __func__, checkPbn.ToUniValue().write(1,2).c_str());
+    checkPbn.SetMirror(false);
+    printf("%s: checknotarization after:\n%s\n", __func__, checkPbn.ToUniValue().write(1,2).c_str()); */
+
     if (!(pbn = CPBaaSNotarization(params[0])).IsValid() ||
         !pbn.SetMirror() ||
         !GetCurrencyDefinition(pbn.currencyID, chainDef, &chainDefHeight) ||
@@ -2303,6 +2296,8 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "insufficient notarization evidence");
     }
 
+    // printf("%s: evidence: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
+
     // now, make a new notarization based on this earned notarization, mirrored, so it reflects a notarization on this chain, 
     // but can be verified with the cross-chain signatures and evidence
 
@@ -2317,17 +2312,18 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     }
 
     // get the new notarization transaction
+    tb.SetFee(0);
     auto buildResult = tb.Build();
     CTransaction newTx;
-    try
+    if (buildResult.IsTx())
     {
         newTx = buildResult.GetTxOrThrow();
     }
-    catch(const std::exception& e)
+    else
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, e.what());
+        throw JSONRPCError(RPC_INVALID_PARAMETER, buildResult.GetError());
     }
-
+    
     std::list<CTransaction> removed;
     mempool.removeConflicts(newTx, removed);
 
@@ -2653,7 +2649,6 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     if (pFractionalCurrency->systemID == ASSETCHAINS_CHAINID)
     {
         notarization.GetLastUnspentNotarization(fractionalCurrencyID, 
-                                                fractionalCurrencyID == ASSETCHAINS_CHAINID ? EVAL_EARNEDNOTARIZATION : EVAL_ACCEPTEDNOTARIZATION,
                                                 lastUnspentUTXO.hash,
                                                 *((int32_t *)&lastUnspentUTXO.n),
                                                 &lastUnspentTx);

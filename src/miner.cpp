@@ -989,9 +989,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 registrationAmount = 0;
             }
 
-            // only the first notary ID import gets a thread sourced from the launch chain.
-            // this allows the requirement that any import from that system spend an import sourced
-            // from that system to be an in-order, system-to-system, export/import thread of transactions.
             CCrossChainImport cci = CCrossChainImport(ConnectedChains.ThisChain().launchSystemID,
                                                       1,
                                                       newCurID,
@@ -1151,6 +1148,8 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
             printf("Unable to get gateway converter initial state\n");
             return false;
         }
+
+        notaryNotarization.currencyStates[converterCurrencyID] = converterNotarization.currencyState;
 
         // both currency and primary gateway must have their pre-launch phase complete before we can make a decision
         // about launching

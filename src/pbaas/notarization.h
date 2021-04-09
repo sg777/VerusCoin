@@ -126,6 +126,11 @@ public:
                 output.IsValid();
     }
 
+    EFinalizationType FinalizationType() const
+    {
+        return (EFinalizationType)(finalizationType & FINALIZE_TYPE_MASK);
+    }
+
     bool IsPending() const
     {
         return !(finalizationType & FINALIZE_REJECTED || finalizationType & FINALIZE_CONFIRMED);
