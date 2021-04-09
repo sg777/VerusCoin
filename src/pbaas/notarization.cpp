@@ -94,7 +94,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
 
     CIdentitySignature idSignature;
 
-    CPBaaSNotarization debugNotarization(p.vData[0]);
+    /* CPBaaSNotarization debugNotarization(p.vData[0]);
     printf("%s: notarization:\n%s\n", __func__, debugNotarization.ToUniValue().write(1,2).c_str());
     printf("%s: Signing notarization at height %u on system: %s for identity %s\nconfirmedKey: %s\nobjHash: %s\n", 
         __func__,
@@ -102,7 +102,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
         EncodeDestination(CIdentityID(systemID)).c_str(),
         EncodeDestination(CIdentityID(keyAndIdentity.first.idID)).c_str(),
         NotaryConfirmedKey().GetHex().c_str(),
-        objHash.GetHex().c_str());
+        objHash.GetHex().c_str()); */
 
     CIdentitySignature::ESignatureVerification sigResult = idSignature.NewSignature(keyAndIdentity.second, 
                                                                                     std::vector<uint160>({NotaryConfirmedKey()}), 
@@ -893,14 +893,14 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         }
 
         // we currently require accepted notarizations to be completely authorized by notaries
-        printf("%s: Checking signature at sign height %u on system: %s for identity %s\nconfirmedKey: %s\nobjHash %s\n", 
+        /* printf("%s: Checking signature at sign height %u on system: %s for identity %s\nconfirmedKey: %s\nobjHash %s\n", 
             __func__,
             oneSig.second.blockHeight,
             EncodeDestination(CIdentityID(SystemID)).c_str(),
             EncodeDestination(CIdentityID(oneSig.first)).c_str(),
             notaryEvidence.NotaryConfirmedKey().GetHex().c_str(),
             objHash.GetHex().c_str());
-        /*printf("%s: notarization:\n%s\n", __func__, earnedNotarization.ToUniValue().write(1,2).c_str());
+        printf("%s: notarization:\n%s\n", __func__, earnedNotarization.ToUniValue().write(1,2).c_str());
         printf("%s: hex:\n%s\n", __func__, HexBytes(&(notarizationVec[0]), notarizationVec.size()).c_str()); */
 
         if (oneSig.second.CheckSignature(sigIdentity,
@@ -1959,7 +1959,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 CCrossChainRPCData::GetConditionID(systemID, CObjectFinalization::ObjectFinalizationNotarizationKey()), 
                 CObjectFinalization::ObjectFinalizationConfirmedKey());
 
-        if (GetAddressIndex(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations, nHeight-10) && finalizedNotarizations.size())
+        // TODO: consider a better model than just resubmitting finalizations from the last 50 blocks locally
+        if (GetAddressIndex(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations, nHeight - 20) && finalizedNotarizations.size())
         {
             // get the recent finalized notarizations and submit. the daemon we submit to may early out immediately if
             // the notarization is already posted or in mempool
@@ -2313,12 +2314,14 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
             auto &oneOut = tx.vout[i];
             COptCCParams p;
             // we can accept only one finalization of this notarization as an output, find it and reject more than one
+
+            // TODO: HARDENING - ensure that the output of the finalization we are spending is either a confirmed, earlier
+            // output or invalidated alternate to the one we are finalizing
             if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                 p.vData.size() &&
-                (newFinalization = CObjectFinalization(p.vData[0])).IsValid() &&
-                newFinalization.output == oldFinalization.output)
+                (newFinalization = CObjectFinalization(p.vData[0])).IsValid())
             {
                 if (foundFinalization)
                 {

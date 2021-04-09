@@ -1758,10 +1758,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 if (buildResult.IsTx())
                 {
                     notarizationTx = buildResult.GetTxOrThrow();
-                    std::list<CTransaction> removed;
+
                     UniValue jsonNotaryConfirmations(UniValue::VOBJ);
                     TxToUniv(notarizationTx, uint256(), jsonNotaryConfirmations);
-                    printf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
+                    //printf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
                     LogPrintf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
 
                     // add to mem pool and relay
