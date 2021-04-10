@@ -2682,7 +2682,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         {
                                             seed_insecure_rand();
                                             std::set<int> counted;
-                                            int loopMax = std::min((uint64_t)MAX_OUR_UTXOS_ID_RESCAN, unspentOutputs.size());
+                                            int loopMax = std::min((int)MAX_OUR_UTXOS_ID_RESCAN, (int)unspentOutputs.size());
 
                                             CAmount total = 0;
                                             for (int loop = 0; loop < loopMax; loop++)
