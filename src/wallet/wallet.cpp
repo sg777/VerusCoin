@@ -2413,7 +2413,7 @@ bool CWallet::MarkIdentityDirty(const CIdentityID &idID)
  * updated; instead, the transaction being in the mempool or conflicted is determined on
  * the fly in CMerkleTx::GetDepthInMainChain().
  */
-bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate)
+bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate, bool isRescan)
 {
     {
         AssertLockHeld(cs_wallet);
@@ -2476,37 +2476,10 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                     std::pair<bool, bool> wasCanSignCanSpend({false, false});
                     std::pair<bool, bool> canSignCanSpend(CheckAuthority(identity));
 
-                    // if the new identity is revoked, the recovery identity holds can sign/can spend authority
-                    if (identity.IsRevoked())
-                    {
-                        // if it's revoked, default is no authority for primary addresses, but we will have authority if
-                        // we have control over the recovery identity
-                        std::pair<CIdentityMapKey, CIdentityMapValue> recoveryAuthority;
-                        if (GetIdentity(identity.recoveryAuthority, recoveryAuthority, nHeight ? nHeight : INT_MAX))
-                        {
-                            canSignCanSpend = CheckAuthority(recoveryAuthority.second);
-                        }
-                    }
-
                     // does identity already exist in this wallet?
                     if (GetIdentity(idID, idHistory, nHeight ? nHeight : INT_MAX))
                     {
                         wasCanSignCanSpend = CheckAuthority(idHistory.second);
-
-                        if (idHistory.second.IsRevoked())
-                        {
-                            std::pair<CIdentityMapKey, CIdentityMapValue> oldRecoveryAuthority;
-                            std::pair<bool, bool> auxCSCS;
-                            // if we hold the recovery authority in our wallet, then set wasCanSignCanSpend pair to true
-                            if (GetIdentity(idHistory.second.recoveryAuthority, 
-                                            oldRecoveryAuthority, 
-                                            nHeight ? nHeight : INT_MAX))
-                            {
-                                auxCSCS = CheckAuthority(oldRecoveryAuthority.second);
-                                wasCanSignCanSpend = std::pair<bool, bool>({wasCanSignCanSpend.first || auxCSCS.first,
-                                                                            wasCanSignCanSpend.second || auxCSCS.second});
-                            }
-                        }
 
                         // if this is an add of the initial registration, delete all other instances of the ID
                         if (CNameReservation(tx).IsValid())
@@ -2687,6 +2660,57 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
                                     std::set<uint256> unspentTxSet;
                                     GetAddressUnspent(idID, CScript::P2ID, unspentOutputs);
+
+                                    // to prevent forced rescans, don't rescan anything that has too many UTXOs
+                                    // unless this is a real rescan, and above a very small threshold, only dynamically scan
+                                    // if this wallet holds revoke and recover as well
+                                    if (!isRescan &&
+                                        unspentOutputs.size() > MAX_UTXOS_ID_RESCAN)
+                                    {
+                                        if (unspentOutputs.size() > MAX_OUR_UTXOS_ID_RESCAN)
+                                        {
+                                            continue;
+                                        }
+                                        // the exception would currently be if all of the following are true:
+                                        // 1) We have spending, not just signing power over the ID,
+                                        // 2) the ID has no separate revoke and recover, so it cannot be pulled back, and
+                                        // 3) the ID does not have an average of < 0.00001 in native outputs of a random sample
+                                        //    of its UTXOs
+                                        if (canSignCanSpend.second &&
+                                            identity.revocationAuthority == identity.recoveryAuthority &&
+                                            identity.revocationAuthority == idID)
+                                        {
+                                            seed_insecure_rand();
+                                            std::set<int> counted;
+                                            int loopMax = std::min((uint64_t)MAX_OUR_UTXOS_ID_RESCAN, unspentOutputs.size());
+
+                                            CAmount total = 0;
+                                            for (int loop = 0; loop < loopMax; loop++)
+                                            {
+                                                int index = insecure_rand() % unspentOutputs.size();
+                                                int retry = 0;
+                                                for (; counted.count(index) && retry < 2; retry++)
+                                                {
+                                                    index = insecure_rand() % unspentOutputs.size();
+                                                }
+                                                if (retry == 2)
+                                                {
+                                                    continue;
+                                                }
+                                                counted.insert(index);
+                                                total += unspentOutputs[index].second.satoshis;
+                                            }
+                                            if (!counted.size() ||
+                                                (total / (CAmount)counted.size() < 10000))
+                                            {
+                                                continue;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            continue;
+                                        }
+                                    }
 
                                     // first, put all the txids of the UTXOs in a set to check intersection with wallet txes
                                     // that may already include outputs to the newly controlled ID. we also need to check wallet
@@ -3083,7 +3107,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 void CWallet::SyncTransaction(const CTransaction& tx, const CBlock* pblock)
 {
     LOCK(cs_wallet);
-    if (!AddToWalletIfInvolvingMe(tx, pblock, true))
+    if (!AddToWalletIfInvolvingMe(tx, pblock, true, false))
         return; // Not one of ours
 
     MarkAffectedTransactionsDirty(tx);
@@ -4264,7 +4288,7 @@ int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
             ReadBlockFromDisk(block, pindex, Params().GetConsensus());
             BOOST_FOREACH(CTransaction& tx, block.vtx)
             {
-                if (AddToWalletIfInvolvingMe(tx, &block, fUpdate)) {
+                if (AddToWalletIfInvolvingMe(tx, &block, fUpdate, true)) {
                     myTxHashes.push_back(tx.GetHash());
                     ret++;
                 }

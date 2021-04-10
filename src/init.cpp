@@ -1264,6 +1264,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     VERUS_NODEID = nodeIDDest.which() == COptCCParams::ADDRTYPE_ID ? GetDestinationID(nodeIDDest) : uint160();
     VERUS_DEFAULT_ZADDR = GetArg("-cheatcatcher", "");
     VERUS_DEFAULT_ZADDR = GetArg("-defaultzaddr", VERUS_DEFAULT_ZADDR);
+    MAX_OUR_UTXOS_ID_RESCAN = GetArg("-maxourutxosidrescan", MAX_OUR_UTXOS_ID_RESCAN);
+    MAX_UTXOS_ID_RESCAN = GetArg("-maxutxosidrescan", std::min(MAX_UTXOS_ID_RESCAN, MAX_OUR_UTXOS_ID_RESCAN));
 
     // if we are supposed to catch stake cheaters, there must be a valid sapling parameter, we need it at
     // initialization, and this is the first time we can get it. store the Sapling address here

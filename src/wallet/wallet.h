@@ -1229,7 +1229,7 @@ public:
     void RescanWallet();
     std::pair<bool, bool> CheckAuthority(const CIdentity &identity);
     bool MarkIdentityDirty(const CIdentityID &idID);
-    bool AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate);
+    bool AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate, bool isRescan);
     void WitnessNoteCommitment(
          std::vector<uint256> commitments,
          std::vector<boost::optional<SproutWitness>>& witnesses,
