@@ -102,7 +102,7 @@ protected:
     };
 };
 
-bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight, bool checkMempool, uint256 *pTxid)
+bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight, bool checkMempool, CUTXORef *pUTXO)
 {
     bool isVerusActive = IsVerusActive();
     static bool thisChainLoaded = false;
@@ -113,9 +113,9 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
         {
             *pDefHeight = 0;
         }
-        if (pTxid)
+        if (pUTXO)
         {
-            *pTxid = uint256();
+            *pUTXO = CUTXORef();
         }
         return true;
     }
@@ -128,9 +128,9 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
             {
                 *pDefHeight = 0;
             }
-            if (pTxid)
+            if (pUTXO)
             {
-                *pTxid = uint256();
+                *pUTXO = CUTXORef();
             }
             return true;
         }
@@ -153,9 +153,9 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
                 {
                     *pDefHeight = currencyDefOut.second.blockHeight;
                 }
-                if (pTxid)
+                if (pUTXO)
                 {
-                    *pTxid = currencyDefOut.first.txhash;
+                    *pUTXO = CUTXORef(currencyDefOut.first.txhash, currencyDefOut.first.index);
                 }
                 break;
             }
@@ -175,15 +175,15 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
                 {
                     *pDefHeight = 0;
                 }
-                if (pTxid)
+                if (pUTXO)
                 {
-                    *pTxid = currencyDefOut.first.txhash;
+                    *pUTXO = CUTXORef(currencyDefOut.first.txhash, currencyDefOut.first.index);
                 }
                 break;
             }
         }
     }
-    if (chainID == ASSETCHAINS_CHAINID && foundDef.IsValid())
+    if (chainID == ASSETCHAINS_CHAINID && foundDef.IsValid() && !thisChainLoaded)
     {
         thisChainLoaded = true;
         ConnectedChains.ThisChain() = foundDef;
@@ -415,45 +415,320 @@ bool SetThisChain(const UniValue &chainDefinition)
     return true;
 }
 
-void GetCurrencyDefinitions(vector<CCurrencyDefinition> &chains, bool includeExpired)
+void CurrencySystemTypeQuery(const uint160 queryID,
+                             std::map<CUTXORef, int> &currenciesFound,
+                             std::vector<CCurrencyDefinition> &curDefVec,
+                             uint32_t startBlock=0,
+                             uint32_t endBlock=0)
+{
+    if (startBlock || endBlock)
+    {
+        std::vector<CAddressIndexDbEntry> systemAddressIndex;
+        if (GetAddressIndex(queryID, CScript::P2IDX, systemAddressIndex, startBlock, endBlock) && systemAddressIndex.size())
+        {
+            for (auto &oneOut : systemAddressIndex)
+            {
+                CUTXORef oneRef(oneOut.first.txhash, oneOut.first.index);
+                if (!currenciesFound.count(oneRef))
+                {
+                    currenciesFound.insert(std::make_pair(oneRef, -1));
+                }
+            }
+        }
+    }
+    else
+    {
+        std::vector<CAddressUnspentDbEntry> unspentAddressIndex;
+        if (GetAddressUnspent(queryID, CScript::P2IDX, unspentAddressIndex) && unspentAddressIndex.size())
+        {
+            for (auto &oneOut : unspentAddressIndex)
+            {
+                CCurrencyDefinition curDef(oneOut.second.script);
+                if (!curDef.IsValid())
+                {
+                    LogPrintf("%s: invalid currency definition found in index, txid %s, vout: %d\n", __func__, oneOut.first.txhash.GetHex().c_str(), (int)oneOut.first.index);
+                    continue;
+                }
+                CUTXORef oneRef(oneOut.first.txhash, oneOut.first.index);
+                if (!currenciesFound.count(oneRef) || currenciesFound[oneRef] == -1)
+                {
+                    currenciesFound.insert(std::make_pair(oneRef, curDefVec.size()));
+                    curDefVec.push_back(curDef);
+                }
+            }
+        }
+    }
+}
+
+void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStateQuery,
+                                   std::map<CUTXORef, int> &currenciesFound,
+                                   std::vector<CCurrencyDefinition> &curDefVec,
+                                   uint32_t startBlock=0,
+                                   uint32_t endBlock=0)
+{
+    uint160 queryID;
+    bool checkUnspent = false;
+    if (launchStateQuery == CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH)
+    {
+        queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchPrelaunchKey());
+        checkUnspent = true;
+    }
+    else if (launchStateQuery == CCurrencyDefinition::QUERY_LAUNCHSTATE_REFUND)
+    {
+        queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchRefundKey());
+    }
+    else if (launchStateQuery == CCurrencyDefinition::QUERY_LAUNCHSTATE_COMPLETE)
+    {
+        queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchCompleteKey());
+    }
+    else if (launchStateQuery == CCurrencyDefinition::QUERY_LAUNCHSTATE_CONFIRM)
+    {
+        queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchConfirmKey());
+    }
+    else if (launchStateQuery == CCurrencyDefinition::QUERY_ISCONVERTER)
+    {
+        queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCoinbaseCurrencyState::IndexConverterKey(ASSETCHAINS_CHAINID));
+        checkUnspent = true;
+    }
+
+    if (launchStateQuery != CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH && (startBlock || endBlock))
+    {
+        std::vector<CAddressIndexDbEntry> notarizationAddressIndex;
+        std::map<uint160, CPBaaSNotarization> notarizationsFound;
+
+        if (GetAddressIndex(queryID, CScript::P2IDX, notarizationAddressIndex, startBlock, endBlock) && notarizationAddressIndex.size())
+        {
+            CTransaction notarizationTx;
+            uint256 blockHash;
+            for (auto &oneOut : notarizationAddressIndex)
+            {
+                if (!myGetTransaction(oneOut.first.txhash, notarizationTx, blockHash) ||
+                    notarizationTx.vout.size() <= oneOut.first.index)
+                {
+                    LogPrintf("%s: Error reading transaction %s\n", __func__, oneOut.first.txhash.GetHex().c_str());
+                    continue;
+                }
+                CPBaaSNotarization pbn(notarizationTx.vout[oneOut.first.index].scriptPubKey);
+                if (!pbn.IsValid())
+                {
+                    LogPrintf("%s: Invalid notarization on transaction %s, vout: %d\n", __func__, oneOut.first.txhash.GetHex().c_str(), (int)oneOut.first.index);
+                    continue;
+                }
+                CCurrencyDefinition curDef;
+                int32_t currencyHeight;
+                CUTXORef curDefUTXO;
+                if (!GetCurrencyDefinition(pbn.currencyID, curDef, &currencyHeight, false, &curDefUTXO))
+                {
+                    LogPrintf("%s: Error getting currency definition %s\n", __func__, EncodeDestination(CIdentityID(pbn.currencyID)).c_str());
+                    continue;
+                }
+                if (!currenciesFound.count(curDefUTXO))
+                {
+                    currenciesFound[curDefUTXO] = curDefVec.size();
+                    curDefVec.push_back(curDef);
+                }
+            }
+        }
+    }
+    else
+    {
+        std::vector<CAddressUnspentDbEntry> unspentAddressIndex;
+        if (GetAddressUnspent(queryID, CScript::P2IDX, unspentAddressIndex) && unspentAddressIndex.size())
+        {
+            for (auto &oneOut : unspentAddressIndex)
+            {
+                CPBaaSNotarization pbn(oneOut.second.script);
+                if (!pbn.IsValid())
+                {
+                    LogPrintf("%s: Invalid notarization in index for %s, vout: %d\n", __func__, oneOut.first.txhash.GetHex().c_str(), (int)oneOut.first.index);
+                    continue;
+                }
+                CCurrencyDefinition curDef;
+                int32_t currencyHeight;
+                CUTXORef curDefUTXO;
+                if (!GetCurrencyDefinition(pbn.currencyID, curDef, &currencyHeight, false, &curDefUTXO))
+                {
+                    LogPrintf("%s: Error getting currency definition %s\n", __func__, EncodeDestination(CIdentityID(pbn.currencyID)).c_str());
+                    continue;
+                }
+                if (!currenciesFound.count(curDefUTXO) &&
+                    (!endBlock || currencyHeight < endBlock) &&
+                    (!startBlock || curDef.startBlock >= startBlock))
+                {
+                    currenciesFound[curDefUTXO] = curDefVec.size();
+                    curDefVec.push_back(curDef);
+                }
+            }
+        }
+    }
+}
+
+void GetCurrencyDefinitions(std::vector<CCurrencyDefinition> &chains,
+                            CCurrencyDefinition::EQueryOptions launchStateQuery,
+                            CCurrencyDefinition::EQueryOptions systemTypeQuery,
+                            bool isConverter,
+                            uint32_t startBlock=0,
+                            uint32_t endBlock=0)
 {
     CCcontract_info CC;
     CCcontract_info *cp;
 
-    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+    std::map<CUTXORef, int> currenciesFound;
+    std::vector<CCurrencyDefinition> curDefVec;
 
-    std::set<uint256> processedTransactions;
-
-    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(ConnectedChains.ThisChain().GetID(), CCurrencyDefinition::CurrencySystemKey()), CScript::P2IDX, addressIndex))
+    if (systemTypeQuery == CCurrencyDefinition::QUERY_SYSTEMTYPE_LOCAL)
     {
-        for (auto txidx : addressIndex)
+        uint160 queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencySystemKey());
+        CurrencySystemTypeQuery(queryID, currenciesFound, curDefVec, startBlock, endBlock);
+    }
+    else if (systemTypeQuery == CCurrencyDefinition::QUERY_SYSTEMTYPE_PBAAS)
+    {
+        uint160 queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::PBaaSChainKey());
+        CurrencySystemTypeQuery(queryID, currenciesFound, curDefVec, startBlock, endBlock);
+    }
+    else if (systemTypeQuery == CCurrencyDefinition::QUERY_SYSTEMTYPE_GATEWAY)
+    {
+        uint160 queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyGatewayKey());
+        CurrencySystemTypeQuery(queryID, currenciesFound, curDefVec, startBlock, endBlock);
+    }
+
+    bool narrowBySystem = systemTypeQuery != CCurrencyDefinition::QUERY_NULL;
+    bool narrowByLaunch = launchStateQuery != CCurrencyDefinition::QUERY_NULL;
+    if (narrowBySystem && !currenciesFound.size())
+    {
+        return;
+    }
+
+    if (narrowByLaunch)
+    {
+        std::map<CUTXORef, int> launchStateCurrenciesFound;
+        std::vector<CCurrencyDefinition> launchStateCurVec;
+        static std::set<CCurrencyDefinition::EQueryOptions> validLaunchOptions({CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH,
+                                                                                CCurrencyDefinition::QUERY_LAUNCHSTATE_REFUND,
+                                                                                CCurrencyDefinition::QUERY_LAUNCHSTATE_CONFIRM,
+                                                                                CCurrencyDefinition::QUERY_LAUNCHSTATE_COMPLETE});
+
+        if (!validLaunchOptions.count(launchStateQuery))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid launchStateQuery");
+        }
+
+        CurrencyNotarizationTypeQuery(launchStateQuery, launchStateCurrenciesFound, launchStateCurVec, startBlock, endBlock);
+
+        if (launchStateCurrenciesFound.size())
+        {
+            // remove all that are not in the system type of interest
+            if (narrowBySystem)
+            {
+                std::vector<CUTXORef> toRemove;
+                for (auto &oneFound : currenciesFound)
+                {
+                    if (!launchStateCurrenciesFound.count(oneFound.first))
+                    {
+                        toRemove.push_back(oneFound.first);
+                    }
+                    else if (currenciesFound[oneFound.first] == -1)
+                    {
+                        currenciesFound[oneFound.first] = curDefVec.size();
+                        curDefVec.push_back(launchStateCurVec[launchStateCurrenciesFound[oneFound.first]]);
+                    }
+                }
+                if (currenciesFound.size() == toRemove.size())
+                {
+                    return;
+                }
+                for (auto &oneUtxo : toRemove)
+                {
+                    currenciesFound.erase(oneUtxo);
+                }
+            }
+            else
+            {
+                curDefVec.insert(curDefVec.end(), launchStateCurVec.begin(), launchStateCurVec.end());
+                currenciesFound = launchStateCurrenciesFound;
+            }
+        }
+        else
+        {
+            return;
+        }
+    }
+
+    bool isNarrowing = narrowBySystem || narrowByLaunch;
+
+    if (isNarrowing && !currenciesFound.size())
+    {
+        return;
+    }
+
+    // two options are is converter as narrowing or just is converter
+    // for narrowing, we ignore start and end blocks to determine state now
+    if (isConverter)
+    {
+        if (isNarrowing)
+        {
+            std::map<CUTXORef, int> converterCurrenciesFound;
+            std::vector<CCurrencyDefinition> converterCurVec;
+
+            // get converters and return only those already found that are converters
+            CurrencyNotarizationTypeQuery(CCurrencyDefinition::QUERY_ISCONVERTER, converterCurrenciesFound, converterCurVec, startBlock, endBlock);
+            std::vector<CUTXORef> toRemove;
+            for (auto &oneFound : currenciesFound)
+            {
+                if (!converterCurrenciesFound.count(oneFound.first))
+                {
+                    toRemove.push_back(oneFound.first);
+                }
+                else if (currenciesFound[oneFound.first] == -1)
+                {
+                    currenciesFound[oneFound.first] = curDefVec.size();
+                    curDefVec.push_back(converterCurVec[converterCurrenciesFound[oneFound.first]]);
+                }
+            }
+            if (currenciesFound.size() == toRemove.size())
+            {
+                return;
+            }
+            for (auto &oneUtxo : toRemove)
+            {
+                currenciesFound.erase(oneUtxo);
+            }
+        }
+        else
+        {
+            // the only query is converters
+            CurrencyNotarizationTypeQuery(CCurrencyDefinition::QUERY_ISCONVERTER, currenciesFound, curDefVec, startBlock, endBlock);
+        }
+    }
+    else if (!isNarrowing)
+    {
+        // no qualifiers, so we default to this system currencies and retrieve all currencies in the specified block range
+        uint160 queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencySystemKey());
+        CurrencySystemTypeQuery(queryID, currenciesFound, curDefVec, startBlock, endBlock);
+    }
+
+    // now, loop through the found currencies and load the currency definition if not loaded, then store all
+    // in the return vector
+    for (auto &oneCur : currenciesFound)
+    {
+        if (oneCur.second == -1)
         {
             CTransaction tx;
             uint256 blkHash;
-            if (!processedTransactions.count(txidx.first.txhash) && GetTransaction(txidx.first.txhash, tx, blkHash))
+            if (!myGetTransaction(oneCur.first.hash, tx, blkHash) ||
+                tx.vout.size() <= oneCur.first.n)
             {
-                processedTransactions.insert(txidx.first.txhash);
-                std::vector<CCurrencyDefinition> newChains = CCurrencyDefinition::GetCurrencyDefinitions(tx);
-                chains.insert(chains.begin(), newChains.begin(), newChains.end());
-
-                int downTo = chains.size() - newChains.size();
-                for (int i = chains.size() - 1; i >= downTo; i--)
-                {
-                    UniValue valStr(UniValue::VSTR);
-
-                    // TODO: remove/comment this if statement, as it is redundant with the one below
-                    if (!valStr.read(chains[i].ToUniValue().write()))
-                    {
-                        printf("Invalid characters in blockchain definition: %s\n", chains[i].ToUniValue().write().c_str());
-                    }
-
-                    // remove after to use less storage
-                    if (!valStr.read(chains[i].ToUniValue().write()) || ClosedPBaaSChains.count(chains[i].GetID()) || (!includeExpired && chains[i].endBlock != 0 && chains[i].endBlock < chainActive.Height()))
-                    {
-                        chains.erase(chains.begin() + i);
-                    }
-                }
+                continue;
             }
+            CCurrencyDefinition oneCurDef(tx.vout[oneCur.first.n].scriptPubKey);
+            if (oneCurDef.IsValid())
+            {
+                chains.push_back(oneCurDef);
+            }
+        }
+        else
+        {
+            chains.push_back(curDefVec[oneCur.second]);
         }
     }
 }
@@ -872,16 +1147,17 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
         ret = chainDef.ToUniValue();
 
         int32_t defHeight;
-        uint256 defTxId;
+        CUTXORef defUTXO;
 
-        if (!GetCurrencyDefinition(chainID, chainDef, &defHeight, false, &defTxId))
+        if (!GetCurrencyDefinition(chainID, chainDef, &defHeight, false, &defUTXO))
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency not found");
         }
 
-        if (!defTxId.IsNull())
+        if (!defUTXO.IsValid())
         {
-            ret.push_back(Pair("definitiontxid", defTxId.GetHex()));
+            ret.push_back(Pair("definitiontxid", defUTXO.hash.GetHex()));
+            ret.push_back(Pair("definitiontxout", (int)defUTXO.n));
         }
 
         if ((chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID) || 
@@ -1440,15 +1716,19 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
 UniValue listcurrencies(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() > 1)
+    if (fHelp || params.size() > 3)
     {
         throw runtime_error(
-            "listcurrencies (includeexpired)\n"
+            "listcurrencies ({query object}) startblock endblock\n"
             "\nReturns a complete definition for any given chain if it is registered on the blockchain. If the chain requested\n"
             "\nis NULL, chain definition of the current chain is returned.\n"
 
             "\nArguments\n"
-            "1. \"includeexpired\"                (bool, optional) if true, include chains that are no longer active\n"
+            "{                                    (json, optional) specify valid query conditions\n"
+            "   \"launchstate\" : (\"prelaunch\" | \"launch\" | \"refund\") (optional) return only currencies in that state\n"
+            "   \"systemtype\" : (\"local\" | \"gateway\" | \"pbaas\")\n"
+            "   \"converter\": bool               (bool, optional) default false, only return fractional currency converters\n"
+            "}\n"
 
             "\nResult:\n"
             "[\n"
@@ -1487,12 +1767,64 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
 
     UniValue ret(UniValue::VARR);
 
-    bool includeExpired = params[0].isBool() ? params[0].get_bool() : false;
+    uint160 querySystem;
+    std::map<std::string, CCurrencyDefinition::EQueryOptions> 
+        launchStates({{"prelaunch", CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH},
+                      {"launch", CCurrencyDefinition::QUERY_LAUNCHSTATE_CONFIRM},
+                      {"refund", CCurrencyDefinition::QUERY_LAUNCHSTATE_REFUND}});
+    std::map<std::string, CCurrencyDefinition::EQueryOptions> 
+        systemTypes({{"local", CCurrencyDefinition::QUERY_SYSTEMTYPE_LOCAL},
+                     {"gateway", CCurrencyDefinition::QUERY_SYSTEMTYPE_GATEWAY},
+                     {"pbaas", CCurrencyDefinition::QUERY_SYSTEMTYPE_PBAAS}});
+
+    CCurrencyDefinition::EQueryOptions launchStateQuery = CCurrencyDefinition::QUERY_NULL;
+    CCurrencyDefinition::EQueryOptions systemTypeQuery = CCurrencyDefinition::QUERY_NULL;
+    bool isConverter = false;
+    uint32_t startBlock = 0;
+    uint32_t endBlock = 0;
+    if (params.size())
+    {
+        if (!params[0].isObject())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid query object parameter");
+        }
+        int numKeys = params[0].getKeys().size();
+        std::string launchState = uni_get_str(find_value(params[0], "launchstate"));
+        std::string systemType = uni_get_str(find_value(params[0], "systemtype"));
+        UniValue isConverterUni = find_value(params[0], "converter");
+        if (!isConverterUni.isNull())
+        {
+            numKeys--;
+        }
+        isConverter = uni_get_bool(isConverterUni);
+        if (launchStates.count(launchState))
+        {
+            launchStateQuery = launchStates[launchState];
+            numKeys--;
+        }
+        if (systemTypes.count(systemType))
+        {
+            systemTypeQuery = launchStates[launchState];
+            numKeys--;
+        }
+        if (numKeys)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid query object parameter, use \"listidentities help\"");
+        }
+        if (params.size() > 1)
+        {
+            startBlock = uni_get_int64(params[1]);
+        }
+        if (params.size() > 2)
+        {
+            endBlock = uni_get_int64(params[2]);
+        }
+    }
 
     vector<CCurrencyDefinition> chains;
     {
         LOCK2(cs_main, mempool.cs);
-        GetCurrencyDefinitions(chains, includeExpired);
+        GetCurrencyDefinitions(chains, launchStateQuery, systemTypeQuery, isConverter, startBlock, endBlock);
     }
 
     for (auto def : chains)
@@ -1878,7 +2210,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                   (blockIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() &&
                   chainActive.Contains(blockIt->second)))
             {
-                LogPrintf("%s: invalid, indexed finalization on transaction %s, output %ld\n", __func__, it->first.txhash.GetHex().c_str(), it->first.index);
+                LogPrintf("%s: invalid, indexed finalization on transaction %s, output %d\n", __func__, it->first.txhash.GetHex().c_str(), (int)it->first.index);
                 continue;
             }
 

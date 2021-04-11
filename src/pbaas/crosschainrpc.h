@@ -492,6 +492,19 @@ public:
         PROOF_ETHNOTARIZATION = 4           // proven by Ethereum notarization
     };
 
+    enum EQueryOptions
+    {
+        QUERY_NULL = 0,
+        QUERY_LAUNCHSTATE_PRELAUNCH = 1,
+        QUERY_LAUNCHSTATE_REFUND = 2,
+        QUERY_LAUNCHSTATE_CONFIRM = 3,
+        QUERY_LAUNCHSTATE_COMPLETE = 4,
+        QUERY_SYSTEMTYPE_LOCAL = 5,
+        QUERY_SYSTEMTYPE_GATEWAY = 6,
+        QUERY_SYSTEMTYPE_PBAAS = 7,
+        QUERY_ISCONVERTER = 8
+    };
+
     uint32_t nVersion;                      // version of this chain definition data structure to allow for extensions (not daemon version)
     uint32_t options;                       // flags to determine fungibility, type of currency, blockchain and ID options, and conversion
 
@@ -784,13 +797,49 @@ public:
 
     static std::string CurrencyGatewayKeyName()
     {
-        return "vrsc::system.currency.gatewaydefinition";
+        return "vrsc::system.currency.gatewaycurrency";
     }
 
     static uint160 CurrencyGatewayKey()
     {
         static uint160 nameSpace;
         static uint160 signatureKey = CVDXF::GetDataKey(CurrencyGatewayKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static std::string PBaaSChainKeyName()
+    {
+        return "vrsc::system.currency.pbaaschain";
+    }
+
+    static uint160 PBaaSChainKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(PBaaSChainKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static std::string ExternalCurrencyKeyName()
+    {
+        return "vrsc::system.currency.externalcurrency";
+    }
+
+    static uint160 ExternalCurrencyKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(ExternalCurrencyKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static std::string ExportedCurrencyKeyName()
+    {
+        return "vrsc::system.currency.exported";
+    }
+
+    static uint160 ExportedCurrencyKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(ExportedCurrencyKeyName(), nameSpace);
         return signatureKey;
     }
 

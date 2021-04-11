@@ -986,6 +986,32 @@ public:
     {
         return "vrsc::system.notarization.notarization";
     }
+
+    static std::string LaunchNotarizationKeyName()
+    {
+        return "vrsc::system.currency.launch.notarization";
+    }
+
+    static std::string LaunchPrelaunchKeyName()
+    {
+        return "vrsc::system.currency.launch.prelaunch";
+    }
+
+    static std::string LaunchRefundKeyName()
+    {
+        return "vrsc::system.currency.launch.refund";
+    }
+
+    static std::string LaunchConfirmKeyName()
+    {
+        return "vrsc::system.currency.launch.confirm";
+    }
+
+    static std::string LaunchCompleteKeyName()
+    {
+        return "vrsc::system.currency.launch.complete";
+    }
+
     static uint160 NotaryNotarizationKey()
     {
         static uint160 nameSpace;
@@ -993,14 +1019,38 @@ public:
         return notaryNotarizationKey;
     }
 
-    static std::string LaunchNotarizationKeyName()
-    {
-        return "vrsc::system.currency.gatewaydefinition";
-    }
     static uint160 LaunchNotarizationKey()
     {
         static uint160 nameSpace;
         static uint160 signatureKey = CVDXF::GetDataKey(LaunchNotarizationKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static uint160 LaunchPrelaunchKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(LaunchPrelaunchKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static uint160 LaunchRefundKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(LaunchRefundKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static uint160 LaunchConfirmKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(LaunchConfirmKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static uint160 LaunchCompleteKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(LaunchCompleteKeyName(), nameSpace);
         return signatureKey;
     }
 

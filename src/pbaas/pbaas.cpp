@@ -3940,9 +3940,9 @@ void CConnectedChains::SubmissionThread()
 
             if (IsVerusActive())
             {
-                // blocks get discarded after no refresh for 5 minutes by default, probably should be more often
+                // blocks get discarded after no refresh for 90 seconds by default, probably should be more often
                 //printf("SubmissionThread: pruning\n");
-                PruneOldChains(GetAdjustedTime() - 300);
+                PruneOldChains(GetAdjustedTime() - 90);
                 bool submit = false;
                 {
                     LOCK(cs_mergemining);
@@ -3969,6 +3969,14 @@ void CConnectedChains::SubmissionThread()
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
             if (IsNotaryAvailable(true))
             {
+                // check for exports on this chain that we should send to the notary and do so
+                // exports to another native system should be exported to that system and to the currency
+                // of this system on that system
+
+
+
+
+
                 // TODO: this isn't functioning for somewhat obvious reasons - review
 
                 // check to see if we have recently earned a block with an earned notarization that qualifies for
