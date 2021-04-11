@@ -4266,6 +4266,11 @@ int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
 
     CBlockIndex* pindex = pindexStart;
 
+    if (pindexStart->GetHeight() <= 1)
+    {
+        pwalletMain->ClearIdentities();
+    }
+
     std::vector<uint256> myTxHashes;
 
     {
