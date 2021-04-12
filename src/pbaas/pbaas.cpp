@@ -2195,13 +2195,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CCurrencyValueMap localDepositRequirements = requiredDeposits;
         CCurrencyValueMap localDepositChange;
 
-        /*printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        /* printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
         printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: requireddeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, newCurrencyIn.ToUniValue().write(1,2).c_str());
         printf("%s: importedCurrency: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str());
-        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str());*/
+        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str()); */
 
         // add local reserve deposit inputs and determine change
         if (localDepositRequirements.valueMap.size() ||
@@ -2227,10 +2227,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             localDepositChange = (totalDepositsInput + newCurrencyIn) - localDepositRequirements;
 
-            /*printf("%s: totalDepositsInput: %s\nlocalDepositChange: %s\n", 
+            /* printf("%s: totalDepositsInput: %s\nlocalDepositChange: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
-                localDepositChange.ToUniValue().write(1,2).c_str());*/
+                localDepositChange.ToUniValue().write(1,2).c_str()); */
 
             // we should always be able to fulfill
             // local despoit requirements, or this is an error
@@ -3550,9 +3550,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     std::vector<CTxOut> exportTxOuts;
                     std::vector<CReserveTransfer> exportTransfers;
                     CChainNotarizationData cnd;
+                    std::vector<std::pair<CTransaction, uint256>> notarizationTxes;
                     
                     // get notarization for the actual currency we are exporting
-                    if (!GetNotarizationData(lastChain, cnd) || cnd.lastConfirmed == -1)
+                    if (!GetNotarizationData(lastChain, cnd, &notarizationTxes) || cnd.lastConfirmed == -1)
                     {
                         printf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
                         LogPrintf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
@@ -3560,7 +3561,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     }
 
                     CPBaaSNotarization lastNotarization = cnd.vtx[cnd.lastConfirmed].second;
-                    CUTXORef lastNotarizationUTXO = cnd.vtx[cnd.lastConfirmed].first;
+                    CInputDescriptor lastNotarizationInput = 
+                        CInputDescriptor(notarizationTxes[cnd.lastConfirmed].first.vout[cnd.vtx[cnd.lastConfirmed].first.n].scriptPubKey,
+                                         notarizationTxes[cnd.lastConfirmed].first.vout[cnd.vtx[cnd.lastConfirmed].first.n].nValue,
+                                         CTxIn(cnd.vtx[cnd.lastConfirmed].first));
                     CPBaaSNotarization newNotarization;
                     int newNotarizationOutNum;
 
@@ -3591,7 +3595,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                                                 exportTxOuts,
                                                                 exportTransfers,
                                                                 lastNotarization,
-                                                                lastNotarizationUTXO,
+                                                                CUTXORef(lastNotarizationInput.txIn.prevout),
                                                                 newNotarization,
                                                                 newNotarizationOutNum))
                         {
@@ -3645,6 +3649,14 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             tb.AddTransparentInput(inputDesc.txIn.prevout, inputDesc.scriptPubKey, inputDesc.nValue);
                         }
 
+                        // if we have an output notarization, spend the last one
+                        if (newNotarizationOutNum >= 0)
+                        {
+                            tb.AddTransparentInput(lastNotarizationInput.txIn.prevout, 
+                                                   lastNotarizationInput.scriptPubKey, 
+                                                   lastNotarizationInput.nValue);
+                        }
+
                         // now, add all outputs to the transaction
                         auto thisExport = lastExport;
                         int outputNum = tb.mtx.vout.size();
@@ -3683,8 +3695,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             if (newNotarizationOutNum >= 0)
                             {
                                 lastNotarization = newNotarization;
-                                lastNotarizationUTXO.hash = tx.GetHash();
-                                lastNotarizationUTXO.n = newNotarizationOutNum;
+                                lastNotarizationInput = CInputDescriptor(tx.vout[newNotarizationOutNum].scriptPubKey,
+                                                                         tx.vout[newNotarizationOutNum].nValue,
+                                                                         CTxIn(tx.GetHash(), newNotarizationOutNum));
                             }
 
                             /* uni = UniValue(UniValue::VOBJ);

@@ -1154,7 +1154,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency not found");
         }
 
-        if (!defUTXO.IsValid())
+        if (defUTXO.IsValid())
         {
             ret.push_back(Pair("definitiontxid", defUTXO.hash.GetHex()));
             ret.push_back(Pair("definitiontxout", (int)defUTXO.n));
@@ -1855,14 +1855,17 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
     UniValue ret(UniValue::VARR);
 
     uint160 querySystem;
-    std::map<std::string, CCurrencyDefinition::EQueryOptions> launchStates;
-    launchStates["prelaunch"] = CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH;
-    launchStates["launched"] = CCurrencyDefinition::QUERY_LAUNCHSTATE_CONFIRM;
-    launchStates["refund"] = CCurrencyDefinition::QUERY_LAUNCHSTATE_REFUND;
-    std::map<std::string, CCurrencyDefinition::EQueryOptions> systemTypes;
-    systemTypes["local"] = CCurrencyDefinition::QUERY_SYSTEMTYPE_LOCAL;
-    systemTypes["gateway"] = CCurrencyDefinition::QUERY_SYSTEMTYPE_GATEWAY;
-    systemTypes["pbaas"] = CCurrencyDefinition::QUERY_SYSTEMTYPE_PBAAS;
+    static std::map<std::string, CCurrencyDefinition::EQueryOptions> launchStates(
+        {{"prelaunch", CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH},
+         {"launched", CCurrencyDefinition::QUERY_LAUNCHSTATE_CONFIRM},
+         {"refund", CCurrencyDefinition::QUERY_LAUNCHSTATE_REFUND},
+         {"complete", CCurrencyDefinition::QUERY_LAUNCHSTATE_COMPLETE}}
+    );
+    static std::map<std::string, CCurrencyDefinition::EQueryOptions> systemTypes(
+        {{"local", CCurrencyDefinition::QUERY_SYSTEMTYPE_LOCAL},
+         {"gateway", CCurrencyDefinition::QUERY_SYSTEMTYPE_GATEWAY},
+         {"pbaas", CCurrencyDefinition::QUERY_SYSTEMTYPE_PBAAS}}
+    );
 
     CCurrencyDefinition::EQueryOptions launchStateQuery = CCurrencyDefinition::QUERY_NULL;
     CCurrencyDefinition::EQueryOptions systemTypeQuery = CCurrencyDefinition::QUERY_NULL;
