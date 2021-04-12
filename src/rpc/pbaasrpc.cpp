@@ -2380,7 +2380,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                 LogPrintf("%s: invalid notarization on transaction %s, output %u\n", __func__, 
                            notarizationData.vtx[notarizationData.forks[i].back()].first.hash.GetHex().c_str(), 
                            notarizationData.vtx[notarizationData.forks[i].back()].first.n);
-                assert(false);
+                //assert(false);
             }
         }
     }
