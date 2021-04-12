@@ -2680,7 +2680,7 @@ bool CConnectedChains::GetCurrencyExports(const uint160 &currencyID,
                     // get the export transfers from the source
                     if (ccx.sourceSystemID == ASSETCHAINS_CHAINID)
                     {
-                        for (int i = ccx.firstInput; i < ccx.firstInput + ccx.numInputs; i++)
+                        for (int i = ccx.firstInput; i < (ccx.firstInput + ccx.numInputs); i++)
                         {
                             CTransaction oneTxIn;
                             uint256 txInBlockHash;

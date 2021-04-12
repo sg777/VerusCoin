@@ -1942,6 +1942,9 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                 // if we have a reserve transaction
                 if (!txDesc.IsValid() && txDesc.IsReject())
                 {
+                    //UniValue jsonTx(UniValue::VOBJ);
+                    //TxToUniv(tx, uint256(), jsonTx);
+                    //printf("\n%s\n", jsonTx.write(1,2).c_str());
                     txDesc = CReserveTransactionDescriptor(tx, view, nextBlockHeight);
                     printf("AcceptToMemoryPool: invalid reserve transaction %s\n", hash.ToString().c_str());
                     return state.DoS(1, error("AcceptToMemoryPool: invalid reserve transaction %s", hash.ToString()), REJECT_NONSTANDARD, "bad-txns-invalid-reserve");

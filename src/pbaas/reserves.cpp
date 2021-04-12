@@ -215,9 +215,9 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
         }
 
         // retrieve reserve transfers from export transaction inputs
-        if (firstInput >= 0)
+        if (numInputs > 0)
         {
-            for (int i = firstInput; i < exportTx.vin.size(); i++)
+            for (int i = firstInput; i < (firstInput + numInputs); i++)
             {
                 CTransaction rtTx;
                 COptCCParams rtP;
@@ -388,7 +388,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
     }
 
-    bool isPBaaSLaunch = !IsVerusActive() && pBaseImport->IsInitialLaunchImport();
+    bool isPBaaSLaunch = !IsVerusActive() && nHeight == 1 && pBaseImport->IsInitialLaunchImport();
 
     importNotarizationOut = numImportOut + 1;
 

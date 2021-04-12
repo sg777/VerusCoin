@@ -1812,7 +1812,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "{                                    (json, optional) specify valid query conditions\n"
-            "   \"launchstate\" : (\"prelaunch\" | \"launched\" | \"refund\") (optional) return only currencies in that state\n"
+            "   \"launchstate\" : (\"prelaunch\" | \"launched\" | \"refund\" | \"complete\") (optional) return only currencies in that state\n"
             "   \"systemtype\" : (\"local\" | \"gateway\" | \"pbaas\")\n"
             "   \"converter\": bool               (bool, optional) default false, only return fractional currency converters\n"
             "}\n"
@@ -3206,7 +3206,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             CAmount sourceAmount = AmountFromValue(find_value(uniOutputs[i], "amount"));
             auto convertToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "convertto")));
             auto exportToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "exportto")));
-            auto exportAfterStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "exportafter")));
+            auto feeCurrencyStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "feecurrency")));
             auto viaStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "via")));
             auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "address")));
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
@@ -3254,7 +3254,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 (convertToStr.size() ||
                  viaStr.size() ||
                  exportToStr.size() ||
-                 exportAfterStr.size() ||
                  burnCurrency ||
                  mintNew ||
                  preConvert))
@@ -3344,6 +3343,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             CCurrencyDefinition destSystemDef;
             std::vector<std::string> subNames;
 
+            CCurrencyDefinition exportToCurrencyDef;
+            uint160 exportToCurrencyID;
+
             toFractional = convertToCurrencyDef.IsValid() && convertToCurrencyDef.IsFractional() && convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID);
             fromFractional = !toFractional &&
                              sourceCurrencyDef.IsFractional() && !convertToCurrencyID.IsNull() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID);
@@ -3361,14 +3363,16 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 subNames = ParseSubNames(destStr, systemDestStr, true);
                 if (systemDestStr != "")
                 {
-                    if (exportToStr == "")
-                    {
-                        exportToStr = systemDestStr;
-                    }
                     destSystemID = ValidateCurrencyName(systemDestStr, true, &destSystemDef);
                     if (destSystemID.IsNull() || destSystemDef.IsToken() || destSystemDef.systemID != destSystemDef.GetID())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "If destination system is specified, destination system or chain must be registered.");
+                    }
+                    if (exportToStr == "")
+                    {
+                        exportToStr = systemDestStr;
+                        exportToCurrencyID = destSystemID;
+                        exportToCurrencyDef = destSystemDef;
                     }
                 }
             }
@@ -3378,6 +3382,18 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 destSystemDef = ConnectedChains.GetCachedCurrency(destSystemID);
             }
 
+            uint160 feeCurrencyID;
+            CCurrencyDefinition feeCurrencyDef;
+            if (feeCurrencyStr != "")
+            {
+                feeCurrencyID = ValidateCurrencyName(feeCurrencyStr, true, &feeCurrencyDef);
+                if (feeCurrencyID.IsNull())
+                {
+                    feeCurrencyID = destSystemID;
+                    feeCurrencyDef = destSystemDef;
+                }
+            }
+
             // if we are already converting or processing through some currency, that can only be done on its native system
             // and may imply an export off-chain. before creating an off-chain export, we need an explicit "exportto" command that matches. 
             // we may also have an "exportafter" command, which enables funding a second leg to up to one more system
@@ -3385,9 +3401,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // see if we should send this currency off-chain. if our target is a fractional currency and can convert but lives on another system, 
             // we will not implicitly send it off chain for conversion, even if via is specified. "exportto" requests an explicit system
             // export/import before the operation.
-            CCurrencyDefinition exportToCurrencyDef;
-            uint160 exportToCurrencyID;
-            if (exportToStr != "")
+            if (exportToStr != "" && exportToCurrencyID.IsNull())
             {
                 exportToCurrencyID = ValidateCurrencyName(exportToStr, true, &exportToCurrencyDef);
                 if (exportToCurrencyID.IsNull())
@@ -3405,27 +3419,22 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // ensure that any initial export is explicit
             if (destSystemID != thisChainID && exportToCurrencyID != destSystemID)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly export a transaction off chain -- \"exportto\" must match the destination system implied");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly export a transaction off chain -- \"exportto\" must match any implied cross-chain target");
             }
-
-            // "exportafter" requests an explicit export after an operation and reserves fees for doing so.
-            // see if we can and should create a second leg, for example, to send currency back from another system
-            // operation, or to convert native currency fees to a target system fees before sending.
-            CCurrencyDefinition exportAfterCurrencyDef;
-            uint160 exportAfterCurrencyID;
-            if (exportAfterStr != "")
+            else if (exportToCurrencyID != thisChainID)
             {
-                exportAfterCurrencyID = ValidateCurrencyName(exportAfterStr, true, &exportAfterCurrencyDef);
-                if (exportAfterCurrencyID.IsNull())
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency export is requested, export currency and system must be valid");
-                }
+                // if we are explicitly exporting off-chain, we do so via the bridge converter currency for the specified
+                // target system, unless a fee currency is specified that is the same as the destination currency
 
-                if (!(exportAfterCurrencyDef.IsGateway() && exportAfterCurrencyDef.systemID == destSystemID) && 
-                    exportAfterCurrencyDef.systemID == destSystemID)
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot export from one system to itself");
-                }
+
+
+
+
+
+
+
+
+
             }
 
             if (mintNew && 
@@ -3582,7 +3591,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID, 
                                                                sourceAmount, 
-                                                               ASSETCHAINS_CHAINID,
+                                                               feeCurrencyID,
                                                                fees, 
                                                                convertToCurrencyID, 
                                                                dest);
@@ -3599,7 +3608,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID, 
                                                                sourceAmount, 
-                                                               ASSETCHAINS_CHAINID,
+                                                               feeCurrencyID,
                                                                fees, 
                                                                sourceCurrencyID, 
                                                                dest);
@@ -3631,15 +3640,16 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CCcontract_info *cp;
                         cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                         CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        auto dest = DestinationToTransferDestination(destination);
+                        auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
                         CReserveTransfer rt = CReserveTransfer(flags, 
                                                                sourceCurrencyID, 
                                                                sourceAmount,
-                                                               ASSETCHAINS_CHAINID,
-                                                               0,
+                                                               feeCurrencyID,
+                                                               fees,
                                                                convertToCurrencyID,
-                                                               DestinationToTransferDestination(destination));
+                                                               dest);
                         rt.nFees = rt.CalculateTransferFee();
                         oneOutput.nAmount = (sourceCurrencyID == thisChainID) ? sourceAmount + rt.nFees : rt.nFees;
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
