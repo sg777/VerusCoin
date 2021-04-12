@@ -1891,7 +1891,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
         }
         if (systemTypes.count(systemType))
         {
-            systemTypeQuery = launchStates[launchState];
+            systemTypeQuery = systemTypes[launchState];
             numKeys--;
         }
         if (numKeys)
