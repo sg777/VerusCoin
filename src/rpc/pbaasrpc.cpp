@@ -1812,7 +1812,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "{                                    (json, optional) specify valid query conditions\n"
-            "   \"launchstate\" : (\"prelaunch\" | \"launch\" | \"refund\") (optional) return only currencies in that state\n"
+            "   \"launchstate\" : (\"prelaunch\" | \"launched\" | \"refund\") (optional) return only currencies in that state\n"
             "   \"systemtype\" : (\"local\" | \"gateway\" | \"pbaas\")\n"
             "   \"converter\": bool               (bool, optional) default false, only return fractional currency converters\n"
             "}\n"
@@ -1855,14 +1855,14 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
     UniValue ret(UniValue::VARR);
 
     uint160 querySystem;
-    std::map<std::string, CCurrencyDefinition::EQueryOptions> 
-        launchStates({{"prelaunch", CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH},
-                      {"launch", CCurrencyDefinition::QUERY_LAUNCHSTATE_CONFIRM},
-                      {"refund", CCurrencyDefinition::QUERY_LAUNCHSTATE_REFUND}});
-    std::map<std::string, CCurrencyDefinition::EQueryOptions> 
-        systemTypes({{"local", CCurrencyDefinition::QUERY_SYSTEMTYPE_LOCAL},
-                     {"gateway", CCurrencyDefinition::QUERY_SYSTEMTYPE_GATEWAY},
-                     {"pbaas", CCurrencyDefinition::QUERY_SYSTEMTYPE_PBAAS}});
+    std::map<std::string, CCurrencyDefinition::EQueryOptions> launchStates;
+    launchStates["prelaunch"] = CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH;
+    launchStates["launched"] = CCurrencyDefinition::QUERY_LAUNCHSTATE_CONFIRM;
+    launchStates["refund"] = CCurrencyDefinition::QUERY_LAUNCHSTATE_REFUND;
+    std::map<std::string, CCurrencyDefinition::EQueryOptions> systemTypes;
+    systemTypes["local"] = CCurrencyDefinition::QUERY_SYSTEMTYPE_LOCAL;
+    systemTypes["gateway"] = CCurrencyDefinition::QUERY_SYSTEMTYPE_GATEWAY;
+    systemTypes["pbaas"] = CCurrencyDefinition::QUERY_SYSTEMTYPE_PBAAS;
 
     CCurrencyDefinition::EQueryOptions launchStateQuery = CCurrencyDefinition::QUERY_NULL;
     CCurrencyDefinition::EQueryOptions systemTypeQuery = CCurrencyDefinition::QUERY_NULL;
@@ -1891,7 +1891,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
         }
         if (systemTypes.count(systemType))
         {
-            systemTypeQuery = systemTypes[launchState];
+            systemTypeQuery = systemTypes[systemType];
             numKeys--;
         }
         if (numKeys)
