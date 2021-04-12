@@ -376,7 +376,6 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
             }
 
             if (found && 
-                pwalletMain &&
                 lastCCI.sourceSystemHeight < lastConfirmed.notarizationHeight)
             {
                 UniValue params(UniValue::VARR);

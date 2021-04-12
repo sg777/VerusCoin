@@ -652,6 +652,7 @@ public:
 
     CCrossChainImport(const CTransaction &tx, int32_t *pOutNum=nullptr);
     CCrossChainImport(const CScript &script);
+    CCrossChainImport(const UniValue &obj);
 
     ADD_SERIALIZE_METHODS;
 

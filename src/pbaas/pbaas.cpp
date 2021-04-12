@@ -426,6 +426,26 @@ CCrossChainExport::CCrossChainExport(const UniValue &obj) :
     }
 }
 
+CCrossChainImport::CCrossChainImport(const UniValue &obj) :
+    nVersion(CCrossChainImport::VERSION_CURRENT),
+    flags(0),
+    sourceSystemHeight(0),
+    exportTxOutNum(-1),
+    numOutputs(0)
+{
+    nVersion = uni_get_int(find_value(obj, "version"));
+    flags = uni_get_int(find_value(obj, "flags"));
+
+    sourceSystemID = GetDestinationID(DecodeDestination(uni_get_str(find_value(obj, "sourcesystemid"))));
+    sourceSystemHeight = uni_get_int64(find_value(obj, "sourceheight"));
+    importCurrencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(obj, "importcurrencyid"))));
+    importValue = CCurrencyValueMap(find_value(obj, "valuein"));
+    totalReserveOutMap = CCurrencyValueMap(find_value(obj, "tokensout"));
+    numOutputs = uni_get_int64(find_value(obj, "numoutputs"));
+    hashReserveTransfers = uint256S(uni_get_str(find_value(obj, "hashtransfers")));
+    exportTxId = uint256S(uni_get_str(find_value(obj, "exporttxid")));
+    exportTxOutNum = uni_get_int(find_value(obj, "exporttxout"), -1);
+}
 
 CCrossChainExport::CCrossChainExport(const CTransaction &tx, int32_t *pCCXOutputNum)
 {
@@ -3925,6 +3945,207 @@ void CConnectedChains::ProcessLocalImports()
     }
 }
 
+std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>>
+GetPendingExports(const CCurrencyDefinition &sourceChain, 
+                  const CCurrencyDefinition &destChain,
+                  CPBaaSNotarization &lastConfirmed,
+                  CUTXORef &lastConfirmedUTXO)
+{
+    std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
+    uint160 sourceChainID = sourceChain.GetID();
+    uint160 destChainID = destChain.GetID();
+
+    assert(sourceChainID != destChainID);   // this function is only for cross chain exports to or from another system
+
+    // right now, we only communicate automatically to the first notary and back
+    uint160 notaryID = ConnectedChains.FirstNotaryChain().GetID();
+    assert((sourceChainID == ASSETCHAINS_CHAINID && destChainID == notaryID) || (sourceChainID == notaryID && destChainID == ASSETCHAINS_CHAINID));
+
+    bool exportsToNotary = destChainID == notaryID;
+
+    bool found = false;
+    CAddressUnspentDbEntry foundEntry;
+    CCrossChainImport lastCCI;
+
+    // if exporting to our notary chain, we need to get the latest notarization and import from that
+    // chain. we only have business sending exports if we have pending exports provable by the last
+    // notarization and after the last import.
+    if (exportsToNotary && ConnectedChains.IsNotaryAvailable())
+    {
+        UniValue params(UniValue::VARR);
+        UniValue result;
+        params.push_back(EncodeDestination(CIdentityID(sourceChainID)));
+
+        CPBaaSNotarization pbn;
+
+        try
+        {
+            result = find_value(RPCCallRoot("getlastimportfrom", params), "result");
+            pbn = CPBaaSNotarization(find_value(result, "lastconfirmednotarization"));
+        } catch (...)
+        {
+            LogPrintf("%s: Could not get last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+            return exports;
+        }
+        if (!pbn.IsValid())
+        {
+            LogPrintf("%s: Invalid notarization from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+            return exports;
+        }
+        lastCCI = CCrossChainImport(find_value(result, "lastimport"));
+        if (!lastCCI.IsValid())
+        {
+            LogPrintf("%s: Invalid last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+            return exports;
+        }
+     }
+    else
+    {
+        LOCK(cs_main);
+        std::vector<CAddressUnspentDbEntry> unspentOutputs;
+
+        if (lastConfirmed.proofRoots.count(sourceChainID) &&
+            GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs))
+        {
+            // if one spends the prior one, get the one that is not spent
+            for (auto &txidx : unspentOutputs)
+            {
+                COptCCParams p;
+                if (txidx.second.script.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                    p.vData.size() &&
+                    (lastCCI = CCrossChainImport(p.vData[0])).IsValid())
+                {
+                    found = true;
+                    foundEntry = txidx;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (found && 
+        lastCCI.sourceSystemHeight < lastConfirmed.notarizationHeight)
+    {
+        UniValue params(UniValue::VARR);
+        params = UniValue(UniValue::VARR);
+        params.push_back(EncodeDestination(CIdentityID(destChainID)));
+        params.push_back((int64_t)lastCCI.sourceSystemHeight);
+        params.push_back((int64_t)lastConfirmed.proofRoots[sourceChainID].rootHeight);
+
+        UniValue result = NullUniValue;
+        try
+        {
+            if (sourceChainID == ASSETCHAINS_CHAINID)
+            {
+                UniValue getexports(const UniValue& params, bool fHelp);
+                result = getexports(params, false);
+            }
+            else
+            {
+                result = find_value(RPCCallRoot("getexports", params), "result");
+            }
+        } catch (exception e)
+        {
+            printf("Could not get latest export from external chain %s\n", uni_get_str(params[0]).c_str());
+            return exports;
+        }
+
+        // now, we should have a list of exports to import in order
+        if (!result.isArray() || !result.size())
+        {
+            return exports;
+        }
+        bool foundCurrent = false;
+        for (int i = 0; i < result.size(); i++)
+        {
+            uint256 exportTxId = uint256S(uni_get_str(find_value(result[i], "txid")));
+            if (!foundCurrent && !lastCCI.exportTxId.IsNull())
+            {
+                // when we find our export, take the next
+                if (exportTxId == lastCCI.exportTxId)
+                {
+                    foundCurrent = true;
+                }
+                continue;
+            }
+
+            // create one import at a time
+            uint32_t notarizationHeight = uni_get_int64(find_value(result[i], "height"));
+            int32_t exportTxOutNum = uni_get_int(find_value(result[i], "txoutnum"));
+            CPartialTransactionProof txProof = CPartialTransactionProof(find_value(result[i], "partialtransactionproof"));
+            UniValue transferArrUni = find_value(result[i], "transfers");
+            if (!notarizationHeight || 
+                exportTxId.IsNull() || 
+                exportTxOutNum == -1 ||
+                !transferArrUni.isArray())
+            {
+                printf("Invalid export from %s\n", uni_get_str(params[0]).c_str());
+                return exports;
+            }
+
+            CTransaction exportTx;
+            uint256 blkHash;
+            auto proofRootIt = lastConfirmed.proofRoots.find(sourceChainID);
+            if (!(txProof.IsValid() &&
+                    !txProof.GetPartialTransaction(exportTx).IsNull() &&
+                    txProof.TransactionHash() == exportTxId &&
+                    proofRootIt != lastConfirmed.proofRoots.end() &&
+                    proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
+                    exportTx.vout.size() > exportTxOutNum))
+            {
+                /* printf("%s: proofRoot: %s, checkPartialRoot: %s, proofheight: %u, ischainproof: %s, blockhash: %s\n", 
+                    __func__,
+                    proofRootIt->second.ToUniValue().write(1,2).c_str(),
+                    txProof.CheckPartialTransaction(exportTx).GetHex().c_str(),
+                    txProof.GetProofHeight(),
+                    txProof.IsChainProof() ? "true" : "false",
+                    txProof.GetBlockHash().GetHex().c_str()); */
+                printf("Invalid export for %s\n", uni_get_str(params[0]).c_str());
+                return exports;
+            }
+            else if (!(myGetTransaction(exportTxId, exportTx, blkHash) &&
+                    exportTx.vout.size() > exportTxOutNum))
+            {
+                printf("Invalid export msg2 from %s\n", uni_get_str(params[0]).c_str());
+                return exports;
+            }
+            if (!foundCurrent)
+            {
+                CCrossChainExport ccx(exportTx.vout[exportTxOutNum].scriptPubKey);
+                if (!ccx.IsValid())
+                {
+                    printf("Invalid export msg3 from %s\n", uni_get_str(params[0]).c_str());
+                    return exports;
+                }
+                if (ccx.IsChainDefinition())
+                {
+                    continue;
+                }
+            }
+            std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>> oneExport =
+                std::make_pair(std::make_pair(CInputDescriptor(exportTx.vout[exportTxOutNum].scriptPubKey, 
+                                                exportTx.vout[exportTxOutNum].nValue, 
+                                                CTxIn(exportTxId, exportTxOutNum)),
+                                                txProof),
+                                std::vector<CReserveTransfer>());
+            for (int j = 0; j < transferArrUni.size(); j++)
+            {
+                //printf("%s: onetransfer: %s\n", __func__, transferArrUni[j].write(1,2).c_str());
+                oneExport.second.push_back(CReserveTransfer(transferArrUni[j]));
+                if (!oneExport.second.back().IsValid())
+                {
+                    printf("Invalid reserve transfers in export from %s\n", sourceChain.name.c_str());
+                    return exports;
+                }
+            }
+            exports.push_back(oneExport);
+        }
+    }
+    return exports;
+}
+
 void CConnectedChains::SubmissionThread()
 {
     try
@@ -3938,12 +4159,73 @@ void CConnectedChains::SubmissionThread()
         {
             boost::this_thread::interruption_point();
 
+            // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
+            if (IsNotaryAvailable(true) && 
+                lastImportTime < (GetAdjustedTime() - 30))
+            {
+                // check for exports on this chain that we should send to the notary and do so
+                // exports to another native system should be exported to that system and to the currency
+                // of this system on that system
+                lastImportTime = GetAdjustedTime();
+
+                std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
+                CPBaaSNotarization lastConfirmed;
+                CUTXORef lastConfirmedUTXO;
+                exports = GetPendingExports(ConnectedChains.ThisChain(),
+                                            ConnectedChains.FirstNotaryChain().chainDefinition,
+                                            lastConfirmed,
+                                            lastConfirmedUTXO);
+                if (exports.size())
+                {
+                    bool success = true;
+                    UniValue exportParamObj(UniValue::VOBJ);
+
+                    exportParamObj.pushKV("sourcesystemid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+                    exportParamObj.pushKV("notarizationtxid", lastConfirmedUTXO.hash.GetHex());
+                    exportParamObj.pushKV("notarizationtxoutnum", (int)lastConfirmedUTXO.n);
+
+                    UniValue exportArr(UniValue::VARR);
+                    for (auto &oneExport : exports)
+                    {
+                        if (!oneExport.first.second.IsValid())
+                        {
+                            success = false;
+                            break;
+                        }
+                        UniValue oneExportUni(UniValue::VOBJ);
+                        oneExportUni.pushKV("txid", oneExport.first.first.txIn.prevout.hash.GetHex());
+                        oneExportUni.pushKV("txoutnum", (int)oneExport.first.first.txIn.prevout.n);
+                        oneExportUni.pushKV("partialtransactionproof", oneExport.first.second.ToUniValue());
+                        UniValue rtArr(UniValue::VARR);
+                        for (auto &oneTransfer : oneExport.second)
+                        {
+                            rtArr.push_back(oneTransfer.ToUniValue());
+                        }
+                        oneExportUni.pushKV("transfers", rtArr);
+                        exportArr.push_back(oneExportUni);
+                    }
+
+                    exportParamObj.pushKV("exports", exportArr);
+
+                    UniValue params(UniValue::VARR);
+                    params.push_back(exportParamObj);
+                    UniValue result = NullUniValue;
+                    try
+                    {
+                        result = find_value(RPCCallRoot("submitimports", params), "result");
+                    } catch (exception e)
+                    {
+                        LogPrintf("%s: Error submitting imports to notary chain %s\n", uni_get_str(params[0]).c_str());
+                    }
+                }
+            }
+
+            bool submit = false;
             if (IsVerusActive())
             {
                 // blocks get discarded after no refresh for 90 seconds by default, probably should be more often
                 //printf("SubmissionThread: pruning\n");
                 PruneOldChains(GetAdjustedTime() - 90);
-                bool submit = false;
                 {
                     LOCK(cs_mergemining);
                     if (mergeMinedChains.size() == 0 && qualifiedHeaders.size() != 0)
@@ -3959,81 +4241,16 @@ void CConnectedChains::SubmissionThread()
                     //printf("SubmissionThread: calling submit qualified blocks\n");
                     SubmitQualifiedBlocks();
                 }
-
-                if (!submit)
-                {
-                    sem_submitthread.wait();
-                }
             }
 
-            // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
-            if (IsNotaryAvailable(true))
+            if (!submit && !FirstNotaryChain().IsValid())
             {
-                // check for exports on this chain that we should send to the notary and do so
-                // exports to another native system should be exported to that system and to the currency
-                // of this system on that system
-
-
-
-
-
-                // TODO: this isn't functioning for somewhat obvious reasons - review
-
-                // check to see if we have recently earned a block with an earned notarization that qualifies for
-                // submitting an accepted notarization
-                if (earnedNotarizationHeight)
-                {
-                    CBlock blk;
-                    int32_t txIndex = -1, height;
-                    {
-                        LOCK(cs_mergemining);
-                        if (txIndex != -1)
-                        {
-                            LOCK(cs_main);
-                            //printf("SubmissionThread: testing notarization\n");
-                            CTransaction lastConfirmed;
-                            CPBaaSNotarization notarization; 
-                            CNotaryEvidence evidence;
-                            CValidationState state;
-                            TransactionBuilder txBuilder(Params().GetConsensus(), chainActive.Height());
-                            // get latest earned notarization
-
-                            bool success = notarization.CreateAcceptedNotarization(ConnectedChains.FirstNotaryChain().chainDefinition,
-                                                                                notarization,
-                                                                                evidence,
-                                                                                state,
-                                                                                txBuilder);
-
-                            if (success)
-                            {
-                                //printf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
-                                //LogPrintf("Submitted notarization for acceptance: %s\n", txId.GetHex().c_str());
-                            }
-                        }
-
-                        if (earnedNotarizationHeight && earnedNotarizationHeight <= chainActive.Height() && earnedNotarizationBlock.GetHash() == chainActive[earnedNotarizationHeight]->GetBlockHash())
-                        {
-                            blk = earnedNotarizationBlock;
-                            earnedNotarizationBlock = CBlock();
-                            txIndex = earnedNotarizationIndex;
-                            height = earnedNotarizationHeight;
-                            earnedNotarizationHeight = 0;
-                        }
-                    }
-                }
-
-                // every "n" seconds, look for imports to include in our blocks from the notary chain
-                if ((GetAdjustedTime() - lastImportTime) >= 30 || lastHeight < (chainActive.LastTip() ? 0 : chainActive.LastTip()->GetHeight()))
-                {
-                    lastImportTime = GetAdjustedTime();
-                    lastHeight = (chainActive.LastTip() ? 0 : chainActive.LastTip()->GetHeight());
-
-                    // see if our notary has a confirmed notarization for us
-                    UniValue params(UniValue::VARR);
-                    UniValue result;
-                }
+                sem_submitthread.wait();
             }
-            sleep(1);
+            else
+            {
+                MilliSleep(500);
+            }
             boost::this_thread::interruption_point();
         }
     }

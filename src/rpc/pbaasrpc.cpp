@@ -1441,7 +1441,7 @@ UniValue submitimports(const UniValue& params, bool fHelp)
     {
         throw runtime_error(
             "submitimports '{\"sourcesystemid\":\"systemid\", \"notarizationtxid\":\"txid\", \"notarizationtxoutnum\":n,\n"
-            "\"exports\":[{\"height\":n, \"txid\":\"hexid\", \"txoutnum\":n, \"partialtransactionproof\":\"hexstr\", \n"
+            "\"exports\":[{\"txid\":\"hexid\", \"txoutnum\":n, \"partialtransactionproof\":\"hexstr\", \n"
             "\"transfers\": [{transfer1}, {transfer2},...]}, ...]}'\n\n"
             "\nAccepts a set of exports from another system to post to the " + VERUS_CHAINNAME + " network.\n"
 
@@ -1525,13 +1525,11 @@ UniValue submitimports(const UniValue& params, bool fHelp)
     for (int i = 0; i < exportsUni.size(); i++)
     {
         // create one import at a time
-        uint32_t notarizationHeight = uni_get_int64(find_value(exportsUni[i], "height"));
         uint256 exportTxId = uint256S(uni_get_str(find_value(exportsUni[i], "txid")));
         int32_t exportTxOutNum = uni_get_int(find_value(exportsUni[i], "txoutnum"));
         CPartialTransactionProof txProof = CPartialTransactionProof(find_value(exportsUni[i], "partialtransactionproof"));
         UniValue transferArrUni = find_value(exportsUni[i], "transfers");
-        if (!notarizationHeight || 
-            exportTxId.IsNull() || 
+        if (exportTxId.IsNull() || 
             exportTxOutNum == -1 ||
             !transferArrUni.isArray())
         {
@@ -1581,6 +1579,95 @@ UniValue submitimports(const UniValue& params, bool fHelp)
             retVal.push_back(Pair("txoutnum", oneExport.first));
         }
     }
+    return retVal;
+}
+
+UniValue getlastimportfrom(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getlastimportfrom \"systemname\"\n"
+            "\nReturns the last import from a specific originating system.\n"
+
+            "\nArguments\n"
+            "1. \"systemname\"                      (string, optional) name or ID of the system to retrieve the last import from\n"
+
+            "\nResult:\n"
+            "  {\n"
+            "     \"lastimport\" :                  (object) last import from the indicated system on this chain\n"
+            "       {\n"
+            "       }\n"
+            "     \"lastconfirmednotarization\" :   (object) last confirmed notarization of the indicated system on this chain\n"
+            "       {\n"
+            "       }\n"
+            "  }\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getlastimportfrom", "\"systemname\"")
+            + HelpExampleRpc("getlastimportfrom", "\"systemname\"")
+        );
+    }
+    CheckPBaaSAPIsValid();
+
+    LOCK(cs_main);
+
+    uint160 chainID;
+    CCurrencyDefinition chainDef;
+    int32_t defHeight;
+
+    if ((chainID = ValidateCurrencyName(uni_get_str(params[0]), true, &chainDef)).IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain name or chain ID");
+    }
+
+    if ((chainDef.IsToken() && !chainDef.IsGateway()) || chainID == ASSETCHAINS_CHAINID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "getlastimportfrom retrieves the last import from an external, not local system");
+    }
+
+    CChainNotarizationData cnd;
+    if (!GetNotarizationData(chainID, cnd) || !cnd.IsConfirmed())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate confirmed notarization data for system or chain");
+    }
+
+    std::vector<CAddressUnspentDbEntry> unspentOutputs;
+    CCrossChainImport lastCCI;
+    bool found = false;
+    CAddressUnspentDbEntry foundEntry;
+
+    if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(chainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs) &&
+        unspentOutputs.size())
+    {
+        for (auto &txidx : unspentOutputs)
+        {
+            COptCCParams p;
+            if (txidx.second.script.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                p.vData.size() &&
+                (lastCCI = CCrossChainImport(p.vData[0])).IsValid())
+            {
+                found = true;
+                foundEntry = txidx;
+                break;
+            }
+        }
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "No import thread found for currency");
+    }
+
+    UniValue retVal(UniValue::VOBJ);
+    if (found)
+    {
+        retVal.pushKV("lastimport", lastCCI.ToUniValue());
+        retVal.pushKV("lastimportutxo", CUTXORef(foundEntry.first.txhash, foundEntry.first.index).ToUniValue());
+    }
+    retVal.pushKV("lastconfirmednotarization", cnd.vtx[cnd.lastConfirmed].second.ToUniValue());
+    retVal.pushKV("lastconfirmedutxo", cnd.vtx[cnd.lastConfirmed].first.ToUniValue());
     return retVal;
 }
 
@@ -2286,6 +2373,10 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             }
             else
             {
+                printf("%s: invalid notarization expecting proofroot for %s:\n%s\n",
+                    __func__,
+                    EncodeDestination(CIdentityID(currencyID)).c_str(),
+                    notarizationData.vtx[notarizationData.forks[i].back()].second.ToUniValue().write(1,2).c_str());
                 LogPrintf("%s: invalid notarization on transaction %s, output %u\n", __func__, 
                            notarizationData.vtx[notarizationData.forks[i].back()].first.hash.GetHex().c_str(), 
                            notarizationData.vtx[notarizationData.forks[i].back()].first.n);
@@ -6355,6 +6446,7 @@ static const CRPCCommand commands[] =
     { "multichain",   "sendcurrency",                 &sendcurrency,           true  },
     { "multichain",   "getpendingtransfers",          &getpendingtransfers,    true  },
     { "multichain",   "getexports",                   &getexports,             true  },
+    { "multichain",   "getlastimportfrom",            &getlastimportfrom,      true  },
     { "multichain",   "getimports",                   &getimports,             true  },
     { "multichain",   "refundfailedlaunch",           &refundfailedlaunch,     true  },
     { "multichain",   "refundfailedlaunch",           &refundfailedlaunch,     true  },
