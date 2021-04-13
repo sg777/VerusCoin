@@ -1045,21 +1045,21 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 // either launch or refund, finally, we create one last index entry for launchcompletemarker
 
                 // if this is the first launch clear notarization, index as confirmed or refunding
-                if (notarization.IsPreLaunch() && notarization.currencyState.IsLaunchClear())
-                {
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::LaunchNotarizationKey())));
-                    if (notarization.IsRefunding())
-                    {
-                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchRefundKey())));
-                    }
-                    else
-                    {
-                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchConfirmKey())));
-                    }
-                }
-                else if (notarization.IsPreLaunch())
+                if (notarization.IsPreLaunch())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchPrelaunchKey())));
+                    if (notarization.currencyState.IsLaunchClear())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::LaunchNotarizationKey())));
+                        if (notarization.IsRefunding())
+                        {
+                            destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchRefundKey())));
+                        }
+                        else
+                        {
+                            destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchConfirmKey())));
+                        }
+                    }
                 }
                 else if (notarization.IsBlockOneNotarization() && notarization.currencyState.IsLaunchClear())
                 {

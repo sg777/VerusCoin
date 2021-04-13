@@ -3297,7 +3297,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (newCurrencyState.nativeOut + burnedChangePrice + burnedChangeWeight)
     {
         spentCurrencyOut.valueMap[importCurrencyID] += (newCurrencyState.nativeOut + burnedChangePrice + burnedChangeWeight);
-        checkAgainstInputs.valueMap[importCurrencyDef.systemID] += newCurrencyState.nativeOut;
+        checkAgainstInputs.valueMap[importCurrencyDef.systemID];
     }
 
     //printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
@@ -3306,7 +3306,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\n", __func__,
                 ReserveInputs.ToUniValue().write(1,2).c_str(), 
                 spentCurrencyOut.ToUniValue().write(1,2).c_str());
-        LogPrintf("%s: Too much fee taken by export\n", __func__);
+        LogPrintf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\n", __func__,
+                ReserveInputs.ToUniValue().write(1,2).c_str(), 
+                spentCurrencyOut.ToUniValue().write(1,2).c_str());
         return false;
     }
     return true;

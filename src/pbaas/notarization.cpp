@@ -1065,6 +1065,49 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
 extern void CopyNodeStats(std::vector<CNodeStats>& vstats);
 
+std::vector<CNodeData> GetGoodNodes(int maxNum)
+{
+    // good nodes ordered by time connected
+    std::map<int64_t, CNode *> goodNodes;
+    std::vector<CNodeData> retVal;
+
+    LOCK(cs_vNodes);
+    for (auto oneNode : vNodes)
+    {
+        if (!oneNode->fInbound)
+        {
+            if (oneNode->fWhitelisted)
+            {
+                goodNodes.insert(std::make_pair(oneNode->nTimeConnected, oneNode));
+            }
+            else if (oneNode->GetTotalBytesRecv() > (1024 * 1024))
+            {
+                goodNodes.insert(std::make_pair(oneNode->nTimeConnected, oneNode));
+            }
+        }
+    }
+    if (goodNodes.size() > 1)
+    {
+        seed_insecure_rand();
+        for (auto &oneNode : goodNodes)
+        {
+            if (insecure_rand() & 1)
+            {
+                retVal.push_back(CNodeData(oneNode.second->addr.ToStringIPPort(), oneNode.second->hashPaymentAddress));
+                if (retVal.size() >= maxNum)
+                {
+                    break;
+                }
+            }
+        }
+    }
+    else
+    {
+        retVal.push_back(CNodeData(goodNodes.begin()->second->addr.ToStringIPPort(), goodNodes.begin()->second->hashPaymentAddress));
+    }
+    return retVal;
+}
+
 // create a notarization that is validated as part of the block, generally benefiting the miner or staker if the
 // cross notarization is valid
 bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalSystem,
@@ -1261,44 +1304,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
     }
 
-    // good nodes ordered by time connected
-    {
-        std::map<int64_t, CNode *> goodNodes;
-        notarization.nodes.clear();
-
-        LOCK(cs_vNodes);
-        for (auto oneNode : vNodes)
-        {
-            if (!oneNode->fInbound)
-            {
-                if (oneNode->fWhitelisted)
-                {
-                    goodNodes.insert(std::make_pair(oneNode->nTimeConnected, oneNode));
-                }
-                else if (oneNode->GetTotalBytesRecv() > (1024 * 1024))
-                {
-                    goodNodes.insert(std::make_pair(oneNode->nTimeConnected, oneNode));
-                }
-            }
-        }
-        if (goodNodes.size() > 1)
-        {
-            seed_insecure_rand();
-            std::vector<CNode *> finalists;
-            auto it = goodNodes.begin();
-            int dropCount = goodNodes.size() >> 1;
-            for (int i = 0; i < (goodNodes.size() - dropCount); i++, it++)
-            {
-                finalists.push_back(it->second);
-            }
-            int nodeIdx = insecure_rand() % finalists.size();
-            notarization.nodes.push_back(CNodeData(finalists[nodeIdx]->addr.ToStringIPPort(), finalists[nodeIdx]->hashPaymentAddress));
-        }
-        else if (goodNodes.begin()->second->fWhitelisted)
-        {
-            notarization.nodes.push_back(CNodeData(goodNodes.begin()->second->addr.ToStringIPPort(), goodNodes.begin()->second->hashPaymentAddress));
-        }
-    }
+    notarization.nodes = GetGoodNodes(CPBaaSNotarization::MAX_NODES);
 
     notarization.prevNotarization = cnd.vtx[notaryIdx].first;
     auto hw = CMMRNode<>::GetHashWriter();

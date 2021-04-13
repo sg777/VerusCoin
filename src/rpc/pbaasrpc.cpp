@@ -102,7 +102,7 @@ protected:
     };
 };
 
-bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight, bool checkMempool, CUTXORef *pUTXO)
+bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight, bool checkMempool, CUTXORef *pUTXO, std::vector<CNodeData> *pGoodNodes)
 {
     bool isVerusActive = IsVerusActive();
     static bool thisChainLoaded = false;
@@ -117,9 +117,13 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
         {
             *pUTXO = CUTXORef();
         }
+        if (pGoodNodes)
+        {
+            *pGoodNodes = GetGoodNodes();
+        }
         return true;
     }
-    else if (!isVerusActive)
+    else if (!isVerusActive && chainActive.Height() == 0)
     {
         if (ConnectedChains.FirstNotaryChain().IsValid() && (chainID == ConnectedChains.FirstNotaryChain().chainDefinition.GetID()))
         {
@@ -157,6 +161,33 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
                 {
                     *pUTXO = CUTXORef(currencyDefOut.first.txhash, currencyDefOut.first.index);
                 }
+                if (pGoodNodes)
+                {
+                    std::vector<CNodeData> nodes;
+                    CTransaction nTx;
+                    uint256 blockHash;
+                    if (!myGetTransaction(currencyDefOut.first.txhash, nTx, blockHash))
+                    {
+                        LogPrintf("%s: Cannot load currency definition transaction, txid %s\n", __func__, currencyDefOut.first.txhash.GetHex().c_str());
+                        continue;
+                    }
+                    for (int i = currencyDefOut.first.index + 1; i < nTx.vout.size(); i++)
+                    {
+                        COptCCParams p;
+                        CPBaaSNotarization pbn;
+
+                        if (nTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                            p.IsValid() &&
+                            (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                            p.vData.size() &&
+                            (pbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
+                            pbn.currencyID == chainID)
+                        {
+                            *pGoodNodes = pbn.nodes;
+                            break;
+                        }
+                    }
+                }
                 break;
             }
         }
@@ -178,6 +209,27 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
                 if (pUTXO)
                 {
                     *pUTXO = CUTXORef(currencyDefOut.first.txhash, currencyDefOut.first.index);
+                }
+                if (pGoodNodes)
+                {
+                    std::vector<CNodeData> nodes;
+                    uint256 blockHash;
+                    for (int i = currencyDefOut.first.index + 1; i < tx.vout.size(); i++)
+                    {
+                        COptCCParams p;
+                        CPBaaSNotarization pbn;
+
+                        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                            p.IsValid() &&
+                            (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                            p.vData.size() &&
+                            (pbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
+                            pbn.currencyID == chainID)
+                        {
+                            *pGoodNodes = pbn.nodes;
+                            break;
+                        }
+                    }
                 }
                 break;
             }
@@ -417,7 +469,7 @@ bool SetThisChain(const UniValue &chainDefinition)
 
 void CurrencySystemTypeQuery(const uint160 queryID,
                              std::map<CUTXORef, int> &currenciesFound,
-                             std::vector<CCurrencyDefinition> &curDefVec,
+                             std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> &curDefVec,
                              uint32_t startBlock=0,
                              uint32_t endBlock=0)
 {
@@ -452,8 +504,33 @@ void CurrencySystemTypeQuery(const uint160 queryID,
                 CUTXORef oneRef(oneOut.first.txhash, oneOut.first.index);
                 if (!currenciesFound.count(oneRef) || currenciesFound[oneRef] == -1)
                 {
+                    std::vector<CNodeData> nodes;
+                    CTransaction nTx;
+                    uint256 blockHash;
+                    uint160 curDefID = curDef.GetID();
+                    if (!myGetTransaction(oneRef.hash, nTx, blockHash))
+                    {
+                        LogPrintf("%s: Cannot load currency definition transaction, txid %s\n", __func__, oneOut.first.txhash.GetHex().c_str());
+                        continue;
+                    }
+                    for (int i = oneRef.n + 1; i < nTx.vout.size(); i++)
+                    {
+                        COptCCParams p;
+                        CPBaaSNotarization pbn;
+
+                        if (nTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                            p.IsValid() &&
+                            (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                            p.vData.size() &&
+                            (pbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
+                            pbn.currencyID == curDefID)
+                        {
+                            nodes = pbn.nodes;
+                            break;
+                        }
+                    }
                     currenciesFound.insert(std::make_pair(oneRef, curDefVec.size()));
-                    curDefVec.push_back(curDef);
+                    curDefVec.push_back(std::make_pair(std::make_pair(oneRef, nodes),  curDef));
                 }
             }
         }
@@ -462,7 +539,7 @@ void CurrencySystemTypeQuery(const uint160 queryID,
 
 void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStateQuery,
                                    std::map<CUTXORef, int> &currenciesFound,
-                                   std::vector<CCurrencyDefinition> &curDefVec,
+                                   std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> &curDefVec,
                                    uint32_t startBlock=0,
                                    uint32_t endBlock=0)
 {
@@ -517,7 +594,8 @@ void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStat
                 CCurrencyDefinition curDef;
                 int32_t currencyHeight;
                 CUTXORef curDefUTXO;
-                if (!GetCurrencyDefinition(pbn.currencyID, curDef, &currencyHeight, false, &curDefUTXO))
+                std::vector<CNodeData> goodNodes;
+                if (!GetCurrencyDefinition(pbn.currencyID, curDef, &currencyHeight, false, &curDefUTXO, &goodNodes))
                 {
                     LogPrintf("%s: Error getting currency definition %s\n", __func__, EncodeDestination(CIdentityID(pbn.currencyID)).c_str());
                     continue;
@@ -525,7 +603,7 @@ void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStat
                 if (!currenciesFound.count(curDefUTXO))
                 {
                     currenciesFound[curDefUTXO] = curDefVec.size();
-                    curDefVec.push_back(curDef);
+                    curDefVec.push_back(std::make_pair(std::make_pair(curDefUTXO, goodNodes), curDef));
                 }
             }
         }
@@ -546,7 +624,8 @@ void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStat
                 CCurrencyDefinition curDef;
                 int32_t currencyHeight;
                 CUTXORef curDefUTXO;
-                if (!GetCurrencyDefinition(pbn.currencyID, curDef, &currencyHeight, false, &curDefUTXO))
+                std::vector<CNodeData> goodNodes;
+                if (!GetCurrencyDefinition(pbn.currencyID, curDef, &currencyHeight, false, &curDefUTXO, &goodNodes))
                 {
                     LogPrintf("%s: Error getting currency definition %s\n", __func__, EncodeDestination(CIdentityID(pbn.currencyID)).c_str());
                     continue;
@@ -556,14 +635,14 @@ void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStat
                     (!startBlock || curDef.startBlock >= startBlock))
                 {
                     currenciesFound[curDefUTXO] = curDefVec.size();
-                    curDefVec.push_back(curDef);
+                    curDefVec.push_back(std::make_pair(std::make_pair(curDefUTXO, goodNodes), curDef));
                 }
             }
         }
     }
 }
 
-void GetCurrencyDefinitions(std::vector<CCurrencyDefinition> &chains,
+void GetCurrencyDefinitions(std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> &chains,
                             CCurrencyDefinition::EQueryOptions launchStateQuery,
                             CCurrencyDefinition::EQueryOptions systemTypeQuery,
                             bool isConverter,
@@ -574,7 +653,7 @@ void GetCurrencyDefinitions(std::vector<CCurrencyDefinition> &chains,
     CCcontract_info *cp;
 
     std::map<CUTXORef, int> currenciesFound;
-    std::vector<CCurrencyDefinition> curDefVec;
+    std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> curDefVec;
 
     if (systemTypeQuery == CCurrencyDefinition::QUERY_SYSTEMTYPE_LOCAL)
     {
@@ -602,7 +681,7 @@ void GetCurrencyDefinitions(std::vector<CCurrencyDefinition> &chains,
     if (narrowByLaunch)
     {
         std::map<CUTXORef, int> launchStateCurrenciesFound;
-        std::vector<CCurrencyDefinition> launchStateCurVec;
+        std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> launchStateCurVec;
         static std::set<CCurrencyDefinition::EQueryOptions> validLaunchOptions({CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH,
                                                                                 CCurrencyDefinition::QUERY_LAUNCHSTATE_REFUND,
                                                                                 CCurrencyDefinition::QUERY_LAUNCHSTATE_CONFIRM,
@@ -668,7 +747,7 @@ void GetCurrencyDefinitions(std::vector<CCurrencyDefinition> &chains,
         if (isNarrowing)
         {
             std::map<CUTXORef, int> converterCurrenciesFound;
-            std::vector<CCurrencyDefinition> converterCurVec;
+            std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> converterCurVec;
 
             // get converters and return only those already found that are converters
             CurrencyNotarizationTypeQuery(CCurrencyDefinition::QUERY_ISCONVERTER, converterCurrenciesFound, converterCurVec, startBlock, endBlock);
@@ -721,9 +800,26 @@ void GetCurrencyDefinitions(std::vector<CCurrencyDefinition> &chains,
                 continue;
             }
             CCurrencyDefinition oneCurDef(tx.vout[oneCur.first.n].scriptPubKey);
+            std::vector<CNodeData> nodes;
             if (oneCurDef.IsValid())
             {
-                chains.push_back(oneCurDef);
+                for (int i = oneCur.first.n + 1; i < tx.vout.size(); i++)
+                {
+                    COptCCParams p;
+                    CPBaaSNotarization pbn;
+
+                    if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                        p.vData.size() &&
+                        (pbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
+                        pbn.currencyID == oneCurDef.GetID())
+                    {
+                        nodes = pbn.nodes;
+                        break;
+                    }
+                }
+                chains.push_back(std::make_pair(std::make_pair(oneCur.first, nodes),  oneCurDef));
             }
         }
         else
@@ -1148,8 +1244,9 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
         int32_t defHeight;
         CUTXORef defUTXO;
+        std::vector<CNodeData> nodes;
 
-        if (!GetCurrencyDefinition(chainID, chainDef, &defHeight, false, &defUTXO))
+        if (!GetCurrencyDefinition(chainID, chainDef, &defHeight, false, &defUTXO, &nodes))
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency not found");
         }
@@ -1158,6 +1255,16 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
         {
             ret.push_back(Pair("definitiontxid", defUTXO.hash.GetHex()));
             ret.push_back(Pair("definitiontxout", (int)defUTXO.n));
+        }
+
+        if (nodes.size())
+        {
+            UniValue nodesUni(UniValue::VARR);
+            for (auto node : nodes)
+            {
+                nodesUni.push_back(node.ToUniValue());
+            }
+            ret.push_back(Pair("launchnodes", nodesUni));
         }
 
         if ((chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID) || 
@@ -1911,18 +2018,37 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
         }
     }
 
-    vector<CCurrencyDefinition> chains;
+    std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> chains;
     {
         LOCK2(cs_main, mempool.cs);
         GetCurrencyDefinitions(chains, launchStateQuery, systemTypeQuery, isConverter, startBlock, endBlock);
     }
 
-    for (auto def : chains)
+    for (auto oneDef : chains)
     {
         LOCK2(cs_main, mempool.cs);
+        CCurrencyDefinition &def = oneDef.second;
 
         UniValue oneChain(UniValue::VOBJ);
-        oneChain.push_back(Pair("currencydefinition", def.ToUniValue()));
+        UniValue oneDefUni = def.ToUniValue();
+
+        if (oneDef.first.first.IsValid())
+        {
+            ret.push_back(Pair("definitiontxid", oneDef.first.first.hash.GetHex()));
+            ret.push_back(Pair("definitiontxout", (int)oneDef.first.first.n));
+        }
+
+        if (oneDef.first.second.size())
+        {
+            UniValue nodesUni(UniValue::VARR);
+            for (auto node : oneDef.first.second)
+            {
+                nodesUni.push_back(node.ToUniValue());
+            }
+            oneDefUni.push_back(Pair("launchnodes", nodesUni));
+        }
+
+        oneChain.push_back(Pair("currencydefinition", oneDefUni));
 
         CChainNotarizationData cnd;
         GetNotarizationData(def.GetID(), cnd);
@@ -1938,7 +2064,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
             {
                 oneChain.push_back(Pair("lastconfirmedtxid", cnd.vtx[cnd.lastConfirmed].first.hash.GetHex().c_str()));
                 oneChain.push_back(Pair("lastconfirmedtxout", (uint64_t)cnd.vtx[cnd.lastConfirmed].first.n));
-                oneChain.push_back(Pair("lastconfirmedcurrencystate", cnd.vtx[cnd.lastConfirmed].second.currencyState.ToUniValue()));
+                oneChain.push_back(Pair("lastconfirmednotarization", cnd.vtx[cnd.lastConfirmed].second.ToUniValue()));
             }
         }
         oneChain.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
