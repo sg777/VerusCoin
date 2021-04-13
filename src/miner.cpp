@@ -1178,6 +1178,11 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         blockOneIDs.insert(oneNotary.second.notaryChain.chainDefinition.notaries.begin(), oneNotary.second.notaryChain.chainDefinition.notaries.end());
     }
 
+    for (auto &onePrealloc : thisChain.preAllocation)
+    {
+        blockOneIDs.insert(onePrealloc.first);
+    }
+
     // get this chain's notaries
     auto &notaryIDs = ConnectedChains.ThisChain().notaries;
     blockOneIDs.insert(notaryIDs.begin(), notaryIDs.end());
