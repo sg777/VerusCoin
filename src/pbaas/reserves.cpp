@@ -3289,14 +3289,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         ReserveInputs.valueMap[importCurrencyDef.systemID] = std::max(nativeIn, systemOutConverted);
     }
 
-    CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
-    if (nativeOut + burnedChangePrice + burnedChangeWeight)
+    if (nativeOut)
     {
-        spentCurrencyOut.valueMap[importCurrencyDef.systemID] += (nativeOut + burnedChangePrice + burnedChangeWeight);
-        checkAgainstInputs.valueMap[importCurrencyDef.systemID] += nativeOut;
+        spentCurrencyOut.valueMap[systemDestID] += nativeOut;
+    }
+    CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
+    if (newCurrencyState.nativeOut + burnedChangePrice + burnedChangeWeight)
+    {
+        spentCurrencyOut.valueMap[importCurrencyID] += (newCurrencyState.nativeOut + burnedChangePrice + burnedChangeWeight);
+        checkAgainstInputs.valueMap[importCurrencyDef.systemID] += newCurrencyState.nativeOut;
     }
 
-    //printf("ReserveInputs: %s\nReserveOutputs: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
+    //printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
     if ((ReserveInputs - checkAgainstInputs).HasNegative())
     {
         printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\n", __func__,

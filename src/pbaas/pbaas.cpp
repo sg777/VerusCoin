@@ -2178,8 +2178,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             requiredDeposits = cci.importValue;
         }
 
-        //printf("%s: requiredDeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
-        //printf("%s: nativeOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.nativeOut})).ToUniValue().write(1,2).c_str());
+        // printf("%s: requiredDeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
+        // printf("%s: nativeOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.nativeOut})).ToUniValue().write(1,2).c_str());
 
         // we must also come up with anything spent that is not satisfied via standard required deposits, 
         // as determined by reserves in. any excess in required deposits beyond what is spent will go to
