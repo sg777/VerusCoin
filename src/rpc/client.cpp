@@ -544,7 +544,6 @@ static const CRPCConvertParam vRPCConvertParams[] =
     // pbaas
     { "definecurrency", 0},
     { "definecurrency", 1},
-    { "getlastimportfrom", 0},
     { "listcurrencies", 0},
     { "listcurrencies", 1},
     { "sendcurrency", 1},

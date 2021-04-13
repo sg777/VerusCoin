@@ -1075,6 +1075,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 CCoinbaseCurrencyState &curState = notarization.currencyState;
                 if (curState.IsValid() &&
                     ((evalCode == EVAL_ACCEPTEDNOTARIZATION && notarization.IsSameChain()) ||
+                     notarization.IsPreLaunch() ||
                      notarization.IsDefinitionNotarization() ||
                      notarization.IsBlockOneNotarization()))
                 {
