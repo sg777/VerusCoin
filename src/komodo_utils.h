@@ -1547,12 +1547,16 @@ uint16_t komodo_userpass(char *userpass, char *symbol)
 
 uint32_t komodo_assetmagic(char *symbol,uint64_t supply,uint8_t *extraptr,int32_t extralen)
 {
+    std::string name(symbol);
+    if (name != "VRSC")
+    {
+        name = boost::to_lower_copy(name);
+    }
     uint8_t buf[512]; uint32_t crc0=0; int32_t len = 0; bits256 hash;
-    if ( strcmp(symbol,"KMD") == 0 )
-        return(0x8de4eef9);
+
     len = iguana_rwnum(1,&buf[len],sizeof(supply),(void *)&supply);
-    strcpy((char *)&buf[len],symbol);
-    len += strlen(symbol);
+    strcpy((char *)&buf[len], name.c_str());
+    len += strlen(name.c_str());
     if ( extraptr != 0 && extralen != 0 )
     {
         vcalc_sha256(0,hash.bytes,extraptr,extralen);
@@ -1579,11 +1583,6 @@ uint16_t komodo_assetport(uint32_t magic,int32_t extralen)
 
 uint16_t komodo_port(char *symbol,uint64_t supply,uint32_t *magicp,uint8_t *extraptr,int32_t extralen)
 {
-    if ( symbol == 0 || symbol[0] == 0 || strcmp("KMD",symbol) == 0 )
-    {
-        *magicp = 0x8de4eef9;
-        return(7770);
-    }
     *magicp = komodo_assetmagic(symbol,supply,extraptr,extralen);
     return(komodo_assetport(*magicp,extralen));
 }
