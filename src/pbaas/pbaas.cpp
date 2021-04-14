@@ -1180,6 +1180,10 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                 {
                     currencyState.fees = std::vector<int64_t>(curDef.currencies.size());
                 }
+                if (currencyState.conversionFees.size() != curDef.currencies.size())
+                {
+                    currencyState.conversionFees = std::vector<int64_t>(curDef.currencies.size());
+                }
                 // get chain transfers that should apply before the start block
                 // until there is a post-start block notarization, we always consider the
                 // currency state to be up to just before the start block

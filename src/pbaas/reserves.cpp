@@ -487,9 +487,9 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             int primaryOutNumOut;
             if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers))
             {
-                UniValue jsonTx(UniValue::VOBJ);
-                TxToUniv(importTx, uint256(), jsonTx);
-                printf("%s: importTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                //UniValue jsonTx(UniValue::VOBJ);
+                //TxToUniv(importTx, uint256(), jsonTx);
+                //printf("%s: importTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
                 return state.Error(strprintf("%s: invalid export evidence for import 1",__func__));
             }
 
