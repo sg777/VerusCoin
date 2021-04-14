@@ -2178,30 +2178,26 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             requiredDeposits = cci.importValue;
         }
 
-        // printf("%s: requiredDeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
-        // printf("%s: nativeOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.nativeOut})).ToUniValue().write(1,2).c_str());
+        //printf("%s: requiredDeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
+        //printf("%s: nativeOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.nativeOut})).ToUniValue().write(1,2).c_str());
 
         // we must also come up with anything spent that is not satisfied via standard required deposits, 
         // as determined by reserves in. any excess in required deposits beyond what is spent will go to
         // reserve deposits change
         requiredDeposits += spentCurrencyOut.SubtractToZero(requiredDeposits);
+        requiredDeposits.valueMap[cci.importCurrencyID] -= newNotarization.currencyState.nativeOut;
 
-        // if we have a negative primary currency balance, we need to get it from reserves
-        if (newNotarization.currencyState.nativeOut < 0)
-        {
-            requiredDeposits.valueMap[cci.importCurrencyID] -= newNotarization.currencyState.nativeOut;
-        }
         CCurrencyValueMap newCurrencyIn = gatewayDepositsUsed + importedCurrency;
         CCurrencyValueMap localDepositRequirements = requiredDeposits;
         CCurrencyValueMap localDepositChange;
 
-        /* printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        /*printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
         printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: requireddeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, newCurrencyIn.ToUniValue().write(1,2).c_str());
         printf("%s: importedCurrency: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str());
-        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str()); */
+        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str());*/
 
         // add local reserve deposit inputs and determine change
         if (localDepositRequirements.valueMap.size() ||
@@ -2227,13 +2223,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             localDepositChange = (totalDepositsInput + newCurrencyIn) - localDepositRequirements;
 
-            /* printf("%s: totalDepositsInput: %s\nlocalDepositChange: %s\n", 
+            /*printf("%s: totalDepositsInput: %s\nlocalDepositChange: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
-                localDepositChange.ToUniValue().write(1,2).c_str()); */
+                localDepositChange.ToUniValue().write(1,2).c_str());*/
 
             // we should always be able to fulfill
-            // local despoit requirements, or this is an error
+            // local deposit requirements, or this is an error
             if (localDepositChange.HasNegative())
             {
                 LogPrintf("%s: insufficient funds for local reserve deposits for currency %s, have:\n%s, need:\n%s\n", 
