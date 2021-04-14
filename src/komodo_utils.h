@@ -1323,7 +1323,7 @@ void iguana_initQ(queue_t *Q,char *name)
         free(item);
 }
 
-uint16_t _komodo_userpass(char *username,char *password,FILE *fp)
+uint16_t _komodo_userpass(char *username,char *password, FILE *fp)
 {
     char *rpcuser,*rpcpassword,*str,line[8192]; uint16_t port = 0;
     rpcuser = rpcpassword = 0;
@@ -1359,7 +1359,7 @@ uint16_t _komodo_userpass(char *username,char *password,FILE *fp)
 void komodo_statefname(char *fname,char *symbol,char *str)
 {
     int32_t n,len;
-    std::string checkName = std::string(ASSETCHAINS_SYMBOL);
+    std::string checkName = std::string(symbol);
     if (checkName != "VRSC")
     {
         checkName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
@@ -1388,7 +1388,7 @@ void komodo_statefname(char *fname,char *symbol,char *str)
     }
     if ( symbol != 0 && symbol[0] != 0 && strcmp("KMD",symbol) != 0 )
     {
-        strcat(fname,symbol);
+        strcat(fname, symbol);
         //printf("statefname.(%s) -> (%s)\n",symbol,fname);
 #ifdef _WIN32
         strcat(fname,"\\");
@@ -1410,7 +1410,7 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
         fileName = boost::to_lower_copy(fileName);
     }
     const char *_symbol = fileName.c_str();
-    static char myusername[512],mypassword[7168];
+    static char myusername[512], mypassword[7168];
     FILE *fp; uint16_t kmdport; uint8_t buf2[33]; char fname[512],buf[128],username[512],password[7168]; uint32_t crc,r,r2,i;
     if ( !fileName.empty() && rpcport != 0 )
     {
@@ -1492,7 +1492,7 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
         }
         else
         {
-            _komodo_userpass(myusername,mypassword,fp);
+            _komodo_userpass(myusername, mypassword, fp);
             mapArgs["-rpcpassword"] = mypassword;
             mapArgs["-rpcusername"] = myusername;
             //fprintf(stderr,"myusername.(%s)\n",myusername);
@@ -1513,7 +1513,7 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
     strcat(fname,"komodo.conf");
 #endif
 #endif
-    if ( (fp= fopen(fname,"rb")) != 0 )
+    if ( (fp = fopen(fname,"rb")) != 0 )
     {
         if ( (kmdport= _komodo_userpass(username,password,fp)) != 0 )
             KMD_PORT = kmdport;
@@ -1523,20 +1523,17 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
     } //else printf("couldnt open.(%s)\n",fname);
 }
 
-uint16_t komodo_userpass(char *userpass,char *symbol)
+uint16_t komodo_userpass(char *userpass, char *symbol)
 {
-    FILE *fp; uint16_t port = 0; char fname[512],username[512],password[512],confname[KOMODO_ASSETCHAIN_MAXLEN];
+    FILE *fp; uint16_t port = 0; char fname[512],username[512],password[512],confname[KOMODO_ASSETCHAIN_MAXLEN + 5];
     userpass[0] = 0;
-    if ( strcmp("KMD",symbol) == 0 )
+    std::string fileName(symbol);
+    if (fileName != "VRSC")
     {
-#ifdef __APPLE__
-        sprintf(confname,"Komodo.conf");
-#else
-        sprintf(confname,"komodo.conf");
-#endif
+        fileName = boost::to_lower_copy(fileName);
     }
-    else sprintf(confname,"%s.conf",symbol);
-    komodo_statefname(fname,symbol,confname);
+    sprintf(confname, "%s.conf", fileName.c_str());
+    komodo_statefname(fname, symbol, confname);
     if ( (fp= fopen(fname,"rb")) != 0 )
     {
         port = _komodo_userpass(username,password,fp);
@@ -2139,13 +2136,13 @@ void komodo_args(char *argv0)
         {
             int32_t komodo_baseid(char *origbase);
             extern int COINBASE_MATURITY;
-            if ( (port= komodo_userpass(ASSETCHAINS_USERPASS, ASSETCHAINS_SYMBOL)) != 0 )
+            if ( (port = komodo_userpass(ASSETCHAINS_USERPASS, ASSETCHAINS_SYMBOL)) != 0 )
             {
                 ASSETCHAINS_RPCPORT = port;
             }
             else 
             {
-                komodo_configfile(ASSETCHAINS_SYMBOL,ASSETCHAINS_P2PPORT + 1);
+                komodo_configfile(ASSETCHAINS_SYMBOL, ASSETCHAINS_P2PPORT + 1);
                 komodo_userpass(ASSETCHAINS_USERPASS, ASSETCHAINS_SYMBOL);      // make sure we set user and password on first load
             }
 
