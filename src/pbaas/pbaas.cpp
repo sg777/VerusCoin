@@ -1164,6 +1164,22 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                                         cnd.vtx[cnd.lastConfirmed].second.notarizationHeight);
             if (transfersUntil < curDef.startBlock)
             {
+                if (currencyState.reserveIn.size() != curDef.currencies.size())
+                {
+                    currencyState.reserveIn = std::vector<int64_t>(curDef.currencies.size());
+                }
+                if (curDef.conversions.size() != curDef.currencies.size())
+                {
+                    curDef.conversions = std::vector<int64_t>(curDef.currencies.size());
+                }
+                if (currencyState.conversionPrice.size() != curDef.currencies.size())
+                {
+                    currencyState.conversionPrice = std::vector<int64_t>(curDef.currencies.size());
+                }
+                if (currencyState.fees.size() != curDef.currencies.size())
+                {
+                    currencyState.fees = std::vector<int64_t>(curDef.currencies.size());
+                }
                 // get chain transfers that should apply before the start block
                 // until there is a post-start block notarization, we always consider the
                 // currency state to be up to just before the start block
@@ -1218,14 +1234,6 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                         }
                     }
                     currencyState.supply += currencyState.emitted;
-                    if (curDef.conversions.size() != curDef.currencies.size())
-                    {
-                        curDef.conversions = std::vector<int64_t>(curDef.currencies.size());
-                    }
-                    if (currencyState.conversionPrice.size() < curDef.conversions.size())
-                    {
-                        currencyState.conversionPrice = curDef.conversions;
-                    }
                     for (int i = 0; i < curDef.conversions.size(); i++)
                     {
                         currencyState.conversionPrice[i] = curDef.conversions[i] = currencyState.PriceInReserve(i);
