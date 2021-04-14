@@ -3279,7 +3279,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
         }
     }
-    if (systemOutConverted)
+    if (systemOutConverted && importCurrencyID != systemDestID)
     {
         // this does not have meaning besides a store of the system currency output that was converted
         currencies[importCurrencyID].reserveOutConverted = systemOutConverted;
@@ -3289,7 +3289,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         ReserveInputs.valueMap[importCurrencyDef.systemID] = std::max(nativeIn, systemOutConverted);
     }
 
-    if (nativeOut)
+    if (nativeOut && importCurrencyID != systemDestID)
     {
         spentCurrencyOut.valueMap[systemDestID] += nativeOut;
     }

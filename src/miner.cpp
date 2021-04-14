@@ -909,12 +909,11 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             gatewayDeposits.valueMap[newCurID] += newCurrencyState.emitted;
             gatewayDeposits = ((gatewayDeposits + importedCurrency) - spentCurrencyOut).CanonicalMap();
 
-            /*printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydepositsin %s\nnewgatewaydeposits %s\n", 
+            /* printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydepositsin %s\nnewgatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
                 gatewayDepositsIn.ToUniValue().write(1,2).c_str(),
-                gatewayDeposits.ToUniValue().write(1,2).c_str());
-            */
+                gatewayDeposits.ToUniValue().write(1,2).c_str()); */
 
             // add the reserve deposit output with all deposits for this currency for the new chain
             if (gatewayDeposits.valueMap.size())
