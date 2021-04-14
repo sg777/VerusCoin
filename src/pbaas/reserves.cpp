@@ -388,7 +388,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
     }
 
-    bool isPBaaSLaunch = !IsVerusActive() && nHeight == 1 && pBaseImport->IsInitialLaunchImport();
+    bool isPBaaSLaunch = !IsVerusActive() && pBaseImport->IsInitialLaunchImport();
 
     importNotarizationOut = numImportOut + 1;
 
