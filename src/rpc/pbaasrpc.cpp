@@ -1264,7 +1264,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             {
                 nodesUni.push_back(node.ToUniValue());
             }
-            ret.push_back(Pair("launchnodes", nodesUni));
+            ret.push_back(Pair("nodes", nodesUni));
         }
 
         if ((chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID) || 
@@ -2045,7 +2045,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
             {
                 nodesUni.push_back(node.ToUniValue());
             }
-            oneDefUni.push_back(Pair("launchnodes", nodesUni));
+            oneDefUni.push_back(Pair("nodes", nodesUni));
         }
 
         oneChain.push_back(Pair("currencydefinition", oneDefUni));
