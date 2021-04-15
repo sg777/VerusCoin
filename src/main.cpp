@@ -4022,6 +4022,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     else
                     {
                         cbCurDef = CCurrencyDefinition(p.vData[0]);
+                        if (cbCurDef.GetID() == ASSETCHAINS_CHAINID)
+                        {
+                            ConnectedChains.ThisChain() = cbCurDef;
+                        }
                     }
                 }
             }
@@ -4164,7 +4168,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CAmount verusFees = (!isVerusActive && totalReserveTxFees.valueMap.count(VERUS_CHAINID)) ? totalReserveTxFees.valueMap[VERUS_CHAINID] : 0;
     if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS)
     {
-        // all fees must be taken and no more
+        // all potential fees may be taken and no more, all fees not taken
+        // must remain in the fee pool
         CFeePool feePoolCheck;
 
         if (CConstVerusSolutionVector::GetVersionByHeight(nHeight - 1) < CActivationHeight::ACTIVATE_PBAAS ||
@@ -4188,18 +4193,19 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
             CFeePool feePool;
             CAmount feePoolVal;
+            CAmount verusFeePoolVal;
             if (!(feePool = CFeePool(block.vtx[0])).IsValid() ||
                 (feePoolVal = feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID]) < (feePoolCheckVal - rewardFees) ||
                 feePoolVal > feePoolCheckVal ||
-                (!isVerusActive && ((feePoolVal = feePoolCheck.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
-                feePoolVal > verusCheckVal)))
+                (!isVerusActive && ((verusFeePoolVal = feePoolCheck.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
+                verusFeePoolVal > verusCheckVal)))
             {
-                /* printf("%s: rewardfees: %ld, verusfees: %ld, feePool: %s\nfeepoolcheck: %s\n", 
+                printf("%s: rewardfees: %ld, verusfees: %ld, feePool: %s\nfeepoolcheck: %s\n", 
                         __func__, 
                         rewardFees, 
                         verusFees, 
                         feePool.ToUniValue().write(1,2).c_str(), 
-                        feePoolCheck.ToUniValue().write(1,2).c_str()); */
+                        feePoolCheck.ToUniValue().write(1,2).c_str());
                 return state.DoS(100, error("ConnectBlock(): invalid fee pool usage in block"), REJECT_INVALID, "bad-blk-fees");
             }
             rewardFees = feePoolCheckVal - feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID];

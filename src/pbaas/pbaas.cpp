@@ -987,8 +987,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                             if (currencyDef.IsValid() && checkState.IsValid() && (checkState.IsLaunchConfirmed()))
                             {
                                 thisChain = currencyDef;
-                                uint32_t currentNotaryHeight = NotaryChainHeight();
-                                if (currentNotaryHeight >= thisChain.startBlock)
+                                if (NotaryChainHeight() >= thisChain.startBlock)
                                 {
                                     readyToStart = true;    // this only gates mining of block one, to be sure we have the latest definition
                                 }

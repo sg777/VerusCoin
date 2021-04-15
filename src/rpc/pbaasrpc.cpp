@@ -1209,7 +1209,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             "         \"nodeidentity\" : \"txid\", (string,  optional) internet, TOR, or other supported address for node\n"
             "         \"paymentaddress\" : n,     (int,     optional) rewards payment address\n"
             "       }, .. ]\n"
-            "    \"bestnotarization\" : {\n"
+            "    \"lastconfirmedcurrencystate\" : {\n"
             "     }\n"
             "    \"besttxid\" : \"txid\"\n"
             "     }\n"
@@ -1267,12 +1267,13 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             ret.push_back(Pair("nodes", nodesUni));
         }
 
+        UniValue lastStateUni = ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue();
+
         if ((chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID) || 
             (chainDef.launchSystemID == ASSETCHAINS_CHAINID && height < chainDef.startBlock))
         {
             ret.push_back(Pair("bestheight", chainActive.Height()));
             ret.push_back(Pair("lastconfirmedheight", chainActive.Height()));
-            UniValue lastStateUni = ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue();
             ret.push_back(Pair("bestcurrencystate", lastStateUni));
             ret.push_back(Pair("lastconfirmedcurrencystate", lastStateUni));
         }
@@ -1335,6 +1336,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             {
                 int64_t curHeight = chainActive.Height();
                 ret.push_back(Pair("lastconfirmedheight", curHeight));
+                ret.push_back(Pair("lastconfirmedcurrencystate", lastStateUni));
                 ret.push_back(Pair("bestheight", curHeight));
             }
             else
