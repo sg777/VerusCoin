@@ -1087,6 +1087,27 @@ UniValue CObjectFinalization::ToUniValue() const
                                     IsRejected() ? 
                                         "rejected" : 
                                         "pending"));
+    if (IsConfirmed() || IsRejected())
+    {
+        if (evidenceInputs.size())
+        {
+            UniValue inputsUni(UniValue::VARR);
+            for (auto i : evidenceInputs)
+            {
+                inputsUni.push_back(i);
+            }
+            ret.pushKV("evidenceinputs", inputsUni);
+        }
+        if (evidenceOutputs.size())
+        {
+            UniValue outputsUni(UniValue::VARR);
+            for (auto i : evidenceOutputs)
+            {
+                outputsUni.push_back(i);
+            }
+            ret.pushKV("evidenceoutputs", outputsUni);
+        }
+    }
     ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
     ret.push_back(Pair("output", output.ToUniValue()));
     return ret;

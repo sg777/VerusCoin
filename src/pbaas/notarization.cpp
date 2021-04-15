@@ -1724,7 +1724,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
             }
 
             // before signing the one we are about to, we want to ensure that it isn't already signed sufficiently
-            // if there are enough signatures to confirm it with out signature, make our signature, then create a finalization
+            // if there are enough signatures to confirm it without signature, make our signature, then create a finalization
             CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION + CObjectFinalization::FINALIZE_CONFIRMED,
                                                          SystemID,
                                                          cnd.vtx[idx].first.hash,
@@ -1830,7 +1830,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
             }
 
             // if we have enough to finalize, do so as a combination of pre-existing evidence and this
-            if (sigSet.size() >= externalSystem.chainDefinition.minNotariesConfirm)
+            if (sigSet.size() >= ConnectedChains.ThisChain().minNotariesConfirm)
             {
                 int sigCount = 0;
 
