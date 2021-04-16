@@ -743,10 +743,11 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
     // import / export capable currencies include the main currency, fractional currencies on any system, 
     // gateway currencies. and non-token currencies. they also get an import / export thread
-    if (newCurrency.IsFractional() ||
+    if (newCurrency.systemID == ASSETCHAINS_CHAINID &&
+        (newCurrency.IsFractional() ||
         newCurrency.systemID == newCurID ||
         ConnectedChains.ThisChain().launchSystemID == newCurID ||
-        (newCurrency.IsGateway() && newCurrency.GetID() == newCurrency.gatewayID))
+        (newCurrency.IsGateway() && newCurrency.GetID() == newCurrency.gatewayID)))
     {
         uint160 firstNotaryID = ConnectedChains.FirstNotaryChain().chainDefinition.GetID();
 
@@ -873,7 +874,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             std::vector<CTxOut> importOutputs;
             CReserveTransactionDescriptor rtxd;
             CCoinbaseCurrencyState importState = newNotarization.currencyState;
-            importState.RevertReservesAndSupply();
             CCurrencyValueMap importedCurrency;
             CCurrencyValueMap gatewayDepositsIn;
             CCurrencyValueMap spentCurrencyOut;
@@ -894,10 +894,15 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 return false;
             }
 
+            if (newCurrencyState.IsLaunchConfirmed() && !newCurrencyState.IsLaunchCompleteMarker())
+            {
+                newCurrencyState.conversionPrice = importState.conversionPrice;
+            }
+
             // anything we had before plus anything imported and minus all spent currency out should
             // be all reserve deposits remaining under control of this currency
 
-            //printf("%s: gatewaydeposits %s\n", __func__, gatewayDeposits.ToUniValue().write(1,2).c_str());
+            printf("%s: gatewaydeposits %s\n", __func__, gatewayDeposits.ToUniValue().write(1,2).c_str());
 
             // to determine left over reserves for deposit, consider imported and emitted as the same
             if (newCurrency.IsPBaaSConverter())
@@ -909,11 +914,11 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             gatewayDeposits.valueMap[newCurID] += newCurrencyState.emitted;
             gatewayDeposits = ((gatewayDeposits + importedCurrency) - spentCurrencyOut).CanonicalMap();
 
-            /* printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydepositsin %s\nnewgatewaydeposits %s\n", 
+            printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydepositsin %s\nnewgatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
                 gatewayDepositsIn.ToUniValue().write(1,2).c_str(),
-                gatewayDeposits.ToUniValue().write(1,2).c_str()); */
+                gatewayDeposits.ToUniValue().write(1,2).c_str());
 
             // add the reserve deposit output with all deposits for this currency for the new chain
             if (gatewayDeposits.valueMap.size())
@@ -2248,6 +2253,14 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         // coinbase is done
         pblock->vtx[0] = coinbaseTx;
         uint256 cbHash = coinbaseTx.GetHash();
+
+        // display it at block 1 for PBaaS debugging
+        if (nHeight == 1)
+        {
+            UniValue jsonTxOut(UniValue::VOBJ);
+            TxToUniv(coinbaseTx, uint256(), jsonTxOut);
+            printf("%s: new coinbase transaction: %s\n", __func__, jsonTxOut.write(1,2).c_str());
+        }
 
         // if there is a stake transaction, add it to the very end
         if (isStake)

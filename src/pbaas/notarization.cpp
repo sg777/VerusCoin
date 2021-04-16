@@ -524,8 +524,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             {
                 newNotarization.SetPreLaunch(false);
                 newNotarization.currencyState.SetLaunchClear();
-                newNotarization.currencyState.RevertReservesAndSupply();
                 newNotarization.currencyState.SetPrelaunch(false);
+                newNotarization.currencyState.RevertReservesAndSupply();
             }
             else
             {
@@ -630,19 +630,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         else if (tempState.IsLaunchConfirmed() && !tempState.IsLaunchCompleteMarker())
         {
             tempState.conversionPrice = newNotarization.currencyState.conversionPrice;
-        }
-        if (tempState.IsLaunchClear() &&
-            tempState.IsLaunchConfirmed() &&
-            destCurrency.IsPBaaSConverter() &&
-            destCurrency.gatewayConverterIssuance)
-        {
-            auto reserveIdxMap = tempState.GetReserveMap();
-            if (reserveIdxMap.count(destSystem.GetID()))
-            {
-                int nativeIndex = reserveIdxMap[destSystem.GetID()];
-                tempState.reserveIn[nativeIndex] -= destCurrency.gatewayConverterIssuance;
-                tempState.reserves[nativeIndex] -= destCurrency.gatewayConverterIssuance;
-            }
         }
 
         newNotarization.currencyState = tempState;

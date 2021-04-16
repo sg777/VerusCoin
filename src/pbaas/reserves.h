@@ -1485,6 +1485,10 @@ public:
 
     // given that all reserves in and out are accurate, this reverts the reserves and supply to the prior state,
     // while leaving conversion prices the same
+    void RevertFees(const std::vector<CAmount> &conversionPrice,
+                    const std::vector<CAmount> &viaConversionPrice,
+                    const uint160 &systemID=ASSETCHAINS_CHAINID);
+
     void RevertReservesAndSupply();
 
     template <typename NUMBERVECTOR>
