@@ -1057,24 +1057,26 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         else
         {
             // supply is determined by purchases * current conversion rate
-            currencyState.supply = currencyState.initialSupply;
+            currencyState.supply = currencyState.initialSupply + curDef.GetTotalPreallocation();
         }
     }
 
     // get chain transfers that should apply before the start block
     // until there is a post-start block notarization, we always consider the
     // currency state to be up to just before the start block
-    std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> unspentTransfers;
+    std::multimap<uint160, ChainTransferData> unspentTransfers;
     std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
-    int32_t nativeIdx = currencyIndexes.count(curDef.systemID) ? currencyIndexes[curDef.systemID] : -1;
 
-    if (GetChainTransfers(unspentTransfers, curDef.GetID(), fromHeight, height < curDef.startBlock ? height : curDef.startBlock - 1) &&
+    if (GetUnspentChainTransfers(unspentTransfers, curDef.GetID()) &&
         unspentTransfers.size())
     {
         std::vector<CReserveTransfer> transfers;
         for (auto &oneTransfer : unspentTransfers)
         {
-            transfers.push_back(oneTransfer.second.second);
+            if (std::get<0>(oneTransfer.second) < curDef.startBlock)
+            {
+                transfers.push_back(std::get<2>(oneTransfer.second));
+            }
         }
         uint256 transferHash;
         CPBaaSNotarization newNotarization;
@@ -1733,7 +1735,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
-        /* // DEBUG OUTPUT
+        // DEBUG OUTPUT
         for (auto &oneDepositIn : localDeposits)
         {
             UniValue scrUni(UniValue::VOBJ);
@@ -1744,7 +1746,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 oneDepositIn.txIn.prevout.n,
                 scrUni.write(1,2).c_str());
         } // DEBUG OUTPUT END
-        */
 
         // if importing from another system/chain, get reserve deposits of source system to make available to import
         // as well
@@ -2183,14 +2184,22 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // if this import is from another system, we will need local imports or gateway deposits to
         // cover the imported currency amount. if it is from this system, the reserve deposits are already
         // present from the export, which is also on this chain
+        CCurrencyValueMap checkImportedCurrency;
         if (cci.sourceSystemID != destCur.systemID &&
             (!newNotarization.currencyState.IsLaunchConfirmed() || newNotarization.currencyState.IsLaunchCompleteMarker()))
         {
-            requiredDeposits = cci.importValue;
+            if (!ConnectedChains.CurrencyImportStatus(cci.importValue,
+                                                      cci.sourceSystemID,
+                                                      destCur.systemID,
+                                                      checkImportedCurrency,
+                                                      requiredDeposits))
+            {
+                return false;
+            }
         }
 
-        //printf("%s: requiredDeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
-        //printf("%s: nativeOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.nativeOut})).ToUniValue().write(1,2).c_str());
+        printf("%s: checkImportedCurrency: %s\nrequiredDeposits: %s\n", __func__, checkImportedCurrency.ToUniValue().write(1,2).c_str(), requiredDeposits.ToUniValue().write(1,2).c_str());
+        printf("%s: nativeOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.nativeOut})).ToUniValue().write(1,2).c_str());
 
         // we must also come up with anything spent that is not satisfied via standard required deposits, 
         // as determined by reserves in. any excess in required deposits beyond what is spent will go to
@@ -2202,13 +2211,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CCurrencyValueMap localDepositRequirements = requiredDeposits;
         CCurrencyValueMap localDepositChange;
 
-        /*printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
         printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: requireddeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, newCurrencyIn.ToUniValue().write(1,2).c_str());
         printf("%s: importedCurrency: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str());
-        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str());*/
+        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str());
 
         // add local reserve deposit inputs and determine change
         if (localDepositRequirements.valueMap.size() ||
@@ -2234,10 +2243,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             localDepositChange = (totalDepositsInput + newCurrencyIn) - localDepositRequirements;
 
-            /*printf("%s: totalDepositsInput: %s\nlocalDepositChange: %s\n", 
+            printf("%s: totalDepositsInput: %s\nlocalDepositChange: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
-                localDepositChange.ToUniValue().write(1,2).c_str());*/
+                localDepositChange.ToUniValue().write(1,2).c_str());
 
             // we should always be able to fulfill
             // local deposit requirements, or this is an error
@@ -2795,6 +2804,88 @@ bool CConnectedChains::GetPendingSystemExports(const uint160 systemID,
     }
 }
 
+bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExports,
+                                            const uint160 &sourceSystemID,
+                                            const uint160 &destSystemID,
+                                            CCurrencyValueMap &newReserveDeposits,
+                                            CCurrencyValueMap &exportBurn)
+{
+    /* printf("%s: num transfers %ld, totalExports: %s\nnewNotarization: %s\n",
+        __func__,
+        exportTransfers.size(),
+        totalExports.ToUniValue().write(1,2).c_str(),
+        newNotarization.ToUniValue().write(1,2).c_str()); */
+
+    // if we are exporting off of this system to a gateway or PBaaS chain, don't allow 3rd party 
+    // or unregistered currencies to export. if same to same chain, all exports are ok.
+    if (destSystemID != sourceSystemID)
+    {
+        for (auto &oneCur : totalExports.valueMap)
+        {
+            if (oneCur.first == ASSETCHAINS_CHAINID)
+            {
+                newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
+                continue;
+            }
+
+            CCurrencyDefinition oneCurDef;
+            uint160 oneCurID;
+
+            if (oneCur.first != oneCurID)
+            {
+                oneCurDef = ConnectedChains.GetCachedCurrency(oneCur.first);
+                if (!oneCurDef.IsValid())
+                {
+                    printf("%s: Invalid currency for export or corrupt chain state\n", __func__);
+                    LogPrintf("%s: Invalid currency for export or corrupt chain state\n", __func__);
+                    return false;
+                }
+                oneCurID = oneCur.first;
+            }
+
+            // if we are exporting a gateway or PBaaS currency back to its system, we do not store it in reserve deposits
+            if ((oneCurDef.IsGateway() && oneCurDef.systemID == ASSETCHAINS_CHAINID && oneCurDef.gatewayID == destSystemID) ||
+                (oneCurDef.systemID != ASSETCHAINS_CHAINID && oneCurDef.systemID == destSystemID))
+            {
+                // we need to burn this currency here, since it will be sent back to where it was originally minted for us to keep
+                // track of on this system
+                exportBurn.valueMap[oneCur.first] += oneCur.second;
+
+                // TODO: if we're exporting to a gateway or other chain, ensure that our export currency is registered for import
+                //
+            }
+            else if (oneCurDef.systemID == ASSETCHAINS_CHAINID)
+            {
+                // exporting from one currency on this system to another currency on this system, store reserve deposits
+                newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
+            }
+            else if (destSystemID != oneCurDef.systemID)
+            {
+                printf("%s: Cannot export from one external currency system or PBaaS chain to another external system\n", __func__);
+                LogPrintf("%s: Cannot export from one external currency system or PBaaS chain to another external system\n", __func__);
+                return false;
+            }
+        }
+    }
+    else
+    {
+        // when we export from this system to a specific currency on this system,
+        // we record the reserve deposits for the destination currency to ensure they are available for imports
+        // which take them as inputs.
+        newReserveDeposits = totalExports;
+    }
+    return true;
+}
+
+bool CConnectedChains::CurrencyImportStatus(const CCurrencyValueMap &totalImports,
+                                            const uint160 &sourceSystemID,
+                                            const uint160 &destSystemID,
+                                            CCurrencyValueMap &mintNew,
+                                            CCurrencyValueMap &reserveDepositsRequired)
+{
+    return CurrencyExportStatus(totalImports, sourceSystemID, destSystemID, mintNew, reserveDepositsRequired);
+}
+
 bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                         const std::vector<ChainTransferData> &_txInputs,
                                         const std::vector<CInputDescriptor> &priorExports,
@@ -3027,51 +3118,9 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // or unregistered currencies to export. if same to same chain, all exports are ok.
     if (destSystemID != ASSETCHAINS_CHAINID)
     {
-        for (auto &oneCur : totalExports.valueMap)
+        if (!ConnectedChains.CurrencyExportStatus(totalExports, ASSETCHAINS_CHAINID, destSystemID, newReserveDeposits, exportBurn))
         {
-            if (oneCur.first == ASSETCHAINS_CHAINID)
-            {
-                newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
-                continue;
-            }
-
-            CCurrencyDefinition oneCurDef;
-            uint160 oneCurID;
-
-            if (oneCur.first != oneCurID)
-            {
-                oneCurDef = ConnectedChains.GetCachedCurrency(oneCur.first);
-                if (!oneCurDef.IsValid())
-                {
-                    printf("%s: Invalid currency for export or corrupt chain state\n", __func__);
-                    LogPrintf("%s: Invalid currency for export or corrupt chain state\n", __func__);
-                    return false;
-                }
-                oneCurID = oneCur.first;
-            }
-
-            // if we are exporting a gateway or PBaaS currency back to its system, we do not store it in reserve deposits
-            if ((oneCurDef.IsGateway() && oneCurDef.systemID == ASSETCHAINS_CHAINID && oneCurDef.gatewayID == destSystemID) ||
-                (oneCurDef.systemID != ASSETCHAINS_CHAINID && oneCurDef.systemID == destSystemID))
-            {
-                // we need to burn this currency here, since it will be sent back to where it was originally minted for us to keep
-                // track of on this system
-                exportBurn.valueMap[oneCur.first] += oneCur.second;
-
-                // TODO: if we're exporting to a gateway or other chain, ensure that our export currency is registered for import
-                //
-            }
-            else if (oneCurDef.systemID == ASSETCHAINS_CHAINID)
-            {
-                // exporting from one currency on this system to another currency on this system, store reserve deposits
-                newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
-            }
-            else if (destSystemID != oneCurDef.systemID)
-            {
-                printf("%s: Cannot export from one external currency system or PBaaS chain to another external system\n", __func__);
-                LogPrintf("%s: Cannot export from one external currency system or PBaaS chain to another external system\n", __func__);
-                return false;
-            }
+            return false;
         }
     }
     else
@@ -4018,11 +4067,13 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
             LogPrintf("%s: Invalid last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
             return exports;
         }
-     }
-    else
+    }
+    else if (!exportsToNotary)
     {
         LOCK(cs_main);
         std::vector<CAddressUnspentDbEntry> unspentOutputs;
+
+        // TODO: add getnotarizationdata
 
         if (lastConfirmed.proofRoots.count(sourceChainID) &&
             GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs))

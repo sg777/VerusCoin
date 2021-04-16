@@ -2093,7 +2093,6 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
 
     // which transaction are we in this block?
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-    std::set<uint256> countedTxes;                  // don't count twice
 
     LOCK2(cs_main, mempool.cs);
 
@@ -2112,61 +2111,33 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
             CTransaction ntx;
             uint256 blkHash;
 
-            // each tx gets counted once
-            if (countedTxes.count(it->first.txhash))
+            if (it->first.spending)
             {
                 continue;
             }
-            countedTxes.insert(it->first.txhash);
 
             if (myGetTransaction(it->first.txhash, ntx, blkHash))
             {
+                COptCCParams p, m;
+                CReserveTransfer rt;
+                if (ntx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.evalCode == EVAL_RESERVE_TRANSFER &&
+                    p.vData.size() > 1 && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                    (m = COptCCParams(p.vData[1])).IsValid() &&
+                    (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID) == chainFilter) &&
+                    (rt.flags & flags) == flags)
+                {
+                    inputDescriptors.insert(make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
+                                                make_pair(CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index))), 
+                                                            rt)));
+                }
+
                 /*
                 uint256 hashBlk;
                 UniValue univTx(UniValue::VOBJ);
                 TxToUniv(ntx, hashBlk, univTx);
                 printf("tx: %s\n", univTx.write(1,2).c_str());
                 */
-                for (int i = 0; i < ntx.vout.size(); i++)
-                {
-                    // if this is a transfer output, optionally to this chain, add it to the input vector
-                    /*
-                    std::vector<CTxDestination> dests;
-                    int numRequired = 0;
-                    txnouttype typeRet;
-                    if (ExtractDestinations(ntx.vout[i].scriptPubKey, typeRet, dests, numRequired))
-                    {
-                        if (!nofilter)
-                        {
-                            printf("filter: %s\n", EncodeDestination(CKeyID(chainFilter)).c_str());
-                        }
-                        for (auto &oneDest : dests)
-                        {
-                            printf("%s\n", EncodeDestination(oneDest).c_str());
-                        }
-                    }
-                    */
-
-                    COptCCParams p, m;
-                    CReserveTransfer rt;
-                    if (ntx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
-                        p.evalCode == EVAL_RESERVE_TRANSFER &&
-                        p.vData.size() > 1 && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
-                        (m = COptCCParams(p.vData[1])).IsValid() &&
-                        (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID) == chainFilter) &&
-                        (rt.flags & flags) == flags)
-                    {
-                        inputDescriptors.insert(make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
-                                                    make_pair(CInputDescriptor(ntx.vout[i].scriptPubKey, ntx.vout[i].nValue, CTxIn(COutPoint(it->first.txhash, i))), rt)));
-                    }
-                    else if (p.IsValid() &&
-                             p.evalCode == EVAL_RESERVE_TRANSFER &&
-                             p.version != p.VERSION_V3)
-                    {
-                        // if we change the version, stop here in case it wasn't caught
-                        assert(false);
-                    }
-                }
             }
             else
             {

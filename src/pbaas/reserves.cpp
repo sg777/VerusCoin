@@ -3108,6 +3108,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             newCurrencyState.nativeIn[i] = vFracConverted[i];
             newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]);
         }
+        // pre-launch can still add pre-conversions as reserveIn and reserve for fractional
+        if (newCurrencyState.IsPrelaunch())
+        {
+            std::vector<CAmount> extraPreconversions = preConvertedReserves.AsCurrencyVector(newCurrencyState.currencies);
+            newCurrencyState.reserveIn = newCurrencyState.AddVectors(newCurrencyState.reserveIn, extraPreconversions);
+            if (newCurrencyState.IsFractional())
+            {
+                newCurrencyState.reserves = newCurrencyState.AddVectors(newCurrencyState.reserves, extraPreconversions);
+            }
+        }
     }
     else
     {

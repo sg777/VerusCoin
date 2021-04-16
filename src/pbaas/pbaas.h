@@ -1423,6 +1423,18 @@ public:
 
     static bool GetReserveDeposits(const uint160 &currencyID, const CCoinsViewCache &view, std::vector<CInputDescriptor> &reserveDeposits);
 
+    static bool CurrencyExportStatus(const CCurrencyValueMap &totalExports,
+                                     const uint160 &sourceSystemID,
+                                     const uint160 &destSystemID,
+                                     CCurrencyValueMap &newReserveDeposits,
+                                     CCurrencyValueMap &exportBurn);
+
+    static bool CurrencyImportStatus(const CCurrencyValueMap &totalExports,
+                                     const uint160 &sourceSystemID,
+                                     const uint160 &destSystemID,
+                                     CCurrencyValueMap &newReserveDeposits,
+                                     CCurrencyValueMap &exportBurn);
+
     bool CreateNextExport(const CCurrencyDefinition &_curDef,
                           const std::vector<ChainTransferData> &txInputs,
                           const std::vector<CInputDescriptor> &priorExports,

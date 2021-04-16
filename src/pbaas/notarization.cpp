@@ -567,7 +567,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                          ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
         CCoinbaseCurrencyState tempState = newNotarization.currencyState;
-        if (!(newNotarization.IsLaunchCleared() && !newNotarization.currencyState.IsLaunchCompleteMarker()) && exportTransfers.size())
+        if (destCurrency.IsFractional() &&
+            !(newNotarization.IsLaunchCleared() &&
+            !newNotarization.currencyState.IsLaunchCompleteMarker()) &&
+            exportTransfers.size())
         {
             // normalize prices on the way in to prevent overflows on first pass
             std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(tempState.currencies);
@@ -621,15 +624,25 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         // chain must be either output to specific addresses, taken as fees by miners, or stored in reserve deposits.
         if (tempState.IsPrelaunch())
         {
-            if (!tempState.IsLaunchClear())
-            {
-                tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
-            }
+            tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
             tempState.fees = tempState.AddVectors(tempState.fees, this->currencyState.fees);
         }
         else if (tempState.IsLaunchConfirmed() && !tempState.IsLaunchCompleteMarker())
         {
             tempState.conversionPrice = newNotarization.currencyState.conversionPrice;
+        }
+        if (tempState.IsLaunchClear() &&
+            tempState.IsLaunchConfirmed() &&
+            destCurrency.IsPBaaSConverter() &&
+            destCurrency.gatewayConverterIssuance)
+        {
+            auto reserveIdxMap = tempState.GetReserveMap();
+            if (reserveIdxMap.count(destSystem.GetID()))
+            {
+                int nativeIndex = reserveIdxMap[destSystem.GetID()];
+                tempState.reserveIn[nativeIndex] -= destCurrency.gatewayConverterIssuance;
+                tempState.reserves[nativeIndex] -= destCurrency.gatewayConverterIssuance;
+            }
         }
 
         newNotarization.currencyState = tempState;
