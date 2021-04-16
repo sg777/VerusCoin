@@ -1221,17 +1221,9 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                                 currencyState.supply += CCurrencyState::ReserveToNativeRaw(transfer.second.second.FirstValue() - conversionFee, currencyState.PriceInReserve(currencyIndexes[transfer.second.second.FirstCurrency()]));
                             }
 
-                            if (transfer.second.second.FirstCurrency() == curDef.systemID)
-                            {
-                                currencyState.nativeConversionFees += conversionFee;
-                                currencyState.nativeFees += conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                            }
-                            else
-                            {
-                                currencyState.fees[currencyIndexes[transfer.second.second.FirstCurrency()]] += 
-                                            conversionFee + transfer.second.second.CalculateTransferFee(transfer.second.second.destination);
-                                currencyState.conversionFees[currencyIndexes[transfer.second.second.FirstCurrency()]] += conversionFee;
-                            }
+                            currencyState.conversionFees[currencyIndexes[transfer.second.second.FirstCurrency()]] += conversionFee;
+                            currencyState.fees[currencyIndexes[transfer.second.second.FirstCurrency()]] += conversionFee;
+                            currencyState.fees[currencyIndexes[transfer.second.second.feeCurrencyID]] += transfer.second.second.nFees;
                         }
                         else if (transfer.second.second.flags & CReserveTransfer::PREALLOCATE)
                         {
@@ -2199,13 +2191,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
 
         printf("%s: checkImportedCurrency: %s\nrequiredDeposits: %s\n", __func__, checkImportedCurrency.ToUniValue().write(1,2).c_str(), requiredDeposits.ToUniValue().write(1,2).c_str());
-        printf("%s: nativeOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.nativeOut})).ToUniValue().write(1,2).c_str());
+        printf("%s: primaryCurrencyOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.primaryCurrencyOut})).ToUniValue().write(1,2).c_str());
 
         // we must also come up with anything spent that is not satisfied via standard required deposits, 
         // as determined by reserves in. any excess in required deposits beyond what is spent will go to
         // reserve deposits change
         requiredDeposits += spentCurrencyOut.SubtractToZero(requiredDeposits);
-        requiredDeposits.valueMap[cci.importCurrencyID] -= newNotarization.currencyState.nativeOut;
+        requiredDeposits.valueMap[cci.importCurrencyID] -= newNotarization.currencyState.primaryCurrencyOut;
 
         CCurrencyValueMap newCurrencyIn = gatewayDepositsUsed + importedCurrency;
         CCurrencyValueMap localDepositRequirements = requiredDeposits;

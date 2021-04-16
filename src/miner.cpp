@@ -800,10 +800,9 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             }
 
             additionalFees += CCurrencyValueMap(newNotarization.currencyState.currencies, newNotarization.currencyState.fees);
-            if (newNotarization.currencyState.nativeFees &&
-                !newCurrency.GetCurrenciesMap().count(ASSETCHAINS_CHAINID))
+            if (newNotarization.currencyState.primaryCurrencyFees)
             {
-                additionalFees.valueMap[ASSETCHAINS_CHAINID] += newNotarization.currencyState.nativeFees;
+                additionalFees.valueMap[newCurID] += newNotarization.currencyState.primaryCurrencyFees;
             }
 
             newNotarization.SetBlockOneNotarization();

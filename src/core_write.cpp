@@ -529,14 +529,14 @@ UniValue CCoinbaseCurrencyState::ToUniValue() const
         {
             rowNames.push_back(EncodeDestination(CIdentityID(currencies[i])));
         }
-        std::vector<std::string> columnNames({"reservein", "nativein", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
-        std::vector<const std::vector<CAmount> *> data = {&reserveIn, &nativeIn, &reserveOut, &conversionPrice, &viaConversionPrice, &fees, &conversionFees};
+        std::vector<std::string> columnNames({"reservein", "primarycurrencyin", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
+        std::vector<const std::vector<CAmount> *> data = {&reserveIn, &primaryCurrencyIn, &reserveOut, &conversionPrice, &viaConversionPrice, &fees, &conversionFees};
 
         ret.push_back(Pair("currencies", ValueVectorsToUniValue(rowNames, columnNames, data, true)));
     }
-    ret.push_back(Pair("nativefees", nativeFees));
-    ret.push_back(Pair("nativeconversionfees", nativeConversionFees));
-    ret.push_back(Pair("nativeout", nativeOut));
+    ret.push_back(Pair("primarycurrencyfees", primaryCurrencyFees));
+    ret.push_back(Pair("primarycurrencyconversionfees", primaryCurrencyConversionFees));
+    ret.push_back(Pair("primarycurrencyout", primaryCurrencyOut));
     ret.push_back(Pair("preconvertedout", preConvertedOut));
     return ret;
 }

@@ -1392,19 +1392,19 @@ public:
 class CCoinbaseCurrencyState : public CCurrencyState
 {
 public:
-    CAmount nativeOut;                      // converted native output, emitted is stored in parent class
+    CAmount primaryCurrencyOut;             // converted or generated currency output, emitted, converted, etc. is stored in parent class
     CAmount preConvertedOut;                // how much of the currency out was pre-converted, which is asynchronously added to supply
-    CAmount nativeFees;
-    CAmount nativeConversionFees;
+    CAmount primaryCurrencyFees;
+    CAmount primaryCurrencyConversionFees;
     std::vector<CAmount> reserveIn;         // reserve currency converted to native
-    std::vector<CAmount> nativeIn;          // native currency converted to reserve
+    std::vector<CAmount> primaryCurrencyIn; // native currency converted to reserve
     std::vector<CAmount> reserveOut;        // output can have both normal and reserve output value, if non-0, this is spent by the required output transactions
     std::vector<CAmount> conversionPrice;   // calculated price in reserve for all conversions * 100000000
     std::vector<CAmount> viaConversionPrice; // the via conversion stage prices
     std::vector<CAmount> fees;              // fee values in native (or reserve if specified) coins for reserve transaction fees for the block
     std::vector<CAmount> conversionFees;    // total of only conversion fees, which will accrue to the conversion transaction
 
-    CCoinbaseCurrencyState() : nativeOut(0), preConvertedOut(0), nativeFees(0), nativeConversionFees(0) {}
+    CCoinbaseCurrencyState() : primaryCurrencyOut(0), preConvertedOut(0), primaryCurrencyFees(0), primaryCurrencyConversionFees(0) {}
 
     CCoinbaseCurrencyState(const CCurrencyState &CurrencyState,
                            CAmount NativeOut=0, CAmount NativeFees=0, CAmount NativeConversionFees=0,
@@ -1416,9 +1416,9 @@ public:
                            const std::vector<CAmount> &Fees=std::vector<CAmount>(), 
                            const std::vector<CAmount> &ConversionFees=std::vector<CAmount>(),
                            CAmount PreConvertedOut=0) : 
-        CCurrencyState(CurrencyState), nativeOut(NativeOut), nativeFees(NativeFees), nativeConversionFees(NativeConversionFees),
+        CCurrencyState(CurrencyState), primaryCurrencyOut(NativeOut), primaryCurrencyFees(NativeFees), primaryCurrencyConversionFees(NativeConversionFees),
         reserveIn(ReserveIn),
-        nativeIn(NativeIn),
+        primaryCurrencyIn(NativeIn),
         reserveOut(ReserveOut),
         conversionPrice(ConversionPrice),
         viaConversionPrice(ViaConversionPrice),
@@ -1427,7 +1427,7 @@ public:
         preConvertedOut(PreConvertedOut)
     {
         if (!reserveIn.size()) reserveIn = std::vector<CAmount>(currencies.size());
-        if (!nativeIn.size()) nativeIn = std::vector<CAmount>(currencies.size());
+        if (!primaryCurrencyIn.size()) primaryCurrencyIn = std::vector<CAmount>(currencies.size());
         if (!reserveOut.size()) reserveOut = std::vector<CAmount>(currencies.size());
         if (!conversionPrice.size()) conversionPrice = std::vector<CAmount>(currencies.size());
         if (!viaConversionPrice.size()) viaConversionPrice = std::vector<CAmount>(currencies.size());
@@ -1449,12 +1449,12 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CCurrencyState *)this);
-        READWRITE(nativeOut);
+        READWRITE(primaryCurrencyOut);
         READWRITE(preConvertedOut);
-        READWRITE(nativeFees);
-        READWRITE(nativeConversionFees);
+        READWRITE(primaryCurrencyFees);
+        READWRITE(primaryCurrencyConversionFees);
         READWRITE(reserveIn);
-        READWRITE(nativeIn);
+        READWRITE(primaryCurrencyIn);
         READWRITE(reserveOut);
         READWRITE(conversionPrice);
         READWRITE(viaConversionPrice);
@@ -1472,12 +1472,12 @@ public:
     void ClearForNextBlock()
     {
         emitted = 0;
-        nativeOut = 0;
+        primaryCurrencyOut = 0;
         preConvertedOut = 0;
-        nativeFees = 0;
-        nativeConversionFees = 0;
+        primaryCurrencyFees = 0;
+        primaryCurrencyConversionFees = 0;
         reserveIn = std::vector<CAmount>(currencies.size());
-        nativeIn = std::vector<CAmount>(currencies.size());
+        primaryCurrencyIn = std::vector<CAmount>(currencies.size());
         reserveOut = std::vector<CAmount>(currencies.size());
         fees = std::vector<CAmount>(currencies.size());
         conversionFees = std::vector<CAmount>(currencies.size());
