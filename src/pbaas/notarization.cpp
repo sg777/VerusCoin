@@ -625,7 +625,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         if (tempState.IsPrelaunch())
         {
             tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
-            tempState.fees = tempState.AddVectors(tempState.fees, this->currencyState.fees);
         }
         else if (tempState.IsLaunchConfirmed() && !tempState.IsLaunchCompleteMarker())
         {
