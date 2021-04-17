@@ -2239,6 +2239,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (importCurrencyState.IsLaunchConfirmed())
                     {
+                        if (importCurrencyState.IsPrelaunch())
+                        {
+                            // first time with launch clear on prelaunch, start supply at initial supply
+                            newCurrencyState.supply = newCurrencyState.initialSupply;
+                        }
                         // if we have finished importing all pre-launch exports, create all pre-allocation outputs
                         for (auto &onePreAlloc : importCurrencyDef.preAllocation)
                         {
@@ -3092,18 +3097,36 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
+    if (preAllocTotal &&
+        !newCurrencyState.IsPrelaunch())
+    {
+        preConvertedOutput.valueMap[importCurrencyID] += preAllocTotal;
+    }
+
+    newCurrencyState.preConvertedOut = 0;
+    for (auto &oneVal : preConvertedOutput.valueMap)
+    {
+        newCurrencyState.preConvertedOut += oneVal.second;
+    }
+
     std::vector<CAmount> vResConverted;
     std::vector<CAmount> vResOutConverted;
     std::vector<CAmount> vFracConverted;
     std::vector<CAmount> vFracOutConverted;
+
+    // liquidity fees that are in the import currency are burned above
     std::vector<CAmount> vLiquidityFees = liquidityFees.AsCurrencyVector(newCurrencyState.currencies);
 
     if (newCurrencyState.IsLaunchConfirmed())
     {
-        std::vector<CAmount> vResConverted = adjustedReserveConverted.AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vResConverted = newCurrencyState.IsPrelaunch() ?
+                                                preConvertedReserves.AsCurrencyVector(newCurrencyState.currencies) :
+                                                adjustedReserveConverted.AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap(importCurrencyID).AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
-        std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vFracOutConverted = newCurrencyState.IsPrelaunch() ? 
+                                                    preConvertedOutput.AsCurrencyVector(newCurrencyState.currencies) :
+                                                    (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
             newCurrencyState.reserveIn[i] = vResConverted[i] + vLiquidityFees[i];
@@ -3111,16 +3134,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             newCurrencyState.reserves[i] += isFractional ? (vResConverted[i] - vResOutConverted[i]) + vLiquidityFees[i] : 0;
             newCurrencyState.primaryCurrencyIn[i] = vFracConverted[i];
             newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]);
-        }
-        // confirmed pre-launch can still add pre-conversions as reserveIn and reserve for fractional
-        if (newCurrencyState.IsPrelaunch())
-        {
-            std::vector<CAmount> extraPreconversions = preConvertedReserves.AsCurrencyVector(newCurrencyState.currencies);
-            newCurrencyState.reserveIn = newCurrencyState.AddVectors(newCurrencyState.reserveIn, extraPreconversions);
-            if (newCurrencyState.IsFractional())
-            {
-                newCurrencyState.reserves = newCurrencyState.AddVectors(newCurrencyState.reserves, extraPreconversions);
-            }
         }
     }
     else
@@ -3227,15 +3240,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
-    newCurrencyState.preConvertedOut = 0;
-    for (auto &oneVal : preConvertedOutput.valueMap)
-    {
-        newCurrencyState.preConvertedOut += oneVal.second;
-    }
-
     if (totalMinted || preAllocTotal)
     {
-        newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal);
+        if (!newCurrencyState.IsPrelaunch())
+        {
+            newCurrencyState.UpdateWithEmission(totalMinted);
+        }
+        else
+        {
+            newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal);
+        }
     }
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
@@ -3593,7 +3607,6 @@ std::vector<CAmount> CReserveTransactionDescriptor::ReserveConversionFeesVec(con
 // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
 CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount toEmit)
 {
-    initialSupply = supply;
     emitted = 0;
 
     // if supply is 0, reserve must be zero, and we cannot function as a reserve currency
@@ -3775,6 +3788,8 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
         auto reserveMap = GetReserveMap();
         if (IsLaunchClear() && !IsPrelaunch() && reserveMap.count(ASSETCHAINS_CHAINID) && reserves[reserveMap[ASSETCHAINS_CHAINID]])
         {
+            // leave all currencies in
+            // revert only fees at launch pricing
             RevertFees(viaConversionPrice, viaConversionPrice, ASSETCHAINS_CHAINID);
         }
         else
@@ -3790,8 +3805,16 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
             }
         }
     }
-    supply -= (std::max(primaryCurrencyOut, emitted) - preConvertedOut);
-    ClearForNextBlock();
+    // if this is the last launch clear pre-launch, it will emit and create the correct supply starting
+    // from the initial supply, which was more for display. reset to initial supply as a starting point
+    if (IsPrelaunch() && IsLaunchClear())
+    {
+        supply = initialSupply;
+    }
+    else
+    {
+        supply -= (std::max(primaryCurrencyOut, emitted) - preConvertedOut);
+    }
 }
 
 CAmount CCurrencyState::CalculateConversionFee(CAmount inputAmount, bool convertToNative, int currencyIndex) const
