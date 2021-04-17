@@ -3097,8 +3097,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
-    if (preAllocTotal &&
-        !newCurrencyState.IsPrelaunch())
+    if (newCurrencyState.IsPrelaunch())
+    {
+        // add it back in from subtraction above
+        adjustedReserveConverted += preConvertedReserves;
+    }
+    else if (preAllocTotal)
     {
         preConvertedOutput.valueMap[importCurrencyID] += preAllocTotal;
     }
@@ -3119,13 +3123,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     if (newCurrencyState.IsLaunchConfirmed())
     {
-        std::vector<CAmount> vResConverted = newCurrencyState.IsPrelaunch() ?
-                                                preConvertedReserves.AsCurrencyVector(newCurrencyState.currencies) :
-                                                adjustedReserveConverted.AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vResConverted = adjustedReserveConverted.AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap(importCurrencyID).AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vFracOutConverted = newCurrencyState.IsPrelaunch() ? 
-                                                    preConvertedOutput.AsCurrencyVector(newCurrencyState.currencies) :
+                                                    NativeOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies) :
                                                     (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
@@ -3138,7 +3140,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
     else
     {
-        std::vector<CAmount> vResConverted = preConvertedReserves.AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vResConverted = adjustedReserveConverted.AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap(importCurrencyID).AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vFracOutConverted = preConvertedOutput.AsCurrencyVector(newCurrencyState.currencies);
@@ -3807,13 +3809,13 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
     }
     // if this is the last launch clear pre-launch, it will emit and create the correct supply starting
     // from the initial supply, which was more for display. reset to initial supply as a starting point
-    if (IsPrelaunch() && IsLaunchClear())
+    if (IsPrelaunch())
     {
-        supply = initialSupply;
+        supply -= (std::max(primaryCurrencyOut, emitted) - preConvertedOut);
     }
     else
     {
-        supply -= (std::max(primaryCurrencyOut, emitted) - preConvertedOut);
+        supply -= primaryCurrencyOut;
     }
 }
 

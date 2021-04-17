@@ -808,7 +808,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             newNotarization.SetBlockOneNotarization();
 
             // display import outputs
-            /*CMutableTransaction debugTxOut;
+            CMutableTransaction debugTxOut;
             debugTxOut.vout = outputs;
             debugTxOut.vout.insert(debugTxOut.vout.end(), importOutputs.begin(), importOutputs.end());
             UniValue jsonTxOut(UniValue::VOBJ);
@@ -817,13 +817,13 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                                                             jsonTxOut.write(1,2).c_str(),
                                                                                             lastNotarization.ToUniValue().write(1,2).c_str(),
                                                                                             newNotarization.ToUniValue().write(1,2).c_str());
-            */
+
             newNotarization.prevNotarization = CUTXORef();
             newNotarization.prevHeight = 0;
         }
 
-        /* printf("%s: last notarization: %s\nnew notarization: %s\n", __func__, lastNotarization.ToUniValue().write(1,2).c_str(),
-                                                                                newNotarization.ToUniValue().write(1,2).c_str()); */
+        printf("%s: last notarization: %s\nnew notarization: %s\n", __func__, lastNotarization.ToUniValue().write(1,2).c_str(),
+                                                                                newNotarization.ToUniValue().write(1,2).c_str());
 
         // create the import thread output
         cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
