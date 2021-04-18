@@ -2278,11 +2278,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                 vOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro))));
                             }
                         }
-                        if (importCurrencyDef.IsPBaaSChain() && importCurrencyDef.gatewayConverterIssuance)
+                        if (importCurrencyDef.gatewayConverterIssuance)
                         {
-                            preAllocTotal += importCurrencyDef.gatewayConverterIssuance;
-                            AddNativeOutConverted(importCurrencyID, importCurrencyDef.gatewayConverterIssuance);
-                            nativeOut += importCurrencyDef.gatewayConverterIssuance;
+                            if (importCurrencyDef.IsPBaaSChain())
+                            {
+                                preAllocTotal += importCurrencyDef.gatewayConverterIssuance;
+                                AddNativeOutConverted(importCurrencyID, importCurrencyDef.gatewayConverterIssuance);
+                                nativeOut += importCurrencyDef.gatewayConverterIssuance;
+                            }
                         }
                     }
                 }
@@ -2292,6 +2295,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // convert all fees to the system currency of the import
                 // fees that started in fractional are already converted, so not considered
                 CAmount totalNativeFee = 0;
+                CAmount totalVerusFee = 0;
+
+                newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
 
                 if (importCurrencyState.IsLaunchConfirmed() &&
                     isFractional &&
@@ -2304,7 +2310,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         newCurrencyState.primaryCurrencyConversionFees = fractionalInOuts.reserveConversionFees;
                     }
                     newCurrencyState.conversionFees = conversionFees.AsCurrencyVector(newCurrencyState.currencies);
-                    newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
                     if (transferFees.valueMap.count(importCurrencyID))
                     {
                         newCurrencyState.primaryCurrencyFees = transferFees.valueMap[importCurrencyID];
@@ -2318,7 +2323,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // native (or launch currency of a PBaaS chain) from another reserve
                     std::vector<std::pair<std::pair<uint160,CAmount>, std::pair<uint160,CAmount>>> feeConversions;
 
-                    printf("%s: transferFees: %s\nreserveConverted: %s\nliquidityFees: %s\n", __func__, transferFees.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str(), liquidityFees.ToUniValue().write(1,2).c_str());
+                    // printf("%s: transferFees: %s\nreserveConverted: %s\nliquidityFees: %s\n", __func__, transferFees.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str(), liquidityFees.ToUniValue().write(1,2).c_str());
                     for (auto &oneFee : transferFees.valueMap)
                     {
                         // only convert through "via" if we are going from one reserve to the system ID
@@ -2427,7 +2432,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     std::vector<CTxDestination> dests({addr});
                     for (auto &oneFee : transferFees.valueMap)
                     {
-                        if (oneFee.first != systemDestID && oneFee.second)
+                        if (oneFee.first != systemDestID && oneFee.first != VERUS_CHAINID && oneFee.second)
                         {
                             CAmount resExportFee = CCrossChainExport::CalculateExportFeeRaw(oneFee.second, numTransfers);
                             CAmount exportSplit = CCrossChainExport::ExportReward(resExportFee);
@@ -2442,7 +2447,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         }
                         else if (oneFee.second)
                         {
-                            totalNativeFee += oneFee.second;
+                            if (importCurrencyState.IsLaunchConfirmed() && oneFee.first == VERUS_CHAINID)
+                            {
+                                totalVerusFee += oneFee.second;
+                            }
+                            else if (oneFee.first == systemDestID)
+                            {
+                                totalNativeFee += oneFee.second;
+                            }
                         }
                     }
                     convertedFees = transferFees;
@@ -2452,7 +2464,19 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // system, exporter reward directly to the exporter
                 CAmount exportFee = CCrossChainExport::CalculateExportFeeRaw(totalNativeFee, numTransfers);
                 exporterReward = CCrossChainExport::ExportReward(exportFee);
-                nativeOut += totalNativeFee;
+
+                for (auto &oneFee : convertedFees.valueMap)
+                {
+                    if (oneFee.first == systemDestID)
+                    {
+                        nativeOut += oneFee.second;
+                    }
+                    else
+                    {
+                        AddReserveOutput(oneFee.first, oneFee.second);
+                    }
+                }
+
                 if (!curTransfer.destination.IsValid() || !exporterReward)
                 {
                     break;
@@ -3062,7 +3086,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
 
-    // printf("%s: adjustedReserveConverted: %s\nreserveConverted: %s\n", __func__, adjustedReserveConverted.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
+    printf("%s: adjustedReserveConverted: %s\nreserveConverted: %s\n", __func__, adjustedReserveConverted.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
     if (isFractional &&
         newCurrencyState.IsLaunchConfirmed() &&
         (adjustedReserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size()))
@@ -3101,10 +3125,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     {
         // add it back in from subtraction above
         adjustedReserveConverted += preConvertedReserves;
-    }
-    else if (preAllocTotal)
-    {
-        preConvertedOutput.valueMap[importCurrencyID] += preAllocTotal;
     }
 
     newCurrencyState.preConvertedOut = 0;
@@ -3167,12 +3187,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
                     tempCurrencyState.RevertFees(importCurrencyState.viaConversionPrice, importCurrencyState.viaConversionPrice, importCurrencyDef.systemID);
 
-                    printf("%s: importCurrencyState:\n%s\nnewCurrencyState:\n%s\nrevertedState:\n%s\n", 
+                    /* printf("%s: importCurrencyState:\n%s\nnewCurrencyState:\n%s\nrevertedState:\n%s\n", 
                         __func__, 
                         importCurrencyState.ToUniValue().write(1,2).c_str(), 
                         newCurrencyState.ToUniValue().write(1,2).c_str(), 
                         tempCurrencyState.ToUniValue().write(1,2).c_str());
-                    printf("%s: liquidityfees:\n%s\n", __func__, liquidityFees.ToUniValue().write(1,2).c_str());
+                    printf("%s: liquidityfees:\n%s\n", __func__, liquidityFees.ToUniValue().write(1,2).c_str()); */
 
                     if (importCurrencyDef.launchSystemID == importCurrencyDef.systemID)
                     {
@@ -3242,20 +3262,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
+    spentCurrencyOut.valueMap.clear();
+
     if (totalMinted || preAllocTotal)
     {
-        if (!newCurrencyState.IsPrelaunch())
-        {
-            newCurrencyState.UpdateWithEmission(totalMinted);
-        }
-        else
-        {
-            newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal);
-        }
+        newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal);
     }
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
-    spentCurrencyOut.valueMap.clear();
     CCurrencyValueMap ReserveInputs;
     CAmount systemOutConverted = 0;
 
@@ -3265,7 +3279,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     {
         if (oneInOut.first == importCurrencyID)
         {
-            newCurrencyState.primaryCurrencyOut = oneInOut.second.nativeOutConverted;
+            if (oneInOut.second.nativeOutConverted)
+            {
+                newCurrencyState.primaryCurrencyOut += oneInOut.second.nativeOutConverted;
+                spentCurrencyOut.valueMap[oneInOut.first] += oneInOut.second.nativeOutConverted;
+            }
 
             if (oneInOut.first == systemDestID)
             {
@@ -3304,10 +3322,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         spentCurrencyOut.valueMap[systemDestID] += nativeOut;
     }
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
-    if (newCurrencyState.primaryCurrencyOut + burnedChangePrice + burnedChangeWeight)
+    if (burnedChangePrice + burnedChangeWeight)
     {
-        spentCurrencyOut.valueMap[importCurrencyID] += (newCurrencyState.primaryCurrencyOut + burnedChangePrice + burnedChangeWeight);
-        checkAgainstInputs.valueMap[importCurrencyDef.systemID];
+        spentCurrencyOut.valueMap[importCurrencyID] += (burnedChangePrice + burnedChangeWeight);
     }
 
     //printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
@@ -3607,14 +3624,14 @@ std::vector<CAmount> CReserveTransactionDescriptor::ReserveConversionFeesVec(con
 
 // this should be done no more than once to prepare a currency state to be updated to the next state
 // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
-CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount toEmit)
+CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmit)
 {
     emitted = 0;
 
     // if supply is 0, reserve must be zero, and we cannot function as a reserve currency
     if (!IsFractional() || supply <= 0 || CCurrencyValueMap(currencies, reserves) <= CCurrencyValueMap())
     {
-        if (supply < 0)
+        if (supply <= 0)
         {
             emitted = supply = toEmit;
         }
@@ -3703,7 +3720,7 @@ CCurrencyState &CCurrencyState::UpdateWithEmission(CAmount toEmit)
 
         // update initial supply from what we currently have
         emitted = toEmit;
-        supply = initialSupply + emitted;
+        supply += emitted;
     }
     return *this; 
 }
@@ -3732,7 +3749,7 @@ void CCoinbaseCurrencyState::RevertFees(const std::vector<CAmount> &normalConver
 
         liquidityFees = liquidityFees / 2;
 
-        printf("%s: liquidityfees/2:\n%s\n", __func__, liquidityFees.ToUniValue().write(1,2).c_str());
+        //printf("%s: liquidityfees/2:\n%s\n", __func__, liquidityFees.ToUniValue().write(1,2).c_str());
 
         for (auto &oneLiquidityFee : liquidityFees.valueMap)
         {
@@ -3778,8 +3795,71 @@ void CCoinbaseCurrencyState::RevertFees(const std::vector<CAmount> &normalConver
         }
         reserves[systemDestIdx] += totalConvertedNativeFee;
 
-        printf("%s: currencyState:\n%s\n", __func__, ToUniValue().write(1,2).c_str());
+        //printf("%s: currencyState:\n%s\n", __func__, ToUniValue().write(1,2).c_str());
     }
+}
+
+CCurrencyValueMap CCoinbaseCurrencyState::CalculateConvertedFees(const std::vector<CAmount> &normalConversionPrice,
+                                                                 const std::vector<CAmount> &outgoingConversionPrice,
+                                                                 const uint160 &systemID,
+                                                                 bool &feesConverted,
+                                                                 CCurrencyValueMap &liquidityFees,
+                                                                 CCurrencyValueMap &convertedFees) const
+{
+    CCurrencyValueMap originalFees(currencies, fees);
+    auto reserveIndexMap = GetReserveMap();
+    feesConverted = false;
+    if (IsFractional() && reserveIndexMap.count(systemID) && reserveIndexMap.find(systemID)->second)
+    {
+        feesConverted = true;
+
+        CCurrencyValueMap allConvertedFees(currencies, fees);
+        if (primaryCurrencyFees)
+        {
+            allConvertedFees.valueMap[GetID()] = primaryCurrencyFees;
+        }
+
+        liquidityFees = CCurrencyValueMap(CCurrencyValueMap(currencies, conversionFees));
+        if (primaryCurrencyConversionFees)
+        {
+            liquidityFees.valueMap[systemID] = primaryCurrencyConversionFees;
+        }
+
+        liquidityFees = liquidityFees / 2;
+
+        allConvertedFees -= liquidityFees;
+        CAmount totalNativeFee = 0;
+        if (allConvertedFees.valueMap.count(systemID))
+        {
+            totalNativeFee += allConvertedFees.valueMap[systemID];
+        }
+        int systemDestIdx = reserveIndexMap[systemID];
+        for (auto &oneFee : allConvertedFees.valueMap)
+        {
+            // fees are not converted from the system currency, only to it
+            // for that reason, skip system in the loop and calculate the amount
+            // that was converted to it to determine the amount to replenish
+            if (oneFee.first != systemID)
+            {
+                if (reserveIndexMap.count(oneFee.first))
+                {
+                    totalNativeFee +=
+                        NativeToReserveRaw(ReserveToNativeRaw(oneFee.second, normalConversionPrice[reserveIndexMap[oneFee.first]]),
+                                        outgoingConversionPrice[systemDestIdx]);
+                }
+                else if (oneFee.first == GetID())
+                {
+                    totalNativeFee +=
+                        NativeToReserveRaw(oneFee.second, normalConversionPrice[systemDestIdx]);
+                }
+            }
+        }
+        convertedFees.valueMap[systemID] += totalNativeFee;
+    }
+    //printf("%s: liquidityfees:\n%s\n", __func__, liquidityFees.ToUniValue().write(1,2).c_str());
+    //printf("%s: allConvertedFees:\n%s\n", __func__, allConvertedFees.ToUniValue().write(1,2).c_str());
+    //printf("%s: convertedFees:\n%s\n", __func__, convertedFees.ToUniValue().write(1,2).c_str());
+    return originalFees;
 }
 
 void CCoinbaseCurrencyState::RevertReservesAndSupply()
@@ -3811,11 +3891,11 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
     // from the initial supply, which was more for display. reset to initial supply as a starting point
     if (IsPrelaunch())
     {
-        supply -= (std::max(primaryCurrencyOut, emitted) - preConvertedOut);
+        supply -= primaryCurrencyOut;
     }
     else
     {
-        supply -= primaryCurrencyOut;
+        supply -= (primaryCurrencyOut - preConvertedOut);
     }
 }
 

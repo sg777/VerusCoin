@@ -2616,6 +2616,15 @@ UniValue getlaunchinfo(const UniValue& params, bool fHelp)
     retVal.pushKV("exporttxid", foundExport.first.first.txIn.prevout.hash.GetHex());
     retVal.pushKV("exportvoutnum", (int64_t)foundExport.first.first.txIn.prevout.n);
     retVal.pushKV("exportproof", foundExport.first.second.ToUniValue());
+    if (foundExport.second.size())
+    {
+        UniValue exportTransfers(UniValue::VARR);
+        for (auto &oneTransfer : foundExport.second)
+        {
+            exportTransfers.push_back(oneTransfer.ToUniValue());
+        }
+        retVal.pushKV("exporttransfers", exportTransfers);
+    }
     retVal.pushKV("launchnotarization", launchNotarization.ToUniValue());
     retVal.pushKV("notarynotarization", notaryNotarization.ToUniValue());
     return retVal;

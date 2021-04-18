@@ -1469,6 +1469,8 @@ public:
 
     UniValue ToUniValue() const;
 
+    CCoinbaseCurrencyState &UpdateWithEmission(CAmount toEmit);
+
     void ClearForNextBlock()
     {
         emitted = 0;
@@ -1489,6 +1491,15 @@ public:
                     const std::vector<CAmount> &viaConversionPrice,
                     const uint160 &systemID=ASSETCHAINS_CHAINID);
 
+    // returns all unconverted fees, liquidity fees, and converted fees
+    // convertedFees are only added to if fees are found and never modified other than that, so this can
+    // be used for accumulation.
+    CCurrencyValueMap CalculateConvertedFees(const std::vector<CAmount> &normalConversionPrice,
+                                             const std::vector<CAmount> &outgoingConversionPrice,
+                                             const uint160 &systemID,
+                                             bool &feesConverted,
+                                             CCurrencyValueMap &liquidityFees,
+                                             CCurrencyValueMap &convertedFees) const;
     void RevertReservesAndSupply();
 
     template <typename NUMBERVECTOR>
