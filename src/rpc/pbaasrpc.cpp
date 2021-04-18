@@ -3501,6 +3501,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     feeCurrencyDef = destSystemDef;
                 }
             }
+            else
+            {
+                feeCurrencyDef = ConnectedChains.ThisChain();
+                feeCurrencyID = feeCurrencyDef.GetID();
+            }
 
             // if we are already converting or processing through some currency, that can only be done on its native system
             // and may imply an export off-chain. before creating an off-chain export, we need an explicit "exportto" command that matches. 
