@@ -604,6 +604,10 @@ CReserveTransfer::CReserveTransfer(const UniValue &uni) : CTokenOutput(uni), nFe
     {
         destCurrencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "destinationcurrencyid"))));
     }
+    if (IsCrossSystem())
+    {
+        destSystemID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "exportto"))));
+    }
     destination = CTransferDestination(find_value(uni, "destination"));
 }
 

@@ -3509,6 +3509,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // see if we should send this currency off-chain. if our target is a fractional currency and can convert but lives on another system, 
             // we will not implicitly send it off chain for conversion, even if via is specified. "exportto" requests an explicit system
             // export/import before the operation.
+            CCurrencyDefinition exportSystemDef;
             if (exportToStr != "" && exportToCurrencyID.IsNull())
             {
                 exportToCurrencyID = ValidateCurrencyName(exportToStr, true, &exportToCurrencyDef);
@@ -3529,10 +3530,40 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly export a transaction off chain -- \"exportto\" must match any implied cross-chain target");
             }
-            else if (exportToCurrencyID != thisChainID)
+            else if (!exportToCurrencyID.IsNull() &&
+                     exportToCurrencyID != thisChainID &&
+                     !preConvert &&
+                     !mintNew)
             {
-                // if we are explicitly exporting off-chain, we do so via the bridge converter currency for the specified
-                // target system, unless a fee currency is specified that is the same as the destination currency
+                // if we are explicitly exporting a currency off-chain and have no other, explicit instructions
+                // for conversion, we export via the bridge converter currency for the specified target system,
+                // which enables us to calculate fees in native currency, unless a fee currency is specified and 
+                // it is the same as the destination native currency.
+                if (destSystemID == thisChainID)
+                {
+                    exportSystemDef = ConnectedChains.GetCachedCurrency(exportToCurrencyID);
+                    if (!exportSystemDef.IsValid() ||
+                        (exportSystemDef.systemID != exportSystemDef.GetID() && 
+                         !(exportSystemDef.IsGateway() && exportSystemDef.systemID == thisChainID)))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid export system definition");
+                    }
+                }
+                else
+                {
+                    exportSystemDef = destSystemDef;
+                }
+                // if fee currency is the export system destination
+                // don't route through a converter
+                if (feeCurrencyID == exportToCurrencyID)
+                {
+
+                }
+                else if (convertToCurrencyID.IsNull() &&
+                         !exportSystemDef.GatewayConverterID().IsNull())
+                {
+
+                }
 
 
 
@@ -3542,7 +3573,14 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
 
 
-
+            }
+            else
+            {
+                exportToCurrencyID.SetNull();
+                if (destSystemID != thisChainID && exportToCurrencyID != destSystemID)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid cross-system export parameters. See help.");
+                }
             }
 
             if (mintNew && 
@@ -3680,7 +3718,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
-                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : 0;
+                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : rt.CalculateTransferFee();
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                     // only valid conversion for a cross-chain send is to the native currency of the chain

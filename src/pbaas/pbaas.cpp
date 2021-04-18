@@ -1225,10 +1225,6 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                             currencyState.fees[currencyIndexes[transfer.second.second.FirstCurrency()]] += conversionFee;
                             currencyState.fees[currencyIndexes[transfer.second.second.feeCurrencyID]] += transfer.second.second.nFees;
                         }
-                        else if (transfer.second.second.flags & CReserveTransfer::PREALLOCATE)
-                        {
-                            currencyState.emitted += transfer.second.second.FirstValue();
-                        }
                     }
                     currencyState.supply += currencyState.emitted;
                     for (int i = 0; i < curDef.conversions.size(); i++)

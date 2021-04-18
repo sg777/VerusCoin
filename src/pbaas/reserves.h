@@ -172,7 +172,7 @@ public:
         FEE_OUTPUT = 8,                     // one per import, amount must match total percentage of fees for exporter, no pre-convert allowed
         DOUBLE_SEND = 0x10,                 // this is used along with increasing the fee to send one transaction on two hops
         MINT_CURRENCY = 0x20,               // set when this output is being minted on import
-        PREALLOCATE = 0x40,                 // combined with minting for pre-allocation of currency
+        CROSS_SYSTEM = 0x40,                // if this is set, there is a systemID serialized and deserialized as well for destination
         BURN_CHANGE_PRICE = 0x80,           // this output is being burned on import and will change the price
         BURN_CHANGE_WEIGHT = 0x100,         // this output is being burned on import and will change the reserve ratio
         IMPORT_TO_SOURCE = 0x200,           // set when the source currency, not destination is the import currency
@@ -193,6 +193,7 @@ public:
     CTransferDestination destination;       // system specific address to send funds to on the target system
     uint160 destCurrencyID;                 // system to export to, which may represent a PBaaS chain or external bridge
     uint160 secondReserveID;                // set if this is a reserve to reserve conversion
+    uint160 destSystemID;                   // set if this is a cross-system send
 
     CReserveTransfer() : CTokenOutput(), flags(0), nFees(0) { }
 
@@ -216,14 +217,16 @@ public:
                      CAmount fees,
                      const uint160 &destCurID,
                      const CTransferDestination &dest,
-                     const uint160 &secondCID=uint160()) : 
+                     const uint160 &secondCID=uint160(),
+                     const uint160 &destinationSystemID=uint160()) : 
         CTokenOutput(values), 
         flags(Flags), 
         feeCurrencyID(FeeCurrencyID), 
         nFees(fees), 
         destCurrencyID(destCurID), 
         destination(dest), 
-        secondReserveID(secondCID)
+        secondReserveID(secondCID),
+        destSystemID(destinationSystemID)
     {
         if (!secondReserveID.IsNull())
         {
@@ -238,14 +241,16 @@ public:
                      CAmount fees,
                      const uint160 &destCurID,
                      const CTransferDestination &dest,
-                     const uint160 &secondCID=uint160()) : 
+                     const uint160 &secondCID=uint160(),
+                     const uint160 &destinationSystemID=uint160()) : 
         CTokenOutput(CCurrencyValueMap(std::vector<uint160>({cID}), std::vector<int64_t>({value}))),
         flags(Flags), 
         feeCurrencyID(FeeCurrencyID), 
         nFees(fees), 
         destCurrencyID(destCurID), 
         destination(dest), 
-        secondReserveID(secondCID)
+        secondReserveID(secondCID),
+        destSystemID(destinationSystemID)
     {
         if (!secondReserveID.IsNull())
         {
@@ -266,6 +271,10 @@ public:
         if (flags & RESERVE_TO_RESERVE)
         {
             READWRITE(secondReserveID);
+        }
+        if (flags & CROSS_SYSTEM)
+        {
+            READWRITE(destSystemID);
         }
     }
 
@@ -292,12 +301,31 @@ public:
 
     bool IsValid() const
     {
-        return CTokenOutput::IsValid() && reserveValues.valueMap.size() == 1 && destination.IsValid();
+        bool isCrossSystemIDNull = destSystemID.IsNull();
+        return CTokenOutput::IsValid() &&
+                reserveValues.valueMap.size() == 1 && 
+                destination.IsValid() &&
+                ((IsCrossSystem() &&  !isCrossSystemIDNull) || (!IsCrossSystem() &&  isCrossSystemIDNull));
     }
 
     bool IsConversion() const
     {
         return flags & CONVERT;
+    }
+
+    bool IsRefund() const
+    {
+        return flags & REFUND;
+    }
+
+    bool IsCrossSystem() const
+    {
+        return flags & CROSS_SYSTEM;
+    }
+
+    uint160 SystemDestination() const
+    {
+        return IsCrossSystem() ? destSystemID : ASSETCHAINS_CHAINID;
     }
 
     bool IsPreConversion() const
@@ -333,11 +361,6 @@ public:
     bool IsMint() const
     {
         return flags & MINT_CURRENCY;
-    }
-
-    bool IsPreallocate() const
-    {
-        return flags & PREALLOCATE;
     }
 
     bool IsReserveToReserve() const

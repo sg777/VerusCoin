@@ -955,8 +955,13 @@ UniValue CReserveTransfer::ToUniValue() const
 
     ret.push_back(Pair("flags", (int32_t)flags));
 
-    if (IsPreallocate())
-        ret.push_back(Pair("preallocation", true));
+    if (IsCrossSystem())
+    {
+        ret.push_back(Pair("crosssystem", true));
+        ret.push_back(Pair("exportto", EncodeDestination(CIdentityID(destSystemID))));
+    }
+    if (IsRefund())
+        ret.push_back(Pair("refund", true));
     if (IsConversion())
         ret.push_back(Pair("convert", true));
     if (IsPreConversion())
@@ -971,8 +976,6 @@ UniValue CReserveTransfer::ToUniValue() const
         ret.push_back(Pair("burnchangeweight", true));
     if (IsMint())
         ret.push_back(Pair("mint", true));
-    if (IsPreallocate())
-        ret.push_back(Pair("preallocate", true));
 
     ret.push_back(Pair("feecurrencyid", EncodeDestination(CIdentityID(feeCurrencyID))));
     ret.push_back(Pair("fees", ValueFromAmount(nFees)));

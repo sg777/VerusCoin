@@ -1972,9 +1972,9 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer() const
     // turn it into a normal transfer, which will create an unconverted output
     rt.flags &= ~(CReserveTransfer::DOUBLE_SEND | CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT);
 
-    if (rt.flags & (CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY))
+    if (rt.IsMint())
     {
-        rt.flags &= ~(CReserveTransfer::PREALLOCATE | CReserveTransfer::MINT_CURRENCY);
+        rt.flags &= ~CReserveTransfer::MINT_CURRENCY;
         rt.reserveValues.valueMap.begin()->second = 0;
     }
     rt.flags |= rt.REFUND;
