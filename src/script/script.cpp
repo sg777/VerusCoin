@@ -658,9 +658,12 @@ CCurrencyValueMap CReserveTransfer::TotalCurrencyOut() const
         if (feeCurrencyID.IsNull())
         {
             printf("%s: null fee currency ID\n", __func__);
-            feeCurrencyID = ASSETCHAINS_CHAINID;
+            retVal.valueMap[ASSETCHAINS_CHAINID] = feeAmount;
         }
-        retVal.valueMap[feeCurrencyID] = feeAmount;
+        else
+        {
+            retVal.valueMap[feeCurrencyID] = feeAmount;
+        }
     }
 
     // mint or pre-allocate (which will be deprecated) don't count the primary amount as value until import
