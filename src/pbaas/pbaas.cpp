@@ -2313,7 +2313,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                            newNotarization.currencyState.reserveIn).CanonicalMap();
 
         // ins and outs are correct. now calculate the fee correctly here and set the transaction builder accordingly
-        // to prevent an automatic change output. we could just let it go and hae a setting to stop creation of a change output,
+        // to prevent an automatic change output. we could just let it go and have a setting to stop creation of a change output,
         // but this is a nice doublecheck requirement
         /* printf("%s: reserveInMap:\n%s\nspentCurrencyOut:\n%s\nrequiredDeposits:\n%s\nccx.totalAmounts:\n%s\nccx.totalFees:\n%s\n",
                 __func__,

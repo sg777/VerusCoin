@@ -3283,6 +3283,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 newCurrencyState.primaryCurrencyOut += oneInOut.second.nativeOutConverted;
                 spentCurrencyOut.valueMap[oneInOut.first] += oneInOut.second.nativeOutConverted;
+                ReserveInputs.valueMap[oneInOut.first] += newCurrencyState.primaryCurrencyOut;
             }
 
             if (oneInOut.first == systemDestID)
