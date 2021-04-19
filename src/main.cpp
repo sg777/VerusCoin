@@ -3905,6 +3905,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
             // this is always the last currency we load
             CCurrencyDefinition cbCurDef;
+            CNotaryEvidence notarizationEvidence;
+            CPartialTransactionProof partialNotarizationEvidenceTx;
+            CUTXORef partialNotarizationEvidenceUTXO;
+            CPBaaSNotarization lastNotarization;
             CAmount converterIssuance = 0;
 
             // move through block one imports and add associated fee to the coinbase fees
@@ -3920,7 +3924,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 std::vector<CReserveTransfer> reserveTransfers;
                 if (tx.vout[j].scriptPubKey.IsPayToCryptoCondition(p) &&
                     p.IsValid() &&
-                    (p.evalCode == EVAL_CROSSCHAIN_IMPORT || p.evalCode == EVAL_CURRENCY_DEFINITION) &&
+                    (p.evalCode == EVAL_NOTARY_EVIDENCE || p.evalCode == EVAL_CROSSCHAIN_IMPORT || p.evalCode == EVAL_CURRENCY_DEFINITION) &&
                     p.vData.size())
                 {
                     if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
@@ -3936,7 +3940,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             importNotarization.IsValid() &&
                             importNotarization.currencyState.IsValid())
                         {
-
+                            
 
 
 
@@ -3944,7 +3948,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             std::vector<CTxOut> importOutputs;
                             CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
 
-                            CPBaaSNotarization tempLastNotarization = importNotarization;
+                            CPBaaSNotarization tempLastNotarization = lastNotarization;
                             CPBaaSNotarization newNotarization;
                             tempLastNotarization.currencyState.SetLaunchCompleteMarker(false);
 
@@ -3988,6 +3992,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             {
                                 cbFees = (originalFees - liquidityFees);
                             }
+
+                            /* printf("originalFees: %s\ncbFees: %s\nliquidityFees: %s\n", 
+                                originalFees.ToUniValue().write(1,2).c_str(),
+                                cbFees.ToUniValue().write(1,2).c_str(),
+                                liquidityFees.ToUniValue().write(1,2).c_str()); */
 
                             // display import outputs
                             /*
@@ -4041,12 +4050,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 }
                             }
 
-                            printf("importedcurrency %s\nspentcurrencyout %s\ngatewayDeposits %s\nextraCurrencyOut %s\nvalidExtraCoinbaseOutputs %s\n",
+                            /* printf("importedcurrency %s\nspentcurrencyout %s\ngatewayDeposits %s\nextraCurrencyOut %s\nvalidExtraCoinbaseOutputs %s\n",
                                 importedCurrency.ToUniValue().write(1,2).c_str(),
                                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
                                 gatewayDeposits.ToUniValue().write(1,2).c_str(),
                                 extraCurrencyOut.ToUniValue().write(1,2).c_str(), 
-                                validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
+                                validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str()); */
 
                             // total output can be up to gateway deposits + spentcurrencyout
                             // that minus fees is valid output and fees go into the fee pool
@@ -4054,16 +4063,16 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             validExtraCoinbaseOutputs += extraCurrencyOut - cbFees;
                             nFees += cbFees.valueMap[ASSETCHAINS_CHAINID];
 
-                            printf("validExtraCoinbaseOutputs %s\ntotalReserveTxFees %s\ncbFees %s\n", 
+                            /* printf("validExtraCoinbaseOutputs %s\ntotalReserveTxFees %s\ncbFees %s\n", 
                                 validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str(),
                                 totalReserveTxFees.ToUniValue().write(1,2).c_str(),
-                                cbFees.ToUniValue().write(1,2).c_str());
+                                cbFees.ToUniValue().write(1,2).c_str()); */
 
                             cbFees.valueMap.erase(ASSETCHAINS_CHAINID);
                             totalReserveTxFees += cbFees;
                         }
                     }
-                    else
+                    else if (p.evalCode == EVAL_CURRENCY_DEFINITION)
                     {
                         cbCurDef = CCurrencyDefinition(p.vData[0]);
                         if (cbCurDef.GetID() == ASSETCHAINS_CHAINID)
@@ -4071,14 +4080,43 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             ConnectedChains.ThisChain() = cbCurDef;
                         }
                     }
+                    else // EVAL_NOTARY_EVIDENCE
+                    {
+                        CTransaction nTx;
+                        CPartialTransactionProof txProof;
+                        CNotaryEvidence evidence;
+                        CPBaaSNotarization nextNotarization;
+
+                        // TODO: HARDENING - should check proof of this notarization
+                        evidence = CNotaryEvidence(p.vData[0]);
+                        if (evidence.IsValid() &&
+                            evidence.evidence.size() &&
+                            !(txProof = evidence.evidence[0]).GetPartialTransaction(nTx).IsNull())
+                        {
+                            COptCCParams notaryP;
+                            if (nTx.vout.size() > evidence.output.n &&
+                                nTx.vout[evidence.output.n].scriptPubKey.IsPayToCryptoCondition(notaryP) &&
+                                notaryP.IsValid() &&
+                                (notaryP.evalCode == EVAL_EARNEDNOTARIZATION || notaryP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                                notaryP.vData.size() &&
+                                (nextNotarization = CPBaaSNotarization(notaryP.vData[0])).IsValid())
+                            {
+                                notarizationEvidence = evidence;
+                                partialNotarizationEvidenceTx = txProof;
+                                partialNotarizationEvidenceUTXO = evidence.output;
+                                lastNotarization = nextNotarization;
+                            }
+                        }
+                    }
                 }
             }
 
-            UniValue jsonTx(UniValue::VOBJ);
+            /* UniValue jsonTx(UniValue::VOBJ);
             TxToUniv(tx, uint256(), jsonTx);
             printf("%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
             printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
             printf("%s: nativeFees: %ld, reserve fees: %s\nextra coinbase outputs: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
+            */
         }
         else if (!isVerusActive)
         {

@@ -1769,10 +1769,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         CCoinbaseCurrencyState checkState = importNotarization.currencyState;
                         CCoinbaseCurrencyState newState;
 
-                        if (tx.IsCoinBase())
+                        /* if (tx.IsCoinBase())
                         {
                             printf("%s: currency state before revert: %s\n", __func__, checkState.ToUniValue().write(1,2).c_str());
-                        }
+                        }*/
 
                         checkState.RevertReservesAndSupply();
                         if (cci.IsInitialLaunchImport())
@@ -1780,10 +1780,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             checkState.SetLaunchClear();
                         }
 
-                        if (tx.IsCoinBase())
+                        /*if (tx.IsCoinBase())
                         {
                             printf("%s: currency state after revert: %s\n", __func__, checkState.ToUniValue().write(1,2).c_str());
-                        }
+                        }*/
 
                         CReserveTransactionDescriptor rtxd;
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
@@ -1802,15 +1802,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             return;
                         }
 
-                        if (tx.IsCoinBase())
+                        /*if (tx.IsCoinBase())
                         {
                             printf("%s: currency state after import: %s\n", __func__, newState.ToUniValue().write(1,2).c_str());
-                        }
-
-                        if (tx.IsCoinBase())
-                        {
                             printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
-                        }
+                        }*/
 
                         importGeneratedCurrency += importedCurrency;
                         if (newState.primaryCurrencyOut)
@@ -3086,7 +3082,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
 
-    printf("%s: adjustedReserveConverted: %s\nreserveConverted: %s\n", __func__, adjustedReserveConverted.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
+    //printf("%s: adjustedReserveConverted: %s\nreserveConverted: %s\n", __func__, adjustedReserveConverted.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
     if (isFractional &&
         newCurrencyState.IsLaunchConfirmed() &&
         (adjustedReserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size()))

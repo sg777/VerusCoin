@@ -2271,12 +2271,12 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         uint256 cbHash = coinbaseTx.GetHash();
 
         // display it at block 1 for PBaaS debugging
-        if (nHeight == 1)
+        /* if (nHeight == 1)
         {
             UniValue jsonTxOut(UniValue::VOBJ);
             TxToUniv(coinbaseTx, uint256(), jsonTxOut);
             printf("%s: new coinbase transaction: %s\n", __func__, jsonTxOut.write(1,2).c_str());
-        }
+        } */
 
         // if there is a stake transaction, add it to the very end
         if (isStake)
