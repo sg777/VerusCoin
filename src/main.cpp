@@ -3933,50 +3933,94 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             cci.GetImportInfo(tx, 1, j, ccx, 
                                             dummySysCCI, sysCCIOut,
                                             importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
+                            importNotarization.IsValid() &&
                             importNotarization.currencyState.IsValid())
                         {
-                            printf("%s: import notarization: %s\n", __func__, importNotarization.ToUniValue().write(1,2).c_str());
 
+
+
+
+                            uint256 transferHash;
                             std::vector<CTxOut> importOutputs;
-                            CReserveTransactionDescriptor rtxd;
-                            CCoinbaseCurrencyState importState = importNotarization.currencyState;
-                            importState.RevertReservesAndSupply();
+                            CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
 
-                            printf("%s: reverted notarization: %s\n", __func__, importState.ToUniValue().write(1,2).c_str());
+                            CPBaaSNotarization tempLastNotarization = importNotarization;
+                            CPBaaSNotarization newNotarization;
+                            tempLastNotarization.currencyState.SetLaunchCompleteMarker(false);
 
-                            CCurrencyValueMap importedCurrency;
-                            CCurrencyValueMap extraCurrencyOut, gatewayDepositsIn;
-                            CCurrencyValueMap spentCurrencyOut;
-                            CCoinbaseCurrencyState newCurrencyState;
-                            if (!rtxd.AddReserveTransferImportOutputs(ConnectedChains.FirstNotaryChain().chainDefinition,
-                                                                    ConnectedChains.ThisChain(),
-                                                                    cbCurDef,
-                                                                    importState,
-                                                                    std::vector<CReserveTransfer>(),
-                                                                    importOutputs,
-                                                                    importedCurrency,
-                                                                    gatewayDepositsIn,
-                                                                    spentCurrencyOut,
-                                                                    &newCurrencyState))
+                            std::vector<CReserveTransfer> exportTransfers(reserveTransfers);
+                            if (!tempLastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
+                                                                            cbCurDef,
+                                                                            0,
+                                                                            1,
+                                                                            exportTransfers,
+                                                                            transferHash,
+                                                                            newNotarization,
+                                                                            importOutputs,
+                                                                            importedCurrency,
+                                                                            gatewayDepositsUsed,
+                                                                            spentCurrencyOut))
                             {
-                                LogPrintf("Invalid starting currency import for %s\n", ConnectedChains.ThisChain().name.c_str());
-                                printf("Invalid starting currency import for %s\n", ConnectedChains.ThisChain().name.c_str());
+                                LogPrintf("%s: invalid coinbase import for currency %s on system %s\n", 
+                                    __func__,
+                                    cbCurDef.name.c_str(), 
+                                    EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str());
                                 return false;
                             }
 
-                            printf("%s: new currency state: %s\n", __func__, newCurrencyState.ToUniValue().write(1,2).c_str());
+                            // if fees are not converted, we will pay out original fees,
+                            // less liquidity fees, which go into the currency reserves
+                            bool feesConverted;
+                            CCurrencyValueMap cbFees;
+                            CCurrencyValueMap gatewayDeposits;
+                            CCurrencyValueMap extraCurrencyOut;
+                            CCurrencyValueMap liquidityFees;
+                            CCurrencyValueMap originalFees = 
+                                newNotarization.currencyState.CalculateConvertedFees(
+                                    newNotarization.currencyState.viaConversionPrice,
+                                    newNotarization.currencyState.viaConversionPrice,
+                                    ASSETCHAINS_CHAINID,
+                                    feesConverted,
+                                    liquidityFees,
+                                    cbFees);
+                            
+                            if (!feesConverted)
+                            {
+                                cbFees = (originalFees - liquidityFees);
+                            }
+
+                            // display import outputs
+                            /*
+                            CMutableTransaction debugTxOut;
+                            debugTxOut.vout = outputs;
+                            debugTxOut.vout.insert(debugTxOut.vout.end(), importOutputs.begin(), importOutputs.end());
+                            UniValue jsonTxOut(UniValue::VOBJ);
+                            TxToUniv(debugTxOut, uint256(), jsonTxOut);
+                            printf("%s: launch outputs: %s\nlast notarization: %s\nnew notarization: %s\n", __func__, 
+                                                                                                            jsonTxOut.write(1,2).c_str(),
+                                                                                                            lastNotarization.ToUniValue().write(1,2).c_str(),
+                                                                                                            newNotarization.ToUniValue().write(1,2).c_str());
+                            */
 
                             // to determine left over reserves for deposit, consider imported and emitted as the same
-
-                            if (cbCurDef.IsPBaaSConverter())
+                            if (cbCurDef.IsFractional())
                             {
-                                extraCurrencyOut = CCurrencyValueMap(importState.currencies, importState.reserves);
+                                gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
+                                                                    tempLastNotarization.currencyState.reserveIn);
                             }
-                            extraCurrencyOut.valueMap[cbCurID] += newCurrencyState.emitted;
+                            else
+                            {
+                                gatewayDeposits = importedCurrency;
+                            }
+                            gatewayDeposits.valueMap[cbCurID] += newNotarization.currencyState.primaryCurrencyOut;
 
-                            extraCurrencyOut = (extraCurrencyOut + importedCurrency).CanonicalMap();
+                            /* printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
+                                importedCurrency.ToUniValue().write(1,2).c_str(),
+                                spentCurrencyOut.ToUniValue().write(1,2).c_str(),
+                                gatewayDeposits.ToUniValue().write(1,2).c_str()); */
 
-                            CCurrencyValueMap cbFees = CCurrencyValueMap(importNotarization.currencyState.currencies, importNotarization.currencyState.fees);
+                            extraCurrencyOut = gatewayDeposits.CanonicalMap();
+                            gatewayDeposits -= spentCurrencyOut;
 
                             if (cbCurDef.gatewayConverterIssuance)
                             {
@@ -3997,10 +4041,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 }
                             }
 
-                            printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydepositsin %s\nextraCurrencyOut %s\nvalidExtraCoinbaseOutputs %s\n",
+                            printf("importedcurrency %s\nspentcurrencyout %s\ngatewayDeposits %s\nextraCurrencyOut %s\nvalidExtraCoinbaseOutputs %s\n",
                                 importedCurrency.ToUniValue().write(1,2).c_str(),
                                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
-                                gatewayDepositsIn.ToUniValue().write(1,2).c_str(),
+                                gatewayDeposits.ToUniValue().write(1,2).c_str(),
                                 extraCurrencyOut.ToUniValue().write(1,2).c_str(), 
                                 validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
 
@@ -4035,7 +4079,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             printf("%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
             printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
             printf("%s: nativeFees: %ld, reserve fees: %s\nextra coinbase outputs: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
-
         }
         else if (!isVerusActive)
         {

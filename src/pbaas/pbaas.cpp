@@ -1635,6 +1635,15 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
     // made combines the potential currency sources of the source system and the importing currency
     LOCK2(cs_main, mempool.cs);
 
+    if (!exports.size())
+    {
+        return false;
+    }
+
+    // determine if we are refunding or not, which must be handled correctly when refunding a
+    // PBaaS launch. In that case, the refunds must be read as if they are to another chain,
+    // and written as same chain
+
     CCoinsView dummy;
     CCoinsViewCache view(&dummy);
     CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
@@ -1676,6 +1685,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
     {
         uint256 blkHash;
         CTransaction exportTx;
+
         if (useProofs)
         {
             if (!oneIT.first.second.IsValid())
@@ -1713,6 +1723,26 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
+        CChainNotarizationData cnd;
+        CPBaaSNotarization priorChainNotarization;
+        CCurrencyDefinition refundingPBaaSChain;
+        bool isRefundingSeparateChain = false;
+        if (GetNotarizationData(ccx.destCurrencyID, cnd) &&
+            cnd.IsValid() &&
+            cnd.IsConfirmed() &&
+            (priorChainNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid() &&
+            priorChainNotarization.currencyState.IsValid())
+        {
+            // if this is a refund from an alternate chain, we need to 
+            if (priorChainNotarization.currencyState.IsRefunding() &&
+                GetCurrencyDefinition(ccx.destCurrencyID, refundingPBaaSChain) &&
+                refundingPBaaSChain.launchSystemID == ASSETCHAINS_CHAINID &&
+                refundingPBaaSChain.systemID != ASSETCHAINS_CHAINID)
+            {
+                isRefundingSeparateChain = true;
+            }
+        }
+
         // get reserve deposits for destination currency of export. these will be available whether the source is same chain
         // or an external chain/gateway
         std::vector<CInputDescriptor> localDeposits;
@@ -1737,9 +1767,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         // if importing from another system/chain, get reserve deposits of source system to make available to import
         // as well
-        if (useProofs)
+        if (isRefundingSeparateChain || useProofs)
         {
-            if (!ConnectedChains.GetReserveDeposits(sourceSystemID, view, crossChainDeposits))
+            if (!ConnectedChains.GetReserveDeposits(isRefundingSeparateChain ? refundingPBaaSChain.systemID : sourceSystemID, view, crossChainDeposits))
             {
                 LogPrintf("%s: cannot get reserve deposits for cross-system export in tx %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
                 return false;
@@ -3334,13 +3364,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     {
         cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
 
-        // currency ID for finalization determine indexing and query capability
-        // since we care about looking for all exports to one system or another, the currency in the finalization
-        // is the system destination for this export (i.e. "which system should do the next work?")
-        if (isRefunding)
-        {
-            destSystemID = ASSETCHAINS_CHAINID;
-        }
         CObjectFinalization finalization(CObjectFinalization::FINALIZE_EXPORT, destSystemID, uint256(), exportOutNum);
 
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});

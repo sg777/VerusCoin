@@ -3495,16 +3495,20 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             if (feeCurrencyStr != "")
             {
                 feeCurrencyID = ValidateCurrencyName(feeCurrencyStr, true, &feeCurrencyDef);
-                if (feeCurrencyID.IsNull())
+                if (!feeCurrencyID.IsNull())
                 {
                     feeCurrencyID = destSystemID;
                     feeCurrencyDef = destSystemDef;
+                }
+                else
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency specified");
                 }
             }
             else
             {
                 feeCurrencyDef = ConnectedChains.ThisChain();
-                feeCurrencyID = feeCurrencyDef.GetID();
+                feeCurrencyID = thisChainID;
             }
 
             // if we are already converting or processing through some currency, that can only be done on its native system
@@ -3552,6 +3556,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                          !(exportSystemDef.IsGateway() && exportSystemDef.systemID == thisChainID)))
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid export system definition");
+                    }
+                    // if we aren't doing an explicit conversion, reset destination system to exportto target
+                    if (convertToCurrencyID.IsNull())
+                    {
+                        destSystemDef = exportSystemDef;
+                        destSystemID = exportToCurrencyID;
                     }
                 }
                 else
@@ -6058,56 +6068,6 @@ UniValue listidentities(const UniValue& params, bool fHelp)
     {
         return NullUniValue;
     }
-}
-
-UniValue importbridgedata(const UniValue& params, bool fHelp)
-{
-    if (fHelp || params.size() != 1)
-    {
-        throw runtime_error(
-            "importbridgedata ( \"jsonparametersobject\" )\n"
-            "\nAdds a block of bridge transactions to be imported on a particpular currency chain along with a proposed\n"
-            "\nnotarization of the alternate chain, which can be used to prove the transactions being imported. This data is\n"
-            "\nonly used when this daemon is mining, either stand alone, or creating blocks via getblocktemplate. This transaction\n"
-            "\ncan be added to the exports mined into a block as part of AggregateChainTransfers. Once finalized and passed on, the\n"
-            "\nreward is sent back to the exporting miner.\n"
-
-            "\nArguments\n"
-            "{\n"
-            "    \"currency\" : \"string\"          (string) currency name or ID"
-            "    \"blockstate\" :\n"
-            "    [{\n"
-            "        \"blockheight\": \"n\",        (number) height of system/chain\n"
-            "        \"stateroot\": \"hexstr\",     (hex)    32 bit state root or MMR of this block\n"
-            "        \"blockhash\": \"hexstr\",     (hex)    block hash for this height\n"
-            "        \"power\": \"hexstr\",         (hex)    total power or work\n"
-            "    }, ...]\n"
-            "    \"exportedtransactions\" :\n"
-            "    [{\n"
-            "        \"sequencenum\": \"n\"         (number) all imports are sequenced\n"
-            "        \"reservetransferdata\": \"n\", (object) the transfer to import to this chain\n"
-            "        \"proof\": \"hexstr\",         (hex)    total power or work\n"
-            "    }, ...]\n"
-            "}\n\n"
-
-            "\nResult:\n"
-
-            "\nExamples:\n"
-            + HelpExampleCli("importbridgedata", "\"jsonparametersobject\"")
-            + HelpExampleRpc("importbridgedata", "\"jsonparametersobject\"")
-        );
-    }
-
-    CheckPBaaSAPIsValid();
-
-    // we need to verify that the latest bridge data we get is not a duplicat of something already stored and to replace
-    // anything that is stale
-
-    // register this as a transaction to make when aggregating chain transactions
-    // store the information, and only put it into the blockchain when making a block
-    // only one export for each block of import transactions of a particular
-
-    return NullUniValue;
 }
 
 UniValue addmergedblock(const UniValue& params, bool fHelp)
