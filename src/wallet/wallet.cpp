@@ -8010,7 +8010,7 @@ int CMerkleTx::GetBlocksToMaturity() const
         return 0;
     int32_t depth = GetDepthInMainChain();
     if (!IsVerusActive() &&
-        (chainActive.Height() - depth) == 1)
+        (chainActive.Height() - depth) == 0)
     {
         return 0;
     }
