@@ -635,6 +635,11 @@ UniValue CPBaaSNotarization::ToUniValue() const
         obj.push_back(Pair("launchconfirmed", true));
     }
 
+    if (IsLaunchComplete())
+    {
+        obj.push_back(Pair("launchcomplete", true));
+    }
+
     if (IsMirror())
     {
         obj.push_back(Pair("ismirror", true));

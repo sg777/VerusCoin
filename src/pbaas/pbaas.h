@@ -860,7 +860,8 @@ public:
         FLAG_REFUNDING = 0x10,
         FLAG_ACCEPTED_MIRROR = 0x20,        // if this is set, this notarization is a mirror of an earned notarization on another chain
         FLAG_BLOCKONE_NOTARIZATION = 0x40,  // block 1 notarizations are auto-finalized, the blockchain itself will be worthless if it is wrong
-        FLAG_SAME_CHAIN = 0x80              // set if all currency information is verifiable on this chain
+        FLAG_SAME_CHAIN = 0x80,             // set if all currency information is verifiable on this chain
+        FLAG_LAUNCH_COMPLETE = 0x100        // set if all currency information is verifiable on this chain
     };
 
     uint32_t nVersion;
@@ -1122,6 +1123,23 @@ public:
             return CProofRoot();
         }
         return proofRootIt->second;
+    }
+
+    void SetLaunchComplete(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_LAUNCH_COMPLETE;
+        }
+        else
+        {
+            flags &= ~FLAG_LAUNCH_COMPLETE;
+        }
+    }
+
+    bool IsLaunchComplete() const
+    {
+        return flags & FLAG_LAUNCH_COMPLETE;
     }
 
     void SetSameChain(bool setTrue=true)

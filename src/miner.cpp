@@ -333,7 +333,7 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
     bool isSameChain = thisChain.GetID() == sourceChainID;
 
     CChainNotarizationData cnd;
-    if (!GetNotarizationData(sourceChainID, cnd))
+    if (!GetNotarizationData(sourceChainID, cnd) && cnd.IsConfirmed())
     {
         printf("Cannot get notarization data for currency %s\n", sourceChain.name.c_str());
         return;
@@ -763,12 +763,12 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
     outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newCurrency))));
 
     // import / export capable currencies include the main currency, fractional currencies on any system, 
-    // gateway currencies. and non-token currencies. they also get an import / export thread
-    if (newCurrency.systemID == ASSETCHAINS_CHAINID &&
+    // gateway currencies. the launch system, and non-token currencies. they also get an import / export thread
+    if (ConnectedChains.ThisChain().launchSystemID == newCurID ||
+        (newCurrency.systemID == ASSETCHAINS_CHAINID &&
         (newCurrency.IsFractional() ||
         newCurrency.systemID == newCurID ||
-        ConnectedChains.ThisChain().launchSystemID == newCurID ||
-        (newCurrency.IsGateway() && newCurrency.GetID() == newCurrency.gatewayID)))
+        (newCurrency.IsGateway() && newCurrency.GetID() == newCurrency.gatewayID))))
     {
         uint160 firstNotaryID = ConnectedChains.FirstNotaryChain().chainDefinition.GetID();
 
@@ -801,8 +801,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
         }
 
-        if ((newCurID == ASSETCHAINS_CHAINID || newCurID == ConnectedChains.ThisChain().GatewayConverterID()) &&
-            firstNotaryID == newCurrency.launchSystemID)
+        if ((newCurrency.systemID == ASSETCHAINS_CHAINID) && firstNotaryID == newCurrency.launchSystemID)
         {
             uint256 transferHash;
             std::vector<CTxOut> importOutputs;

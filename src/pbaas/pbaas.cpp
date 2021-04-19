@@ -1977,7 +1977,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
 
         uint32_t nextHeight = std::max(ccx.sourceHeightEnd, lastNotarization.notarizationHeight);
-        if (ccx.IsPostlaunch())
+        if (ccx.IsPostlaunch() || lastNotarization.IsLaunchComplete())
         {
             lastNotarization.currencyState.SetLaunchCompleteMarker();
         }
@@ -1997,6 +1997,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             LogPrintf("%s: invalid export for currency %s on system %s\n", __func__, destCur.name.c_str(), EncodeDestination(CIdentityID(destCur.systemID)).c_str());
             return false;
         }
+
+        // after the last clear launch export is imported, we have completed launch
+        if (ccx.IsClearLaunch())
+        {
+            newNotarization.SetLaunchComplete();
+        }
+
         newNotarization.prevNotarization = CUTXORef(lastNotarizationOut.txIn.prevout.hash, lastNotarizationOut.txIn.prevout.n);
 
         //printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
@@ -3075,7 +3082,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     bool isPostLaunch = false;
     if (priorExports.size() &&
         (lastExport = CCrossChainExport(priorExports[0].scriptPubKey)).IsValid() &&
-        (lastExport.IsClearLaunch() || intermediateNotarization.currencyState.IsLaunchCompleteMarker()))
+        (lastExport.IsClearLaunch() || intermediateNotarization.IsLaunchComplete()))
     {
         // now, all exports are post launch
         isPostLaunch = true;
