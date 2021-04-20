@@ -3796,17 +3796,31 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     // through a converter before or after conversion for actual conversion and/or fee conversion
                     else if (!convertToCurrencyID.IsNull())
                     {
-                        // if we're not converting, possibly convert fees
-                        if (!(flags & CReserveTransfer::CONVERT))
+                        // if we convert first, then export, put the follow-on export in an output
+                        // to be converted with a cross-chain fee
+                        if (convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
                         {
+                            // if we're converting and then sending, we don't need an initial fee, so all
+                            // fees go into the final destination
+                            if (isConversion)
+                            {
 
+                            }
+                        }
+                        else
+                        {
+                            // if we are converting only fees
+                            if (!isConversion)
+                            {
+                                
+                            }
                         }
 
                         // native currency must be the currency we are converting to, and the source must be a reserve
                         auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
-                        if (!reserveMap.count(sourceCurrencyID))
+                        if (!reserveMap.count(feeCurrencyID))
                         {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ". 3");
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert fees " + EncodeDestination(CIdentityID(feeCurrencyID)) + " to " + destSystemDef.name + ". 3");
                         }
                         // converting from reserve to a fractional of that reserve
                         auto dest = DestinationToTransferDestination(destination);
@@ -5339,8 +5353,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     uint160 impliedParent, resParent;
     if (txid.IsNull() || 
         CleanName(reservation.name, resParent) != CleanName(newID.name, impliedParent) || 
-        resParent != impliedParent ||
-        impliedParent != ASSETCHAINS_CHAINID)
+        resParent != impliedParent)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched reservation.");
     }
@@ -5403,8 +5416,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid to specify alternate parent when creating an identity. Parent is determined by the current blockchain.");
     }
-
-    newID.parent = parent;
 
     CIdentity dupID = newID.LookupIdentity(newID.GetID());
     if (dupID.IsValid())
