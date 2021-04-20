@@ -286,15 +286,24 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 
 // takes a multipart name, either complete or partially processed with a Parent hash,
 // hash its parent names into a parent ID and return the parent hash and cleaned, single name
-std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter)
+// takes a multipart name, either complete or partially processed with a Parent hash,
+// hash its parent names into a parent ID and return the parent hash and cleaned, single name
+std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter, bool addVerus)
 {
     std::string chainName;
-    std::vector<std::string> subNames = ParseSubNames(Name, chainName);
+    std::vector<std::string> subNames = ParseSubNames(Name, chainName, displayfilter, addVerus);
 
     if (!subNames.size())
     {
         return "";
     }
+
+    if (!Parent.IsNull() &&
+        boost::to_lower_copy(subNames.back()) == boost::to_lower_copy(VERUS_CHAINNAME))
+    {
+        subNames.pop_back();
+    }
+
     for (int i = subNames.size() - 1; i > 0; i--)
     {
         std::string parentNameStr = boost::algorithm::to_lower_copy(subNames[i]);

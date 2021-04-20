@@ -3431,6 +3431,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 secondCurrencyID = secondCurrencyDef.GetID();
             }
 
+            bool isConversion = false;
+            if (!convertToCurrencyID.IsNull())
+            {
+                isConversion = true;
+            }
+
             // send a reserve transfer preconvert
             uint32_t flags = CReserveTransfer::VALID;
             if (burnCurrency)
@@ -3558,7 +3564,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid export system definition");
                     }
                     // if we aren't doing an explicit conversion, reset destination system to exportto target
-                    if (convertToCurrencyID.IsNull())
+                    if (!isConversion)
                     {
                         destSystemDef = exportSystemDef;
                         destSystemID = exportToCurrencyID;
@@ -3598,25 +3604,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                   " to " +
                                                                   EncodeDestination(CIdentityID(destSystemID)));
                     }
-
-                    if (convertToCurrencyDef.systemID == destSystemID)
-                    {
-                        // send to the converter on the destination system
-                    }
-                    else
-                    {
-                        // first convert, include embedded fees, then send
-                    }
                 }
-
-
-
-
-
-
-
-
-
             }
             else
             {
@@ -3667,6 +3655,16 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
 
                 CTxDestination destination = ValidateDestination(destStr);
+
+                if (convertToCurrencyDef.IsValid() &&
+                    convertToCurrencyDef.systemID != destSystemID)
+                {
+                    // send to the converter on the destination system
+                }
+                else
+                {
+                    // first convert, include embedded fees, then send
+                }
 
                 CTransferDestination transferDestination;
                 if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
