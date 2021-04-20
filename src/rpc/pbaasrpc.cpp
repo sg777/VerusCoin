@@ -5153,6 +5153,10 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     uint160 parent;
     std::string name = CleanName(uni_get_str(params[0]), parent, true);
+    if (parent.IsNull())
+    {
+        parent = ASSETCHAINS_CHAINID;
+    }
 
     // if either we have an invalid name or an implied parent, that is not valid
     if (name == "" || !(parent == ASSETCHAINS_CHAINID) || name != uni_get_str(params[0]))
