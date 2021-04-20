@@ -3490,11 +3490,26 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     }
                 }
             }
+            else
+            {
+                // things you can't do with a z-destination yet
+                if (exportToStr.size() ||
+                    isConversion ||
+                    burnCurrency ||
+                    preConvert ||
+                    mintNew)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid operations for z-address destination");
+                }
+            }
 
             if (!destSystemDef.IsValid())
             {
                 destSystemDef = ConnectedChains.GetCachedCurrency(destSystemID);
             }
+
+            bool sendOffChain = destSystemID != ASSETCHAINS_CHAINID;
+            bool convertBeforeOffChain = false;
 
             uint160 feeCurrencyID;
             CCurrencyDefinition feeCurrencyDef;
@@ -3541,9 +3556,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             }
 
             // ensure that any initial export is explicit
-            if (destSystemID != thisChainID && exportToCurrencyID != destSystemID)
+            if (sendOffChain && !exportToCurrencyID.IsNull() && exportToCurrencyDef.systemID != destSystemID)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly export a transaction off chain -- \"exportto\" must match any implied cross-chain target");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Conflicting target system for send -- \"exportto\" must be consistent with any other cross-chain currency targets");
             }
             else if (!exportToCurrencyID.IsNull() &&
                      exportToCurrencyID != thisChainID &&
@@ -3556,14 +3571,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 // it is the same as the destination native currency.
                 if (destSystemID == thisChainID)
                 {
-                    exportSystemDef = ConnectedChains.GetCachedCurrency(exportToCurrencyID);
+                    exportSystemDef = ConnectedChains.GetCachedCurrency(exportToCurrencyDef.systemID);
                     if (!exportSystemDef.IsValid() ||
                         (exportSystemDef.systemID != exportSystemDef.GetID() && 
                          !(exportSystemDef.IsGateway() && exportSystemDef.systemID == thisChainID)))
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid export system definition");
                     }
-                    // if we aren't doing an explicit conversion, reset destination system to exportto target
+
+                    // if we aren't doing an explicit conversion, reset destination system to exportto system
                     if (!isConversion)
                     {
                         destSystemDef = exportSystemDef;
@@ -3574,6 +3590,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     exportSystemDef = destSystemDef;
                 }
+
                 // if fee currency is the export system destination
                 // don't route through a converter
                 if (feeCurrencyID == destSystemID)
@@ -3582,34 +3599,39 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     // first and then pass through or pass to the converter currency on the other system
                     if (!convertToCurrencyID.IsNull())
                     {
-
+                        if (convertToCurrencyDef.systemID != destSystemID &&
+                            (convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID ||
+                             !convertToCurrencyDef.IsFractional() ||
+                             !(convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) ||
+                               convertToCurrencyDef.GetID() == feeCurrencyID)))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + 
+                                                                    EncodeDestination(CIdentityID(convertToCurrencyID)) +
+                                                                    " is not capable of converting " +
+                                                                    EncodeDestination(CIdentityID(feeCurrencyID)) +
+                                                                    " to " +
+                                                                    EncodeDestination(CIdentityID(destSystemID)));
+                        }
                     }
-                    // send directly to the destination system
                 }
                 else if (convertToCurrencyID.IsNull())
                 {
-                    if (exportSystemDef.GatewayConverterID().IsNull())
+                    convertToCurrencyID = exportSystemDef.GatewayConverterID();
+                    if (convertToCurrencyID.IsNull())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for system destination without fee converter.");
                     }
-                    if ((convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID &&
-                        convertToCurrencyDef.systemID != destSystemID) ||
-                        !(convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) ||
-                          convertToCurrencyDef.GetID() == feeCurrencyID))
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Fractional currency " + 
-                                                                  EncodeDestination(CIdentityID(convertToCurrencyID)) +
-                                                                  " is not capable of converting " +
-                                                                  EncodeDestination(CIdentityID(feeCurrencyID)) +
-                                                                  " to " +
-                                                                  EncodeDestination(CIdentityID(destSystemID)));
-                    }
+                    // get gateway converter and set as fee converter/exportto currency
+                    convertToCurrencyDef = ConnectedChains.GetCachedCurrency(convertToCurrencyID);
+                }
+                if (!convertToCurrencyID.IsNull() && !convertToCurrencyDef.IsValid())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency converter for system destination.");
                 }
             }
             else
             {
-                exportToCurrencyID.SetNull();
-                if (destSystemID != thisChainID && exportToCurrencyID != destSystemID)
+                if (destSystemID != thisChainID && (!exportToCurrencyID.IsNull() && exportToCurrencyID != destSystemID))
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid cross-system export parameters. See help.");
                 }
@@ -3727,6 +3749,14 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 // are we a system/chain transfer with or without conversion?
                 if (destSystemID != thisChainID)
                 {
+                    // possible cases:
+                    // 1. sending currency to another chain, paying with native currencies and no converter
+                    // 2. sending currency with or without conversion, paying with fees converted via converter on dest system
+                    // 3. preconvert on launch of new system
+                    //
+                    // converting with fees via a converter on the source chain first converts fees and optionally more,
+                    // then uses case 1 above
+
                     CCcontract_info CC;
                     CCcontract_info *cp;
                     cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
@@ -3738,13 +3768,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot preconvert to unspecified or invalid currency.");
                         }
-                        CCurrencyValueMap validConversionCurrencies = CCurrencyValueMap(convertToCurrencyDef.currencies, 
-                                                                                        std::vector<CAmount>(convertToCurrencyDef.currencies.size(), 1));
-                        if (!validConversionCurrencies.valueMap.count(sourceCurrencyID))
+                        auto validConversionCurrencies = convertToCurrencyDef.GetCurrenciesMap();
+                        if (!validConversionCurrencies.count(sourceCurrencyID))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + ".");
                         }
-                        if (convertToCurrencyDef.startBlock <= (height + 1))
+                        if (convertToCurrencyDef.launchSystemID == ASSETCHAINS_CHAINID &&
+                            convertToCurrencyDef.startBlock <= (height + 1))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Too late to convert " + sourceCurrencyDef.name + " to " + convertToStr + ", as pre-launch is over.");
                         }
@@ -3763,10 +3793,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : rt.CalculateTransferFee();
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
-                    // only valid conversion for a cross-chain send is to the native currency of the chain
-                    else if (convertToCurrencyID == destSystemID)
+                    // through a converter before or after conversion for actual conversion and/or fee conversion
+                    else if (!convertToCurrencyID.IsNull())
                     {
-                        flags |= CReserveTransfer::CONVERT;
+                        // if we're not converting, possibly convert fees
+                        if (!(flags & CReserveTransfer::CONVERT))
+                        {
+
+                        }
+
                         // native currency must be the currency we are converting to, and the source must be a reserve
                         auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
                         if (!reserveMap.count(sourceCurrencyID))
@@ -3789,16 +3824,16 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : fees;
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
-                    else if (convertToCurrencyID.IsNull())
+                    else // direct to another system paying with acceptable fee currency
                     {
-                        auto dest = DestinationToTransferDestination(destination);
+                        auto dest = DestinationToTransferDestination(destination); // add refundDestination to destination
                         auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID, 
                                                                sourceAmount, 
                                                                feeCurrencyID,
                                                                fees, 
-                                                               sourceCurrencyID, 
+                                                               exportToCurrencyID, 
                                                                dest);
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
