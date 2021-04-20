@@ -78,6 +78,7 @@ private:
     const CCoinsViewCache* coinsView;
     CCriticalSection* cs_coinsView;
     CAmount fee = 10000;
+    CCurrencyValueMap reserveFee;
 
     std::vector<SpendDescriptionInfo> spends;
     std::vector<OutputDescriptionInfo> outputs;
@@ -110,6 +111,12 @@ public:
     CAmount GetFee() const
     {
         return fee;
+    }
+
+    void SetReserveFee(const CCurrencyValueMap &fees);
+    CCurrencyValueMap GetReserveFee() const
+    {
+        return reserveFee;
     }
 
     // Throws if the anchor does not match the anchor used by

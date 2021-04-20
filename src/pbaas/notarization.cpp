@@ -1823,6 +1823,13 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne));
                 myIDSigs.push_back(CInputDescriptor(evidenceScript, 0, CTxIn(COutPoint(uint256(), txBuilder.mtx.vout.size()))));
                 txBuilder.AddTransparentOutput(evidenceScript, CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
+
+                // if we don't have enough signatures to finalize, add an input and fee to the transaction from our
+                // notary pre-allocation
+                if (sigSet.size() < ConnectedChains.ThisChain().minNotariesConfirm)
+                {
+                    
+                }
             }
 
             // if we have enough to finalize, do so as a combination of pre-existing evidence and this

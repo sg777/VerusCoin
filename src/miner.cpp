@@ -942,6 +942,30 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 outputs.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, depositDests, 1, &rd))));
             }
 
+            if (newCurrency.notaries.size())
+            {
+                // notaries all get an even share of 10% of the launch fee in the launch currency to use for notarizing
+                // they may also get pre-allocations
+                uint160 notaryNativeID = ConnectedChains.FirstNotaryChain().chainDefinition.GetID();
+                CAmount notaryFeeShare = ConnectedChains.FirstNotaryChain().chainDefinition.currencyRegistrationFee / 10;
+                additionalFees -= CCurrencyValueMap(std::vector<uint160>({notaryNativeID}), std::vector<int64_t>({notaryFeeShare}));
+                CAmount oneNotaryShare = notaryFeeShare / newCurrency.notaries.size();
+                CAmount notaryModExtra = notaryFeeShare % newCurrency.notaries.size();
+                for (auto &oneNotary : newCurrency.notaries)
+                {
+                    CTokenOutput to(notaryNativeID, oneNotaryShare);
+                    if (notaryModExtra)
+                    {
+                        to.reserveValues.valueMap[notaryNativeID]++;
+                        notaryModExtra--;
+                    }
+                    outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, 
+                                                    std::vector<CTxDestination>({CIdentityID(oneNotary)}), 
+                                                    1, 
+                                                    &to))));
+                }
+            }
+
             cci.numOutputs = importOutputs.size();
 
             // now add the import itself
@@ -1746,39 +1770,74 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         if (!VERUS_NOTARYID.IsNull())
         {
             CValidationState state;
-            TransactionBuilder notarizationBuilder = TransactionBuilder(consensusParams, nHeight);
+            TransactionBuilder notarizationBuilder = TransactionBuilder(consensusParams, nHeight, pwalletMain);
             bool finalized;
             CTransaction notarizationTx;
             if (CPBaaSNotarization::ConfirmOrRejectNotarizations(pwalletMain, ConnectedChains.FirstNotaryChain(), state, notarizationBuilder, finalized))
             {
-                /* expect notaries to pay for their notarizations when required. leave out for now.
-                // get a native currency input capable of paying a fee, and make our notary ID the change address
-                std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+                if (!notarizationBuilder.mtx.vin.size())
                 {
-                    LOCK(pwalletMain->cs_wallet);
-                    std::vector<COutput> vCoins;
-                    CAmount transferVal;
-                    pwalletMain->AvailableCoins(vCoins,
-                                                false,
-                                                nullptr,
-                                                false,
-                                                true,
-                                                false,
-                                                false,
-                                                false);
-                    pwalletMain->SelectCoinsMinConf(notarizationBuilder.GetFee(), 0, 0, vCoins, setCoinsRet, transferVal);
+                    // get a native currency input capable of paying a fee, and make our notary ID the change address
+                    std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+                    {
+                        LOCK(pwalletMain->cs_wallet);
+                        std::vector<COutput> vCoins;
+                        CAmount transferVal;
+                        if (IsVerusActive())
+                        {
+                            pwalletMain->AvailableCoins(vCoins,
+                                                        false,
+                                                        nullptr,
+                                                        false,
+                                                        true,
+                                                        true,
+                                                        true,
+                                                        false);
+                            pwalletMain->SelectCoinsMinConf(CPBaaSNotarization::DEFAULT_NOTARIZATION_FEE, 0, 0, vCoins, setCoinsRet, transferVal);
+                            notarizationBuilder.SetFee(CPBaaSNotarization::DEFAULT_NOTARIZATION_FEE);
+                        }
+                        else
+                        {
+                            CCurrencyValueMap totalTxFees;
+                            totalTxFees.valueMap[ConnectedChains.FirstNotaryChain().chainDefinition.GetID()] = CPBaaSNotarization::DEFAULT_NOTARIZATION_FEE;
+                            notarizationBuilder.SetReserveFee(totalTxFees);
+                            notarizationBuilder.SetFee(0);
+                            pwalletMain->AvailableReserveCoins(vCoins,
+                                                               false,
+                                                               nullptr,
+                                                               true,
+                                                               true,
+                                                               nullptr,
+                                                               &totalTxFees, 
+                                                               false);
+                            
+                            std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+                            CCurrencyValueMap reserveValueOut;
+                            CAmount nativeValueOut;
+                            pwalletMain->SelectReserveCoinsMinConf(totalTxFees,
+                                                                   0,
+                                                                   0,
+                                                                   1,
+                                                                   vCoins,
+                                                                   setCoinsRet,
+                                                                   reserveValueOut,
+                                                                   nativeValueOut);
+                        }
+                    }
+                    for (auto &oneInput : setCoinsRet)
+                    {
+                        notarizationBuilder.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second), 
+                                                                oneInput.first->vout[oneInput.second].scriptPubKey,
+                                                                oneInput.first->vout[oneInput.second].nValue);
+                    }
+                    notarizationBuilder.SendChangeTo(CTxDestination(VERUS_NOTARYID));
                 }
-                for (auto &oneInput : setCoinsRet)
+                else
                 {
-                    notarizationBuilder.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second), 
-                                                            oneInput.first->vout[oneInput.second].scriptPubKey,
-                                                            oneInput.first->vout[oneInput.second].nValue);
+                    notarizationBuilder.SetFee(0);
                 }
-                notarizationBuilder.SendChangeTo(CTxDestination(VERUS_NOTARYID));
-                */
 
                 LOCK2(cs_main, mempool.cs);
-                notarizationBuilder.SetFee(0);
                 TransactionBuilderResult buildResult = notarizationBuilder.Build();
                 if (buildResult.IsTx())
                 {

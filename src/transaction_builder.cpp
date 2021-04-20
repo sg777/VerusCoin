@@ -215,9 +215,14 @@ void TransactionBuilder::AddOpRet(CScript &s)
     opReturn.emplace(CScript(s));
 }
 
-void TransactionBuilder::SetFee(CAmount fee)
+void TransactionBuilder::SetFee(CAmount fees)
 {
-    this->fee = fee;
+    this->fee = fees;
+}
+
+void TransactionBuilder::SetReserveFee(const CCurrencyValueMap &fees)
+{
+    reserveFee = fees;
 }
 
 void TransactionBuilder::SendChangeTo(libzcash::SaplingPaymentAddress changeAddr, uint256 ovk)
@@ -266,7 +271,7 @@ TransactionBuilderResult TransactionBuilder::Build()
         view.SetBackend(viewMemPool);
 
         CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height());
-        reserveChange = rtxd.ReserveInputMap() - rtxd.ReserveOutputMap();
+        reserveChange = (rtxd.ReserveInputMap() - rtxd.ReserveOutputMap()) - reserveFee;
 
         //printf("\n%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
         bool hasReserveChange = false;
