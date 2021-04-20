@@ -182,7 +182,9 @@ public:
 
     enum EConstants
     {
-        DESTINATION_BYTE_DIVISOR = 128      // destination vector is divided by this and result is multiplied by normal fee and added to transfer fee
+        DESTINATION_BYTE_DIVISOR = 128,     // destination vector is divided by this and result is multiplied by normal fee and added to transfer fee
+        SUCCESS_FEE = 25000,
+        MIN_SUCCESS_FEE = 20000
     };
 
     static const CAmount DEFAULT_PER_STEP_FEE = 10000; // default fee for each step of each transfer (initial mining, transfer, mining on new chain)
@@ -530,81 +532,6 @@ public:
     bool IsValid() const
     {
         return CTokenOutput::IsValid();
-    }
-};
-
-// convert from $VRSC to fractional reserve coin or vice versa. coinID determines which
-// in either direction, this is burned in the block. if burned, the block must contain less than a
-// maximum reasonable number of exchange outputs, which must be sorted, hashed, and used to validate
-// the outputs that must match exactly on any transaction spending the output. since fees are not
-// included in outputs, it is assumed that a miner will spend the output in the same block to recover
-// exchange fees
-class CReserveExchange : public CTokenOutput
-{
-public:
-    // flags
-    enum EFlags
-    {
-        VALID = 1,
-        TO_RESERVE = 0x80000,           // from fractional currency to reserve, default is reserve to fractional
-        LIMIT = 0x100000,               // observe the limit when converting
-        FILL_OR_KILL = 0x200000,        // if not filled before nValidBefore but before expiry, no execution, mined with fee, output pass through
-        ALL_OR_NONE = 0x400000,         // will not execute partial order
-        SEND_OUTPUT = 0x800000          // send the output of this exchange to the target chain, only valid if output is reserve
-    };
-
-    // success fee is calculated by multiplying the amount by this number and dividing by satoshis (100,000,000), not less than 10x the absolute SUCCESS_FEE
-    // failure fee, meaning the valid before block is past but it is not expired is the difference between input and output and must follow those rules
-    // it is deducted in the success case from the success fee, so there is no fee beyond the success fee paid
-    static const CAmount SUCCESS_FEE = 25000;
-    static const CAmount MIN_SUCCESS_FEE = 20000;
-    static const CAmount MIN_PARTIAL = 10000000;        // making partial fill minimum the number at which minimum fee meets standard percent fee,
-    static const CAmount MIN_NET_CONVERSION = 10000000; // minimum conversion for input
-    static const CAmount FILL_OR_KILL_FEE = 10000;
-
-    uint32_t flags;                                     // type of transfer and options
-    CAmount nLimit;                                     // limit price to sell or buy currency
-    uint32_t nValidBefore;                              // if not filled on or after this block, can mine tx, but is spendable to refund input
-
-    CReserveExchange(const std::vector<unsigned char> &asVector)
-    {
-        FromVector(asVector, *this);
-    }
-
-    CReserveExchange() : CTokenOutput(), nLimit(0), nValidBefore(0) { }
-
-    CReserveExchange(uint32_t Flags, const uint160 &cID, CAmount amountIn, CAmount Limit=0, uint32_t ValidBefore=0) : 
-        CTokenOutput(cID, amountIn), flags(Flags), nLimit(Limit), nValidBefore(ValidBefore) {}
-
-    CReserveExchange(const UniValue &uni);
-    CReserveExchange(const CTransaction &tx);
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(*(CTokenOutput *)this);
-        READWRITE(VARINT(flags));
-        READWRITE(VARINT(nLimit));
-        READWRITE(nValidBefore);
-    }
-
-    std::vector<unsigned char> AsVector()
-    {
-        return ::AsVector(*this);
-    }
-
-    bool IsValid() const
-    {
-        // this needs an actual check
-        return CTokenOutput::IsValid();
-    }
-
-    UniValue ToUniValue() const;
-
-    bool IsExpired(int32_t height)
-    {
-        return height >= nValidBefore;
     }
 };
 
@@ -1651,7 +1578,6 @@ public:
     CAmount nativeIn = 0;
     CAmount nativeOut = 0;
     CAmount nativeConversionFees = 0;           // non-zero only if there is a conversion
-    std::vector<std::pair<int, CReserveExchange>> vRex; // index and rehydrated, validated reserve exchange outputs
 
     CReserveTransactionDescriptor() : 
         flags(0),
@@ -1723,16 +1649,7 @@ public:
     std::vector<CAmount> ReserveConversionFeesVec(const CCurrencyState &cState) const;
 
     void AddReserveOutput(const CTokenOutput &ro);
-
-    // is boolean, since it can fail, which would render the tx invalid
-    //void AddReserveExchange(const CReserveExchange &rex, int32_t outputIndex, int32_t nHeight);
-
     void AddReserveTransfer(const CReserveTransfer &rt);
-
-    CMutableTransaction &AddConversionInOuts(CMutableTransaction &conversionTx, 
-                                             std::vector<CInputDescriptor> &conversionInputs, 
-                                             const CCurrencyValueMap &exchangeRates=CCurrencyValueMap(), 
-                                             const CCurrencyState *pCurrencyState=nullptr) const;
 
     bool AddReserveTransferImportOutputs(const CCurrencyDefinition &systemSource, 
                                          const CCurrencyDefinition &systemDest, 

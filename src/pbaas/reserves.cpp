@@ -87,60 +87,6 @@ CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transfe
     return feeMap;
 }
 
-CReserveExchange::CReserveExchange(const UniValue &uni) : CTokenOutput(uni)
-{
-    if (uni_get_bool(find_value(uni, "toreserve")))
-    {
-        flags |= TO_RESERVE;
-    }
-    if (uni_get_bool(find_value(uni, "limitorder")))
-    {
-        flags |= LIMIT;
-    }
-    if (uni_get_bool(find_value(uni, "fillorkill")))
-    {
-        flags |= FILL_OR_KILL;
-    }
-    if (uni_get_bool(find_value(uni, "sendoutput")))
-    {
-        flags |= SEND_OUTPUT;
-    }
-
-    try
-    {
-        nLimit = AmountFromValue(find_value(uni, "limitprice"));
-        nValidBefore = uni_get_int(find_value(uni, "validbeforeblock"));
-    }
-    catch (...)
-    {
-        nVersion = VERSION_INVALID;
-    }
-}
-
-CReserveExchange::CReserveExchange(const CTransaction &tx)
-{
-    bool orderFound = false;
-    for (auto out : tx.vout)
-    {
-        COptCCParams p;
-        if (IsPayToCryptoCondition(out.scriptPubKey, p))
-        {
-            if (p.evalCode == EVAL_RESERVE_EXCHANGE)
-            {
-                if (orderFound)
-                {
-                    nVersion = VERSION_INVALID;
-                }
-                else
-                {
-                    FromVector(p.vData[0], *this);
-                    orderFound = true;
-                }
-            }
-        }
-    }
-}
-
 CCrossChainImport::CCrossChainImport(const CScript &script)
 {
     COptCCParams p;
@@ -3338,148 +3284,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     return true;
 }
 
-CMutableTransaction &CReserveTransactionDescriptor::AddConversionInOuts(CMutableTransaction &conversionTx, std::vector<CInputDescriptor> &conversionInputs, const CCurrencyValueMap &_exchangeRates, const CCurrencyState *pCurrencyState) const
-{
-    if (!IsReserveExchange() || IsFillOrKillFail())
-    {
-        return conversionTx;
-    }
-
-    bool noExchangeRate = false;
-    CCurrencyState dummy;
-    const CCurrencyState &currencyState = pCurrencyState ? *pCurrencyState : dummy;
-
-    // set exchange rates as well as we can, either from explicit rates or currency state if possible
-    CCurrencyValueMap __exchangeRates;
-    const CCurrencyValueMap *pExchangeRates = &__exchangeRates;
-    if (_exchangeRates.valueMap.size() != 0)
-    {
-        pExchangeRates = &_exchangeRates;
-    }
-    else
-    {
-        if (pCurrencyState && currencyState.IsFractional())
-        {
-            __exchangeRates = CCurrencyValueMap(currencyState.currencies, currencyState.PricesInReserve());
-        }
-        else
-        {
-            noExchangeRate = true;
-        }
-    }
-    const CCurrencyValueMap &exchangeRates = *pExchangeRates;
-
-    CAmount nativeFeesLeft = nativeConversionFees;
-    for (auto &oneEntry : exchangeRates.valueMap)
-    {
-        auto it = currencies.find(oneEntry.first);
-        if (it == currencies.end())
-        {
-            LogPrintf("%s: invalid conversion with no exchange rate, currency: %s\n", __func__, EncodeDestination(CIdentityID(oneEntry.first)).c_str());
-        }
-        else
-        {
-            nativeFeesLeft += currencyState.ReserveToNativeRaw(it->second.reserveConversionFees, oneEntry.second);
-        }
-    }
-
-    uint256 txHash = ptx->GetHash();
-
-    for (auto &indexRex : vRex)
-    {
-        COptCCParams p;
-        ptx->vout[indexRex.first].scriptPubKey.IsPayToCryptoCondition(p);
-
-        CCcontract_info CC;
-        CCcontract_info *cp;
-
-        CAmount fee = CalculateConversionFee(indexRex.second.FirstValue());
-        CAmount amount = indexRex.second.FirstValue() - fee;
-        CAmount nativeFee, nativeAmount;
-
-        auto rateIt = exchangeRates.valueMap.find(indexRex.second.FirstCurrency());
-        if (rateIt == exchangeRates.valueMap.end())
-        {
-            continue;
-        }
-
-        CAmount exchangeRate = rateIt->second;
-
-        // if already native fees, don't convert, otherwise, do
-        if (!(indexRex.second.flags & indexRex.second.TO_RESERVE))
-        {
-            nativeFee = fee;
-            nativeAmount = ptx->vout[indexRex.first].nValue;
-            amount = currencyState.NativeToReserveRaw(nativeAmount, exchangeRate);
-            fee = currencyState.NativeToReserveRaw(nativeFee, exchangeRate);
-        }
-        else
-        {
-            nativeFee = currencyState.ReserveToNativeRaw(fee, exchangeRate);
-            nativeAmount = currencyState.ReserveToNativeRaw(amount, exchangeRate);
-        }
-
-        if (nativeFee > nativeFeesLeft)
-        {
-            nativeFee = nativeFeesLeft;
-        }
-        nativeFeesLeft -= nativeFee;
-
-        // add input...
-        conversionTx.vin.push_back(CTxIn(txHash, indexRex.first, CScript()));
-
-        // ... and input descriptor. we leave the CTxIn empty and use the one in the corresponding input, using the input descriptor for only
-        // script and value
-        conversionInputs.push_back(CInputDescriptor(ptx->vout[indexRex.first].scriptPubKey, ptx->vout[indexRex.first].nValue, CTxIn()));
-
-        // if we should emit a reserve transfer or normal reserve output, sending output only occurs when converting from
-        // native to a reserve currency
-        if (indexRex.second.flags & indexRex.second.SEND_OUTPUT && 
-            indexRex.second.flags & indexRex.second.TO_RESERVE &&
-            nativeAmount > (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1) << 1)
-        {
-            cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
-            CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-
-            // send the entire amount to a reserve transfer output of the controller
-            CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(indexRex.second.FirstCurrency());
-            if (!curDef.IsValid())
-            {
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), p.vKeys[0]});
-
-                // create the transfer output with the converted amount less fees
-                CReserveTransfer rt((uint32_t)CReserveTransfer::VALID,
-                                    indexRex.second.FirstCurrency(),
-                                    amount - (CReserveTransfer::DEFAULT_PER_STEP_FEE << 1),
-                                    curDef.systemID,
-                                    CReserveTransfer::DEFAULT_PER_STEP_FEE << 1,
-                                    curDef.GetID(),
-                                    CTransferDestination(p.vKeys[0].which(), GetDestinationBytes(p.vKeys[0])));
-
-                // cast object to the most derived class to avoid template errors to a least derived class
-                conversionTx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt))));
-            }
-        }
-        else if (indexRex.second.flags & indexRex.second.TO_RESERVE)
-        {
-            // send the net amount to the indicated destination, which is the first entry in the destinations of the original reserve/exchange by protocol
-            std::vector<CTxDestination> dests = std::vector<CTxDestination>({p.vKeys[0]});
-
-            // create the output with the unconverted amount less fees
-            CTokenOutput ro(indexRex.second.FirstCurrency(), amount);
-
-            conversionTx.vout.push_back(MakeCC1ofAnyVout(EVAL_RESERVE_OUTPUT, 0, dests, ro));
-        }
-        else
-        {
-            // convert amount to native from reserve and send as normal output
-            amount = currencyState.ReserveToNative(amount, exchangeRates.valueMap.find(indexRex.second.FirstCurrency())->second);
-            conversionTx.vout.push_back(CTxOut(amount, GetScriptForDestination(p.vKeys[0])));
-        }
-    }
-    return conversionTx;
-}
-
 CCurrencyValueMap CReserveTransactionDescriptor::ReserveInputMap(const uint160 &nativeID) const
 {
     CCurrencyValueMap retVal;
@@ -3915,10 +3719,10 @@ CAmount CCurrencyState::CalculateConversionFee(CAmount inputAmount, bool convert
     }
 
     CAmount fee = 0;
-    fee = ((bigAmount * arith_uint256(CReserveExchange::SUCCESS_FEE)) / bigSatoshi).GetLow64();
-    if (fee < CReserveExchange::MIN_SUCCESS_FEE)
+    fee = ((bigAmount * arith_uint256(CReserveTransfer::SUCCESS_FEE)) / bigSatoshi).GetLow64();
+    if (fee < CReserveTransfer::MIN_SUCCESS_FEE)
     {
-        fee = CReserveExchange::MIN_SUCCESS_FEE;
+        fee = CReserveTransfer::MIN_SUCCESS_FEE;
     }
     return fee;
 }
@@ -3927,15 +3731,15 @@ CAmount CReserveTransactionDescriptor::CalculateConversionFeeNoMin(CAmount input
 {
     arith_uint256 bigAmount(inputAmount);
     arith_uint256 bigSatoshi(SATOSHIDEN);
-    return ((bigAmount * arith_uint256(CReserveExchange::SUCCESS_FEE)) / bigSatoshi).GetLow64();
+    return ((bigAmount * arith_uint256(CReserveTransfer::SUCCESS_FEE)) / bigSatoshi).GetLow64();
 }
 
 CAmount CReserveTransactionDescriptor::CalculateConversionFee(CAmount inputAmount)
 {
     CAmount fee = CalculateConversionFeeNoMin(inputAmount);
-    if (fee < CReserveExchange::MIN_SUCCESS_FEE)
+    if (fee < CReserveTransfer::MIN_SUCCESS_FEE)
     {
-        fee = CReserveExchange::MIN_SUCCESS_FEE;
+        fee = CReserveTransfer::MIN_SUCCESS_FEE;
     }
     return fee;
 }
@@ -3947,12 +3751,12 @@ CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFee(CAmount 
 {
     arith_uint256 bigAmount(inputAmount);
     arith_uint256 bigSatoshi(SATOSHIDEN);
-    arith_uint256 conversionFee(CReserveExchange::SUCCESS_FEE);
+    arith_uint256 conversionFee(CReserveTransfer::SUCCESS_FEE);
 
     CAmount newAmount = ((bigAmount * bigSatoshi) / (bigSatoshi - conversionFee)).GetLow64();
-    if (newAmount - inputAmount < CReserveExchange::MIN_SUCCESS_FEE)
+    if (newAmount - inputAmount < CReserveTransfer::MIN_SUCCESS_FEE)
     {
-        newAmount = inputAmount + CReserveExchange::MIN_SUCCESS_FEE;
+        newAmount = inputAmount + CReserveTransfer::MIN_SUCCESS_FEE;
     }
     CAmount fee = CalculateConversionFee(newAmount);
     newAmount = inputAmount + fee;

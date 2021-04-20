@@ -998,25 +998,6 @@ UniValue CReserveTransfer::ToUniValue() const
     return ret;
 }
 
-UniValue CReserveExchange::ToUniValue() const
-{
-    UniValue ret(((CTokenOutput *)this)->ToUniValue());
-    ret.push_back(Pair("toreserve", (bool)(flags & TO_RESERVE)));
-    ret.push_back(Pair("tonative", !((bool)(flags & TO_RESERVE))));
-    ret.push_back(Pair("limitorder", (bool)(flags & LIMIT)));
-    if (flags & LIMIT)
-    {
-        ret.push_back(Pair("limitprice", ValueFromAmount(nLimit)));
-    }
-    ret.push_back(Pair("fillorkill", (bool)(flags & FILL_OR_KILL)));
-    if (flags & FILL_OR_KILL)
-    {
-        ret.push_back(Pair("validbeforeblock", (int32_t)nValidBefore));
-    }
-    ret.push_back(Pair("sendoutput", (bool)(flags & SEND_OUTPUT)));
-    return ret;
-}
-
 UniValue CCrossChainExport::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
@@ -1342,16 +1323,7 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
 
             case EVAL_RESERVE_EXCHANGE:
             {
-                CReserveExchange rex;
-
-                if (p.vData.size() && (rex = CReserveExchange(p.vData[0])).IsValid())
-                {
-                    out.push_back(Pair("reserveexchange", rex.ToUniValue()));
-                }
-                else
-                {
-                    out.push_back(Pair("reserveexchange", "invalid"));
-                }
+                out.push_back(Pair("invalidreserveexchangout", "invalid"));
                 break;
             }
 
