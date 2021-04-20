@@ -142,32 +142,6 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
             return std::vector<std::string>();
         }
     }
-
-    // if no explicit chain is specified, default to chain of the ID
-    if (!explicitChain && retNames.size())
-    {
-        if (retNames.size() == 1 && retNames.back() != verusChainName)
-        {
-            // we are referring to an external root blockchain
-            ChainOut = retNames[0];
-        }
-        else
-        {
-            for (int i = 1; i < retNames.size(); i++)
-            {
-                if (ChainOut.size())
-                {
-                    ChainOut = ChainOut + ".";
-                }
-                ChainOut = ChainOut + retNames[i];
-            }
-            if (ChainOut.empty())
-            {
-                ChainOut = retNames.back();
-            }
-        }
-    }
-
     return retNames;
 }
 

@@ -281,27 +281,6 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
         }
     }
 
-    // if no explicit chain is specified, default to chain of the ID
-    if (!explicitChain && retNames.size())
-    {
-        if (retNames.size() == 1 && retNames.back() != verusChainName)
-        {
-            // we are referring to an external root blockchain
-            ChainOut = retNames[0];
-        }
-        else
-        {
-            for (int i = 1; i < retNames.size(); i++)
-            {
-                if (ChainOut.size())
-                {
-                    ChainOut = ChainOut + ".";
-                }
-                ChainOut = ChainOut + retNames[i];
-            }
-        }
-    }
-
     return retNames;
 }
 
