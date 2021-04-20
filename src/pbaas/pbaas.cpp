@@ -1158,6 +1158,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
             if (cnd.lastConfirmed != -1)
             {
                 transfersFrom = cnd.vtx[cnd.lastConfirmed].second.notarizationHeight;
+                currencyState = cnd.vtx[cnd.lastConfirmed].second.currencyState;
             }
             int32_t transfersUntil = cnd.lastConfirmed == -1 ? curDef.startBlock - 1 :
                                        (cnd.vtx[cnd.lastConfirmed].second.notarizationHeight < curDef.startBlock ?
