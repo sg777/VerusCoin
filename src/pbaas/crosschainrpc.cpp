@@ -443,10 +443,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 return;
             }
         }
-        else
-        {
-            parent = ASSETCHAINS_CHAINID;
-        }
 
         name = CleanName(name, parent);
 
