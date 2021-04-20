@@ -3570,14 +3570,43 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
                 // if fee currency is the export system destination
                 // don't route through a converter
-                if (feeCurrencyID == exportToCurrencyID)
+                if (feeCurrencyID == destSystemID)
                 {
+                    // if we also have an explicit conversion, we must verify that we can either do that on this chain
+                    // first and then pass through or pass to the converter currency on the other system
+                    if (!convertToCurrencyID.IsNull())
+                    {
 
+                    }
+                    // send directly to the destination system
                 }
-                else if (convertToCurrencyID.IsNull() &&
-                         !exportSystemDef.GatewayConverterID().IsNull())
+                else if (convertToCurrencyID.IsNull())
                 {
+                    if (exportSystemDef.GatewayConverterID().IsNull())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for system destination without fee converter.");
+                    }
+                    if ((convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID &&
+                        convertToCurrencyDef.systemID != destSystemID) ||
+                        !(convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) ||
+                          convertToCurrencyDef.GetID() == feeCurrencyID))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Fractional currency " + 
+                                                                  EncodeDestination(CIdentityID(convertToCurrencyID)) +
+                                                                  " is not capable of converting " +
+                                                                  EncodeDestination(CIdentityID(feeCurrencyID)) +
+                                                                  " to " +
+                                                                  EncodeDestination(CIdentityID(destSystemID)));
+                    }
 
+                    if (convertToCurrencyDef.systemID == destSystemID)
+                    {
+                        // send to the converter on the destination system
+                    }
+                    else
+                    {
+                        // first convert, include embedded fees, then send
+                    }
                 }
 
 

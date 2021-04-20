@@ -32,7 +32,7 @@
 #include "primitives/transaction.h"
 #include "arith_uint256.h"
 
-std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false);
+std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false, bool addVerus=true);
 
 class CCommitmentHash
 {
@@ -80,9 +80,14 @@ public:
     CNameReservation() {}
     CNameReservation(const std::string &Name, const CIdentityID &Referral, const uint256 &Salt) : name(Name.size() > MAX_NAME_SIZE ? std::string(Name.begin(), Name.begin() + MAX_NAME_SIZE) : Name), referral(Referral), salt(Salt) {}
 
-    CNameReservation(const UniValue &uni)
+    CNameReservation(const UniValue &uni, uint160 parent=ASSETCHAINS_CHAINID)
     {
-        uint160 parent;
+        uint160 dummy;
+        std::string parentStr = CleanName(uni_get_str(find_value(uni, "parent")), dummy);
+        if (!parentStr.empty())
+        {
+            parent = GetDestinationID(DecodeDestination(parentStr));
+        }
         name = CleanName(uni_get_str(find_value(uni, "name")), parent);
         salt = uint256S(uni_get_str(find_value(uni, "salt")));
         CTxDestination dest = DecodeDestination(uni_get_str(find_value(uni, "referral")));

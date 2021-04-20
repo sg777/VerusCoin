@@ -642,6 +642,10 @@ CPrincipal::CPrincipal(const UniValue &uni)
 CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 {
     parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "parent")))));
+    if (parent.IsNull())
+    {
+        parent = ASSETCHAINS_CHAINID;
+    }
     name = CleanName(uni_get_str(find_value(uni, "name")), parent);
 
     UniValue hashesUni = find_value(uni, "contentmap");
@@ -854,10 +858,10 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 
 // takes a multipart name, either complete or partially processed with a Parent hash,
 // hash its parent names into a parent ID and return the parent hash and cleaned, single name
-std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter)
+std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter, bool addVerus)
 {
     std::string chainName;
-    std::vector<std::string> subNames = ParseSubNames(Name, chainName);
+    std::vector<std::string> subNames = ParseSubNames(Name, chainName, displayfilter, addVerus);
 
     if (!subNames.size())
     {
