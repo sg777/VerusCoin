@@ -1726,7 +1726,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         if (!isVerusActive && nHeight == 1)
         {
             CPBaaSNotarization launchNotarization;
-            if (!ConnectedChains.readyToStart)
+            if (!ConnectedChains.readyToStart &&
+                !ConnectedChains.CheckVerusPBaaSAvailable() &&
+                !ConnectedChains.readyToStart)
             {
                 return NULL;
             }

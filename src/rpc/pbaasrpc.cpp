@@ -1131,23 +1131,23 @@ uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=f
     {
         return retVal;
     }
-    if (CCurrencyDefinition::GetID(currencyStr) == ConnectedChains.ThisChain().GetID() && (chainActive.Height() < 1 || _IsVerusActive()))
-    {
-        if (pCurrencyDef)
-        {
-            *pCurrencyDef = ConnectedChains.ThisChain();
-        }
-        return ConnectedChains.ThisChain().GetID();
-    }
     CTxDestination currencyDest = DecodeDestination(currencyStr);
     if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
     {
         currencyDest = DecodeDestination(currencyStr + "@");
     }
+    uint160 currencyID = GetDestinationID(currencyDest);
     if (currencyDest.which() != COptCCParams::ADDRTYPE_INVALID)
     {
+        if (currencyID == ConnectedChains.ThisChain().GetID() && (chainActive.Height() < 1 || _IsVerusActive()))
+        {
+            if (pCurrencyDef)
+            {
+                *pCurrencyDef = ConnectedChains.ThisChain();
+            }
+            return ConnectedChains.ThisChain().GetID();
+        }
         // make sure there is such a currency defined on this chain
-        uint160 currencyID = GetDestinationID(currencyDest);
         if (ensureCurrencyValid)
         {
             CCurrencyDefinition currencyDef;
