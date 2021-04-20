@@ -5152,7 +5152,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CheckIdentityAPIsValid();
 
     uint160 parent;
-    std::string name = CleanName(uni_get_str(params[0]), parent, true);
+    std::string name = CleanName(uni_get_str(params[0]), parent, true, false);
     if (parent.IsNull())
     {
         parent = ASSETCHAINS_CHAINID;
