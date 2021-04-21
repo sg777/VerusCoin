@@ -1635,7 +1635,7 @@ bool CCurrencyValueMap::Intersects(const CCurrencyValueMap& operand) const
             auto it = operand.valueMap.find(oneVal.first);
             if (it != operand.valueMap.end())
             {
-                if (it->second > 0 && oneVal.second > 0)
+                if (it->second != 0 && oneVal.second != 0)
                 {
                     retVal = true;
                     break;

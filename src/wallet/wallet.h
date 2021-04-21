@@ -1070,7 +1070,7 @@ public:
                                     int nConfMine, 
                                     int nConfTheirs, 
                                     std::vector<COutput> vCoins, 
-                                    std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, 
+                                    std::set<std::pair<const CWalletTx*, unsigned int>> &setCoinsRet, 
                                     CCurrencyValueMap& valueRet,
                                     CAmount &nativeValueRet) const;
 

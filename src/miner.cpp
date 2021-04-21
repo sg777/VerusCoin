@@ -1777,12 +1777,14 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             {
                 if (!notarizationBuilder.mtx.vin.size())
                 {
+                    bool success = false;
+                    CCurrencyValueMap reserveValueOut;
+                    CAmount nativeValueOut;
                     // get a native currency input capable of paying a fee, and make our notary ID the change address
                     std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
                     {
                         LOCK(pwalletMain->cs_wallet);
                         std::vector<COutput> vCoins;
-                        CAmount transferVal;
                         if (IsVerusActive())
                         {
                             pwalletMain->AvailableCoins(vCoins,
@@ -1793,7 +1795,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                                         true,
                                                         true,
                                                         false);
-                            pwalletMain->SelectCoinsMinConf(CPBaaSNotarization::DEFAULT_NOTARIZATION_FEE, 0, 0, vCoins, setCoinsRet, transferVal);
+                            success = pwalletMain->SelectCoinsMinConf(CPBaaSNotarization::DEFAULT_NOTARIZATION_FEE, 0, 0, vCoins, setCoinsRet, nativeValueOut);
                             notarizationBuilder.SetFee(CPBaaSNotarization::DEFAULT_NOTARIZATION_FEE);
                         }
                         else
@@ -1810,18 +1812,15 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                                                nullptr,
                                                                &totalTxFees, 
                                                                false);
-                            
-                            std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
-                            CCurrencyValueMap reserveValueOut;
-                            CAmount nativeValueOut;
-                            pwalletMain->SelectReserveCoinsMinConf(totalTxFees,
-                                                                   0,
-                                                                   0,
-                                                                   1,
-                                                                   vCoins,
-                                                                   setCoinsRet,
-                                                                   reserveValueOut,
-                                                                   nativeValueOut);
+
+                            success = pwalletMain->SelectReserveCoinsMinConf(totalTxFees,
+                                                                            0,
+                                                                            0,
+                                                                            1,
+                                                                            vCoins,
+                                                                            setCoinsRet,
+                                                                            reserveValueOut,
+                                                                            nativeValueOut);
                         }
                     }
                     for (auto &oneInput : setCoinsRet)
