@@ -1836,27 +1836,30 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     notarizationBuilder.SetFee(0);
                 }
 
-                LOCK2(cs_main, mempool.cs);
-                TransactionBuilderResult buildResult = notarizationBuilder.Build();
-                if (buildResult.IsTx())
+                if (notarizationBuilder.mtx.vin.size())
                 {
-                    notarizationTx = buildResult.GetTxOrThrow();
-
-                    UniValue jsonNotaryConfirmations(UniValue::VOBJ);
-                    TxToUniv(notarizationTx, uint256(), jsonNotaryConfirmations);
-                    //printf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
-                    LogPrintf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
-
-                    // add to mem pool and relay
-                    if (myAddtomempool(notarizationTx))
+                    LOCK2(cs_main, mempool.cs);
+                    TransactionBuilderResult buildResult = notarizationBuilder.Build();
+                    if (buildResult.IsTx())
                     {
-                        RelayTransaction(notarizationTx);
+                        notarizationTx = buildResult.GetTxOrThrow();
+
+                        UniValue jsonNotaryConfirmations(UniValue::VOBJ);
+                        TxToUniv(notarizationTx, uint256(), jsonNotaryConfirmations);
+                        //printf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
+                        LogPrintf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
+
+                        // add to mem pool and relay
+                        if (myAddtomempool(notarizationTx))
+                        {
+                            RelayTransaction(notarizationTx);
+                        }
                     }
-                }
-                else
-                {
-                    printf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
-                    LogPrintf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
+                    else
+                    {
+                        printf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
+                        LogPrintf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
+                    }
                 }
             }
         }
