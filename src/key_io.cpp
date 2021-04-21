@@ -682,8 +682,8 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     std::string revocationStr = uni_get_str(find_value(uni, "revocationauthority"));
     std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthority"));
 
-    revocationAuthority = uint160(GetDestinationID(DecodeDestination(revocationStr == "" ? name + "@" : revocationStr)));
-    recoveryAuthority = uint160(GetDestinationID(DecodeDestination(recoveryStr == "" ? name + "@" : recoveryStr)));
+    revocationAuthority = revocationStr == "" ? GetID() : uint160(GetDestinationID(DecodeDestination(revocationStr)));
+    recoveryAuthority = recoveryStr == "" ? GetID() : uint160(GetDestinationID(DecodeDestination(recoveryStr)));
     libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
 
     unlockAfter = uni_get_int(find_value(uni, "timelock"));

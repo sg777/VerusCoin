@@ -3583,7 +3583,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     if (!isConversion)
                     {
                         destSystemDef = exportSystemDef;
-                        destSystemID = exportToCurrencyID;
+                        destSystemID = exportToCurrencyDef.systemID;
                     }
                 }
                 else
@@ -3602,7 +3602,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         if (convertToCurrencyDef.systemID != destSystemID &&
                             (convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID ||
                              !convertToCurrencyDef.IsFractional() ||
-                             !(convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) ||
+                             !((convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) || isConversion) ||
                                convertToCurrencyDef.GetID() == feeCurrencyID)))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + 
@@ -3798,32 +3798,38 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     {
                         // if we convert first, then export, put the follow-on export in an output
                         // to be converted with a cross-chain fee
+                        CTransferDestination dest = DestinationToTransferDestination(destination);
+
                         if (convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
                         {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Converting with an export to another system following is not yet supported");
                             // if we're converting and then sending, we don't need an initial fee, so all
                             // fees go into the final destination
-                            if (isConversion)
+                            dest.type |= dest.FLAG_DEST_GATEWAY;
+                            dest.gatewayID = feeCurrencyID;
+                            CChainNotarizationData cnd;
+                            if (!GetNotarizationData(convertToCurrencyID, cnd) ||
+                                !cnd.IsConfirmed())
                             {
-
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization/pricing information for " + exportToCurrencyDef.name);
                             }
-                        }
-                        else
-                        {
-                            // if we are converting only fees
-                            if (!isConversion)
+                            auto currencyMap = cnd.vtx[cnd.lastConfirmed].second.currencyState.GetReserveMap();
+                            if (!currencyMap.count(destSystemID) || !currencyMap.count(feeCurrencyID))
                             {
-                                
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Local converter convert " + feeCurrencyDef.name + " to " + destSystemDef.name + ".");
                             }
+                            dest.fees = 
+                                (exportSystemDef.transactionImportFee * cnd.vtx[cnd.lastConfirmed].second.currencyState.PriceInReserve(currencyMap[destSystemID]))
+                                  / cnd.vtx[cnd.lastConfirmed].second.currencyState.PriceInReserve(currencyMap[feeCurrencyID]);
+                            printf("%s: setting transfer fees in currency %s to %ld\n", __func__, EncodeDestination(CIdentityID(feeCurrencyID)).c_str(), dest.fees);
                         }
 
-                        // native currency must be the currency we are converting to, and the source must be a reserve
                         auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
                         if (!reserveMap.count(feeCurrencyID))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert fees " + EncodeDestination(CIdentityID(feeCurrencyID)) + " to " + destSystemDef.name + ". 3");
                         }
                         // converting from reserve to a fractional of that reserve
-                        auto dest = DestinationToTransferDestination(destination);
                         auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID, 
@@ -3852,7 +3858,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
-                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : fees;
+                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
+                        assert(feeCurrencyID == destSystemID);
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                 }
