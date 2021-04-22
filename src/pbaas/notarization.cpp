@@ -1775,60 +1775,59 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 }
             }
 
-            // we've already signed
-            if (!myIDSet.size())
-            {
-                return state.Error("ineligible");
-            }
-
+            CNotaryEvidence ne;
             CCcontract_info CC;
             CCcontract_info *cp;
             std::vector<CTxDestination> dests;
 
-            cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
-            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-            CNotaryEvidence ne = CNotaryEvidence(ASSETCHAINS_CHAINID, cnd.vtx[idx].first);
-
+            // if we can still sign, do so before final check of evidence
+            if (myIDSet.size())
             {
-                LOCK(pWallet->cs_wallet);
-                // sign with all IDs under our control that are eligible for this currency
-                for (auto &oneID : myIDSet)
+                cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
+                dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+                CNotaryEvidence ne = CNotaryEvidence(ASSETCHAINS_CHAINID, cnd.vtx[idx].first);
+
                 {
-                    auto signResult = ne.SignConfirmed(*pWallet, txes[idx].first, oneID, height);
-                    if (signResult == CIdentitySignature::SIGNATURE_PARTIAL || signResult == CIdentitySignature::SIGNATURE_COMPLETE)
+                    LOCK(pWallet->cs_wallet);
+                    // sign with all IDs under our control that are eligible for this currency
+                    for (auto &oneID : myIDSet)
                     {
-                        sigSet.insert(oneID);
-                        retVal = true;
-                        // if our signatures altogether have provided a complete validation, we can early out
-                        if ((ne.signatures.size() + myIDSigs.size()) >= externalSystem.chainDefinition.minNotariesConfirm)
+                        auto signResult = ne.SignConfirmed(*pWallet, txes[idx].first, oneID, height);
+                        if (signResult == CIdentitySignature::SIGNATURE_PARTIAL || signResult == CIdentitySignature::SIGNATURE_COMPLETE)
                         {
-                            break;
+                            sigSet.insert(oneID);
+                            retVal = true;
+                            // if our signatures altogether have provided a complete validation, we can early out
+                            if ((ne.signatures.size() + myIDSigs.size()) >= externalSystem.chainDefinition.minNotariesConfirm)
+                            {
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            return state.Error(errorPrefix + "invalid identity signature");
                         }
                     }
-                    else
-                    {
-                        return state.Error(errorPrefix + "invalid identity signature");
-                    }
                 }
-            }
 
-            if (ne.signatures.size())
-            {
-                /* for (auto &debugOut : ne.signatures)
+                if (ne.signatures.size())
                 {
-                    printf("%s: onesig - ID: %s, signature: %s\n", __func__, EncodeDestination(debugOut.first).c_str(), debugOut.second.ToUniValue().write(1,2).c_str());
-                } */
+                    /* for (auto &debugOut : ne.signatures)
+                    {
+                        printf("%s: onesig - ID: %s, signature: %s\n", __func__, EncodeDestination(debugOut.first).c_str(), debugOut.second.ToUniValue().write(1,2).c_str());
+                    } */
 
-                retVal = true;
-                CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne));
-                myIDSigs.push_back(CInputDescriptor(evidenceScript, 0, CTxIn(COutPoint(uint256(), txBuilder.mtx.vout.size()))));
-                txBuilder.AddTransparentOutput(evidenceScript, CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
+                    retVal = true;
+                    CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne));
+                    myIDSigs.push_back(CInputDescriptor(evidenceScript, 0, CTxIn(COutPoint(uint256(), txBuilder.mtx.vout.size()))));
+                    txBuilder.AddTransparentOutput(evidenceScript, CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
 
-                // if we don't have enough signatures to finalize, add an input and fee to the transaction from our
-                // notary pre-allocation
-                if (sigSet.size() < ConnectedChains.ThisChain().minNotariesConfirm)
-                {
-                    
+                    // if we don't have enough signatures to finalize, add an input and fee to the transaction from our
+                    // notary pre-allocation
+                    if (sigSet.size() < ConnectedChains.ThisChain().minNotariesConfirm)
+                    {
+                        
+                    }
                 }
             }
 
