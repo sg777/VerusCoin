@@ -1754,7 +1754,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
-        // DEBUG OUTPUT
+        /* // DEBUG OUTPUT
         for (auto &oneDepositIn : localDeposits)
         {
             UniValue scrUni(UniValue::VOBJ);
@@ -1764,7 +1764,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 oneDepositIn.txIn.prevout.hash.GetHex().c_str(), 
                 oneDepositIn.txIn.prevout.n,
                 scrUni.write(1,2).c_str());
-        } // DEBUG OUTPUT END
+        } // DEBUG OUTPUT END */
 
         // if importing from another system/chain, get reserve deposits of source system to make available to import
         // as well
@@ -2927,7 +2927,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                         const std::vector<CInputDescriptor> &priorExports,
                                         const CTxDestination &feeOutput,
                                         uint32_t sinceHeight,
-                                        uint32_t curHeight,
+                                        uint32_t curHeight, // the height of the next block
                                         int32_t inputStartNum,
                                         int32_t &inputsConsumed,
                                         std::vector<CTxOut> &exportOutputs,
@@ -3674,7 +3674,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                                                                 allExportOutputs,
                                                                 feeOutput,
                                                                 ccx.sourceHeightEnd,
-                                                                nHeight,
+                                                                nHeight + 1,
                                                                 (!isSameChain && !mergedSysExport) ? 2 : 1, // reserve transfers start at input 1 on same chain or after sys
                                                                 numInputsUsed,
                                                                 exportTxOuts,
