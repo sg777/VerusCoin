@@ -3125,7 +3125,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 // calculate launch prices and ensure that conversion prices remain constant until
                 // launch is complete
-                if (newCurrencyState.IsLaunchClear())
+                if (newCurrencyState.IsLaunchClear() && newCurrencyState.IsPrelaunch())
                 {
                     CCoinbaseCurrencyState tempCurrencyState = importCurrencyState;
 
