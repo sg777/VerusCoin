@@ -107,6 +107,9 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
     bool isVerusActive = IsVerusActive();
     static bool thisChainLoaded = false;
     static bool localDefined = false;
+    std::vector<CNodeData> _goodNodes;
+    std::vector<CNodeData> &goodNodes = pGoodNodes ? *pGoodNodes : _goodNodes;
+
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
     uint160 lookupKey = CCrossChainRPCData::GetConditionID(chainID, CCurrencyDefinition::CurrencyDefinitionKey());
 
@@ -132,7 +135,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
         }
         if (pGoodNodes)
         {
-            *pGoodNodes = GetGoodNodes();
+            goodNodes = GetGoodNodes();
         }
         return true;
     }
@@ -194,7 +197,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
                             (pbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
                             pbn.currencyID == chainID)
                         {
-                            *pGoodNodes = pbn.nodes;
+                            goodNodes = pbn.nodes;
                             break;
                         }
                     }
@@ -237,7 +240,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
                             (pbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
                             pbn.currencyID == chainID)
                         {
-                            *pGoodNodes = pbn.nodes;
+                            goodNodes = pbn.nodes;
                             break;
                         }
                     }
@@ -248,7 +251,10 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
     }
     if (chainID == ASSETCHAINS_CHAINID && foundDef.IsValid())
     {
-        *pGoodNodes = GetGoodNodes();
+        if (pGoodNodes)
+        {
+            goodNodes = GetGoodNodes();
+        }
         if (!thisChainLoaded)
         {
             thisChainLoaded = true;

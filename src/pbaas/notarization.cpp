@@ -1096,6 +1096,10 @@ std::vector<CNodeData> GetGoodNodes(int maxNum)
                 }
             }
         }
+        if (!retVal.size())
+        {
+            retVal.push_back(CNodeData(goodNodes.begin()->second->addr.ToStringIPPort(), goodNodes.begin()->second->hashPaymentAddress));
+        }
     }
     else if (goodNodes.size())
     {
