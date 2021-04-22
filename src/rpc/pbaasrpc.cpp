@@ -4449,12 +4449,15 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     CCurrencyDefinition checkDef;
-    if (GetCurrencyDefinition(newCurrency.name, checkDef))
+    int32_t defHeight;
+    if (GetCurrencyDefinition(newCurrency.GetID(), checkDef, &defHeight, true) && !(newCurrency.GetID() == ASSETCHAINS_CHAINID && !defHeight))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, newCurrency.name + " chain already defined. see help.");
     }
 
-    if (newCurrency.parent.IsNull())
+    bool currentChainDefinition = newCurrency.GetID() == ASSETCHAINS_CHAINID && !defHeight;
+
+    if (newCurrency.parent.IsNull() && !currentChainDefinition)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, newCurrency.name + " invalid chain name.");
     }
