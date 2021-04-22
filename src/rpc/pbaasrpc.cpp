@@ -246,10 +246,14 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
             }
         }
     }
-    if (chainID == ASSETCHAINS_CHAINID && foundDef.IsValid() && !thisChainLoaded)
+    if (chainID == ASSETCHAINS_CHAINID && foundDef.IsValid())
     {
-        thisChainLoaded = true;
-        ConnectedChains.ThisChain() = foundDef;
+        *pGoodNodes = GetGoodNodes();
+        if (!thisChainLoaded)
+        {
+            thisChainLoaded = true;
+            ConnectedChains.ThisChain() = foundDef;
+        }
     }
     return foundDef.IsValid();
 }
