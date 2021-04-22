@@ -1091,7 +1091,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         if (workingNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
                                                      curDef,
                                                      fromHeight,
-                                                     height,
+                                                     std::min(height, curDef.startBlock - 1),
                                                      transfers,
                                                      transferHash,
                                                      newNotarization,
@@ -1143,7 +1143,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                                                     currencyState, 
                                                     notarization.IsValid() && !notarization.IsDefinitionNotarization() ? 
                                                         notarization.notarizationHeight + 1 : curDefHeight, 
-                                                    height, 
+                                                    std::min(height, curDef.startBlock - 1), 
                                                     curDefHeight);
         }
     }

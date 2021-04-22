@@ -2731,7 +2731,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         }
                         curTransfer.GetTxOut(CCurrencyValueMap(), newCurrencyConverted, newOut);
                     }
-                    else
+                    else // all conversions are to primary currency
                     {
                         AddReserveOutConverted(curTransfer.destCurrencyID, newCurrencyConverted);
                         AddReserveOutput(curTransfer.destCurrencyID, newCurrencyConverted);
@@ -3017,45 +3017,59 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
 
-    //printf("%s: adjustedReserveConverted: %s\nreserveConverted: %s\n", __func__, adjustedReserveConverted.ToUniValue().write(1,2).c_str(), reserveConverted.ToUniValue().write(1,2).c_str());
-    if (isFractional &&
-        newCurrencyState.IsLaunchConfirmed() &&
-        (adjustedReserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size()))
+    // if we are in pre-launch mode
+    if (isFractional && newCurrencyState.IsLaunchConfirmed())
     {
-        CCurrencyState dummyCurState;
-        std::vector<int64_t> newPrices =
-            importCurrencyState.ConvertAmounts(adjustedReserveConverted.AsCurrencyVector(importCurrencyState.currencies),
-                                               fractionalConverted.AsCurrencyVector(importCurrencyState.currencies),
-                                               dummyCurState,
-                                               &crossConversions,
-                                               &newCurrencyState.viaConversionPrice);
-        if (!dummyCurState.IsValid())
+        CCoinbaseCurrencyState scratchCurrencyState = importCurrencyState;
+
+        if (scratchCurrencyState.IsPrelaunch() && preConvertedReserves > CCurrencyValueMap())
         {
-            printf("%s: Invalid currency conversions for import to %s : %s\n", __func__, importCurrencyDef.name.c_str(), EncodeDestination(CIdentityID(importCurrencyDef.GetID())).c_str());
-            LogPrintf("%s: Invalid currency conversions for import to %s : %s\n", __func__, importCurrencyDef.name.c_str(), EncodeDestination(CIdentityID(importCurrencyDef.GetID())).c_str());
-            return false;
-        }
-        if (!newCurrencyState.IsLaunchCompleteMarker())
-        {
-            // make viaconversion prices the dynamic prices and conversion prices remain initial pricing
-            for (int i = 0; i < newPrices.size(); i++)
+            // add all pre-converted reserves before calculating pricing for fee conversions
+            for (auto &oneReserve : preConvertedReserves.valueMap)
             {
-                if (i != systemDestIdx)
+                if (oneReserve.second)
                 {
-                    newCurrencyState.viaConversionPrice[i] = newPrices[i];
+                    scratchCurrencyState.reserves[currencyIndexMap[oneReserve.first]] += oneReserve.second;
                 }
             }
         }
-        else
+
+        if (adjustedReserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size())
         {
-            newCurrencyState.conversionPrice = newPrices;
+            CCurrencyState dummyCurState;
+            std::vector<int64_t> newPrices =
+                scratchCurrencyState.ConvertAmounts(adjustedReserveConverted.AsCurrencyVector(importCurrencyState.currencies),
+                                                    fractionalConverted.AsCurrencyVector(importCurrencyState.currencies),
+                                                    dummyCurState,
+                                                    &crossConversions,
+                                                    &newCurrencyState.viaConversionPrice);
+            if (!dummyCurState.IsValid())
+            {
+                printf("%s: Invalid currency conversions for import to %s : %s\n", __func__, importCurrencyDef.name.c_str(), EncodeDestination(CIdentityID(importCurrencyDef.GetID())).c_str());
+                LogPrintf("%s: Invalid currency conversions for import to %s : %s\n", __func__, importCurrencyDef.name.c_str(), EncodeDestination(CIdentityID(importCurrencyDef.GetID())).c_str());
+                return false;
+            }
+            if (!newCurrencyState.IsLaunchCompleteMarker())
+            {
+                // make viaconversion prices the dynamic prices and conversion prices remain initial pricing
+                for (int i = 0; i < newPrices.size(); i++)
+                {
+                    if (i != systemDestIdx)
+                    {
+                        newCurrencyState.viaConversionPrice[i] = newPrices[i];
+                    }
+                }
+            }
+            else
+            {
+                newCurrencyState.conversionPrice = newPrices;
+            }
         }
     }
 
     if (newCurrencyState.IsPrelaunch())
     {
-        // add it back in from subtraction above
-        adjustedReserveConverted += preConvertedReserves;
+        adjustedReserveConverted = reserveConverted;
     }
 
     newCurrencyState.preConvertedOut = 0;
@@ -3077,9 +3091,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         std::vector<CAmount> vResConverted = adjustedReserveConverted.AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap(importCurrencyID).AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
-        std::vector<CAmount> vFracOutConverted = newCurrencyState.IsPrelaunch() ? 
-                                                    NativeOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies) :
-                                                    (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
             newCurrencyState.reserveIn[i] = vResConverted[i] + vLiquidityFees[i];
@@ -3115,15 +3127,24 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // launch is complete
                 if (newCurrencyState.IsLaunchClear())
                 {
-                    CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
-                    tempCurrencyState.RevertFees(importCurrencyState.viaConversionPrice, importCurrencyState.viaConversionPrice, importCurrencyDef.systemID);
+                    CCoinbaseCurrencyState tempCurrencyState = importCurrencyState;
+
+                    if (preConvertedReserves > CCurrencyValueMap())
+                    {
+                        tempCurrencyState.reserves = 
+                            (CCurrencyValueMap(
+                                tempCurrencyState.currencies, tempCurrencyState.reserves) + preConvertedReserves).AsCurrencyVector(tempCurrencyState.currencies);
+                    }
 
                     /* printf("%s: importCurrencyState:\n%s\nnewCurrencyState:\n%s\nrevertedState:\n%s\n", 
                         __func__, 
                         importCurrencyState.ToUniValue().write(1,2).c_str(), 
                         newCurrencyState.ToUniValue().write(1,2).c_str(), 
                         tempCurrencyState.ToUniValue().write(1,2).c_str());
-                    printf("%s: liquidityfees:\n%s\n", __func__, liquidityFees.ToUniValue().write(1,2).c_str()); */
+                    printf("%s: liquidityfees:\n%s\n", __func__, liquidityFees.ToUniValue().write(1,2).c_str());
+                    printf("%s: preConvertedReserves:\n%s\n", __func__, preConvertedReserves.ToUniValue().write(1,2).c_str()); */
+
+                    tempCurrencyState.supply = importCurrencyDef.initialFractionalSupply;
 
                     if (importCurrencyDef.launchSystemID == importCurrencyDef.systemID)
                     {
