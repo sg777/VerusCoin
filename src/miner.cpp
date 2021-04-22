@@ -333,7 +333,7 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
     bool isSameChain = thisChain.GetID() == sourceChainID;
 
     CChainNotarizationData cnd;
-    if (!GetNotarizationData(sourceChainID, cnd) && cnd.IsConfirmed())
+    if (!(GetNotarizationData(sourceChainID, cnd) && cnd.IsConfirmed()))
     {
         printf("Cannot get notarization data for currency %s\n", sourceChain.name.c_str());
         return;
