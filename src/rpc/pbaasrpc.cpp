@@ -4722,7 +4722,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition newChain(ValidateNewUnivalueCurrencyDefinition(params[0], height, ASSETCHAINS_CHAINID));
 
-    if ((newChain.GetID() != ASSETCHAINS_CHAINID && ASSETCHAINS_CHAINID == VERUS_CHAINID) || newChain.parent != thisChainID)
+    if ((newChain.GetID() == ASSETCHAINS_CHAINID && ASSETCHAINS_CHAINID != VERUS_CHAINID) || 
+        (newChain.parent != thisChainID && !(newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull())))
     {
         // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
         throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to define a chain relative to a parent that is not the current chain.");
