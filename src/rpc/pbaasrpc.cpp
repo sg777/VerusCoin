@@ -106,7 +106,20 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
 {
     bool isVerusActive = IsVerusActive();
     static bool thisChainLoaded = false;
-    if (chainID == ConnectedChains.ThisChain().GetID() && (thisChainLoaded || chainActive.Height() < 1 || isVerusActive))
+    static bool localDefined = false;
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+    uint160 lookupKey = CCrossChainRPCData::GetConditionID(chainID, CCurrencyDefinition::CurrencyDefinitionKey());
+
+    if (!localDefined &&
+        chainID == ConnectedChains.ThisChain().GetID() &&
+        isVerusActive &&
+        GetAddressUnspent(lookupKey, CScript::P2IDX, unspentOutputs) && 
+        unspentOutputs.size())
+    {
+        localDefined = true;
+        unspentOutputs.clear();
+    }
+    if (!localDefined && chainID == ConnectedChains.ThisChain().GetID() && (thisChainLoaded || chainActive.Height() < 1 || isVerusActive))
     {
         chainDef = ConnectedChains.ThisChain();
         if (pDefHeight)
@@ -140,8 +153,6 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
         }
     }
 
-    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
-    uint160 lookupKey = CCrossChainRPCData::GetConditionID(chainID, CCurrencyDefinition::CurrencyDefinitionKey());
     std::vector<std::pair<uint160, int>> addresses = {{lookupKey, CScript::P2IDX}};
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> > results;
     CCurrencyDefinition foundDef;
