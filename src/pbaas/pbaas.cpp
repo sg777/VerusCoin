@@ -1734,7 +1734,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             (priorChainNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid() &&
             priorChainNotarization.currencyState.IsValid())
         {
-            // if this is a refund from an alternate chain, we need to 
+            // if this is a refund from an alternate chain, we accept it to this chain if we are the launch chain
             if (priorChainNotarization.currencyState.IsRefunding() &&
                 GetCurrencyDefinition(ccx.destCurrencyID, refundingPBaaSChain) &&
                 refundingPBaaSChain.launchSystemID == ASSETCHAINS_CHAINID &&

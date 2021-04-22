@@ -480,44 +480,48 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     CIdentity firstReferralIdentity = CIdentity::LookupFirstIdentity(newName.referral, &heightOut, &idTxIn, &referralTx);
 
     // referrer must be mined in when this transaction is put into the mem pool
-    if (heightOut >= height || !firstReferralIdentity.IsValid())
+    if (heightOut >= height || !firstReferralIdentity.IsValid() || firstReferralIdentity.parent != ASSETCHAINS_CHAINID)
     {
         return state.Error("Invalid identity registration referral");
     }
 
     bool isReferral = false;
     std::vector<CTxDestination> checkReferrers = std::vector<CTxDestination>({newName.referral});
-    for (auto &txout : referralTx.vout)
+    if (heightOut != 1)
     {
-        COptCCParams p;
-        if (txout.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+        for (auto &txout : referralTx.vout)
         {
-            if (p.evalCode == EVAL_IDENTITY_PRIMARY)
+            COptCCParams p;
+            if (txout.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
             {
-                isReferral = true;
-            }
-            else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
-            {
-                break;
-            }
-            else if (isReferral)
-            {
-                if (p.vKeys.size() == 0 || p.vKeys[0].which() != COptCCParams::ADDRTYPE_ID)
+                if (p.evalCode == EVAL_IDENTITY_PRIMARY)
                 {
-                    // invalid referral
-                    return state.Error("Invalid identity registration referral outputs");
+                    isReferral = true;
                 }
-                else
+                else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
                 {
-                    checkReferrers.push_back(p.vKeys[0]);
-                    if (checkReferrers.size() == issuingChain.IDReferralLevels())
+                    break;
+                }
+                else if (isReferral)
+                {
+                    if (p.vKeys.size() == 0 || p.vKeys[0].which() != COptCCParams::ADDRTYPE_ID)
                     {
-                        break;
+                        // invalid referral
+                        return state.Error("Invalid identity registration referral outputs");
+                    }
+                    else
+                    {
+                        checkReferrers.push_back(p.vKeys[0]);
+                        if (checkReferrers.size() == issuingChain.IDReferralLevels())
+                        {
+                            break;
+                        }
                     }
                 }
             }
         }
     }
+
     if (referrers.size() != checkReferrers.size())
     {
         return state.Error("Invalid identity registration - incorrect referral payments");
@@ -909,6 +913,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     }
 
     // TODO: HARDENING at block one, a new PBaaS chain can mint IDs
+    // ensure they are valid as per the launch parameters
     if (isPBaaS && height == 1)
     {
         return true;

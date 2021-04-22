@@ -5441,7 +5441,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         CTxIn referralTxIn;
         CTransaction referralIdTx;
         auto referralIdentity =  newID.LookupIdentity(reservation.referral, commitmentHeight - 1);
-        if (referralIdentity.IsValidUnrevoked())
+        if (referralIdentity.IsValidUnrevoked() && referralIdentity.parent == ASSETCHAINS_CHAINID)
         {
             if (!newID.LookupFirstIdentity(reservation.referral, &referralHeight, &referralTxIn, &referralIdTx).IsValid())
             {
@@ -5451,28 +5451,31 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             // create outputs for this referral and up to n identities back in the referral chain
             outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), ConnectedChains.ThisChain().IDReferralAmount(), false});
             feeOffer -= ConnectedChains.ThisChain().IDReferralAmount();
-            int afterId = referralTxIn.prevout.n + 1;
-            for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < (ConnectedChains.ThisChain().idReferralLevels - 1); i++)
+            if (referralHeight != 1)
             {
-                CTxDestination nextID;
-                COptCCParams p, master;
+                int afterId = referralTxIn.prevout.n + 1;
+                for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < (ConnectedChains.ThisChain().idReferralLevels - 1); i++)
+                {
+                    CTxDestination nextID;
+                    COptCCParams p, master;
 
-                if (referralIdTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && 
-                    p.IsValid() && 
-                    p.evalCode == EVAL_NONE && 
-                    p.vKeys.size() == 1 && 
-                    (p.vData.size() == 1 ||
-                    (p.vData.size() == 2 && 
-                    p.vKeys[0].which() == COptCCParams::ADDRTYPE_ID &&
-                    (master = COptCCParams(p.vData[1])).IsValid() &&
-                    master.evalCode == EVAL_NONE)))
-                {
-                    outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), ConnectedChains.ThisChain().IDReferralAmount(), false});
-                    feeOffer -= ConnectedChains.ThisChain().IDReferralAmount();
-                }
-                else
-                {
-                    break;
+                    if (referralIdTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                        p.IsValid() && 
+                        p.evalCode == EVAL_NONE && 
+                        p.vKeys.size() == 1 && 
+                        (p.vData.size() == 1 ||
+                        (p.vData.size() == 2 && 
+                        p.vKeys[0].which() == COptCCParams::ADDRTYPE_ID &&
+                        (master = COptCCParams(p.vData[1])).IsValid() &&
+                        master.evalCode == EVAL_NONE)))
+                    {
+                        outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), ConnectedChains.ThisChain().IDReferralAmount(), false});
+                        feeOffer -= ConnectedChains.ThisChain().IDReferralAmount();
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
             }
         }
