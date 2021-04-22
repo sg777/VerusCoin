@@ -2007,7 +2007,27 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         newNotarization.prevNotarization = CUTXORef(lastNotarizationOut.txIn.prevout.hash, lastNotarizationOut.txIn.prevout.n);
 
-        //printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
+        CCurrencyValueMap incomingCurrency = importedCurrency + gatewayDepositsUsed;
+        if (newNotarization.currencyState.primaryCurrencyOut)
+        {
+            incomingCurrency.valueMap[destCurID] += newNotarization.currencyState.primaryCurrencyOut;
+        }
+        CCurrencyValueMap newLocalReserveDeposits = incomingCurrency.SubtractToZero(spentCurrencyOut);
+        CCurrencyValueMap newLocalDepositsRequired = ((incomingCurrency - spentCurrencyOut) - newLocalReserveDeposits).CanonicalMap() * -1;
+
+        /* printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
+        printf("%s: ccx.totalAmounts: %s\ngatewayDepositsUsed: %s\nimportedCurrency: %s\nspentCurrencyOut: %s\n",
+            __func__,
+            ccx.totalAmounts.ToUniValue().write(1,2).c_str(),
+            gatewayDepositsUsed.ToUniValue().write(1,2).c_str(),
+            importedCurrency.ToUniValue().write(1,2).c_str(),
+            spentCurrencyOut.ToUniValue().write(1,2).c_str());
+
+        printf("%s: incomingCurrency: %s\ncurrencyChange: %s\nnewLocalDepositsRequired: %s\n",
+            __func__,
+            incomingCurrency.ToUniValue().write(1,2).c_str(),
+            newLocalReserveDeposits.ToUniValue().write(1,2).c_str(),
+            newLocalDepositsRequired.ToUniValue().write(1,2).c_str()); */
 
         // create the import
         CCrossChainImport cci = CCrossChainImport(sourceSystemID,
@@ -2190,6 +2210,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 LogPrintf("%s: insufficient funds for gateway reserve deposits from system %s\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());
                 return false;
             }
+            // printf("%s: gatewayDepositsUsed: %s\n", __func__, gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
+            // printf("%s: gatewayChange: %s\n", __func__, gatewayChange.ToUniValue().write(1,2).c_str());
         }
 
         // the amount being imported is under the control of the exporting system and
@@ -2203,14 +2225,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // change will all accrue to reserve deposits
         //
 
-        // first determine total deposits required to fulfill currency in requirements
-        // this will take fees into account, which do not intersect with other currencies
-        CCurrencyValueMap requiredDeposits;
-
         // if this import is from another system, we will need local imports or gateway deposits to
         // cover the imported currency amount. if it is from this system, the reserve deposits are already
         // present from the export, which is also on this chain
         CCurrencyValueMap checkImportedCurrency;
+        CCurrencyValueMap checkRequiredDeposits;
         if (cci.sourceSystemID != destCur.systemID &&
             (!newNotarization.currencyState.IsLaunchConfirmed() || newNotarization.currencyState.IsLaunchCompleteMarker()))
         {
@@ -2218,37 +2237,23 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                       cci.sourceSystemID,
                                                       destCur.systemID,
                                                       checkImportedCurrency,
-                                                      requiredDeposits))
+                                                      checkRequiredDeposits))
             {
                 return false;
             }
         }
 
-        printf("%s: checkImportedCurrency: %s\nrequiredDeposits: %s\n", __func__, checkImportedCurrency.ToUniValue().write(1,2).c_str(), requiredDeposits.ToUniValue().write(1,2).c_str());
-        printf("%s: primaryCurrencyOut: %s\n", __func__, CCurrencyValueMap(std::vector<uint160>({cci.importCurrencyID}), std::vector<int64_t>({newNotarization.currencyState.primaryCurrencyOut})).ToUniValue().write(1,2).c_str());
-
-        // we must also come up with anything spent that is not satisfied via standard required deposits, 
-        // as determined by reserves in. any excess in required deposits beyond what is spent will go to
-        // reserve deposits change
-        requiredDeposits += spentCurrencyOut.SubtractToZero(requiredDeposits);
-        requiredDeposits.valueMap[cci.importCurrencyID] -= newNotarization.currencyState.primaryCurrencyOut;
-
-        CCurrencyValueMap newCurrencyIn = gatewayDepositsUsed + importedCurrency;
-        CCurrencyValueMap localDepositRequirements = requiredDeposits;
-        CCurrencyValueMap localDepositChange;
-
-        printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        /* printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
         printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
-        printf("%s: requireddeposits: %s\n", __func__, requiredDeposits.ToUniValue().write(1,2).c_str());
-        printf("%s: newcurrencyin: %s\n", __func__, newCurrencyIn.ToUniValue().write(1,2).c_str());
+        printf("%s: newcurrencyin: %s\n", __func__, incomingCurrency.ToUniValue().write(1,2).c_str());
         printf("%s: importedCurrency: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str());
-        printf("%s: localdepositrequirements: %s\n", __func__, localDepositRequirements.ToUniValue().write(1,2).c_str());
+        printf("%s: localdepositrequirements: %s\n", __func__, newLocalDepositsRequired.ToUniValue().write(1,2).c_str()); */
 
         // add local reserve deposit inputs and determine change
-        if (localDepositRequirements.valueMap.size() ||
+        if (newLocalDepositsRequired.valueMap.size() ||
             localDeposits.size() ||
-            newCurrencyIn.valueMap.size())
+            incomingCurrency.valueMap.size())
         {
             CCurrencyValueMap totalDepositsInput;
 
@@ -2260,29 +2265,29 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 {
                     oneDepositVal.valueMap[ASSETCHAINS_CHAINID] = oneDeposit.nValue;
                 }
-                if (localDepositRequirements.Intersects(oneDepositVal))
+                if (newLocalDepositsRequired.Intersects(oneDepositVal))
                 {
                     totalDepositsInput += oneDepositVal;
                     depositsToUse.push_back(oneDeposit);
                 }
             }
 
-            localDepositChange = (totalDepositsInput + newCurrencyIn) - localDepositRequirements;
+            newLocalReserveDeposits = ((totalDepositsInput + incomingCurrency) - spentCurrencyOut).CanonicalMap();
 
-            printf("%s: totalDepositsInput: %s\nlocalDepositChange: %s\n", 
+            /* printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
-                localDepositChange.ToUniValue().write(1,2).c_str());
+                newLocalReserveDeposits.ToUniValue().write(1,2).c_str()); */
 
             // we should always be able to fulfill
             // local deposit requirements, or this is an error
-            if (localDepositChange.HasNegative())
+            if (newLocalReserveDeposits.HasNegative())
             {
                 LogPrintf("%s: insufficient funds for local reserve deposits for currency %s, have:\n%s, need:\n%s\n", 
                           __func__, 
                           EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(),
                           totalDepositsInput.ToUniValue().write(1,2).c_str(),
-                          localDepositRequirements.ToUniValue().write(1,2).c_str());
+                          newLocalDepositsRequired.ToUniValue().write(1,2).c_str());
                 return false;
             }
         }
@@ -2324,7 +2329,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         // we will keep reserve deposit change to single currency outputs to ensure aggregation of like currencies and
         // prevent fragmentation edge cases
-        for (auto &oneChangeVal : localDepositChange.valueMap)
+        for (auto &oneChangeVal : newLocalReserveDeposits.valueMap)
         {
             // dust rules don't apply
             if (oneChangeVal.second)
@@ -2360,6 +2365,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // pay the fee out to the miner
         CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight);
         tb.SetFee(rtxd.nativeIn - rtxd.nativeOut);
+        CCurrencyValueMap reserveFees = rtxd.ReserveFees();
+        if (reserveFees > CCurrencyValueMap())
+        {
+            tb.SetReserveFee(reserveFees);
+        }
 
         // if we've got launch currency as the fee, it means we are mining block 1
         // send it to our current miner or notary address

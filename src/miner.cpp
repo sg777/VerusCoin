@@ -850,7 +850,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             newNotarization.SetBlockOneNotarization();
 
             // display import outputs
-            /*
             CMutableTransaction debugTxOut;
             debugTxOut.vout = outputs;
             debugTxOut.vout.insert(debugTxOut.vout.end(), importOutputs.begin(), importOutputs.end());
@@ -860,7 +859,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                                                             jsonTxOut.write(1,2).c_str(),
                                                                                             lastNotarization.ToUniValue().write(1,2).c_str(),
                                                                                             newNotarization.ToUniValue().write(1,2).c_str());
-            */
 
             newNotarization.prevNotarization = CUTXORef();
             newNotarization.prevHeight = 0;
@@ -899,34 +897,32 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             // anything we had before plus anything imported and minus all spent currency out should
             // be all reserve deposits remaining under control of this currency
 
-            /* printf("%s: ccx.totalAmounts: %s\ngatewayDepositsUsed: %s\nadditionalFees: %s\n",
+            /* printf("%s: ccx.totalAmounts: %s\ngatewayDepositsUsed: %s\nadditionalFees: %s\noriginalFees: %s\n",
                 __func__,
                 ccx.totalAmounts.ToUniValue().write(1,2).c_str(),
                 gatewayDepositsUsed.ToUniValue().write(1,2).c_str(),
-                additionalFees.ToUniValue().write(1,2).c_str()); */
+                additionalFees.ToUniValue().write(1,2).c_str(),
+                originalFees.ToUniValue().write(1,2).c_str()); */
 
             // to determine left over reserves for deposit, consider imported and emitted as the same
-            if (newCurrency.IsFractional())
+            gatewayDeposits = CCurrencyValueMap(lastNotarization.currencyState.currencies, lastNotarization.currencyState.reserveIn);
+            if (!newCurrency.IsFractional())
             {
-                gatewayDeposits = CCurrencyValueMap(lastNotarization.currencyState.currencies, lastNotarization.currencyState.reserveIn);
-            }
-            else
-            {
-                gatewayDeposits = importedCurrency;
+                gatewayDeposits += originalFees;
             }
             gatewayDeposits.valueMap[newCurID] += newNotarization.currencyState.primaryCurrencyOut;
 
-            /* printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
+            printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
-                gatewayDeposits.ToUniValue().write(1,2).c_str()); */
+                gatewayDeposits.ToUniValue().write(1,2).c_str());
 
             gatewayDeposits = (gatewayDeposits - spentCurrencyOut).CanonicalMap();
 
-            /* printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
+            printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
-                gatewayDeposits.ToUniValue().write(1,2).c_str()); */
+                gatewayDeposits.ToUniValue().write(1,2).c_str());
 
             // add the reserve deposit output with all deposits for this currency for the new chain
             if (gatewayDeposits.valueMap.size())

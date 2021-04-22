@@ -910,13 +910,10 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs,
     if (tx.IsCoinBase())
         return true; // Coinbases don't use vin normally
 
-    if (tx.IsCoinImport())
-        return tx.vin[0].scriptSig.IsCoinImport();
-
     for (unsigned int i = 0; i < tx.vin.size(); i++)
     {
         const CTxOut& prev = mapInputs.GetOutputFor(tx.vin[i]);
-        
+
         vector<vector<unsigned char> > vSolutions;
         txnouttype whichType;
         // get the scriptPubKey corresponding to this input:
@@ -925,10 +922,11 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs,
 
         if (!Solver(prevScript, whichType, vSolutions))
             return false;
+
         int nArgsExpected = ScriptSigArgsExpected(whichType, vSolutions);
         if (nArgsExpected < 0)
             return false;
-        
+
         // Transactions with extra stuff in their scriptSigs are
         // non-standard. Note that this EvalScript() call will
         // be quick, because if there are any operations
@@ -936,10 +934,11 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs,
         // IsStandardTx() will have already returned false
         // and this method isn't called.
         vector<vector<unsigned char> > stack;
+
         //printf("Checking script: %s\n", tx.vin[i].scriptSig.ToString().c_str());
         if (!EvalScript(stack, tx.vin[i].scriptSig, SCRIPT_VERIFY_NONE, BaseSignatureChecker(), consensusBranchId))
             return false;
-        
+
         if (whichType == TX_SCRIPTHASH)
         {
             if (stack.empty())
@@ -1911,7 +1910,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // Check for non-standard pay-to-script-hash in inputs
         if (Params().RequireStandard() && !AreInputsStandard(tx, view, consensusBranchId))
             return error("AcceptToMemoryPool: reject nonstandard transaction input");
-        
+
         // Check that the transaction doesn't have an excessive number of
         // sigops, making it impossible to mine. Since the coinbase transaction
         // itself can contain sigops MAX_STANDARD_TX_SIGOPS is less than
@@ -4012,14 +4011,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             */
 
                             // to determine left over reserves for deposit, consider imported and emitted as the same
-                            if (cbCurDef.IsFractional())
+                            gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
+                                                                tempLastNotarization.currencyState.reserveIn);
+                            if (!cbCurDef.IsFractional())
                             {
-                                gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
-                                                                    tempLastNotarization.currencyState.reserveIn);
-                            }
-                            else
-                            {
-                                gatewayDeposits = importedCurrency;
+                                gatewayDeposits += originalFees;
                             }
                             gatewayDeposits.valueMap[cbCurID] += newNotarization.currencyState.primaryCurrencyOut;
 
