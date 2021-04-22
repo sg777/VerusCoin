@@ -2153,6 +2153,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             return false;
         }
 
+        //printf("%s: transferFees: %s\n", __func__, transferFees.ToUniValue().write(1,2).c_str());
+
         if (i == exportObjects.size() || curTransfer.IsValid())
         {
             CTxOut newOut;
@@ -2232,31 +2234,22 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                 }
 
-                // printf("%s: transferFees: %s\n", __func__, transferFees.ToUniValue().write(1,2).c_str());
-
                 // convert all fees to the system currency of the import
                 // fees that started in fractional are already converted, so not considered
                 CAmount totalNativeFee = 0;
                 CAmount totalVerusFee = 0;
+                CCurrencyValueMap conversionFees = ReserveConversionFeesMap().CanonicalMap();
 
                 newCurrencyState.fees = transferFees.AsCurrencyVector(newCurrencyState.currencies);
+                newCurrencyState.conversionFees = conversionFees.AsCurrencyVector(newCurrencyState.currencies);
+                newCurrencyState.primaryCurrencyFees = transferFees.valueMap.count(importCurrencyID) ? transferFees.valueMap[importCurrencyID] : 0;
+                newCurrencyState.primaryCurrencyConversionFees = 
+                    conversionFees.valueMap.count(importCurrencyID) ? transferFees.valueMap[importCurrencyID] : 0;
 
                 if (importCurrencyState.IsLaunchConfirmed() &&
                     isFractional &&
                     importCurrencyState.reserves[systemDestIdx])
                 {
-                    CCurrencyValueMap conversionFees = ReserveConversionFeesMap();
-                    if (currencies.count(importCurrencyID))
-                    {
-                        CReserveInOuts fractionalInOuts = currencies[importCurrencyID];
-                        newCurrencyState.primaryCurrencyConversionFees = fractionalInOuts.reserveConversionFees;
-                    }
-                    newCurrencyState.conversionFees = conversionFees.AsCurrencyVector(newCurrencyState.currencies);
-                    if (transferFees.valueMap.count(importCurrencyID))
-                    {
-                        newCurrencyState.primaryCurrencyFees = transferFees.valueMap[importCurrencyID];
-                    }
-
                     // 1/2 of all conversion fees go directly into the fractional currency itself
                     liquidityFees = conversionFees / 2;
                     transferFees -= liquidityFees;
@@ -2378,10 +2371,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         {
                             CAmount resExportFee = CCrossChainExport::CalculateExportFeeRaw(oneFee.second, numTransfers);
                             CAmount exportSplit = CCrossChainExport::ExportReward(resExportFee);
-                            if (currencyIndexMap.count(oneFee.first))
-                            {
-                                newCurrencyState.fees[currencyIndexMap[oneFee.first]] += oneFee.second;
-                            }
                             AddReserveOutput(oneFee.first, oneFee.second);
 
                             CTokenOutput ro = CTokenOutput(oneFee.first, oneFee.second);
