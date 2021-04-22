@@ -4701,9 +4701,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition newChain(ValidateNewUnivalueCurrencyDefinition(params[0], height, ASSETCHAINS_CHAINID));
 
-    if (newChain.parent != thisChainID)
+    if ((newChain.GetID() != ASSETCHAINS_CHAINID && ASSETCHAINS_CHAINID == VERUS_CHAINID) || newChain.parent != thisChainID)
     {
-        // parent chain must be current chain
+        // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
         throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to define a chain relative to a parent that is not the current chain.");
     }
 
@@ -4907,11 +4907,17 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     CCrossChainImport cci = CCrossChainImport(newChain.systemID, height, newChainID, CCurrencyValueMap(), CCurrencyValueMap());
     cci.SetSameChain(newChain.systemID == ASSETCHAINS_CHAINID);
     cci.SetDefinitionImport(true);
+    if (newChainID == ASSETCHAINS_CHAINID)
+    {
+        cci.SetPostLaunch();
+        cci.SetInitialLaunchImport();
+    }
     cci.exportTxOutNum = vOutputs.size() + 2;
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)), 0, false});
 
     // get initial currency state at this height
     CCoinbaseCurrencyState newCurrencyState = ConnectedChains.GetCurrencyState(newChain, chainActive.Height());
+
     newCurrencyState.SetPrelaunch();
 
     CPBaaSNotarization pbn = CPBaaSNotarization(newChainID, 
@@ -4924,6 +4930,18 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     pbn.SetPreLaunch();
     pbn.SetDefinitionNotarization();
     pbn.nodes = startupNodes;
+
+    if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID)
+    {
+        newChain.startBlock = 1;
+        newCurrencyState.SetPrelaunch(false);
+        newCurrencyState.SetLaunchConfirmed();
+        newCurrencyState.SetLaunchCompleteMarker();
+        pbn.SetPreLaunch(false);
+        pbn.SetLaunchCleared();
+        pbn.SetLaunchConfirmed();
+        pbn.SetLaunchComplete();
+    }
 
     // make the first chain notarization output
     cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
@@ -4955,8 +4973,16 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     CCurrencyValueMap launchFee(std::vector<uint160>({thisChainID}),
                                 std::vector<int64_t>({ConnectedChains.ThisChain().GetCurrencyRegistrationFee()}));
     CCrossChainExport ccx = CCrossChainExport(thisChainID, 0, height, newChain.systemID, newChainID, 0, launchFee, launchFee, uint256());
-    ccx.SetPreLaunch();
     ccx.SetChainDefinition();
+    if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID)
+    {
+        ccx.SetPreLaunch(false);
+        ccx.SetPostLaunch();
+    }
+    else
+    {
+        ccx.SetPreLaunch();
+    }
     vOutputs.push_back({MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx)), 0, false});
 
     // make the outputs for initial contributions
@@ -5107,21 +5133,25 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         }
     }
 
-    // pay currency launch fee directly into currency reserve deposits
-    cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
-    pk = CPubKey(ParseHex(CC.CChexstr));
-    dests = std::vector<CTxDestination>({pk});
-    CReserveDeposit launchDeposit = CReserveDeposit(newChainID, CCurrencyValueMap());
-    vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
-                                         ConnectedChains.ThisChain().GetCurrencyRegistrationFee(), 
-                                         false});
+    // pay currency launch fee directly into currency reserve deposits unless this is the main chain definition
+    // if main chain, don't pay, since it is already started
+    if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID)
+    {
+        cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
+        pk = CPubKey(ParseHex(CC.CChexstr));
+        dests = std::vector<CTxDestination>({pk});
+        CReserveDeposit launchDeposit = CReserveDeposit(newChainID, CCurrencyValueMap());
+        vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
+                                            ConnectedChains.ThisChain().GetCurrencyRegistrationFee(), 
+                                            false});
+    }
 
     if (newGatewayConverter.IsValid())
     {
         uint160 gatewayDepositCurrencyID = newGatewayConverter.systemID == thisChainID ? 
                                            newGatewayConverter.GetID() :
                                            newGatewayConverter.systemID;
-        launchDeposit = CReserveDeposit(gatewayDepositCurrencyID, CCurrencyValueMap());
+        CReserveDeposit launchDeposit = CReserveDeposit(gatewayDepositCurrencyID, CCurrencyValueMap());
         vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
                                             ConnectedChains.ThisChain().GetCurrencyRegistrationFee(), 
                                             false});
