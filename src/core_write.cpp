@@ -859,8 +859,11 @@ UniValue CCurrencyDefinition::ToUniValue() const
             obj.push_back(Pair("eras", eraArr));
 
             obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
-            uint160 gatewayParent = GetID();
-            obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentity::GetID(gatewayConverterName, gatewayParent))));
+            if (!gatewayConverterName.empty())
+            {
+                uint160 gatewayParent = GetID();
+                obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentity::GetID(gatewayConverterName, gatewayParent))));
+            }
         }
     }
 
