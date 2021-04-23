@@ -824,6 +824,10 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     std::string errorPrefix(strprintf("%s: ", __func__));
     std::set<CIdentityID> notaries;
 
+    int minimumNotariesConfirm = (externalSystem.GetID() == ConnectedChains.FirstNotaryChain().GetID()) ?
+                                 minimumNotariesConfirm = ConnectedChains.ThisChain().minNotariesConfirm :
+                                 minimumNotariesConfirm = ConnectedChains.FirstNotaryChain().chainDefinition.minNotariesConfirm;
+
     // now, verify the evidence. accepted notarizations for another system must have at least one
     // valid piece of evidence, which currently means at least one notary signature
     if (!notaryEvidence.signatures.size())
@@ -1049,7 +1053,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
         // we need to store the input that we confirmed if we spent finalization outputs
         CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION, newNotarization.currencyID, uint256(), txBuilder.mtx.vout.size() - 2, height + 15);
-        if (notaryEvidence.signatures.size() >= externalSystem.minNotariesConfirm)
+        if (notaryEvidence.signatures.size() >= minimumNotariesConfirm)
         {
             of.SetConfirmed();
             of.evidenceOutputs.push_back(txBuilder.mtx.vout.size() - 1);
@@ -1725,7 +1729,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
             // before signing the one we are about to, we want to ensure that it isn't already signed sufficiently
             // if there are enough signatures to confirm it without signature, make our signature, then create a finalization
-            CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION + CObjectFinalization::FINALIZE_CONFIRMED,
+            CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
                                                          SystemID,
                                                          cnd.vtx[idx].first.hash,
                                                          cnd.vtx[idx].first.n,
@@ -1735,6 +1739,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
             std::vector<CInputDescriptor> evidenceToSpend;
 
             std::set<uint160> sigSet;
+
+            int minimumNotariesConfirm = (externalSystem.GetID() == ConnectedChains.FirstNotaryChain().GetID()) ?
+                                        minimumNotariesConfirm = ConnectedChains.ThisChain().minNotariesConfirm :
+                                        minimumNotariesConfirm = ConnectedChains.FirstNotaryChain().chainDefinition.minNotariesConfirm;
 
             // if we might have a confirmed notarization, verify, then post
             for (auto &oneEvidenceOut : unspentEvidence)
@@ -1802,7 +1810,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                             sigSet.insert(oneID);
                             retVal = true;
                             // if our signatures altogether have provided a complete validation, we can early out
-                            if ((ne.signatures.size() + myIDSigs.size()) >= externalSystem.chainDefinition.minNotariesConfirm)
+                            if ((ne.signatures.size() + myIDSigs.size()) >= minimumNotariesConfirm)
                             {
                                 break;
                             }
@@ -1825,20 +1833,15 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne));
                     myIDSigs.push_back(CInputDescriptor(evidenceScript, 0, CTxIn(COutPoint(uint256(), txBuilder.mtx.vout.size()))));
                     txBuilder.AddTransparentOutput(evidenceScript, CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
-
-                    // if we don't have enough signatures to finalize, add an input and fee to the transaction from our
-                    // notary pre-allocation
-                    if (sigSet.size() < ConnectedChains.ThisChain().minNotariesConfirm)
-                    {
-                        
-                    }
                 }
             }
 
             // if we have enough to finalize, do so as a combination of pre-existing evidence and this
-            if (sigSet.size() >= ConnectedChains.ThisChain().minNotariesConfirm)
+            if (sigSet.size() >= minimumNotariesConfirm)
             {
                 int sigCount = 0;
+
+                of.SetConfirmed();
 
                 // include all of our signatures to improve chances of reward
                 if (ne.signatures.size())
@@ -1849,7 +1852,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
                 // spend all priors, and if we need more signatures, add them to the finalization evidence
                 // prioritizing our signatures
-                bool haveNeeded = sigCount >= externalSystem.chainDefinition.minNotariesConfirm;
+                bool haveNeeded = sigCount >= minimumNotariesConfirm;
                 std::vector<CInputDescriptor> inputSigs;
                 for (auto &oneEvidenceOut : myIDSigs)
                 {
@@ -1870,7 +1873,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
                     if (!haveNeeded)
                     {
-                        haveNeeded = sigCount >= externalSystem.chainDefinition.minNotariesConfirm;
+                        haveNeeded = sigCount >= minimumNotariesConfirm;
 
                         // until we have enough signatures to confirm, continue to add evidence to the finalization
                         if (!oneEvidenceOut.txIn.prevout.hash.IsNull())
@@ -1903,7 +1906,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     {
                         // until we have enough signatures to confirm, continue to add evidence to the finalization
                         of.evidenceInputs.push_back(txBuilder.mtx.vin.size() - 1);
-                        haveNeeded = sigCount >= externalSystem.chainDefinition.minNotariesConfirm;
+                        haveNeeded = sigCount >= minimumNotariesConfirm;
                     }
                 }
 
@@ -2409,6 +2412,8 @@ CNotaryEvidence CObjectFinalization::SignRejected(const CWallet *pWallet, const 
 
 // Verify that the output object of "p" is signed appropriately with the indicated signature
 // and that the signature is fully authorized to sign
+// TODO: THIS SHOULD BE UPDATED TO REFLECT USAGE, WHICH IT DOESN'T YET HAVE
+// SPECIFICALLY, THE currencyID, WHICH IS USED, SHOULD BE SEPARATED FROM minimum signatures required
 CIdentitySignature::ESignatureVerification CObjectFinalization::VerifyOutputSignature(const CTransaction &initialTx, const CNotaryEvidence &signature, const COptCCParams &p, uint32_t height) const
 {
     std::set<uint160> completedSignatures;
