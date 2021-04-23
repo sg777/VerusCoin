@@ -2105,15 +2105,6 @@ void komodo_args(char *argv0)
             }
         }
 
-
-            CAddress addr;
-            OpenNetworkConnection(addr, NULL, oneNode.networkAddress.c_str());
-
-
-
-
-
-
         memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
         strcpy(ASSETCHAINS_SYMBOL, name.c_str());
 
