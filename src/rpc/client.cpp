@@ -333,6 +333,11 @@ UniValue CNodeData::ToUniValue() const
     return obj;
 }
 
+CNodeData::CNodeData(std::string netAddr, std::string paymentAddr) :
+    networkAddress(netAddr)
+{
+}
+
 CIdentityID CIdentity::GetID(const std::string &Name, uint160 &parent)
 {
     std::string cleanName = CleanName(Name, parent);
