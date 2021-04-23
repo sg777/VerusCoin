@@ -329,7 +329,7 @@ UniValue CNodeData::ToUniValue() const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("networkaddress", networkAddress));
-    obj.push_back(Pair("nodeidentity", EncodeDestination(CIdentityID(nodeIdentity))));
+    obj.push_back(Pair("nodeidentity", ""));
     return obj;
 }
 
