@@ -294,6 +294,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     std::vector<CTxDestination> referrers;
     bool valid = true;
 
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
+
     for (auto &txout : tx.vout)
     {
         COptCCParams p;
@@ -367,7 +369,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     }
 
     // CHECK #2 - must be rooted in this chain
-    if (newIdentity.parent != ConnectedChains.ThisChain().GetID())
+    if (newIdentity.parent != ConnectedChains.ThisChain().GetID() &&
+        !(isPBaaS && newIdentity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive()))
     {
         return state.Error("Identity parent of new identity must be current chain");
     }
