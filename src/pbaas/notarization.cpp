@@ -1359,7 +1359,7 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
     uint160 indexKey = CCrossChainRPCData::GetConditionID(
         CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()), 
         ObjectFinalizationConfirmedKey());
-    if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) ||
+    if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) &&
          mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
         (indexUnspent.size() || mempoolUnspent.size()))
     {
@@ -1395,7 +1395,7 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
     uint160 indexKey = CCrossChainRPCData::GetConditionID(
         CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()), 
         ObjectFinalizationPendingKey());
-    if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) ||
+    if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) &&
          mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
         (indexUnspent.size() || mempoolUnspent.size()))
     {
@@ -1431,7 +1431,7 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolUnspent;
     uint160 indexKey = CCrossChainRPCData::GetConditionID(currencyID, CNotaryEvidence::NotarySignatureKey(), notarizationTxId, notarizationOutNum);
 
-    if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) ||
+    if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) &&
          mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
         (indexUnspent.size() || mempoolUnspent.size()))
     {

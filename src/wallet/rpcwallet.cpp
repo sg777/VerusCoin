@@ -3468,29 +3468,9 @@ uint64_t komodo_interestsum()
 #ifdef ENABLE_WALLET
     if ( GetBoolArg("-disablewallet", false) == 0 )
     {
-        uint64_t interest,sum = 0; int32_t txheight; uint32_t locktime;
-        vector<COutput> vecOutputs;
-        assert(pwalletMain != NULL);
-        LOCK2(cs_main, pwalletMain->cs_wallet);
-        pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
-        BOOST_FOREACH(const COutput& out,vecOutputs)
-        {
-            CAmount nValue = out.tx->vout[out.i].nValue;
-            if ( out.tx->nLockTime != 0 && out.fSpendable != 0 )
-            {
-                BlockMap::iterator it = mapBlockIndex.find(pcoinsTip->GetBestBlock());
-                CBlockIndex *tipindex,*pindex = it->second;
-                if ( pindex != 0 && (tipindex= chainActive.LastTip()) != 0 )
-                {
-                    interest = komodo_accrued_interest(&txheight,&locktime,out.tx->GetHash(),out.i,0,nValue,(int32_t)tipindex->GetHeight());
-                    //interest = komodo_interest(pindex->GetHeight(),nValue,out.tx->nLockTime,tipindex->nTime);
-                    sum += interest;
-                }
-            }
-        }
-        KOMODO_INTERESTSUM = sum;
+        KOMODO_INTERESTSUM = 0;
         KOMODO_WALLETBALANCE = pwalletMain->GetBalance();
-        return(sum);
+        return(0);
     }
 #endif
     return(0);
