@@ -2105,9 +2105,14 @@ void komodo_args(char *argv0)
             }
         }
 
-        addn = GetArg("-seednode","");
-        if ( strlen(addn.c_str()) > 0 )
-            ASSETCHAINS_SEED = 1;
+
+            CAddress addr;
+            OpenNetworkConnection(addr, NULL, oneNode.networkAddress.c_str());
+
+
+
+
+
 
         memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
         strcpy(ASSETCHAINS_SYMBOL, name.c_str());
@@ -2198,6 +2203,15 @@ void komodo_args(char *argv0)
                 eras.push_back(era);
             }
             obj.push_back(Pair("eras", eras));
+
+            addn = GetArg("-seednode","");
+            UniValue nodeArr(UniValue::VARR);
+            if (addn.size())
+            {
+                ASSETCHAINS_SEED = 1;
+                nodeArr.push_back(CNodeData(addn, "").ToUniValue());
+                obj.pushKV("nodes", nodeArr);
+            }
 
             /* We need to store node information here
             UniValue nodes(UniValue::VARR);

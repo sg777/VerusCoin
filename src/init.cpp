@@ -1515,8 +1515,10 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         }
     }
 
-    BOOST_FOREACH(const std::string& strDest, mapMultiArgs["-seednode"])
-        AddOneShot(strDest);
+    for (auto &oneNode : ConnectedChains.defaultPeerNodes)
+    {
+        AddOneShot(oneNode.networkAddress);
+    }
 
 #if ENABLE_ZMQ
     pzmqNotificationInterface = CZMQNotificationInterface::CreateWithArguments(mapArgs);

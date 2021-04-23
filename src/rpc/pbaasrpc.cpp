@@ -352,6 +352,7 @@ bool SetPeerNodes(const UniValue &nodes)
     for (auto node : ConnectedChains.defaultPeerNodes)
     {
         nodeStrs.push_back(node.networkAddress);
+        
     }
     if (nodeStrs.size())
     {
