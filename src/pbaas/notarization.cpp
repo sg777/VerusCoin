@@ -1789,7 +1789,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
             {
                 cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-                CNotaryEvidence ne = CNotaryEvidence(ASSETCHAINS_CHAINID, cnd.vtx[idx].first);
+                ne = CNotaryEvidence(ASSETCHAINS_CHAINID, cnd.vtx[idx].first);
 
                 {
                     LOCK(pWallet->cs_wallet);
