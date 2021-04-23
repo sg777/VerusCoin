@@ -5458,7 +5458,15 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
+        if (newIDID == ASSETCHAINS_CHAINID)
+        {
+            revocationAuth = newID;
+            recoveryAuth = newID;
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
+        }
     }
 
     // must be present and in a mined block
