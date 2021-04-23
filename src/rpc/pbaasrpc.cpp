@@ -4760,7 +4760,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID " + newChain.name + " not found, is revoked, or already has an active currency defined");
     }
 
-    if (launchIdentity.parent != ASSETCHAINS_CHAINID)
+    if (launchIdentity.parent != ASSETCHAINS_CHAINID && !(isVerusActive && newChain.GetID() == ASSETCHAINS_CHAINID))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency can only be defined using an ID issued by " + VERUS_CHAINNAME);
     }
