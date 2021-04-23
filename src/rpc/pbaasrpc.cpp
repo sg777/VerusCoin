@@ -4479,7 +4479,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         throw JSONRPCError(RPC_INVALID_PARAMETER, newCurrency.name + " chain already defined. see help.");
     }
 
-    bool currentChainDefinition = newCurrency.GetID() == ASSETCHAINS_CHAINID && !defHeight;
+    bool currentChainDefinition = newCurrency.GetID() == ASSETCHAINS_CHAINID && !defHeight && _IsVerusActive();
 
     if (newCurrency.parent.IsNull() && !currentChainDefinition)
     {
@@ -4488,7 +4488,11 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
     for (auto &oneID : newCurrency.preAllocation)
     {
-        if (!CIdentity::LookupIdentity(CIdentityID(oneID.first)).IsValid())
+        if (currentChainDefinition)
+        {
+            newCurrency = checkDef;
+        }
+        else if (!CIdentity::LookupIdentity(CIdentityID(oneID.first)).IsValid())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to pre-allocate currency to a non-existent ID.");
         }
@@ -4531,6 +4535,11 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                 }
             }
         }
+    }
+
+    if (currentChainDefinition)
+    {
+        return newCurrency;
     }
 
     // refunding a currency after its launch is aborted, or shutting it down after the endblock has passed must be completed
