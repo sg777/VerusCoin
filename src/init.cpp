@@ -1281,7 +1281,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         {
         }
     }
-    VERUS_PRIVATECHANGE = GetBoolArg("-privatechange", GetArg("-defaultzaddr", VERUS_DEFAULT_ZADDR).empty());
+    VERUS_PRIVATECHANGE = GetBoolArg("-privatechange", !GetArg("-defaultzaddr", VERUS_DEFAULT_ZADDR).empty());
 
     // Sanity check
     if (!InitSanityCheck())
