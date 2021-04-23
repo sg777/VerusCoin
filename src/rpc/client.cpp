@@ -325,6 +325,14 @@ std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilt
     return subNames[0];
 }
 
+UniValue CNodeData::ToUniValue() const
+{
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("networkaddress", networkAddress));
+    obj.push_back(Pair("nodeidentity", EncodeDestination(CIdentityID(nodeIdentity))));
+    return obj;
+}
+
 CIdentityID CIdentity::GetID(const std::string &Name, uint160 &parent)
 {
     std::string cleanName = CleanName(Name, parent);
