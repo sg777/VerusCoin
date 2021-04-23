@@ -891,6 +891,10 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 
     // compare commitment without regard to case or other textual transformations that are irrelevant to matching
     uint160 parentChain = ConnectedChains.ThisChain().GetID();
+    if (isPBaaS && identity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive())
+    {
+        parentChain.SetNull();
+    }
     if (validReservation && identity.GetID(nameRes.name, parentChain) == identity.GetID())
     {
         return true;

@@ -5267,18 +5267,24 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     uint160 parent;
     std::string name = CleanName(uni_get_str(params[0]), parent, true, false);
-    if (parent.IsNull())
+
+    uint160 idID = GetDestinationID(DecodeDestination(name + "@"));
+    if (idID == ASSETCHAINS_CHAINID &&
+        IsVerusActive())
+    {
+        name = VERUS_CHAINNAME;
+    }
+    else
     {
         parent = ASSETCHAINS_CHAINID;
     }
 
     // if either we have an invalid name or an implied parent, that is not valid
-    if (name == "" || !(parent == ASSETCHAINS_CHAINID) || name != uni_get_str(params[0]))
+    if (!(idID == VERUS_CHAINID && IsVerusActive() && parent.IsNull()) &&
+        (name == "" || parent != ASSETCHAINS_CHAINID || name != uni_get_str(params[0])))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid name for commitment. Names must not have leading or trailing spaces and must not include any of the following characters between parentheses (\\/:*?\"<>|@)");
     }
-
-    parent = ConnectedChains.ThisChain().GetID();
 
     CTxDestination dest = DecodeDestination(uni_get_str(params[1]));
     if (dest.which() == COptCCParams::ADDRTYPE_INVALID)
@@ -5298,9 +5304,14 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid referral identity for commitment, must be a currently registered friendly name or i-address");
         }
         referrer = CIdentityID(GetDestinationID(referDest));
-        if (!CIdentity::LookupIdentity(referrer).IsValidUnrevoked())
+        CIdentity referrerIdentity = CIdentity::LookupIdentity(referrer);
+        if (!referrerIdentity.IsValidUnrevoked())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Referral identity for commitment must be a currently valid, unrevoked friendly name or i-address");
+        }
+        if (referrerIdentity.parent != ASSETCHAINS_CHAINID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Referrals cannot refer to the chain identity or an identity defined on another chain");
         }
     }
 
@@ -5394,6 +5405,17 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
     }
 
+    if (IsVerusActive())
+    {
+        CIdentity checkIdentity(newID);
+        checkIdentity.parent.SetNull();
+        if (checkIdentity.GetID() == ASSETCHAINS_CHAINID)
+        {
+            newID.parent.SetNull();
+            parent.SetNull();
+        }
+    }
+
     uint160 newIDID = newID.GetID();
 
     CAmount feeOffer;
@@ -5476,7 +5498,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid commitment salt or referral ID");
     }
 
-    // when creating an ID, the parent is always the current chains, and it is invalid to specify a parent
+    // when creating an ID, the parent is generally the current chains, and it is invalid to specify a parent
     if (newID.parent != parent)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid to specify alternate parent when creating an identity. Parent is determined by the current blockchain.");
