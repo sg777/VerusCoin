@@ -1281,16 +1281,6 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             ret.push_back(Pair("definitiontxout", (int)defUTXO.n));
         }
 
-        if (nodes.size())
-        {
-            UniValue nodesUni(UniValue::VARR);
-            for (auto node : nodes)
-            {
-                nodesUni.push_back(node.ToUniValue());
-            }
-            ret.push_back(Pair("nodes", nodesUni));
-        }
-
         UniValue lastStateUni = ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue();
 
         if ((chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID) || 
