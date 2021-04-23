@@ -1680,7 +1680,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
             }
 
             // unspent evidence is specific to the target notarization
-            std::vector<std::pair<uint32_t, CInputDescriptor>> unspentEvidence = CObjectFinalization::GetUnspentEvidence(SystemID,
+            std::vector<std::pair<uint32_t, CInputDescriptor>> unspentEvidence = CObjectFinalization::GetUnspentEvidence(ASSETCHAINS_CHAINID,
                                                                                                                          cnd.vtx[idx].first.hash,
                                                                                                                          cnd.vtx[idx].first.n);
 
