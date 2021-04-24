@@ -1868,6 +1868,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     retVal = true;
                     CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne));
                     myIDSigs.push_back(CInputDescriptor(evidenceScript, 0, CTxIn(COutPoint(uint256(), txBuilder.mtx.vout.size()))));
+                    of.evidenceOutputs.push_back(txBuilder.mtx.vout.size());
                     txBuilder.AddTransparentOutput(evidenceScript, CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
                 }
             }
@@ -2004,10 +2005,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 CCrossChainRPCData::GetConditionID(systemID, CObjectFinalization::ObjectFinalizationNotarizationKey()), 
                 CObjectFinalization::ObjectFinalizationConfirmedKey());
 
-        std::vector<CAddressUnspentDbEntry> finalizedNotarizations;
+        std::vector<CAddressIndexDbEntry> finalizedNotarizations;
         std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> finalizedInMempool;
 
-        if ((GetAddressUnspent(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations) &&
+        if ((GetAddressIndex(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations, nHeight - 30) &&
             mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{finalizeConfirmedKey, CScript::P2IDX}}), finalizedInMempool)) &&
             (finalizedNotarizations.size() || finalizedInMempool.size()))
         {
@@ -2015,17 +2016,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             // the notarization is already posted or in mempool on the notary system
             std::vector<CUTXORef> finalizedNotarizationUTXOs;
 
-            std::set<std::pair<uint256,int>> spentFinalizations;
-            for (auto &oneUnconfirmed : finalizedInMempool)
-            {
-                if (oneUnconfirmed.first.spending)
-                {
-                    spentFinalizations.insert(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index));
-                }
-            }
             for (auto &oneFinalization : finalizedNotarizations)
             {
-                if (spentFinalizations.count(std::make_pair(oneFinalization.first.txhash, oneFinalization.first.index)))
+                if (oneFinalization.first.spending)
                 {
                     continue;
                 }
@@ -2033,7 +2026,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             }
             for (auto &oneFinalization : finalizedInMempool)
             {
-                if (spentFinalizations.count(std::make_pair(oneFinalization.first.txhash, oneFinalization.first.index)))
+                if (oneFinalization.first.spending)
                 {
                     continue;
                 }
@@ -2320,15 +2313,9 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
     }
     uint160 SystemID = curDef.GetID();
 
-    if (curDef.notarizationProtocol == curDef.NOTARIZATION_AUTO)
-    {
-        // auto-notarization not yet implemented
-        if (!PBAAS_TESTMODE)
-        {
-            return eval->Error("auto-notarization");
-        }
-    }
-    else if (curDef.notarizationProtocol == curDef.NOTARIZATION_NOTARY_CONFIRM)
+    // for now, auto notarization uses defined notaries. it can be updated later, while leaving those that
+    // select notary confirm explicitly to remain on that protocol
+    if (curDef.notarizationProtocol == curDef.NOTARIZATION_NOTARY_CONFIRM || curDef.notarizationProtocol == curDef.NOTARIZATION_AUTO)
     {
         // get the notarization this finalizes and its index output
         int32_t notaryOutNum;
@@ -2371,11 +2358,7 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
             return eval->Error("invalid-notarization");
         }
 
-
-
         // TODO: now, validate both rejection and confirmation
-
-
 
         CObjectFinalization newFinalization;
         int finalizationOutNum = -1;
