@@ -1787,7 +1787,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 }
             }
 
-            CNotaryEvidence ne;
+            CNotaryEvidence ne(ASSETCHAINS_CHAINID, cnd.vtx[idx].first);
             CCcontract_info CC;
             CCcontract_info *cp;
             std::vector<CTxDestination> dests;
@@ -1797,7 +1797,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
             {
                 cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-                ne = CNotaryEvidence(ASSETCHAINS_CHAINID, cnd.vtx[idx].first);
 
                 {
                     LOCK(pWallet->cs_wallet);
@@ -1842,13 +1841,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 int sigCount = 0;
 
                 of.SetConfirmed();
-
-                // include all of our signatures to improve chances of reward
-                if (ne.signatures.size())
-                {
-                    of.evidenceOutputs.push_back(txBuilder.mtx.vout.size() - 1);
-                    sigCount += ne.signatures.size();
-                }
 
                 // spend all priors, and if we need more signatures, add them to the finalization evidence
                 // prioritizing our signatures
