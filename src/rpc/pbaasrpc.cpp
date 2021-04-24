@@ -2441,7 +2441,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             int numForks = notarizationData.forks.size();
             for (int forkNum = 0; forkNum < numForks; forkNum++)
             {
-                std::vector<int> &curFork = notarizationData.forks[forkNum];
+                std::vector<int> curFork = notarizationData.forks[forkNum];
                 CUTXORef searchRef = notarizationData.vtx[curFork.back()].first;
                 std::multimap<CUTXORef, std::pair<CUTXORef, CPBaaSNotarization>>::iterator pendingIt;
 
