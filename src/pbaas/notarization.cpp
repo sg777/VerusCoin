@@ -2004,19 +2004,28 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 CCrossChainRPCData::GetConditionID(systemID, CObjectFinalization::ObjectFinalizationNotarizationKey()), 
                 CObjectFinalization::ObjectFinalizationConfirmedKey());
 
-        std::vector<CAddressIndexDbEntry> finalizedNotarizations;
+        std::vector<CAddressUnspentDbEntry> finalizedNotarizations;
         std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> finalizedInMempool;
 
-        if ((GetAddressIndex(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations, nHeight - 20) &&
+        if ((GetAddressUnspent(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations) &&
             mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{finalizeConfirmedKey, CScript::P2IDX}}), finalizedInMempool)) &&
             (finalizedNotarizations.size() || finalizedInMempool.size()))
         {
             // get the recent finalized notarizations and submit. the daemon we submit to may early out immediately if
             // the notarization is already posted or in mempool on the notary system
             std::vector<CUTXORef> finalizedNotarizationUTXOs;
+
+            std::set<std::pair<uint256,int>> spentFinalizations;
+            for (auto &oneUnconfirmed : finalizedInMempool)
+            {
+                if (oneUnconfirmed.first.spending)
+                {
+                    spentFinalizations.insert(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index));
+                }
+            }
             for (auto &oneFinalization : finalizedNotarizations)
             {
-                if (oneFinalization.first.spending || oneFinalization.first.blockHeight == 1)
+                if (spentFinalizations.count(std::make_pair(oneFinalization.first.txhash, oneFinalization.first.index)))
                 {
                     continue;
                 }
@@ -2024,7 +2033,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             }
             for (auto &oneFinalization : finalizedInMempool)
             {
-                if (oneFinalization.first.spending)
+                if (spentFinalizations.count(std::make_pair(oneFinalization.first.txhash, oneFinalization.first.index)))
                 {
                     continue;
                 }
