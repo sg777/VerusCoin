@@ -1368,8 +1368,21 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
             retVal.push_back(std::make_pair(oneConfirmed.second.blockHeight,
                              CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
         }
+        std::set<std::pair<uint256,int>> mempoolSpent;
         for (auto &oneUnconfirmed : mempoolUnspent)
         {
+            if (oneUnconfirmed.first.spending)
+            {
+                mempoolSpent.insert(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index));
+            }
+        }
+        for (auto &oneUnconfirmed : mempoolUnspent)
+        {
+            if (mempoolSpent.count(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)))
+            {
+                continue;
+            }
+
             auto txProxy = mempool.mapTx.find(oneUnconfirmed.first.txhash);
             if (txProxy != mempool.mapTx.end())
             {
@@ -1404,8 +1417,20 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
             retVal.push_back(std::make_pair(oneConfirmed.second.blockHeight,
                              CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
         }
+        std::set<std::pair<uint256,int>> mempoolSpent;
         for (auto &oneUnconfirmed : mempoolUnspent)
         {
+            if (oneUnconfirmed.first.spending)
+            {
+                mempoolSpent.insert(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index));
+            }
+        }
+        for (auto &oneUnconfirmed : mempoolUnspent)
+        {
+            if (mempoolSpent.count(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)))
+            {
+                continue;
+            }
             auto txProxy = mempool.mapTx.find(oneUnconfirmed.first.txhash);
             if (txProxy != mempool.mapTx.end())
             {
@@ -1440,8 +1465,21 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
             retVal.push_back(std::make_pair(oneConfirmed.second.blockHeight,
                              CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
         }
+        std::set<std::pair<uint256,int>> mempoolSpent;
         for (auto &oneUnconfirmed : mempoolUnspent)
         {
+            if (oneUnconfirmed.first.spending)
+            {
+                mempoolSpent.insert(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index));
+            }
+        }
+        for (auto &oneUnconfirmed : mempoolUnspent)
+        {
+            if (mempoolSpent.count(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)))
+            {
+                continue;
+            }
+
             auto txProxy = mempool.mapTx.find(oneUnconfirmed.first.txhash);
             if (txProxy != mempool.mapTx.end())
             {
@@ -1777,7 +1815,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                         {
                             additionalEvidence.push_back(oneEvidenceOut.second);
                         }
-                        
                     }
                     else
                     {
@@ -1844,13 +1881,14 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
                 // spend all priors, and if we need more signatures, add them to the finalization evidence
                 // prioritizing our signatures
-                bool haveNeeded = sigCount >= minimumNotariesConfirm;
+                bool haveNeeded = false;
                 std::vector<CInputDescriptor> inputSigs;
                 for (auto &oneEvidenceOut : myIDSigs)
                 {
                     // use up evidence with our ID signatures first, and remove from the remainder
                     COptCCParams p;
                     CNotaryEvidence evidence;
+
                     // validated above
                     oneEvidenceOut.scriptPubKey.IsPayToCryptoCondition(p);
                     evidence = CNotaryEvidence(p.vData[0]);
