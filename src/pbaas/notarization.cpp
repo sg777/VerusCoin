@@ -1962,7 +1962,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 {
     // look for finalized notarizations for our notary chains in recent blocks
     // if we find any and are connected, submit them
-    std::vector<CAddressIndexDbEntry> finalizedNotarizations;
     uint160 systemID = externalSystem.chainDefinition.GetID();
     std::vector<std::pair<CPBaaSNotarization, CNotaryEvidence>> notarizations;
 
@@ -1975,17 +1974,34 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 CCrossChainRPCData::GetConditionID(systemID, CObjectFinalization::ObjectFinalizationNotarizationKey()), 
                 CObjectFinalization::ObjectFinalizationConfirmedKey());
 
-        // TODO: consider a better model than just resubmitting finalizations from the last 50 blocks locally
-        if (GetAddressIndex(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations, nHeight - 20) && finalizedNotarizations.size())
+        std::vector<CAddressIndexDbEntry> finalizedNotarizations;
+        std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> finalizedInMempool;
+
+        if ((GetAddressIndex(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations, nHeight - 20) &&
+            mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{finalizeConfirmedKey, CScript::P2IDX}}), finalizedInMempool)) &&
+            (finalizedNotarizations.size() || finalizedInMempool.size()))
         {
             // get the recent finalized notarizations and submit. the daemon we submit to may early out immediately if
-            // the notarization is already posted or in mempool
+            // the notarization is already posted or in mempool on the notary system
+            std::vector<CUTXORef> finalizedNotarizationUTXOs;
             for (auto &oneFinalization : finalizedNotarizations)
             {
                 if (oneFinalization.first.spending || oneFinalization.first.blockHeight == 1)
                 {
                     continue;
                 }
+                finalizedNotarizationUTXOs.push_back(CUTXORef(oneFinalization.first.txhash, oneFinalization.first.index));
+            }
+            for (auto &oneFinalization : finalizedInMempool)
+            {
+                if (oneFinalization.first.spending)
+                {
+                    continue;
+                }
+                finalizedNotarizationUTXOs.push_back(CUTXORef(oneFinalization.first.txhash, oneFinalization.first.index));
+            }
+            for (auto &oneFinalization : finalizedNotarizationUTXOs)
+            {
                 // now, we have a finalized notarization for the target network
                 // prepare an accepted notarization and submit
                 CTransaction finTx, nTx;
@@ -1993,13 +2009,13 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 COptCCParams p;
                 CObjectFinalization of;
                 CPBaaSNotarization pbn;
-                if (!myGetTransaction(oneFinalization.first.txhash, finTx, blkHash))
+                if (!myGetTransaction(oneFinalization.hash, finTx, blkHash))
                 {
                     // set error, but continue processing
                     state.Error("inaccessible-transaction");
                 }
-                if (!((finTx.vout.size() > oneFinalization.first.index &&
-                       finTx.vout[oneFinalization.first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                if (!((finTx.vout.size() > oneFinalization.n &&
+                       finTx.vout[oneFinalization.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                        p.IsValid() &&
                        ((p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                          p.vData.size() &&
@@ -2014,7 +2030,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         (of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION, 
                                                   systemID, 
                                                   (nTx = finTx).GetHash(),
-                                                  oneFinalization.first.index)).IsValid()))) &&
+                                                  oneFinalization.n)).IsValid()))) &&
                       p.vData.size() &&
                       (pbn = CPBaaSNotarization(p.vData[0])).IsValid()))
                 {
