@@ -1967,6 +1967,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     return state.Error(errorPrefix + "Internal error");
                 }
 
+                retVal = true;
                 finalized = true;
                 cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
@@ -2008,7 +2009,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         std::vector<CAddressIndexDbEntry> finalizedNotarizations;
         std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> finalizedInMempool;
 
-        if ((GetAddressIndex(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations, nHeight - 30) &&
+        if ((GetAddressIndex(finalizeConfirmedKey, CScript::P2IDX, finalizedNotarizations, nHeight - 50) &&
             mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{finalizeConfirmedKey, CScript::P2IDX}}), finalizedInMempool)) &&
             (finalizedNotarizations.size() || finalizedInMempool.size()))
         {
