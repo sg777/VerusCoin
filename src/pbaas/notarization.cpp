@@ -1761,6 +1761,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
             std::vector<std::pair<uint32_t, CInputDescriptor>> unspentEvidence = CObjectFinalization::GetUnspentEvidence(ASSETCHAINS_CHAINID,
                                                                                                                          cnd.vtx[idx].first.hash,
                                                                                                                          cnd.vtx[idx].first.n);
+            std::vector<CInputDescriptor> cleanupSpend;
 
             for (auto &onePending : unspentPending)
             {
@@ -1801,10 +1802,14 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                         printf("%s: referenced tx: %s\noutput #%u\nvtxFinalizations:\n", __func__, jsonTx.write(1,2).c_str(), onePendingTarget.n); */
                         for (auto &oneFinalization : vtxFinalizations)
                         {
-                            printf("txid: %s, vout: %u\n", oneFinalization.first.hash.GetHex().c_str(), oneFinalization.first.n);
+                            printf("cleanup fork notarization\ntxid: %s, vout: %u\n", oneFinalization.first.hash.GetHex().c_str(), oneFinalization.first.n);
                         }
+                        cleanupSpend.push_back(onePending.second);
                     }
-                    printf("%s: pending notarization finalization with no notarization matching (%s) found - may be mempool only\n", __func__, onePendingTarget.ToUniValue().write(1,2).c_str());
+                    else
+                    {
+                        printf("%s: pending notarization finalization with no notarization matching (%s) found - may be mempool only\n", __func__, onePendingTarget.ToUniValue().write(1,2).c_str());
+                    }
                     vtxFinalizations[onePendingTarget].first = -1;
                 }
                 vtxFinalizations[onePendingTarget].second.push_back(onePending);
@@ -1826,7 +1831,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                                                          eligibleHeight);
 
             std::vector<CInputDescriptor> additionalEvidence;
-            std::vector<CInputDescriptor> evidenceToSpend;
 
             std::set<uint160> sigSet;
 
@@ -1871,7 +1875,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     else
                     {
                         printf("%s: ERROR - unexpected code path, no assert thrown for debugging\n", __func__);
-                        evidenceToSpend.push_back(oneEvidenceOut.second);
+                        cleanupSpend.push_back(oneEvidenceOut.second);
                     }
                 }
             }
@@ -1994,7 +1998,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 }
 
                 // remove when this vector is confirmed as unnecessary
-                for (auto &oneEvidenceOut : evidenceToSpend)
+                for (auto &oneEvidenceOut : cleanupSpend)
                 {
                     txBuilder.AddTransparentInput(oneEvidenceOut.txIn.prevout, oneEvidenceOut.scriptPubKey, oneEvidenceOut.nValue);
                 }
