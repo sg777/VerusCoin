@@ -1779,7 +1779,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     // get a native currency input capable of paying a fee, and make our notary ID the change address
                     std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
                     {
-                        LOCK(pwalletMain->cs_wallet);
+                        LOCK2(cs_main, pwalletMain->cs_wallet);
                         std::vector<COutput> vCoins;
                         if (IsVerusActive())
                         {
