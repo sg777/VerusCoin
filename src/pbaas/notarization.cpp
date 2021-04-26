@@ -1363,35 +1363,49 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
          mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
         (indexUnspent.size() || mempoolUnspent.size()))
     {
+        /* printf("%s: confirmedNotarizationKey: %s / 0x%s\nconfirmed finalizations\n",
+            __func__, 
+            EncodeDestination(CIdentityID(indexKey)).c_str(),
+            indexKey.GetHex().c_str()); */
+
         for (auto &oneConfirmed : indexUnspent)
         {
+            //printf("%s: txid: %s, vout: %lu, blockheight: %d\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index, oneConfirmed.second.blockHeight);
             retVal.push_back(std::make_pair(oneConfirmed.second.blockHeight,
                              CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
         }
         std::set<std::pair<uint256,int>> mempoolSpent;
-        for (auto &oneUnconfirmed : mempoolUnspent)
+        for (auto &oneConfirmed : mempoolUnspent)
         {
-            if (oneUnconfirmed.first.spending)
+            if (oneConfirmed.first.spending)
             {
-                mempoolSpent.insert(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index));
+                if (retVal.size() &&
+                    retVal.back().second.txIn.prevout == COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index))
+                {
+                    // remove it if spent
+                    //printf("%s: REMOVING txid: %s, vout: %u\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index);
+                    retVal.pop_back();
+                }
+                mempoolSpent.insert(std::make_pair(oneConfirmed.first.txhash, oneConfirmed.first.index));
             }
         }
-        for (auto &oneUnconfirmed : mempoolUnspent)
+        for (auto &oneConfirmed : mempoolUnspent)
         {
-            if (mempoolSpent.count(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)))
+            if (mempoolSpent.count(std::make_pair(oneConfirmed.first.txhash, oneConfirmed.first.index)))
             {
                 continue;
             }
 
-            auto txProxy = mempool.mapTx.find(oneUnconfirmed.first.txhash);
+            auto txProxy = mempool.mapTx.find(oneConfirmed.first.txhash);
             if (txProxy != mempool.mapTx.end())
             {
                 auto &mpEntry = *txProxy;
                 auto &tx = mpEntry.GetTx();
+                //printf("%s: txid: %s, vout: %u\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index);
                 retVal.push_back(std::make_pair(0,
-                                 CInputDescriptor(tx.vout[oneUnconfirmed.first.index].scriptPubKey,
-                                                  tx.vout[oneUnconfirmed.first.index].nValue, 
-                                                  CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index))));
+                                 CInputDescriptor(tx.vout[oneConfirmed.first.index].scriptPubKey,
+                                                  tx.vout[oneConfirmed.first.index].nValue, 
+                                                  CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
             }
         }
     }
@@ -1412,8 +1426,14 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
          mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
         (indexUnspent.size() || mempoolUnspent.size()))
     {
+        /* printf("%s: pendingNotarizationKey: %s / 0x%s\npending finalizations\n",
+            __func__, 
+            EncodeDestination(CIdentityID(indexKey)).c_str(),
+            indexKey.GetHex().c_str()); */
+
         for (auto &oneConfirmed : indexUnspent)
         {
+            //printf("%s: txid: %s, vout: %lu, blockheight: %d\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index, oneConfirmed.second.blockHeight);
             retVal.push_back(std::make_pair(oneConfirmed.second.blockHeight,
                              CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
         }
@@ -1422,6 +1442,13 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
         {
             if (oneUnconfirmed.first.spending)
             {
+                if (retVal.size() &&
+                    retVal.back().second.txIn.prevout == COutPoint(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index))
+                {
+                    // remove it if spent
+                    //printf("%s: REMOVING txid: %s, vout: %u\n", __func__, oneUnconfirmed.first.txhash.GetHex().c_str(), oneUnconfirmed.first.index);
+                    retVal.pop_back();
+                }
                 mempoolSpent.insert(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index));
             }
         }
@@ -1431,6 +1458,7 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
             {
                 continue;
             }
+
             auto txProxy = mempool.mapTx.find(oneUnconfirmed.first.txhash);
             if (txProxy != mempool.mapTx.end())
             {
@@ -1460,8 +1488,14 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
          mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
         (indexUnspent.size() || mempoolUnspent.size()))
     {
+        /* printf("%s: unspentEvidenceKey: %s / 0x%s\nunspent evidence\n",
+            __func__, 
+            EncodeDestination(CIdentityID(indexKey)).c_str(),
+            indexKey.GetHex().c_str()); */
+
         for (auto &oneConfirmed : indexUnspent)
         {
+            //printf("%s: txid: %s, vout: %lu, blockheight: %d\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index, oneConfirmed.second.blockHeight);
             retVal.push_back(std::make_pair(oneConfirmed.second.blockHeight,
                              CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
         }
@@ -1470,6 +1504,13 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
         {
             if (oneUnconfirmed.first.spending)
             {
+                if (retVal.size() &&
+                    retVal.back().second.txIn.prevout == COutPoint(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index))
+                {
+                    // remove it if spent
+                    //printf("%s: REMOVING txid: %s, vout: %u\n", __func__, oneUnconfirmed.first.txhash.GetHex().c_str(), oneUnconfirmed.first.index);
+                    retVal.pop_back();
+                }
                 mempoolSpent.insert(std::make_pair(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index));
             }
         }
@@ -1707,8 +1748,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 // if the notarization we have selected to confirm is already confirmed, we are done
                 if (vtxFinalizations[oneConfirmedTarget].first == idx)
                 {
-                    printf("%s: selected notarization already confirmed\n", __func__);
-                    break;
+                    return state.Error("notarization-already-confirmed");
                 }
                 /* printf("%s: adding %s to entry #%d in vtxFinalizations\n", 
                     __func__, 
@@ -1752,7 +1792,19 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                                                      oneOf.output.n);
                 if (!vtxFinalizations.count(onePendingTarget))
                 {
-                    printf("%s: pending notarization finalization with no matching notarization - may be mempool only\n", __func__);
+                    CTransaction checkTx;
+                    uint256 blockHash;
+                    if (myGetTransaction(onePendingTarget.hash, checkTx, blockHash))
+                    {
+                        /* UniValue jsonTx(UniValue::VOBJ);
+                        TxToUniv(checkTx, blockHash, jsonTx);
+                        printf("%s: referenced tx: %s\noutput #%u\nvtxFinalizations:\n", __func__, jsonTx.write(1,2).c_str(), onePendingTarget.n); */
+                        for (auto &oneFinalization : vtxFinalizations)
+                        {
+                            printf("txid: %s, vout: %u\n", oneFinalization.first.hash.GetHex().c_str(), oneFinalization.first.n);
+                        }
+                    }
+                    printf("%s: pending notarization finalization with no notarization matching (%s) found - may be mempool only\n", __func__, onePendingTarget.ToUniValue().write(1,2).c_str());
                     vtxFinalizations[onePendingTarget].first = -1;
                 }
                 vtxFinalizations[onePendingTarget].second.push_back(onePending);
@@ -2348,7 +2400,7 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         }
 
         // now, we have an unconfirmed, non-rejected finalization being spent by a transaction
-        // confirm that the spender contains one fonalization output either confirming or rejecting
+        // confirm that the spender contains one finalization output either confirming or rejecting
         // the finalization. rejection may be implicit by confirming another, later notarization.
 
         // First. make sure the oldFinalization is not referring to an earlier notarization than the 

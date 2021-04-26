@@ -2273,6 +2273,8 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                           unspentFinalizations) &&
         unspentFinalizations.size())
     {
+        uint160 confirmedNotarizationKey = CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationConfirmedKey());
+
         // get the latest, confirmed notarization
         auto bestIt = unspentFinalizations.begin();
         for (auto oneIt = bestIt; oneIt != unspentFinalizations.end(); oneIt++)
@@ -2383,6 +2385,8 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                           pendingFinalizations) &&
         pendingFinalizations.size())
     {
+        uint160 pendingNotarizationKey = CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationPendingKey());
+
         // all pending finalizations must be later than the last confirmed transaction and
         // refer to a previous valid / confirmable, not necessarily confirmed, notarization
         multimap<uint32_t, pair<CUTXORef, CPBaaSNotarization>> sorted;
@@ -2439,13 +2443,15 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         {
             somethingAdded = false;
             int numForks = notarizationData.forks.size();
-            for (int forkNum = 0; forkNum < numForks; forkNum++)
+            int forkNum;
+            for (forkNum = 0; forkNum < numForks; forkNum++)
             {
-                std::vector<int> curFork = notarizationData.forks[forkNum];
-                CUTXORef searchRef = notarizationData.vtx[curFork.back()].first;
+                CUTXORef searchRef = notarizationData.vtx[notarizationData.forks[forkNum].back()].first;
+
                 std::multimap<CUTXORef, std::pair<CUTXORef, CPBaaSNotarization>>::iterator pendingIt;
 
                 bool newFork = false;
+
                 for (pendingIt = notarizationReferences.lower_bound(searchRef);
                      pendingIt != notarizationReferences.end() && pendingIt->first == searchRef; 
                      pendingIt++)
@@ -2457,12 +2463,12 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                     }
                     if (newFork)
                     {
-                        notarizationData.forks.push_back(curFork);
+                        notarizationData.forks.push_back(notarizationData.forks[forkNum]);
                         notarizationData.forks.back().back() = notarizationData.vtx.size() - 1;
                     }
                     else
                     {
-                        notarizationData.forks.back().push_back(notarizationData.vtx.size() - 1);
+                        notarizationData.forks[forkNum].push_back(notarizationData.vtx.size() - 1);
                         newFork = true;
                         somethingAdded = true;
                     }
