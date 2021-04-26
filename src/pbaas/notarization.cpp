@@ -1799,11 +1799,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     {
                         /* UniValue jsonTx(UniValue::VOBJ);
                         TxToUniv(checkTx, blockHash, jsonTx);
-                        printf("%s: referenced tx: %s\noutput #%u\nvtxFinalizations:\n", __func__, jsonTx.write(1,2).c_str(), onePendingTarget.n); */
-                        for (auto &oneFinalization : vtxFinalizations)
-                        {
-                            printf("cleanup fork notarization\ntxid: %s, vout: %u\n", oneFinalization.first.hash.GetHex().c_str(), oneFinalization.first.n);
-                        }
+                        printf("%s: cleanup forked tx: %s\noutput #%u\nvtxFinalizations:\n", __func__, jsonTx.write(1,2).c_str(), onePendingTarget.n); */
                         cleanupSpend.push_back(onePending.second);
                     }
                     else
