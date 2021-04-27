@@ -672,7 +672,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             // on reserves
             importedCurrency = CCurrencyValueMap();
             gatewayDepositsUsed = CCurrencyValueMap();
-            CCoinbaseCurrencyState tempCurState = currencyState;
+            CCoinbaseCurrencyState tempCurState = intermediateState;
             tempCurState.conversionPrice = newNotarization.currencyState.conversionPrice;
             tempCurState.viaConversionPrice = newNotarization.currencyState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();

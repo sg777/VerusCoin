@@ -3017,7 +3017,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
 
-    // if we are in pre-launch mode
     if (isFractional && newCurrencyState.IsLaunchConfirmed())
     {
         CCoinbaseCurrencyState scratchCurrencyState = importCurrencyState;
