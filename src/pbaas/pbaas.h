@@ -846,7 +846,7 @@ public:
         BLOCK_NOTARIZATION_MODULO = 10,                 // incentive to earn one valid notarization during this many blocks
         MIN_BLOCKS_BEFORE_NOTARY_FINALIZED = 15,        // 15 blocks must go by before notary signatures or confirming evidence can be provided
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
-        MIN_NOTARIZATION_OUTPUT = 0,                    // inimum amount for notarization output
+        MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
     };
     //static const int FINAL_CONFIRMATIONS = 10;
     //static const int MIN_BLOCKS_BETWEEN_NOTARIZATIONS = 8;

@@ -3652,16 +3652,19 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
                 else if (convertToCurrencyID.IsNull())
                 {
-                    convertToCurrencyID = exportSystemDef.GatewayConverterID();
+                    convertToCurrencyID = exportToCurrencyDef.GetID();
                     if (convertToCurrencyID.IsNull())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for system destination without fee converter.");
                     }
                     // get gateway converter and set as fee converter/exportto currency
-                    convertToCurrencyDef = ConnectedChains.GetCachedCurrency(convertToCurrencyID);
+                    convertToCurrencyDef = exportToCurrencyDef;
+                    bool toCurrencyIsFractional = convertToCurrencyDef.IsFractional();
                     if (!convertToCurrencyDef.IsValid() ||
-                        convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) || 
-                        convertToCurrencyDef.GetID() == feeCurrencyID)
+                        (!((convertToCurrencyDef.IsPBaaSChain() && (feeCurrencyID == destSystemDef.launchSystemID || 
+                            feeCurrencyID == destSystemID))) &&
+                         !(toCurrencyIsFractional && convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) || 
+                            convertToCurrencyDef.GetID() == feeCurrencyID)))
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for system destination.");
                     }
@@ -3770,7 +3773,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     flags |= CReserveTransfer::PRECONVERT;
                 }
-                if (!burnCurrency && !convertToCurrencyID.IsNull())
+                if (isConversion && !burnCurrency && !convertToCurrencyID.IsNull())
                 {
                     flags |= CReserveTransfer::CONVERT;
                 }

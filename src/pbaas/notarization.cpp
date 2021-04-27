@@ -469,7 +469,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         // maximum pre-conversions
         else if (reserveTransfer.IsPreConversion())
         {
-            if (lastExportHeight >= destCurrency.startBlock)
+            if (lastExportHeight >= (destCurrency.startBlock - 1))
             {
                 //printf("%s: Invalid pre-conversion, mined after start block\n", __func__);
                 LogPrintf("%s: Invalid pre-conversion, mined after start block\n", __func__);
@@ -491,7 +491,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
         else if (reserveTransfer.IsConversion())
         {
-            if (!newNotarization.currencyState.IsLaunchCompleteMarker())
+            if (!((destCurrency.systemID != sourceSystemID && newNotarization.IsLaunchCleared()) || 
+                  newNotarization.currencyState.IsLaunchCompleteMarker()))
             {
                 //printf("%s: Invalid conversion, mined before start block\n", __func__);
                 LogPrintf("%s: Invalid conversion, mined before start block\n", __func__);
@@ -636,19 +637,27 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         newNotarization.currencyState.SetLaunchCompleteMarker();
         newNotarization.currencyState.SetLaunchClear(false);
 
+        CCurrencyDefinition destSystem;
+
         if (destCurrency.systemID != ASSETCHAINS_CHAINID)
         {
+            destSystem = ConnectedChains.GetCachedCurrency(destCurrency.systemID);
             newNotarization.SetSameChain(false);
+        }
+        else
+        {
+            destSystem = ConnectedChains.ThisChain();
         }
 
         // calculate new state from processing all transfers
         // we are not refunding, and it is possible that we also have
         // normal conversions in addition to pre-conversions. add any conversions that may 
         // be present into the new currency state
+        CCoinbaseCurrencyState intermediateState = newNotarization.currencyState;
         bool isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem, 
-                                                                  ConnectedChains.ThisChain(),
+                                                                  destSystem,
                                                                   destCurrency, 
-                                                                  currencyState, 
+                                                                  intermediateState, 
                                                                   exportTransfers, 
                                                                   dummyImportOutputs, 
                                                                   importedCurrency,
@@ -668,7 +677,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             tempCurState.viaConversionPrice = newNotarization.currencyState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
             isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem, 
-                                                                 ConnectedChains.ThisChain(),
+                                                                 destSystem,
                                                                  destCurrency, 
                                                                  tempCurState, 
                                                                  exportTransfers, 
