@@ -569,7 +569,7 @@ public:
                                                                  !newIdentity.systemID.IsNull() ||
                                                                  newIdentity.nVersion >= VERSION_PBAAS)) ||
             (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && (newIdentity.nVersion < VERSION_PBAAS ||
-                                                                  (newIdentity.systemID != (nVersion < VERSION_PBAAS ? parent : systemID))) ||
+                                                                  (newIdentity.systemID != (nVersion < VERSION_PBAAS ? parent : systemID)))) ||
             GetID() != newIdentity.GetID() ||
             ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
             ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
