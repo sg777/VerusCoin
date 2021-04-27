@@ -3525,13 +3525,77 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
             }
 
-            if (!destSystemDef.IsValid())
+            if (!destSystemDef.IsValid() && !destSystemID.IsNull())
             {
                 destSystemDef = ConnectedChains.GetCachedCurrency(destSystemID);
             }
 
-            bool sendOffChain = destSystemID != ASSETCHAINS_CHAINID;
-            bool convertBeforeOffChain = false;
+            uint160 converterID = secondCurrencyID.IsNull() ? convertToCurrencyID : secondCurrencyID;
+            CCurrencyDefinition &converterDef = secondCurrencyID.IsNull() ? convertToCurrencyDef : secondCurrencyDef;
+
+            // see if we should send this currency off-chain. if our target is a fractional currency and can convert but lives on another system, 
+            // we will not implicitly send it off chain for conversion, even if via is specified. "exportto" requests an explicit system
+            // export/import before the operation.
+            CCurrencyDefinition exportSystemDef;
+            if (exportToStr != "")
+            {
+                uint160 explicitExportID = ValidateCurrencyName(exportToStr, true, &exportToCurrencyDef);
+                if (!exportToCurrencyDef.IsValid() || (!exportToCurrencyID.IsNull() && exportToCurrencyID != explicitExportID))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Duplicate or invalid export system/currency destinations that do not match");
+                }
+                // if we have a converter currency on the same chain as the explicit export, the converter is
+                // our actual export currency
+                if (converterDef.systemID == exportToCurrencyDef.systemID)
+                {
+                    exportToCurrencyDef = converterDef;
+                    exportToCurrencyID = converterID;
+                }
+                else
+                {
+                    exportToCurrencyID = explicitExportID;
+                }
+
+                if (exportToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
+                {
+                    exportToStr = "";
+                    exportToCurrencyID.SetNull();
+                }
+            }
+
+            if (!exportToCurrencyID.IsNull())
+            {
+                if (exportToCurrencyID == exportToCurrencyDef.systemID || 
+                    (exportToCurrencyDef.IsGateway() && exportToCurrencyID == exportToCurrencyDef.GetID()))
+                {
+                    exportSystemDef = exportToCurrencyDef;
+                }
+                else
+                {
+                    exportSystemDef = ConnectedChains.GetCachedCurrency(exportToCurrencyDef.systemID);
+                    if (!exportSystemDef.IsValid() ||
+                        (exportSystemDef.systemID != exportSystemDef.GetID() && 
+                         !(exportSystemDef.IsGateway() && exportSystemDef.systemID == thisChainID && exportSystemDef.gatewayID == exportSystemDef.GetID())))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid export system definition");
+                    }
+                }
+            }
+
+            // if we have no explicit destination system and non-null export, make export
+            // our destination system
+            if (destSystemID == ASSETCHAINS_CHAINID &&
+                !(converterDef.IsValid() && converterDef.systemID == ASSETCHAINS_CHAINID) &&
+                !exportToCurrencyID.IsNull())
+            {
+                destSystemID = exportSystemDef.GetID();
+                destSystemDef = exportSystemDef;
+            }
+
+            // this only applies to the first step, if
+            // first step is on-chain convert, then second is off chain, this will be false
+            bool sendOffChain = (destSystemID != ASSETCHAINS_CHAINID) || (!exportToCurrencyID.IsNull() && exportToCurrencyID != ASSETCHAINS_CHAINID);
+            bool convertBeforeOffChain = sendOffChain && (destSystemID == ASSETCHAINS_CHAINID);
 
             uint160 feeCurrencyID;
             CCurrencyDefinition feeCurrencyDef;
@@ -3558,69 +3622,27 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // and may imply an export off-chain. before creating an off-chain export, we need an explicit "exportto" command that matches. 
             // we may also have an "exportafter" command, which enables funding a second leg to up to one more system
 
-            // see if we should send this currency off-chain. if our target is a fractional currency and can convert but lives on another system, 
-            // we will not implicitly send it off chain for conversion, even if via is specified. "exportto" requests an explicit system
-            // export/import before the operation.
-            CCurrencyDefinition exportSystemDef;
-            if (exportToStr != "" && exportToCurrencyID.IsNull())
-            {
-                exportToCurrencyID = ValidateCurrencyName(exportToStr, true, &exportToCurrencyDef);
-                if (exportToCurrencyID.IsNull())
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If currency export is requested, export currency and system must be valid");
-                }
-
-                if (exportToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
-                {
-                    exportToStr = "";
-                    exportToCurrencyID.SetNull();
-                }
-            }
-
             // ensure that any initial export is explicit
-            if (sendOffChain && !exportToCurrencyID.IsNull() && exportToCurrencyDef.systemID != destSystemID)
+            if (sendOffChain && !exportToCurrencyID.IsNull() &&
+                !(exportToCurrencyDef.systemID == destSystemID || (convertBeforeOffChain && destSystemID == ASSETCHAINS_CHAINID)))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Conflicting target system for send -- \"exportto\" must be consistent with any other cross-chain currency targets");
             }
             else if (!exportToCurrencyID.IsNull() &&
                      exportToCurrencyID != thisChainID &&
-                     !preConvert &&
-                     !mintNew)
+                     !preConvert)
             {
-                // if we are explicitly exporting a currency off-chain and have no other, explicit instructions
-                // for conversion, we export via the bridge converter currency for the specified target system,
-                // which enables us to convert fees to its native currency, unless a fee currency is specified and 
-                // it is the same as the destination native currency.
-                if (destSystemID == thisChainID)
+                if (mintNew)
                 {
-                    exportSystemDef = ConnectedChains.GetCachedCurrency(exportToCurrencyDef.systemID);
-                    if (!exportSystemDef.IsValid() ||
-                        (exportSystemDef.systemID != exportSystemDef.GetID() && 
-                         !(exportSystemDef.IsGateway() && exportSystemDef.systemID == thisChainID && exportSystemDef.gatewayID == exportSystemDef.GetID())))
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid export system definition");
-                    }
-
-                    // if we aren't doing a conversion, which may need to happen before the export,
-                    // reset destination system to exportto system
-                    if (!isConversion)
-                    {
-                        destSystemDef = exportSystemDef;
-                        destSystemID = exportToCurrencyDef.systemID;
-                    }
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cross-system mint operations not supported");
                 }
-                else
-                {
-                    exportSystemDef = destSystemDef;
-                }
-
-                uint160 converterID = secondCurrencyID.IsNull() ? convertToCurrencyID : secondCurrencyID;
-                CCurrencyDefinition &converterDef = secondCurrencyID.IsNull() ? convertToCurrencyDef : secondCurrencyDef;
 
                 if (isConversion &&
                     !((converterDef.systemID == ASSETCHAINS_CHAINID &&
                        converterID != exportToCurrencyID &&
-                       exportToCurrencyID == destSystemID) ||
+                       exportToCurrencyDef.IsGateway() || exportToCurrencyDef.IsPBaaSChain() &&
+                       converterDef.IsFractional() &&
+                       converterDef.GetCurrenciesMap().count(exportToCurrencyDef.systemID)) ||
                       (converterID == exportToCurrencyID &&
                        exportToCurrencyDef.systemID == destSystemID)))
                 {
@@ -3628,7 +3650,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
 
                 // if fee currency is the export system destination
-                // don't route through a converter
+                // don't see if we should route through a converter
                 if (feeCurrencyID == destSystemID)
                 {
                     // if we also have an explicit conversion, we must verify that we can either do that on this chain
@@ -3637,9 +3659,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     {
                         if (convertToCurrencyDef.systemID != destSystemID &&
                             (convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID ||
-                             !convertToCurrencyDef.IsFractional() ||
-                             !(convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) ||
-                               convertToCurrencyDef.GetID() == feeCurrencyID)))
+                             !convertToCurrencyDef.IsFractional()))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + 
                                                                     EncodeDestination(CIdentityID(convertToCurrencyID)) +
@@ -3652,13 +3672,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
                 else if (convertToCurrencyID.IsNull())
                 {
-                    convertToCurrencyID = exportToCurrencyDef.GetID();
+                    convertToCurrencyID = (exportToCurrencyDef.IsFractional() ? exportToCurrencyID : exportToCurrencyDef.GatewayConverterID());
                     if (convertToCurrencyID.IsNull())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for system destination without fee converter.");
                     }
                     // get gateway converter and set as fee converter/exportto currency
-                    convertToCurrencyDef = exportToCurrencyDef;
+                    convertToCurrencyDef = convertToCurrencyID.IsNull() ? exportToCurrencyDef : ConnectedChains.GetCachedCurrency(convertToCurrencyID);
                     bool toCurrencyIsFractional = convertToCurrencyDef.IsFractional();
                     if (!convertToCurrencyDef.IsValid() ||
                         (!((convertToCurrencyDef.IsPBaaSChain() && (feeCurrencyID == destSystemDef.launchSystemID || 
@@ -3668,10 +3688,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for system destination.");
                     }
-                }
-                if (!convertToCurrencyID.IsNull() && !convertToCurrencyDef.IsValid())
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency converter for system destination.");
+                    // if we are inserting a converter on the current chain, before the destination, adjust
+                    if (convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
+                    {
+                        convertBeforeOffChain = true;
+                        destSystemID = thisChainID;
+                        destSystemDef = thisChain;
+                    }
                 }
             }
 
@@ -3785,11 +3808,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
 
                 // are we a system/chain transfer with or without conversion?
-                if (destSystemID != thisChainID)
+                if (destSystemID != thisChainID || (!exportToCurrencyID.IsNull() && exportToCurrencyID != thisChainID))
                 {
                     // possible cases:
                     // 1. sending currency to another chain, paying with native currencies and no converter
-                    // 2. sending currency with or without conversion, paying with fees converted via converter on dest system
+                    // 2. sending currency with or without conversion, paying with fees converted via converter on source or dest system
                     // 3. preconvert on launch of new system
                     //
                     // converting with fees via a converter on the source chain first converts fees and optionally more,
@@ -3840,7 +3863,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         if (convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
                         {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Converting with an export to another system following is not yet supported");
                             // if we're converting and then sending, we don't need an initial fee, so all
                             // fees go into the final destination
                             dest.type |= dest.FLAG_DEST_GATEWAY;
