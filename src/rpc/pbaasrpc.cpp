@@ -5188,7 +5188,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     // pay currency launch fee directly into currency reserve deposits unless this is the main chain definition
     // if main chain, don't pay, since it is already started
-    if (!(newCurrencyState.GetID() == ASSETCHAINS_CHAINID))
+    if (newCurrencyState.GetID() != ASSETCHAINS_CHAINID)
     {
         cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
         pk = CPubKey(ParseHex(CC.CChexstr));
