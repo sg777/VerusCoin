@@ -2210,6 +2210,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             {
                                 dests = std::vector<CTxDestination>({CTxDestination(CIdentityID(onePreAlloc.first))});
                             }
+
                             if (importCurrencyID == systemDestID)
                             {
                                 vOutputs.push_back(CTxOut(onePreAlloc.second, GetScriptForDestination(dests[0])));

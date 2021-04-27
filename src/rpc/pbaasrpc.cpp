@@ -3856,8 +3856,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Local converter convert " + feeCurrencyDef.name + " to " + destSystemDef.name + ".");
                             }
-                            dest.fees = 
-                                (exportSystemDef.transactionImportFee * cnd.vtx[cnd.lastConfirmed].second.currencyState.PriceInReserve(currencyMap[destSystemID]))
+                            dest.fees = ((exportSystemDef.transactionImportFee + thisChain.transactionExportFee) * 
+                                cnd.vtx[cnd.lastConfirmed].second.currencyState.PriceInReserve(currencyMap[destSystemID]))
                                   / cnd.vtx[cnd.lastConfirmed].second.currencyState.PriceInReserve(currencyMap[feeCurrencyID]);
                             printf("%s: setting transfer fees in currency %s to %ld\n", __func__, EncodeDestination(CIdentityID(feeCurrencyID)).c_str(), dest.fees);
                         }
