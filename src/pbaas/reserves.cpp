@@ -2495,11 +2495,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 if (isCrossSystemImport)
                 {
                     uint160 inputID = curTransfer.FirstCurrency();
-                    CAmount inputValue = curTransfer.FirstValue();
+                    CAmount totalCurrencyInput = curTransfer.FirstValue();
 
                     // if this currency is under control of the gateway, it is minted on the way in, otherwise, it will be
                     // on the gateway's reserve deposits, which can be spent by imports from the gateway's converter
-                    CAmount totalCurrencyInput = inputValue;
 
                     // source system currency is imported, dest system must come from deposits
                     if (curTransfer.feeCurrencyID == systemSourceID)
@@ -2507,7 +2506,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         // if it's not a reserve of this currency, we can't process this transfer's fee
                         if (!((isFractional &&
                                currencyIndexMap.count(systemSourceID)) ||
-                             (systemDestID != VERUS_CHAINID && systemSourceID == importCurrencyDef.launchSystemID)))
+                             (systemSourceID == importCurrencyDef.launchSystemID)))
                         {
                             printf("%s: currency transfer fees invalid for receiving system\n", __func__);
                             LogPrintf("%s: currency transfer fees invalid for receiving system\n", __func__);
@@ -2553,16 +2552,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             gatewayDepositsIn.valueMap[inputID] += totalCurrencyInput;
                         }
 
-                        if (inputValue)
+                        if (inputID == systemDestID)
                         {
-                            if (inputID == systemDestID)
-                            {
-                                nativeIn += inputValue;
-                            }
-                            else
-                            {
-                                AddReserveInput(inputID, inputValue);
-                            }
+                            nativeIn += totalCurrencyInput;
+                        }
+                        else
+                        {
+                            AddReserveInput(inputID, totalCurrencyInput);
                         }
                     }
                 }
@@ -2926,7 +2922,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     AddNativeOutConverted(curTransfer.FirstCurrency(), -curTransfer.FirstValue());
                     burnedChangePrice += curTransfer.FirstValue();
                 }
-                else if (systemDestID == curTransfer.destCurrencyID)
+                else if (systemDestID == curTransfer.FirstCurrency())
                 {
                     nativeOut += curTransfer.FirstValue();
                     curTransfer.GetTxOut(CCurrencyValueMap(), curTransfer.FirstValue(), newOut);
@@ -2941,9 +2937,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 {
                     // if this is a minting of currency
                     // this is used for both pre-allocation and also centrally, algorithmically, or externally controlled currencies
+                    uint160 destCurID;
                     if (curTransfer.IsMint() && curTransfer.destCurrencyID == importCurrencyID)
                     {
                         // minting is emitted in new currency state
+                        destCurID = curTransfer.destCurrencyID;
                         totalMinted += curTransfer.FirstValue();
                         AddNativeOutConverted(curTransfer.destCurrencyID, curTransfer.FirstValue());
                         if (curTransfer.destCurrencyID != systemDestID)
@@ -2951,8 +2949,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             AddReserveOutConverted(curTransfer.destCurrencyID, curTransfer.FirstValue());
                         }
                     }
-                    AddReserveOutput(curTransfer.destCurrencyID, curTransfer.FirstValue());
-                    curTransfer.GetTxOut(CCurrencyValueMap(std::vector<uint160>({curTransfer.destCurrencyID}), std::vector<int64_t>({curTransfer.FirstValue()})), 
+                    else
+                    {
+                        destCurID = curTransfer.FirstCurrency();
+                    }
+                    AddReserveOutput(destCurID, curTransfer.FirstValue());
+                    curTransfer.GetTxOut(CCurrencyValueMap(std::vector<uint160>({destCurID}), std::vector<int64_t>({curTransfer.FirstValue()})), 
                                             0, newOut);
                 }
             }

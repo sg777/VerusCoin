@@ -2248,7 +2248,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, incomingCurrency.ToUniValue().write(1,2).c_str());
         printf("%s: importedCurrency: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str());
-        printf("%s: localdepositrequirements: %s\n", __func__, newLocalDepositsRequired.ToUniValue().write(1,2).c_str()); */
+        printf("%s: localdepositrequirements: %s\n", __func__, newLocalDepositsRequired.ToUniValue().write(1,2).c_str());
+        printf("%s: checkImportedCurrency: %s\n", __func__, checkImportedCurrency.ToUniValue().write(1,2).c_str());
+        printf("%s: checkRequiredDeposits: %s\n", __func__, checkRequiredDeposits.ToUniValue().write(1,2).c_str()); */
 
         // add local reserve deposit inputs and determine change
         if (newLocalDepositsRequired.valueMap.size() ||
@@ -2354,11 +2356,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // ins and outs are correct. now calculate the fee correctly here and set the transaction builder accordingly
         // to prevent an automatic change output. we could just let it go and have a setting to stop creation of a change output,
         // but this is a nice doublecheck requirement
-        /* printf("%s: reserveInMap:\n%s\nspentCurrencyOut:\n%s\nrequiredDeposits:\n%s\nccx.totalAmounts:\n%s\nccx.totalFees:\n%s\n",
+        /* printf("%s: reserveInMap:\n%s\nspentCurrencyOut:\n%s\nccx.totalAmounts:\n%s\nccx.totalFees:\n%s\n",
                 __func__,
                 reserveInMap.ToUniValue().write(1,2).c_str(),
                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
-                requiredDeposits.ToUniValue().write(1,2).c_str(),
                 ccx.totalAmounts.ToUniValue().write(1,2).c_str(),
                 ccx.totalFees.ToUniValue().write(1,2).c_str()); */
 
@@ -2858,7 +2859,7 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
     {
         for (auto &oneCur : totalExports.valueMap)
         {
-            if (oneCur.first == ASSETCHAINS_CHAINID)
+            if (oneCur.first == sourceSystemID)
             {
                 newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
                 continue;
@@ -2880,8 +2881,8 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
             }
 
             // if we are exporting a gateway or PBaaS currency back to its system, we do not store it in reserve deposits
-            if ((oneCurDef.IsGateway() && oneCurDef.systemID == ASSETCHAINS_CHAINID && oneCurDef.gatewayID == destSystemID) ||
-                (oneCurDef.systemID != ASSETCHAINS_CHAINID && oneCurDef.systemID == destSystemID))
+            if ((oneCurDef.IsGateway() && oneCurDef.systemID == sourceSystemID && oneCurDef.gatewayID == destSystemID) ||
+                (oneCurDef.systemID != sourceSystemID && oneCurDef.systemID == destSystemID))
             {
                 // we need to burn this currency here, since it will be sent back to where it was originally minted for us to keep
                 // track of on this system
@@ -2890,7 +2891,7 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
                 // TODO: if we're exporting to a gateway or other chain, ensure that our export currency is registered for import
                 //
             }
-            else if (oneCurDef.systemID == ASSETCHAINS_CHAINID)
+            else if (oneCurDef.systemID == sourceSystemID)
             {
                 // exporting from one currency on this system to another currency on this system, store reserve deposits
                 newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
