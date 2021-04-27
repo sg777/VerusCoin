@@ -3278,21 +3278,6 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
 
-    if ((ConnectedChains.ThisChain().IsFractional() || ConnectedChains.ThisChain().startBlock < height) && 
-        ConnectedChains.ThisChain().currencies.size())
-    {
-        UniValue pricesInReserve(UniValue::VARR);
-        CCoinbaseCurrencyState thisCurState(ConnectedChains.GetCurrencyState(height));
-        std::vector<CAmount> prices(thisCurState.PricesInReserve());
-        for (int i = 0; i < thisCurState.currencies.size(); i++)
-        {
-            UniValue oneCurObj(UniValue::VOBJ);
-            oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(thisCurState.currencies[i]).name, ValueFromAmount(prices[i])));
-            pricesInReserve.push_back(oneCurObj);
-        }
-        obj.push_back(Pair("prices", pricesInReserve));
-    }
-
     obj.push_back(Pair("txcount",       (int)pwalletMain->mapWallet.size()));
     obj.push_back(Pair("keypoololdest", pwalletMain->GetOldestKeyPoolTime()));
     obj.push_back(Pair("keypoolsize",   (int)pwalletMain->GetKeyPoolSize()));

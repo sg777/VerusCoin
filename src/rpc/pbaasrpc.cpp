@@ -4694,7 +4694,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "         \"initialcontributions\" : \"[\"xx.xx\",..]\", (list, optional) initial contribution in each currency\n"
             "         \"prelaunchdiscount\" : \"xx.xx\" (value, optional) for fractional reserve currencies less than 100%, discount on final price at launch"
             "         \"initialsupply\" : \"xx.xx\"    (value, required for fractional) supply after conversion of contributions, before preallocation\n"
-            "         \"prelaunchcarveouts\" : \"[{\"identity\":xx.xx}..]\", (list, optional) identities and % of pre-converted amounts from each reserve currency\n"
+            "         \"prelaunchcarveout\" : \"0.xx\", (value, optional) identities and % of pre-converted amounts from each reserve currency\n"
             "         \"preallocations\" : \"[{\"identity\":xx.xx}..]\", (list, optional)  list of identities and amounts from pre-allocation\n"
             "         \"gatewayconvertername\" : \"name\", (string, optional) if this is a PBaaS chain, this names a co-launched gateway converter currency\n"
 
@@ -5021,8 +5021,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
-    CCurrencyValueMap launchFee(std::vector<uint160>({thisChainID}),
-                                std::vector<int64_t>({ConnectedChains.ThisChain().GetCurrencyRegistrationFee()}));
+    CAmount mainLaunchFee = newChain.IsPBaaSChain() || newChain.IsGateway() ? ConnectedChains.ThisChain().GetPBaaSLaunchFee() :
+                                                                                ConnectedChains.ThisChain().GetCurrencyRegistrationFee();
+    CCurrencyValueMap launchFee(std::vector<uint160>({thisChainID}), std::vector<int64_t>({mainLaunchFee}));
+
     CCrossChainExport ccx = CCrossChainExport(thisChainID, 0, height, newChain.systemID, newChainID, 0, launchFee, launchFee, uint256());
     ccx.SetChainDefinition();
     if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID)
@@ -5192,8 +5194,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         pk = CPubKey(ParseHex(CC.CChexstr));
         dests = std::vector<CTxDestination>({pk});
         CReserveDeposit launchDeposit = CReserveDeposit(newChainID, CCurrencyValueMap());
+        CAmount mainLaunchFee = newChain.IsPBaaSChain() || newChain.IsGateway() ? ConnectedChains.ThisChain().GetPBaaSLaunchFee() :
+                                                                                  ConnectedChains.ThisChain().GetCurrencyRegistrationFee();
         vOutputs.push_back({MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
-                                            ConnectedChains.ThisChain().GetCurrencyRegistrationFee(), 
+                                            mainLaunchFee, 
                                             false});
     }
 

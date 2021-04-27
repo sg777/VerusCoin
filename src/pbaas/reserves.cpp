@@ -2168,7 +2168,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 {
                     // we need to pay 1/2 of the launch cost for the launch system in launch fees
                     // remainder was paid when the currency is defined
-                    currencyRegistrationFee = systemSource.GetCurrencyRegistrationFee();
+                    currencyRegistrationFee = importCurrencyDef.IsPBaaSChain() || importCurrencyDef.IsGateway() ? 
+                                                systemSource.GetPBaaSLaunchFee() : 
+                                                systemSource.GetCurrencyRegistrationFee();
                     transferFees.valueMap[importCurrencyDef.launchSystemID] += currencyRegistrationFee;
                     AddReserveInput(importCurrencyDef.launchSystemID, currencyRegistrationFee);
                     if (importCurrencyDef.launchSystemID != systemDestID)

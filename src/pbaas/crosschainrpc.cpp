@@ -422,6 +422,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     idReferralLevels(DEFAULT_ID_REFERRAL_LEVELS),
     idImportFees(IDENTITY_IMPORT_FEE),
     currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
+    pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
     currencyImportFee(CURRENCY_IMPORT_FEE),
     transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
     transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
@@ -551,50 +552,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                     nVersion = PBAAS_VERSION_INVALID;
                 }
 
-                UniValue preLaunchCarveoutsUni = find_value(obj, "prelaunchcarveouts");
-                int32_t preLaunchCarveOutTotal = 0;
-                if (nVersion != PBAAS_VERSION_INVALID && preLaunchCarveoutsUni.isArray())
-                {
-                    for (int i = 0; i < preLaunchCarveoutsUni.size(); i++)
-                    {
-                        std::vector<std::string> preLaunchCarveOutKey = preLaunchCarveoutsUni[i].getKeys();
-                        std::vector<UniValue> preLaunchCarveOutValue = preLaunchCarveoutsUni[i].getValues();
-                        if (preLaunchCarveOutKey.size() != 1 || preLaunchCarveOutValue.size() != 1)
-                        {
-                            LogPrintf("%s: each prelaunchcarveouts entry must contain one destination identity and one amount\n", __func__);
-                            printf("%s: each prelaunchcarveouts entry must contain one destination identity and one amount\n", __func__);
-                            nVersion = PBAAS_VERSION_INVALID;
-                            break;
-                        }
-
-                        CTxDestination carveOutDest = DecodeDestination(preLaunchCarveOutKey[0]);
-
-                        if (carveOutDest.which() != COptCCParams::ADDRTYPE_ID && !(carveOutDest.which() == COptCCParams::ADDRTYPE_INVALID && preLaunchCarveoutsUni.size() == 1))
-                        {
-                            LogPrintf("%s: prelaunchcarveouts destination must be an identity\n", __func__);
-                            nVersion = PBAAS_VERSION_INVALID;
-                            break;
-                        }
-
-                        CAmount carveOutAmount = AmountFromValueNoErr(preLaunchCarveOutValue[0]);
-                        if (carveOutAmount <= 0)
-                        {
-                            LogPrintf("%s: prelaunchcarveouts values must be greater than zero\n", __func__);
-                            nVersion = PBAAS_VERSION_INVALID;
-                            break;
-                        }
-                        preLaunchCarveOutTotal += carveOutAmount;
-                        if (preLaunchDiscount < 0 || 
-                            preLaunchDiscount >= SATOSHIDEN ||
-                            CCurrencyDefinition::CalculateRatioOfValue((totalReserveWeight - preLaunchCarveOutTotal), SATOSHIDEN - preLaunchDiscount) >= SATOSHIDEN)
-                        {
-                            LogPrintf("%s: prelaunchcarveouts values and discounts must total less than 1\n", __func__);
-                            nVersion = PBAAS_VERSION_INVALID;
-                            break;
-                        }
-                        preLaunchCarveOuts.push_back(make_pair(CIdentityID(GetDestinationID(carveOutDest)), preLaunchCarveOutTotal));
-                    }
-                }
+                int32_t preLaunchCarveOutTotal = AmountFromValue(find_value(obj, "prelaunchcarveout"));
 
                 // if weights are defined, use them as relative ratios of each member currency
                 if (weightArr.isArray() && weightArr.size())
@@ -854,6 +812,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         if (vEras.size())
         {
             currencyRegistrationFee = uni_get_int64(find_value(obj, "currencyregistrationfee"), currencyRegistrationFee);
+            pbaasSystemLaunchFee = uni_get_int64(find_value(obj, "pbaassystemregistrationfee"), pbaasSystemLaunchFee);
             currencyImportFee = uni_get_int64(find_value(obj, "currencyimportfee"), currencyImportFee);
             transactionImportFee = uni_get_int64(find_value(obj, "transactionimportfee"), transactionImportFee);
             transactionExportFee = uni_get_int64(find_value(obj, "transactionexportfee"), transactionExportFee);
@@ -908,16 +867,6 @@ int64_t CCurrencyDefinition::GetTotalPreallocation() const
 // this will only return an accurate result after total preconversion has been updated and before any emission
 int32_t CCurrencyDefinition::GetTotalCarveOut() const
 {
-    int32_t totalCarveOut = 0;
-    for (auto &oneCarveOut : preLaunchCarveOuts)
-    {
-        totalCarveOut += oneCarveOut.second;
-        if (oneCarveOut.second < 0 || oneCarveOut.second > SATOSHIDEN || totalCarveOut > SATOSHIDEN)
-        {
-            LogPrintf("%s: invalid carve out amount specified %d\n", __func__, oneCarveOut.second);
-            return 0;
-        }
-    }
-    return totalCarveOut;
+    return preLaunchCarveOut;
 }
 

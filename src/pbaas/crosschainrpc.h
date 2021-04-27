@@ -448,6 +448,7 @@ public:
     {
         TRANSACTION_TRANSFER_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
         CURRENCY_REGISTRATION_FEE = 10000000000, // default 100 to register a currency
+        PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000, // default 10000 to register and launch a PBaaS chain
         CURRENCY_IMPORT_FEE = 2000000000,   // default 100 to import a currency
         IDENTITY_REGISTRATION_FEE = 10000000000, // 100 to register an identity
         IDENTITY_IMPORT_FEE = 2000000000,   // 20 in native currency to import an identity
@@ -536,7 +537,7 @@ public:
     std::vector<int64_t> preconverted;      // actual converted amount if known
 
     int32_t preLaunchDiscount;              // if non-zero, a ratio of the initial supply instead of a fixed number is used to calculate total preallocation
-    std::vector<std::pair<uint160, int32_t>> preLaunchCarveOuts; // pre-launch carve-out recipients, from reserve contributions, taken from reserve percentage
+    int32_t preLaunchCarveOut;              // pre-launch carve-out amount as a ratio of satoshis, from reserve contributions, taken from reserve percentage
 
     // this section for gateways
     CTransferDestination nativeCurrencyID;  // ID of the currency in its native system (for gateways)
@@ -554,6 +555,7 @@ public:
 
     // costs to register and import currencies
     int64_t currencyRegistrationFee;        // cost in native currency to register a currency on this system
+    int64_t pbaasSystemLaunchFee;           // cost in native currency to register and launch a connected PBaaS chain on this system
     int64_t currencyImportFee;              // cost in native currency to import currency into this system (PBaaS or Gateway)
 
     int64_t transactionImportFee;           // how much to import a basic transaction
@@ -585,6 +587,7 @@ public:
                             idReferralLevels(DEFAULT_ID_REFERRAL_LEVELS),
                             idImportFees(IDENTITY_IMPORT_FEE),
                             currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
+                            pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
                             currencyImportFee(CURRENCY_IMPORT_FEE),
                             transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
                             transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
@@ -605,13 +608,14 @@ public:
                         int32_t StartBlock, int32_t EndBlock, int64_t InitialFractionalSupply, std::vector<std::pair<uint160, int64_t>> PreAllocation, 
                         int64_t ConverterIssuance, std::vector<uint160> Currencies, std::vector<int32_t> Weights, std::vector<int64_t> Conversions, 
                         std::vector<int64_t> MinPreconvert, std::vector<int64_t> MaxPreconvert, std::vector<int64_t> Contributions, 
-                        std::vector<int64_t> Preconverted, int32_t PreLaunchDiscount, std::vector<std::pair<uint160, int32_t>> PreLaunchCarveOuts,
+                        std::vector<int64_t> Preconverted, int32_t PreLaunchDiscount, int32_t PreLaunchCarveOut,
                         const CTransferDestination &NativeID, const uint160 &GatewayID,
                         const std::vector<uint160> &Notaries, int32_t MinNotariesConfirm,
                         const std::vector<int64_t> &chainRewards, const std::vector<int64_t> &chainRewardsDecay,
                         const std::vector<int32_t> &chainHalving, const std::vector<int32_t> &chainEraEnd,
                         const std::string &LaunchGatewayName,
                         int64_t TransactionTransferFee=TRANSACTION_TRANSFER_FEE, int64_t CurrencyRegistrationFee=CURRENCY_REGISTRATION_FEE,
+                        int64_t PBaaSSystemRegistrationFee=PBAAS_SYSTEM_LAUNCH_FEE,
                         int64_t CurrencyImportFee=CURRENCY_IMPORT_FEE, int64_t IDRegistrationAmount=IDENTITY_REGISTRATION_FEE, 
                         int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE,
                         uint32_t Version=VERSION_CURRENT) :
@@ -636,7 +640,7 @@ public:
                         contributions(Contributions),
                         preconverted(Preconverted),
                         preLaunchDiscount(PreLaunchDiscount),
-                        preLaunchCarveOuts(PreLaunchCarveOuts),
+                        preLaunchCarveOut(PreLaunchCarveOut),
                         nativeCurrencyID(NativeID),
                         gatewayID(GatewayID),
                         notaries(Notaries),
@@ -645,6 +649,7 @@ public:
                         idReferralLevels(IDReferralLevels),
                         idImportFees(IDImportFee),
                         currencyRegistrationFee(CurrencyRegistrationFee),
+                        pbaasSystemLaunchFee(PBaaSSystemRegistrationFee),
                         currencyImportFee(CurrencyImportFee),
                         transactionImportFee(TransactionTransferFee >> 1),
                         transactionExportFee(TransactionTransferFee >> 1),
@@ -689,7 +694,7 @@ public:
         READWRITE(contributions);
         READWRITE(preconverted);
         READWRITE(VARINT(preLaunchDiscount));
-        READWRITE(preLaunchCarveOuts);
+        READWRITE(preLaunchCarveOut);
         READWRITE(notaries);
         READWRITE(VARINT(minNotariesConfirm));
         READWRITE(VARINT(idRegistrationFees));
@@ -703,6 +708,7 @@ public:
                 READWRITE(gatewayID);
             }
             READWRITE(VARINT(currencyRegistrationFee));
+            READWRITE(VARINT(pbaasSystemLaunchFee));
             READWRITE(VARINT(currencyImportFee));
             READWRITE(VARINT(transactionImportFee));
             READWRITE(VARINT(transactionExportFee));
@@ -719,6 +725,7 @@ public:
             s << initZero;
             s << initZero;
             READWRITE(VARINT(currencyRegistrationFee));
+            READWRITE(VARINT(pbaasSystemLaunchFee));
             READWRITE(VARINT(currencyImportFee));
             READWRITE(VARINT(transactionImportFee));
             READWRITE(VARINT(transactionExportFee));
@@ -761,6 +768,11 @@ public:
     int64_t GetCurrencyRegistrationFee() const
     {
         return currencyRegistrationFee;
+    }
+
+    int64_t GetPBaaSLaunchFee() const
+    {
+        return pbaasSystemLaunchFee;
     }
 
     uint160 GetID() const

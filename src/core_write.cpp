@@ -775,12 +775,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
     if (IsFractional())
     {
         obj.push_back(Pair("initialsupply", ValueFromAmount(initialFractionalSupply)));
-        CAmount carveOut = 0;
-        for (auto oneCarveOut : preLaunchCarveOuts)
-        {
-            carveOut += preLaunchCarveOuts.begin()->second;
-        }
-        obj.push_back(Pair("prelaunchcarveout", ValueFromAmount(carveOut)));
+        obj.push_back(Pair("prelaunchcarveout", ValueFromAmount(preLaunchCarveOut)));
     }
 
     if (preAllocation.size())
