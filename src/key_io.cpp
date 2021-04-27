@@ -641,12 +641,27 @@ CPrincipal::CPrincipal(const UniValue &uni)
 
 CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 {
-    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "parent")))));
+    UniValue parentUni = find_value(uni, "parent");
+    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(parentUni))));
+    name = CleanName(uni_get_str(find_value(uni, "name")), parent);
+
     if (parent.IsNull())
     {
-        parent = ASSETCHAINS_CHAINID;
+        // if either:
+        // 1. we have an explicitly null parent or
+        // 2. with one name and a null parent, we have the verus chain ID, assume we have a null parent
+        // otherwise, default our current chain as the parent of a null-parented ID
+        parent = (!parentUni.isNull() || GetID() == VERUS_CHAINID) ? uint160() : ASSETCHAINS_CHAINID;
     }
-    name = CleanName(uni_get_str(find_value(uni, "name")), parent);
+
+    if (nVersion >= VERSION_PBAAS)
+    {
+        systemID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "systemid")))));
+        if (systemID.IsNull())
+        {
+            systemID = parent.IsNull() ? GetID() : parent;
+        }
+    }
 
     UniValue hashesUni = find_value(uni, "contentmap");
     if (hashesUni.isObject())

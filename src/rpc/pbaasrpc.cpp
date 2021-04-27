@@ -5752,6 +5752,14 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
     {
         uniOldID["version"] = (int64_t)oldID.VERSION_PBAAS;
+        if (oldID.nVersion < oldID.VERSION_PBAAS)
+        {
+            uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
+        }
+        else
+        {
+            uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
+        }
     }
 
     UniValue newUniID = MapToUniObject(uniOldID);
