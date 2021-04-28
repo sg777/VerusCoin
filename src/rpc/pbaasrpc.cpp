@@ -5495,6 +5495,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             parent.SetNull();
         }
     }
+    else
+    {
+        newID.parent = parent;
+    }
 
     uint160 newIDID = newID.GetID();
 
