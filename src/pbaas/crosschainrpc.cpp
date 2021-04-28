@@ -552,7 +552,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                     nVersion = PBAAS_VERSION_INVALID;
                 }
 
-                int32_t preLaunchCarveOutTotal = AmountFromValue(find_value(obj, "prelaunchcarveout"));
+                int32_t preLaunchCarveOutTotal = AmountFromValueNoErr(find_value(obj, "prelaunchcarveout"));
 
                 // if weights are defined, use them as relative ratios of each member currency
                 if (weightArr.isArray() && weightArr.size())
