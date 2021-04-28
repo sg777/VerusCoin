@@ -347,16 +347,28 @@ bool SetPeerNodes(const UniValue &nodes)
             ConnectedChains.defaultPeerNodes.push_back(oneNode);
         }
     }
+
+    std::vector<std::string> seedNodes = mapMultiArgs["-seednode"];
+    for (int i = 0; i < seedNodes.size(); i++)
+    {
+        CNodeData oneNode = CNodeData(seedNodes[i], "");
+        if (oneNode.networkAddress != "")
+        {
+            ConnectedChains.defaultPeerNodes.push_back(oneNode);
+        }
+    }
+
     // set all command line parameters into mapArgs from chain definition
     vector<string> nodeStrs;
     for (auto node : ConnectedChains.defaultPeerNodes)
     {
         nodeStrs.push_back(node.networkAddress);
-        
     }
-    if (nodeStrs.size())
+
+    mapMultiArgs["-seednode"] = nodeStrs;
+    for (auto &oneNode : seedNodes)
     {
-        mapMultiArgs["-seednode"] = nodeStrs;
+        AddOneShot(oneNode);
     }
     if (int port = ConnectedChains.GetThisChainPort())
     {
