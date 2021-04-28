@@ -5263,6 +5263,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                             mainImportFee);
     }
     tb.SetFee(totalLaunchExportFee);
+    tb.SendChangeTo(launchIdentity.GetID());
 
     if (newGatewayConverter.IsValid())
     {
