@@ -623,13 +623,15 @@ bool CConnectedChains::RemoveMergedBlock(uint160 chainID)
     {
         arith_uint256 target;
         target.SetCompact(chainIt->second.block.nBits);
-        for (auto removeRange = mergeMinedTargets.equal_range(target); removeRange.first != removeRange.second; removeRange.first++)
+        std::multimap<arith_uint256, CPBaaSMergeMinedChainData *>::iterator removeIt;
+        std::multimap<arith_uint256, CPBaaSMergeMinedChainData *>::iterator nextIt = mergeMinedTargets.begin();
+        for (removeIt = nextIt; removeIt != mergeMinedTargets.end(); removeIt = nextIt)
         {
+            nextIt++;
             // make sure we don't just match by target
-            if (removeRange.first->second->GetID() == chainID)
+            if (removeIt->second->GetID() == chainID)
             {
-                mergeMinedTargets.erase(removeRange.first);
-                break;
+                mergeMinedTargets.erase(removeIt);
             }
         }
         mergeMinedChains.erase(chainID);
@@ -682,9 +684,10 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
         }
         target.SetCompact(blkData.block.nBits);
 
-        //printf("AddMergedBlock name: %s, ID: %s\n", blkData.chainDefinition.name.c_str(), cID.GetHex().c_str());
-
-        mergeMinedTargets.insert(make_pair(target, &(mergeMinedChains.insert(make_pair(cID, blkData)).first->second)));
+        printf("%s: AddMergedBlock name: %s, ID: %s\n", __func__, blkData.chainDefinition.name.c_str(), cID.GetHex().c_str());
+        mergeMinedChains.insert(make_pair(cID, blkData));
+        mergeMinedTargets.insert(make_pair(target, &(mergeMinedChains[cID])));
+        printf("mergeMinedTargets.size(): %lu, mergeMinedChains.size(): %lu\n", mergeMinedTargets.size(), mergeMinedChains.size());
         dirty = true;
     }
     return true;

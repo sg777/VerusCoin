@@ -1324,7 +1324,7 @@ protected:
 
 public:
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
-    std::map<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
+    std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
     std::map<uint160, std::pair<CCurrencyDefinition, const CGateway *>> gateways;       // gateway currencies, which bridge to other blockchains/systems
 

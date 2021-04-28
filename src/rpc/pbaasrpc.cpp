@@ -6424,17 +6424,22 @@ UniValue addmergedblock(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "must provide valid RPC connection parameters to merge mine");
     }
 
-    uint160 chainID = CCrossChainRPCData::GetID(name);
+    CCurrencyDefinition chainDef;
+    uint160 chainID = ValidateCurrencyName(name, true, &chainDef);
+
+    if (chainID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid chain for merge mining");
+    }
 
     // confirm data from blockchain
     CRPCChainData chainData;
-    CCurrencyDefinition chainDef;
     if (ConnectedChains.GetChainInfo(chainID, chainData))
     {
         chainDef = chainData.chainDefinition;
     }
 
-    if (!chainDef.IsValid() && !GetCurrencyDefinition(name, chainDef))
+    if (!chainDef.IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "chain not found");
     }
@@ -6445,7 +6450,6 @@ UniValue addmergedblock(const UniValue& params, bool fHelp)
         return "deserialize-invalid";
 
     CPBaaSMergeMinedChainData blkData = CPBaaSMergeMinedChainData(chainDef, rpchost, rpcport, rpcuserpass, blk);
-
     return ConnectedChains.AddMergedBlock(blkData) ? NullUniValue : "blocksfull";
 }
 
