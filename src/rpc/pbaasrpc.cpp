@@ -5502,6 +5502,15 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     uint160 newIDID = newID.GetID();
 
+    if (find_value(rawID, "revocationauthority").isNull())
+    {
+        newID.revocationAuthority = newID.GetID();
+    }
+    if (find_value(rawID, "recoveryauthority").isNull())
+    {
+        newID.recoveryAuthority = newID.GetID();
+    }
+
     CAmount feeOffer;
     CAmount minFeeOffer = reservation.referral.IsNull() ? 
                           ConnectedChains.ThisChain().IDFullRegistrationAmount() : 
