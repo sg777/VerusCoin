@@ -2924,7 +2924,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     AddNativeOutConverted(curTransfer.FirstCurrency(), -curTransfer.FirstValue());
                     burnedChangePrice += curTransfer.FirstValue();
                 }
-                else if (systemDestID == curTransfer.FirstCurrency())
+                else if (!curTransfer.IsMint() && systemDestID == curTransfer.FirstCurrency())
                 {
                     nativeOut += curTransfer.FirstValue();
                     curTransfer.GetTxOut(CCurrencyValueMap(), curTransfer.FirstValue(), newOut);
