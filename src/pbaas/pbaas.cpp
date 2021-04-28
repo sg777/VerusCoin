@@ -684,10 +684,8 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
         }
         target.SetCompact(blkData.block.nBits);
 
-        printf("%s: AddMergedBlock name: %s, ID: %s\n", __func__, blkData.chainDefinition.name.c_str(), cID.GetHex().c_str());
         mergeMinedChains.insert(make_pair(cID, blkData));
         mergeMinedTargets.insert(make_pair(target, &(mergeMinedChains[cID])));
-        printf("mergeMinedTargets.size(): %lu, mergeMinedChains.size(): %lu\n", mergeMinedTargets.size(), mergeMinedChains.size());
         dirty = true;
     }
     return true;
