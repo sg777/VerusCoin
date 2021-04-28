@@ -1322,6 +1322,10 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
                         vNNodes.insert(std::make_pair(oneNode.networkAddress, oneNode));
                     }
                 }
+                for (auto oneNode : nodes)
+                {
+                    vNNodes[oneNode.networkAddress] = oneNode;
+                }
 
                 confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
                 bestHeight = cnd.vtx.size() && cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : -1;
@@ -3439,6 +3443,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             CCurrencyDefinition secondCurrencyDef;
             uint160 secondCurrencyID;
+            bool isVia = false;
             if (viaStr != "")
             {
                 secondCurrencyID = ValidateCurrencyName(viaStr, true, &secondCurrencyDef);
@@ -3463,6 +3468,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 secondCurrencyDef = tempDef;
                 convertToCurrencyID = convertToCurrencyDef.GetID();
                 secondCurrencyID = secondCurrencyDef.GetID();
+                isVia = true;
             }
 
             bool isConversion = false;
@@ -3818,6 +3824,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     convertToCurrencyID = sourceCurrencyID;
                     convertToCurrencyDef = sourceCurrencyDef;
                 }
+                if (isVia)
+                {
+                    flags |= CReserveTransfer::RESERVE_TO_RESERVE;
+                }
 
                 // are we a system/chain transfer with or without conversion?
                 if (destSystemID != thisChainID || (!exportToCurrencyID.IsNull() && exportToCurrencyID != thisChainID))
@@ -3867,7 +3877,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                     // through a converter before or after conversion for actual conversion and/or fee conversion
-                    else if (!convertToCurrencyID.IsNull())
+                    else if (isConversion)
                     {
                         // if we convert first, then export, put the follow-on export in an output
                         // to be converted with a cross-chain fee
@@ -3895,6 +3905,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                   / cnd.vtx[cnd.lastConfirmed].second.currencyState.PriceInReserve(currencyMap[feeCurrencyID]);
                             printf("%s: setting transfer fees in currency %s to %ld\n", __func__, EncodeDestination(CIdentityID(feeCurrencyID)).c_str(), dest.fees);
                         }
+                        else
+                        {
+                            flags |= CReserveTransfer::CROSS_SYSTEM;
+                        }
 
                         auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
                         if (!reserveMap.count(feeCurrencyID))
@@ -3909,7 +3923,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                feeCurrencyID,
                                                                fees, 
                                                                convertToCurrencyID, 
-                                                               dest);
+                                                               dest,
+                                                               secondCurrencyID,
+                                                               exportSystemDef.GetID());
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
@@ -3918,6 +3934,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     }
                     else // direct to another system paying with acceptable fee currency
                     {
+                        flags |= CReserveTransfer::CROSS_SYSTEM;
                         auto dest = DestinationToTransferDestination(destination); // add refundDestination to destination
                         auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
                         CReserveTransfer rt = CReserveTransfer(flags,
@@ -3926,7 +3943,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                feeCurrencyID,
                                                                fees, 
                                                                exportToCurrencyID, 
-                                                               dest);
+                                                               dest,
+                                                               secondCurrencyID,
+                                                               exportSystemDef.GetID());
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
