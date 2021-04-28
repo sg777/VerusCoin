@@ -528,7 +528,7 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
     int numChains = mergeMining ? (IsVerusActive() ? chains.size() + 1 : 1) : 0;
     obj.push_back(Pair("numthreads",       (int64_t)KOMODO_MININGTHREADS));
     obj.push_back(Pair("mergemining",      numChains));
-    if (chains.size() || numChains)
+    if (numChains)
     {
         UniValue chainNames(UniValue::VARR);
         for (auto chain : chains)
