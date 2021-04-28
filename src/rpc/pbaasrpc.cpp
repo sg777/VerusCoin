@@ -5289,6 +5289,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
     std::vector<COutput> vCoins;
     CCurrencyValueMap totalReservesNeeded = rtxd.ReserveOutputMap();
+    CCurrencyValueMap totalCurrenciesNeeded = totalReservesNeeded;
+    totalCurrenciesNeeded.valueMap[ASSETCHAINS_CHAINID] = rtxd.nativeOut + totalLaunchExportFee;
     CTxDestination fromID(CIdentityID(launchIdentity.GetID()));
     pwalletMain->AvailableReserveCoins(vCoins,
                                        false,
@@ -5296,9 +5298,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                        true,
                                        true,
                                        &fromID,
-                                       &totalTxFees, 
+                                       &totalCurrenciesNeeded, 
                                        false);
-
     CCurrencyValueMap reservesUsed;
     CAmount nativeUsed;
     if (!pwalletMain->SelectReserveCoinsMinConf(rtxd.ReserveOutputMap(),
