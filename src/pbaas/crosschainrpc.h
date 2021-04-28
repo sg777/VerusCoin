@@ -765,14 +765,35 @@ public:
         return retVal;
     }
 
-    int64_t GetCurrencyRegistrationFee() const
+    int64_t GetCurrencyRegistrationFee(uint32_t currencyOptions) const
     {
-        return currencyRegistrationFee;
+        if (currencyOptions & (OPTION_PBAAS + OPTION_GATEWAY))
+        {
+            return pbaasSystemLaunchFee;
+        }
+        else
+        {
+            return currencyRegistrationFee;
+        }
     }
 
-    int64_t GetPBaaSLaunchFee() const
+    // fee amount released at definition
+    int64_t LaunchFeeExportShare(uint32_t currencyOptions) const
     {
-        return pbaasSystemLaunchFee;
+        return GetCurrencyRegistrationFee(currencyOptions) >> 1;
+    }
+
+    int64_t LaunchFeeImportShare(uint32_t currencyOptions) const
+    {
+        return GetCurrencyRegistrationFee(currencyOptions) - LaunchFeeExportShare(currencyOptions);
+    }
+
+    // fee amount released for notarization at launch of PBaaS chains
+    // currently 1/10th of import
+    int64_t TotalNotaryLaunchFeeShare(uint32_t currencyOptions) const
+    {
+        int64_t importShare = LaunchFeeImportShare(currencyOptions);
+        return importShare / 10;
     }
 
     uint160 GetID() const
