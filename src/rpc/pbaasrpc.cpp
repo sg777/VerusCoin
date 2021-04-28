@@ -5251,8 +5251,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     {
         totalLaunchFee += ConnectedChains.ThisChain().GetCurrencyRegistrationFee(newGatewayConverter.options);
     }
-    CAmount totalLaunchExportFee = totalLaunchFee - (mainImportFee + converterImportFee);
 
+    CAmount totalLaunchExportFee = totalLaunchFee - (mainImportFee + converterImportFee);
     if (newCurrencyState.GetID() != ASSETCHAINS_CHAINID)
     {
         cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
@@ -5262,6 +5262,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
                                             mainImportFee);
     }
+    tb.SetFee(totalLaunchExportFee);
 
     if (newGatewayConverter.IsValid())
     {
@@ -5287,9 +5288,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // get a native currency input capable of paying a fee, and make our notary ID the change address
     std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
     std::vector<COutput> vCoins;
-    CCurrencyValueMap totalTxFees;
-    totalTxFees.valueMap[ConnectedChains.FirstNotaryChain().chainDefinition.GetID()] = CPBaaSNotarization::DEFAULT_NOTARIZATION_FEE;
-    tb.SetFee(totalLaunchExportFee);
+    CCurrencyValueMap totalReservesNeeded = rtxd.ReserveOutputMap();
     CTxDestination fromID(CIdentityID(launchIdentity.GetID()));
     pwalletMain->AvailableReserveCoins(vCoins,
                                        false,
@@ -5303,7 +5302,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     CCurrencyValueMap reservesUsed;
     CAmount nativeUsed;
     if (!pwalletMain->SelectReserveCoinsMinConf(rtxd.ReserveOutputMap(),
-                                                rtxd.nativeOut,
+                                                rtxd.nativeOut + totalLaunchExportFee,
                                                 0,
                                                 1,
                                                 vCoins,
