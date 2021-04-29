@@ -4082,6 +4082,7 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
         {
             result = find_value(RPCCallRoot("getlastimportfrom", params), "result");
             pbn = CPBaaSNotarization(find_value(result, "lastconfirmednotarization"));
+            found = true;
         } catch (...)
         {
             LogPrintf("%s: Could not get last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
@@ -4093,21 +4094,28 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
             return exports;
         }
         lastCCI = CCrossChainImport(find_value(result, "lastimport"));
-        if (!lastCCI.IsValid())
+        if (!lastCCI.IsValid() || !pbn.proofRoots.count(sourceChainID))
         {
             LogPrintf("%s: Invalid last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
             return exports;
         }
+        lastConfirmed = pbn;
     }
     else if (!exportsToNotary)
     {
         LOCK(cs_main);
         std::vector<CAddressUnspentDbEntry> unspentOutputs;
 
-        // TODO: add getnotarizationdata
+        CChainNotarizationData cnd;
+        if (!GetNotarizationData(sourceChainID, cnd) ||
+            !cnd.IsConfirmed() ||
+            !(lastConfirmed = cnd.vtx[cnd.lastConfirmed].second).proofRoots.count(sourceChainID))
+        {
+            LogPrintf("%s: Unable to get notarization data for %s\n", __func__, EncodeDestination(CIdentityID(sourceChainID)).c_str());
+            return exports;
+        }
 
-        if (lastConfirmed.proofRoots.count(sourceChainID) &&
-            GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs))
+        if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs))
         {
             // if one spends the prior one, get the one that is not spent
             for (auto &txidx : unspentOutputs)
@@ -4128,7 +4136,7 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
     }
 
     if (found && 
-        lastCCI.sourceSystemHeight < lastConfirmed.notarizationHeight)
+        lastCCI.sourceSystemHeight < lastConfirmed.proofRoots[sourceChainID].rootHeight)
     {
         UniValue params(UniValue::VARR);
         params = UniValue(UniValue::VARR);

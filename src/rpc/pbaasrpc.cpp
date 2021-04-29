@@ -5016,7 +5016,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid notarization protocol specified");
     }
 
-    CCrossChainImport cci = CCrossChainImport(newChain.systemID, height, newChainID, CCurrencyValueMap(), CCurrencyValueMap());
+    uint32_t lastImportHeight = newChain.IsPBaaSChain() || newChain.IsGateway() ? 1 : height;
+
+    CCrossChainImport cci = CCrossChainImport(newChain.systemID, lastImportHeight, newChainID, CCurrencyValueMap(), CCurrencyValueMap());
     cci.SetSameChain(newChain.systemID == ASSETCHAINS_CHAINID);
     cci.SetDefinitionImport(true);
     if (newChainID == ASSETCHAINS_CHAINID)
@@ -5174,7 +5176,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         // if this is a token on this chain, the transfer that is output here is burned through the export 
         // and merges with the import thread. we multiply new input times 2, to cover both the import thread output 
         // and the reserve transfer outputs.
-        CCrossChainImport gatewayCci = CCrossChainImport(newGatewayConverter.systemID, height, gatewayCurrencyID, CCurrencyValueMap(), CCurrencyValueMap());
+        CCrossChainImport gatewayCci = CCrossChainImport(newGatewayConverter.systemID, lastImportHeight, gatewayCurrencyID, CCurrencyValueMap(), CCurrencyValueMap());
         gatewayCci.SetSameChain(newGatewayConverter.systemID == ASSETCHAINS_CHAINID);
         gatewayCci.SetDefinitionImport(true);
 

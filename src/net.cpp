@@ -447,7 +447,7 @@ void CNode::PushVersion()
 
     if (PROTOCOL_VERSION >= MIN_PBAAS_VERSION)
     {
-        CIdentityID nodeID = VERUS_NODEID.IsNull() ? uint160() : VERUS_NODEID;
+        CIdentityID nodeID = VERUS_NODEID;
         PushMessage("version", PROTOCOL_VERSION, 
                     nLocalServices, nTime, addrYou, addrMe, nLocalHostNonce, nodeID, strSubVersion, nBestHeight, true);
     }
