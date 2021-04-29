@@ -4094,9 +4094,14 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
             return exports;
         }
         lastCCI = CCrossChainImport(find_value(result, "lastimport"));
-        if (!lastCCI.IsValid() || !pbn.proofRoots.count(sourceChainID))
+        if (!lastCCI.IsValid())
         {
             LogPrintf("%s: Invalid last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+            return exports;
+        }
+        if (!pbn.proofRoots.count(sourceChainID))
+        {
+            LogPrintf("%s: No adequate notarization available yet to support export to %s\n", __func__, uni_get_str(params[0]).c_str());
             return exports;
         }
         lastConfirmed = pbn;
@@ -4167,6 +4172,9 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
         {
             return exports;
         }
+
+        LOCK(cs_main);
+
         bool foundCurrent = false;
         for (int i = 0; i < result.size(); i++)
         {
@@ -4262,15 +4270,17 @@ void CConnectedChains::SubmissionThread()
     {
         arith_uint256 lastHash;
         int64_t lastImportTime = 0;
-        uint32_t lastHeight = 0;
         
         // wait for something to check on, then submit blocks that should be submitted
         while (true)
         {
             boost::this_thread::interruption_point();
 
+            uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
+
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
-            if (IsNotaryAvailable(true) && 
+            if (height > (CPBaaSNotarization::BLOCK_NOTARIZATION_MODULO + CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED) &&
+                IsNotaryAvailable(true) &&
                 lastImportTime < (GetAdjustedTime() - 30))
             {
                 // check for exports on this chain that we should send to the notary and do so
