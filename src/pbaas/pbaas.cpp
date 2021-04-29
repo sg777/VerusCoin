@@ -4237,7 +4237,7 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
                     printf("Invalid export msg3 from %s\n", uni_get_str(params[0]).c_str());
                     return exports;
                 }
-                if (ccx.IsChainDefinition())
+                if (ccx.IsChainDefinition() || ccx.sourceHeightEnd == 1)
                 {
                     continue;
                 }
