@@ -3877,8 +3877,21 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                     // through a converter before or after conversion for actual conversion and/or fee conversion
-                    else if (isConversion)
+                    else if (isConversion || (destSystemID != exportToCurrencyID && !convertToCurrencyID.IsNull()))
                     {
+                        // ensure that any source currency can go to the destination via the converter
+                        // we care about the ability of the converter to convert from the current fee
+                        // currency to the destination system currency and availability of the primary
+                        // output currency after any specified conversion
+                        if (convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
+                        {
+
+                        }
+                        else
+                        {
+                            
+                        }
+
                         // if we convert first, then export, put the follow-on export in an output
                         // to be converted with a cross-chain fee
                         CTransferDestination dest = DestinationToTransferDestination(destination);
@@ -6880,6 +6893,7 @@ static const CRPCCommand commands[] =
     { "multichain",   "getlaunchinfo",                &getlaunchinfo,          true  },
     { "multichain",   "getbestproofroot",             &getbestproofroot,       true  },
     { "multichain",   "submitacceptednotarization",   &submitacceptednotarization, true },
+    { "multichain",   "submitimports",                &submitimports,          true },
     { "multichain",   "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "multichain",   "getcurrencystate",             &getcurrencystate,       true  },
     { "multichain",   "getsaplingtree",               &getsaplingtree,         true  },
