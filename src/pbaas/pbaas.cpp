@@ -4108,7 +4108,7 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
             return exports;
         }
         lastConfirmed = pbn;
-        lastConfirmedUTXO = CUTXORef(find_value(result, "lastimportutxo"));
+        lastConfirmedUTXO = CUTXORef(find_value(result, "lastconfirmedutxo"));
         if (lastConfirmedUTXO.hash.IsNull() || lastConfirmedUTXO.n < 0)
         {
             LogPrintf("%s: No confirmed notarization available to support export to %s\n", __func__, uni_get_str(params[0]).c_str());
