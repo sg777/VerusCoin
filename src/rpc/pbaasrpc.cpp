@@ -1704,6 +1704,7 @@ UniValue submitimports(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid reserve transfers from export of " + uni_get_str(params[0]));
             }
         }
+        exports.push_back(oneExport);
     }
 
     std::map<uint160, std::vector<std::pair<int, CTransaction>>> newImports;
