@@ -1817,7 +1817,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
     {
         throw runtime_error(
             "getimports \"chainname\" (startheight) (endheight)\n"
-            "\nReturns all imports from a specific chain, optionally that were imported between a specific block range.\n"
+            "\nReturns all imports into a specific currency, optionally that were imported between a specific block range.\n"
 
             "\nArguments\n"
             "1. \"chainname\"                     (string, optional) name of the chain to look for. no parameter returns current chain in daemon.\n"

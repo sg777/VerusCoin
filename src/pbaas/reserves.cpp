@@ -334,7 +334,9 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
     }
 
-    bool isPBaaSLaunch = !IsVerusActive() && pBaseImport->IsInitialLaunchImport();
+    bool isPBaaSDefinitionOrLaunch = (!IsVerusActive() && pBaseImport->IsInitialLaunchImport()) || 
+                                     (pBaseImport->IsDefinitionImport() &&
+                                      pBaseImport->sourceSystemID != ASSETCHAINS_CHAINID);
 
     importNotarizationOut = numImportOut + 1;
 
@@ -376,7 +378,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 
         // PBaaS launch imports do not spend a separate sys import thread, since we are also importing 
         // system currency on the same tx and and the coinbase has no inputs anyhow
-        if (!isPBaaSLaunch)
+        if (!isPBaaSDefinitionOrLaunch)
         {
             // next output should be the import for the system from which this export comes
             uint256 hashBlk;
@@ -395,7 +397,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             importNotarizationOut++;
         }
 
-        if (!isPBaaSLaunch ||
+        if (!isPBaaSDefinitionOrLaunch ||
             pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
             (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID()))
         {
