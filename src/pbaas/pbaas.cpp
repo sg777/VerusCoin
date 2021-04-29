@@ -4108,6 +4108,12 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
             return exports;
         }
         lastConfirmed = pbn;
+        lastConfirmedUTXO = CUTXORef(find_value(result, "lastconfirmednotarization"));
+        if (lastConfirmedUTXO.hash.IsNull() || lastConfirmedUTXO.n < 0)
+        {
+            LogPrintf("%s: No confirmed notarization available to support export to %s\n", __func__, uni_get_str(params[0]).c_str());
+            return exports;
+        }
     }
     else if (!exportsToNotary)
     {
@@ -4122,6 +4128,8 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
             LogPrintf("%s: Unable to get notarization data for %s\n", __func__, EncodeDestination(CIdentityID(sourceChainID)).c_str());
             return exports;
         }
+
+        lastConfirmedUTXO = cnd.vtx[cnd.lastConfirmed].first;
 
         if (GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs))
         {
