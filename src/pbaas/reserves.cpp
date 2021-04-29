@@ -1366,7 +1366,7 @@ void CReserveTransactionDescriptor::AddReserveOutput(const CTokenOutput &ro)
 void CReserveTransactionDescriptor::AddReserveTransfer(const CReserveTransfer &rt)
 {
     flags |= IS_RESERVE;
-    for (auto &oneCur : rt.reserveValues.valueMap)
+    for (auto &oneCur : rt.TotalCurrencyOut().valueMap)
     {
         if (oneCur.first != ASSETCHAINS_CHAINID && oneCur.second)
         {

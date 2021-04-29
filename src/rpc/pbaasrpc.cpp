@@ -3929,7 +3929,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
-                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : fees;
+                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
+                        oneOutput.nAmount += feeCurrencyID == thisChainID ? fees : 0;
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                     else // direct to another system paying with acceptable fee currency
@@ -3950,7 +3951,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
                         oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
-                        assert(feeCurrencyID == destSystemID);
+                        oneOutput.nAmount += feeCurrencyID == thisChainID ? fees : 0;
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                 }
@@ -4145,15 +4146,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     // Create operation and add to global queue
     CMutableTransaction contextualTx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), height + 1);
     std::shared_ptr<AsyncRPCQueue> q = getAsyncRPCQueue();
-    std::shared_ptr<AsyncRPCOperation> operation( new AsyncRPCOperation_sendmany(tb, 
-                                                                                 contextualTx, 
-                                                                                 sourceAddress, 
-                                                                                 tOutputs, 
-                                                                                 zOutputs,
-                                                                                 hasZSource ? 1 : 0, 
-                                                                                 feeAmount, 
-                                                                                 uniOutputs,
-                                                                                 true) );
+    std::shared_ptr<AsyncRPCOperation> operation(new AsyncRPCOperation_sendmany(tb, 
+                                                                                contextualTx, 
+                                                                                sourceAddress, 
+                                                                                tOutputs, 
+                                                                                zOutputs,
+                                                                                hasZSource ? 1 : 0, 
+                                                                                feeAmount, 
+                                                                                uniOutputs,
+                                                                                true) );
     q->addOperation(operation);
     AsyncRPCOperationId operationId = operation->getId();
     return operationId;
