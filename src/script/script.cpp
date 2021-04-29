@@ -960,17 +960,6 @@ uint160 CScript::AddressHash() const
     return addressHash;
 }
 
-std::set<uint160> COptCCParams::feeCurrencies;
-
-// we only add these at initialization time
-void COptCCParams::AddFeeCurrency(const uint160 &feeCurrency)
-{
-    if (!feeCurrency.IsNull())
-    {
-        feeCurrencies.insert(feeCurrency);
-    }
-}
-
 std::set<CIndexID> COptCCParams::GetIndexKeys() const
 {
     std::set<CIndexID> destinations;

@@ -1211,23 +1211,16 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         CVerusHash::init();
         CVerusHashV2::init();
         CBlockHeader::SetVerusV2Hash();
-        if (strcmp(ASSETCHAINS_SYMBOL,"VRSC") == 0)
+        if (IsVerusMainnetActive())
         {
-            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("dai.eth."));
-            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("rbtc.eth."));
-            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("wbtc.eth."));
-            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("eth."));
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 310000);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 800200);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 800200);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 1053660);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5_1, 1053660);
         }
-        else if (strcmp(ASSETCHAINS_SYMBOL,"VRSCTEST") == 0)
+        else if (IsVerusActive())
         {
-            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("usd"));
-            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("btc"));
-            COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("eth"));
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 1);
@@ -1237,15 +1230,6 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         }
         else
         {
-            if (PBAAS_TESTMODE)
-            {
-                COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("vrsctest"));
-            }
-            else
-            {
-                COptCCParams::AddFeeCurrency(CCrossChainRPCData::GetID("vrsc"));
-            }
-            
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV2, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV3, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 1);

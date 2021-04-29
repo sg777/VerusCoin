@@ -438,9 +438,6 @@ std::vector<CTransferDestination> DestinationsToTransferDestinations(const std::
 
 class COptCCParams
 {
-protected:
-    static std::set<uint160> feeCurrencies;
-
 public:
     static const uint8_t VERSION_V1 = 1;
     static const uint8_t VERSION_V2 = 2;
@@ -475,11 +472,6 @@ public:
     std::set<CIndexID> GetIndexKeys() const;
     std::map<uint160, uint32_t> GetIndexHeightOffsets(uint32_t height) const;
     std::vector<CTxDestination> GetDestinations() const;
-    static void AddFeeCurrency(const uint160 &feeCurrency);
-    static bool IsFeeCurrency(const uint160 &currencyID)
-    {
-        return feeCurrencies.count(currencyID);
-    }
 };
 
 // This is for STAKEGUARD2, which is versioned and enables staking the reserve of a reserve currency

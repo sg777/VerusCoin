@@ -119,6 +119,7 @@ public:
     //void settimestamp(uint32_t timestamp) { genesis.nTime = timestamp; }
     //void setgenesis(CBlock &block) { genesis = block; }
     //void recalc_genesis(uint32_t nonce) { genesis = CreateGenesisBlock(ASSETCHAINS_TIMESTAMP, nonce, GENESIS_NBITS, 1, COIN); };
+    std::vector<CDNSSeedData> vSeeds;
     CMessageHeader::MessageStartChars pchMessageStart; // jl777 moved
     Consensus::Params consensus;
 
@@ -131,7 +132,6 @@ protected:
     long nMaxTipAge = 0;
     int nDefaultPort = 0;
     uint64_t nPruneAfterHeight = 0;
-    std::vector<CDNSSeedData> vSeeds;
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
     std::string bech32HRPs[MAX_BECH32_TYPES];
     std::string strNetworkID;
