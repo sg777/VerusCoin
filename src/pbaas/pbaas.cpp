@@ -3093,9 +3093,12 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     CPBaaSNotarization intermediateNotarization = lastNotarization;
     CCrossChainExport lastExport;
     bool isPostLaunch = false;
-    if (priorExports.size() &&
+    if ((!isPreLaunch && !isClearLaunchExport) &&
+        priorExports.size() &&
         (lastExport = CCrossChainExport(priorExports[0].scriptPubKey)).IsValid() &&
-        (lastExport.IsClearLaunch() || intermediateNotarization.IsLaunchComplete()))
+        (lastExport.IsClearLaunch() ||
+         intermediateNotarization.IsLaunchComplete() ||
+         (destSystemID != ASSETCHAINS_CHAINID && !isPreLaunch)))
     {
         // now, all exports are post launch
         isPostLaunch = true;
@@ -4239,6 +4242,10 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
                 }
                 if (ccx.IsChainDefinition() || ccx.sourceHeightEnd == 1)
                 {
+                    if (lastCCI.exportTxId.IsNull())
+                    {
+                        foundCurrent = true;
+                    }
                     continue;
                 }
             }

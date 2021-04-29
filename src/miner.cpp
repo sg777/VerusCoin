@@ -1038,6 +1038,9 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             {
                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
             }
+            // this currency is not launching now
+            newNotarization.SetLaunchConfirmed();
+            newNotarization.SetLaunchComplete();
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
 
             CReserveTransactionDescriptor rtxd;
