@@ -1460,7 +1460,7 @@ bool CConnectedChains::GetPendingCurrencyExports(const uint160 currencyID,
     }
     else
     {
-        LogPrintf("%s: unrecognized chain name or chain ID\n", __func__);
+        LogPrintf("%s: unrecognized system name or ID\n", __func__);
         return false;
     }
 }
@@ -2838,7 +2838,7 @@ bool CConnectedChains::GetPendingSystemExports(const uint160 systemID,
     }
     else
     {
-        LogPrintf("%s: unrecognized chain name or chain ID\n", __func__);
+        LogPrintf("%s: unrecognized system name or ID\n", __func__);
         return false;
     }
 }

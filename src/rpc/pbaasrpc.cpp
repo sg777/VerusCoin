@@ -1432,7 +1432,7 @@ UniValue getpendingtransfers(const UniValue& params, bool fHelp)
     CCurrencyDefinition chainDef;
     int32_t defHeight;
 
-    if ((IsVerusActive() && GetCurrencyDefinition(chainID, chainDef, &defHeight)) || (chainDef = ConnectedChains.FirstNotaryChain().chainDefinition).GetID() == chainID)
+    if ((GetCurrencyDefinition(chainID, chainDef, &defHeight)))
     {
         // look for new exports
         multimap<uint160, ChainTransferData> inputDescriptors;
@@ -1463,7 +1463,7 @@ UniValue getpendingtransfers(const UniValue& params, bool fHelp)
     }
     else
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unrecognized chain name or chain ID");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unrecognized currency name or ID");
     }
     
     return NullUniValue;
@@ -1937,7 +1937,7 @@ UniValue getimports(const UniValue& params, bool fHelp)
     }
     else
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unrecognized chain name or chain ID");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unrecognized currency name or ID");
     }
     return NullUniValue;
 }
