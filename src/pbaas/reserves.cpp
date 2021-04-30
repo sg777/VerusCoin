@@ -2339,8 +2339,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 else
                 {
                     // since there is no support for taking reserves as fees, split any available 
-                    // reserves fee from the launch chain, for example, between us and the exporter. for now,
-                    // we send it to ourselves if possible and the currency ID, if not
+                    // reserves fee from the launch chain, for example, between us and the exporter
                     CTxDestination addr = CIdentityID(importCurrencyID);
                     extern std::string NOTARY_PUBKEY;
                     if (mapArgs.count("-mineraddress"))
@@ -2381,13 +2380,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         }
                         else if (oneFee.second)
                         {
-                            if (importCurrencyState.IsLaunchConfirmed() && oneFee.first == VERUS_CHAINID)
-                            {
-                                totalVerusFee += oneFee.second;
-                            }
-                            else if (oneFee.first == systemDestID)
+                            if (oneFee.first == systemDestID)
                             {
                                 totalNativeFee += oneFee.second;
+                            }
+                            else if (importCurrencyState.IsLaunchConfirmed() && oneFee.first == VERUS_CHAINID)
+                            {
+                                totalVerusFee += oneFee.second;
                             }
                         }
                     }
@@ -3274,9 +3273,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         ReserveInputs.valueMap[importCurrencyDef.systemID] = std::max(nativeIn, systemOutConverted);
     }
 
-    if (nativeOut && importCurrencyID != systemDestID)
+    if (nativeOut)
     {
-        spentCurrencyOut.valueMap[systemDestID] += nativeOut;
+        spentCurrencyOut.valueMap[systemDestID] += (importCurrencyID == systemDestID) ? nativeOut - systemOutConverted : nativeOut;
     }
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
     if (burnedChangePrice + burnedChangeWeight)
