@@ -3692,12 +3692,25 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 else if (convertToCurrencyID.IsNull())
                 {
                     convertToCurrencyID = (exportToCurrencyDef.IsFractional() ? exportToCurrencyID : exportToCurrencyDef.GatewayConverterID());
-                    if (convertToCurrencyID.IsNull())
+                    if (convertToCurrencyID.IsNull() && (convertToCurrencyID = ConnectedChains.ThisChain().GatewayConverterID()).IsNull())
                     {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for system destination without fee converter.");
+                        convertToCurrencyID = exportToCurrencyID;
+                        convertToCurrencyDef = exportToCurrencyDef;
                     }
-                    // get gateway converter and set as fee converter/exportto currency
-                    convertToCurrencyDef = convertToCurrencyID.IsNull() ? exportToCurrencyDef : ConnectedChains.GetCachedCurrency(convertToCurrencyID);
+                    else
+                    {
+                        // get gateway converter and set as fee converter/exportto currency
+                        convertToCurrencyDef = ConnectedChains.GetCachedCurrency(convertToCurrencyID);
+                    }
+                    if (!convertToCurrencyDef.IsValid())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "No available fee converter.");
+                    }
+                    if (convertToCurrencyID != exportToCurrencyID && convertToCurrencyDef.systemID == exportToCurrencyID)
+                    {
+                        exportToCurrencyID = convertToCurrencyID;
+                        exportToCurrencyDef = convertToCurrencyDef;
+                    }
                     bool toCurrencyIsFractional = convertToCurrencyDef.IsFractional();
                     if (!convertToCurrencyDef.IsValid() ||
                         (!((convertToCurrencyDef.IsPBaaSChain() && (feeCurrencyID == destSystemDef.launchSystemID || 
@@ -3880,19 +3893,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     // through a converter before or after conversion for actual conversion and/or fee conversion
                     else if (isConversion || (destSystemID != exportToCurrencyID && !convertToCurrencyID.IsNull()))
                     {
-                        // ensure that any source currency can go to the destination via the converter
-                        // we care about the ability of the converter to convert from the current fee
-                        // currency to the destination system currency and availability of the primary
-                        // output currency after any specified conversion
-                        if (convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
-                        {
-
-                        }
-                        else
-                        {
-                            
-                        }
-
                         // if we convert first, then export, put the follow-on export in an output
                         // to be converted with a cross-chain fee
                         CTransferDestination dest = DestinationToTransferDestination(destination);
@@ -3902,7 +3902,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             // if we're converting and then sending, we don't need an initial fee, so all
                             // fees go into the final destination
                             dest.type |= dest.FLAG_DEST_GATEWAY;
-                            dest.gatewayID = feeCurrencyID;
+                            dest.gatewayID = exportToCurrencyID;
                             CChainNotarizationData cnd;
                             if (!GetNotarizationData(convertToCurrencyID, cnd) ||
                                 !cnd.IsConfirmed())
