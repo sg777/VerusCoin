@@ -4696,7 +4696,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             reserveCurrencies.push_back(CCurrencyDefinition());
 
             if (!GetCurrencyDefinition(currency, reserveCurrencies.back()) ||
-                reserveCurrencies.back().startBlock >= height)
+                (reserveCurrencies.back().launchSystemID == ASSETCHAINS_CHAINID && reserveCurrencies.back().startBlock >= height))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserve currencies of a fractional currency must be valid and past the start block " + EncodeDestination(CIdentityID(currency)));
             }

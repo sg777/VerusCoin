@@ -395,6 +395,7 @@ uint160 DecodeCurrencyName(std::string currencyStr)
     {
         return retVal;
     }
+    std::string copyStr = currencyStr;
     uint160 parent;
     currencyStr = CleanName(currencyStr, parent, true);
     if (!parent.IsNull() && CCurrencyDefinition::GetID(currencyStr, parent) == ASSETCHAINS_CHAINID)
@@ -404,7 +405,7 @@ uint160 DecodeCurrencyName(std::string currencyStr)
     CTxDestination currencyDest = DecodeDestination(currencyStr);
     if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
     {
-        currencyDest = DecodeDestination(currencyStr + "@");
+        currencyDest = DecodeDestination(copyStr + "@");
     }
     if (currencyDest.which() != COptCCParams::ADDRTYPE_INVALID)
     {
