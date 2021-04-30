@@ -1972,7 +1972,9 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
                                                     destination.gatewayID,
                                                     destination.fees,
                                                     destination.gatewayID,
-                                                    lastLegDest);
+                                                    lastLegDest,
+                                                    uint160(),
+                                                    destination.gatewayID);
             }
             else
             {
