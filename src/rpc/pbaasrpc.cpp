@@ -4713,7 +4713,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         }
         if (!hasCoreReserve)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Fractional currency requires a reserve of " + VERUS_CHAINNAME + " in addition to any other reserves");
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Fractional currency requires a reserve of " + std::string(ASSETCHAINS_SYMBOL) + " in addition to any other reserves");
         }
     }
     return newCurrency;

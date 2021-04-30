@@ -1928,13 +1928,17 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer() const
 
 bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativeAmount, CTxOut &txOut) const
 {
+    bool makeNormalOutput = true;
     if (HasNextLeg())
     {
+        makeNormalOutput = false;
         CReserveTransfer nextLegTransfer = CReserveTransfer(CReserveTransfer::VERSION_INVALID);
 
         // if we have a nested transfer, use it
-        if (destination.type == destination.DEST_NESTEDTRANSFER)
+        if (destination.TypeNoFlags() == destination.DEST_NESTEDTRANSFER)
         {
+            printf("%s: Nested currency transfers not yet supported\n", __func__);
+            return false;
             // get the reserve transfer from the raw data and
             CReserveTransfer rt(destination.destination);
             if (rt.IsValid())
@@ -1951,14 +1955,31 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
         {
             // make an output to the gateway ID, which should be another system, since there is
             // no reserve transfer left for instructions to do anything else worth another leg
+            // we need to have correct fees in the destination currency available
             CTransferDestination lastLegDest = CTransferDestination(destination);
-            lastLegDest.ClearGatewayLeg(); 
-            nextLegTransfer = CReserveTransfer(CReserveTransfer::VALID,
-                                                reserves,
-                                                FeeCurrencyID(),
-                                                destination.fees,
-                                                destination.gatewayID,
-                                                lastLegDest);
+            lastLegDest.ClearGatewayLeg();
+            uint32_t newFlags = CReserveTransfer::VALID;
+            if (destination.gatewayID != ASSETCHAINS_CHAINID)
+            {
+                newFlags |= CReserveTransfer::CROSS_SYSTEM;
+                CCurrencyValueMap newReserves = reserves;
+                if (nativeAmount)
+                {
+                    newReserves.valueMap[ASSETCHAINS_CHAINID] = nativeAmount;
+                }
+                nextLegTransfer = CReserveTransfer(newFlags,
+                                                    newReserves,
+                                                    destination.gatewayID,
+                                                    destination.fees,
+                                                    destination.gatewayID,
+                                                    lastLegDest);
+            }
+            else
+            {
+                // if our destination is here, add unused fees to native output and drop through to make normal output
+                nativeAmount += destination.fees;
+                makeNormalOutput = true;
+            }
         }
         if (nextLegTransfer.IsValid())
         {
@@ -1974,7 +1995,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
             return true;
         }
     }
-    else
+    if (makeNormalOutput)
     {
         // make normal output to the destination, which must be valid
         if (!reserves.valueMap.size() && nativeAmount)
@@ -2470,7 +2491,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                         reserveConverted.valueMap[curTransfer.feeCurrencyID] += curTransfer.destination.fees;
                         crossConversions[feeCurIdx][nextDestIdx] += curTransfer.destination.fees;
-                        oneFeeValue = importCurrencyState.ReserveToNativeRaw(curTransfer.destination.fees, importCurrencyState.conversionPrice[feeCurIdx]);
+                        oneFeeValue = importCurrencyState.ReserveToNativeRaw(curTransfer.destination.fees,
+                                                                             importCurrencyState.IsLaunchCompleteMarker() ?
+                                                                              importCurrencyState.conversionPrice[feeCurIdx] :
+                                                                              importCurrencyState.viaConversionPrice[feeCurIdx]);
 
                         // one more conversion to destination native
                         CAmount reserveFromFrac = CCurrencyState::NativeToReserveRaw(oneFeeValue, importCurrencyState.viaConversionPrice[nextDestIdx]);
@@ -2926,8 +2950,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 else if (!curTransfer.IsMint() && systemDestID == curTransfer.FirstCurrency())
                 {
                     nativeOut += curTransfer.FirstValue();
-                    curTransfer.GetTxOut(CCurrencyValueMap(), curTransfer.FirstValue(), newOut);
-                    if (newOut.nValue == -1)
+                    if (!curTransfer.GetTxOut(CCurrencyValueMap(), curTransfer.FirstValue(), newOut) || newOut.nValue == -1)
                     {
                         printf("%s: invalid transfer %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
                         LogPrintf("%s: invalid transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());

@@ -187,7 +187,7 @@ uint160 GetConditionID(uint160 cid, int32_t condition)
 CTxDestination TransferDestinationToDestination(const CTransferDestination &transferDest)
 {
     CTxDestination retDest;
-    switch (transferDest.type & ~CTransferDestination::FLAG_DEST_GATEWAY)
+    switch (transferDest.TypeNoFlags())
     {
         case CTransferDestination::DEST_PKH:
             retDest = CKeyID(uint160(transferDest.destination));
