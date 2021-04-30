@@ -3150,11 +3150,11 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         totalExports += exportTransfers[i].TotalCurrencyOut();
     }
 
-    printf("%s: num transfers %ld, totalExports: %s\nnewNotarization: %s\n",
+    /* printf("%s: num transfers %ld, totalExports: %s\nnewNotarization: %s\n",
         __func__,
         exportTransfers.size(),
         totalExports.ToUniValue().write(1,2).c_str(),
-        newNotarization.ToUniValue().write(1,2).c_str());
+        newNotarization.ToUniValue().write(1,2).c_str()); */
 
     // if we are exporting off of this system to a gateway or PBaaS chain, don't allow 3rd party 
     // or unregistered currencies to export. if same to same chain, all exports are ok.
