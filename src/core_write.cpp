@@ -947,7 +947,7 @@ UniValue CTransferDestination::ToUniValue() const
             destVal = UniValue(UniValue::VOBJ);
         }
         destVal.push_back(Pair("gateway", EncodeDestination(CIdentityID(gatewayID))));
-        destVal.push_back(Pair("fees", fees));
+        destVal.push_back(Pair("fees", ValueFromAmount(fees)));
     }
     return destVal;
 }
