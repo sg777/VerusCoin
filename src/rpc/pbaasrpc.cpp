@@ -1432,7 +1432,7 @@ UniValue getpendingtransfers(const UniValue& params, bool fHelp)
     CCurrencyDefinition chainDef;
     int32_t defHeight;
 
-    if ((GetCurrencyDefinition(chainID, chainDef, &defHeight)))
+    if (GetCurrencyDefinition(chainID, chainDef, &defHeight))
     {
         // look for new exports
         multimap<uint160, ChainTransferData> inputDescriptors;
@@ -3943,8 +3943,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
-                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
-                        oneOutput.nAmount += feeCurrencyID == thisChainID ? fees : 0;
+                        oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                     else // direct to another system paying with acceptable fee currency
@@ -3964,8 +3963,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
-                        oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount : 0;
-                        oneOutput.nAmount += feeCurrencyID == thisChainID ? fees : 0;
+                        oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                 }
@@ -4001,7 +3999,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                convertToCurrencyID,
                                                                dest);
                         rt.nFees = rt.CalculateTransferFee();
-                        oneOutput.nAmount = (sourceCurrencyID == thisChainID) ? sourceAmount + rt.nFees : rt.nFees;
+                        oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                     }
                     else if (!preConvert && (mintNew || burnCurrency || toFractional || fromFractional))
@@ -4116,7 +4114,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
-                            oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + fees : 0;
+                            oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                             oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                         }
                     }

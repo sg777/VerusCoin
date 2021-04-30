@@ -3150,11 +3150,11 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         totalExports += exportTransfers[i].TotalCurrencyOut();
     }
 
-    /* printf("%s: num transfers %ld, totalExports: %s\nnewNotarization: %s\n",
+    printf("%s: num transfers %ld, totalExports: %s\nnewNotarization: %s\n",
         __func__,
         exportTransfers.size(),
         totalExports.ToUniValue().write(1,2).c_str(),
-        newNotarization.ToUniValue().write(1,2).c_str()); */
+        newNotarization.ToUniValue().write(1,2).c_str());
 
     // if we are exporting off of this system to a gateway or PBaaS chain, don't allow 3rd party 
     // or unregistered currencies to export. if same to same chain, all exports are ok.
@@ -3272,10 +3272,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     if (nativeReserveDeposit || newReserveDeposits.valueMap.size())
     {
-        /*printf("%s: nativeDeposit %ld, reserveDeposits: %s\n",
+        printf("%s: nativeDeposit %ld, reserveDeposits: %s\n",
             __func__,
             nativeReserveDeposit,
-            newReserveDeposits.ToUniValue().write(1,2).c_str());*/
+            newReserveDeposits.ToUniValue().write(1,2).c_str());
 
         // now send transferred currencies to a reserve deposit
         cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);

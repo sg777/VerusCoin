@@ -169,6 +169,14 @@ public:
         return (type & FLAG_DEST_GATEWAY) && !gatewayID.IsNull();
     }
 
+    void SetGatewayLeg(const uint160 &GatewayID=uint160(), int64_t Fees=0, const uint160 &vdxfCode=uint160())
+    {
+        type |= FLAG_DEST_GATEWAY;
+        gatewayID = GatewayID;
+        gatewayCode = vdxfCode;
+        fees = Fees;
+    }
+
     void ClearGatewayLeg()
     {
         type &= ~FLAG_DEST_GATEWAY;
