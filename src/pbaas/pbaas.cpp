@@ -1831,10 +1831,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             !(sourceSystemID == destCur.systemID && destCur.systemID == ASSETCHAINS_CHAINID) &&
             !(destCur.IsPBaaSChain() &&
                 (sourceSystemID == ccx.destCurrencyID ||
-                  (ccx.destCurrencyID == ASSETCHAINS_CHAINID && 
-                   sourceSystemID == ConnectedChains.FirstNotaryChain().chainDefinition.GetID()))) &&
-            !(sourceSystemID != ccx.destSystemID &&
-              ccx.destSystemID != ccx.destCurrencyID))
+                  (ccx.destCurrencyID == ASSETCHAINS_CHAINID))) &&
+            !(sourceSystemID != ccx.destSystemID))
         {
             LogPrintf("%s: invalid currency for export/import %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), outputNum);
             return false;
@@ -2151,9 +2149,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             if (useProofs)
             {
-                for (int i = evidenceOutNumStart; i <= evidenceOutNumEnd; i++)
+                if (!lastCCI.IsDefinitionImport())
                 {
-                    tb.AddTransparentInput(COutPoint(lastImportTxID, i), lastImportTx.vout[i].scriptPubKey, lastImportTx.vout[i].nValue);
+                    for (int i = evidenceOutNumStart; i <= evidenceOutNumEnd; i++)
+                    {
+                        tb.AddTransparentInput(COutPoint(lastImportTxID, i), lastImportTx.vout[i].scriptPubKey, lastImportTx.vout[i].nValue);
+                    }
                 }
             }
             else

@@ -1723,7 +1723,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         }*/
 
                         checkState.RevertReservesAndSupply();
-                        if (cci.IsInitialLaunchImport())
+                        if (!cci.IsPostLaunch() && cci.IsInitialLaunchImport())
                         {
                             checkState.SetLaunchClear();
                         }
