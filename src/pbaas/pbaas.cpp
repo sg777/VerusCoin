@@ -3982,9 +3982,8 @@ void CConnectedChains::ProcessLocalImports()
 
     if (GetAddressUnspent(finalizeExportKey, CScript::P2IDX, unspentOutputs))
     {
-        // now, we have a list of all currencies with exports that have work to do
-        // export finalizations are either on the same transaction as the export, or in the case of a clear launch export,
-        // there may be any number of pre-launch exports still to process prior to spending it
+        std::map<uint160, std::map<uint32_t, std::pair<std::pair<CInputDescriptor,CTransaction>,CCrossChainExport>>> 
+            orderedExportsToFinalize;
         for (auto &oneFinalization : unspentOutputs)
         {
             COptCCParams p;
@@ -3994,7 +3993,6 @@ void CConnectedChains::ProcessLocalImports()
             CTransaction scratchTx;
             int32_t importOutputNum;
             uint256 hashBlock;
-            std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> exportsFound;
             if (oneFinalization.second.script.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_FINALIZE_EXPORT &&
@@ -4006,38 +4004,95 @@ void CConnectedChains::ProcessLocalImports()
                 p.IsValid() &&
                 p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
                 p.vData.size() &&
-                (ccx = CCrossChainExport(p.vData[0])).IsValid() &&
-                !currenciesProcessed.count(ccx.destCurrencyID) &&
-                GetLastImport(ccx.destCurrencyID, scratchTx, importOutputNum) &&
+                (ccx = CCrossChainExport(p.vData[0])).IsValid())
+            {
+                orderedExportsToFinalize[ccx.destCurrencyID].insert(
+                    std::make_pair(ccx.sourceHeightStart, 
+                                   std::make_pair(std::make_pair(CInputDescriptor(scratchTx.vout[of.output.n].scriptPubKey, 
+                                                                                  scratchTx.vout[of.output.n].nValue,
+                                                                                  CTxIn(of.output.hash.IsNull() ? oneFinalization.first.txhash : of.output.hash,
+                                                                                  of.output.n)),
+                                                                 scratchTx),
+                                                  ccx)));
+            }
+        }
+        // now, we have a map of all currencies with ordered exports that have work to do and if pre-launch, may have more from this chain
+        // export finalizations are either on the same transaction as the export, or in the case of a clear launch export,
+        // there may be any number of pre-launch exports still to process prior to spending it
+        for (auto &oneCurrencyExports : orderedExportsToFinalize)
+        {
+            CCrossChainExport &ccx = oneCurrencyExports.second.begin()->second.second;
+            COptCCParams p;
+            CCrossChainImport cci;
+            CTransaction scratchTx;
+            int32_t importOutputNum;
+            uint256 hashBlock;
+            if (GetLastImport(ccx.destCurrencyID, scratchTx, importOutputNum) &&
                 scratchTx.vout.size() > importOutputNum &&
                 scratchTx.vout[importOutputNum].scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
                 p.vData.size() &&
                 (cci = CCrossChainImport(p.vData[0])).IsValid() &&
-                GetCurrencyExports(ccx.destCurrencyID, exportsFound, cci.sourceSystemHeight, nHeight))
+                (cci.IsPostLaunch() || cci.sourceSystemID == ASSETCHAINS_CHAINID))
             {
-                uint256 cciExportTxHash = cci.exportTxId.IsNull() ? scratchTx.GetHash() : cci.exportTxId;
-                if (exportsFound.size())
+                // if not post launch, we are launching from this chain and need to get exports after the last import's source height
+                if (!cci.IsPostLaunch())
                 {
-                    // make sure we start from the first export not imported and skip the rest
-                    auto startingIt = exportsFound.begin();
-                    for ( ; startingIt != exportsFound.end(); startingIt++)
+                    std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> exportsFound;
+                    if (GetCurrencyExports(ccx.destCurrencyID, exportsFound, cci.sourceSystemHeight, nHeight))
                     {
-                        // if this is the first. then the first is the one we will always use
-                        if (cci.IsDefinitionImport())
+                        uint256 cciExportTxHash = cci.exportTxId.IsNull() ? scratchTx.GetHash() : cci.exportTxId;
+                        if (exportsFound.size())
                         {
-                            break;
+                            // make sure we start from the first export not imported and skip the rest
+                            auto startingIt = exportsFound.begin();
+                            for ( ; startingIt != exportsFound.end(); startingIt++)
+                            {
+                                // if this is the first. then the first is the one we will always use
+                                if (cci.IsDefinitionImport())
+                                {
+                                    break;
+                                }
+                                if (startingIt->first.first.txIn.prevout.hash == cciExportTxHash && startingIt->first.first.txIn.prevout.n == cci.exportTxOutNum)
+                                {
+                                    startingIt++;
+                                    break;
+                                }
+                            }
+                            exportsOut.insert(exportsOut.end(), startingIt, exportsFound.end());
                         }
-                        if (startingIt->first.first.txIn.prevout.hash == cciExportTxHash && startingIt->first.first.txIn.prevout.n == cci.exportTxOutNum)
-                        {
-                            startingIt++;
-                            break;
-                        }
+                        currenciesProcessed.insert(ccx.destCurrencyID);
                     }
-                    exportsOut.insert(exportsOut.end(), startingIt, exportsFound.end());
+                    continue;
                 }
-                currenciesProcessed.insert(ccx.destCurrencyID);
+                else
+                {
+                    // import all entries that are present, since that is the correct set
+                    for (auto &oneExport : oneCurrencyExports.second)
+                    {
+                        int primaryExportOutNumOut;
+                        int32_t nextOutput;
+                        CPBaaSNotarization exportNotarization;
+                        std::vector<CReserveTransfer> reserveTransfers;
+
+                        if (!oneExport.second.second.GetExportInfo(oneExport.second.first.second,
+                                                                   oneExport.second.first.first.txIn.prevout.n,
+                                                                   primaryExportOutNumOut,
+                                                                   nextOutput,
+                                                                   exportNotarization,
+                                                                   reserveTransfers))
+                        {
+                            printf("%s: Invalid export output %s : output - %u\n",
+                                __func__, 
+                                oneExport.second.first.first.txIn.prevout.hash.GetHex().c_str(),
+                                oneExport.second.first.first.txIn.prevout.n);
+                            break;
+                        }
+                        exportsOut.push_back(std::make_pair(std::make_pair(oneExport.second.first.first, CPartialTransactionProof()),
+                                                            reserveTransfers);
+                    }
+                }
             }
         }
     }
