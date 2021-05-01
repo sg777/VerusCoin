@@ -571,8 +571,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
         CCoinbaseCurrencyState tempState = newNotarization.currencyState;
         if (destCurrency.IsFractional() &&
-            !(newNotarization.IsLaunchCleared() &&
-            !newNotarization.currencyState.IsLaunchCompleteMarker()) &&
+            !(newNotarization.IsLaunchCleared() && !newNotarization.currencyState.IsLaunchCompleteMarker()) &&
             exportTransfers.size())
         {
             // normalize prices on the way in to prevent overflows on first pass

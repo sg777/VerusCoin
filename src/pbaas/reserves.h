@@ -325,6 +325,11 @@ public:
         return flags & CROSS_SYSTEM;
     }
 
+    bool IsImportToSource() const
+    {
+        return flags & IMPORT_TO_SOURCE;
+    }
+
     uint160 SystemDestination() const
     {
         return IsCrossSystem() ? destSystemID : ASSETCHAINS_CHAINID;

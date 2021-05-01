@@ -1900,6 +1900,16 @@ CCurrencyValueMap CReserveTransactionDescriptor::GeneratedImportCurrency(const u
 CReserveTransfer CReserveTransfer::GetRefundTransfer() const
 {
     CReserveTransfer rt = *this;
+    uint160 newDest;
+
+    if (rt.IsImportToSource())
+    {
+        newDest = rt.FirstCurrency();
+    }
+    else
+    {
+        newDest = rt.destCurrencyID;
+    }
 
     // convert full ID destinations to normal ID outputs, since it's refund, full ID will be on this chain already
     if (rt.destination.type == CTransferDestination::DEST_FULLID)
@@ -1908,13 +1918,12 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer() const
         rt.destination = CTransferDestination(CTransferDestination::DEST_ID, rt.destination.destination);
     }
 
-    if (IsPreConversion())
-    {
-        rt.destCurrencyID = rt.FirstCurrency();
-    }
-
     // turn it into a normal transfer, which will create an unconverted output
-    rt.flags &= ~(CReserveTransfer::DOUBLE_SEND | CReserveTransfer::PRECONVERT | CReserveTransfer::CONVERT);
+    rt.flags &= ~(CReserveTransfer::DOUBLE_SEND |
+                  CReserveTransfer::PRECONVERT |
+                  CReserveTransfer::CONVERT |
+                  CReserveTransfer::CROSS_SYSTEM |
+                  CReserveTransfer::IMPORT_TO_SOURCE);
 
     if (rt.IsMint())
     {
@@ -1922,7 +1931,7 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer() const
         rt.reserveValues.valueMap.begin()->second = 0;
     }
     rt.flags |= rt.REFUND;
-    rt.destCurrencyID = rt.reserveValues.valueMap.begin()->first;
+    rt.destCurrencyID = newDest;
     return rt;
 }
 
