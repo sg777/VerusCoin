@@ -634,7 +634,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     }
     else
     {
-        newNotarization.currencyState.SetLaunchCompleteMarker();
+        if (sourceSystemID != destCurrency.launchSystemID || lastExportHeight >= destCurrency.startBlock)
+        {
+            newNotarization.currencyState.SetLaunchCompleteMarker();
+        }
         newNotarization.currencyState.SetLaunchClear(false);
 
         CCurrencyDefinition destSystem;

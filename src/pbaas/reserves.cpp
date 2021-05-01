@@ -2705,7 +2705,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     uint160 firstCurID = curTransfer.FirstCurrency();
                     reserveConverted.valueMap[firstCurID] += valueOut;
                     preConvertedReserves.valueMap[firstCurID] += valueOut;
-                    if (isCrossSystemImport && importedCurrency.valueMap.count(firstCurID))
+                    if (isFractional && isCrossSystemImport && importedCurrency.valueMap.count(firstCurID))
                     {
                         // TODO: check this for 100% rollup of launch fees and
                         // resolution at launch. now, only fees are imported after the first coinbase
