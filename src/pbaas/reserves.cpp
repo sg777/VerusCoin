@@ -2145,7 +2145,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                            0,
                                            systemDestID,
                                            0,
-                                           systemDestID,
+                                           importCurrencyID,
                                            CTransferDestination());
         }
         else if (importCurrencyState.IsRefunding() || (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()))
@@ -2158,9 +2158,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
 
         if (((importCurrencyID != curTransfer.FirstCurrency()) && (curTransfer.flags & curTransfer.IMPORT_TO_SOURCE)) ||
-            ((importCurrencyID == curTransfer.FirstCurrency()) && !((curTransfer.flags & curTransfer.IMPORT_TO_SOURCE))))
+            ((importCurrencyID != curTransfer.destCurrencyID) && !((curTransfer.flags & curTransfer.IMPORT_TO_SOURCE))))
         {
-            printf("%s: Importing to source currency without flag or importing to destination with source flag\n", __func__);
+            printf("%s: Importing to source currency w/o flag or importing to destination w/source flag:\n%s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
             LogPrintf("%s: Importing to source currency without flag or importing to destination with source flag\n", __func__);
             return false;
         }
