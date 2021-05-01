@@ -4090,7 +4090,7 @@ void CConnectedChains::ProcessLocalImports()
                             break;
                         }
                         exportsOut.push_back(std::make_pair(std::make_pair(oneExport.second.first.first, CPartialTransactionProof()),
-                                                            reserveTransfers);
+                                                            reserveTransfers));
                     }
                 }
             }
