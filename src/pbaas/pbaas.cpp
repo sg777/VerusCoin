@@ -1893,7 +1893,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // verify that the current export from the source system spends the prior export from the source system
             if (useProofs &&
                 !(ccx.IsChainDefinition() ||
-                  (lastCCI.IsInitialLaunchImport() && lastSourceCCI.exportTxId.IsNull()) ||
+                  lastSourceCCI.exportTxId.IsNull() ||
                   (ccx.firstInput > 0 &&
                    exportTx.vin[ccx.firstInput - 1].prevout.hash == lastSourceCCI.exportTxId &&
                    exportTx.vin[ccx.firstInput - 1].prevout.n == lastSourceCCI.exportTxOutNum)))
