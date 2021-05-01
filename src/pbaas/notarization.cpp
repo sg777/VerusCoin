@@ -240,6 +240,7 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     SetLaunchCleared(uni_get_bool(find_value(obj, "launchcleared")));
     SetRefunding(uni_get_bool(find_value(obj, "refunding")));
     SetLaunchConfirmed(uni_get_bool(find_value(obj, "launchconfirmed")));
+    SetLaunchComplete(uni_get_bool(find_value(obj, "launchcomplete")));
     if (uni_get_bool(find_value(obj, "ismirror")))
     {
         flags |= FLAG_ACCEPTED_MIRROR;
@@ -2203,6 +2204,12 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         }
                     }
                 }
+                // The first, block one notarization requires no evidence or signatures to be valid on this hain, so it will be skipped
+                // here as well.
+                if (!allEvidence.evidence.size() && !allEvidence.signatures.size())
+                {
+                    continue;
+                }
                 notarizations.push_back(std::make_pair(pbn, allEvidence));
             }
         }
@@ -2220,7 +2227,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         params.push_back(oneNotarization.first.ToUniValue());
         params.push_back(oneNotarization.second.ToUniValue());
 
-        /*for (auto &debugOut : oneNotarization.second.signatures)
+        /* for (auto &debugOut : oneNotarization.second.signatures)
         {
             printf("%s: onesig - ID: %s, signature: %s\n", __func__, EncodeDestination(debugOut.first).c_str(), debugOut.second.ToUniValue().write(1,2).c_str());
         }

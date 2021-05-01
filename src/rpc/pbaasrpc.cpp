@@ -2880,6 +2880,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     TransactionBuilder tb(Params().GetConsensus(), nHeight, pwalletMain);
     if (!pbn.CreateAcceptedNotarization(chainDef, pbn, evidence, state, tb))
     {
+        printf("%s: evidence: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
         throw JSONRPCError(RPC_INVALID_PARAMETER, state.GetRejectReason());
     }
 

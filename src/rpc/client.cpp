@@ -23,7 +23,7 @@ public:
 // DUMMY for compile - only used in server
 UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeout)
 {
-    assert(false);
+    printf("%s: Unable to communicate with specified blockchain network\n", __func__);
     return NullUniValue;
 }
 
