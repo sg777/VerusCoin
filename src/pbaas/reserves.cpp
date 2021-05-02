@@ -3128,7 +3128,15 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         std::vector<CAmount> vResConverted = adjustedReserveConverted.AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vResOutConverted = ReserveOutConvertedMap(importCurrencyID).AsCurrencyVector(newCurrencyState.currencies);
         std::vector<CAmount> vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
-        std::vector<CAmount> vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vFracOutConverted;
+        if (isFractional)
+        {
+            vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
+        }
+        else
+        {
+            vFracOutConverted = NativeOutConvertedMap().AsCurrencyVector(newCurrencyState.currencies);
+        }
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
             newCurrencyState.reserveIn[i] = vResConverted[i] + vLiquidityFees[i];

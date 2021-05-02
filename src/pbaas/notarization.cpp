@@ -578,7 +578,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(tempState.currencies);
             tempState.reserves = tempState.AddVectors(tempState.reserves, newReservesVector);
             newNotarization.currencyState.conversionPrice = tempState.PricesInReserve();
-            tempState.reserves = tempState.AddVectors(tempState.reserves, (newPreConversionReservesIn * -1).AsCurrencyVector(tempState.currencies));
+
         }
 
         std::vector<CTxOut> tempOutputs;
