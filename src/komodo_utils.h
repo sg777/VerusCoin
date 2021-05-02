@@ -1722,7 +1722,7 @@ void komodo_args(char *argv0)
 {
     extern const char *Notaries_elected1[][2];
 
-    std::string name, addn; 
+    std::string name; 
     char *dirname,fname[512],arg0str[64],magicstr[9]; 
     uint8_t magic[4],extrabuf[384],*extraptr=0; FILE *fp; 
     uint64_t val; 
@@ -2195,24 +2195,17 @@ void komodo_args(char *argv0)
             }
             obj.push_back(Pair("eras", eras));
 
-            addn = GetArg("-seednode","");
+            std::vector<std::string> addn;
             UniValue nodeArr(UniValue::VARR);
-            if (addn.size())
+            std::map<std::string, std::vector<std::string>>::iterator seedIt = mapMultiArgs.find("-seednode");
+            if (seedIt != mapMultiArgs.end())
             {
-                ASSETCHAINS_SEED = 1;
-                nodeArr.push_back(CNodeData(addn, "").ToUniValue());
+                for (auto oneSeedStr : seedIt->second)
+                {
+                    nodeArr.push_back(CNodeData(oneSeedStr, "").ToUniValue());
+                }
                 obj.pushKV("nodes", nodeArr);
             }
-
-            /* We need to store node information here
-            UniValue nodes(UniValue::VARR);
-            {
-                UniValue node(UniValue::VOBJ);
-                node.push_back(Pair("networkaddress", ));
-                node.push_back(Pair("paymentaddress", ));
-            }
-            obj.push_back(Pair("nodes", nodes));
-            */
 
             // we do not have pre-allocation data here, so fake one lump sum of pre-allocation to a NULL address
             // this will get replaced from either block 1 of our chain, or a connection to VRSC

@@ -304,7 +304,7 @@ void *chainparams_commandline(void *ptr)
         else
         {
             mainParams.vSeeds.clear();
-            if (_IsVerusActive)
+            if (_IsVerusActive())
             {
                 mainParams.vSeeds.push_back(CDNSSeedData("veruscoin.io", "seeds.veruscoin.io"));
             }
