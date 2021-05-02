@@ -3939,10 +3939,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             importNotarization.IsValid() &&
                             importNotarization.currencyState.IsValid())
                         {
-                            
-
-
-
                             uint256 transferHash;
                             std::vector<CTxOut> importOutputs;
                             CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;

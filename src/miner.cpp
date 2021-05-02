@@ -910,6 +910,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             {
                 gatewayDeposits += originalFees;
             }
+
             gatewayDeposits.valueMap[newCurID] += newNotarization.currencyState.primaryCurrencyOut;
 
             printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydeposits %s\n", 
@@ -919,9 +920,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
             gatewayDeposits = (gatewayDeposits - spentCurrencyOut).CanonicalMap();
 
-            printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
-                importedCurrency.ToUniValue().write(1,2).c_str(),
-                spentCurrencyOut.ToUniValue().write(1,2).c_str(),
+            printf("newNotarization.currencyState %s\nnewgatewaydeposits %s\n", 
+                newNotarization.currencyState.ToUniValue().write(1,2).c_str(),
                 gatewayDeposits.ToUniValue().write(1,2).c_str());
 
             // add the reserve deposit output with all deposits for this currency for the new chain

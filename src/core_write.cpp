@@ -534,10 +534,10 @@ UniValue CCoinbaseCurrencyState::ToUniValue() const
 
         ret.push_back(Pair("currencies", ValueVectorsToUniValue(rowNames, columnNames, data, true)));
     }
-    ret.push_back(Pair("primarycurrencyfees", primaryCurrencyFees));
-    ret.push_back(Pair("primarycurrencyconversionfees", primaryCurrencyConversionFees));
-    ret.push_back(Pair("primarycurrencyout", primaryCurrencyOut));
-    ret.push_back(Pair("preconvertedout", preConvertedOut));
+    ret.push_back(Pair("primarycurrencyfees", ValueFromAmount(primaryCurrencyFees)));
+    ret.push_back(Pair("primarycurrencyconversionfees", ValueFromAmount(primaryCurrencyConversionFees)));
+    ret.push_back(Pair("primarycurrencyout", ValueFromAmount(primaryCurrencyOut)));
+    ret.push_back(Pair("preconvertedout", ValueFromAmount(preConvertedOut)));
     return ret;
 }
 
