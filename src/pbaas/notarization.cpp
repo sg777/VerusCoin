@@ -436,7 +436,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                               std::vector<CTxOut> &importOutputs,
                                               CCurrencyValueMap &importedCurrency,
                                               CCurrencyValueMap &gatewayDepositsUsed,
-                                              CCurrencyValueMap &spentCurrencyOut) const
+                                              CCurrencyValueMap &spentCurrencyOut,
+                                              bool forcedRefund) const
 {
     uint160 sourceSystemID = sourceSystem.GetID();
 
@@ -545,7 +546,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     minPreMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.minPreconvert).CanonicalMap();
                 }
 
-                if (minPreMap.valueMap.size() && preConvertedMap < minPreMap)
+                if (forcedRefund || (minPreMap.valueMap.size() && preConvertedMap < minPreMap))
                 {
                     // we force the reserves and supply to zero
                     // in any case where there was less than minimum participation,

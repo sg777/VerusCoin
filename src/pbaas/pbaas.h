@@ -1079,7 +1079,8 @@ public:
                               std::vector<CTxOut> &importOutputs,
                               CCurrencyValueMap &importedCurrency,
                               CCurrencyValueMap &gatewayDepositsUsed,
-                              CCurrencyValueMap &spentCurrencyOut) const;
+                              CCurrencyValueMap &spentCurrencyOut,
+                              bool forcedRefunding=false) const;
 
     static bool CreateEarnedNotarization(const CRPCChainData &externalSystem,
                                          const CTransferDestination &Proposer,

@@ -3111,6 +3111,43 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         intermediateNotarization.currencyState.SetLaunchCompleteMarker();
     }
 
+    bool forcedRefunding = false;
+
+    // now, if we are clearing launch, determine if we should refund or launch and set notarization appropriately
+    if (isClearLaunchExport)
+    {
+        // if we are connected to another currency, make sure it will also start before we fonfirm that we can
+        CCurrencyDefinition coLaunchCurrency;
+        CCoinbaseCurrencyState coLaunchState;
+        if (_curDef.IsPBaaSConverter())
+        {
+            coLaunchCurrency = destSystem;
+            coLaunchState = GetCurrencyState(destSystem, addHeight);
+        }
+        else if ((_curDef.IsPBaaSChain() || _curDef.IsGateway()) && !_curDef.gatewayConverterName.empty())
+        {
+            coLaunchCurrency = GetCachedCurrency(_curDef.GatewayConverterID());
+            if (!coLaunchCurrency.IsValid())
+            {
+                printf("%s: Invalid co-launch currency - likely corruption\n", __func__);
+                LogPrintf("%s: Invalid co-launch currency - likely corruption\n", __func__);
+                return false;
+            }
+            coLaunchState = GetCurrencyState(coLaunchCurrency, addHeight);
+        }
+
+        // check our currency and any co-launch currency to determine our eligibility, as ALL
+        // co-launch currencies must launch for one to launch
+        if (CCurrencyValueMap(_curDef.currencies, newNotarization.currencyState.reserves) < 
+                CCurrencyValueMap(_curDef.currencies, _curDef.minPreconvert) ||
+            (coLaunchCurrency.IsValid() &&
+             CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserves) < 
+                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert)))
+        {
+            forcedRefunding = true;
+        }
+    }
+
     if (!intermediateNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
                                                         _curDef,
                                                         sinceHeight,
@@ -3121,7 +3158,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                                         checkOutputs,
                                                         importedCurrency,
                                                         gatewayDepositsUsed,
-                                                        spentCurrencyOut))
+                                                        spentCurrencyOut,
+                                                        forcedRefunding))
     {
         printf("%s: cannot create notarization\n", __func__);
         LogPrintf("%s: cannot create notarization\n", __func__);
@@ -3300,87 +3338,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr)).GetID()});
     exportOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx))));
 
-    // now, if we are clearing launch, determine if we should refund or launch and set notarization appropriately
-    if (isClearLaunchExport)
-    {
-        // if we are connected to another currency, make sure it will also start before we fonfirm that we can
-        CCurrencyDefinition coLaunchCurrency;
-        CCoinbaseCurrencyState coLaunchState;
-        if (_curDef.IsPBaaSConverter())
-        {
-            coLaunchCurrency = destSystem;
-            coLaunchState = GetCurrencyState(destSystem, addHeight);
-        }
-        else if ((_curDef.IsPBaaSChain() || _curDef.IsGateway()) && !_curDef.gatewayConverterName.empty())
-        {
-            coLaunchCurrency = GetCachedCurrency(_curDef.GatewayConverterID());
-            if (!coLaunchCurrency.IsValid())
-            {
-                printf("%s: Invalid co-launch currency - likely corruption\n", __func__);
-                LogPrintf("%s: Invalid co-launch currency - likely corruption\n", __func__);
-                return false;
-            }
-            coLaunchState = GetCurrencyState(coLaunchCurrency, addHeight);
-        }
-
-        // check our currency and any co-launch currency to determine our eligibility, as ALL
-        // co-launch currencies must launch for one to launch
-        if (CCurrencyValueMap(_curDef.currencies, newNotarization.currencyState.reserves) < 
-                CCurrencyValueMap(_curDef.currencies, _curDef.minPreconvert) ||
-            (coLaunchCurrency.IsValid() &&
-             CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserves) < 
-                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert)))
-        {
-            newNotarization.currencyState.SetRefunding();
-        }
-        else
-        {
-            newNotarization.currencyState.SetLaunchClear();
-            // set final numbers for notarization
-
-            // if this is a PBaaS fractional gateway launch, the issued reserves for the gateway must be considered
-            // when calculating final prices
-            std::map<uint160, int32_t> reserveMap;
-            if (_curDef.IsFractional() && _curDef.currencies.size() > 1 && 
-                (reserveMap = newNotarization.currencyState.GetReserveMap()).count(_curDef.systemID) && 
-                _curDef.systemID != ASSETCHAINS_CHAINID)
-            {
-                CCurrencyDefinition systemDefForGateway = ConnectedChains.GetCachedCurrency(_curDef.systemID);
-                if (!systemDefForGateway.IsValid())
-                {
-                    printf("%s: Invalid launch system currency for fractional gateway converter\n", __func__);
-                    LogPrintf("%s: Invalid launch system currency for fractional gateway converter\n", __func__);
-                    return false;
-                }
-                uint160 scratchSysID = _curDef.systemID;
-            }
-        }
-    }
-    else if (!isPreLaunch)
-    {
-        // now, if we are not pre-launch, update the currency via simulated import
-        CReserveTransactionDescriptor rtxd;
-        std::vector<CTxOut> checkOutputs;
-        CCurrencyValueMap importedCurrency;
-        CCurrencyValueMap gatewayDepositsUsed;
-        if (!rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain(),
-                                                  destSystem,
-                                                  _curDef, 
-                                                  lastNotarization.currencyState, 
-                                                  exportTransfers,
-                                                  checkOutputs,
-                                                  importedCurrency,
-                                                  gatewayDepositsUsed,
-                                                  spentCurrencyOut,
-                                                  &newNotarization.currencyState))
-        {
-            printf("%s: Viable import check failure\n", __func__);
-            LogPrintf("%s: Viable import check failure\n", __func__);
-            return false;
-        }
-    }
-
-    // only add an extra system export if we aren't actually exporting to the system itself directly
+    // only add an extra system export if we are really exporting to another system. refunds are redirected back.
     bool isRefunding = newNotarization.currencyState.IsRefunding();
     if (!isRefunding && crossSystem && ccx.destSystemID != ccx.destCurrencyID)
     {
@@ -3707,16 +3665,20 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             break;
                         }
 
+                        if (newNotarization.IsRefunding())
+                        {
+                            isSameChain = true;
+                        }
+
                         TransactionBuilder tb(Params().GetConsensus(), nHeight + 1);
                         tb.SetFee(0);
 
                         // add input from last export, all consumed txInputs, and all outputs created to make 
                         // the new export tx. since we are exporting from this chain
 
-                        /* UniValue scriptUniOut;
+                        UniValue scriptUniOut;
                         ScriptPubKeyToUniv(lastExport.second.scriptPubKey, scriptUniOut, false);
                         printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastExport.second.nValue, scriptUniOut.write(1,2).c_str());
-                        */
 
                         // first add previous export
                         tb.AddTransparentInput(lastExport.second.txIn.prevout, lastExport.second.scriptPubKey, lastExport.second.nValue);
@@ -3724,10 +3686,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         // if going to another system, add the system export thread as well
                         if (!isSameChain && !mergedSysExport)
                         {
-                            /* scriptUniOut = UniValue(UniValue::VOBJ);
+                            scriptUniOut = UniValue(UniValue::VOBJ);
                             ScriptPubKeyToUniv(lastSysExport.second.scriptPubKey, scriptUniOut, false);
                             printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastSysExport.second.nValue, scriptUniOut.write(1,2).c_str());
-                            */
 
                             tb.AddTransparentInput(lastSysExport.second.txIn.prevout, lastSysExport.second.scriptPubKey, lastSysExport.second.nValue);
                         }
@@ -3737,10 +3698,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         {
                             CInputDescriptor inputDesc = std::get<1>(txInputs[i]);
 
-                            /* scriptUniOut = UniValue(UniValue::VOBJ);
+                            scriptUniOut = UniValue(UniValue::VOBJ);
                             ScriptPubKeyToUniv(inputDesc.scriptPubKey, scriptUniOut, false);
                             printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), inputDesc.nValue, scriptUniOut.write(1,2).c_str());
-                            */
 
                             tb.AddTransparentInput(inputDesc.txIn.prevout, inputDesc.scriptPubKey, inputDesc.nValue);
                         }
@@ -3748,6 +3708,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         // if we have an output notarization, spend the last one
                         if (newNotarizationOutNum >= 0)
                         {
+                            scriptUniOut = UniValue(UniValue::VOBJ);
+                            ScriptPubKeyToUniv(lastNotarizationInput.scriptPubKey, scriptUniOut, false);
+                            printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastNotarizationInput.nValue, scriptUniOut.write(1,2).c_str());
+
                             tb.AddTransparentInput(lastNotarizationInput.txIn.prevout, 
                                                    lastNotarizationInput.scriptPubKey, 
                                                    lastNotarizationInput.nValue);
@@ -3780,6 +3744,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             tb.AddTransparentOutput(oneOut.scriptPubKey, oneOut.nValue);
                             outputNum++;
                         }
+
+                        UniValue uni(UniValue::VOBJ);
+                        TxToUniv(tb.mtx, uint256(), uni);
+                        printf("%s: Ready to build tx:\n%s\n", __func__, uni.write(1,2).c_str());
 
                         TransactionBuilderResult buildResult(tb.Build());
 
