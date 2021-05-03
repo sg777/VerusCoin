@@ -3665,7 +3665,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             break;
                         }
 
-                        if (newNotarization.IsRefunding())
+                        if (newNotarization.IsRefunding() && destDef.launchSystemID == ASSETCHAINS_CHAINID)
                         {
                             isSameChain = true;
                         }
