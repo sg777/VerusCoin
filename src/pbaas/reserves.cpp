@@ -2530,7 +2530,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 // if it's from a gateway, we need to be sure that the currency it is importing is valid for the current chain
                 // all pre-conversions
-                if (isCrossSystemImport)
+                if (isCrossSystemImport || importCurrencyDef.launchSystemID != importCurrencyDef.systemID)
                 {
                     uint160 inputID = curTransfer.FirstCurrency();
                     CAmount totalCurrencyInput = curTransfer.FirstValue();
@@ -3013,7 +3013,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
-    if ((totalCarveOuts = totalCarveOuts.CanonicalMap()).valueMap.size())
+    if (importCurrencyState.IsRefunding())
+    {
+        gatewayDepositsIn = importedCurrency;
+        importedCurrency = CCurrencyValueMap();
+    }
+    else if ((totalCarveOuts = totalCarveOuts.CanonicalMap()).valueMap.size())
     {
         // add carveout outputs
         for (auto &oneCur : totalCarveOuts.valueMap)
