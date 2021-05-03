@@ -3349,7 +3349,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         spentCurrencyOut.valueMap[importCurrencyID] += (burnedChangePrice + burnedChangeWeight);
     }
 
-    printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
+    //printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
     if ((ReserveInputs - checkAgainstInputs).HasNegative())
     {
         printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\n", __func__,
