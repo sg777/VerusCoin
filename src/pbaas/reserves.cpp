@@ -2176,7 +2176,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
         //printf("currency transfer #%d:\n%s\n", i, curTransfer.ToUniValue().write(1,2).c_str());
         CCurrencyDefinition _currencyDest;
-        const CCurrencyDefinition &currencyDest = (importCurrencyID == curTransfer.destCurrencyID) ?
+        const CCurrencyDefinition &currencyDest = curTransfer.IsRefund() ?
+                                                    (_currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.FirstCurrency())) :
+                                                    (importCurrencyID == curTransfer.destCurrencyID) ?
                                                     importCurrencyDef :
                                                     (_currencyDest = ConnectedChains.GetCachedCurrency(curTransfer.destCurrencyID));
 
@@ -2204,11 +2206,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // remainder was paid when the currency is defined
                     currencyRegistrationFee = systemSource.LaunchFeeImportShare(importCurrencyDef.options);
                     transferFees.valueMap[importCurrencyDef.launchSystemID] += currencyRegistrationFee;
-                    AddReserveInput(importCurrencyDef.launchSystemID, currencyRegistrationFee);
                     if (importCurrencyDef.launchSystemID != systemDestID)
                     {
                         // this fee input was injected into the currency at definition
                         importedCurrency.valueMap[importCurrencyDef.launchSystemID] += currencyRegistrationFee;
+                        AddReserveInput(importCurrencyDef.launchSystemID, currencyRegistrationFee);
                     }
                     else
                     {
@@ -3334,7 +3336,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
     if (nativeIn || systemOutConverted)
     {
-        ReserveInputs.valueMap[importCurrencyDef.systemID] = std::max(nativeIn, systemOutConverted);
+        ReserveInputs.valueMap[systemDestID] = std::max(nativeIn, systemOutConverted);
     }
 
     if (nativeOut)
