@@ -1747,7 +1747,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         if (isRefundingSeparateChain)
         {
-            printf("%s: processing refund from chain %s\n", __func__, refundingPBaaSChain.name);
+            printf("%s: processing refund from chain %s\n", __func__, refundingPBaaSChain.name.c_str());
         }
 
         // get reserve deposits for destination currency of export. these will be available whether the source is same chain
