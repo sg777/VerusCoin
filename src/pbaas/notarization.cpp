@@ -1869,7 +1869,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                             {
                                 hasOurSig = true;
                                 myIDSet.erase(oneSig.first);
-                                printf("%s: Found our ID signature for %s\n", __func__, EncodeDestination(CIdentityID(oneSig.first)).c_str());
+                                //printf("%s: Found our ID signature for %s\n", __func__, EncodeDestination(CIdentityID(oneSig.first)).c_str());
                             }
                         }
                         if (hasOurSig)
@@ -1905,7 +1905,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     // sign with all IDs under our control that are eligible for this currency
                     for (auto &oneID : myIDSet)
                     {
-                        printf("%s: Adding ID signature for %s\n", __func__, EncodeDestination(oneID).c_str());
+                        printf("Signing notarization (%s:%u) to confirm for %s\n", __func__, ne.output.hash.GetHex().c_str(), ne.output.n, EncodeDestination(oneID).c_str());
 
                         auto signResult = ne.SignConfirmed(*pWallet, txes[idx].first, oneID, height);
                         if (signResult == CIdentitySignature::SIGNATURE_PARTIAL || signResult == CIdentitySignature::SIGNATURE_COMPLETE)
