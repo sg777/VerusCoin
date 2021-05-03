@@ -530,7 +530,12 @@ UniValue CCoinbaseCurrencyState::ToUniValue() const
             rowNames.push_back(EncodeDestination(CIdentityID(currencies[i])));
         }
         std::vector<std::string> columnNames({"reservein", "primarycurrencyin", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees", "priorweights"});
-        std::vector<const std::vector<CAmount> *> data = {&reserveIn, &primaryCurrencyIn, &reserveOut, &conversionPrice, &viaConversionPrice, &fees, &conversionFees, &priorWeights};
+        std::vector<CAmount> int64PriorWeights;
+        for (auto &oneWeight : priorWeights)
+        {
+            int64PriorWeights.push_back(oneWeight);
+        }
+        std::vector<const std::vector<CAmount> *> data = {&reserveIn, &primaryCurrencyIn, &reserveOut, &conversionPrice, &viaConversionPrice, &fees, &conversionFees, &int64PriorWeights};
 
         ret.push_back(Pair("currencies", ValueVectorsToUniValue(rowNames, columnNames, data, true)));
     }
