@@ -1372,7 +1372,7 @@ public:
                            const std::vector<CAmount> &Fees=std::vector<CAmount>(), 
                            const std::vector<CAmount> &ConversionFees=std::vector<CAmount>(),
                            CAmount PreConvertedOut=0,
-                           const std::vector<int32_t> &PriorWeights=std::vector<CAmount>()) : 
+                           const std::vector<int32_t> &PriorWeights=std::vector<int32_t>()) : 
         CCurrencyState(CurrencyState), primaryCurrencyOut(NativeOut), primaryCurrencyFees(NativeFees), primaryCurrencyConversionFees(NativeConversionFees),
         reserveIn(ReserveIn),
         primaryCurrencyIn(NativeIn),
