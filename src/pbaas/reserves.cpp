@@ -3110,9 +3110,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     newCurrencyState.preConvertedOut = 0;
-    for (auto &oneVal : preConvertedOutput.valueMap)
+    if (!newCurrencyState.IsRefunding())
     {
-        newCurrencyState.preConvertedOut += oneVal.second;
+        for (auto &oneVal : preConvertedOutput.valueMap)
+        {
+            newCurrencyState.preConvertedOut += oneVal.second;
+        }
     }
 
     std::vector<CAmount> vResConverted;
@@ -3267,7 +3270,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     spentCurrencyOut.valueMap.clear();
 
-    if (totalMinted || preAllocTotal)
+    if (newCurrencyState.IsRefunding())
+    {
+        preAllocTotal = 0;
+        totalMinted = 0;
+        totalPreconverted = 0;
+    }
+
+    if ((totalMinted || preAllocTotal))
     {
         newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal + totalPreconverted);
     }
@@ -3337,7 +3347,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         spentCurrencyOut.valueMap[importCurrencyID] += (burnedChangePrice + burnedChangeWeight);
     }
 
-    //printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
+    printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
     if ((ReserveInputs - checkAgainstInputs).HasNegative())
     {
         printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\n", __func__,
