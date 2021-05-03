@@ -667,7 +667,7 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
             version = VERSION_INVALID;
             return;
         }
-        std::vector<std::string> columnNames({"reservein", "primarycurrencyin", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees"});
+        std::vector<std::string> columnNames({"reservein", "primarycurrencyin", "reserveout", "lastconversionprice", "viaconversionprice", "fees", "conversionfees", "priorweights"});
         if (currenciesValue.isObject())
         {
             //printf("%s: currencies: %s\n", __func__, currenciesValue.write(1,2).c_str());
@@ -681,6 +681,11 @@ CCoinbaseCurrencyState::CCoinbaseCurrencyState(const UniValue &obj) : CCurrencyS
                 viaConversionPrice = columnAmounts[4];
                 fees = columnAmounts[5];
                 conversionFees = columnAmounts[6];
+                priorWeights.resize(0);
+                for (auto oneColumnNum : columnAmounts[7])
+                {
+                    priorWeights.push_back(oneColumnNum);
+                }
             }
         }
         primaryCurrencyFees = AmountFromValueNoErr(find_value(obj, "primarycurrencyfees"));
@@ -2219,6 +2224,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (importCurrencyState.IsLaunchConfirmed())
                     {
+                        // on clear launch that is confirmed, carve outs are factored into the
+                        // weights of the currency
+                        totalCarveOut = importCurrencyDef.GetTotalCarveOut();
+                        carveOutSet = true;
+
                         if (importCurrencyState.IsPrelaunch())
                         {
                             // first time with launch clear on prelaunch, start supply at initial supply
@@ -3078,6 +3088,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
         }
 
+        if (importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
+        {
+            scratchCurrencyState.ApplyCarveouts(totalCarveOut);
+        }
+
         if (adjustedReserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size())
         {
             CCurrencyState dummyCurState;
@@ -3284,9 +3299,21 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         totalPreconverted = 0;
     }
 
-    if ((totalMinted || preAllocTotal))
+    if (totalCarveOut && isFractional && importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
     {
-        newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal + totalPreconverted);
+        newCurrencyState.ApplyCarveouts(totalCarveOut);
+    }
+
+    if (totalMinted || preAllocTotal || totalPreconverted)
+    {
+        if (isFractional)
+        {
+            newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal);
+        }
+        else
+        {
+            newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal + totalPreconverted);
+        }
     }
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
@@ -3610,6 +3637,83 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmi
     return *this; 
 }
 
+CCoinbaseCurrencyState &CCoinbaseCurrencyState::ApplyCarveouts(int32_t carveOut)
+{
+    if (carveOut && carveOut < SATOSHIDEN)
+    {
+        // first determine current ratio by adding up all currency weights
+        CAmount InitialRatio = 0;
+        for (auto weight : weights)
+        {
+            InitialRatio += weight;
+        }
+
+        static arith_uint256 bigSatoshi(SATOSHIDEN);
+        arith_uint256 bigInitial(InitialRatio);
+        arith_uint256 bigCarveOut((int64_t)carveOut);
+        arith_uint256 bigSupply(supply);
+        arith_uint256 bigScratch = (bigInitial * (bigSatoshi - bigCarveOut));
+        arith_uint256 bigNewRatio = bigScratch / bigSatoshi;
+
+        int64_t newRatio = bigNewRatio.GetLow64();
+
+        int64_t remainder = (bigScratch - (bigNewRatio * SATOSHIDEN)).GetLow64();
+        // form of bankers rounding, if odd, round up at half, if even, round down at half
+        if (remainder > (SATOSHIDEN >> 1) || (remainder == (SATOSHIDEN >> 1) && newRatio & 1))
+        {
+            if (newRatio < SATOSHIDEN)
+            {
+                newRatio += 1;
+            }
+        }
+
+        // now, we must update all weights accordingly, based on the new, total ratio, by dividing the total among all the
+        // weights, according to their current relative weight. because this also can be a source of rounding error, we will
+        // distribute any modulus excess randomly among the currencies
+        std::vector<CAmount> extraWeight(currencies.size());
+        arith_uint256 bigRatioDelta(InitialRatio - newRatio);
+        CAmount totalUpdates = 0;
+
+        for (auto &weight : weights)
+        {
+            CAmount weightDelta = (bigRatioDelta * arith_uint256(weight) / bigSatoshi).GetLow64();
+            weight -= weightDelta;
+            totalUpdates += weightDelta;
+        }
+
+        CAmount updateExtra = (InitialRatio - newRatio) - totalUpdates;
+
+        // if we have any extra, distribute it evenly and any mod, both deterministically and pseudorandomly
+        if (updateExtra)
+        {
+            CAmount forAll = updateExtra / currencies.size();
+            CAmount forSome = updateExtra % currencies.size();
+
+            // get deterministic seed for linear congruential pseudorandom number for shuffle
+            int64_t seed = supply + forAll + forSome;
+            auto prandom = std::minstd_rand0(seed);
+
+            for (int i = 0; i < extraWeight.size(); i++)
+            {
+                extraWeight[i] = forAll;
+                if (forSome)
+                {
+                    extraWeight[i]++;
+                    forSome--;
+                }
+            }
+            // distribute the extra weight loss as evenly as possible
+            std::shuffle(extraWeight.begin(), extraWeight.end(), prandom);
+            for (int i = 0; i < weights.size(); i++)
+            {
+                weights[i] -= extraWeight[i];
+            }
+        }
+    }
+    return *this; 
+}
+
+
 void CCoinbaseCurrencyState::RevertFees(const std::vector<CAmount> &normalConversionPrice,
                                         const std::vector<CAmount> &outgoingConversionPrice,
                                         const uint160 &systemID)
@@ -3782,6 +3886,7 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
     {
         supply -= (primaryCurrencyOut - preConvertedOut);
     }
+    weights = priorWeights;
 }
 
 CAmount CCurrencyState::CalculateConversionFee(CAmount inputAmount, bool convertToNative, int currencyIndex) const

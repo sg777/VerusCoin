@@ -1358,6 +1358,7 @@ public:
     std::vector<CAmount> viaConversionPrice; // the via conversion stage prices
     std::vector<CAmount> fees;              // fee values in native (or reserve if specified) coins for reserve transaction fees for the block
     std::vector<CAmount> conversionFees;    // total of only conversion fees, which will accrue to the conversion transaction
+    std::vector<int32_t> priorWeights;      // previous weights to enable reversal of state
 
     CCoinbaseCurrencyState() : primaryCurrencyOut(0), preConvertedOut(0), primaryCurrencyFees(0), primaryCurrencyConversionFees(0) {}
 
@@ -1370,7 +1371,8 @@ public:
                            const std::vector<CAmount> &ViaConversionPrice=std::vector<CAmount>(), 
                            const std::vector<CAmount> &Fees=std::vector<CAmount>(), 
                            const std::vector<CAmount> &ConversionFees=std::vector<CAmount>(),
-                           CAmount PreConvertedOut=0) : 
+                           CAmount PreConvertedOut=0,
+                           const std::vector<int32_t> &PriorWeights=std::vector<CAmount>()) : 
         CCurrencyState(CurrencyState), primaryCurrencyOut(NativeOut), primaryCurrencyFees(NativeFees), primaryCurrencyConversionFees(NativeConversionFees),
         reserveIn(ReserveIn),
         primaryCurrencyIn(NativeIn),
@@ -1379,15 +1381,18 @@ public:
         viaConversionPrice(ViaConversionPrice),
         fees(Fees),
         conversionFees(ConversionFees),
-        preConvertedOut(PreConvertedOut)
+        preConvertedOut(PreConvertedOut),
+        priorWeights(PriorWeights)
     {
-        if (!reserveIn.size()) reserveIn = std::vector<CAmount>(currencies.size());
-        if (!primaryCurrencyIn.size()) primaryCurrencyIn = std::vector<CAmount>(currencies.size());
-        if (!reserveOut.size()) reserveOut = std::vector<CAmount>(currencies.size());
-        if (!conversionPrice.size()) conversionPrice = std::vector<CAmount>(currencies.size());
-        if (!viaConversionPrice.size()) viaConversionPrice = std::vector<CAmount>(currencies.size());
-        if (!fees.size()) fees = std::vector<CAmount>(currencies.size());
-        if (!conversionFees.size()) conversionFees = std::vector<CAmount>(currencies.size());
+        int numCurrencies = currencies.size();
+        if (!reserveIn.size() == numCurrencies) reserveIn.resize(currencies.size());
+        if (!primaryCurrencyIn.size() == numCurrencies) primaryCurrencyIn.resize(currencies.size());
+        if (!reserveOut.size() == numCurrencies) reserveOut.resize(currencies.size());
+        if (!conversionPrice.size() == numCurrencies) conversionPrice.resize(currencies.size());
+        if (!viaConversionPrice.size() == numCurrencies) viaConversionPrice.resize(currencies.size());
+        if (!fees.size() == numCurrencies) fees.resize(currencies.size());
+        if (!conversionFees.size() == numCurrencies) conversionFees.resize(currencies.size());
+        if (!priorWeights.size() == numCurrencies) priorWeights.resize(currencies.size());
     }
 
     CCoinbaseCurrencyState(const UniValue &uni);
@@ -1414,6 +1419,7 @@ public:
         READWRITE(conversionPrice);
         READWRITE(viaConversionPrice);
         READWRITE(fees);
+        READWRITE(priorWeights);
         READWRITE(conversionFees);
     }
 
@@ -1425,9 +1431,11 @@ public:
     UniValue ToUniValue() const;
 
     CCoinbaseCurrencyState &UpdateWithEmission(CAmount toEmit);
+    CCoinbaseCurrencyState &ApplyCarveouts(int32_t carveOut);
 
     void ClearForNextBlock()
     {
+        priorWeights = weights;
         emitted = 0;
         primaryCurrencyOut = 0;
         preConvertedOut = 0;
