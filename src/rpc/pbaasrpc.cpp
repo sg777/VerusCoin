@@ -2877,7 +2877,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     TransactionBuilder tb(Params().GetConsensus(), nHeight, pwalletMain);
     if (!pbn.CreateAcceptedNotarization(chainDef, pbn, evidence, state, tb))
     {
-        printf("%s: unable to create accepted notarization: %s\n", __func__, state.GetRejectReason().c_str());
+        //printf("%s: unable to create accepted notarization: %s\n", __func__, state.GetRejectReason().c_str());
         throw JSONRPCError(RPC_INVALID_PARAMETER, state.GetRejectReason());
     }
 
