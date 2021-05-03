@@ -3306,14 +3306,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     if (totalMinted || preAllocTotal || totalPreconverted)
     {
-        if (isFractional)
-        {
-            newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal);
-        }
-        else
-        {
-            newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal + totalPreconverted);
-        }
+        newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal + totalPreconverted);
     }
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
