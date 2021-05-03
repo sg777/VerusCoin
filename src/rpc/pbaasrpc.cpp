@@ -2283,9 +2283,8 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
     }
 
     // look for unspent, confirmed finalizations first
-    uint160 confirmedNotarizationKey = CCrossChainRPCData::GetConditionID(
-        CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()),
-        CObjectFinalization::ObjectFinalizationConfirmedKey());
+    uint160 finalizeNotarizationKey = CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey());
+    uint160 confirmedNotarizationKey = CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationConfirmedKey());
 
     if (GetAddressUnspent(confirmedNotarizationKey, CScript::P2IDX, unspentFinalizations) &&
         unspentFinalizations.size())
