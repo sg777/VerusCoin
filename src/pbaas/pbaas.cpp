@@ -1764,16 +1764,17 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
-        /* // DEBUG OUTPUT
+        /*// DEBUG OUTPUT
         for (auto &oneDepositIn : localDeposits)
         {
             UniValue scrUni(UniValue::VOBJ);
             ScriptPubKeyToUniv(oneDepositIn.scriptPubKey, scrUni, false);
-            printf("%s: one deposit hash: %s, vout: %u, scriptdecode: %s\n",
+            printf("%s: one deposit hash: %s, vout: %u, scriptdecode: %s, amount: %s\n",
                 __func__,
                 oneDepositIn.txIn.prevout.hash.GetHex().c_str(), 
                 oneDepositIn.txIn.prevout.n,
-                scrUni.write(1,2).c_str());
+                scrUni.write(1,2).c_str(),
+                ValueFromAmount(oneDepositIn.nValue).write().c_str());
         } // DEBUG OUTPUT END */
 
         // if importing from another system/chain, get reserve deposits of source system to make available to import
@@ -1785,6 +1786,19 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 LogPrintf("%s: cannot get reserve deposits for cross-system export in tx %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
                 return false;
             }
+
+            /*// DEBUG OUTPUT
+            for (auto &oneDepositIn : crossChainDeposits)
+            {
+                UniValue scrUni(UniValue::VOBJ);
+                ScriptPubKeyToUniv(oneDepositIn.scriptPubKey, scrUni, false);
+                printf("%s: one crosschain deposit hash: %s, vout: %u, scriptdecode: %s, amount: %s\n",
+                    __func__,
+                    oneDepositIn.txIn.prevout.hash.GetHex().c_str(), 
+                    oneDepositIn.txIn.prevout.n,
+                    scrUni.write(1,2).c_str(),
+                    ValueFromAmount(oneDepositIn.nValue).write().c_str());
+            } // DEBUG OUTPUT END */
         }
 
         // now, we have all reserve deposits for both local destination and importing currency, we can use both, 
@@ -2024,7 +2038,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CCurrencyValueMap newLocalReserveDeposits = incomingCurrency.SubtractToZero(spentCurrencyOut);
         CCurrencyValueMap newLocalDepositsRequired = ((incomingCurrency - spentCurrencyOut) - newLocalReserveDeposits).CanonicalMap() * -1;
 
-        /*printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
+        /* printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
         printf("%s: ccx.totalAmounts: %s\ngatewayDepositsUsed: %s\nimportedCurrency: %s\nspentCurrencyOut: %s\n",
             __func__,
             ccx.totalAmounts.ToUniValue().write(1,2).c_str(),
@@ -2036,7 +2050,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             __func__,
             incomingCurrency.ToUniValue().write(1,2).c_str(),
             newLocalReserveDeposits.ToUniValue().write(1,2).c_str(),
-            newLocalDepositsRequired.ToUniValue().write(1,2).c_str());*/
+            newLocalDepositsRequired.ToUniValue().write(1,2).c_str());
+        //*/
 
         // create the import
         CCrossChainImport cci = CCrossChainImport(sourceSystemID,
@@ -2215,6 +2230,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             gatewayChange = totalDepositsInput - gatewayDepositsUsed;
 
+            //printf("%s: gatewayDepositsUsed: %s\n", __func__, gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
+            //printf("%s: gatewayChange: %s\n", __func__, gatewayChange.ToUniValue().write(1,2).c_str());
+
             // we should always be able to fulfill
             // gateway despoit requirements, or this is an error
             if (gatewayChange.HasNegative())
@@ -2222,8 +2240,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 LogPrintf("%s: insufficient funds for gateway reserve deposits from system %s\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());
                 return false;
             }
-            //printf("%s: gatewayDepositsUsed: %s\n", __func__, gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
-            //printf("%s: gatewayChange: %s\n", __func__, gatewayChange.ToUniValue().write(1,2).c_str());
         }
 
         // the amount being imported is under the control of the exporting system and
@@ -2291,7 +2307,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             /* printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
-                newLocalReserveDeposits.ToUniValue().write(1,2).c_str()); */
+                newLocalReserveDeposits.ToUniValue().write(1,2).c_str()); **/
 
             // we should always be able to fulfill
             // local deposit requirements, or this is an error
@@ -2327,7 +2343,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // dust rules don't apply
             if (oneChangeVal.second)
             {
-                CReserveDeposit rd = CReserveDeposit(sourceSystemID, CCurrencyValueMap());;
+                CReserveDeposit rd = CReserveDeposit(isRefundingSeparateChain ? refundingPBaaSChain.systemID : sourceSystemID, CCurrencyValueMap());;
                 CAmount nativeOutput = 0;
                 if (oneChangeVal.first == ASSETCHAINS_CHAINID)
                 {
