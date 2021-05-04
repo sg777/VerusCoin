@@ -3368,7 +3368,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     // all exports to a currency on this chain include a finalization that is spent by the import of this export
     // external systems and gateways get one finalization for their clear to launch export
-    if (isClearLaunchExport || (destSystemID == ASSETCHAINS_CHAINID && addHeight >= _curDef.startBlock))
+    if (isClearLaunchExport || (destSystemID == ASSETCHAINS_CHAINID && newNotarization.IsLaunchCleared()))
     {
         cp = CCinit(&CC, EVAL_FINALIZE_EXPORT);
 
