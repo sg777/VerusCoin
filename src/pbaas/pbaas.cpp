@@ -1835,7 +1835,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // 3) destination is a PBaaS currency, which is either the native currency, if we are the PBaaS chain or a token on our current chain.
         //    We are creating imports for this system, which is the PBaaS chain, to receive exports from our notary chain, which is its parent, 
         //    or we are creating imports to receive exports from the PBaaS chain.
-        if (!((destCur.IsGateway() && destCur.systemID == ASSETCHAINS_CHAINID) && 
+        if (!(isRefundingSeparateChain && sourceSystemID == ASSETCHAINS_CHAINID) &&
+            !((destCur.IsGateway() && destCur.systemID == ASSETCHAINS_CHAINID) && 
                 (sourceSystemID == ASSETCHAINS_CHAINID || sourceSystemID == ccx.destCurrencyID)) &&
             !(sourceSystemID == destCur.systemID && destCur.systemID == ASSETCHAINS_CHAINID) &&
             !(destCur.IsPBaaSChain() &&
@@ -3680,9 +3681,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         // add input from last export, all consumed txInputs, and all outputs created to make 
                         // the new export tx. since we are exporting from this chain
 
-                        UniValue scriptUniOut;
-                        ScriptPubKeyToUniv(lastExport.second.scriptPubKey, scriptUniOut, false);
-                        printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastExport.second.nValue, scriptUniOut.write(1,2).c_str());
+                        //UniValue scriptUniOut;
+                        //ScriptPubKeyToUniv(lastExport.second.scriptPubKey, scriptUniOut, false);
+                        //printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastExport.second.nValue, scriptUniOut.write(1,2).c_str());
 
                         // first add previous export
                         tb.AddTransparentInput(lastExport.second.txIn.prevout, lastExport.second.scriptPubKey, lastExport.second.nValue);
@@ -3690,9 +3691,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         // if going to another system, add the system export thread as well
                         if (!isSameChain && !mergedSysExport)
                         {
-                            scriptUniOut = UniValue(UniValue::VOBJ);
-                            ScriptPubKeyToUniv(lastSysExport.second.scriptPubKey, scriptUniOut, false);
-                            printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastSysExport.second.nValue, scriptUniOut.write(1,2).c_str());
+                            //scriptUniOut = UniValue(UniValue::VOBJ);
+                            //ScriptPubKeyToUniv(lastSysExport.second.scriptPubKey, scriptUniOut, false);
+                            //printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastSysExport.second.nValue, scriptUniOut.write(1,2).c_str());
 
                             tb.AddTransparentInput(lastSysExport.second.txIn.prevout, lastSysExport.second.scriptPubKey, lastSysExport.second.nValue);
                         }
@@ -3702,9 +3703,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         {
                             CInputDescriptor inputDesc = std::get<1>(txInputs[i]);
 
-                            scriptUniOut = UniValue(UniValue::VOBJ);
-                            ScriptPubKeyToUniv(inputDesc.scriptPubKey, scriptUniOut, false);
-                            printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), inputDesc.nValue, scriptUniOut.write(1,2).c_str());
+                            //scriptUniOut = UniValue(UniValue::VOBJ);
+                            //ScriptPubKeyToUniv(inputDesc.scriptPubKey, scriptUniOut, false);
+                            //printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), inputDesc.nValue, scriptUniOut.write(1,2).c_str());
 
                             tb.AddTransparentInput(inputDesc.txIn.prevout, inputDesc.scriptPubKey, inputDesc.nValue);
                         }
@@ -3712,9 +3713,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         // if we have an output notarization, spend the last one
                         if (newNotarizationOutNum >= 0)
                         {
-                            scriptUniOut = UniValue(UniValue::VOBJ);
-                            ScriptPubKeyToUniv(lastNotarizationInput.scriptPubKey, scriptUniOut, false);
-                            printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastNotarizationInput.nValue, scriptUniOut.write(1,2).c_str());
+                            //scriptUniOut = UniValue(UniValue::VOBJ);
+                            //ScriptPubKeyToUniv(lastNotarizationInput.scriptPubKey, scriptUniOut, false);
+                            //printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), lastNotarizationInput.nValue, scriptUniOut.write(1,2).c_str());
 
                             tb.AddTransparentInput(lastNotarizationInput.txIn.prevout, 
                                                    lastNotarizationInput.scriptPubKey, 
@@ -3749,9 +3750,9 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                             outputNum++;
                         }
 
-                        UniValue uni(UniValue::VOBJ);
+                        /* UniValue uni(UniValue::VOBJ);
                         TxToUniv(tb.mtx, uint256(), uni);
-                        printf("%s: Ready to build tx:\n%s\n", __func__, uni.write(1,2).c_str());
+                        printf("%s: Ready to build tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
 
                         TransactionBuilderResult buildResult(tb.Build());
 
