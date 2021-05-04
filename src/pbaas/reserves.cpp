@@ -2219,6 +2219,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                     else
                     {
+                        if (importCurrencyState.IsRefunding())
+                        {
+                            gatewayDepositsIn.valueMap[systemDestID] += currencyRegistrationFee;
+                        }
                         nativeIn += currencyRegistrationFee;
                     }
 
@@ -2560,7 +2564,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             LogPrintf("%s: currency transfer fees invalid for receiving system\n", __func__);
                             return false;
                         }
-                        importedCurrency.valueMap[systemSourceID] += explicitFees;
+                        if (importCurrencyState.IsRefunding())
+                        {
+                            gatewayDepositsIn.valueMap[systemSourceID] += explicitFees;
+                        }
+                        else
+                        {
+                            importedCurrency.valueMap[systemSourceID] += explicitFees;
+                        }
                     }
                     else if (curTransfer.feeCurrencyID == systemDestID)
                     {
@@ -2591,7 +2602,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     if (totalCurrencyInput)
                     {
                         // all currency input must either come from being minted on the import or existing gateway deposits
-                        if (inputDef.systemID == systemSourceID || (inputDef.IsGateway() && inputDef.gatewayID == systemSourceID))
+                        if (!(importCurrencyState.IsRefunding() && importCurrencyDef.launchSystemID == systemDestID) &&
+                             (inputDef.systemID == systemSourceID ||
+                             (inputDef.IsGateway() && inputDef.gatewayID == systemSourceID)))
                         {
                             importedCurrency.valueMap[inputID] += totalCurrencyInput;
                         }

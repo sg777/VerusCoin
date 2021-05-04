@@ -1751,7 +1751,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         if (isRefundingSeparateChain)
         {
-            printf("%s: processing refund from chain %s\n", __func__, refundingPBaaSChain.name.c_str());
+            printf("%s: processing refund from PBaaS chain currency %s\n", __func__, refundingPBaaSChain.name.c_str());
         }
 
         // get reserve deposits for destination currency of export. these will be available whether the source is same chain
@@ -2023,7 +2023,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CCurrencyValueMap newLocalReserveDeposits = incomingCurrency.SubtractToZero(spentCurrencyOut);
         CCurrencyValueMap newLocalDepositsRequired = ((incomingCurrency - spentCurrencyOut) - newLocalReserveDeposits).CanonicalMap() * -1;
 
-        /* printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
+        printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
         printf("%s: ccx.totalAmounts: %s\ngatewayDepositsUsed: %s\nimportedCurrency: %s\nspentCurrencyOut: %s\n",
             __func__,
             ccx.totalAmounts.ToUniValue().write(1,2).c_str(),
@@ -2035,7 +2035,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             __func__,
             incomingCurrency.ToUniValue().write(1,2).c_str(),
             newLocalReserveDeposits.ToUniValue().write(1,2).c_str(),
-            newLocalDepositsRequired.ToUniValue().write(1,2).c_str()); */
+            newLocalDepositsRequired.ToUniValue().write(1,2).c_str());
 
         // create the import
         CCrossChainImport cci = CCrossChainImport(sourceSystemID,
@@ -2241,7 +2241,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // present from the export, which is also on this chain
         CCurrencyValueMap checkImportedCurrency;
         CCurrencyValueMap checkRequiredDeposits;
-        if (cci.sourceSystemID != destCur.systemID &&
+        if (cci.sourceSystemID != ASSETCHAINS_CHAINID &&
             (!newNotarization.currencyState.IsLaunchConfirmed() || newNotarization.currencyState.IsLaunchCompleteMarker()))
         {
             if (!ConnectedChains.CurrencyImportStatus(cci.importValue,
