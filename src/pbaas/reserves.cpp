@@ -3311,9 +3311,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         totalPreconverted = 0;
     }
 
-    if (totalCarveOut && isFractional && importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
+    if (isFractional && importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
     {
-        newCurrencyState.ApplyCarveouts(totalCarveOut);
+        if (totalCarveOut)
+        {
+            newCurrencyState.ApplyCarveouts(totalCarveOut);
+        }
+        if (importCurrencyDef.preLaunchDiscount)
+        {
+            newCurrencyState.ApplyCarveouts(importCurrencyDef.preLaunchDiscount);
+        }
     }
 
     if (totalMinted || preAllocTotal || totalPreconverted)
