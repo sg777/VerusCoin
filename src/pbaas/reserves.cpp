@@ -3308,18 +3308,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     if (isFractional && importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
     {
-        printf("currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
+        //printf("currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
         if (totalCarveOut)
         {
-            printf("%s: applying carveout %d to weights\n", __func__, totalCarveOut);
+            //printf("%s: applying carveout %d to weights\n", __func__, totalCarveOut);
             newCurrencyState.ApplyCarveouts(totalCarveOut);
         }
         if (importCurrencyDef.preLaunchDiscount)
         {
-            printf("%s: applying prelaunch discount %d to weights\n", __func__, importCurrencyDef.preLaunchDiscount);
+            //printf("%s: applying prelaunch discount %d to weights\n", __func__, importCurrencyDef.preLaunchDiscount);
             newCurrencyState.ApplyCarveouts(importCurrencyDef.preLaunchDiscount);
         }
-        printf("new currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
+        //printf("new currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
     }
 
     if (totalMinted || preAllocTotal || totalPreconverted)
