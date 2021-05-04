@@ -3117,7 +3117,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     CCurrencyValueMap spentCurrencyOut;
     std::vector<CTxOut> checkOutputs;
 
-    CPBaaSNotarization intermediateNotarization = lastNotarization;
+    CPBaaSNotarization intermediateNotarization = newNotarization;
     CCrossChainExport lastExport;
     bool isPostLaunch = false;
     if ((!isPreLaunch && !isClearLaunchExport) &&
