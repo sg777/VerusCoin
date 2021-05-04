@@ -2140,8 +2140,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     bool feeOutputStart = false;                        // fee outputs must come after all others, this indicates they have started
     int nFeeOutputs = 0;                                // number of fee outputs
 
-    bool carveOutSet = false;
-    int32_t totalCarveOut;
+    int32_t totalCarveOut = importCurrencyDef.GetTotalCarveOut();
     CCurrencyValueMap totalCarveOuts;
     CAmount totalMinted = 0;
     CAmount exporterReward = 0;
@@ -2228,11 +2227,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (importCurrencyState.IsLaunchConfirmed())
                     {
-                        // on clear launch that is confirmed, carve outs are factored into the
-                        // weights of the currency
-                        totalCarveOut = importCurrencyDef.GetTotalCarveOut();
-                        carveOutSet = true;
-
                         if (importCurrencyState.IsPrelaunch())
                         {
                             // first time with launch clear on prelaunch, start supply at initial supply
@@ -2728,12 +2722,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     newCurrencyConverted = 0;
                 }
 
-                if (!carveOutSet)
-                {
-                    totalCarveOut = importCurrencyDef.GetTotalCarveOut();
-                    carveOutSet = true;
-                }
-
                 if (newCurrencyConverted)
                 {
                     uint160 firstCurID = curTransfer.FirstCurrency();
@@ -3102,7 +3090,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
         if (importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
         {
-            scratchCurrencyState.ApplyCarveouts(totalCarveOut);
+            if (totalCarveOut)
+            {
+                scratchCurrencyState.ApplyCarveouts(totalCarveOut);
+            }
+            if (importCurrencyDef.preLaunchDiscount)
+            {
+                scratchCurrencyState.ApplyCarveouts(importCurrencyDef.preLaunchDiscount);
+            }
         }
 
         if (adjustedReserveConverted.CanonicalMap().valueMap.size() || fractionalConverted.CanonicalMap().valueMap.size())
@@ -3313,14 +3308,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     if (isFractional && importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
     {
+        printf("currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
         if (totalCarveOut)
         {
+            printf("%s: applying carveout %d to weights\n", __func__, totalCarveOut);
             newCurrencyState.ApplyCarveouts(totalCarveOut);
         }
         if (importCurrencyDef.preLaunchDiscount)
         {
+            printf("%s: applying prelaunch discount %d to weights\n", __func__, importCurrencyDef.preLaunchDiscount);
             newCurrencyState.ApplyCarveouts(importCurrencyDef.preLaunchDiscount);
         }
+        printf("new currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
     }
 
     if (totalMinted || preAllocTotal || totalPreconverted)
@@ -3663,13 +3662,12 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::ApplyCarveouts(int32_t carveOut)
         static arith_uint256 bigSatoshi(SATOSHIDEN);
         arith_uint256 bigInitial(InitialRatio);
         arith_uint256 bigCarveOut((int64_t)carveOut);
-        arith_uint256 bigSupply(supply);
         arith_uint256 bigScratch = (bigInitial * (bigSatoshi - bigCarveOut));
         arith_uint256 bigNewRatio = bigScratch / bigSatoshi;
 
         int64_t newRatio = bigNewRatio.GetLow64();
 
-        int64_t remainder = (bigScratch - (bigNewRatio * SATOSHIDEN)).GetLow64();
+        int64_t remainder = (bigScratch - (bigNewRatio * bigSatoshi)).GetLow64();
         // form of bankers rounding, if odd, round up at half, if even, round down at half
         if (remainder > (SATOSHIDEN >> 1) || (remainder == (SATOSHIDEN >> 1) && newRatio & 1))
         {
