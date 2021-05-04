@@ -3857,24 +3857,26 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     std::set<uint160> validCurrencies;
                     std::set<uint160> validIDs;
                     CChainNotarizationData cnd;
-                    CCurrencyDefinition offChainDef = destSystemID != thisChainID ? destSystemDef : exportToCurrencyDef;
-                    uint160 offChainID = offChainDef.GetID();
+                    CCurrencyDefinition nonVerusChainDef = IsVerusActive() ?
+                        (destSystemID != thisChainID ? destSystemDef : exportToCurrencyDef) :
+                        (ConnectedChains.ThisChain());
+                    uint160 offChainID = IsVerusActive() ? nonVerusChainDef.GetID() : VERUS_CHAINID;
                     if (!GetNotarizationData(offChainID, cnd) || !cnd.IsConfirmed())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER,
-                            "Cannot retrieve notarization data for import system " + offChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
+                            "Cannot retrieve notarization data for import system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
                     }
 
                     if (cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() && !cnd.vtx[cnd.lastConfirmed].second.IsLaunchCleared())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER,
-                            "Cannot send non-preconvert transfers to import system " + offChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") until after launch");
+                            "Cannot send non-preconvert transfers to import system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") until after launch");
                     }
 
                     if (cnd.vtx[cnd.lastConfirmed].second.IsRefunding())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER,
-                            "Cannot send to import system " + offChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") that is in a refunding state");
+                            "Cannot send to import system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") that is in a refunding state");
                     }
 
                     validCurrencies.insert(ASSETCHAINS_CHAINID);
@@ -3882,28 +3884,28 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     if (IsVerusActive())
                     {
                         validIDs.insert(offChainID);
-                        if ((offChainDef.IsPBaaSChain() || offChainDef.IsGateway()) && !offChainDef.GatewayConverterID().IsNull())
+                        if ((nonVerusChainDef.IsPBaaSChain() || nonVerusChainDef.IsGateway()) && !nonVerusChainDef.GatewayConverterID().IsNull())
                         {
-                            validIDs.insert(offChainDef.GatewayConverterID());
+                            validIDs.insert(nonVerusChainDef.GatewayConverterID());
                         }
-                        for (auto &oneValidID : offChainDef.preAllocation)
+                        for (auto &oneValidID : nonVerusChainDef.preAllocation)
                         {
                             validIDs.insert(oneValidID.first);
                         }
                     }
-                    for (auto &oneValidCurrency : offChainDef.currencies)
+                    for (auto &oneValidCurrency : nonVerusChainDef.currencies)
                     {
                         validCurrencies.insert(oneValidCurrency);
                     }
-                    if ((offChainDef.IsPBaaSChain() || offChainDef.IsGateway()) && !offChainDef.GatewayConverterID().IsNull())
+                    if ((nonVerusChainDef.IsPBaaSChain() || nonVerusChainDef.IsGateway()) && !nonVerusChainDef.GatewayConverterID().IsNull())
                     {
-                        CCurrencyDefinition gatewayDef = ConnectedChains.GetCachedCurrency(offChainDef.GatewayConverterID());
+                        CCurrencyDefinition gatewayDef = ConnectedChains.GetCachedCurrency(nonVerusChainDef.GatewayConverterID());
                         if (!gatewayDef.IsValid())
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER,
-                                "Error retrieving gateway currency for " + offChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
+                                "Error retrieving gateway currency for " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
                         }
-                        validCurrencies.insert(offChainDef.GatewayConverterID());
+                        validCurrencies.insert(nonVerusChainDef.GatewayConverterID());
                         for (auto &oneValidCurrency : gatewayDef.currencies)
                         {
                             validCurrencies.insert(oneValidCurrency);
