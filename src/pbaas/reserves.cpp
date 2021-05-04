@@ -3038,7 +3038,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     if (importCurrencyState.IsRefunding())
     {
-        gatewayDepositsIn = importedCurrency;
         importedCurrency = CCurrencyValueMap();
     }
     else if ((totalCarveOuts = totalCarveOuts.CanonicalMap()).valueMap.size())
