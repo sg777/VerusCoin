@@ -2219,7 +2219,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                     else
                     {
-                        if (importCurrencyState.IsRefunding())
+                        if (importCurrencyDef.systemID != systemDestID && importCurrencyState.IsRefunding())
                         {
                             gatewayDepositsIn.valueMap[systemDestID] += currencyRegistrationFee;
                         }
