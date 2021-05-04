@@ -3852,6 +3852,91 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     // converting with fees via a converter on the source chain first converts fees and optionally more,
                     // then uses case 1 above
 
+                    // check for potentially unknown currencies or IDs being sent across
+                    // for now, we can only send IDs and currencies that were involved in the launch
+                    std::set<uint160> validCurrencies;
+                    std::set<uint160> validIDs;
+                    CChainNotarizationData cnd;
+                    CCurrencyDefinition offChainDef = destSystemID != thisChainID ? destSystemDef : exportToCurrencyDef;
+                    uint160 offChainID = offChainDef.GetID();
+                    if (!GetNotarizationData(offChainID, cnd) || !cnd.IsConfirmed())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                            "Cannot retrieve notarization data for import system " + offChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
+                    }
+
+                    if (cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() && !cnd.vtx[cnd.lastConfirmed].second.IsLaunchCleared())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                            "Cannot send non-preconvert transfers to import system " + offChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") until after launch");
+                    }
+
+                    if (cnd.vtx[cnd.lastConfirmed].second.IsRefunding())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                            "Cannot send to import system " + offChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") that is in a refunding state");
+                    }
+
+                    validCurrencies.insert(ASSETCHAINS_CHAINID);
+                    validCurrencies.insert(offChainID);
+                    if (IsVerusActive())
+                    {
+                        validIDs.insert(offChainID);
+                        if ((offChainDef.IsPBaaSChain() || offChainDef.IsGateway()) && !offChainDef.GatewayConverterID().IsNull())
+                        {
+                            validIDs.insert(offChainDef.GatewayConverterID());
+                        }
+                        for (auto &oneValidID : offChainDef.preAllocation)
+                        {
+                            validIDs.insert(oneValidID.first);
+                        }
+                    }
+                    for (auto &oneValidCurrency : offChainDef.currencies)
+                    {
+                        validCurrencies.insert(oneValidCurrency);
+                    }
+                    if ((offChainDef.IsPBaaSChain() || offChainDef.IsGateway()) && !offChainDef.GatewayConverterID().IsNull())
+                    {
+                        CCurrencyDefinition gatewayDef = ConnectedChains.GetCachedCurrency(offChainDef.GatewayConverterID());
+                        if (!gatewayDef.IsValid())
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER,
+                                "Error retrieving gateway currency for " + offChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
+                        }
+                        validCurrencies.insert(offChainDef.GatewayConverterID());
+                        for (auto &oneValidCurrency : gatewayDef.currencies)
+                        {
+                            validCurrencies.insert(oneValidCurrency);
+                        }
+                        for (auto &oneValidID : gatewayDef.preAllocation)
+                        {
+                            validIDs.insert(oneValidID.first);
+                        }
+                    }
+                    for (auto &oneCurrencyState : cnd.vtx[cnd.lastConfirmed].second.currencyStates)
+                    {
+                        validCurrencies.insert(oneCurrencyState.second.GetID());
+                        for (auto &oneReserve : oneCurrencyState.second.currencies)
+                        {
+                            validCurrencies.insert(oneReserve);
+                        }
+                    }
+
+                    if (destination.which() == COptCCParams::ADDRTYPE_ID && !validIDs.count(GetDestinationID(destination)))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send to ID " + EncodeDestination(destination) + ", which is unregistered on specified system");
+                    }
+
+                    if (!validCurrencies.count(sourceCurrencyID))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + sourceCurrencyDef.name + " (" + EncodeDestination(CIdentityID(sourceCurrencyID)) + ") cannot be sent to specified system");
+                    }
+
+                    if (!convertToCurrencyID.IsNull() && !validCurrencies.count(convertToCurrencyID))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + sourceCurrencyDef.name + " (" + EncodeDestination(CIdentityID(sourceCurrencyID)) + ") cannot be currency destination on specified system");
+                    }
+
                     CCcontract_info CC;
                     CCcontract_info *cp;
                     cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
