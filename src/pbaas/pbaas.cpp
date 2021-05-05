@@ -2175,6 +2175,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 if (!lastCCI.IsDefinitionImport() && lastCCI.sourceSystemID != ASSETCHAINS_CHAINID)
                 {
+                    assert(evidenceOutNumStart >= 0);
                     for (int i = evidenceOutNumStart; i <= evidenceOutNumEnd; i++)
                     {
                         tb.AddTransparentInput(COutPoint(lastImportTxID, i), lastImportTx.vout[i].scriptPubKey, lastImportTx.vout[i].nValue);
