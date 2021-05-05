@@ -1443,18 +1443,7 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                 fprintf(fp,"rpcuser=user%u\nrpcpassword=pass%s\nrpcport=%u\nserver=1\ntxindex=1\nrpcworkqueue=256\nrpcallowip=127.0.0.1\nrpchost=127.0.0.1\n",crc,password,rpcport);
 
                 // add basic chain parameters for non-VRSC chains
-                if (_IsVerusActive())
-                {
-                    // add Verus Coin Foundation sponsored testnet nodes
-                    if (PBAAS_TESTMODE)
-                    {
-                        fprintf(fp,"addnode=%s\n", "168.119.27.242:18183");
-                        fprintf(fp,"addnode=%s\n", "5.9.224.250:18183");
-                        fprintf(fp,"addnode=%s\n", "95.216.104.210:18183");
-                        fprintf(fp,"addnode=%s\n", "135.181.68.2:18183");
-                    }
-                }
-                else
+                if (!_IsVerusActive())
                 {
                     const char *charPtr;
                     // basic coin parameters. the rest will come from block 1
