@@ -2538,7 +2538,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 // if it's from a gateway, we need to be sure that the currency it is importing is valid for the current chain
                 // all pre-conversions
-                if (isCrossSystemImport || importCurrencyDef.launchSystemID != importCurrencyDef.systemID)
+                if (isCrossSystemImport || systemSourceID != importCurrencyDef.systemID)
                 {
                     uint160 inputID = curTransfer.FirstCurrency();
                     CAmount totalCurrencyInput = curTransfer.FirstValue();

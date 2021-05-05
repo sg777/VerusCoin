@@ -1765,7 +1765,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
 
         // DEBUG OUTPUT
-        for (auto &oneDepositIn : localDeposits)
+        /* for (auto &oneDepositIn : localDeposits)
         {
             UniValue scrUni(UniValue::VOBJ);
             ScriptPubKeyToUniv(oneDepositIn.scriptPubKey, scrUni, false);
@@ -1786,8 +1786,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 return false;
             }
 
-            /*// DEBUG OUTPUT
-            for (auto &oneDepositIn : crossChainDeposits)
+            // DEBUG OUTPUT
+            /* for (auto &oneDepositIn : crossChainDeposits)
             {
                 UniValue scrUni(UniValue::VOBJ);
                 ScriptPubKeyToUniv(oneDepositIn.scriptPubKey, scrUni, false);
