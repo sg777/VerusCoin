@@ -3888,10 +3888,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             validIDs.insert(nonVerusChainDef.GatewayConverterID());
                         }
-                        for (auto &oneValidID : nonVerusChainDef.preAllocation)
-                        {
-                            validIDs.insert(oneValidID.first);
-                        }
+                    }
+                    for (auto &oneValidID : nonVerusChainDef.preAllocation)
+                    {
+                        validIDs.insert(oneValidID.first);
                     }
                     for (auto &oneValidCurrency : nonVerusChainDef.currencies)
                     {
