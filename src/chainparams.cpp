@@ -307,6 +307,7 @@ void *chainparams_commandline(void *ptr)
             mainParams.vSeeds.clear();
             if (_IsVerusActive())
             {
+                mainParams.vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_test, pnSeed6_test + ARRAYLEN(pnSeed6_test));
                 mainParams.vSeeds.push_back(CDNSSeedData("veruscoin.io", "seeds.veruscoin.io"));
             }
             mainParams.consensus.nMinimumChainWork = uint256S("0x0000000000000000000000000000000000000000000000000000000000000020");

@@ -120,6 +120,7 @@ public:
     //void setgenesis(CBlock &block) { genesis = block; }
     //void recalc_genesis(uint32_t nonce) { genesis = CreateGenesisBlock(ASSETCHAINS_TIMESTAMP, nonce, GENESIS_NBITS, 1, COIN); };
     std::vector<CDNSSeedData> vSeeds;
+    std::vector<SeedSpec6> vFixedSeeds;
     CMessageHeader::MessageStartChars pchMessageStart; // jl777 moved
     Consensus::Params consensus;
 
@@ -138,7 +139,6 @@ protected:
     std::string strCurrencyUnits;
     uint32_t bip44CoinType;
     CBlock genesis;
-    std::vector<SeedSpec6> vFixedSeeds;
     bool fMiningRequiresPeers = false;
     bool fDefaultConsistencyChecks = false;
     bool fRequireStandard = false;
