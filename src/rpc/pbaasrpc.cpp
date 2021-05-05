@@ -409,7 +409,7 @@ bool SetThisChain(const UniValue &chainDefinition)
             // setup Verus test parameters
             notaryChainDef.name = "VRSCTEST";
             notaryChainDef.preAllocation = {std::make_pair(uint160(), 5000000000000000)};
-            notaryChainDef.rewards = std::vector<int64_t>({2400000000});
+            notaryChainDef.rewards = std::vector<int64_t>({1200000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
             Split(GetArg("-ac_halving",""),  ASSETCHAINS_HALVING, 0);
             notaryChainDef.halving = std::vector<int32_t>({(int32_t)(ASSETCHAINS_HALVING[0])});
