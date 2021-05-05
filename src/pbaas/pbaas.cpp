@@ -2173,7 +2173,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             if (useProofs)
             {
-                if (!lastCCI.IsDefinitionImport())
+                if (!lastCCI.IsDefinitionImport() && lastCCI.sourceSystemID != ASSETCHAINS_CHAINID)
                 {
                     for (int i = evidenceOutNumStart; i <= evidenceOutNumEnd; i++)
                     {
