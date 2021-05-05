@@ -1764,7 +1764,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             return false;
         }
 
-        /*// DEBUG OUTPUT
+        // DEBUG OUTPUT
         for (auto &oneDepositIn : localDeposits)
         {
             UniValue scrUni(UniValue::VOBJ);
@@ -1777,8 +1777,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 ValueFromAmount(oneDepositIn.nValue).write().c_str());
         } // DEBUG OUTPUT END */
 
-        // if importing from another system/chain, get reserve deposits of source system to make available to import
-        // as well
+        // if importing from another system/chain, get reserve deposits of source system to make available to import as well
         if (isRefundingSeparateChain || useProofs)
         {
             if (!ConnectedChains.GetReserveDeposits(isRefundingSeparateChain ? refundingPBaaSChain.systemID : sourceSystemID, view, crossChainDeposits))
@@ -2271,14 +2270,15 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
         }
 
-        /* printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        /*printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
         printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, incomingCurrency.ToUniValue().write(1,2).c_str());
         printf("%s: importedCurrency: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str());
         printf("%s: localdepositrequirements: %s\n", __func__, newLocalDepositsRequired.ToUniValue().write(1,2).c_str());
         printf("%s: checkImportedCurrency: %s\n", __func__, checkImportedCurrency.ToUniValue().write(1,2).c_str());
-        printf("%s: checkRequiredDeposits: %s\n", __func__, checkRequiredDeposits.ToUniValue().write(1,2).c_str()); */
+        printf("%s: checkRequiredDeposits: %s\n", __func__, checkRequiredDeposits.ToUniValue().write(1,2).c_str());
+        //*/
 
         // add local reserve deposit inputs and determine change
         if (newLocalDepositsRequired.valueMap.size() ||
@@ -2304,10 +2304,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             newLocalReserveDeposits = ((totalDepositsInput + incomingCurrency) - spentCurrencyOut).CanonicalMap();
 
-            /* printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
+            /*printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
-                newLocalReserveDeposits.ToUniValue().write(1,2).c_str()); **/
+                newLocalReserveDeposits.ToUniValue().write(1,2).c_str()); //*/
 
             // we should always be able to fulfill
             // local deposit requirements, or this is an error
@@ -2345,13 +2345,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 CReserveDeposit rd = CReserveDeposit(isRefundingSeparateChain ? refundingPBaaSChain.systemID : sourceSystemID, CCurrencyValueMap());;
                 CAmount nativeOutput = 0;
+                rd.reserveValues.valueMap[oneChangeVal.first] = oneChangeVal.second;
                 if (oneChangeVal.first == ASSETCHAINS_CHAINID)
                 {
                     nativeOutput = oneChangeVal.second;
-                }
-                else
-                {
-                    rd.reserveValues.valueMap[oneChangeVal.first] = oneChangeVal.second;
                 }
                 tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), nativeOutput);
             }
@@ -2366,13 +2363,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 CReserveDeposit rd = CReserveDeposit(ccx.destCurrencyID, CCurrencyValueMap());;
                 CAmount nativeOutput = 0;
+                rd.reserveValues.valueMap[oneChangeVal.first] = oneChangeVal.second;
                 if (oneChangeVal.first == ASSETCHAINS_CHAINID)
                 {
                     nativeOutput = oneChangeVal.second;
-                }
-                else
-                {
-                    rd.reserveValues.valueMap[oneChangeVal.first] = oneChangeVal.second;
                 }
                 tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd)), nativeOutput);
             }
