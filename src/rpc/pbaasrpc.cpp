@@ -5638,6 +5638,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         newID.parent = parent;
     }
 
+    newID.systemID = ASSETCHAINS_CHAINID;
+
     uint160 newIDID = newID.GetID();
 
     if (find_value(rawID, "revocationauthority").isNull())
@@ -5936,7 +5938,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn)).IsValid())
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + ", not found ");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + " (" +EncodeDestination(CIdentityID(newIDID)) + "), not found ");
     }
     uint256 blkHash;
     CTransaction oldIdTx;

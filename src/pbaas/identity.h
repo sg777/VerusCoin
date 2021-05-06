@@ -384,6 +384,7 @@ public:
         else if (ser_action.ForRead())
         {
             REF(unlockAfter) = 0;
+            REF(systemID) = parent.IsNull() ? GetID() : parent;
         }
     }
 

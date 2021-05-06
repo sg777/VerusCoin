@@ -662,6 +662,10 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             systemID = parent.IsNull() ? GetID() : parent;
         }
     }
+    else
+    {
+        systemID = parent.IsNull() ? GetID() : parent;
+    }
 
     UniValue hashesUni = find_value(uni, "contentmap");
     if (hashesUni.isObject())
