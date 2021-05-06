@@ -1130,6 +1130,7 @@ UniValue CIdentity::ToUniValue() const
 
     obj.push_back(Pair("identityaddress", EncodeDestination(CIdentityID(GetID()))));
     obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
+    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
 
     UniValue hashes(UniValue::VOBJ);
     for (auto &entry : contentMap)
