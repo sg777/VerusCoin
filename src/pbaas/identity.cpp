@@ -41,7 +41,14 @@ UniValue CNameReservation::ToUniValue() const
 
     if (IsVerusActive())
     {
-        ret.push_back(Pair("parent", ""));
+        if (boost::to_lower_copy(name) == VERUS_CHAINNAME)
+        {
+            ret.push_back(Pair("parent", ""));
+        }
+        else
+        {
+            ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
+        }
         ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "@"))));
     }
     else
