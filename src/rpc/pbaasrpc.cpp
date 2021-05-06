@@ -5607,15 +5607,20 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     uint32_t height = chainActive.Height();
 
     UniValue rawID = find_value(params[0], "identity");
-    if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_PBAAS)
-    {
-        rawID.pushKV("version", (int64_t)CIdentity::VERSION_PBAAS);
-    }
 
     CIdentity newID(rawID);
     if (!newID.IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
+    }
+
+    if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        newID.nVersion = CIdentity::VERSION_PBAAS;
+    }
+    else
+    {
+        newID.nVersion = CIdentity::VERSION_VERUSID;
     }
 
     if (IsVerusActive())
