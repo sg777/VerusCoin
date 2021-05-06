@@ -315,12 +315,12 @@ cpp_dec_float_50 CCurrencyState::PriceInReserveDecFloat50(int32_t reserveIndex) 
     return (Reserve * BigSatoshiSquared) / (Supply * Ratio);
 }
 
-std::vector<CAmount> CCurrencyState::PricesInReserve() const
+std::vector<CAmount> CCurrencyState::PricesInReserve(bool roundUp) const
 {
     std::vector<CAmount> retVal(currencies.size());
     for (int i = 0; i < currencies.size(); i++)
     {
-        retVal[i] = PriceInReserve(i);
+        retVal[i] = PriceInReserve(i, roundUp);
     }
     return retVal;
 }
