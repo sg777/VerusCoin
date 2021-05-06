@@ -5616,11 +5616,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_PBAAS)
     {
-        newID.nVersion = CIdentity::VERSION_PBAAS;
+        newID.SetVersion(CIdentity::VERSION_PBAAS);
     }
     else
     {
-        newID.nVersion = CIdentity::VERSION_VERUSID;
+        newID.SetVersion(CIdentity::VERSION_VERUSID);
     }
 
     if (IsVerusActive())
