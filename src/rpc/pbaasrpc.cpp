@@ -3867,7 +3867,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             "Cannot retrieve notarization data for import system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
                     }
 
-                    if (cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() && !cnd.vtx[cnd.lastConfirmed].second.IsLaunchCleared())
+                    if (!preConvert && cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() && !cnd.vtx[cnd.lastConfirmed].second.IsLaunchCleared())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER,
                             "Cannot send non-preconvert transfers to import system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") until after launch");
