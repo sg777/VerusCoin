@@ -1308,10 +1308,11 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
         else
         {
             CChainNotarizationData cnd;
-            if (GetNotarizationData(chainDef.systemID, cnd) && cnd.IsConfirmed() && cnd.vtx[cnd.lastConfirmed].second.currencyStates.count(chainID))
+            if (GetNotarizationData(chainDef.systemID, cnd) && cnd.IsConfirmed() &&
+                cnd.vtx[cnd.lastConfirmed].second.currencyStates.count(chainID))
             {
-                ret.push_back(Pair("bestheight", chainActive.Height()));
-                ret.push_back(Pair("lastconfirmedheight", chainActive.Height()));
+                ret.push_back(Pair("bestheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.notarizationHeight));
+                ret.push_back(Pair("lastconfirmedheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.notarizationHeight));
                 ret.push_back(Pair("bestcurrencystate", lastStateUni));
                 ret.push_back(Pair("lastconfirmedcurrencystate", lastStateUni));
             }
