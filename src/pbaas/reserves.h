@@ -1199,7 +1199,7 @@ public:
     // return the current price of the fractional reserve in the reserve currency in Satoshis
     cpp_dec_float_50 PriceInReserveDecFloat50(int32_t reserveIndex=0) const;
 
-    std::vector<CAmount> PricesInReserve() const;
+    std::vector<CAmount> PricesInReserve(bool roundUp=false) const;
 
     // This considers one currency at a time
     CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState, int32_t reserveIndex=0) const;

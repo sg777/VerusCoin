@@ -3217,7 +3217,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (importCurrencyDef.launchSystemID == importCurrencyDef.systemID)
                     {
-                        newCurrencyState.conversionPrice = tempCurrencyState.PricesInReserve();
+                        newCurrencyState.conversionPrice = tempCurrencyState.PricesInReserve(true);
                     }
                     else
                     {
@@ -3237,7 +3237,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                 weightRemainder--;
                             }
                         }
-                        std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
+                        std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve(true);
                         launchPrices.insert(launchPrices.begin() + systemDestIdx, systemDestPrice);
                         newCurrencyState.conversionPrice = launchPrices;
                     }
@@ -3249,14 +3249,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
             else if (importCurrencyState.IsPrelaunch() && !importCurrencyState.IsRefunding())
             {
-                newCurrencyState.viaConversionPrice = newCurrencyState.PricesInReserve();
+                newCurrencyState.viaConversionPrice = newCurrencyState.PricesInReserve(true);
                 CCoinbaseCurrencyState tempCurrencyState = newCurrencyState;
                 // via prices are used for fees on launch clear and include the converter issued currency
                 // normal prices on launch clear for a gateway or PBaaS converter do not include the new native
                 // currency until after pre-conversions are processed
                 if (importCurrencyDef.launchSystemID == importCurrencyDef.systemID)
                 {
-                    newCurrencyState.conversionPrice = tempCurrencyState.PricesInReserve();
+                    newCurrencyState.conversionPrice = tempCurrencyState.PricesInReserve(true);
                 }
                 else
                 {
@@ -3275,7 +3275,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             weightRemainder--;
                         }
                     }
-                    std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve();
+                    std::vector<CAmount> launchPrices = tempCurrencyState.PricesInReserve(true);
                     launchPrices.insert(launchPrices.begin() + systemDestIdx, newCurrencyState.viaConversionPrice[systemDestIdx]);
                     newCurrencyState.conversionPrice = launchPrices;
                 }
