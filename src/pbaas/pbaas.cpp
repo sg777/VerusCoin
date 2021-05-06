@@ -2171,18 +2171,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 tb.AddTransparentInput(lastNotarizationOut.txIn.prevout, lastNotarizationOut.scriptPubKey, lastNotarizationOut.nValue);
             }
 
-            if (useProofs)
+            if (!lastCCI.IsDefinitionImport() && lastCCI.sourceSystemID != ASSETCHAINS_CHAINID && evidenceOutNumStart >= 0)
             {
-                if (!lastCCI.IsDefinitionImport() && lastCCI.sourceSystemID != ASSETCHAINS_CHAINID)
+                for (int i = evidenceOutNumStart; i <= evidenceOutNumEnd; i++)
                 {
-                    assert(evidenceOutNumStart >= 0);
-                    for (int i = evidenceOutNumStart; i <= evidenceOutNumEnd; i++)
-                    {
-                        tb.AddTransparentInput(COutPoint(lastImportTxID, i), lastImportTx.vout[i].scriptPubKey, lastImportTx.vout[i].nValue);
-                    }
+                    tb.AddTransparentInput(COutPoint(lastImportTxID, i), lastImportTx.vout[i].scriptPubKey, lastImportTx.vout[i].nValue);
                 }
             }
-            else
+            if (!useProofs)
             {
                 // if same chain and export has a finalization, spend it on import
                 CObjectFinalization of;
