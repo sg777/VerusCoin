@@ -1150,9 +1150,13 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     }
     else
     {
-        // we need to get the currency state of a currency not on this chain, so we look for the latest confirmed notarization
-        // of that currency, and get it there
+        // we need to get the currency state of a currency not on this chain, so we first get the chain's notarization and see if
+        // it is there. if not, look for the latest confirmed notarization and return that
         CChainNotarizationData cnd;
+        if (GetNotarizationData(curDef.systemID, cnd) && cnd.IsConfirmed() && cnd.vtx[cnd.lastConfirmed].second.currencyStates.count(chainID))
+        {
+            return cnd.vtx[cnd.lastConfirmed].second.currencyStates[chainID];
+        }
         if (GetNotarizationData(chainID, cnd))
         {
             int32_t transfersFrom = curDefHeight;

@@ -612,10 +612,10 @@ void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStat
 
         if (GetAddressIndex(queryID, CScript::P2IDX, notarizationAddressIndex, startBlock, endBlock) && notarizationAddressIndex.size())
         {
-            CTransaction notarizationTx;
-            uint256 blockHash;
             for (auto &oneOut : notarizationAddressIndex)
             {
+                CTransaction notarizationTx;
+                uint256 blockHash;
                 if (!myGetTransaction(oneOut.first.txhash, notarizationTx, blockHash) ||
                     notarizationTx.vout.size() <= oneOut.first.index)
                 {
@@ -628,6 +628,7 @@ void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStat
                     LogPrintf("%s: Invalid notarization on transaction %s, vout: %d\n", __func__, oneOut.first.txhash.GetHex().c_str(), (int)oneOut.first.index);
                     continue;
                 }
+
                 CCurrencyDefinition curDef;
                 int32_t currencyHeight;
                 CUTXORef curDefUTXO;
@@ -1307,85 +1308,95 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
         else
         {
             CChainNotarizationData cnd;
-            GetNotarizationData(chainID, cnd);
-            int32_t confirmedHeight = -1, bestHeight = -1;
-
-            std::map<std::string, CNodeData> vNNodes;
-
-            if (cnd.forks.size())
+            if (GetNotarizationData(chainDef.systemID, cnd) && cnd.IsConfirmed() && cnd.vtx[cnd.lastConfirmed].second.currencyStates.count(chainID))
             {
-                // get all nodes from notarizations of the best chain into a vector
-                for (auto &oneNot : cnd.forks[cnd.bestChain])
-                {
-                    for (auto &oneNode : cnd.vtx[oneNot].second.nodes)
-                    {
-                        vNNodes.insert(std::make_pair(oneNode.networkAddress, oneNode));
-                    }
-                }
-                for (auto oneNode : nodes)
-                {
-                    vNNodes[oneNode.networkAddress] = oneNode;
-                }
-
-                confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
-                bestHeight = cnd.vtx.size() && cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : -1;
-
-                // shuffle and take 8 nodes,
-                // up to two of which will be from the last confirmed notarization if present
-                int numConfirmedNodes = cnd.lastConfirmed == -1 ? 0 : cnd.vtx[cnd.lastConfirmed].second.nodes.size();
-                int numToRemove = vNNodes.size() - (8 - numConfirmedNodes);
-                if (numToRemove > 0)
-                {
-                    for (int i = 0; i < numToRemove; i++)
-                    {
-                        int idxToRemove = (insecure_rand() % vNNodes.size());
-                        auto removeIt = vNNodes.begin();
-                        int j;
-                        for (j = 0; j < idxToRemove; removeIt++, j++);
-                        vNNodes.erase(removeIt);
-                    }
-                }
-                if (numConfirmedNodes)
-                {
-                    for (int i = 0; i < numConfirmedNodes; i++)
-                    {
-                        vNNodes.insert(std::make_pair(cnd.vtx[cnd.lastConfirmed].second.nodes[i].networkAddress, cnd.vtx[cnd.lastConfirmed].second.nodes[i]));
-                    }
-                }
-                if (vNNodes.size())
-                {
-                    UniValue nodeArr(UniValue::VARR);
-                    for (auto &oneNode : vNNodes)
-                    {
-                        nodeArr.push_back(oneNode.second.ToUniValue());
-                    }
-                    ret.push_back(Pair("nodes", nodeArr));
-                }
-            }
-
-            if (chainID == ASSETCHAINS_CHAINID)
-            {
-                int64_t curHeight = chainActive.Height();
-                ret.push_back(Pair("lastconfirmedheight", curHeight));
+                ret.push_back(Pair("bestheight", chainActive.Height()));
+                ret.push_back(Pair("lastconfirmedheight", chainActive.Height()));
+                ret.push_back(Pair("bestcurrencystate", lastStateUni));
                 ret.push_back(Pair("lastconfirmedcurrencystate", lastStateUni));
-                ret.push_back(Pair("bestheight", curHeight));
             }
             else
             {
-                if (!chainDef.IsToken())
+                GetNotarizationData(chainID, cnd);
+                int32_t confirmedHeight = -1, bestHeight = -1;
+
+                std::map<std::string, CNodeData> vNNodes;
+
+                if (cnd.forks.size())
                 {
-                    ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
-                    if (confirmedHeight != -1)
+                    // get all nodes from notarizations of the best chain into a vector
+                    for (auto &oneNot : cnd.forks[cnd.bestChain])
                     {
-                        ret.push_back(Pair("lastconfirmedtxid", cnd.vtx[cnd.lastConfirmed].first.hash.GetHex().c_str()));
-                        ret.push_back(Pair("lastconfirmedcurrencystate", cnd.vtx[cnd.lastConfirmed].second.currencyState.ToUniValue()));
+                        for (auto &oneNode : cnd.vtx[oneNot].second.nodes)
+                        {
+                            vNNodes.insert(std::make_pair(oneNode.networkAddress, oneNode));
+                        }
+                    }
+                    for (auto oneNode : nodes)
+                    {
+                        vNNodes[oneNode.networkAddress] = oneNode;
+                    }
+
+                    confirmedHeight = cnd.vtx.size() && cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : -1;
+                    bestHeight = cnd.vtx.size() && cnd.bestChain != -1 ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second.notarizationHeight : -1;
+
+                    // shuffle and take 8 nodes,
+                    // up to two of which will be from the last confirmed notarization if present
+                    int numConfirmedNodes = cnd.lastConfirmed == -1 ? 0 : cnd.vtx[cnd.lastConfirmed].second.nodes.size();
+                    int numToRemove = vNNodes.size() - (8 - numConfirmedNodes);
+                    if (numToRemove > 0)
+                    {
+                        for (int i = 0; i < numToRemove; i++)
+                        {
+                            int idxToRemove = (insecure_rand() % vNNodes.size());
+                            auto removeIt = vNNodes.begin();
+                            int j;
+                            for (j = 0; j < idxToRemove; removeIt++, j++);
+                            vNNodes.erase(removeIt);
+                        }
+                    }
+                    if (numConfirmedNodes)
+                    {
+                        for (int i = 0; i < numConfirmedNodes; i++)
+                        {
+                            vNNodes.insert(std::make_pair(cnd.vtx[cnd.lastConfirmed].second.nodes[i].networkAddress, cnd.vtx[cnd.lastConfirmed].second.nodes[i]));
+                        }
+                    }
+                    if (vNNodes.size())
+                    {
+                        UniValue nodeArr(UniValue::VARR);
+                        for (auto &oneNode : vNNodes)
+                        {
+                            nodeArr.push_back(oneNode.second.ToUniValue());
+                        }
+                        ret.push_back(Pair("nodes", nodeArr));
                     }
                 }
-                ret.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
-                if (bestHeight != -1)
+
+                if (chainID == ASSETCHAINS_CHAINID)
                 {
-                    ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.hash.GetHex().c_str()));
-                    ret.push_back(Pair("bestcurrencystate", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.ToUniValue()));
+                    int64_t curHeight = chainActive.Height();
+                    ret.push_back(Pair("lastconfirmedheight", curHeight));
+                    ret.push_back(Pair("lastconfirmedcurrencystate", lastStateUni));
+                    ret.push_back(Pair("bestheight", curHeight));
+                }
+                else
+                {
+                    if (!chainDef.IsToken())
+                    {
+                        ret.push_back(Pair("lastconfirmedheight", confirmedHeight == -1 ? 0 : confirmedHeight));
+                        if (confirmedHeight != -1)
+                        {
+                            ret.push_back(Pair("lastconfirmedtxid", cnd.vtx[cnd.lastConfirmed].first.hash.GetHex().c_str()));
+                            ret.push_back(Pair("lastconfirmedcurrencystate", cnd.vtx[cnd.lastConfirmed].second.currencyState.ToUniValue()));
+                        }
+                    }
+                    ret.push_back(Pair("bestheight", bestHeight == -1 ? 0 : bestHeight));
+                    if (bestHeight != -1)
+                    {
+                        ret.push_back(Pair("besttxid", cnd.vtx[cnd.forks[cnd.bestChain].back()].first.hash.GetHex().c_str()));
+                        ret.push_back(Pair("bestcurrencystate", cnd.vtx[cnd.forks[cnd.bestChain].back()].second.currencyState.ToUniValue()));
+                    }
                 }
             }
         }
