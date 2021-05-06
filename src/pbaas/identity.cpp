@@ -46,7 +46,7 @@ UniValue CNameReservation::ToUniValue() const
     }
     else
     {
-        ret.push_back(Pair("parent", ConnectedChains.ThisChain().name));
+        ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
         ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "." + ConnectedChains.ThisChain().name + "@"))));
     }
 
