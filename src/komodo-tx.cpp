@@ -371,18 +371,6 @@ std::vector<unsigned char> ParseHexUO(std::map<std::string,UniValue>& o, std::st
     return ParseHexUV(o[strKey], strKey);
 }
 
-CAmount AmountFromValue(const UniValue& value)
-{
-    if (!value.isNum() && !value.isStr())
-        throw std::runtime_error("Amount is not a number or string");
-    CAmount amount;
-    if (!ParseFixedPoint(value.getValStr(), 8, &amount))
-        throw std::runtime_error("Invalid amount");
-    if (!MoneyRange(amount))
-        throw std::runtime_error("Amount out of range");
-    return amount;
-}
-
 static void MutateTxSign(CMutableTransaction& tx, const std::string& strInput)
 {
     // separate HEIGHT:SIGHASH-FLAGS in string

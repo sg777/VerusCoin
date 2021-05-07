@@ -71,12 +71,12 @@ std::string PBaaSDefinitionAddr = "RP7id3CzCnwvzNUZesYJM6ekvsxpEzMqB1";
 std::string PBaaSDefinitionPubKey = "02a0de91740d3d5a3a4a7990ae22315133d02f33716b339ebce88662d012224ef5";
 std::string PBaaSDefinitionWIF = "UwhNWARAQTUvYUEqxGbRjM2BFUneGnFzmaMMiSqJQZFQZTku6xTW";
 
-// Service reward output type
-std::string ServiceRewardAddr = "RQWMeecjGFF3ZAVeSimRbyG9iMDUHPY5Ny";
-std::string ServiceRewardPubKey = "03e1894e9d487125be5a8c6657a8ce01bc81ba7816d698dbfcfb0483754eb5a2d9";
-std::string ServiceRewardWIF = "Uw5dNvvgz7eyUJGtfi696hYbF9YPXHPHasgZFeQeDu8j4SapPBzd";
+// Notary evidence output type
+std::string NotaryEvidenceAddr = "RQWMeecjGFF3ZAVeSimRbyG9iMDUHPY5Ny";
+std::string NotaryEvidencePubKey = "03e1894e9d487125be5a8c6657a8ce01bc81ba7816d698dbfcfb0483754eb5a2d9";
+std::string NotaryEvidenceWIF = "Uw5dNvvgz7eyUJGtfi696hYbF9YPXHPHasgZFeQeDu8j4SapPBzd";
 
-// Earned notarization type, created by PBaaS chain miners, not on the Verus chain
+// Earned notarization type, created by miners and/or stakers
 std::string EarnedNotarizationAddr = "RMYbaxFsCT1xfMmwLCCYAVf2DsxcDTtBmx";
 std::string EarnedNotarizationPubKey = "03fb008879b37d644bef929576dda7f5ee31b352c76fc112b4a89838d5b61f52e2";
 std::string EarnedNotarizationWIF = "UtzhFWXw24xS2Tf3gCDm9p2Ex7TUnCNt4DFA7r2f5cCKPhPknEqD";
@@ -398,13 +398,13 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             cp->contextualprecheck = DefaultCCContextualPreCheck;
             break;
 
-        case EVAL_SERVICEREWARD:
-            strcpy(cp->unspendableCCaddr,ServiceRewardAddr.c_str());
-            strcpy(cp->normaladdr,ServiceRewardAddr.c_str());
-            strcpy(cp->CChexstr,ServiceRewardPubKey.c_str());
-            memcpy(cp->CCpriv,DecodeSecret(ServiceRewardWIF).begin(),32);
-            cp->validate = ValidateServiceReward;
-            cp->ismyvin = IsServiceRewardInput;
+        case EVAL_NOTARY_EVIDENCE:
+            strcpy(cp->unspendableCCaddr,NotaryEvidenceAddr.c_str());
+            strcpy(cp->normaladdr,NotaryEvidenceAddr.c_str());
+            strcpy(cp->CChexstr,NotaryEvidencePubKey.c_str());
+            memcpy(cp->CCpriv,DecodeSecret(NotaryEvidenceWIF).begin(),32);
+            cp->validate = ValidateNotaryEvidence;
+            cp->ismyvin = IsNotaryEvidenceInput;
             cp->contextualprecheck = DefaultCCContextualPreCheck;
             break;
 
@@ -435,7 +435,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(ReserveTransferWIF).begin(),32);
             cp->validate = ValidateReserveTransfer;
             cp->ismyvin = IsReserveTransferInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PrecheckReserveTransfer;
             break;
 
         case EVAL_RESERVE_DEPOSIT:

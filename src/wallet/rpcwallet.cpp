@@ -798,6 +798,93 @@ UniValue listaddressgroupings(const UniValue& params, bool fHelp)
     return jsonGroupings;
 }
 
+CIdentitySignature::ESignatureVerification CIdentitySignature::AddSignature(const CIdentity &signingID,
+                                                                            const std::vector<uint160> &vdxfCodes, 
+                                                                            const std::vector<uint256> &statements, 
+                                                                            const uint160 &systemID, 
+                                                                            uint32_t height,
+                                                                            const std::string &prefixString, 
+                                                                            const uint256 &msgHash,
+                                                                            const CKeyStore *pWallet)
+{
+    if (blockHeight != height)
+    {
+        return SIGNATURE_INVALID;
+    }
+
+    uint160 sID = signingID.GetID();
+    std::set<uint160> signatureIDs;
+    std::set<uint160> idKeys;
+    for (auto &oneKey : signingID.primaryAddresses)
+    {
+        if (oneKey.which() != COptCCParams::ADDRTYPE_PK && oneKey.which() != COptCCParams::ADDRTYPE_PKH)
+        {
+            return SIGNATURE_INVALID;
+        }
+        idKeys.insert(GetDestinationID(oneKey));
+    }
+
+    uint256 signatureHash = IdentitySignatureHash(vdxfCodes, statements, systemID, height, sID, prefixString, msgHash);
+    
+    for (auto &oneSig : signatures)
+    {
+        CPubKey pubkey;
+        if (pubkey.RecoverCompact(signatureHash, oneSig))
+        {
+            uint160 pkID = pubkey.GetID();
+            // wrong signature means this is wrong
+            if (!idKeys.count(pkID))
+            {
+                return SIGNATURE_INVALID;
+            }
+            signatureIDs.insert(pkID);
+        }
+    }
+
+    for (auto &oneAddr : signingID.primaryAddresses)
+    {
+        CKeyID addrID = GetDestinationID(oneAddr);
+        if (signatureIDs.count(addrID))
+        {
+            continue;
+        }
+        CKey signingKey;
+        std::vector<unsigned char> newSig;
+        if (pWallet->GetKey(addrID, signingKey) && signingKey.SignCompact(signatureHash, newSig))
+        {
+            signatures.insert(newSig);
+            signatureIDs.insert(addrID);
+        }
+    }
+
+    if (signatureIDs.size() >= signingID.minSigs)
+    {
+        return SIGNATURE_COMPLETE;
+    }
+    else if (signatureIDs.size())
+    {
+        return SIGNATURE_PARTIAL;
+    }
+    else
+    {
+        return SIGNATURE_INVALID;
+    }
+}
+
+CIdentitySignature::ESignatureVerification CIdentitySignature::NewSignature(const CIdentity &signingID,
+                                                                            const std::vector<uint160> &vdxfCodes, 
+                                                                            const std::vector<uint256> &statements, 
+                                                                            const uint160 &systemID, 
+                                                                            uint32_t height,
+                                                                            const std::string &prefixString, 
+                                                                            const uint256 &msgHash, 
+                                                                            const CKeyStore *pWallet)
+{
+    signatures.clear();
+    blockHeight = height;
+    return AddSignature(signingID, vdxfCodes, statements, systemID, height, prefixString, msgHash, pWallet);
+}
+
 std::string SignMessageHash(const CIdentity &identity, const uint256 &_msgHash, const std::string &signatureStr, uint32_t blockHeight)
 {
     int numSigs = 0;
@@ -3081,7 +3168,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
             "  \"keypoolsize\": xxxx,        (numeric) how many new keys are pre-generated\n"
             "  \"unlocked_until\": ttt,      (numeric) the timestamp in seconds since epoch (midnight Jan 1 1970 GMT) that the wallet is unlocked for transfers, or 0 if the wallet is locked\n"
             "  \"paytxfee\": x.xxxx,         (numeric) the transaction fee configuration, set in " + CURRENCY_UNIT + "/kB\n"
-            "  \"seedfp\": \"uint256\",        (string) the BLAKE2b-256 hash of the HD seed\n"
+            "  \"seedfp\": \"uint256\",      (string) the BLAKE2b-256 hash of the HD seed\n"
             "}\n"
             "\nExamples:\n"
             + HelpExampleCli("getwalletinfo", "")
@@ -3146,6 +3233,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
     UniValue reserveBal(UniValue::VOBJ);
     CCurrencyValueMap resBal = pwalletMain->GetReserveBalance();
+
     for (auto &oneBalance : resBal.valueMap)
     {
         reserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
@@ -3189,21 +3277,6 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     }
 
     uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
-
-    if ((ConnectedChains.ThisChain().IsFractional() || ConnectedChains.ThisChain().startBlock < height) && 
-        ConnectedChains.ThisChain().currencies.size())
-    {
-        UniValue pricesInReserve(UniValue::VARR);
-        CCoinbaseCurrencyState thisCurState(ConnectedChains.GetCurrencyState(height));
-        std::vector<CAmount> prices(thisCurState.PricesInReserve());
-        for (int i = 0; i < thisCurState.currencies.size(); i++)
-        {
-            UniValue oneCurObj(UniValue::VOBJ);
-            oneCurObj.push_back(make_pair(ConnectedChains.GetCachedCurrency(thisCurState.currencies[i]).name, ValueFromAmount(prices[i])));
-            pricesInReserve.push_back(oneCurObj);
-        }
-        obj.push_back(Pair("prices", pricesInReserve));
-    }
 
     obj.push_back(Pair("txcount",       (int)pwalletMain->mapWallet.size()));
     obj.push_back(Pair("keypoololdest", pwalletMain->GetOldestKeyPoolTime()));
@@ -3380,29 +3453,9 @@ uint64_t komodo_interestsum()
 #ifdef ENABLE_WALLET
     if ( GetBoolArg("-disablewallet", false) == 0 )
     {
-        uint64_t interest,sum = 0; int32_t txheight; uint32_t locktime;
-        vector<COutput> vecOutputs;
-        assert(pwalletMain != NULL);
-        LOCK2(cs_main, pwalletMain->cs_wallet);
-        pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
-        BOOST_FOREACH(const COutput& out,vecOutputs)
-        {
-            CAmount nValue = out.tx->vout[out.i].nValue;
-            if ( out.tx->nLockTime != 0 && out.fSpendable != 0 )
-            {
-                BlockMap::iterator it = mapBlockIndex.find(pcoinsTip->GetBestBlock());
-                CBlockIndex *tipindex,*pindex = it->second;
-                if ( pindex != 0 && (tipindex= chainActive.LastTip()) != 0 )
-                {
-                    interest = komodo_accrued_interest(&txheight,&locktime,out.tx->GetHash(),out.i,0,nValue,(int32_t)tipindex->GetHeight());
-                    //interest = komodo_interest(pindex->GetHeight(),nValue,out.tx->nLockTime,tipindex->nTime);
-                    sum += interest;
-                }
-            }
-        }
-        KOMODO_INTERESTSUM = sum;
+        KOMODO_INTERESTSUM = 0;
         KOMODO_WALLETBALANCE = pwalletMain->GetBalance();
-        return(sum);
+        return(0);
     }
 #endif
     return(0);
@@ -4393,13 +4446,14 @@ UniValue z_listreceivedbyaddress(const UniValue& params, bool fHelp)
             "2. minconf          (numeric, optional, default=1) Only include transactions confirmed at least this many times.\n"
             "\nResult:\n"
             "{\n"
-            "  \"txid\": \"txid\",           (string) the transaction id\n"
-            "  \"amount\": xxxxx,         (numeric) the amount of value in the note\n"
-            "  \"memo\": xxxxx,           (string) hexadecimal string representation of memo field\n"
-            "  \"jsindex\" (sprout) : n,     (numeric) the joinsplit index\n"
-            "  \"jsoutindex\" (sprout) : n,     (numeric) the output index of the joinsplit\n"
-            "  \"outindex\" (sapling) : n,     (numeric) the output index\n"
-            "  \"change\": true|false,    (boolean) true if the address that received the note is also one of the sending addresses\n"
+            "  \"txid\": \"txid\",          string) the transaction id\n"
+            "  \"amount\": xxxxx,           (numeric) the amount of value in the note\n"
+            "  \"memo\": xxxxx,             (string) hexadecimal string representation of memo field\n"
+            "  \"jsindex\" (sprout) : n,    (numeric) the joinsplit index\n"
+            "  \"jsoutindex\" (sprout) : n, (numeric) the output index of the joinsplit\n"
+            "  \"outindex\" (sapling) : n,  (numeric) the output index\n"
+            "  \"confirmations\" : n,       (numeric) number of block confirmations of transaction\n"
+            "  \"change\": true|false,      (boolean) true if the address that received the note is also one of the sending addresses\n"
             "}\n"
             "\nExamples:\n"
             + HelpExampleCli("z_listreceivedbyaddress", "\"ztfaW34Gj9FrnGUEf833ywDVL62NWXBM81u6EQnM6VR45eYnXhwztecW1SjxA7JrmAXKJhxhj3vDNEpVCQoSvVoSpmbhtjf\"")
@@ -4449,6 +4503,7 @@ UniValue z_listreceivedbyaddress(const UniValue& params, bool fHelp)
             obj.push_back(Pair("memo", HexStr(data)));
             obj.push_back(Pair("jsindex", entry.jsop.js));
             obj.push_back(Pair("jsoutindex", entry.jsop.n));
+            obj.push_back(Pair("confirmations", entry.confirmations));
             if (hasSpendingKey) {
                 obj.push_back(Pair("change", pwalletMain->IsNoteSproutChange(nullifierSet, entry.address, entry.jsop)));
             }
@@ -4461,6 +4516,7 @@ UniValue z_listreceivedbyaddress(const UniValue& params, bool fHelp)
             obj.push_back(Pair("amount", ValueFromAmount(CAmount(entry.note.value()))));
             obj.push_back(Pair("memo", HexStr(entry.memo)));
             obj.push_back(Pair("outindex", (int)entry.op.n));
+            obj.push_back(Pair("confirmations", entry.confirmations));
             if (hasSpendingKey) {
               obj.push_back(Pair("change", pwalletMain->IsNoteSaplingChange(nullifierSet, entry.address, entry.op)));
             }
@@ -6699,13 +6755,13 @@ UniValue diceaddress(const UniValue& params, bool fHelp)
 UniValue faucetaddress(const UniValue& params, bool fHelp)
 {
     struct CCcontract_info *cp,C; std::vector<unsigned char> pubkey;
-    int32_t errno;
+    int32_t errnum;
     cp = CCinit(&C,EVAL_FAUCET);
     if ( fHelp || params.size() > 1 )
         throw runtime_error("faucetaddress [pubkey]\n");
-    errno = ensure_CCrequirements();
-    if ( errno < 0 )
-        throw runtime_error(strprintf("to use CC contracts, you need to launch daemon with valid -pubkey= for an address in your wallet. ERR=%d\n", errno));
+    errnum = ensure_CCrequirements();
+    if ( errnum < 0 )
+        throw runtime_error(strprintf("to use CC contracts, you need to launch daemon with valid -pubkey= for an address in your wallet. ERR=%d\n", errnum));
     if ( params.size() == 1 )
         pubkey = ParseHex(params[0].get_str().c_str());
     return(CCaddress(cp,(char *)"Faucet",pubkey));

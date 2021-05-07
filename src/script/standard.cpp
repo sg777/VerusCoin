@@ -262,7 +262,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     EVAL_NONE,
                     EVAL_STAKEGUARD,
                     EVAL_CURRENCY_DEFINITION,
-                    EVAL_SERVICEREWARD,
+                    EVAL_NOTARY_EVIDENCE,
                     EVAL_EARNEDNOTARIZATION,
                     EVAL_ACCEPTEDNOTARIZATION,
                     EVAL_FINALIZE_NOTARIZATION,
@@ -618,7 +618,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
                         std::pair<CIdentityMapKey, CIdentityMapValue> identity;
                         idSet.insert(destId);
 
-                        if (pKeyStore && pKeyStore->GetIdentity(destId, identity, nHeight - 1) && identity.second.IsValidUnrevoked())
+                        if (pKeyStore && pKeyStore->GetIdentity(destId, identity, std::max((uint32_t)1, nHeight - 1)) && identity.second.IsValidUnrevoked())
                         {
                             int canSignCount = 0;
                             for (auto oneKey : identity.second.primaryAddresses)
@@ -714,7 +714,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
 
                                 //printf("checking: %s\n", EncodeDestination(dest).c_str());
 
-                                if (pKeyStore && pKeyStore->GetIdentity(destId, identity, nHeight - 1) && identity.second.IsValidUnrevoked())
+                                if (pKeyStore && pKeyStore->GetIdentity(destId, identity, std::max((uint32_t)1, nHeight - 1)) && identity.second.IsValidUnrevoked())
                                 {
                                     int canSignCount = 0;
                                     for (auto oneKey : identity.second.primaryAddresses)

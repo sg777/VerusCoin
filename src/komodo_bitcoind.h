@@ -1460,7 +1460,6 @@ int32_t komodo_is_PoSblock(int32_t slowflag,int32_t height,CBlock *pblock,arith_
 bool GetStakeParams(const CTransaction &stakeTx, CStakeParams &stakeParams);
 bool ValidateMatchingStake(const CTransaction &ccTx, uint32_t voutNum, const CTransaction &stakeTx, bool &cheating);
 bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakeParams, bool validateSig = true);
-bool GetCurrencyDefinition(uint160 chainID, CCurrencyDefinition &chainDef, int32_t *pDefHeight = NULL, bool checkMempool=false);
 
 // for now, we will ignore slowFlag in the interest of keeping success/fail simpler for security purposes
 bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
@@ -1892,7 +1891,9 @@ void GetImmatureCoins(std::map<uint32_t, int64_t> *pimmatureBlockAmounts, CBlock
     std::map<uint32_t, int64_t> &unlockBlockAmounts = pimmatureBlockAmounts ? *pimmatureBlockAmounts : _unlockBlockAmounts;
     amount = 0;
 
-    if (block.vtx.size())
+    // PBaaS chains release block one outputs without maturity, since the entire chain is either
+    // valid or not
+    if (block.vtx.size() && IsVerusActive() || height != 1)
     {
         const CTransaction &tx = block.vtx[0];
         uint32_t unlockHeight = 0;
