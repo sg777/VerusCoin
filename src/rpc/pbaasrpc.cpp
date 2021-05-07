@@ -4165,7 +4165,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 flags |= CReserveTransfer::RESERVE_TO_RESERVE;
                             }
 
-                            if (pFractionalCurrency->startBlock > (height + 1))
+                            if (pFractionalCurrency->launchSystemID == ASSETCHAINS_CHAINID && pFractionalCurrency->startBlock > (height + 1))
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert " + sourceCurrencyDef.name + " to " + convertToStr + " except through preconvert before the startblock has passed.");
                             }
@@ -5424,7 +5424,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                 reservesUsed,
                                                 nativeUsed))
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Insufficient funds held by " + launchIdentity.name + "identity.");
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Insufficient funds held by " + launchIdentity.name + " identity.");
     }
 
     for (auto &oneInput : setCoinsRet)
