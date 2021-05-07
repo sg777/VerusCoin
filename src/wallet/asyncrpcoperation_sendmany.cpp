@@ -407,9 +407,9 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             CCurrencyValueMap targetReserveAmounts = targetAllAmounts;
             targetReserveAmounts.valueMap.erase(ASSETCHAINS_CHAINID);
 
-            //printf("total currency:\n%s\n", t_all_inputs_total.ToUniValue().write(1,2).c_str());
-            //printf("target reserve:\n%s\n", targetReserveAmounts.ToUniValue().write(1,2).c_str());
-            //printf("target native:\n%s\n", ValueFromAmount(targetNativeAmount).write(1,2).c_str());
+            /* printf("total currency:\n%s\n", t_all_inputs_total.ToUniValue().write(1,2).c_str());
+            printf("target reserve:\n%s\n", targetReserveAmounts.ToUniValue().write(1,2).c_str());
+            printf("target native:\n%s\n", ValueFromAmount(targetNativeAmount).write(1,2).c_str()); //*/
 
             success = 
               pwalletMain->SelectReserveCoinsMinConf(targetReserveAmounts, targetNativeAmount, 0, 0, t_inputs_, setCoinsRet, reserveValueRet, nativeValueRet);
@@ -429,7 +429,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             else
             {
                 printf("%s: selection failed\n", __func__);
-            } */
+            } //*/
         }
 
         if (!success)
