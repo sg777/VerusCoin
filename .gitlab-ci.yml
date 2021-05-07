@@ -6,7 +6,7 @@ stages:
 ####START####                                     PROJECT LEVEL VARIABLES                                  ####START####
 ########################################################################################################################
 variables:
-  VERSION: 0.8.0
+  VERSION: 0.7.3
   VERUS_CLI_ARM64_LINUX: Verus-CLI-Linux-v${VERSION}-arm64.tar.gz
   VERUS_CLI_LINUX_X86_64: Verus-CLI-Linux-v${VERSION}-x86_64.tar.gz
   VERUS_CLI_WINDOWS: Verus-CLI-Windows-v${VERSION}.zip
