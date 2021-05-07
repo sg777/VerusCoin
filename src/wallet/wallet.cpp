@@ -2739,7 +2739,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             std::vector<CTxDestination> newAddressRet;
                                             int newNRequired;
                                             bool newCanSign, newCanSpend;
-                                            // if we think this output isn't spent and we couldn't sign for it, but the ID enables us to, 
+                                            // if we think this output isn't spent and we couldn't sign for it, but the ID enables us to,
                                             // then we need to check it further to see if we need to add other spending txes now
                                             if (IsSpent(wtx.first, k) ||
                                                 (ExtractDestinations(oneOut.scriptPubKey, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend, nHeight == 0 ? INT_MAX : nHeight) && newCanSign))
@@ -2826,7 +2826,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         if (pWtx != nullptr && newOut.second.script.IsPayToCryptoCondition())
                                         {
                                             // while we know there is an unspent index to this ID on the new transaction output, we don't know
-                                            // if there are other outputs to this ID on the transaction, which are already spent. 
+                                            // if there are other outputs to this ID on the transaction, which are already spent.
                                             // if so, we need to record the spends in the wallet as well, or it will add them but
                                             // not consider them spent.
                                             uint256 spendBlkHash;
@@ -2841,12 +2841,12 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 }
 
                                                 // if we can't spend it, no need to check for spends
-                                                if (!(ExtractDestinations(checkIfSpent[i].scriptPubKey, 
-                                                                          newTypeRet, 
-                                                                          newAddressRet, 
-                                                                          newNRequired, 
-                                                                          this, 
-                                                                          &newCanSign, 
+                                                if (!(ExtractDestinations(checkIfSpent[i].scriptPubKey,
+                                                                          newTypeRet,
+                                                                          newAddressRet,
+                                                                          newNRequired,
+                                                                          this,
+                                                                          &newCanSign,
                                                                           &newCanSpend,
                                                                           nHeight == 0 ? INT_MAX : nHeight + 1) && newCanSign))
                                                 {
@@ -2866,7 +2866,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                         // Get merkle branch if transaction was found in a block
                                                         CBlock spendBlock;
                                                         auto spendBlkIndexIt = mapBlockIndex.find(spendBlkHash);
-                                                        if (spendBlkIndexIt != mapBlockIndex.end() && 
+                                                        if (spendBlkIndexIt != mapBlockIndex.end() &&
                                                             chainActive.Contains(spendBlkIndexIt->second) &&
                                                             ReadBlockFromDisk(spendBlock, spendBlkIndexIt->second, consensus))
                                                         {
