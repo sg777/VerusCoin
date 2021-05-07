@@ -6449,10 +6449,14 @@ UniValue listidentities(const UniValue& params, bool fHelp)
     CheckIdentityAPIsValid();
 
     std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> mine, imsigner, notmine;
+    CIdentity oneIdentity;
+    uint32_t oneIdentityHeight;
 
     bool includeCanSpend = params.size() > 0 ? uni_get_bool(params[0], true) : true;
     bool includeCanSign = params.size() > 1 ? uni_get_bool(params[1], true) : true;
     bool includeWatchOnly = params.size() > 2 ? uni_get_bool(params[2], false) : false;
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
 
     if (pwalletMain->GetIdentities(mine, imsigner, notmine))
     {
@@ -6464,6 +6468,30 @@ UniValue listidentities(const UniValue& params, bool fHelp)
                 uint160 parent;
                 if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent, true))
                 {
+                    oneIdentity = CIdentity::LookupIdentity(identity.first.idID, 0, &oneIdentityHeight);
+
+                    if (!oneIdentity.IsValid())
+                    {
+                        if (identity.first.idID != VERUS_CHAINID)
+                        {
+                            continue;
+                        }
+                        std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
+                        std::vector<std::pair<uint160, uint256>> contentmap;
+                        oneIdentity = CIdentity(CIdentity::VERSION_PBAAS, 
+                                                CIdentity::FLAG_ACTIVECURRENCY,
+                                                primary, 
+                                                1, 
+                                                ConnectedChains.ThisChain().parent,
+                                                VERUS_CHAINNAME,
+                                                contentmap,
+                                                ConnectedChains.ThisChain().GetID(),
+                                                ConnectedChains.ThisChain().GetID(),
+                                                std::vector<libzcash::SaplingPaymentAddress>());
+                    }
+                    (*(CIdentity *)&identity.second) = oneIdentity;
+                    // TODO: confirm that missing block order is fine for this API
+                    identity.first.blockHeight = oneIdentityHeight;
                     ret.push_back(IdentityPairToUni(identity));
                 }
             }
@@ -6475,6 +6503,28 @@ UniValue listidentities(const UniValue& params, bool fHelp)
                 uint160 parent;
                 if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent, true))
                 {
+                    oneIdentity = CIdentity::LookupIdentity(identity.first.idID, 0, &oneIdentityHeight);
+
+                    if (!oneIdentity.IsValid())
+                    {
+                        if (identity.first.idID != VERUS_CHAINID)
+                        {
+                            continue;
+                        }
+                        std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
+                        std::vector<std::pair<uint160, uint256>> contentmap;
+                        oneIdentity = CIdentity(CIdentity::VERSION_PBAAS, 
+                                                CIdentity::FLAG_ACTIVECURRENCY,
+                                                primary, 
+                                                1, 
+                                                ConnectedChains.ThisChain().parent,
+                                                VERUS_CHAINNAME,
+                                                contentmap,
+                                                ConnectedChains.ThisChain().GetID(),
+                                                ConnectedChains.ThisChain().GetID(),
+                                                std::vector<libzcash::SaplingPaymentAddress>());
+                    }
+                    (*(CIdentity *)&identity.second) = oneIdentity;
                     ret.push_back(IdentityPairToUni(identity));
                 }
             }
@@ -6486,6 +6536,28 @@ UniValue listidentities(const UniValue& params, bool fHelp)
                 uint160 parent;
                 if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent, true))
                 {
+                    oneIdentity = CIdentity::LookupIdentity(identity.first.idID, 0, &oneIdentityHeight);
+
+                    if (!oneIdentity.IsValid())
+                    {
+                        if (identity.first.idID != VERUS_CHAINID)
+                        {
+                            continue;
+                        }
+                        std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
+                        std::vector<std::pair<uint160, uint256>> contentmap;
+                        oneIdentity = CIdentity(CIdentity::VERSION_PBAAS, 
+                                                CIdentity::FLAG_ACTIVECURRENCY,
+                                                primary, 
+                                                1, 
+                                                ConnectedChains.ThisChain().parent,
+                                                VERUS_CHAINNAME,
+                                                contentmap,
+                                                ConnectedChains.ThisChain().GetID(),
+                                                ConnectedChains.ThisChain().GetID(),
+                                                std::vector<libzcash::SaplingPaymentAddress>());
+                    }
+                    (*(CIdentity *)&identity.second) = oneIdentity;
                     ret.push_back(IdentityPairToUni(identity));
                 }
             }
