@@ -303,9 +303,17 @@ TransactionBuilderResult TransactionBuilder::Build()
             printf("%s: Change cannot be negative, %s\n", __func__, ("native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write()).c_str());
             return TransactionBuilderResult("Change cannot be negative, native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write() + "\n");
         }
+
+        if (rtxd.NativeFees() != change)
+        {
+            printf("%s: native fees do not match builder: %s\nblockchain: %s\n", __func__, ValueFromAmount(change).write(1,2).c_str(), ValueFromAmount(rtxd.NativeFees()).write(1,2).c_str());
+            LogPrintf("%s: reserveChange: %s\n", __func__, reserveChange.ToUniValue().write(1,2).c_str());
+            return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
+        }
+
         bool hasNativeChange = change > 0;
 
-        if (hasReserveChange && !tChangeAddr)
+        if ((hasNativeChange || hasReserveChange) && !tChangeAddr)
         {
             printf("%s: reserveChange: %s\n", __func__, reserveChange.ToUniValue().write(1,2).c_str());
             return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
