@@ -1,4 +1,4 @@
-VerusCoin Command Line Tools v0.7.2-8
+VerusCoin Command Line Tools v0.8.0
 
 Contents:
 verusd - VerusCoin daemon
