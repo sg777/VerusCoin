@@ -400,7 +400,8 @@ CCurrencyValueMap CTransaction::GetReserveValueOut() const
     CCurrencyValueMap retVal;
     for (std::vector<CTxOut>::const_iterator it(vout.begin()); it != vout.end(); ++it)
     {
-        CCurrencyValueMap oneOut = it->scriptPubKey.ReserveOutValue();
+        COptCCParams p;
+        CCurrencyValueMap oneOut = it->scriptPubKey.ReserveOutValue(p);
 
         for (auto &oneCur : oneOut.valueMap)
         {
@@ -414,8 +415,8 @@ CCurrencyValueMap CTransaction::GetReserveValueOut() const
                 reserveIt->second += oneCur.second;
                 if (reserveIt->second < 0)
                 {
-                    printf("CTransaction::GetReserveValueOut(): currency value overflow total: %ld, adding: %ld\n", reserveIt->second, oneCur.second);
-                    LogPrintf("CTransaction::GetReserveValueOut(): value overflow\n");
+                    printf("%s: currency value overflow total: %ld, adding: %ld\n", __func__, reserveIt->second, oneCur.second);
+                    LogPrintf("%s: currency value overflow total: %ld, adding: %ld\n", __func__, reserveIt->second, oneCur.second);
                     return std::map<uint160, CAmount>();
                 }
             }
@@ -643,7 +644,11 @@ UniValue CPartialTransactionProof::ToUniValue() const
 CPartialTransactionProof::CPartialTransactionProof(const UniValue &uni)
 {
     // univalue of this is just hex
-    ::FromVector(ParseHex(uni_get_str(uni)), *this);
+    std::vector<unsigned char> serializedBytes = ParseHex(uni_get_str(uni));
+    if (serializedBytes.size())
+    {
+        ::FromVector(serializedBytes, *this);
+    }
 }
 
 // this validates that all parts of a transaction match and either returns a full transaction

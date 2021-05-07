@@ -187,7 +187,7 @@ uint160 GetConditionID(uint160 cid, int32_t condition)
 CTxDestination TransferDestinationToDestination(const CTransferDestination &transferDest)
 {
     CTxDestination retDest;
-    switch (transferDest.type & ~CTransferDestination::FLAG_DEST_GATEWAY)
+    switch (transferDest.TypeNoFlags())
     {
         case CTransferDestination::DEST_PKH:
             retDest = CKeyID(uint160(transferDest.destination));
@@ -529,10 +529,10 @@ bool CScript::IsInstantSpend() const
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
         // TODO: fix this check
-        if ((p.evalCode == EVAL_EARNEDNOTARIZATION) || 
-            (p.evalCode == EVAL_CURRENCYSTATE) || 
-            (p.evalCode == EVAL_CROSSCHAIN_IMPORT) ||
-            (p.evalCode == EVAL_CROSSCHAIN_EXPORT))
+        if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
+            p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
+            p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
+            p.evalCode == EVAL_CROSSCHAIN_EXPORT)
         {
             isInstantSpend = true;
         }
@@ -655,11 +655,19 @@ CCurrencyValueMap CReserveTransfer::TotalCurrencyOut() const
     }
     if (feeAmount)
     {
-        retVal.valueMap[feeCurrencyID] = feeAmount;
+        if (feeCurrencyID.IsNull())
+        {
+            printf("%s: null fee currency ID\n", __func__);
+            retVal.valueMap[ASSETCHAINS_CHAINID] = feeAmount;
+        }
+        else
+        {
+            retVal.valueMap[feeCurrencyID] = feeAmount;
+        }
     }
 
     // mint or pre-allocate (which will be deprecated) don't count the primary amount as value until import
-    if (!(flags & (MINT_CURRENCY | PREALLOCATE)))
+    if (!IsMint())
     {
         retVal += reserveValues;
     }
@@ -689,6 +697,7 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p, bool spendableOnly) 
             {
                 CReserveDeposit rd(p.vData[0]);
                 retVal = rd.reserveValues;
+                retVal.valueMap.erase(ASSETCHAINS_CHAINID);
                 break;
             }
 
@@ -951,17 +960,6 @@ uint160 CScript::AddressHash() const
     return addressHash;
 }
 
-std::set<uint160> COptCCParams::feeCurrencies;
-
-// we only add these at initialization time
-void COptCCParams::AddFeeCurrency(const uint160 &feeCurrency)
-{
-    if (!feeCurrency.IsNull())
-    {
-        feeCurrencies.insert(feeCurrency);
-    }
-}
-
 std::set<CIndexID> COptCCParams::GetIndexKeys() const
 {
     std::set<CIndexID> destinations;
@@ -976,9 +974,24 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 uint160 currencyID = definition.GetID();
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(currencyID, CCurrencyDefinition::CurrencyDefinitionKey())));
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.systemID, CCurrencyDefinition::CurrencySystemKey())));
-                if (!definition.gatewayID.IsNull() && definition.gatewayID != currencyID)
+
+                // gateways are indexed by the current chain and the gateway key as a starting point to discover all gateway
+                // currencies
+                if (definition.IsGateway() && definition.gatewayID == currencyID)
                 {
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(definition.gatewayID, CCurrencyDefinition::CurrencyGatewayKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyGatewayKey())));
+                }
+                if (definition.IsPBaaSChain())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::PBaaSChainKey())));
+                }
+                if (!definition.gatewayID.IsNull() || definition.systemID != ASSETCHAINS_CHAINID)
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::ExternalCurrencyKey())));
+                }
+                if (definition.launchSystemID == ASSETCHAINS_CHAINID)
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyLaunchKey())));
                 }
             }
             break;
@@ -1025,32 +1038,63 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 // always index a notarization, without regard to its status
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey())));
 
+                // index all pre-launch notarizations as pre-launch, then one final index for launchclear of
+                // either launch or refund, finally, we create one last index entry for launchcompletemarker
+
+                // if this is the first launch clear notarization, index as confirmed or refunding
+                if (notarization.IsPreLaunch())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchPrelaunchKey())));
+                    if (notarization.currencyState.IsLaunchClear())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::LaunchNotarizationKey())));
+                        if (notarization.IsRefunding())
+                        {
+                            destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchRefundKey())));
+                        }
+                        else
+                        {
+                            destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchConfirmKey())));
+                        }
+                    }
+                }
+                else if (notarization.IsBlockOneNotarization() && notarization.currencyState.IsLaunchClear())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::LaunchNotarizationKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchConfirmKey())));
+                }
+                else if (notarization.currencyState.IsLaunchCompleteMarker())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::LaunchCompleteKey())));
+                }
+
                 // determine if the new notarization is automatically final, and if so, store a finalization index key as well
                 CCoinbaseCurrencyState &curState = notarization.currencyState;
-                if (evalCode == EVAL_ACCEPTEDNOTARIZATION &&
-                    curState.IsValid() &&
-                    notarization.IsSameChain())
+                if (curState.IsValid() &&
+                    ((evalCode == EVAL_ACCEPTEDNOTARIZATION && notarization.IsSameChain()) ||
+                     notarization.IsPreLaunch() ||
+                     notarization.IsDefinitionNotarization() ||
+                     notarization.IsBlockOneNotarization()))
                 {
                     uint160 finalizeNotarizationKey = CCrossChainRPCData::GetConditionID(notarization.currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey());
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationConfirmedKey())));
-
-                    // determine if this newly notarized currency can be used as a fee converter, and if so, add an index destination, so this
-                    // currency can be quickly found and used
-                    int32_t nativeReserveIdx;
-                    std::map<uint160, int32_t> reserveIdxMap;
-                    if (curState.IsFractional() &&
-                        curState.IsLaunchConfirmed() &&
-                        (reserveIdxMap = curState.GetReserveMap()).count(ASSETCHAINS_CHAINID) &&
-                        curState.weights[nativeReserveIdx = reserveIdxMap[ASSETCHAINS_CHAINID]] > curState.IndexConverterReserveRatio() &&
-                        curState.reserves[nativeReserveIdx] > curState.IndexConverterReserveMinimum())
+                }
+                // determine if this newly notarized currency can be used as a currency converter, and if so, add an index destination, so this
+                // currency can be quickly found and used
+                int32_t nativeReserveIdx;
+                std::map<uint160, int32_t> reserveIdxMap;
+                if (curState.IsFractional() &&
+                    curState.IsLaunchConfirmed() &&
+                    (reserveIdxMap = curState.GetReserveMap()).count(ASSETCHAINS_CHAINID) &&
+                    curState.weights[nativeReserveIdx = reserveIdxMap[ASSETCHAINS_CHAINID]] > curState.IndexConverterReserveRatio() &&
+                    curState.reserves[nativeReserveIdx] > curState.IndexConverterReserveMinimum())
+                {
+                    // go through all currencies and add an index entry for each
+                    // when looking for a currency converter, we will look through all indexed options
+                    // for the best conversion rate from a source currency to the destination
+                    for (auto &one : reserveIdxMap)
                     {
-                        // go through all currencies and add an index entry for each
-                        // when looking for a fee converter, we will look through all indexed options
-                        // for the best conversion rate from a source fee currency to the native coin
-                        for (auto &one : reserveIdxMap)
-                        {
-                            destinations.insert(CIndexID(curState.IndexConverterKey(one.first)));
-                        }
+                        destinations.insert(CIndexID(curState.IndexConverterKey(one.first)));
                     }
                 }
             }
@@ -1141,7 +1185,17 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
 
             if (vData.size() && (ccx = CCrossChainExport(vData[0])).IsValid())
             {
-                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destCurrencyID, ccx.CurrencyExportKey())));
+                // when looking for a currency, not system, we don't need to record system thread exports
+                if (!ccx.IsSystemThreadExport())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destCurrencyID, ccx.CurrencyExportKey())));
+                }
+                // we will find one of these either in its own exports to another system or after any export to a currency
+                // on that system. we record this for all system exports, whether system thread or not
+                if (ccx.destCurrencyID == ccx.destSystemID)
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destSystemID, ccx.SystemExportKey())));
+                }
             }
             break;
         }
@@ -1152,9 +1206,11 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
 
             if (vData.size() && (cci = CCrossChainImport(vData[0])).IsValid())
             {
-                if (cci.sourceSystemID != ASSETCHAINS_CHAINID)
+                // if source is same as import currency, this is a system import
+                // thread. otherwise, not
+                if (cci.sourceSystemID == cci.importCurrencyID)
                 {
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.importCurrencyID, cci.CurrencySystemImportKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.sourceSystemID, cci.CurrencySystemImportKey())));
                 }
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.importCurrencyID, cci.CurrencyImportKey())));
             }
@@ -1190,16 +1246,15 @@ std::map<uint160, uint32_t> COptCCParams::GetIndexHeightOffsets(uint32_t height)
     // what work needs to be done, are offset to have a height of the start block, ensuring
     // that they are not considered for import until the start block is reached
     std::map<uint160, uint32_t> offsets;
-    CObjectFinalization ef;
-    if (evalCode == EVAL_FINALIZE_EXPORT &&
+    CCurrencyDefinition curDef;
+    if (evalCode == EVAL_CURRENCY_DEFINITION &&
         vData.size() &&
-        (ef = CObjectFinalization(vData[0])).IsValid())
+        (curDef = CCurrencyDefinition(vData[0])).IsValid() &&
+        curDef.launchSystemID == ASSETCHAINS_CHAINID &&
+        height <= curDef.startBlock)
     {
-        CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(ef.currencyID);
-        if (curDef.IsValid() && curDef.startBlock > height)
-        {
-            offsets.insert(make_pair(CCrossChainRPCData::GetConditionID(curDef.systemID, evalCode), (uint32_t)curDef.startBlock));
-        }
+        offsets.insert(make_pair(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyLaunchKey()),
+                                 (uint32_t)curDef.startBlock));
     }
     return offsets;
 }
@@ -1354,10 +1409,12 @@ bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
     }
 
     bool isaltb = false;
+    std::set<uint160> checked;
 
     // ensure that we are smaller than all those present in b
     for (auto &oneVal : b.valueMap)
     {
+        checked.insert(oneVal.first);
         if (oneVal.second)
         {
             auto it = a.valueMap.find(oneVal.first);
@@ -1370,10 +1427,10 @@ bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
         }
     }
 
-    // ensure that for all the currencies we have, b does not have less
+    // ensure that for all the currencies we have, b does not have less or equal
     for (auto &oneVal : a.valueMap)
     {
-        if (oneVal.second)
+        if (!checked.count(oneVal.first) && oneVal.second)
         {
             auto it = b.valueMap.find(oneVal.first);
 
@@ -1535,6 +1592,16 @@ CCurrencyValueMap operator*(const CCurrencyValueMap& a, int b)
     return retVal;
 }
 
+CCurrencyValueMap operator/(const CCurrencyValueMap& a, int b)
+{
+    CCurrencyValueMap retVal = a;
+    for (auto &oneVal : retVal.valueMap)
+    {
+        oneVal.second /= b;
+    }
+    return retVal;
+}
+
 const CCurrencyValueMap &CCurrencyValueMap::operator-=(const CCurrencyValueMap& operand)
 {
     return *this = *this - operand;
@@ -1557,7 +1624,7 @@ bool CCurrencyValueMap::Intersects(const CCurrencyValueMap& operand) const
             auto it = operand.valueMap.find(oneVal.first);
             if (it != operand.valueMap.end())
             {
-                if (it->second > 0 && oneVal.second > 0)
+                if (it->second != 0 && oneVal.second != 0)
                 {
                     retVal = true;
                     break;
@@ -1667,6 +1734,17 @@ CCurrencyValueMap CCurrencyValueMap::SubtractToZero(const CCurrencyValueMap& ope
                 {
                     toRemove.push_back(oneVal.first);
                 }
+            }
+        }
+    }
+    // if we are subtracting a negative in non-intersecting values, they may add to above zero, so consider them
+    for (auto &oneVal : operand.NonIntersectingValues(retVal).valueMap)
+    {
+        if (oneVal.second < 0)
+        {
+            if ((retVal.valueMap[oneVal.first] -= oneVal.second) <= 0)
+            {
+                toRemove.push_back(oneVal.first);
             }
         }
     }

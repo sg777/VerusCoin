@@ -32,7 +32,7 @@
 #include "primitives/transaction.h"
 #include "arith_uint256.h"
 
-std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false);
+std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false, bool addVerus=true);
 
 class CCommitmentHash
 {
@@ -80,9 +80,14 @@ public:
     CNameReservation() {}
     CNameReservation(const std::string &Name, const CIdentityID &Referral, const uint256 &Salt) : name(Name.size() > MAX_NAME_SIZE ? std::string(Name.begin(), Name.begin() + MAX_NAME_SIZE) : Name), referral(Referral), salt(Salt) {}
 
-    CNameReservation(const UniValue &uni)
+    CNameReservation(const UniValue &uni, uint160 parent=ASSETCHAINS_CHAINID)
     {
-        uint160 parent;
+        uint160 dummy;
+        std::string parentStr = CleanName(uni_get_str(find_value(uni, "parent")), dummy);
+        if (!parentStr.empty())
+        {
+            parent = GetDestinationID(DecodeDestination(parentStr));
+        }
         name = CleanName(uni_get_str(find_value(uni, "name")), parent);
         salt = uint256S(uni_get_str(find_value(uni, "salt")));
         CTxDestination dest = DecodeDestination(uni_get_str(find_value(uni, "referral")));
@@ -254,7 +259,8 @@ public:
 
     static const int MAX_NAME_LEN = 64;
 
-    uint160 parent;                         // if the parent is not this chain, we are name.(parentstring)@(thischain)
+    uint160 parent;                         // parent in the sense of name. this could be a currency or chain.
+    uint160 systemID;                       // system that this ID is homed to, enabling separate parent and system
 
     // real name or pseudonym, must be unique on the blockchain on which it is defined and can be used
     // as a name for blockchains or other purposes on any chain in the Verus ecosystem once exported to
@@ -297,14 +303,16 @@ public:
               const std::vector<std::pair<uint160, uint256>> &hashes,
               const uint160 &Revocation,
               const uint160 &Recovery,
-              const std::vector<libzcash::SaplingPaymentAddress> &Inboxes = std::vector<libzcash::SaplingPaymentAddress>(),
+              const std::vector<libzcash::SaplingPaymentAddress> &PrivateAddresses = std::vector<libzcash::SaplingPaymentAddress>(),
+              const uint160 &SystemID=ASSETCHAINS_CHAINID,
               int32_t unlockTime=0) : 
               CPrincipal(Version, Flags, primary, minPrimarySigs),
               parent(Parent),
               name(Name),
               revocationAuthority(Revocation),
               recoveryAuthority(Recovery),
-              privateAddresses(Inboxes),
+              privateAddresses(PrivateAddresses),
+              systemID(SystemID),
               unlockAfter(unlockTime)
     {
         for (auto &entry : hashes)
@@ -370,11 +378,25 @@ public:
 
         if (nVersion >= VERSION_PBAAS)
         {
+            READWRITE(systemID);
             READWRITE(unlockAfter);
         }
         else if (ser_action.ForRead())
         {
             REF(unlockAfter) = 0;
+            REF(systemID) = parent.IsNull() ? GetID() : parent;
+        }
+    }
+
+    uint160 GetSystemID() const
+    {
+        if (nVersion >= VERSION_PBAAS)
+        {
+            return parent;
+        }
+        else
+        {
+            return systemID;
         }
     }
 
@@ -544,9 +566,11 @@ public:
         if (parent != newIdentity.parent ||
             (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name) ||
             (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && (newIdentity.HasActiveCurrency() || 
-                                                                 newIdentity.IsLocked() || 
+                                                                 newIdentity.IsLocked() ||
+                                                                 !newIdentity.systemID.IsNull() ||
                                                                  newIdentity.nVersion >= VERSION_PBAAS)) ||
-            (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && newIdentity.nVersion < VERSION_PBAAS) ||
+            (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && (newIdentity.nVersion < VERSION_PBAAS ||
+                                                                  (newIdentity.systemID != (nVersion < VERSION_PBAAS ? parent : systemID)))) ||
             GetID() != newIdentity.GetID() ||
             ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
             ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||

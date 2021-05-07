@@ -169,6 +169,14 @@ public:
         return (type & FLAG_DEST_GATEWAY) && !gatewayID.IsNull();
     }
 
+    void SetGatewayLeg(const uint160 &GatewayID=uint160(), int64_t Fees=0, const uint160 &vdxfCode=uint160())
+    {
+        type |= FLAG_DEST_GATEWAY;
+        gatewayID = GatewayID;
+        gatewayCode = vdxfCode;
+        fees = Fees;
+    }
+
     void ClearGatewayLeg()
     {
         type &= ~FLAG_DEST_GATEWAY;
@@ -259,6 +267,7 @@ public:
     friend CCurrencyValueMap operator+(const CCurrencyValueMap& a, int b);
     friend CCurrencyValueMap operator-(const CCurrencyValueMap& a, int b);
     friend CCurrencyValueMap operator*(const CCurrencyValueMap& a, int b);
+    friend CCurrencyValueMap operator/(const CCurrencyValueMap& a, int b);
 
     const CCurrencyValueMap &operator=(const CCurrencyValueMap& operand)
     {
@@ -366,7 +375,8 @@ public:
 
     static uint160 IdentitySignatureKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(IdentitySignatureKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(IdentitySignatureKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -434,10 +444,19 @@ class CCurrencyDefinition
 public:
     static const int64_t DEFAULT_ID_REGISTRATION_AMOUNT = 10000000000;
 
+    enum EVersion
+    {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_LAST = 1,
+        VERSION_CURRENT = 1
+    };
+
     enum ELimitsDefaults
     {
         TRANSACTION_TRANSFER_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
-        CURRENCY_REGISTRATION_FEE = 10000000000, // default 100 to register a currency
+        CURRENCY_REGISTRATION_FEE = 20000000000, // default 100 to register a currency
+        PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000, // default 10000 to register and launch a PBaaS chain
         CURRENCY_IMPORT_FEE = 2000000000,   // default 100 to import a currency
         IDENTITY_REGISTRATION_FEE = 10000000000, // 100 to register an identity
         IDENTITY_IMPORT_FEE = 2000000000,   // 20 in native currency to import an identity
@@ -446,7 +465,8 @@ public:
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
         DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
         DEFAULT_ID_REFERRAL_LEVELS = 3,
-        MAX_NAME_LEN = 64
+        MAX_NAME_LEN = 64,
+        MAX_STARTUP_NODES = 5
     };
 
     enum ECurrencyOptions
@@ -481,6 +501,19 @@ public:
         PROOF_ETHNOTARIZATION = 4           // proven by Ethereum notarization
     };
 
+    enum EQueryOptions
+    {
+        QUERY_NULL = 0,
+        QUERY_LAUNCHSTATE_PRELAUNCH = 1,
+        QUERY_LAUNCHSTATE_REFUND = 2,
+        QUERY_LAUNCHSTATE_CONFIRM = 3,
+        QUERY_LAUNCHSTATE_COMPLETE = 4,
+        QUERY_SYSTEMTYPE_LOCAL = 5,
+        QUERY_SYSTEMTYPE_GATEWAY = 6,
+        QUERY_SYSTEMTYPE_PBAAS = 7,
+        QUERY_ISCONVERTER = 8
+    };
+
     uint32_t nVersion;                      // version of this chain definition data structure to allow for extensions (not daemon version)
     uint32_t options;                       // flags to determine fungibility, type of currency, blockchain and ID options, and conversion
 
@@ -512,7 +545,7 @@ public:
     std::vector<int64_t> preconverted;      // actual converted amount if known
 
     int32_t preLaunchDiscount;              // if non-zero, a ratio of the initial supply instead of a fixed number is used to calculate total preallocation
-    std::vector<std::pair<uint160, int32_t>> preLaunchCarveOuts; // pre-launch carve-out recipients, from reserve contributions, taken from reserve percentage
+    int32_t preLaunchCarveOut;              // pre-launch carve-out amount as a ratio of satoshis, from reserve contributions, taken from reserve percentage
 
     // this section for gateways
     CTransferDestination nativeCurrencyID;  // ID of the currency in its native system (for gateways)
@@ -530,6 +563,7 @@ public:
 
     // costs to register and import currencies
     int64_t currencyRegistrationFee;        // cost in native currency to register a currency on this system
+    int64_t pbaasSystemLaunchFee;           // cost in native currency to register and launch a connected PBaaS chain on this system
     int64_t currencyImportFee;              // cost in native currency to import currency into this system (PBaaS or Gateway)
 
     int64_t transactionImportFee;           // how much to import a basic transaction
@@ -547,7 +581,7 @@ public:
 
     std::string gatewayConverterName;       // reserved ID and currency that is a basket of all currencies accepted on launch, parent chain, and native
 
-    CCurrencyDefinition() : nVersion(PBAAS_VERSION_INVALID), 
+    CCurrencyDefinition() : nVersion(VERSION_INVALID), 
                             options(0),
                             notarizationProtocol(NOTARIZATION_INVALID),
                             proofProtocol(PROOF_INVALID),
@@ -557,13 +591,14 @@ public:
                             gatewayConverterIssuance(0),
                             preLaunchDiscount(0),
                             minNotariesConfirm(0),
-                            idRegistrationFees(0),
-                            idReferralLevels(0),
-                            idImportFees(0),
-                            currencyRegistrationFee(0),
-                            currencyImportFee(0),
-                            transactionImportFee(0),
-                            transactionExportFee(0)
+                            idRegistrationFees(IDENTITY_REGISTRATION_FEE),
+                            idReferralLevels(DEFAULT_ID_REFERRAL_LEVELS),
+                            idImportFees(IDENTITY_IMPORT_FEE),
+                            currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
+                            pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
+                            currencyImportFee(CURRENCY_IMPORT_FEE),
+                            transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
+                            transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
     {}
 
     CCurrencyDefinition(const UniValue &obj);
@@ -581,16 +616,18 @@ public:
                         int32_t StartBlock, int32_t EndBlock, int64_t InitialFractionalSupply, std::vector<std::pair<uint160, int64_t>> PreAllocation, 
                         int64_t ConverterIssuance, std::vector<uint160> Currencies, std::vector<int32_t> Weights, std::vector<int64_t> Conversions, 
                         std::vector<int64_t> MinPreconvert, std::vector<int64_t> MaxPreconvert, std::vector<int64_t> Contributions, 
-                        std::vector<int64_t> Preconverted, int32_t PreLaunchDiscount, std::vector<std::pair<uint160, int32_t>> PreLaunchCarveOuts,
+                        std::vector<int64_t> Preconverted, int32_t PreLaunchDiscount, int32_t PreLaunchCarveOut,
                         const CTransferDestination &NativeID, const uint160 &GatewayID,
                         const std::vector<uint160> &Notaries, int32_t MinNotariesConfirm,
                         const std::vector<int64_t> &chainRewards, const std::vector<int64_t> &chainRewardsDecay,
                         const std::vector<int32_t> &chainHalving, const std::vector<int32_t> &chainEraEnd,
                         const std::string &LaunchGatewayName,
                         int64_t TransactionTransferFee=TRANSACTION_TRANSFER_FEE, int64_t CurrencyRegistrationFee=CURRENCY_REGISTRATION_FEE,
+                        int64_t PBaaSSystemRegistrationFee=PBAAS_SYSTEM_LAUNCH_FEE,
                         int64_t CurrencyImportFee=CURRENCY_IMPORT_FEE, int64_t IDRegistrationAmount=IDENTITY_REGISTRATION_FEE, 
-                        int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE) :
-                        nVersion(PBAAS_VERSION),
+                        int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE,
+                        uint32_t Version=VERSION_CURRENT) :
+                        nVersion(Version),
                         options(Options),
                         parent(Parent),
                         name(Name),
@@ -611,7 +648,7 @@ public:
                         contributions(Contributions),
                         preconverted(Preconverted),
                         preLaunchDiscount(PreLaunchDiscount),
-                        preLaunchCarveOuts(PreLaunchCarveOuts),
+                        preLaunchCarveOut(PreLaunchCarveOut),
                         nativeCurrencyID(NativeID),
                         gatewayID(GatewayID),
                         notaries(Notaries),
@@ -620,6 +657,7 @@ public:
                         idReferralLevels(IDReferralLevels),
                         idImportFees(IDImportFee),
                         currencyRegistrationFee(CurrencyRegistrationFee),
+                        pbaasSystemLaunchFee(PBaaSSystemRegistrationFee),
                         currencyImportFee(CurrencyImportFee),
                         transactionImportFee(TransactionTransferFee >> 1),
                         transactionExportFee(TransactionTransferFee >> 1),
@@ -664,26 +702,43 @@ public:
         READWRITE(contributions);
         READWRITE(preconverted);
         READWRITE(VARINT(preLaunchDiscount));
-        READWRITE(preLaunchCarveOuts);
-
-        if (IsGateway())
-        {
-            READWRITE(nativeCurrencyID);
-            READWRITE(gatewayID);
-        }
-
+        READWRITE(preLaunchCarveOut);
         READWRITE(notaries);
         READWRITE(VARINT(minNotariesConfirm));
         READWRITE(VARINT(idRegistrationFees));
         READWRITE(VARINT(idReferralLevels));
-        if (options & OPTION_GATEWAY || options & OPTION_PBAAS)
+        READWRITE(VARINT(idImportFees));
+        if (IsGateway() || IsPBaaSChain())
         {
-            READWRITE(VARINT(idImportFees));
+            if (IsGateway())
+            {
+                READWRITE(nativeCurrencyID);
+                READWRITE(gatewayID);
+            }
             READWRITE(VARINT(currencyRegistrationFee));
+            READWRITE(VARINT(pbaasSystemLaunchFee));
             READWRITE(VARINT(currencyImportFee));
             READWRITE(VARINT(transactionImportFee));
             READWRITE(VARINT(transactionExportFee));
         }
+        else
+        {
+            // replace "s" in scope
+            CDataStream s = CDataStream(SER_DISK, PROTOCOL_VERSION);
+            // pad for read
+            int64_t initZero = 0;
+            s << initZero;
+            s << initZero;
+            s << initZero;
+            s << initZero;
+            s << initZero;
+            READWRITE(VARINT(currencyRegistrationFee));
+            READWRITE(VARINT(pbaasSystemLaunchFee));
+            READWRITE(VARINT(currencyImportFee));
+            READWRITE(VARINT(transactionImportFee));
+            READWRITE(VARINT(transactionExportFee));
+        }
+        
         if (options & OPTION_PBAAS)
         {
             READWRITE(rewards);
@@ -707,6 +762,48 @@ public:
         return GetID(Name, Parent);
     }
 
+    uint160 GatewayConverterID() const
+    {
+        uint160 retVal;
+        if (!gatewayConverterName.empty())
+        {
+            uint160 parentID = GetID();
+            retVal = GetID(gatewayConverterName, parentID);
+        }
+        return retVal;
+    }
+
+    int64_t GetCurrencyRegistrationFee(uint32_t currencyOptions) const
+    {
+        if (currencyOptions & (OPTION_PBAAS + OPTION_GATEWAY))
+        {
+            return pbaasSystemLaunchFee;
+        }
+        else
+        {
+            return currencyRegistrationFee;
+        }
+    }
+
+    // fee amount released at definition
+    int64_t LaunchFeeExportShare(uint32_t currencyOptions) const
+    {
+        return GetCurrencyRegistrationFee(currencyOptions) >> 1;
+    }
+
+    int64_t LaunchFeeImportShare(uint32_t currencyOptions) const
+    {
+        return GetCurrencyRegistrationFee(currencyOptions) - LaunchFeeExportShare(currencyOptions);
+    }
+
+    // fee amount released for notarization at launch of PBaaS chains
+    // currently 1/10th of import
+    int64_t TotalNotaryLaunchFeeShare(uint32_t currencyOptions) const
+    {
+        int64_t importShare = LaunchFeeImportShare(currencyOptions);
+        return importShare / 10;
+    }
+
     uint160 GetID() const
     {
         uint160 Parent = parent;
@@ -722,18 +819,68 @@ public:
 
     static uint160 CurrencyDefinitionKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyDefinitionKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyDefinitionKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static std::string CurrencyLaunchKeyName()
+    {
+        return "vrsc::system.currency.launch";
+    }
+
+    static uint160 CurrencyLaunchKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyLaunchKeyName(), nameSpace);
         return signatureKey;
     }
 
     static std::string CurrencyGatewayKeyName()
     {
-        return "vrsc::system.currency.systemdefinition";
+        return "vrsc::system.currency.gatewaycurrency";
     }
 
     static uint160 CurrencyGatewayKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyGatewayKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(CurrencyGatewayKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static std::string PBaaSChainKeyName()
+    {
+        return "vrsc::system.currency.pbaaschain";
+    }
+
+    static uint160 PBaaSChainKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(PBaaSChainKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static std::string ExternalCurrencyKeyName()
+    {
+        return "vrsc::system.currency.externalcurrency";
+    }
+
+    static uint160 ExternalCurrencyKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(ExternalCurrencyKeyName(), nameSpace);
+        return signatureKey;
+    }
+
+    static std::string ExportedCurrencyKeyName()
+    {
+        return "vrsc::system.currency.exported";
+    }
+
+    static uint160 ExportedCurrencyKey()
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(ExportedCurrencyKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -744,7 +891,8 @@ public:
 
     static uint160 CurrencySystemKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(CurrencySystemKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(CurrencySystemKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -932,8 +1080,15 @@ public:
 
     bool IsValid() const
     {
-        return !systemID.IsNull() && !stateRoot.IsNull() && !blockHash.IsNull();
+        return version >= VERSION_FIRST &&
+               version <= VERSION_LAST &&
+               rootHeight >= 0 &&
+               !systemID.IsNull() &&
+               !stateRoot.IsNull() &&
+               !blockHash.IsNull();
     }
+
+    friend bool operator==(const CProofRoot &op1, const CProofRoot &op2);
 
     UniValue ToUniValue() const;
 };
@@ -941,6 +1096,7 @@ public:
 extern int64_t AmountFromValue(const UniValue& value);
 extern int64_t AmountFromValueNoErr(const UniValue& value);
 extern UniValue ValueFromAmount(const int64_t& amount);
+extern uint160 DecodeCurrencyName(std::string currencyStr);
 
 // we wil uncomment service types as they are implemented
 // commented service types are here as guidance and reminders

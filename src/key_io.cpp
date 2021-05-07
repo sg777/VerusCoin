@@ -26,6 +26,9 @@ extern std::string VERUS_CHAINNAME;
 
 CIdentityID VERUS_DEFAULTID;
 CIdentityID VERUS_NOTARYID;
+int32_t MAX_OUR_UTXOS_ID_RESCAN = 1000; // this can be set with "-maxourutxosidrescan=n"
+int32_t MAX_UTXOS_ID_RESCAN = 100;      // this can be set with "-maxutxosidrescan=n"
+uint160 VERUS_NODEID;
 bool VERUS_PRIVATECHANGE;
 std::string VERUS_DEFAULT_ZADDR;
 
@@ -202,9 +205,10 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     else if (std::count(str.begin(), str.end(), '@') == 1)
     {
         uint160 parent;
-        if (CleanName(str, parent) != "")
+        std::string cleanName = CleanName(str, parent);
+        if (cleanName != "")
         {
-            return CIdentityID(CIdentity::GetID(str, parent));
+            return CIdentityID(CIdentity::GetID(cleanName, parent));
         }
     }
 
@@ -555,7 +559,7 @@ CProofRoot::CProofRoot(const UniValue &uni) :
 {
     version = (uint32_t)uni_get_int(find_value(uni, "version"));
     type = (uint32_t)uni_get_int(find_value(uni, "type"));
-    systemID = GetDestinationID(DecodeDestination(uni_get_str(uni, "systemid")));
+    systemID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "systemid"))));
     rootHeight = (uint32_t)uni_get_int(find_value(uni, "height"));
     stateRoot = uint256S(uni_get_str(find_value(uni, "stateroot")));
     blockHash = uint256S(uni_get_str(find_value(uni, "blockhash")));
@@ -564,7 +568,7 @@ CProofRoot::CProofRoot(const UniValue &uni) :
 
 UniValue CProofRoot::ToUniValue() const
 {
-    UniValue obj;
+    UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int64_t)version));
     obj.push_back(Pair("type", (int64_t)type));
     obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
@@ -575,11 +579,21 @@ UniValue CProofRoot::ToUniValue() const
     return obj;
 }
 
-CReserveTransfer::CReserveTransfer(const UniValue &uni) : nFees(0)
+CTokenOutput::CTokenOutput(const UniValue &obj)
+{
+    nVersion = (uint32_t)uni_get_int(find_value(obj, "version"), VERSION_CURRENT);
+    UniValue values = find_value(obj, "currencyvalues");
+    if (values.isObject())
+    {
+        reserveValues = CCurrencyValueMap(values);
+    }
+}
+
+CReserveTransfer::CReserveTransfer(const UniValue &uni) : CTokenOutput(uni), nFees(0)
 {
     flags = uni_get_int64(find_value(uni, "flags"), 0);
     feeCurrencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "feecurrencyid"))));
-    nFees = uni_get_int64(find_value(uni, "fees"), 0);
+    nFees = AmountFromValueNoErr(find_value(uni, "fees"));
 
     if (IsReserveToReserve())
     {
@@ -589,6 +603,10 @@ CReserveTransfer::CReserveTransfer(const UniValue &uni) : nFees(0)
     else
     {
         destCurrencyID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "destinationcurrencyid"))));
+    }
+    if (IsCrossSystem())
+    {
+        destSystemID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "exportto"))));
     }
     destination = CTransferDestination(find_value(uni, "destination"));
 }
@@ -612,7 +630,6 @@ CPrincipal::CPrincipal(const UniValue &uni)
             }
             catch (const std::exception &e)
             {
-                printf("%s: bad address %s\n", __func__, primaryAddressesUni[i].write().c_str());
                 LogPrintf("%s: bad address %s\n", __func__, primaryAddressesUni[i].write().c_str());
                 nVersion = VERSION_INVALID;
             }
@@ -624,8 +641,31 @@ CPrincipal::CPrincipal(const UniValue &uni)
 
 CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 {
-    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "parent")))));
+    UniValue parentUni = find_value(uni, "parent");
+    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(parentUni))));
     name = CleanName(uni_get_str(find_value(uni, "name")), parent);
+
+    if (parent.IsNull())
+    {
+        // if either:
+        // 1. we have an explicitly null parent or
+        // 2. with one name and a null parent, we have the verus chain ID, assume we have a null parent
+        // otherwise, default our current chain as the parent of a null-parented ID
+        parent = (!parentUni.isNull() || GetID() == VERUS_CHAINID) ? uint160() : ASSETCHAINS_CHAINID;
+    }
+
+    if (nVersion >= VERSION_PBAAS)
+    {
+        systemID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "systemid")))));
+        if (systemID.IsNull())
+        {
+            systemID = parent.IsNull() ? GetID() : parent;
+        }
+    }
+    else
+    {
+        systemID = parent.IsNull() ? GetID() : parent;
+    }
 
     UniValue hashesUni = find_value(uni, "contentmap");
     if (hashesUni.isObject())
@@ -653,7 +693,6 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             }
             if (nVersion == VERSION_INVALID)
             {
-                printf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
                 LogPrintf("%s: contentmap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
                 break;
             }
@@ -662,15 +701,14 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     std::string revocationStr = uni_get_str(find_value(uni, "revocationauthority"));
     std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthority"));
 
-    revocationAuthority = uint160(GetDestinationID(DecodeDestination(revocationStr == "" ? name + "@" : revocationStr)));
-    recoveryAuthority = uint160(GetDestinationID(DecodeDestination(recoveryStr == "" ? name + "@" : recoveryStr)));
+    revocationAuthority = revocationStr == "" ? GetID() : uint160(GetDestinationID(DecodeDestination(revocationStr)));
+    recoveryAuthority = recoveryStr == "" ? GetID() : uint160(GetDestinationID(DecodeDestination(recoveryStr)));
     libzcash::PaymentAddress pa = DecodePaymentAddress(uni_get_str(find_value(uni, "privateaddress")));
 
     unlockAfter = uni_get_int(find_value(uni, "timelock"));
 
     if (revocationAuthority.IsNull() || recoveryAuthority.IsNull())
     {
-        printf("%s: invalid address\n", __func__);
         LogPrintf("%s: invalid address\n", __func__);
         nVersion = VERSION_INVALID;
     }
@@ -826,7 +864,7 @@ UniValue CNotaryEvidence::ToUniValue() const
     {
         evidenceProofs.push_back(oneProof.ToUniValue());
     }
-    retObj.push_back(Pair("evidence", sigObj));
+    retObj.push_back(Pair("evidence", evidenceProofs));
     return retObj;
 }
 
@@ -839,10 +877,10 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 
 // takes a multipart name, either complete or partially processed with a Parent hash,
 // hash its parent names into a parent ID and return the parent hash and cleaned, single name
-std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter)
+std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter, bool addVerus)
 {
     std::string chainName;
-    std::vector<std::string> subNames = ParseSubNames(Name, chainName);
+    std::vector<std::string> subNames = ParseSubNames(Name, chainName, displayfilter, addVerus);
 
     if (!subNames.size())
     {
@@ -1004,11 +1042,6 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
         CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
         std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
         CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
-
-        std::vector<CTxDestination> indexDests({CTxDestination(CKeyID(CCrossChainRPCData::GetConditionID(GetID(), EVAL_IDENTITY_PRIMARY))),
-                                                IsRevoked() ? CTxDestination(CIdentityID(recoveryAuthority)) : CTxDestination(CIdentityID(revocationAuthority)),
-                                                primaryAddresses.size() ? primaryAddresses[0] : CKeyID()});
-
         ret = MakeMofNCCScript(1, primary, revocation, recovery);
     }
 

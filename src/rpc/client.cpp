@@ -23,7 +23,7 @@ public:
 // DUMMY for compile - only used in server
 UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeout)
 {
-    assert(false);
+    printf("%s: Unable to communicate with specified blockchain network\n", __func__);
     return NullUniValue;
 }
 
@@ -35,18 +35,6 @@ bool SetThisChain(const UniValue &chainDefinition) {
 uint256 CurrencyDefHash(UniValue &chainDefinition)
 {
     return uint256();
-}
-
-int32_t uni_get_int(UniValue uv, int32_t def)
-{
-    try
-    {
-        return uv.get_int();
-    }
-    catch(const std::exception& e)
-    {
-        return def;
-    }
 }
 
 bool uni_get_bool(UniValue uv, bool def)
@@ -82,10 +70,30 @@ bool uni_get_bool(UniValue uv, bool def)
     }
 }
 
+int32_t uni_get_int(UniValue uv, int32_t def)
+{
+    try
+    {
+        if (uv.isStr())
+        {
+            return atoi(uv.get_str());
+        }
+        return uv.get_int();
+    }
+    catch(const std::exception& e)
+    {
+        return def;
+    }
+}
+
 int64_t uni_get_int64(UniValue uv, int64_t def)
 {
     try
     {
+        if (uv.isStr())
+        {
+            return atoi64(uv.get_str());
+        }
         return uv.get_int64();
     }
     catch(const std::exception& e)
@@ -273,41 +281,29 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
         }
     }
 
-    // if no explicit chain is specified, default to chain of the ID
-    if (!explicitChain && retNames.size())
-    {
-        if (retNames.size() == 1 && retNames.back() != verusChainName)
-        {
-            // we are referring to an external root blockchain
-            ChainOut = retNames[0];
-        }
-        else
-        {
-            for (int i = 1; i < retNames.size(); i++)
-            {
-                if (ChainOut.size())
-                {
-                    ChainOut = ChainOut + ".";
-                }
-                ChainOut = ChainOut + retNames[i];
-            }
-        }
-    }
-
     return retNames;
 }
 
 // takes a multipart name, either complete or partially processed with a Parent hash,
 // hash its parent names into a parent ID and return the parent hash and cleaned, single name
-std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter)
+// takes a multipart name, either complete or partially processed with a Parent hash,
+// hash its parent names into a parent ID and return the parent hash and cleaned, single name
+std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter, bool addVerus)
 {
     std::string chainName;
-    std::vector<std::string> subNames = ParseSubNames(Name, chainName);
+    std::vector<std::string> subNames = ParseSubNames(Name, chainName, displayfilter, addVerus);
 
     if (!subNames.size())
     {
         return "";
     }
+
+    if (!Parent.IsNull() &&
+        boost::to_lower_copy(subNames.back()) == boost::to_lower_copy(VERUS_CHAINNAME))
+    {
+        subNames.pop_back();
+    }
+
     for (int i = subNames.size() - 1; i > 0; i--)
     {
         std::string parentNameStr = boost::algorithm::to_lower_copy(subNames[i]);
@@ -327,6 +323,19 @@ std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilt
         //printf("uint160 for parent %s: %s\n", parentName, Parent.GetHex().c_str());
     }
     return subNames[0];
+}
+
+UniValue CNodeData::ToUniValue() const
+{
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("networkaddress", networkAddress));
+    obj.push_back(Pair("nodeidentity", ""));
+    return obj;
+}
+
+CNodeData::CNodeData(std::string netAddr, std::string paymentAddr) :
+    networkAddress(netAddr)
+{
 }
 
 CIdentityID CIdentity::GetID(const std::string &Name, uint160 &parent)
@@ -528,12 +537,16 @@ static const CRPCConvertParam vRPCConvertParams[] =
     // crosschain
     { "assetchainproof", 1},
     { "crosschainproof", 1},
-    { "getproofroot", 2},
+    { "getbestproofroot", 0},
+    { "submitacceptednotarization", 0},
+    { "submitimports", 0},
     { "height_MoM", 1},
     { "calc_MoM", 2},
     // pbaas
     { "definecurrency", 0},
+    { "definecurrency", 1},
     { "listcurrencies", 0},
+    { "listcurrencies", 1},
     { "sendcurrency", 1},
     { "registeridentity", 0},
     { "updateidentity", 0},

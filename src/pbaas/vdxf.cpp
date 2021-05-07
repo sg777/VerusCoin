@@ -9,6 +9,7 @@
  */
 
 #include "vdxf.h"
+#include "crosschainrpc.h"
 
 std::string CVDXF::DATA_KEY_SEPARATOR = "::";
 std::map<uint160,std::pair<std::pair<uint32_t, uint32_t>,std::pair<uint32_t, uint32_t>>> CVDXF::VDXF_TYPES;
@@ -80,7 +81,7 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
     }
 
     bool explicitChain = false;
-    if (retNames.size() == 2)
+    if (retNames.size() == 2 && !retNames[1].empty())
     {
         ChainOut = retNames[1];
         explicitChain = true;
@@ -89,9 +90,16 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
     nameCopy = retNames[0];
     boost::split(retNames, nameCopy, boost::is_any_of("."));
 
+    if (retNames.size() && retNames.back().empty())
+    {
+        addVerus = false;
+        retNames.pop_back();
+        nameCopy.pop_back();
+    }
+
     int numRetNames = retNames.size();
 
-    static std::string verusChainName = boost::to_lower_copy(VERUS_CHAINNAME);
+    std::string verusChainName = boost::to_lower_copy(VERUS_CHAINNAME);
 
     if (addVerus)
     {
@@ -134,28 +142,6 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
             return std::vector<std::string>();
         }
     }
-
-    // if no explicit chain is specified, default to chain of the ID
-    if (!explicitChain && retNames.size())
-    {
-        if (retNames.size() == 1 && retNames.back() != verusChainName)
-        {
-            // we are referring to an external root blockchain
-            ChainOut = retNames[0];
-        }
-        else
-        {
-            for (int i = 1; i < retNames.size(); i++)
-            {
-                if (ChainOut.size())
-                {
-                    ChainOut = ChainOut + ".";
-                }
-                ChainOut = ChainOut + retNames[i];
-            }
-        }
-    }
-
     return retNames;
 }
 
@@ -244,14 +230,35 @@ uint160 CVDXF::GetID(const std::string &Name, uint160 &parent)
 
 // calculate the data key for a name inside of a namespace
 // if the namespace is null, use VERUS_CHAINID
-uint160 CVDXF::GetDataKey(const std::string &keyName, uint160 nameSpaceID)
+uint160 CVDXF::GetDataKey(const std::string &keyName, uint160 &nameSpaceID)
 {
+    std::string keyCopy = keyName;
+    std::vector<std::string> addressParts;
+    boost::split(addressParts, keyCopy, boost::is_any_of(":"));
+
+    // if the first part of the address is a namespace, it is followed by double colon
+    // namespace specifiers have no implicit root
+    if (addressParts.size() > 2 && addressParts[1].empty())
+    {
+        // look up to see if this is the private address of an ID. if not, or if the ID does not have a valid, Sapling address, it is invalid
+        uint160 nsID = DecodeCurrencyName(addressParts[0] + ".");
+        if (!nsID.IsNull())
+        {
+            nameSpaceID = nsID;
+        }
+        keyCopy.clear();
+        for (int i = 2; i < addressParts.size(); i++)
+        {
+            keyCopy = i == 2 ? addressParts[i] : keyCopy + ":" + addressParts[i];
+        }
+    }
+
     if (nameSpaceID.IsNull())
     {
         nameSpaceID = VERUS_CHAINID;
     }
     uint160 parent = GetID(DATA_KEY_SEPARATOR, nameSpaceID);
-    return GetID(keyName, parent);
+    return GetID(keyCopy, parent);
 }
 
 bool uni_get_bool(UniValue uv, bool def)
@@ -291,7 +298,11 @@ int32_t uni_get_int(UniValue uv, int32_t def)
 {
     try
     {
-        return uv.get_int();
+        if (!uv.isStr() && !uv.isNum())
+        {
+            return def;
+        }
+        return (uv.isStr() ? atoi(uv.get_str()) : atoi(uv.getValStr()));
     }
     catch(const std::exception& e)
     {
@@ -303,7 +314,11 @@ int64_t uni_get_int64(UniValue uv, int64_t def)
 {
     try
     {
-        return uv.get_int64();
+        if (!uv.isStr() && !uv.isNum())
+        {
+            return def;
+        }
+        return (uv.isStr() ? atoi64(uv.get_str()) : atoi64(uv.getValStr()));
     }
     catch(const std::exception& e)
     {

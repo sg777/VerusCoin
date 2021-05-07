@@ -18,6 +18,9 @@
 
 extern CIdentityID VERUS_DEFAULTID;
 extern CIdentityID VERUS_NOTARYID;
+extern uint160 VERUS_NODEID;
+extern int32_t MAX_UTXOS_ID_RESCAN;
+extern int32_t MAX_OUR_UTXOS_ID_RESCAN;
 extern bool VERUS_PRIVATECHANGE;
 extern std::string VERUS_DEFAULT_ZADDR;
 

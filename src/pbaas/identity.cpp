@@ -41,12 +41,19 @@ UniValue CNameReservation::ToUniValue() const
 
     if (IsVerusActive())
     {
-        ret.push_back(Pair("parent", ""));
+        if (boost::to_lower_copy(name) == VERUS_CHAINNAME)
+        {
+            ret.push_back(Pair("parent", ""));
+        }
+        else
+        {
+            ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
+        }
         ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "@"))));
     }
     else
     {
-        ret.push_back(Pair("parent", ConnectedChains.ThisChain().name));
+        ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
         ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "." + ConnectedChains.ThisChain().name + "@"))));
     }
 
@@ -147,7 +154,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
             }
         }
 
-        if (height != 0 && *pHeightOut > height)
+        if (height != 0 && (*pHeightOut > height || (height == 1 && *pHeightOut == height)))
         {
             *pHeightOut = 0;
 
@@ -294,6 +301,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     std::vector<CTxDestination> referrers;
     bool valid = true;
 
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
+
     for (auto &txout : tx.vout)
     {
         COptCCParams p;
@@ -367,7 +376,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     }
 
     // CHECK #2 - must be rooted in this chain
-    if (newIdentity.parent != ConnectedChains.ThisChain().GetID())
+    if (newIdentity.parent != ConnectedChains.ThisChain().GetID() &&
+        !(isPBaaS && newIdentity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive()))
     {
         return state.Error("Identity parent of new identity must be current chain");
     }
@@ -480,44 +490,48 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     CIdentity firstReferralIdentity = CIdentity::LookupFirstIdentity(newName.referral, &heightOut, &idTxIn, &referralTx);
 
     // referrer must be mined in when this transaction is put into the mem pool
-    if (heightOut >= height || !firstReferralIdentity.IsValid())
+    if (heightOut >= height || !firstReferralIdentity.IsValid() || firstReferralIdentity.parent != ASSETCHAINS_CHAINID)
     {
         return state.Error("Invalid identity registration referral");
     }
 
     bool isReferral = false;
     std::vector<CTxDestination> checkReferrers = std::vector<CTxDestination>({newName.referral});
-    for (auto &txout : referralTx.vout)
+    if (heightOut != 1)
     {
-        COptCCParams p;
-        if (txout.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+        for (auto &txout : referralTx.vout)
         {
-            if (p.evalCode == EVAL_IDENTITY_PRIMARY)
+            COptCCParams p;
+            if (txout.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
             {
-                isReferral = true;
-            }
-            else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
-            {
-                break;
-            }
-            else if (isReferral)
-            {
-                if (p.vKeys.size() == 0 || p.vKeys[0].which() != COptCCParams::ADDRTYPE_ID)
+                if (p.evalCode == EVAL_IDENTITY_PRIMARY)
                 {
-                    // invalid referral
-                    return state.Error("Invalid identity registration referral outputs");
+                    isReferral = true;
                 }
-                else
+                else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
                 {
-                    checkReferrers.push_back(p.vKeys[0]);
-                    if (checkReferrers.size() == issuingChain.IDReferralLevels())
+                    break;
+                }
+                else if (isReferral)
+                {
+                    if (p.vKeys.size() == 0 || p.vKeys[0].which() != COptCCParams::ADDRTYPE_ID)
                     {
-                        break;
+                        // invalid referral
+                        return state.Error("Invalid identity registration referral outputs");
+                    }
+                    else
+                    {
+                        checkReferrers.push_back(p.vKeys[0]);
+                        if (checkReferrers.size() == issuingChain.IDReferralLevels())
+                        {
+                            break;
+                        }
                     }
                 }
             }
         }
     }
+
     if (referrers.size() != checkReferrers.size())
     {
         return state.Error("Invalid identity registration - incorrect referral payments");
@@ -686,8 +700,13 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     CIdentity identity;
     COptCCParams p, identityP;
 
-    for (auto &output : tx.vout)
+    uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS;
+
+    for (int i = 0; i < tx.vout.size(); i++)
     {
+        CIdentity checkIdentity;
+        auto &output = tx.vout[i];
         if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1 && (nameRes = CNameReservation(p.vData[0])).IsValid())
         {
             // twice through makes it invalid
@@ -697,14 +716,18 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
             }
             validReservation = true;
         }
-        else if (p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (identity = CIdentity(p.vData[0])).IsValid())
+        else if (p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (checkIdentity = CIdentity(p.vData[0])).IsValid())
         {
             // twice through makes it invalid
-            if (validIdentity)
+            if (!(isPBaaS && height == 1) && validIdentity)
             {
                 return state.Error("Invalid multiple identity definitions on one transaction");
             }
-            identityP = p;
+            if (i == outNum)
+            {
+                identityP = p;
+                identity = checkIdentity;
+            }
             validIdentity = true;
         }
     }
@@ -878,6 +901,10 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 
     // compare commitment without regard to case or other textual transformations that are irrelevant to matching
     uint160 parentChain = ConnectedChains.ThisChain().GetID();
+    if (isPBaaS && identity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive())
+    {
+        parentChain.SetNull();
+    }
     if (validReservation && identity.GetID(nameRes.name, parentChain) == identity.GetID())
     {
         return true;
@@ -889,13 +916,21 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     LOCK(mempool.cs);
     for (auto &input : tx.vin)
     {
-        if (input.prevout.hash == inTx.GetHash() || myGetTransaction(input.prevout.hash, inTx, blkHash))
+        // first time through may be null
+        if ((!input.prevout.hash.IsNull() && input.prevout.hash == inTx.GetHash()) || myGetTransaction(input.prevout.hash, inTx, blkHash))
         {
             if (inTx.vout[input.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (identity = CIdentity(p.vData[0])).IsValid())
             {
                 return true;
             }
         }
+    }
+
+    // TODO: HARDENING at block one, a new PBaaS chain can mint IDs
+    // ensure they are valid as per the launch parameters
+    if (isPBaaS && height == 1)
+    {
+        return true;
     }
 
     return state.Error("Invalid primary identity - does not include identity reservation or spend matching identity");

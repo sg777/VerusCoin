@@ -1070,7 +1070,7 @@ public:
                                     int nConfMine, 
                                     int nConfTheirs, 
                                     std::vector<COutput> vCoins, 
-                                    std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, 
+                                    std::set<std::pair<const CWalletTx*, unsigned int>> &setCoinsRet, 
                                     CCurrencyValueMap& valueRet,
                                     CAmount &nativeValueRet) const;
 
@@ -1229,7 +1229,7 @@ public:
     void RescanWallet();
     std::pair<bool, bool> CheckAuthority(const CIdentity &identity);
     bool MarkIdentityDirty(const CIdentityID &idID);
-    bool AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate);
+    bool AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate, bool isRescan);
     void WitnessNoteCommitment(
          std::vector<uint256> commitments,
          std::vector<boost::optional<SproutWitness>>& witnesses,

@@ -435,7 +435,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(ReserveTransferWIF).begin(),32);
             cp->validate = ValidateReserveTransfer;
             cp->ismyvin = IsReserveTransferInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PrecheckReserveTransfer;
             break;
 
         case EVAL_RESERVE_DEPOSIT:

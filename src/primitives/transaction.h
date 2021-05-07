@@ -1254,7 +1254,11 @@ public:
                              txProof(proof), 
                              components(Components) {}
 
-    CPartialTransactionProof(const CTransaction tx, const std::vector<int32_t> outputNums, const CBlockIndex *pIndex, uint32_t proofAtHeight);
+    CPartialTransactionProof(const CTransaction tx,
+                             const std::vector<int32_t> &inputNums,
+                             const std::vector<int32_t> &outputNums,
+                             const CBlockIndex *pIndex,
+                             uint32_t proofAtHeight);
 
     // This creates a proof for older blocks and full transactions, typically where the root proof is a standard
     // merkle proof
@@ -1273,6 +1277,8 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(version);
+        READWRITE(type);
         READWRITE(txProof);
         READWRITE(components);
     }
@@ -1351,6 +1357,15 @@ public:
         if (IsChainProof())
         {
             return ((CMMRPowerNodeBranch *)(txProof.proofSequence[2]))->nIndex;
+        }
+        return 0;
+    }
+
+    uint32_t GetProofHeight() const
+    {
+        if (IsChainProof())
+        {
+            return ((CMMRPowerNodeBranch *)(txProof.proofSequence[2]))->nSize - 1;
         }
         return 0;
     }
@@ -1546,6 +1561,7 @@ class CUTXORef : public COutPoint
 {
 public:
     CUTXORef() : COutPoint(uint256(), UINT32_MAX) {}
+    CUTXORef(const COutPoint &op) : COutPoint(op) {}
     CUTXORef(const UniValue &uni);
     CUTXORef(const uint256 &HashIn, uint32_t nIn=UINT32_MAX) : COutPoint(HashIn, nIn) {}
     CUTXORef(const std::vector<unsigned char> &asVector)
@@ -1567,7 +1583,8 @@ public:
 
     static uint160 UtxoReferenceKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(UtxoReferenceKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(UtxoReferenceKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1604,7 +1621,7 @@ public:
     };
 
     enum EConstants {
-        DEFAULT_OUTPUT_VALUE = 1000,        // every output carries a small amount that comes out as a fee for the finalization tx
+        DEFAULT_OUTPUT_VALUE = 0,
         MAX_EVIDENCE_SUPPLEMENTALS = 25     // how many reserve transfers can be max in each output
     };
 
@@ -1623,7 +1640,7 @@ public:
     std::map<CIdentityID, CIdentitySignature> signatures; // one or more notary signatures with same statements combined
     std::vector<CPartialTransactionProof> evidence; // evidence in the form of cross chain proofs of transactions, block hashes, and power
 
-    CNotaryEvidence() : version(VERSION_INVALID), type(TYPE_INVALID) {}
+    CNotaryEvidence(uint8_t EvidenceType=TYPE_NOTARY_SIGNATURE, uint8_t nVersion=VERSION_CURRENT) : version(nVersion), type(EvidenceType) {}
     CNotaryEvidence(const uint160 &sysID, 
                      const CUTXORef &finalRef,
                      bool Confirmed=true,
@@ -1652,6 +1669,7 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(version);
+        READWRITE(type);
         READWRITE(systemID);
         READWRITE(output);
         READWRITE(confirmed);
@@ -1682,7 +1700,8 @@ public:
 
     static uint160 NotarySignatureKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotarySignatureKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotarySignatureKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1693,7 +1712,8 @@ public:
 
     static uint160 NotarySignaturesKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotarySignaturesKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotarySignaturesKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1704,7 +1724,8 @@ public:
 
     static uint160 NotarizationHashDataKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotarizationHashDataKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotarizationHashDataKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1715,7 +1736,8 @@ public:
 
     static uint160 NotaryConfirmedKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotaryConfirmedKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotaryConfirmedKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1726,7 +1748,8 @@ public:
 
     static uint160 NotaryRejectedKey()
     {
-        static uint160 signatureKey = CVDXF::GetDataKey(NotaryRejectedKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(NotaryRejectedKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -1767,7 +1790,11 @@ public:
 
     bool IsValid() const
     {
-        return version >= VERSION_FIRST && version <= VERSION_LAST && !systemID.IsNull() && output.IsValid() && signatures.size();
+        return version >= VERSION_FIRST && 
+               version <= VERSION_LAST && 
+               !systemID.IsNull() && 
+               output.IsValid() && 
+               (signatures.size() || evidence.size());
     }
 };
 

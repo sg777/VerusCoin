@@ -100,7 +100,9 @@ public:
     }
     static uint160 GovernanceKey()
     {
-        return CVDXF::GetDataKey(GovernanceKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 governanceKey = CVDXF::GetDataKey(GovernanceKeyName(), nameSpace);
+        return governanceKey;
     }
 };
 
@@ -140,7 +142,9 @@ public:
 
     static uint160 CVotingPollKey()
     {
-        return CVDXF::GetDataKey(CVotingPollKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 votingPollKey = CVDXF::GetDataKey(CVotingPollKeyName(), nameSpace);
+        return votingPollKey;
     }
 };
 
@@ -161,7 +165,9 @@ public:
     }
     static uint160 CVotingSpendKey()
     {
-        return CVDXF::GetDataKey(CVotingSpendKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 votingSpendKey = CVDXF::GetDataKey(CVotingSpendKeyName(), nameSpace);
+        return votingSpendKey;
     }
 };
 
@@ -191,7 +197,9 @@ public:
     }
     static uint160 VotingVoteKey()
     {
-        return CVDXF::GetDataKey(VotingVoteKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 votingVoteKey = CVDXF::GetDataKey(VotingVoteKeyName(), nameSpace);
+        return votingVoteKey;
     }
 };
 
@@ -213,7 +221,9 @@ public:
 
     static uint160 VotingSummaryKey()
     {
-        return CVDXF::GetDataKey(VotingSummaryKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 votingSummaryKey = CVDXF::GetDataKey(VotingSummaryKeyName(), nameSpace);
+        return votingSummaryKey;
     }
 };
 

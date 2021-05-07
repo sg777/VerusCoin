@@ -875,8 +875,12 @@ UniValue getblock(const UniValue& params, bool fHelp)
         std::string strHex = HexStr(ssBlock.begin(), ssBlock.end());
         return strHex;
     }
-
-    return blockToJSON(block, pblockindex, verbosity >= 2);
+    UniValue blockUni = blockToJSON(block, pblockindex, verbosity >= 2);
+    if (pblockindex)
+    {
+        blockUni.pushKV("proofroot", CProofRoot::GetProofRoot(pblockindex->GetHeight()).ToUniValue());
+    }
+    return blockUni;
 }
 
 UniValue gettxoutsetinfo(const UniValue& params, bool fHelp)

@@ -63,391 +63,6 @@
 #include "key_io.h"
 #include "pbaas/pbaas.h"
 
-// This is the data for a PBaaS notarization transaction, either of a PBaaS chain into the Verus chain, or the Verus
-// chain into a PBaaS chain.
-
-// Part of a transaction with an opret that contains only the hashes and proofs, without the source
-// headers, transactions, and objects. This type of notarizatoin is mined into a block by the miner, and is created on the PBaaS
-// chain.
-//
-// Notarizations include the following elements in order:
-//  Latest block header being notarized, or a header ref for a merge-mined header
-//  Proof of the header using the latest MMR root
-//  Cross notarization transaction less its op_ret
-//  Proof of the cross notarization using the latest MMR root
-class CPBaaSNotarization
-{
-public:
-    enum {
-        VERSION_INVALID = 0,
-        VERSION_FIRST = 1,
-        VERSION_LAST = 1,
-        VERSION_CURRENT = 1,
-        FINAL_CONFIRMATIONS = 9,
-        BLOCK_NOTARIZATION_MODULO = 10,                 // incentive to earn one valid notarization during this many blocks
-        MIN_BLOCKS_BEFORE_NOTARY_FINALIZED = 15,        // 15 blocks must go by before notary signatures or confirming evidence can be provided
-        MAX_NODES = 2,                                  // only provide 2 nodes per notarization
-        MIN_NOTARIZATION_OUTPUT = 0,                    // inimum amount for notarization output
-    };
-    //static const int FINAL_CONFIRMATIONS = 10;
-    //static const int MIN_BLOCKS_BETWEEN_NOTARIZATIONS = 8;
-
-    enum FLAGS
-    {
-        FLAGS_NONE = 0,
-        FLAG_DEFINITION_NOTARIZATION = 1,   // initial notarization on definition of currency/system/chain
-        FLAG_PRE_LAUNCH = 2,                // pre-launch notarization
-        FLAG_START_NOTARIZATION = 4,        // first notarization after pre-launch
-        FLAG_LAUNCH_CONFIRMED = 8,
-        FLAG_REFUNDING = 0x10,
-        FLAG_ACCEPTED_MIRROR = 0x20         // if this is set, this notarization is a mirror of an earned notarization on another chain
-    };
-
-    uint32_t nVersion;
-    uint32_t flags;                         // notarization options
-    CTransferDestination proposer;          // paid when this gets used on import (miner/staker, shares this with 1 notary for each validation)
-
-    uint160 currencyID;                     // the primary currency this notarization represents for the system, may be gateway or external chain
-    uint32_t notarizationHeight;            // <= height on the current system as of this notarization (can't be confirmed earlier)
-    CCoinbaseCurrencyState currencyState;   // state of the currency being notarized as of this notarization
-
-    CUTXORef prevNotarization;              // reference of the prior notarization on this system with which we agree
-    uint256 hashPrevNotarization;           // hash of the prior notarization on this system with which we agree, even one not accepted yet
-    uint32_t prevHeight;                    // height of previous notarization we agree with
-
-    std::map<uint160, CCoinbaseCurrencyState> currencyStates; // currency state of other currencies to be co-notarized for gateways
-    std::map<uint160, CProofRoot> proofRoots; // if cross-chain notarization, includes valid proof root of systemID at notarizationHeight + others verified
-
-    std::vector<CNodeData> nodes;           // if cross chain notarization, network nodes
-
-    CPBaaSNotarization() : nVersion(PBAAS_VERSION_INVALID) {}
-
-    CPBaaSNotarization(const uint160 &currencyid,
-                       const CCoinbaseCurrencyState CurrencyState,
-                       uint32_t height,
-                       const CUTXORef &prevnotarization,
-                       uint32_t prevheight,
-                       const std::vector<CNodeData> &Nodes=std::vector<CNodeData>(),
-                       const std::map<uint160, CCoinbaseCurrencyState> &CurrencyStates=std::map<uint160, CCoinbaseCurrencyState>(),
-                       const CTransferDestination &Proposer=CTransferDestination(),
-                       const std::map<uint160, CProofRoot> &ProofRoots=std::map<uint160, CProofRoot>(),
-                       uint32_t version=VERSION_CURRENT,
-                       uint32_t Flags=FLAGS_NONE) : 
-                       nVersion(version),
-                       flags(Flags),
-                       proposer(Proposer),
-                       currencyID(currencyid),
-                       notarizationHeight(height),
-                       currencyState(CurrencyState),
-                       prevNotarization(prevnotarization),
-                       prevHeight(prevheight),
-                       currencyStates(CurrencyStates),
-                       proofRoots(ProofRoots),
-                       nodes(Nodes)
-    {
-    }
-
-    CPBaaSNotarization(const std::vector<unsigned char> &asVector)
-    {
-        ::FromVector(asVector, *this);
-    }
-
-    CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx=nullptr);
-
-    CPBaaSNotarization(const CScript &scriptPubKey);
-
-    CPBaaSNotarization(const UniValue &obj);
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(VARINT(nVersion));
-        READWRITE(VARINT(flags));
-        READWRITE(proposer);
-        READWRITE(currencyID);
-        READWRITE(currencyState);
-        READWRITE(notarizationHeight);
-        READWRITE(prevNotarization);
-        READWRITE(prevHeight);
-
-        std::vector<std::pair<uint160, CCoinbaseCurrencyState>> vecCurrencyStates;
-        if (ser_action.ForRead())
-        {
-            READWRITE(vecCurrencyStates);
-            for (auto &oneRoot : vecCurrencyStates)
-            {
-                currencyStates.insert(oneRoot);
-            }
-        }
-        else
-        {
-            for (auto &oneRoot : currencyStates)
-            {
-                vecCurrencyStates.push_back(oneRoot);
-            }
-            READWRITE(vecCurrencyStates);
-        }
-
-        std::vector<std::pair<uint160, CProofRoot>> vecProofRoots;
-
-        if (ser_action.ForRead())
-        {
-            READWRITE(vecProofRoots);
-            for (auto &oneRoot : vecProofRoots)
-            {
-                proofRoots.insert(oneRoot);
-            }
-        }
-        else
-        {
-            for (auto &oneRoot : proofRoots)
-            {
-                vecProofRoots.push_back(oneRoot);
-            }
-            READWRITE(vecProofRoots);
-        }
-
-        READWRITE(nodes);
-    }
-
-    std::vector<unsigned char> AsVector()
-    {
-        return ::AsVector(*this);
-    }
-
-    bool IsValid() const
-    {
-        return nVersion >= VERSION_FIRST && nVersion <= VERSION_LAST && !currencyID.IsNull();
-    }
-
-    static std::string NotaryNotarizationKeyName()
-    {
-        return "vrsc::system.notarization.notarization";
-    }
-    static uint160 NotaryNotarizationKey()
-    {
-        static uint160 notaryNotarizationKey = CVDXF::GetDataKey(NotaryNotarizationKeyName(), uint160());
-        return notaryNotarizationKey;
-    }
-
-    // if false, *this is unmodifed, otherwise, it is set to the last valid notarization in the requested range
-    bool GetLastNotarization(const uint160 &currencyID, 
-                             uint32_t eCode, 
-                             int32_t startHeight=0, 
-                             int32_t endHeight=0, 
-                             uint256 *txIDOut=nullptr,
-                             CTransaction *txOut=nullptr);
-
-    // if false, no matching, unspent notarization found
-    bool GetLastUnspentNotarization(const uint160 &currencyID, 
-                                    uint32_t eCode, 
-                                    uint256 &txIDOut,
-                                    int32_t &txOutNum,
-                                    CTransaction *txOut=nullptr);
-
-    bool NextNotarizationInfo(const CCurrencyDefinition &sourceSystem, 
-                              const CCurrencyDefinition &destCurrency, 
-                              uint32_t lastExportHeight, 
-                              uint32_t currentHeight, 
-                              std::vector<CReserveTransfer> &exportTransfers,
-                              uint256 &transferHash,
-                              CPBaaSNotarization &newNotarization,
-                              std::vector<CTxOut> &importOutputs,
-                              CCurrencyValueMap &importedCurrency,
-                              CCurrencyValueMap &gatewayDepositsUsed,
-                              CCurrencyValueMap &spentCurrencyOut) const;
-
-    static bool CreateEarnedNotarization(const CRPCChainData &externalSystem,
-                                         const CTransferDestination &Proposer,
-                                         CValidationState &state,
-                                         std::vector<CTxOut> &txOutputs,
-                                         CPBaaSNotarization &notarization);
-
-    // accepts enough information to build a local accepted notarization transaction
-    // miner fees are deferred until an import that uses this notarization, in which case
-    // Proposer will get a share of the fees, if they are large enough. any miner,
-    // who is mining the bridge can make such a notarization.
-    static bool CreateAcceptedNotarization(const CCurrencyDefinition &externalSystem,
-                                           const CPBaaSNotarization &notarization,
-                                           const CNotaryEvidence &notaryEvidence,
-                                           CValidationState &state,
-                                           TransactionBuilder &txBuilder);
-
-    static bool ConfirmOrRejectNotarizations(const CWallet *pWallet,
-                                             const CRPCChainData &externalSystem,
-                                             CValidationState &state,
-                                             TransactionBuilder &txBuilder,
-                                             bool &finalized);
-
-    bool CheckProof(const uint160 &systemID, const CMMRProof &transactionBlockProof, uint256 checkHash)
-    {
-        auto proofRootIt = proofRoots.find(systemID);
-        if (proofRootIt == proofRoots.end())
-        {
-            return false;
-        }
-        return transactionBlockProof.CheckProof(checkHash) == proofRootIt->second.stateRoot;
-    }
-
-    CProofRoot GetProofRoot(const uint160 &systemID) const
-    {
-        auto proofRootIt = proofRoots.find(systemID);
-        if (proofRootIt == proofRoots.end())
-        {
-            return CProofRoot();
-        }
-        return proofRootIt->second;
-    }
-
-    bool IsSameChain() const
-    {
-        return currencyID == ASSETCHAINS_CHAINID;
-    }
-
-    bool IsMirror() const
-    {
-        return flags & FLAG_ACCEPTED_MIRROR;
-    }
-
-    // both sets the mirror flag and also transforms the notarization
-    // between mirror states. returns false if could not change state to requested.
-    bool SetMirror(bool setTrue=true, bool transform=true)
-    {
-        // if we are not changing the mirror state, just return
-        if (setTrue == IsMirror())
-        {
-            return true;
-        }
-
-        // we can only reverse notarizations with two proof roots
-        // one must be the current chain, and the other is to reverse
-        if (proofRoots.size() != 2 ||
-            currencyStates.count(currencyID) ||
-            !(proofRoots.begin()->first == ASSETCHAINS_CHAINID || (++proofRoots.begin())->first == ASSETCHAINS_CHAINID))
-        {
-            LogPrintf("%s: invalid earned notarization for acceptance\n", __func__);
-            return false;
-        }
-
-        uint160 oldCurrencyID = currencyID;
-        uint160 altCurrencyID = proofRoots.begin()->first == ASSETCHAINS_CHAINID ? (++proofRoots.begin())->first : proofRoots.begin()->first;
-        uint160 newCurrencyID = proofRoots.begin()->first == currencyID ? (++proofRoots.begin())->first : proofRoots.begin()->first;
-
-        if ((currencyID == ASSETCHAINS_CHAINID && !currencyStates.count(currencyID)) ||
-            (currencyID != ASSETCHAINS_CHAINID && !currencyStates.count(ASSETCHAINS_CHAINID)))
-        {
-            LogPrintf("%s: notarization for acceptance must include both currency states\n", __func__);
-            return false;
-        }
-
-        if (transform)
-        {
-            currencyStates.insert(std::make_pair(oldCurrencyID, currencyState));
-            currencyState = currencyStates[newCurrencyID];
-            currencyStates.erase(newCurrencyID);
-            currencyID = newCurrencyID;
-        }
-
-        if (setTrue)
-        {
-            flags |= FLAG_ACCEPTED_MIRROR;
-        }
-        else
-        {
-            flags &= ~FLAG_ACCEPTED_MIRROR;
-        }
-        return true;
-    }
-
-    bool IsDefinitionNotarization() const
-    {
-        return flags & FLAG_DEFINITION_NOTARIZATION;
-    }
-
-    void SetDefinitionNotarization(bool setTrue=true)
-    {
-        if (setTrue)
-        {
-            flags |= FLAG_DEFINITION_NOTARIZATION;
-        }
-        else
-        {
-            flags &= ~FLAG_DEFINITION_NOTARIZATION;
-        }
-    }
-
-    bool IsPreLaunch() const
-    {
-        return flags & FLAG_PRE_LAUNCH;
-    }
-
-    void SetPreLaunch(bool setTrue=true)
-    {
-        if (setTrue)
-        {
-            flags |= FLAG_PRE_LAUNCH;
-        }
-        else
-        {
-            flags &= ~FLAG_PRE_LAUNCH;
-        }
-    }
-
-    bool IsLaunchCleared() const
-    {
-        return flags & FLAG_START_NOTARIZATION;
-    }
-
-    void SetLaunchCleared(bool setTrue=true)
-    {
-        if (setTrue)
-        {
-            flags |= FLAG_START_NOTARIZATION;
-        }
-        else
-        {
-            flags &= ~FLAG_START_NOTARIZATION;
-        }
-    }
-
-    bool IsLaunchConfirmed() const
-    {
-        return flags & FLAG_LAUNCH_CONFIRMED;
-    }
-
-    void SetLaunchConfirmed(bool setTrue=true)
-    {
-        if (setTrue)
-        {
-            flags |= FLAG_LAUNCH_CONFIRMED;
-        }
-        else
-        {
-            flags &= ~FLAG_LAUNCH_CONFIRMED;
-        }
-    }
-
-    bool IsRefunding() const
-    {
-        return flags & FLAG_REFUNDING;
-    }
-
-    void SetRefunding(bool setTrue=true)
-    {
-        if (setTrue)
-        {
-            flags |= FLAG_REFUNDING;
-        }
-        else
-        {
-            flags &= ~FLAG_REFUNDING;
-        }
-    }
-
-    UniValue ToUniValue() const;
-};
-
 class CObjectFinalization
 {
 public:
@@ -480,11 +95,12 @@ public:
     CObjectFinalization() : version(VERSION_INVALID), finalizationType(FINALIZE_INVALID) {}
     CObjectFinalization(uint8_t fType, const uint160 &curID, const uint256 &TxId, uint32_t outNum, uint32_t minFinalHeight=0) : 
         version(VERSION_CURRENT), finalizationType(fType), minFinalizationHeight(minFinalHeight), currencyID(curID), output(TxId, outNum) {}
-    CObjectFinalization(std::vector<unsigned char> vch)
+    CObjectFinalization(const std::vector<unsigned char> &vch)
     {
         ::FromVector(vch, *this);
     }
     CObjectFinalization(const CTransaction &tx, uint32_t *pEcode=nullptr, int32_t *pFinalizationOutNum=nullptr);
+    CObjectFinalization(const CScript &script);
 
     ADD_SERIALIZE_METHODS;
 
@@ -508,6 +124,11 @@ public:
                 finalizationType != FINALIZE_INVALID && 
                 !currencyID.IsNull() &&
                 output.IsValid();
+    }
+
+    EFinalizationType FinalizationType() const
+    {
+        return (EFinalizationType)(finalizationType & FINALIZE_TYPE_MASK);
     }
 
     bool IsPending() const
@@ -581,7 +202,11 @@ public:
     CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const CNotaryEvidence &signature, const COptCCParams &p, uint32_t height) const;
     CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const CNotaryEvidence &signature, uint32_t height) const;
 
-    std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentNotaryEvidence() const;
+    static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentConfirmedFinalizations(const uint160 &currencyID);
+    static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentPendingFinalizations(const uint160 &currencyID);
+    static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentEvidence(const uint160 &currencyID,
+                                                                                 const uint256 &notarizationTxId,
+                                                                                 int32_t notarizationOutNum);
 
     // enables easily finding all pending finalizations for a
     // currency, either notarizations or exports
@@ -625,37 +250,43 @@ public:
 
     static uint160 ObjectFinalizationPendingKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationPendingKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationPendingKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationPrelaunchKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationPrelaunchKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationPrelaunchKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationNotarizationKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationNotarizationKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationNotarizationKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationExportKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationExportKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationExportKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationConfirmedKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationConfirmedKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationConfirmedKeyName(), nameSpace);
         return key;
     }
 
     static uint160 ObjectFinalizationRejectedKey()
     {
-        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationRejectedKeyName(), uint160());
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationRejectedKeyName(), nameSpace);
         return key;
     }
 
@@ -723,6 +354,7 @@ public:
     UniValue ToUniValue() const;
 };
 
+std::vector<CNodeData> GetGoodNodes(int maxNum=CCurrencyDefinition::MAX_STARTUP_NODES);
 bool ValidateEarnedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsEarnedNotarizationInput(const CScript &scriptSig);
 bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
@@ -730,5 +362,7 @@ bool IsAcceptedNotarizationInput(const CScript &scriptSig);
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsFinalizeNotarizationInput(const CScript &scriptSig);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);
+extern string PBAAS_HOST, PBAAS_USERPASS, ASSETCHAINS_RPCHOST, ASSETCHAINS_RPCCREDENTIALS;;
+extern int32_t PBAAS_PORT;
 
 #endif
