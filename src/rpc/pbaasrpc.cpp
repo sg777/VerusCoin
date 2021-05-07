@@ -5026,13 +5026,13 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 auto curValues = params[1].getValues();
                 for (int i = 0; i < curKeys.size(); i++)
                 {
-                    gatewayConverterMap.insert(std::make_pair(curKeys[i], curValues[i]));
+                    gatewayConverterMap[curKeys[i]] = curValues[i];
                 }
             }
 
             // set start block and gateway converter issuance
-            gatewayConverterMap.insert(std::make_pair("startblock", newChain.startBlock));
-            gatewayConverterMap.insert(std::make_pair("gatewayconverterissuance", newChain.gatewayConverterIssuance));
+            gatewayConverterMap["startblock"] = newChain.startBlock;
+            gatewayConverterMap["gatewayconverterissuance"] = newChain.gatewayConverterIssuance;
 
             UniValue newCurUni(UniValue::VOBJ);
             for (auto oneProp : gatewayConverterMap)
