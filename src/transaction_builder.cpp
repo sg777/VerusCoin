@@ -349,7 +349,7 @@ TransactionBuilderResult TransactionBuilder::Build()
                 AddSaplingOutput(fvk.ovk, changeAddr, change);
             } else 
             {
-                if (hasReserveChange || hasNativeChange)
+                if (hasReserveChange)
                 {
                     return TransactionBuilderResult("Could not determine change address for reserve currency change");
                 }
