@@ -6473,7 +6473,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                         else
                         {
                             //fprintf(stderr,"use notary pubkey\n");
-                            dest = NOTARY_PUBKEY;
+                            dest = CPubKey(ParseHex(NOTARY_PUBKEY));
                         }
 
                         if (reserveChange > nullCurrencyMap)
