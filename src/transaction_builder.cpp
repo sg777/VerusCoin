@@ -306,9 +306,9 @@ TransactionBuilderResult TransactionBuilder::Build()
 
         if ((rtxd.NativeFees() - this->fee) != change)
         {
-            printf("%s: native fees do not match builder: %s\nblockchain: %s\n", __func__, ValueFromAmount(change).write(1,2).c_str(), ValueFromAmount(rtxd.NativeFees()).write(1,2).c_str());
-            LogPrintf("%s: reserveChange: %s\n", __func__, reserveChange.ToUniValue().write(1,2).c_str());
-            return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
+            printf("%s: native fees do not match builder: %s, blockchain: %s\n", __func__, ValueFromAmount(change).write(1,2).c_str(), ValueFromAmount(rtxd.NativeFees()).write(1,2).c_str());
+            LogPrintf("%s: native fees do not match builder: %s, blockchain: %s\n", __func__, ValueFromAmount(change).write(1,2).c_str(), ValueFromAmount(rtxd.NativeFees()).write(1,2).c_str());
+            return TransactionBuilderResult("Native fees do not match builder");
         }
 
         bool hasNativeChange = change > 0;
