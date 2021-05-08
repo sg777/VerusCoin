@@ -5560,7 +5560,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
     return true;
 }
 
-bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet,  bool& fOnlyProtectedCoinbaseCoinsRet, bool& fNeedProtectedCoinbaseCoinsRet, const CCoinControl* coinControl) const
+bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet, CCurrencyValueMap &reserveChange,  bool& fOnlyProtectedCoinbaseCoinsRet, bool& fNeedProtectedCoinbaseCoinsRet, const CCoinControl* coinControl) const
 {
     // Output parameter fOnlyProtectedCoinbaseCoinsRet is set to true when the only available coins are coinbase utxos.
     uint64_t tmp; int32_t retval;
@@ -5610,6 +5610,7 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*
             if (!out.fSpendable)
                  continue;
             nValueRet += out.tx->vout[out.i].nValue;
+            reserveChange += out.tx->vout[out.i].ReserveOutValue();
             //if ( KOMODO_EXCHANGEWALLET == 0 )
             //    *interestp += out.tx->vout[out.i].interest;
             setCoinsRet.insert(make_pair(out.tx, out.i));
@@ -5657,8 +5658,16 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*
         retval = true;
     else if ( bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue, 0, 1, vCoins, setCoinsRet, nValueRet) != 0 )
         retval = true;
+
     // because SelectCoinsMinConf clears the setCoinsRet, we now add the possible inputs to the coinset
     setCoinsRet.insert(setPresetCoins.begin(), setPresetCoins.end());
+
+    // return the total reserve, which will all be change, since this is used by native-only aware code
+    for (auto &oneOut : setCoinsRet)
+    {
+        reserveChange += oneOut.first->vout[oneOut.second].ReserveOutValue();
+    }
+
     // add preset inputs to the total value selected
     nValueRet += nValueFromPresetInputs;
     return retval;
@@ -6365,7 +6374,8 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                 bool fOnlyProtectedCoinbaseCoins = false;
                 bool fNeedProtectedCoinbaseCoins = false;
                 interest2 = 0;
-                if (!SelectCoins(nTotalValue, setCoins, nValueIn, fOnlyProtectedCoinbaseCoins, fNeedProtectedCoinbaseCoins, coinControl))
+                CCurrencyValueMap reserveChange;
+                if (!SelectCoins(nTotalValue, setCoins, nValueIn, reserveChange, fOnlyProtectedCoinbaseCoins, fNeedProtectedCoinbaseCoins, coinControl))
                 {
                     if (fOnlyProtectedCoinbaseCoins) {
                         strFailReason = _("Coinbase funds earned while shielding protection is active can only be sent to a zaddr");
@@ -6413,7 +6423,8 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                 if (nSubtractFeeFromAmount == 0)
                     nChange -= nFeeRet;
 
-                if (nChange > 0)
+                CCurrencyValueMap nullCurrencyMap;
+                if (reserveChange > nullCurrencyMap || nChange > 0)
                 {
                     // Fill a vout to ourself
                     // TODO: pass in scriptChange instead of reservekey so
@@ -6422,8 +6433,21 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
 
                     // coin control: send change to custom address
                     if (coinControl && !boost::get<CNoDestination>(&coinControl->destChange))
-                        scriptChange = GetScriptForDestination(coinControl->destChange);
+                    {
+                        if (reserveChange > nullCurrencyMap)
+                        {
+                            std::vector<CTxDestination> dest({coinControl->destChange});
 
+                            // one output for all reserves, change gets combined
+                            // we should separate, or remove any currency that is not whitelisted if specified after whitelist is supported
+                            CTokenOutput to(reserveChange);
+                            scriptChange = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to));
+                        }
+                        else
+                        {
+                            scriptChange = GetScriptForDestination(coinControl->destChange);
+                        }
+                    }
                     // no coin control: send change to newly generated address
                     else
                     {
@@ -6437,17 +6461,33 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                         // Reserve a new key pair from key pool
                         CPubKey vchPubKey;
                         extern int32_t USE_EXTERNAL_PUBKEY; extern std::string NOTARY_PUBKEY;
+
+                        CTxDestination dest;
                         if ( USE_EXTERNAL_PUBKEY == 0 )
                         {
                             bool ret;
                             ret = reservekey.GetReservedKey(vchPubKey);
                             assert(ret); // should never fail, as we just unlocked
-                            scriptChange = GetScriptForDestination(vchPubKey.GetID());
+                            dest = CKeyID(vchPubKey.GetID());
                         }
                         else
                         {
                             //fprintf(stderr,"use notary pubkey\n");
-                            scriptChange = CScript() << ParseHex(NOTARY_PUBKEY) << OP_CHECKSIG;
+                            dest = CPubKey(ParseHex(NOTARY_PUBKEY));
+                        }
+
+                        if (reserveChange > nullCurrencyMap)
+                        {
+                            std::vector<CTxDestination> dest({coinControl->destChange});
+
+                            // one output for all reserves, change gets combined
+                            // we should separate, or remove any currency that is not whitelisted if specified after whitelist is supported
+                            CTokenOutput to(reserveChange);
+                            scriptChange = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to));
+                        }
+                        else
+                        {
+                            scriptChange = GetScriptForDestination(dest);
                         }
                     }
 
@@ -6912,7 +6952,7 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
 
                 // generate all necessary change outputs for all currencies
                 // first determine if any outputs left are dust. if so, just add them to the fee
-                if (nChange < dustThreshold)
+                if (nChange < dustThreshold && reserveChange.CanonicalMap() == CCurrencyValueMap())
                 {
                     nFeeRet += nChange;
                     nChange = 0;
@@ -6920,16 +6960,23 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                 else
                 {
                     nChangePosRet = txNew.vout.size() - 1; // dont change first or last
-                    nChangeOutputs++;
-                    vector<CTxOut>::iterator position = txNew.vout.begin() + nChangePosRet;
-                    txNew.vout.insert(position, CTxOut(nChange, GetScriptForDestination(changeDest)));
+                    if (nChange > 0)
+                    {
+                        nChangeOutputs++;
+                        vector<CTxOut>::iterator position = txNew.vout.begin() + nChangePosRet;
+                        txNew.vout.insert(position, CTxOut(nChange, GetScriptForDestination(changeDest)));
+                    }
                 }
 
-                // now, loop through the remaining reserve currencies and make a change output for each
+                // now, loop through the remaining reserve currencies and make a change output for each separately
                 // if dust, just remove
                 auto reserveIndexMap = currencyState.GetReserveMap();
                 for (auto &curChangeOut : reserveChange.valueMap)
                 {
+                    if (!curChangeOut.second)
+                    {
+                        continue;
+                    }
                     CAmount outVal;
                     assert(curChangeOut.first != ASSETCHAINS_CHAINID);
                     auto curIt = reserveIndexMap.find(curChangeOut.first);
@@ -6942,17 +6989,10 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                         outVal = curChangeOut.second;
                     }
                     
-                    if (outVal >= dustThreshold)
-                    {
-                        vector<CTxOut>::iterator position = txNew.vout.begin() + (nChangePosRet + nChangeOutputs++);
-                        CTokenOutput to = CTokenOutput(curChangeOut.first, curChangeOut.second);
-                        txNew.vout.insert(position, CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, {changeDest}, 1, &to))));
-                    }
-                    // if it is dust and we cannot convert to native, drop it. it may be taken by the miner
-                    else if (curIt != reserveIndexMap.end())
-                    {
-                        nFeeRet += outVal;
-                    }
+                    nChangeOutputs++;
+                    vector<CTxOut>::iterator position = txNew.vout.begin() + (nChangePosRet + nChangeOutputs++);
+                    CTokenOutput to = CTokenOutput(curChangeOut.first, curChangeOut.second);
+                    txNew.vout.insert(position, CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, {changeDest}, 1, &to))));
                 }
 
                 // if we made no change outputs, return the key
