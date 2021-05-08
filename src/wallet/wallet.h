@@ -803,7 +803,7 @@ public:
 class CWallet : public CCryptoKeyStore, public CValidationInterface
 {
 private:
-    bool SelectCoins(const CAmount& nTargetValue, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet, bool& fOnlyCoinbaseCoinsRet, bool& fNeedCoinbaseCoinsRet, const CCoinControl *coinControl = NULL) const;
+    bool SelectCoins(const CAmount& nTargetValue, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet, CCurrencyValueMap &reserveChange, bool& fOnlyCoinbaseCoinsRet, bool& fNeedCoinbaseCoinsRet, const CCoinControl *coinControl = NULL) const;
     bool SelectReserveCoins(const CCurrencyValueMap& targetReserveValues, 
                             CAmount targetNativeValue,
                             set<pair<const CWalletTx*,unsigned int> >& setCoinsRet,
