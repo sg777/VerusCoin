@@ -1845,7 +1845,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_supply"] = "5000000000000000";
         mapArgs["-ac_eras"] = "1";
         mapArgs["-ac_reward"] = "1200000000";
-        std::string halving = GetArg("-ac_halving", "2111111"); // this assignment is required for an ARM compiler workaround
+        std::string halving = GetArg("-ac_halving", "2111115"); // this assignment is required for an ARM compiler workaround
         mapArgs["-ac_halving"] = halving;    // allow testing easily with different values here
         mapArgs["-ac_decay"] = "0";
         mapArgs["-ac_options"] = "72";       // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
