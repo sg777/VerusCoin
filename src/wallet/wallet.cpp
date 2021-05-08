@@ -6478,12 +6478,12 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
 
                         if (reserveChange > nullCurrencyMap)
                         {
-                            std::vector<CTxDestination> dest({coinControl->destChange});
+                            std::vector<CTxDestination> dests({dest});
 
                             // one output for all reserves, change gets combined
                             // we should separate, or remove any currency that is not whitelisted if specified after whitelist is supported
                             CTokenOutput to(reserveChange);
-                            scriptChange = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to));
+                            scriptChange = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
                         }
                         else
                         {

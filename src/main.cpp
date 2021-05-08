@@ -4811,6 +4811,7 @@ bool static ConnectTip(CValidationState& state, const CChainParams& chainparams,
         pblock = &block;
     }
     KOMODO_CONNECTING = (int32_t)pindexNew->GetHeight();
+
     // Get the current commitment tree
     SproutMerkleTree oldSproutTree;
     SaplingMerkleTree oldSaplingTree;
