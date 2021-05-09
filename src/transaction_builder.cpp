@@ -313,7 +313,7 @@ TransactionBuilderResult TransactionBuilder::Build()
 
         bool hasNativeChange = change > 0;
 
-        if ((hasNativeChange && (!tChangeAddr && !saplingChangeAddr)) || (hasReserveChange && !tChangeAddr))
+        if ((hasNativeChange && (!tChangeAddr && !saplingChangeAddr && spends.empty())) || (hasReserveChange && !tChangeAddr))
         {
             printf("%s: nativeChange: %ld, reserveChange: %s\n", __func__, change, reserveChange.ToUniValue().write(1,2).c_str());
             LogPrintf("%s: nativeChange: %ld, reserveChange: %s\n", __func__, change, reserveChange.ToUniValue().write(1,2).c_str());
