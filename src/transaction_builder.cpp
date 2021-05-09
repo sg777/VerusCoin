@@ -313,9 +313,10 @@ TransactionBuilderResult TransactionBuilder::Build()
 
         bool hasNativeChange = change > 0;
 
-        if ((hasNativeChange || hasReserveChange) && !tChangeAddr)
+        if ((hasNativeChange && (!tChangeAddr && !saplingChangeAddr)) || (hasReserveChange && !tChangeAddr))
         {
-            printf("%s: reserveChange: %s\n", __func__, reserveChange.ToUniValue().write(1,2).c_str());
+            printf("%s: nativeChange: %ld, reserveChange: %s\n", __func__, change, reserveChange.ToUniValue().write(1,2).c_str());
+            LogPrintf("%s: nativeChange: %ld, reserveChange: %s\n", __func__, change, reserveChange.ToUniValue().write(1,2).c_str());
             return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
         }
 
@@ -349,7 +350,7 @@ TransactionBuilderResult TransactionBuilder::Build()
             {
                 // tChangeAddr has already been validated.
                 AddTransparentOutput(tChangeAddr.value(), change);
-            } else if (!spends.empty()) 
+            } else if (!spends.empty())
             {
                 auto fvk = spends[0].expsk.full_viewing_key();
                 auto note = spends[0].note;
