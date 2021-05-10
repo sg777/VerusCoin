@@ -565,10 +565,11 @@ public:
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         if (parent != newIdentity.parent ||
             (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name) ||
-            (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && (newIdentity.HasActiveCurrency() || 
-                                                                 newIdentity.IsLocked() ||
-                                                                 !newIdentity.systemID.IsNull() ||
-                                                                 newIdentity.nVersion >= VERSION_PBAAS)) ||
+            (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 &&
+             nSolVersion < CActivationHeight::ACTIVATE_PBAAS && 
+             (newIdentity.HasActiveCurrency() || 
+              newIdentity.IsLocked() ||
+              newIdentity.nVersion >= VERSION_PBAAS)) ||
             (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && (newIdentity.nVersion < VERSION_PBAAS ||
                                                                   (newIdentity.systemID != (nVersion < VERSION_PBAAS ? parent : systemID)))) ||
             GetID() != newIdentity.GetID() ||
