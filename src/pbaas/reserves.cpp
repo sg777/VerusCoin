@@ -3407,8 +3407,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         spentCurrencyOut.valueMap[importCurrencyID] += (burnedChangePrice + burnedChangeWeight);
     }
 
-    printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
-    printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\ncheckAgainstInputs: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str(), checkAgainstInputs.ToUniValue().write(1,2).c_str());
+    /*printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
+    printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\ncheckAgainstInputs: %s\n", 
+        ReserveInputs.ToUniValue().write(1,2).c_str(), 
+        spentCurrencyOut.ToUniValue().write(1,2).c_str(), 
+        (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str(), 
+        checkAgainstInputs.ToUniValue().write(1,2).c_str());
+    */
 
     if ((ReserveInputs - checkAgainstInputs).HasNegative())
     {
