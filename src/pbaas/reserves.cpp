@@ -2170,8 +2170,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             curTransfer = exportObjects[i];
         }
 
-        if (((importCurrencyID != curTransfer.FirstCurrency()) && (curTransfer.flags & curTransfer.IMPORT_TO_SOURCE)) ||
-            ((importCurrencyID != curTransfer.destCurrencyID) && !((curTransfer.flags & curTransfer.IMPORT_TO_SOURCE))))
+        if (((importCurrencyID != curTransfer.FirstCurrency()) && curTransfer.IsImportToSource()) ||
+            ((importCurrencyID != curTransfer.destCurrencyID) && !curTransfer.IsImportToSource()))
         {
             printf("%s: Importing to source currency w/o flag or importing to destination w/source flag:\n%s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
             LogPrintf("%s: Importing to source currency without flag or importing to destination with source flag\n", __func__);
@@ -2621,17 +2621,32 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 {
                     // now, fees are either in the destination native currency, or this is a fractional currency, and
                     // we convert to see if we meet fee minimums
-                    CAmount feeEquivalent = curTransfer.nFees;
-                    if (curTransfer.feeCurrencyID != systemDestID)
+                    CAmount feeEquivalent;
+                    uint160 feeCurrency;
+                    if (curTransfer.IsConversion() && !curTransfer.IsPreConversion())
                     {
-                        if (!currencyDest.IsFractional() || !currencyIndexMap.count(curTransfer.feeCurrencyID))
+                        feeCurrency = curTransfer.nFees ? curTransfer.feeCurrencyID : curTransfer.FirstCurrency();
+                        feeEquivalent = CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue()) + curTransfer.nFees;
+                    }
+                    else
+                    {
+                        feeCurrency = curTransfer.feeCurrencyID;
+                        feeEquivalent = curTransfer.nFees;
+                    }
+
+                    if (feeCurrency != systemDestID)
+                    { 
+                        if (!importCurrencyDef.IsFractional() || !(currencyIndexMap.count(feeCurrency) || feeCurrency == importCurrencyID))
                         {
                             printf("%s: Invalid fee currency for transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                             LogPrintf("%s: Invalid fee currency for transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                             return false;
                         }
-                        feeEquivalent = importCurrencyState.ReserveToNativeRaw(feeEquivalent, importCurrencyState.conversionPrice[currencyIndexMap[curTransfer.feeCurrencyID]]);
-                        feeEquivalent = importCurrencyState.NativeToReserveRaw(curTransfer.nFees, importCurrencyState.viaConversionPrice[systemDestIdx]);
+                        if (curTransfer.feeCurrencyID != importCurrencyID)
+                        {
+                            feeEquivalent = importCurrencyState.ReserveToNativeRaw(feeEquivalent, importCurrencyState.conversionPrice[currencyIndexMap[feeCurrency]]);
+                        }
+                        feeEquivalent = importCurrencyState.NativeToReserveRaw(feeEquivalent, importCurrencyState.viaConversionPrice[systemDestIdx]);
                     }
 
                     if (feeEquivalent < curTransfer.CalculateTransferFee())
@@ -3056,7 +3071,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     // check to see if liquidity fees include currency to burn and burn if so
     if (liquidityFees.valueMap.count(importCurrencyID))
     {
-        burnedChangePrice += liquidityFees.valueMap[importCurrencyID];
+        newCurrencyState.supply -= liquidityFees.valueMap[importCurrencyID];
         liquidityFees.valueMap.erase(importCurrencyID);
     }
     if (burnedChangePrice > 0)
@@ -3392,7 +3407,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         spentCurrencyOut.valueMap[importCurrencyID] += (burnedChangePrice + burnedChangeWeight);
     }
 
-    //printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str());
+    printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
+    printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\ncheckAgainstInputs: %s\n", ReserveInputs.ToUniValue().write(1,2).c_str(), spentCurrencyOut.ToUniValue().write(1,2).c_str(), (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str(), checkAgainstInputs.ToUniValue().write(1,2).c_str());
+
     if ((ReserveInputs - checkAgainstInputs).HasNegative())
     {
         printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\n", __func__,
