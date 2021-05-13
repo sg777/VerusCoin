@@ -3066,12 +3066,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
+    // input of primary currency is sources in and output is sinks
+    CAmount totalPrimaryIn = 0;
+    CAmount totalPrimaryOut = 0;
+
     // remove burned currency from supply
     //
     // check to see if liquidity fees include currency to burn and burn if so
     if (liquidityFees.valueMap.count(importCurrencyID))
     {
-        newCurrencyState.supply -= liquidityFees.valueMap[importCurrencyID];
+        CAmount primaryLiquidityFees = liquidityFees.valueMap[importCurrencyID];
+        newCurrencyState.primaryCurrencyOut -= primaryLiquidityFees;
         liquidityFees.valueMap.erase(importCurrencyID);
     }
     if (burnedChangePrice > 0)
@@ -3082,7 +3087,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             LogPrintf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice);
             return false;
         }
-        newCurrencyState.supply -= burnedChangePrice;
+        totalPrimaryOut += burnedChangePrice;
     }
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
@@ -3181,9 +3186,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             newCurrencyState.reserveIn[i] = vResConverted[i] + vLiquidityFees[i];
             newCurrencyState.reserveOut[i] = vResOutConverted[i];
             newCurrencyState.reserves[i] += isFractional ? (vResConverted[i] - vResOutConverted[i]) + vLiquidityFees[i] : 0;
-            newCurrencyState.primaryCurrencyIn[i] = vFracConverted[i];
-            newCurrencyState.supply += (vFracOutConverted[i] - vFracConverted[i]);
+            totalPrimaryIn += (newCurrencyState.primaryCurrencyIn[i] = vFracConverted[i]);
+            totalPrimaryOut += vFracOutConverted[i];
         }
+        newCurrencyState.supply += (totalPrimaryOut - totalPrimaryIn);
     }
     else
     {
@@ -3194,8 +3200,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
             newCurrencyState.reserveIn[i] = vResConverted[i] + vLiquidityFees[i];
-            newCurrencyState.reserves[i] += (isFractional ? vResConverted[i] - vResOutConverted[i] : 0);
-            newCurrencyState.supply += (isFractional ? 0 : (vFracOutConverted[i] - vFracConverted[i]));
+            if (isFractional)
+            {
+                newCurrencyState.reserves[i] += (vResConverted[i] - vResOutConverted[i]) + vLiquidityFees[i];
+            }
+            else
+            {
+                CAmount newPrimaryOut = vFracOutConverted[i] - vFracConverted[i];
+                newCurrencyState.supply += newPrimaryOut;
+                totalPrimaryIn += newPrimaryOut;
+                totalPrimaryOut += newPrimaryOut;
+            }
         }
     }
 
@@ -3312,8 +3327,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
-    spentCurrencyOut.valueMap.clear();
-
     if (newCurrencyState.IsRefunding())
     {
         preAllocTotal = 0;
@@ -3340,6 +3353,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (totalMinted || preAllocTotal || totalPreconverted)
     {
         newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal + totalPreconverted);
+        totalPrimaryOut += (totalMinted + preAllocTotal + totalPreconverted);
+        totalPrimaryIn += (totalMinted + preAllocTotal + totalPreconverted);
     }
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
@@ -3348,6 +3363,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     //printf("%s currencies: %s\n", __func__, ToUniValue().write(1,2).c_str());
 
+    if (totalPrimaryIn)
+    {
+        ReserveInputs.valueMap[importCurrencyID] = totalPrimaryIn;
+    }
+
+    spentCurrencyOut.valueMap.clear();
+    if (totalPrimaryOut)
+    {
+        spentCurrencyOut.valueMap[importCurrencyID] = totalPrimaryOut;
+    }
+
     for (auto &oneInOut : currencies)
     {
         if (oneInOut.first == importCurrencyID)
@@ -3355,8 +3381,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             if (oneInOut.second.nativeOutConverted)
             {
                 newCurrencyState.primaryCurrencyOut += oneInOut.second.nativeOutConverted;
-                spentCurrencyOut.valueMap[oneInOut.first] += oneInOut.second.nativeOutConverted;
-                ReserveInputs.valueMap[oneInOut.first] += newCurrencyState.primaryCurrencyOut;
+                ReserveInputs.valueMap[importCurrencyID] += oneInOut.second.nativeOutConverted;
             }
 
             if (oneInOut.first == systemDestID)
@@ -3366,7 +3391,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
         else
         {
-            ReserveInputs.valueMap[importCurrencyID] += oneInOut.second.nativeOutConverted;
             if (oneInOut.first == systemDestID)
             {
                 systemOutConverted += oneInOut.second.reserveOutConverted;
@@ -3375,9 +3399,20 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 ReserveInputs.valueMap[oneInOut.first] = oneInOut.second.reserveIn + oneInOut.second.reserveOutConverted;
             }
-            if (oneInOut.second.reserveOut)
+            if (liquidityFees.valueMap.count(oneInOut.first))
             {
-                spentCurrencyOut.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
+                ReserveInputs.valueMap[oneInOut.first] += liquidityFees.valueMap[oneInOut.first];
+            }
+            if (oneInOut.second.reserveOut || oneInOut.second.reserveOutConverted)
+            {
+                if (oneInOut.first == systemDestID)
+                {
+                    spentCurrencyOut.valueMap[oneInOut.first] = nativeOut;
+                }
+                else
+                {
+                    spentCurrencyOut.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
+                }
             }
         }
     }
@@ -3392,20 +3427,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         // this does not have meaning besides a store of the system currency output that was converted
         currencies[importCurrencyID].reserveOutConverted = systemOutConverted;
     }
-    if (nativeIn || systemOutConverted)
-    {
-        ReserveInputs.valueMap[systemDestID] = std::max(nativeIn, systemOutConverted);
-    }
 
-    if (nativeOut)
-    {
-        spentCurrencyOut.valueMap[systemDestID] += (importCurrencyID == systemDestID) ? nativeOut - systemOutConverted : nativeOut;
-    }
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
-    if (burnedChangePrice + burnedChangeWeight)
-    {
-        spentCurrencyOut.valueMap[importCurrencyID] += (burnedChangePrice + burnedChangeWeight);
-    }
 
     /*printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
     printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\ncheckAgainstInputs: %s\n", 
@@ -3413,7 +3436,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         spentCurrencyOut.ToUniValue().write(1,2).c_str(), 
         (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str(), 
         checkAgainstInputs.ToUniValue().write(1,2).c_str());
-    */
+    //*/
+
+    /*UniValue jsonTx(UniValue::VOBJ);
+    CMutableTransaction mtx;
+    mtx.vout = vOutputs;
+    TxToUniv(mtx, uint256(), jsonTx);
+    printf("%s: outputsOnTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+    //*/
 
     if ((ReserveInputs - checkAgainstInputs).HasNegative())
     {

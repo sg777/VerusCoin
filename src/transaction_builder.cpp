@@ -297,9 +297,9 @@ TransactionBuilderResult TransactionBuilder::Build()
         }
         if (change < 0 || reserveChange.HasNegative()) {
             // it's possible this is an import transaction that is minting currency
-            UniValue jsonTx(UniValue::VOBJ);
-            TxToUniv(mtx, uint256(), jsonTx);
-            printf("%s: mtx: %s\n", __func__, jsonTx.write(1,2).c_str());
+            //UniValue jsonTx(UniValue::VOBJ);
+            //TxToUniv(mtx, uint256(), jsonTx);
+            //printf("%s: mtx: %s\n", __func__, jsonTx.write(1,2).c_str());
             printf("%s: Change cannot be negative, %s\n", __func__, ("native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write()).c_str());
             return TransactionBuilderResult("Change cannot be negative, native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write() + "\n");
         }

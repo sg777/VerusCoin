@@ -2230,8 +2230,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             gatewayChange = totalDepositsInput - gatewayDepositsUsed;
 
-            //printf("%s: gatewayDepositsUsed: %s\n", __func__, gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
-            //printf("%s: gatewayChange: %s\n", __func__, gatewayChange.ToUniValue().write(1,2).c_str());
+            /*printf("%s: gatewayDepositsUsed: %s\n", __func__, gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
+            printf("%s: gatewayChange: %s\n", __func__, gatewayChange.ToUniValue().write(1,2).c_str());
+            //*/
 
             // we should always be able to fulfill
             // gateway despoit requirements, or this is an error
@@ -2329,13 +2330,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             tb.AddTransparentInput(oneOut.txIn.prevout, oneOut.scriptPubKey, oneOut.nValue);
         }
 
-        /*
-        for (auto &oneIn : tb.mtx.vin)
+        
+        /*for (auto &oneIn : tb.mtx.vin)
         {
             UniValue scriptObj(UniValue::VOBJ);
             printf("%s: oneInput - hash: %s, n: %d\n", __func__, oneIn.prevout.hash.GetHex().c_str(), oneIn.prevout.n);
         }
-        */
+        //*/
 
         // we will keep reserve deposit change to single currency outputs to ensure aggregation of like currencies and
         // prevent fragmentation edge cases
@@ -2379,12 +2380,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // ins and outs are correct. now calculate the fee correctly here and set the transaction builder accordingly
         // to prevent an automatic change output. we could just let it go and have a setting to stop creation of a change output,
         // but this is a nice doublecheck requirement
-        /* printf("%s: reserveInMap:\n%s\nspentCurrencyOut:\n%s\nccx.totalAmounts:\n%s\nccx.totalFees:\n%s\n",
+        /*printf("%s: reserveInMap:\n%s\nspentCurrencyOut:\n%s\nccx.totalAmounts:\n%s\nccx.totalFees:\n%s\n",
                 __func__,
                 reserveInMap.ToUniValue().write(1,2).c_str(),
                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
                 ccx.totalAmounts.ToUniValue().write(1,2).c_str(),
-                ccx.totalFees.ToUniValue().write(1,2).c_str()); */
+                ccx.totalFees.ToUniValue().write(1,2).c_str()); //*/
 
         // pay the fee out to the miner
         CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight);
