@@ -2318,8 +2318,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 LogPrintf("%s: insufficient funds for local reserve deposits for currency %s, have:\n%s, need:\n%s\n", 
                           __func__, 
                           EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(),
-                          totalDepositsInput.ToUniValue().write(1,2).c_str(),
-                          newLocalDepositsRequired.ToUniValue().write(1,2).c_str());
+                          (totalDepositsInput + incomingCurrency).ToUniValue().write(1,2).c_str(),
+                          spentCurrencyOut.ToUniValue().write(1,2).c_str());
                 return false;
             }
         }
@@ -2330,7 +2330,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             tb.AddTransparentInput(oneOut.txIn.prevout, oneOut.scriptPubKey, oneOut.nValue);
         }
 
-        
         /*for (auto &oneIn : tb.mtx.vin)
         {
             UniValue scriptObj(UniValue::VOBJ);
