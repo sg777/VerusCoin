@@ -2036,7 +2036,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CCurrencyValueMap incomingCurrency = importedCurrency + gatewayDepositsUsed;
         CCurrencyValueMap newLocalReserveDeposits;
         CCurrencyValueMap newLocalDepositsRequired;
-        CAmount newPrimaryCurrency = (newNotarization.currencyState.primaryCurrencyOut - newNotarization.currencyState.preConvertedOut);
+        CAmount newPrimaryCurrency = newNotarization.currencyState.primaryCurrencyOut;
+        if (destCur.IsPBaaSChain() && !lastNotarization.IsPreLaunch())
+        {
+            newPrimaryCurrency -= newNotarization.currencyState.preConvertedOut;
+        }
         if (newPrimaryCurrency > 0)
         {
             incomingCurrency.valueMap[destCurID] += newPrimaryCurrency;
@@ -2315,7 +2319,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             newLocalReserveDeposits = ((totalDepositsInput + incomingCurrency) - spentCurrencyOut).CanonicalMap();
 
-            /*printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
+            /* printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
                 newLocalReserveDeposits.ToUniValue().write(1,2).c_str()); //*/
