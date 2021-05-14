@@ -1409,9 +1409,86 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
     }
 }
 
+UniValue getreservedeposits(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getreservedeposits \"currencyname\"\n"
+            "\nReturns all deposits under control of the specified currency or chain. If the currency is of an external system\n"
+            "or chain, all deposits will be under the control of that system or chain only, not its independent currencies.\n"
+
+            "\nArguments\n"
+            "1. \"currencyname\"       (string, optional) full name or i-ID of controlling currency\n"
+
+            "\nResult:\n"
+            "  {\n"
+            "  }\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getreservedeposits", "\"currencyname\"")
+            + HelpExampleRpc("getreservedeposits", "\"currencyname\"")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+
+    LOCK(cs_main);
+
+    CCurrencyDefinition chainDef;
+
+    uint160 chainID = ValidateCurrencyName(uni_get_str(params[0]), true, &chainDef);
+
+    if (chainID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency or currency not found " + uni_get_str(params[0]));
+    }
+
+    int32_t defHeight;
+    std::vector<CInputDescriptor> reserveDeposits;
+
+    {
+        LOCK(mempool.cs);
+        CCoinsView dummy;
+        CCoinsViewCache view(&dummy);
+        CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+        view.SetBackend(viewMemPool);
+        if (!ConnectedChains.GetReserveDeposits(chainID, view, reserveDeposits))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Error checking for reserve deposits");
+        }
+    }
+
+    CCurrencyValueMap totalReserveDeposits;
+    for (auto &oneDeposit : reserveDeposits)
+    {
+        CReserveDeposit rd;
+        COptCCParams p;
+        if (oneDeposit.scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.evalCode == EVAL_RESERVE_DEPOSIT &&
+            p.vData.size() &&
+            (rd = CReserveDeposit(p.vData[0])).IsValid())
+        {
+            totalReserveDeposits += rd.reserveValues;
+        }
+    }
+
+    UniValue ret(UniValue::VOBJ);
+
+    if (totalReserveDeposits.valueMap.size())
+    {
+        for (auto &oneBalance : totalReserveDeposits.valueMap)
+        {
+            ret.push_back(make_pair(EncodeDestination(CIdentityID(oneBalance.first)), ValueFromAmount(oneBalance.second)));
+        }
+    }
+    return ret;
+}
+
 UniValue getpendingtransfers(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() > 1)
+    if (fHelp || params.size() != 1)
     {
         throw runtime_error(
             "getpendingtransfers \"chainname\"\n"
@@ -7064,6 +7141,7 @@ static const CRPCCommand commands[] =
     { "multichain",   "listcurrencies",               &listcurrencies,         true  },
     { "multichain",   "getcurrencyconverters",        &getcurrencyconverters,  true  },
     { "multichain",   "getcurrency",                  &getcurrency,            true  },
+    { "multichain",   "getreservedeposits",           &getreservedeposits,     true  },
     { "multichain",   "getnotarizationdata",          &getnotarizationdata,    true  },
     { "multichain",   "getlaunchinfo",                &getlaunchinfo,          true  },
     { "multichain",   "getbestproofroot",             &getbestproofroot,       true  },
