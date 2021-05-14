@@ -2036,17 +2036,18 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CCurrencyValueMap incomingCurrency = importedCurrency + gatewayDepositsUsed;
         CCurrencyValueMap newLocalReserveDeposits;
         CCurrencyValueMap newLocalDepositsRequired;
-        if (newNotarization.currencyState.primaryCurrencyOut > 0)
+        CAmount newPrimaryCurrency = (newNotarization.currencyState.primaryCurrencyOut - newNotarization.currencyState.preConvertedOut);
+        if (newPrimaryCurrency > 0)
         {
-            incomingCurrency.valueMap[destCurID] += newNotarization.currencyState.primaryCurrencyOut;
+            incomingCurrency.valueMap[destCurID] += newPrimaryCurrency;
         }
         newLocalReserveDeposits = incomingCurrency.SubtractToZero(spentCurrencyOut);
         newLocalDepositsRequired += (((incomingCurrency - spentCurrencyOut) - newLocalReserveDeposits).CanonicalMap() * -1);
-        if (newNotarization.currencyState.primaryCurrencyOut < 0)
+        if (newPrimaryCurrency < 0)
         {
             // we need to come up with this currency, as it will be burned
-            incomingCurrency.valueMap[destCurID] += newNotarization.currencyState.primaryCurrencyOut;
-            newLocalDepositsRequired.valueMap[destCurID] -= newNotarization.currencyState.primaryCurrencyOut;
+            incomingCurrency.valueMap[destCurID] += newPrimaryCurrency;
+            newLocalDepositsRequired.valueMap[destCurID] -= newPrimaryCurrency;
         }
 
         /* printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());

@@ -3087,7 +3087,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             LogPrintf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice);
             return false;
         }
-        totalPrimaryOut += burnedChangePrice;
     }
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
@@ -3381,7 +3380,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             if (oneInOut.second.nativeOutConverted)
             {
                 newCurrencyState.primaryCurrencyOut += oneInOut.second.nativeOutConverted;
-                ReserveInputs.valueMap[importCurrencyID] += oneInOut.second.nativeOutConverted;
+                // if negative, it will be part of spent output, and we add only reserve in, since
+                // if it is not being created for us, we must get it from some input
+                if (oneInOut.second.nativeOutConverted > 0)
+                {
+                    ReserveInputs.valueMap[importCurrencyID] += oneInOut.second.nativeOutConverted;
+                }
+                ReserveInputs.valueMap[importCurrencyID] += oneInOut.second.reserveIn;
             }
 
             if (oneInOut.first == systemDestID)
@@ -3405,16 +3410,21 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
             if (oneInOut.second.reserveOut || oneInOut.second.reserveOutConverted)
             {
-                if (oneInOut.first == systemDestID)
-                {
-                    spentCurrencyOut.valueMap[oneInOut.first] = nativeOut;
-                }
-                else
+                if (oneInOut.first != systemDestID)
                 {
                     spentCurrencyOut.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
                 }
             }
         }
+    }
+
+    if (nativeIn)
+    {
+        ReserveInputs.valueMap[systemDestID] = nativeIn;
+    }
+    if (nativeOut)
+    {
+        spentCurrencyOut.valueMap[systemDestID] = nativeOut;
     }
 
     if (importCurrencyDef.IsPBaaSChain())
