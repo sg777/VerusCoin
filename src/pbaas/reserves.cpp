@@ -3184,6 +3184,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         vResOutConverted = (ReserveOutConvertedMap(importCurrencyID) + totalCarveOuts).AsCurrencyVector(newCurrencyState.currencies);
         vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
         vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
+        CAmount totalNewFrac = 0;
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
             newCurrencyState.reserveIn[i] = vResConverted[i] + vLiquidityFees[i];
@@ -3196,8 +3197,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
             netPrimaryIn += (newCurrencyState.primaryCurrencyIn[i] = vFracConverted[i]);
             netPrimaryOut += vFracOutConverted[i];
+            totalNewFrac += vFracOutConverted[i];
+
         }
         newCurrencyState.supply += (netPrimaryOut - netPrimaryIn);
+        netPrimaryIn += totalNewFrac;
     }
     else
     {
@@ -3451,27 +3455,27 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
 
-    /* printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
-    printf("newConvertedReservePool: %s\n", newConvertedReservePool.ToUniValue().write(1,2).c_str());
-    printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\ncheckAgainstInputs: %s\nreserveBalanceInMap: %s\ntotalNativeFee: %ld, totalVerusFee: %ld\n", 
-        ReserveInputs.ToUniValue().write(1,2).c_str(), 
-        spentCurrencyOut.ToUniValue().write(1,2).c_str(), 
-        (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str(), 
-        checkAgainstInputs.ToUniValue().write(1,2).c_str(),
-        reserveBalanceInMap.ToUniValue().write(1,2).c_str(),
-        totalNativeFee,
-        totalVerusFee);
-    //*/
-
-    /*UniValue jsonTx(UniValue::VOBJ);
-    CMutableTransaction mtx;
-    mtx.vout = vOutputs;
-    TxToUniv(mtx, uint256(), jsonTx);
-    printf("%s: outputsOnTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
-    //*/
-
     if (((ReserveInputs + newConvertedReservePool) - checkAgainstInputs).HasNegative())
     {
+        /*printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
+        printf("newConvertedReservePool: %s\n", newConvertedReservePool.ToUniValue().write(1,2).c_str());
+        printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\ncheckAgainstInputs: %s\nreserveBalanceInMap: %s\ntotalNativeFee: %ld, totalVerusFee: %ld\n", 
+            ReserveInputs.ToUniValue().write(1,2).c_str(), 
+            spentCurrencyOut.ToUniValue().write(1,2).c_str(), 
+            (ReserveInputs - spentCurrencyOut).ToUniValue().write(1,2).c_str(), 
+            checkAgainstInputs.ToUniValue().write(1,2).c_str(),
+            reserveBalanceInMap.ToUniValue().write(1,2).c_str(),
+            totalNativeFee,
+            totalVerusFee);
+        //*/
+
+        /*UniValue jsonTx(UniValue::VOBJ);
+        CMutableTransaction mtx;
+        mtx.vout = vOutputs;
+        TxToUniv(mtx, uint256(), jsonTx);
+        printf("%s: outputsOnTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+        //*/
+
         printf("%s: Too much fee taken by export, ReserveInputs: %s\nReserveOutputs: %s\n", __func__,
                 ReserveInputs.ToUniValue().write(1,2).c_str(), 
                 spentCurrencyOut.ToUniValue().write(1,2).c_str());
