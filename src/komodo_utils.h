@@ -1952,14 +1952,13 @@ void komodo_args(char *argv0)
     memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
     strcpy(ASSETCHAINS_SYMBOL, name.c_str());
 
-    /*
     KOMODO_STOPAT = GetArg("-stopat",0);
+    /*
     ASSETCHAINS_CC = GetArg("-ac_cc",1);
     KOMODO_CCACTIVATE = GetArg("-ac_ccactivate",0);
     ASSETCHAINS_PUBLIC = GetArg("-ac_public",0);
     ASSETCHAINS_PRIVATE = GetArg("-ac_private",0);
     */
-    KOMODO_STOPAT = 0;
     ASSETCHAINS_CC = 1;
     KOMODO_CCACTIVATE = 0;
     ASSETCHAINS_PUBLIC = 0;
