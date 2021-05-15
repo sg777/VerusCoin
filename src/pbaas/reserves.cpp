@@ -2165,7 +2165,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                            importCurrencyID,
                                            CTransferDestination());
         }
-        else if (importCurrencyState.IsRefunding() || (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()))
+        else if (importCurrencyState.IsRefunding() ||
+                 (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
+                 (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
             curTransfer = exportObjects[i].GetRefundTransfer();
         }
@@ -2207,7 +2209,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             if (i == exportObjects.size())
             {
                 // only tokens release pre-allocations here
-                // PBaaS chain pre-allocations come out of the coinbase, not the first import
+                // PBaaS chain pre-allocations and initial pre-conversion
+                // supply come out of the coinbase, since we don't mint
+                // native currency out of a non-coinbase import
                 if (importCurrencyState.IsLaunchClear())
                 {
                     // we need to pay 1/2 of the launch cost for the launch system in launch fees
@@ -2236,6 +2240,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             // first time with launch clear on prelaunch, start supply at initial supply
                             newCurrencyState.supply = newCurrencyState.initialSupply;
                         }
+
                         // if we have finished importing all pre-launch exports, create all pre-allocation outputs
                         for (auto &onePreAlloc : importCurrencyDef.preAllocation)
                         {
@@ -3326,7 +3331,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     // if this is a PBaaS launch, mint all required preconversion along with preallocation
-    CAmount totalPreconverted = 0;
+    CAmount totalPreconverted = newCurrencyState.preConvertedOut;
     if (importCurrencyDef.IsPBaaSChain() && newCurrencyState.IsLaunchClear() && newCurrencyState.IsLaunchConfirmed())
     {
         // if this is our launch currency issue any necessary pre-converted supply and add it to reserve deposits
@@ -3365,8 +3370,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (totalMinted || preAllocTotal || totalPreconverted)
     {
         newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal + totalPreconverted);
-        netPrimaryOut += (totalMinted + preAllocTotal + totalPreconverted);
+        netPrimaryOut += (totalMinted + preAllocTotal + newCurrencyState.preConvertedOut);
         netPrimaryIn += (totalMinted + preAllocTotal + totalPreconverted);
+        if (totalPreconverted != newCurrencyState.preConvertedOut)
+        {
+            newCurrencyState.primaryCurrencyOut += (totalPreconverted - newCurrencyState.preConvertedOut);
+            importedCurrency.valueMap[importCurrencyID] += (totalPreconverted - newCurrencyState.preConvertedOut);
+        }
     }
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
@@ -3384,12 +3394,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (netPrimaryOut)
     {
         spentCurrencyOut.valueMap[importCurrencyID] = netPrimaryOut;
-    }
-
-    if (newCurrencyState.IsLaunchConfirmed() && newCurrencyState.preConvertedOut)
-    {
-        ReserveInputs.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
-        spentCurrencyOut.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
     }
 
     for (auto &oneInOut : currencies)

@@ -458,7 +458,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     for (int i = 0; i < exportTransfers.size(); i++)
     {
-        CReserveTransfer &reserveTransfer = exportTransfers[i];
+        CReserveTransfer reserveTransfer = exportTransfers[i];
 
         // add the pre-mutation reserve transfer to the hash
         hw << reserveTransfer;
@@ -471,10 +471,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         // maximum pre-conversions
         else if (reserveTransfer.IsPreConversion())
         {
-            if (lastExportHeight >= (destCurrency.startBlock - 1))
+            if (IsLaunchComplete())
             {
-                //printf("%s: Invalid pre-conversion, mined after start block\n", __func__);
-                LogPrintf("%s: Invalid pre-conversion, mined after start block\n", __func__);
+                //printf("%s: Invalid pre-conversion, mined on or after start block\n", __func__);
+                LogPrintf("%s: Invalid pre-conversion, mined on or after start block\n", __func__);
                 reserveTransfer = reserveTransfer.GetRefundTransfer();
             }
             else
@@ -493,8 +493,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
         else if (reserveTransfer.IsConversion())
         {
-            if (!((destCurrency.systemID != sourceSystemID && newNotarization.IsLaunchCleared()) || 
-                  newNotarization.currencyState.IsLaunchCompleteMarker()))
+            if (!IsLaunchComplete())
             {
                 //printf("%s: Invalid conversion, mined before start block\n", __func__);
                 LogPrintf("%s: Invalid conversion, mined before start block\n", __func__);
@@ -579,7 +578,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(tempState.currencies);
             tempState.reserves = tempState.AddVectors(tempState.reserves, newReservesVector);
             newNotarization.currencyState.conversionPrice = tempState.PricesInReserve();
-
         }
 
         std::vector<CTxOut> tempOutputs;
