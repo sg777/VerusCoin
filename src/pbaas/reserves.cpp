@@ -3332,15 +3332,25 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     // if this is a PBaaS launch, mint all required preconversion along with preallocation
     CAmount totalPreconverted = newCurrencyState.preConvertedOut;
-    if (importCurrencyDef.IsPBaaSChain() && newCurrencyState.IsLaunchClear() && newCurrencyState.IsLaunchConfirmed())
+    if (newCurrencyState.IsLaunchClear() && newCurrencyState.IsLaunchConfirmed())
     {
-        // if this is our launch currency issue any necessary pre-converted supply and add it to reserve deposits
-        if (importCurrencyID == ASSETCHAINS_CHAINID &&
-            importCurrencyState.reserveIn.size() == 1 && 
-            importCurrencyState.reserveIn[0])
+        if (importCurrencyState.IsPrelaunch())
         {
-            // add new native currency to reserve deposits for imports
-            totalPreconverted = newCurrencyState.ReserveToNativeRaw(importCurrencyState.reserveIn[0], newCurrencyState.conversionPrice[0]);
+            // if this is our launch currency issue any necessary pre-converted supply and add it to reserve deposits
+            if (importCurrencyID == ASSETCHAINS_CHAINID &&
+                importCurrencyDef.IsPBaaSChain() &&
+                importCurrencyState.reserveIn.size() == 1 && 
+                importCurrencyState.reserveIn[0])
+            {
+                // add new native currency to reserve deposits for imports
+                // total converted in this import should be added to the total from before
+                CAmount oldReservesIn = newCurrencyState.reserveIn[0] - importCurrencyState.reserveIn[0];
+                totalPreconverted += newCurrencyState.ReserveToNativeRaw(oldReservesIn, newCurrencyState.conversionPrice[0]);
+            }
+        }
+        else
+        {
+            newCurrencyState.preConvertedOut = totalPreconverted = importCurrencyState.preConvertedOut;
         }
     }
 
@@ -3367,11 +3377,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         //printf("new currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
     }
 
-    if (totalMinted || preAllocTotal || totalPreconverted)
+    if (totalMinted || preAllocTotal)
     {
-        newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal + totalPreconverted);
-        netPrimaryOut += (totalMinted + preAllocTotal + newCurrencyState.preConvertedOut);
-        netPrimaryIn += (totalMinted + preAllocTotal + totalPreconverted);
+        newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal);
+        netPrimaryOut += (totalMinted + preAllocTotal);
+        netPrimaryIn += (totalMinted + preAllocTotal);
+    }
+
+    if (totalPreconverted)
+    {
+        netPrimaryOut += newCurrencyState.preConvertedOut;
+        netPrimaryIn += totalPreconverted;
         if (totalPreconverted != newCurrencyState.preConvertedOut)
         {
             newCurrencyState.primaryCurrencyOut += (totalPreconverted - newCurrencyState.preConvertedOut);
