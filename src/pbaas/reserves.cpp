@@ -3472,7 +3472,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     {
         if (importCurrencyID == systemDestID)
         {
-            spentCurrencyOut.valueMap[systemDestID] += (nativeOut - netPrimaryIn);
+            spentCurrencyOut.valueMap[systemDestID] += (nativeOut - netPrimaryOut);
         }
         else
         {
