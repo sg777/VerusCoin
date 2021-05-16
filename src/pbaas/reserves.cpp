@@ -1766,6 +1766,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         {
                             importGeneratedCurrency.valueMap[cci.importCurrencyID] = newState.primaryCurrencyOut;
                         }
+                        if (nHeight == 1 && cci.importCurrencyID == ASSETCHAINS_CHAINID)
+                        {
+                            importGeneratedCurrency.valueMap[ASSETCHAINS_CHAINID] += gatewayDeposits.valueMap[ASSETCHAINS_CHAINID];
+                        }
 
                         /*
                         printf("%s: importGeneratedCurrency:\n%s\nnewState:\n%s\n", 
@@ -3331,11 +3335,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     // if this is a PBaaS launch, mint all required preconversion along with preallocation
-    CAmount totalPreconverted = newCurrencyState.preConvertedOut;
-    if (newCurrencyState.IsLaunchClear() && newCurrencyState.IsLaunchConfirmed())
+    CAmount extraPreconverted = 0;
+    if (importCurrencyDef.IsPBaaSChain() && newCurrencyState.IsLaunchClear() && newCurrencyState.IsLaunchConfirmed())
     {
         if (importCurrencyState.IsPrelaunch())
         {
+            extraPreconverted = newCurrencyState.preConvertedOut;
             // if this is our launch currency issue any necessary pre-converted supply and add it to reserve deposits
             if (importCurrencyID == ASSETCHAINS_CHAINID &&
                 importCurrencyDef.IsPBaaSChain() &&
@@ -3345,12 +3350,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // add new native currency to reserve deposits for imports
                 // total converted in this import should be added to the total from before
                 CAmount oldReservesIn = newCurrencyState.reserveIn[0] - importCurrencyState.reserveIn[0];
-                totalPreconverted += newCurrencyState.ReserveToNativeRaw(oldReservesIn, newCurrencyState.conversionPrice[0]);
+                extraPreconverted += newCurrencyState.ReserveToNativeRaw(oldReservesIn, newCurrencyState.conversionPrice[0]);
             }
+            newCurrencyState.preConvertedOut = extraPreconverted;
         }
         else
         {
-            newCurrencyState.preConvertedOut = totalPreconverted = importCurrencyState.preConvertedOut;
+            extraPreconverted = importCurrencyState.preConvertedOut - newCurrencyState.preConvertedOut;
         }
     }
 
@@ -3358,7 +3364,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     {
         preAllocTotal = 0;
         totalMinted = 0;
-        totalPreconverted = 0;
+        extraPreconverted = 0;
     }
 
     if (isFractional && importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
@@ -3384,15 +3390,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         netPrimaryIn += (totalMinted + preAllocTotal);
     }
 
-    if (totalPreconverted)
+    netPrimaryOut += newCurrencyState.preConvertedOut;
+    netPrimaryIn += newCurrencyState.preConvertedOut + extraPreconverted;
+
+    if (extraPreconverted)
     {
-        netPrimaryOut += newCurrencyState.preConvertedOut;
-        netPrimaryIn += totalPreconverted;
-        if (totalPreconverted != newCurrencyState.preConvertedOut)
-        {
-            newCurrencyState.primaryCurrencyOut += (totalPreconverted - newCurrencyState.preConvertedOut);
-            importedCurrency.valueMap[importCurrencyID] += (totalPreconverted - newCurrencyState.preConvertedOut);
-        }
+        gatewayDepositsIn.valueMap[importCurrencyID] += extraPreconverted;
     }
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
@@ -3410,17 +3413,28 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (netPrimaryOut)
     {
         spentCurrencyOut.valueMap[importCurrencyID] = netPrimaryOut;
+        if (importCurrencyID == systemDestID && 
+            extraPreconverted &&
+            !importCurrencyState.IsPrelaunch() &&
+            !importCurrencyState.IsLaunchClear())
+        {
+            spentCurrencyOut.valueMap[importCurrencyID] = netPrimaryOut;
+        }
+    }
+
+    newCurrencyState.primaryCurrencyOut = netPrimaryOut;
+    if (importCurrencyDef.IsPBaaSChain() && !importCurrencyState.IsPrelaunch() && !importCurrencyState.IsLaunchClear())
+    {
+        // pre-conversions should already be on this chain as gateway deposits on behalf of the
+        // launching chain
+        newCurrencyState.primaryCurrencyOut -= newCurrencyState.preConvertedOut;
+        gatewayDepositsIn.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
     }
 
     for (auto &oneInOut : currencies)
     {
         if (oneInOut.first == importCurrencyID)
         {
-            if (oneInOut.second.nativeOutConverted)
-            {
-                newCurrencyState.primaryCurrencyOut += oneInOut.second.nativeOutConverted;
-            }
-
             if (oneInOut.first == systemDestID)
             {
                 systemOutConverted += oneInOut.second.nativeOutConverted;
@@ -3462,11 +3476,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
-    if (importCurrencyDef.IsPBaaSChain())
-    {
-        newCurrencyState.primaryCurrencyOut += (totalPreconverted - newCurrencyState.preConvertedOut);
-    }
-
     if (systemOutConverted && importCurrencyID != systemDestID)
     {
         // this does not have meaning besides a store of the system currency output that was converted
@@ -3477,7 +3486,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     if (((ReserveInputs + newConvertedReservePool) - checkAgainstInputs).HasNegative())
     {
-        /*printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
+        printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
         printf("newConvertedReservePool: %s\n", newConvertedReservePool.ToUniValue().write(1,2).c_str());
         printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\ncheckAgainstInputs: %s\nreserveBalanceInMap: %s\ntotalNativeFee: %ld, totalVerusFee: %ld\n", 
             ReserveInputs.ToUniValue().write(1,2).c_str(), 

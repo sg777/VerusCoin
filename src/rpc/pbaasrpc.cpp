@@ -1453,9 +1453,10 @@ UniValue getreservedeposits(const UniValue& params, bool fHelp)
         CCoinsViewCache view(&dummy);
         CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
         view.SetBackend(viewMemPool);
+
         if (!ConnectedChains.GetReserveDeposits(chainID, view, reserveDeposits))
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Error checking for reserve deposits");
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Error getting reserve deposits for on-chain currency");
         }
     }
 
@@ -1470,6 +1471,7 @@ UniValue getreservedeposits(const UniValue& params, bool fHelp)
             p.vData.size() &&
             (rd = CReserveDeposit(p.vData[0])).IsValid())
         {
+            rd.reserveValues.valueMap[ASSETCHAINS_CHAINID] = oneDeposit.nValue;
             totalReserveDeposits += rd.reserveValues;
         }
     }

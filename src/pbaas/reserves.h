@@ -1437,12 +1437,7 @@ public:
     {
         priorWeights = weights;
         emitted = 0;
-        // this value is calculated at pre-launch and preserved through
-        // launch clear post launch
-        if (!(IsLaunchClear() && !IsPrelaunch()))
-        {
-            primaryCurrencyOut = 0;
-        }
+        primaryCurrencyOut = 0;
         preConvertedOut = 0;
         primaryCurrencyFees = 0;
         primaryCurrencyConversionFees = 0;

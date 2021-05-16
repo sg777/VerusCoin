@@ -911,7 +911,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 gatewayDeposits += originalFees;
             }
 
-            gatewayDeposits.valueMap[newCurID] += newNotarization.currencyState.primaryCurrencyOut;
+            gatewayDeposits.valueMap[newCurID] += gatewayDepositsUsed.valueMap[newCurID] + newNotarization.currencyState.primaryCurrencyOut;
 
             printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
@@ -933,7 +933,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 // create the import thread output
                 depositCp = CCinit(&depositCC, EVAL_RESERVE_DEPOSIT);
                 std::vector<CTxDestination> depositDests({CPubKey(ParseHex(depositCC.CChexstr))});
-                CReserveDeposit rd(newCurID, gatewayDeposits);
+                // put deposits under control of the launch system, where the imports using them will be coming from
+                CReserveDeposit rd(newCurrency.IsPBaaSChain() ? newCurrency.launchSystemID : newCurID, gatewayDeposits);
                 CAmount nativeOut = gatewayDeposits.valueMap.count(ASSETCHAINS_CHAINID) ? gatewayDeposits.valueMap[ASSETCHAINS_CHAINID] : 0;
                 outputs.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, depositDests, 1, &rd))));
             }

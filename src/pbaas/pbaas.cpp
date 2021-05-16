@@ -1622,6 +1622,7 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
     std::map<COutPoint, CInputDescriptor> memPoolOuts;
     for (auto &oneUnconfirmed : unconfirmedUTXOs)
     {
+        COptCCParams p;
         if (!oneUnconfirmed.first.spending &&
             view.GetCoins(oneUnconfirmed.first.txhash, coin) && 
             coin.IsAvailable(oneUnconfirmed.first.index))
@@ -2037,10 +2038,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CCurrencyValueMap newLocalReserveDeposits;
         CCurrencyValueMap newLocalDepositsRequired;
         CAmount newPrimaryCurrency = newNotarization.currencyState.primaryCurrencyOut;
-        if (destCur.IsPBaaSChain() && !lastNotarization.IsPreLaunch())
-        {
-            newPrimaryCurrency -= newNotarization.currencyState.preConvertedOut;
-        }
         if (newPrimaryCurrency > 0)
         {
             incomingCurrency.valueMap[destCurID] += newPrimaryCurrency;
@@ -2285,7 +2282,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
         }
 
-        /*printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
         printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, incomingCurrency.ToUniValue().write(1,2).c_str());
@@ -2319,7 +2316,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             newLocalReserveDeposits = ((totalDepositsInput + incomingCurrency) - spentCurrencyOut).CanonicalMap();
 
-            /*printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
+            printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
                 newLocalReserveDeposits.ToUniValue().write(1,2).c_str()); //*/
@@ -3336,7 +3333,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     if (newReserveDeposits.valueMap.count(ASSETCHAINS_CHAINID))
     {
         nativeReserveDeposit += newReserveDeposits.valueMap[ASSETCHAINS_CHAINID];
-        newReserveDeposits.valueMap.erase(ASSETCHAINS_CHAINID);
     }
 
     CCcontract_info CC;
