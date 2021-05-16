@@ -3395,8 +3395,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         netPrimaryIn += (totalMinted + preAllocTotal);
     }
 
-    netPrimaryOut += newCurrencyState.preConvertedOut;
-    netPrimaryIn += newCurrencyState.preConvertedOut + extraPreconverted;
+    if (newCurrencyState.IsLaunchConfirmed())
+    {
+        netPrimaryOut += newCurrencyState.preConvertedOut;
+        netPrimaryIn += newCurrencyState.preConvertedOut + extraPreconverted;
+    }
 
     if (extraPreconverted)
     {
@@ -3419,7 +3422,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     newCurrencyState.primaryCurrencyOut = netPrimaryOut;
-    if (importCurrencyDef.IsPBaaSChain() && !importCurrencyState.IsPrelaunch() && !importCurrencyState.IsLaunchClear())
+    if (importCurrencyDef.IsPBaaSChain() && importCurrencyState.IsLaunchConfirmed() && !importCurrencyState.IsLaunchClear())
     {
         // pre-conversions should already be on this chain as gateway deposits on behalf of the
         // launching chain
