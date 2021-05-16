@@ -1206,6 +1206,11 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         }
 
         convertersToCreate.insert(converterCurrencyID);
+
+        for (auto &oneCurrency : converterCurDef.currencies)
+        {
+            blockOneCurrencies.insert(oneCurrency);
+        }
     }
 
     // Now, add block 1 imports, which provide a foundation of all IDs and currencies needed to launch the
