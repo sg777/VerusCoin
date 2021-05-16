@@ -2096,7 +2096,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     uint160 systemSourceID = systemSource.GetID();
     uint160 systemDestID = systemDest.GetID();  // native on destination system
     uint160 importCurrencyID = importCurrencyDef.GetID();
-    //printf("%s\n", importCurrencyDef.ToUniValue().write(1,2).c_str());
 
     // this matrix tracks n-way currency conversion
     // each entry contains the original amount of the row's (dim 0) currency to be converted to the currency position of its column
@@ -3176,6 +3175,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         for (auto &oneVal : preConvertedOutput.valueMap)
         {
             newCurrencyState.preConvertedOut += oneVal.second;
+            if (!newCurrencyState.IsPrelaunch() && !isFractional)
+            {
+                newCurrencyState.supply += oneVal.second;
+            }
         }
     }
 

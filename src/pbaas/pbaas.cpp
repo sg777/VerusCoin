@@ -1058,7 +1058,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         else
         {
             // supply is determined by purchases * current conversion rate
-            currencyState.supply = currencyState.initialSupply + curDef.GetTotalPreallocation();
+            currencyState.supply = curDef.gatewayConverterIssuance + curDef.GetTotalPreallocation();
         }
     }
 
@@ -1211,7 +1211,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                     else
                     {
                         // supply is determined by purchases * current conversion rate
-                        currencyState.supply = currencyState.initialSupply;
+                        currencyState.supply = curDef.GetTotalPreallocation();
                     }
 
                     for (auto &transfer : unspentTransfers)
