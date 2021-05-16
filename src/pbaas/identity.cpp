@@ -239,6 +239,43 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
 
     if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
+        if (!unspentOutputs.size() && !unspentNewIDX.size())
+        {
+            LOCK(mempool.cs);
+            // if we are a PBaaS chain and it is in block 1, get it from there
+            std::vector<CAddressIndexDbEntry> checkImported;
+            uint256 blockHash;
+            CTransaction blockOneCB;
+            COptCCParams p;
+            CIdentity firstIdentity;
+            uint160 identityIdx(CCrossChainRPCData::GetConditionID(idID, EVAL_IDENTITY_PRIMARY));
+            if (!IsVerusActive() &&
+                GetAddressIndex(identityIdx, CScript::P2IDX, checkImported, 1, 1) &&
+                checkImported.size() &&
+                myGetTransaction(checkImported[0].first.txhash, blockOneCB, blockHash) &&
+                blockOneCB.vout.size() > checkImported[0].first.index &&
+                blockOneCB.vout[checkImported[0].first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                p.vData.size() &&
+                (firstIdentity = CIdentity(p.vData[0])).IsValid())
+            {
+                if (pHeightOut)
+                {
+                    *pHeightOut = 1;
+                }
+                if (pIdTxIn)
+                {
+                    *pIdTxIn = CTxIn(checkImported[0].first.txhash, checkImported[0].first.index);
+                }
+                if (pidTx)
+                {
+                    *pidTx = blockOneCB;
+                }
+                return firstIdentity;
+            }
+        }
+
         // combine searches into 1 vector
         unspentOutputs.insert(unspentOutputs.begin(), unspentNewIDX.begin(), unspentNewIDX.end());
         CCoinsViewCache view(pcoinsTip);
