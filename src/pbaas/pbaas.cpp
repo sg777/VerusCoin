@@ -2282,7 +2282,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
         }
 
-        printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        /* printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
         printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, incomingCurrency.ToUniValue().write(1,2).c_str());
@@ -2316,7 +2316,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             newLocalReserveDeposits = ((totalDepositsInput + incomingCurrency) - spentCurrencyOut).CanonicalMap();
 
-            printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
+            /* printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
                 newLocalReserveDeposits.ToUniValue().write(1,2).c_str()); //*/
@@ -2440,10 +2440,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         TransactionBuilderResult result = tb.Build();
         if (result.IsError())
         {
-            UniValue jsonTx(UniValue::VOBJ);
+            /*UniValue jsonTx(UniValue::VOBJ);
             uint256 hashBlk;
             TxToUniv(tb.mtx, hashBlk, jsonTx);
-            printf("%s\n", jsonTx.write(1,2).c_str());
+            printf("%s\n", jsonTx.write(1,2).c_str()); //*/
             printf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             LogPrintf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             return false;
@@ -2469,7 +2469,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                     /*UniValue jsonTx(UniValue::VOBJ);
                     uint256 hashBlk;
                     TxToUniv(newImportTx, hashBlk, jsonTx);
-                    printf("%s\n", jsonTx.write(1,2).c_str()); */
+                    printf("%s\n", jsonTx.write(1,2).c_str()); //*/
                     printf("%s: cannot find input in view %s\n", __func__, oneIn.prevout.hash.GetHex().c_str());
                 }
             }

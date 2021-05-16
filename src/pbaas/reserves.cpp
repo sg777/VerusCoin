@@ -3080,6 +3080,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     // input of primary currency is sources in and output is sinks
     CAmount netPrimaryIn = 0;
     CAmount netPrimaryOut = 0;
+    spentCurrencyOut.valueMap.clear();
 
     // remove burned currency from supply
     //
@@ -3161,6 +3162,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 newCurrencyState.conversionPrice = newPrices;
             }
         }
+    }
+    else if (!isFractional &&
+             !importCurrencyState.IsLaunchClear() &&
+             !importCurrencyState.IsPrelaunch() &&
+             !importCurrencyState.IsLaunchCompleteMarker())
+    {
+        spentCurrencyOut += preConvertedReserves;
     }
 
     if (newCurrencyState.IsPrelaunch())
@@ -3409,7 +3417,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         ReserveInputs.valueMap[importCurrencyID] = netPrimaryIn;
     }
 
-    spentCurrencyOut.valueMap.clear();
     if (netPrimaryOut)
     {
         spentCurrencyOut.valueMap[importCurrencyID] = netPrimaryOut;
