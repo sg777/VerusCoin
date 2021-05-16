@@ -2756,8 +2756,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     preConvertedReserves.valueMap[firstCurID] += valueOut;
                     if (isFractional && isCrossSystemImport && importedCurrency.valueMap.count(firstCurID))
                     {
-                        // TODO: check this for 100% rollup of launch fees and
-                        // resolution at launch. now, only fees are imported after the first coinbase
+                        // TODO: look into 100% rollup of launch fees and resolution at launch.
+                        // Right now, only fees are imported after the first coinbase
                         // reserves in the currency are already on chain as of block 1 and fees come in 
                         // and get converted with imports
                         importedCurrency.valueMap[firstCurID] -= valueOut;
@@ -3081,6 +3081,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     CAmount netPrimaryIn = 0;
     CAmount netPrimaryOut = 0;
     spentCurrencyOut.valueMap.clear();
+    CCurrencyValueMap ReserveInputs;
 
     // remove burned currency from supply
     //
@@ -3162,13 +3163,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 newCurrencyState.conversionPrice = newPrices;
             }
         }
-    }
-    else if (!isFractional &&
-             !importCurrencyState.IsLaunchClear() &&
-             !importCurrencyState.IsPrelaunch() &&
-             !importCurrencyState.IsLaunchCompleteMarker())
-    {
-        spentCurrencyOut += preConvertedReserves;
     }
 
     if (newCurrencyState.IsPrelaunch())
@@ -3407,26 +3401,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
-    CCurrencyValueMap ReserveInputs;
     CAmount systemOutConverted = 0;
 
     //printf("%s currencies: %s\n", __func__, ToUniValue().write(1,2).c_str());
 
     if (netPrimaryIn)
     {
-        ReserveInputs.valueMap[importCurrencyID] = netPrimaryIn;
+        ReserveInputs.valueMap[importCurrencyID] += netPrimaryIn;
     }
 
     if (netPrimaryOut)
     {
-        spentCurrencyOut.valueMap[importCurrencyID] = netPrimaryOut;
-        if (importCurrencyID == systemDestID && 
-            extraPreconverted &&
-            !importCurrencyState.IsPrelaunch() &&
-            !importCurrencyState.IsLaunchClear())
-        {
-            spentCurrencyOut.valueMap[importCurrencyID] = netPrimaryOut;
-        }
+        spentCurrencyOut.valueMap[importCurrencyID] += netPrimaryOut;
     }
 
     newCurrencyState.primaryCurrencyOut = netPrimaryOut;
@@ -3455,7 +3441,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
             if (oneInOut.second.reserveIn)
             {
-                ReserveInputs.valueMap[oneInOut.first] = oneInOut.second.reserveIn;
+                ReserveInputs.valueMap[oneInOut.first] += oneInOut.second.reserveIn;
             }
             if (liquidityFees.valueMap.count(oneInOut.first))
             {
@@ -3465,19 +3451,30 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 if (oneInOut.second.reserveOut)
                 {
-                    spentCurrencyOut.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
+                    spentCurrencyOut.valueMap[oneInOut.first] += oneInOut.second.reserveOut;
                 }
             }
         }
     }
 
-    if (importCurrencyID != systemDestID)
+    if (nativeIn)
     {
-        if (nativeIn)
+        if (importCurrencyID == systemDestID)
+        {
+            ReserveInputs.valueMap[systemDestID] += (nativeIn - netPrimaryIn);
+        }
+        else
         {
             ReserveInputs.valueMap[systemDestID] += nativeIn;
         }
-        if (nativeOut)
+    }
+    if (nativeOut)
+    {
+        if (importCurrencyID == systemDestID)
+        {
+            spentCurrencyOut.valueMap[systemDestID] += (nativeOut - netPrimaryIn);
+        }
+        else
         {
             spentCurrencyOut.valueMap[systemDestID] += nativeOut;
         }
