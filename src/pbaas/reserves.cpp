@@ -3428,6 +3428,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         // launching chain
         newCurrencyState.primaryCurrencyOut -= newCurrencyState.preConvertedOut;
         gatewayDepositsIn.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
+        importedCurrency = (importedCurrency - preConvertedReserves).CanonicalMap();
+        gatewayDepositsIn += preConvertedReserves;
     }
 
     for (auto &oneInOut : currencies)

@@ -270,7 +270,7 @@ TransactionBuilderResult TransactionBuilder::Build()
         CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
         view.SetBackend(viewMemPool);
 
-        CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height());
+        CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height() + 1);
         reserveChange = (rtxd.ReserveInputMap() - rtxd.ReserveOutputMap()) - reserveFee;
 
         //printf("\n%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());

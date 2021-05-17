@@ -2282,7 +2282,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
         }
 
-        /* printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        /*printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
         printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, incomingCurrency.ToUniValue().write(1,2).c_str());
@@ -2397,7 +2397,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 ccx.totalFees.ToUniValue().write(1,2).c_str()); //*/
 
         // pay the fee out to the miner
-        CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight);
+        CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight + 1);
         tb.SetFee(rtxd.nativeIn - rtxd.nativeOut);
         CCurrencyValueMap reserveFees = rtxd.ReserveFees();
         if (reserveFees > CCurrencyValueMap())
