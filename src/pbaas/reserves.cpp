@@ -3099,6 +3099,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             LogPrintf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice);
             return false;
         }
+        newCurrencyState.supply -= burnedChangePrice;
     }
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
