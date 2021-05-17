@@ -911,7 +911,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 gatewayDeposits += originalFees;
             }
 
-            gatewayDeposits.valueMap[newCurID] += newNotarization.currencyState.primaryCurrencyOut;
+            gatewayDeposits.valueMap[newCurID] += gatewayDepositsUsed.valueMap[newCurID] + newNotarization.currencyState.primaryCurrencyOut;
 
             printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
@@ -933,7 +933,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 // create the import thread output
                 depositCp = CCinit(&depositCC, EVAL_RESERVE_DEPOSIT);
                 std::vector<CTxDestination> depositDests({CPubKey(ParseHex(depositCC.CChexstr))});
-                CReserveDeposit rd(newCurID, gatewayDeposits);
+                // put deposits under control of the launch system, where the imports using them will be coming from
+                CReserveDeposit rd(newCurrency.IsPBaaSChain() ? newCurrency.launchSystemID : newCurID, gatewayDeposits);
                 CAmount nativeOut = gatewayDeposits.valueMap.count(ASSETCHAINS_CHAINID) ? gatewayDeposits.valueMap[ASSETCHAINS_CHAINID] : 0;
                 outputs.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, depositDests, 1, &rd))));
             }
@@ -1205,6 +1206,11 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         }
 
         convertersToCreate.insert(converterCurrencyID);
+
+        for (auto &oneCurrency : converterCurDef.currencies)
+        {
+            blockOneCurrencies.insert(oneCurrency);
+        }
     }
 
     // Now, add block 1 imports, which provide a foundation of all IDs and currencies needed to launch the
@@ -1215,6 +1221,11 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         // first, we need to have the native notary currency itself and its notaries, if it has them
         blockOneCurrencies.insert(oneNotary.first);
         blockOneIDs.insert(oneNotary.second.notaryChain.chainDefinition.notaries.begin(), oneNotary.second.notaryChain.chainDefinition.notaries.end());
+    }
+
+    for (auto &oneCurrency : thisChain.currencies)
+    {
+        blockOneCurrencies.insert(oneCurrency);
     }
 
     for (auto &onePrealloc : thisChain.preAllocation)

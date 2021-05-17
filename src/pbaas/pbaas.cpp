@@ -1058,7 +1058,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         else
         {
             // supply is determined by purchases * current conversion rate
-            currencyState.supply = currencyState.initialSupply + curDef.GetTotalPreallocation();
+            currencyState.supply = curDef.gatewayConverterIssuance + curDef.GetTotalPreallocation();
         }
     }
 
@@ -1211,7 +1211,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                     else
                     {
                         // supply is determined by purchases * current conversion rate
-                        currencyState.supply = currencyState.initialSupply;
+                        currencyState.supply = curDef.GetTotalPreallocation();
                     }
 
                     for (auto &transfer : unspentTransfers)
@@ -1622,6 +1622,7 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
     std::map<COutPoint, CInputDescriptor> memPoolOuts;
     for (auto &oneUnconfirmed : unconfirmedUTXOs)
     {
+        COptCCParams p;
         if (!oneUnconfirmed.first.spending &&
             view.GetCoins(oneUnconfirmed.first.txhash, coin) && 
             coin.IsAvailable(oneUnconfirmed.first.index))
@@ -2037,10 +2038,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CCurrencyValueMap newLocalReserveDeposits;
         CCurrencyValueMap newLocalDepositsRequired;
         CAmount newPrimaryCurrency = newNotarization.currencyState.primaryCurrencyOut;
-        if (destCur.IsPBaaSChain() && !lastNotarization.IsPreLaunch())
-        {
-            newPrimaryCurrency -= newNotarization.currencyState.preConvertedOut;
-        }
         if (newPrimaryCurrency > 0)
         {
             incomingCurrency.valueMap[destCurID] += newPrimaryCurrency;
@@ -2054,7 +2051,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             newLocalDepositsRequired.valueMap[destCurID] -= newPrimaryCurrency;
         }
 
-        /* printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
+        /*printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
         printf("%s: ccx.totalAmounts: %s\ngatewayDepositsUsed: %s\nimportedCurrency: %s\nspentCurrencyOut: %s\n",
             __func__,
             ccx.totalAmounts.ToUniValue().write(1,2).c_str(),
@@ -2400,7 +2397,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 ccx.totalFees.ToUniValue().write(1,2).c_str()); //*/
 
         // pay the fee out to the miner
-        CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight);
+        CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight + 1);
         tb.SetFee(rtxd.nativeIn - rtxd.nativeOut);
         CCurrencyValueMap reserveFees = rtxd.ReserveFees();
         if (reserveFees > CCurrencyValueMap())
@@ -2443,10 +2440,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         TransactionBuilderResult result = tb.Build();
         if (result.IsError())
         {
-            UniValue jsonTx(UniValue::VOBJ);
+            /*UniValue jsonTx(UniValue::VOBJ);
             uint256 hashBlk;
             TxToUniv(tb.mtx, hashBlk, jsonTx);
-            printf("%s\n", jsonTx.write(1,2).c_str());
+            printf("%s\n", jsonTx.write(1,2).c_str()); //*/
             printf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             LogPrintf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             return false;
@@ -2472,7 +2469,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                     /*UniValue jsonTx(UniValue::VOBJ);
                     uint256 hashBlk;
                     TxToUniv(newImportTx, hashBlk, jsonTx);
-                    printf("%s\n", jsonTx.write(1,2).c_str()); */
+                    printf("%s\n", jsonTx.write(1,2).c_str()); //*/
                     printf("%s: cannot find input in view %s\n", __func__, oneIn.prevout.hash.GetHex().c_str());
                 }
             }
@@ -3336,7 +3333,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     if (newReserveDeposits.valueMap.count(ASSETCHAINS_CHAINID))
     {
         nativeReserveDeposit += newReserveDeposits.valueMap[ASSETCHAINS_CHAINID];
-        newReserveDeposits.valueMap.erase(ASSETCHAINS_CHAINID);
     }
 
     CCcontract_info CC;
