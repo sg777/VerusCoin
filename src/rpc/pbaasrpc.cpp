@@ -4078,7 +4078,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             // if we're converting and then sending, we don't need an initial fee, so all
                             // fees go into the final destination
                             dest.type |= dest.FLAG_DEST_GATEWAY;
-                            dest.gatewayID = exportToCurrencyID;
+                            dest.gatewayID = destSystemID;
                             CChainNotarizationData cnd;
                             if (!GetNotarizationData(convertToCurrencyID, cnd) ||
                                 !cnd.IsConfirmed())
