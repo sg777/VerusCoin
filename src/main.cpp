@@ -3988,15 +3988,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 cbFees = (originalFees - liquidityFees);
                             }
 
-                            /* printf("originalFees: %s\ncbFees: %s\nliquidityFees: %s\n", 
+                            printf("originalFees: %s\ncbFees: %s\nliquidityFees: %s\n", 
                                 originalFees.ToUniValue().write(1,2).c_str(),
                                 cbFees.ToUniValue().write(1,2).c_str(),
-                                liquidityFees.ToUniValue().write(1,2).c_str()); */
+                                liquidityFees.ToUniValue().write(1,2).c_str()); //*/
 
                             // display import outputs
-                            /*
-                            CMutableTransaction debugTxOut;
-                            debugTxOut.vout = outputs;
+                            /*CMutableTransaction debugTxOut;
+                            debugTxOut.vout = importOutputs;
                             debugTxOut.vout.insert(debugTxOut.vout.end(), importOutputs.begin(), importOutputs.end());
                             UniValue jsonTxOut(UniValue::VOBJ);
                             TxToUniv(debugTxOut, uint256(), jsonTxOut);
@@ -4004,7 +4003,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                                                                             jsonTxOut.write(1,2).c_str(),
                                                                                                             lastNotarization.ToUniValue().write(1,2).c_str(),
                                                                                                             newNotarization.ToUniValue().write(1,2).c_str());
-                            */
+                            //*/
 
                             // to determine left over reserves for deposit, consider imported and emitted as the same
                             gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
@@ -4013,12 +4012,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             {
                                 gatewayDeposits += originalFees;
                             }
-                            gatewayDeposits.valueMap[cbCurID] += newNotarization.currencyState.primaryCurrencyOut;
+                            gatewayDeposits.valueMap[cbCurID] += gatewayDepositsUsed.valueMap[cbCurID] + newNotarization.currencyState.primaryCurrencyOut;
 
-                            /* printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
+                            printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n", 
                                 importedCurrency.ToUniValue().write(1,2).c_str(),
                                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
-                                gatewayDeposits.ToUniValue().write(1,2).c_str()); */
+                                gatewayDeposits.ToUniValue().write(1,2).c_str()); //*/
 
                             extraCurrencyOut = gatewayDeposits.CanonicalMap();
                             gatewayDeposits -= spentCurrencyOut;
@@ -4042,12 +4041,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 }
                             }
 
-                            /* printf("importedcurrency %s\nspentcurrencyout %s\ngatewayDeposits %s\nextraCurrencyOut %s\nvalidExtraCoinbaseOutputs %s\n",
+                            /*printf("importedcurrency %s\nspentcurrencyout %s\ngatewayDeposits %s\nextraCurrencyOut %s\nvalidExtraCoinbaseOutputs %s\n",
                                 importedCurrency.ToUniValue().write(1,2).c_str(),
                                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
                                 gatewayDeposits.ToUniValue().write(1,2).c_str(),
                                 extraCurrencyOut.ToUniValue().write(1,2).c_str(), 
-                                validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str()); */
+                                validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str()); //*/
 
                             // total output can be up to gateway deposits + spentcurrencyout
                             // that minus fees is valid output and fees go into the fee pool
@@ -4055,10 +4054,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             validExtraCoinbaseOutputs += extraCurrencyOut - cbFees;
                             nFees += cbFees.valueMap[ASSETCHAINS_CHAINID];
 
-                            /* printf("validExtraCoinbaseOutputs %s\ntotalReserveTxFees %s\ncbFees %s\n", 
+                            /*printf("validExtraCoinbaseOutputs %s\ntotalReserveTxFees %s\ncbFees %s\n", 
                                 validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str(),
                                 totalReserveTxFees.ToUniValue().write(1,2).c_str(),
-                                cbFees.ToUniValue().write(1,2).c_str()); */
+                                cbFees.ToUniValue().write(1,2).c_str()); //*/
 
                             cbFees.valueMap.erase(ASSETCHAINS_CHAINID);
                             totalReserveTxFees += cbFees;
@@ -4103,12 +4102,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 }
             }
 
-            /* UniValue jsonTx(UniValue::VOBJ);
+            UniValue jsonTx(UniValue::VOBJ);
             TxToUniv(tx, uint256(), jsonTx);
             printf("%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
             printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
             printf("%s: nativeFees: %ld, reserve fees: %s\nextra coinbase outputs: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
-            */
+            //*/
         }
         else if (!isVerusActive)
         {

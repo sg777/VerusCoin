@@ -1766,6 +1766,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         {
                             importGeneratedCurrency.valueMap[cci.importCurrencyID] = newState.primaryCurrencyOut;
                         }
+                        if (nHeight == 1 && cci.importCurrencyID == ASSETCHAINS_CHAINID)
+                        {
+                            importGeneratedCurrency.valueMap[ASSETCHAINS_CHAINID] += gatewayDeposits.valueMap[ASSETCHAINS_CHAINID];
+                        }
 
                         /*
                         printf("%s: importGeneratedCurrency:\n%s\nnewState:\n%s\n", 
@@ -2092,7 +2096,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     uint160 systemSourceID = systemSource.GetID();
     uint160 systemDestID = systemDest.GetID();  // native on destination system
     uint160 importCurrencyID = importCurrencyDef.GetID();
-    //printf("%s\n", importCurrencyDef.ToUniValue().write(1,2).c_str());
 
     // this matrix tracks n-way currency conversion
     // each entry contains the original amount of the row's (dim 0) currency to be converted to the currency position of its column
@@ -2165,7 +2168,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                            importCurrencyID,
                                            CTransferDestination());
         }
-        else if (importCurrencyState.IsRefunding() || (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()))
+        else if (importCurrencyState.IsRefunding() ||
+                 (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
+                 (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
             curTransfer = exportObjects[i].GetRefundTransfer();
         }
@@ -2207,7 +2212,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             if (i == exportObjects.size())
             {
                 // only tokens release pre-allocations here
-                // PBaaS chain pre-allocations come out of the coinbase, not the first import
+                // PBaaS chain pre-allocations and initial pre-conversion
+                // supply come out of the coinbase, since we don't mint
+                // native currency out of a non-coinbase import
                 if (importCurrencyState.IsLaunchClear())
                 {
                     // we need to pay 1/2 of the launch cost for the launch system in launch fees
@@ -2236,6 +2243,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             // first time with launch clear on prelaunch, start supply at initial supply
                             newCurrencyState.supply = newCurrencyState.initialSupply;
                         }
+
                         // if we have finished importing all pre-launch exports, create all pre-allocation outputs
                         for (auto &onePreAlloc : importCurrencyDef.preAllocation)
                         {
@@ -2747,8 +2755,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     preConvertedReserves.valueMap[firstCurID] += valueOut;
                     if (isFractional && isCrossSystemImport && importedCurrency.valueMap.count(firstCurID))
                     {
-                        // TODO: check this for 100% rollup of launch fees and
-                        // resolution at launch. now, only fees are imported after the first coinbase
+                        // TODO: look into 100% rollup of launch fees and resolution at launch.
+                        // Right now, only fees are imported after the first coinbase
                         // reserves in the currency are already on chain as of block 1 and fees come in 
                         // and get converted with imports
                         importedCurrency.valueMap[firstCurID] -= valueOut;
@@ -3071,6 +3079,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     // input of primary currency is sources in and output is sinks
     CAmount netPrimaryIn = 0;
     CAmount netPrimaryOut = 0;
+    spentCurrencyOut.valueMap.clear();
+    CCurrencyValueMap ReserveInputs;
 
     // remove burned currency from supply
     //
@@ -3089,6 +3099,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             LogPrintf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice);
             return false;
         }
+        newCurrencyState.supply -= burnedChangePrice;
     }
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
@@ -3165,6 +3176,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         for (auto &oneVal : preConvertedOutput.valueMap)
         {
             newCurrencyState.preConvertedOut += oneVal.second;
+            if (newCurrencyState.IsLaunchConfirmed() && !isFractional)
+            {
+                newCurrencyState.supply += oneVal.second;
+            }
         }
     }
 
@@ -3326,16 +3341,28 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     // if this is a PBaaS launch, mint all required preconversion along with preallocation
-    CAmount totalPreconverted = 0;
+    CAmount extraPreconverted = 0;
     if (importCurrencyDef.IsPBaaSChain() && newCurrencyState.IsLaunchClear() && newCurrencyState.IsLaunchConfirmed())
     {
-        // if this is our launch currency issue any necessary pre-converted supply and add it to reserve deposits
-        if (importCurrencyID == ASSETCHAINS_CHAINID &&
-            importCurrencyState.reserveIn.size() == 1 && 
-            importCurrencyState.reserveIn[0])
+        if (importCurrencyState.IsPrelaunch())
         {
-            // add new native currency to reserve deposits for imports
-            totalPreconverted = newCurrencyState.ReserveToNativeRaw(importCurrencyState.reserveIn[0], newCurrencyState.conversionPrice[0]);
+            extraPreconverted = newCurrencyState.preConvertedOut;
+            // if this is our launch currency issue any necessary pre-converted supply and add it to reserve deposits
+            if (importCurrencyID == ASSETCHAINS_CHAINID &&
+                importCurrencyDef.IsPBaaSChain() &&
+                importCurrencyState.reserveIn.size() == 1 && 
+                importCurrencyState.reserveIn[0])
+            {
+                // add new native currency to reserve deposits for imports
+                // total converted in this import should be added to the total from before
+                CAmount oldReservesIn = newCurrencyState.reserveIn[0] - importCurrencyState.reserveIn[0];
+                extraPreconverted += newCurrencyState.ReserveToNativeRaw(oldReservesIn, newCurrencyState.conversionPrice[0]);
+            }
+            newCurrencyState.preConvertedOut = extraPreconverted;
+        }
+        else
+        {
+            extraPreconverted = importCurrencyState.preConvertedOut - newCurrencyState.preConvertedOut;
         }
     }
 
@@ -3343,7 +3370,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     {
         preAllocTotal = 0;
         totalMinted = 0;
-        totalPreconverted = 0;
+        extraPreconverted = 0;
     }
 
     if (isFractional && importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
@@ -3362,45 +3389,54 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         //printf("new currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
     }
 
-    if (totalMinted || preAllocTotal || totalPreconverted)
+    if (totalMinted || preAllocTotal)
     {
-        newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal + totalPreconverted);
-        netPrimaryOut += (totalMinted + preAllocTotal + totalPreconverted);
-        netPrimaryIn += (totalMinted + preAllocTotal + totalPreconverted);
+        newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal);
+        netPrimaryOut += (totalMinted + preAllocTotal);
+        netPrimaryIn += (totalMinted + preAllocTotal);
+    }
+
+    if (newCurrencyState.IsLaunchConfirmed())
+    {
+        netPrimaryOut += newCurrencyState.preConvertedOut;
+        netPrimaryIn += newCurrencyState.preConvertedOut + extraPreconverted;
+    }
+
+    if (extraPreconverted)
+    {
+        gatewayDepositsIn.valueMap[importCurrencyID] += extraPreconverted;
     }
 
     // double check that the export fee taken as the fee output matches the export fee that should have been taken
-    CCurrencyValueMap ReserveInputs;
     CAmount systemOutConverted = 0;
 
     //printf("%s currencies: %s\n", __func__, ToUniValue().write(1,2).c_str());
 
     if (netPrimaryIn)
     {
-        ReserveInputs.valueMap[importCurrencyID] = netPrimaryIn;
+        ReserveInputs.valueMap[importCurrencyID] += netPrimaryIn;
     }
 
-    spentCurrencyOut.valueMap.clear();
     if (netPrimaryOut)
     {
-        spentCurrencyOut.valueMap[importCurrencyID] = netPrimaryOut;
+        spentCurrencyOut.valueMap[importCurrencyID] += netPrimaryOut;
     }
 
-    if (newCurrencyState.IsLaunchConfirmed() && newCurrencyState.preConvertedOut)
+    newCurrencyState.primaryCurrencyOut = netPrimaryOut;
+    if (importCurrencyDef.IsPBaaSChain() && importCurrencyState.IsLaunchConfirmed() && !importCurrencyState.IsLaunchClear())
     {
-        ReserveInputs.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
-        spentCurrencyOut.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
+        // pre-conversions should already be on this chain as gateway deposits on behalf of the
+        // launching chain
+        newCurrencyState.primaryCurrencyOut -= newCurrencyState.preConvertedOut;
+        gatewayDepositsIn.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
+        importedCurrency = (importedCurrency - preConvertedReserves).CanonicalMap();
+        gatewayDepositsIn += preConvertedReserves;
     }
 
     for (auto &oneInOut : currencies)
     {
         if (oneInOut.first == importCurrencyID)
         {
-            if (oneInOut.second.nativeOutConverted)
-            {
-                newCurrencyState.primaryCurrencyOut += oneInOut.second.nativeOutConverted;
-            }
-
             if (oneInOut.first == systemDestID)
             {
                 systemOutConverted += oneInOut.second.nativeOutConverted;
@@ -3414,7 +3450,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
             if (oneInOut.second.reserveIn)
             {
-                ReserveInputs.valueMap[oneInOut.first] = oneInOut.second.reserveIn;
+                ReserveInputs.valueMap[oneInOut.first] += oneInOut.second.reserveIn;
             }
             if (liquidityFees.valueMap.count(oneInOut.first))
             {
@@ -3424,27 +3460,33 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 if (oneInOut.second.reserveOut)
                 {
-                    spentCurrencyOut.valueMap[oneInOut.first] = oneInOut.second.reserveOut;
+                    spentCurrencyOut.valueMap[oneInOut.first] += oneInOut.second.reserveOut;
                 }
             }
         }
     }
 
-    if (importCurrencyID != systemDestID)
+    if (nativeIn)
     {
-        if (nativeIn)
+        if (importCurrencyID == systemDestID)
+        {
+            ReserveInputs.valueMap[systemDestID] += (nativeIn - netPrimaryIn);
+        }
+        else
         {
             ReserveInputs.valueMap[systemDestID] += nativeIn;
         }
-        if (nativeOut)
+    }
+    if (nativeOut)
+    {
+        if (importCurrencyID == systemDestID)
+        {
+            spentCurrencyOut.valueMap[systemDestID] += (nativeOut - netPrimaryOut);
+        }
+        else
         {
             spentCurrencyOut.valueMap[systemDestID] += nativeOut;
         }
-    }
-
-    if (importCurrencyDef.IsPBaaSChain())
-    {
-        newCurrencyState.primaryCurrencyOut += (totalPreconverted - newCurrencyState.preConvertedOut);
     }
 
     if (systemOutConverted && importCurrencyID != systemDestID)
@@ -3457,7 +3499,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     if (((ReserveInputs + newConvertedReservePool) - checkAgainstInputs).HasNegative())
     {
-        /*printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
+        printf("importCurrencyState: %s\nnewCurrencyState: %s\n", importCurrencyState.ToUniValue().write(1,2).c_str(), newCurrencyState.ToUniValue().write(1,2).c_str());
         printf("newConvertedReservePool: %s\n", newConvertedReservePool.ToUniValue().write(1,2).c_str());
         printf("ReserveInputs: %s\nspentCurrencyOut: %s\nReserveInputs - spentCurrencyOut: %s\ncheckAgainstInputs: %s\nreserveBalanceInMap: %s\ntotalNativeFee: %ld, totalVerusFee: %ld\n", 
             ReserveInputs.ToUniValue().write(1,2).c_str(), 
