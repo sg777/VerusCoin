@@ -333,8 +333,8 @@ bool SetPeerNodes(const UniValue &nodes)
 {
     if (mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0)
     {
-        printf("%s: Ignoring seednodes due to nodes specified in \"-connect\" parameter\n");
-        LogPrintf("%s: Ignoring seednodes due to nodes specified in \"-connect\" parameter\n");
+        printf("%s: Ignoring seednodes due to nodes specified in \"-connect\" parameter\n", __func__);
+        LogPrintf("%s: Ignoring seednodes due to nodes specified in \"-connect\" parameter\n", __func__);
         std::vector<std::string> connectNodes = mapMultiArgs["-connect"];
         for (int i = 0; i < connectNodes.size(); i++)
         {
