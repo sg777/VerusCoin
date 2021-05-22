@@ -331,27 +331,54 @@ std::pair<uint160, CTransferDestination> ValidateTransferDestination(const std::
 // set default peer nodes in the current connected chains
 bool SetPeerNodes(const UniValue &nodes)
 {
-    if (!nodes.isArray() || nodes.size() == 0)
+    if (mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0)
     {
-        return false;
-    }
-
-    LOCK(ConnectedChains.cs_mergemining);
-    ConnectedChains.defaultPeerNodes.clear();
-
-    for (int i = 0; i < nodes.size(); i++)
-    {
-        CNodeData oneNode(nodes[i]);
-        if (oneNode.networkAddress != "")
+        printf("%s: Ignoring seednodes due to nodes specified in \"-connect\" parameter\n");
+        LogPrintf("%s: Ignoring seednodes due to nodes specified in \"-connect\" parameter\n");
+        std::vector<std::string> connectNodes = mapMultiArgs["-connect"];
+        for (int i = 0; i < connectNodes.size(); i++)
         {
-            ConnectedChains.defaultPeerNodes.push_back(oneNode);
+            CNodeData oneNode = CNodeData(connectNodes[i], "");
+            if (oneNode.networkAddress != "")
+            {
+                ConnectedChains.defaultPeerNodes.push_back(oneNode);
+            }
+        }
+    }
+    else
+    {
+        if (!nodes.isArray() || nodes.size() == 0)
+        {
+            return false;
+        }
+
+        LOCK(ConnectedChains.cs_mergemining);
+        ConnectedChains.defaultPeerNodes.clear();
+
+        for (int i = 0; i < nodes.size(); i++)
+        {
+            CNodeData oneNode(nodes[i]);
+            if (oneNode.networkAddress != "")
+            {
+                ConnectedChains.defaultPeerNodes.push_back(oneNode);
+            }
+        }
+
+        std::vector<std::string> seedNodes = mapMultiArgs["-seednode"];
+        for (int i = 0; i < seedNodes.size(); i++)
+        {
+            CNodeData oneNode = CNodeData(seedNodes[i], "");
+            if (oneNode.networkAddress != "")
+            {
+                ConnectedChains.defaultPeerNodes.push_back(oneNode);
+            }
         }
     }
 
-    std::vector<std::string> seedNodes = mapMultiArgs["-seednode"];
-    for (int i = 0; i < seedNodes.size(); i++)
+    std::vector<std::string> addNodes = mapMultiArgs["-addnode"];
+    for (int i = 0; i < addNodes.size(); i++)
     {
-        CNodeData oneNode = CNodeData(seedNodes[i], "");
+        CNodeData oneNode = CNodeData(addNodes[i], "");
         if (oneNode.networkAddress != "")
         {
             ConnectedChains.defaultPeerNodes.push_back(oneNode);
@@ -360,16 +387,22 @@ bool SetPeerNodes(const UniValue &nodes)
 
     // set all command line parameters into mapArgs from chain definition
     vector<string> nodeStrs;
+
     for (auto node : ConnectedChains.defaultPeerNodes)
     {
         nodeStrs.push_back(node.networkAddress);
     }
 
-    mapMultiArgs["-seednode"] = nodeStrs;
-    for (auto &oneNode : seedNodes)
+    if (!(mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0))
+    {
+        mapMultiArgs["-seednode"] = nodeStrs;
+    }
+
+    for (auto &oneNode : nodeStrs)
     {
         AddOneShot(oneNode);
     }
+
     if (int port = ConnectedChains.GetThisChainPort())
     {
         mapArgs["-port"] = to_string(port);
