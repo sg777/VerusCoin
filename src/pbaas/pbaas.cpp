@@ -3439,7 +3439,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
         if (GetAddressIndex(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyLaunchKey()),
                             CScript::P2IDX, 
                             rawCurrenciesToLaunch,
-                            nHeight - 5000 < 0 ? 0 : nHeight - 5000,
+                            nHeight - 30 < 0 ? 0 : nHeight - 30,
                             nHeight) &&
             rawCurrenciesToLaunch.size())
         {
