@@ -3528,9 +3528,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                  exportToStr.size() ||
                  burnCurrency ||
                  mintNew ||
-                 preConvert))
+                 preConvert ||
+                 sourceCurrencyID != ASSETCHAINS_CHAINID))
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert, preconvert, mint, cross-chain send, or burn currency being sent to a z-address.");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert, preconvert, mint, cross-chain send, burn or send non-native currency when sending to a z-address.");
             }
 
             // re-encode destination, in case it is specified as the private address of an ID
