@@ -529,6 +529,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     // referrer must be mined in when this transaction is put into the mem pool
     if (heightOut >= height || !firstReferralIdentity.IsValid() || firstReferralIdentity.parent != ASSETCHAINS_CHAINID)
     {
+        //printf("%s: cannot find first instance of: %s\n", __func__, EncodeDestination(CIdentityID(newName.referral)).c_str());
         return state.Error("Invalid identity registration referral");
     }
 
