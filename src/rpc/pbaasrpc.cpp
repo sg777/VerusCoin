@@ -3187,7 +3187,7 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     {
         throw runtime_error(
             "estimateconversion '{\"currency\":\"name\",\"convertto\":\"name\",\"amount\":n}'\n"
-            "\nThis estimates conversion from one currency to another, taking into account pending conversions and slippage.\n"
+            "\nThis estimates conversion from one currency to another, taking into account pending conversions, fees and slippage.\n"
 
             "\nArguments\n"
             "1. {\n"
