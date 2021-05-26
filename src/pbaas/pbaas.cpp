@@ -1611,7 +1611,9 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
     }
     for (auto &oneConfirmed : confirmedUTXOs)
     {
-        if (view.GetCoins(oneConfirmed.first.txhash, coin) && coin.IsAvailable(oneConfirmed.first.index))
+        if (!mempool.mapNextTx.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) &&
+            view.GetCoins(oneConfirmed.first.txhash, coin) &&
+            coin.IsAvailable(oneConfirmed.first.index))
         {
             reserveDeposits.push_back(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, 
                                                         CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index)));
@@ -1624,6 +1626,7 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
     {
         COptCCParams p;
         if (!oneUnconfirmed.first.spending &&
+            !mempool.mapNextTx.count(COutPoint(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)) &&
             view.GetCoins(oneUnconfirmed.first.txhash, coin) && 
             coin.IsAvailable(oneUnconfirmed.first.index))
         {
@@ -2462,20 +2465,38 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
 
         {
+            std::set<uint256> txesToShow;
             for (auto &oneIn : newImportTx.vin)
             {
                 if (!view.HaveCoins(oneIn.prevout.hash))
                 {
-                    /*UniValue jsonTx(UniValue::VOBJ);
-                    uint256 hashBlk;
-                    TxToUniv(newImportTx, hashBlk, jsonTx);
-                    printf("%s\n", jsonTx.write(1,2).c_str()); //*/
                     printf("%s: cannot find input in view %s\n", __func__, oneIn.prevout.hash.GetHex().c_str());
+                }
+                else
+                {
+                    txesToShow.insert(oneIn.prevout.hash);
                 }
             }
 
+            /* DEBUG output only
+            for (auto &oneTxId : txesToShow)
+            {
+                CTransaction inputTx;
+                uint256 inputBlkHash;
+                if (myGetTransaction(oneTxId, inputTx, inputBlkHash))
+                {
+                    UniValue uni(UniValue::VOBJ);
+                    TxToUniv(inputTx, inputBlkHash, uni);
+                    printf("%s: inputTx:\n%s\n", __func__, uni.write(1,2).c_str());
+                }
+                else
+                {
+                    printf("%s: unable to retrieve input transaction: %s\n", __func__, oneTxId.GetHex().c_str());
+                }
+            } //*/
+
             // put our transaction in place of any others
-            std::list<CTransaction> removed;
+            //std::list<CTransaction> removed;
             //mempool.removeConflicts(newImportTx, removed);
 
             // add to mem pool and relay

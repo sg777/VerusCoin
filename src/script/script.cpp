@@ -1232,7 +1232,9 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             CNameReservation nameRes;
             if (vData.size() && (nameRes = CNameReservation(vData[0])).IsValid())
             {
-                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(nameRes.name, evalCode)));
+                uint160 parent = ASSETCHAINS_CHAINID;
+                uint160 ourID = CIdentity::GetID(nameRes.name, parent);
+                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ourID, evalCode)));
             }
             break;
         }

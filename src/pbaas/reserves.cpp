@@ -2492,6 +2492,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // convert fees to next destination native, if necessary/possible
                     CCurrencyDefinition curNextDest = ConnectedChains.GetCachedCurrency(curTransfer.destination.gatewayID);
                     uint160 nextDestSysID = curNextDest.IsGateway() ? curNextDest.gatewayID : curNextDest.systemID;
+
                     // if it's already in the correct currency, nothing to do, otherwise convert if we can
                     if (curTransfer.feeCurrencyID != nextDestSysID)
                     {
@@ -2534,6 +2535,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                         AddReserveOutput(nextDestSysID, reserveFromFrac);
                         AddReserveOutConverted(nextDestSysID, reserveFromFrac);
+                    } else
+                    {
+                        if (curTransfer.feeCurrencyID == systemDestID)
+                        {
+                            nativeOut = curTransfer.destination.fees;
+                        }
+                        else
+                        {
+                            AddReserveOutput(nextDestSysID, curTransfer.destination.fees);
+                        }
                     }
                 }
 

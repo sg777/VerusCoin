@@ -1824,7 +1824,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             if (pool.mapNextTx.count(outpoint))
             {
                 // Disable replacement feature for now
-                //fprintf(stderr,"pool.mapNextTx.count\n");
+                //printf("%s: outpoint already spent in mempool by tx: %s\n", __func__, pool.mapNextTx[outpoint].ptx->GetHash().GetHex().c_str());
                 return state.Invalid(false, REJECT_INVALID, "bad-txns-inputs-spent");
             }
         }
