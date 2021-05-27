@@ -1274,9 +1274,14 @@ void ThreadSocketHandler()
 
 void ThreadDNSAddressSeed()
 {
-    // goal: only query DNS seeds if address need is acute
+    // goal: only query DNS seeds if address need is acute and connect is not set
     if ((addrman.size() > 0) &&
-        (!GetBoolArg("-forcednsseed", false))) {
+        (!GetBoolArg("-forcednsseed", false)))
+    {
+        if (!(mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0))
+        {
+            return;
+        }
         MilliSleep(11 * 1000);
 
         LOCK(cs_vNodes);

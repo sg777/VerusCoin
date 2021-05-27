@@ -29,6 +29,7 @@ struct CBlockTemplate
 
 /** Generate a new block, without valid proof-of-work */
 CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& scriptPubKeyIn, bool isStake=false);
+CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vector<CTxOut> &minerOutputs, bool isStake=false);
 #ifdef ENABLE_WALLET
 boost::optional<CScript> GetMinerScriptPubKey(CReserveKey& reservekey);
 CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, bool isStake=false);

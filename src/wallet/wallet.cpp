@@ -2669,14 +2669,15 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     {
                                         if (unspentOutputs.size() > MAX_OUR_UTXOS_ID_RESCAN)
                                         {
-                                            continue;
+                                            unspentOutputs.clear();
                                         }
                                         // the exception would currently be if all of the following are true:
                                         // 1) We have spending, not just signing power over the ID,
                                         // 2) the ID has no separate revoke and recover, so it cannot be pulled back, and
                                         // 3) the ID does not have an average of < 0.00001 in native outputs of a random sample
                                         //    of its UTXOs
-                                        if (canSignCanSpend.second &&
+                                        if (unspentOutputs.size() &&
+                                            canSignCanSpend.second &&
                                             identity.revocationAuthority == identity.recoveryAuthority &&
                                             identity.revocationAuthority == idID)
                                         {
@@ -2703,12 +2704,12 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             if (!counted.size() ||
                                                 (total / (CAmount)counted.size() < 10000))
                                             {
-                                                continue;
+                                                unspentOutputs.clear();
                                             }
                                         }
-                                        else
+                                        else if (unspentOutputs.size())
                                         {
-                                            continue;
+                                            unspentOutputs.clear();
                                         }
                                     }
 
@@ -2752,6 +2753,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 {
                                                     CAddressUnspentKey unspentKey(CScript::P2ID, idID, wtx.first, k);
                                                     CBlockIndex *pIndex = mapBlockIndex[wtx.second.hashBlock];
+                                                    unspentTxSet.insert(wtx.first);
                                                     unspentOutputs.push_back(
                                                         make_pair(unspentKey, CAddressUnspentValue(oneOut.nValue, oneOut.scriptPubKey, pIndex->GetHeight())));
                                                     // if we add one on a tx, no need to check more here
@@ -2808,13 +2810,12 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                         continue;
                                                     }
                                                     wtx.SetMerkleBranch(block);
+                                                    AddToWallet(wtx, false, &walletdb);
                                                 }
-
-                                                AddToWallet(wtx, false, &walletdb);
                                                 pWtx = GetWalletTx(newOut.first.txhash);
                                             }
                                         }
-                                        else if (pWtx = GetWalletTx(newOut.first.txhash))
+                                        else if (pWtx)
                                         {
                                             if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend, nHeight == 0 ? INT_MAX : nHeight + 1) && newCanSign))
                                             {
@@ -2823,7 +2824,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         }
 
                                         // if we were or are now in the wallet, we need to see if we should record new spends
-                                        if (pWtx != nullptr && newOut.second.script.IsPayToCryptoCondition())
+                                        if (pWtx)
                                         {
                                             // while we know there is an unspent index to this ID on the new transaction output, we don't know
                                             // if there are other outputs to this ID on the transaction, which are already spent.
@@ -2831,17 +2832,22 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             // not consider them spent.
                                             uint256 spendBlkHash;
                                             CTransaction spendTx;
-                                            std::vector<CTxOut> checkIfSpent = pWtx->vout;
+                                            std::vector<std::pair<uint256, int>> checkIfSpent;
+                                            for (int counter = 0; counter < pWtx->vout.size(); counter++)
+                                            {
+                                                checkIfSpent.push_back(std::make_pair(pWtx->GetHash(), counter));
+                                            }
+                                            const CWalletTx *txToCheck = pWtx;
                                             for (int i = 0; i < checkIfSpent.size(); i++)
                                             {
-                                                // if it really came from the unspent index and is the same output, don't bother looking for a spend
-                                                if (unspentTxSet.count(newOut.first.txhash) && newOut.first.index == i)
+                                                if (txToCheck->GetHash() != checkIfSpent[i].first)
                                                 {
-                                                    continue;
+                                                    txToCheck = GetWalletTx(checkIfSpent[i].first);
                                                 }
 
                                                 // if we can't spend it, no need to check for spends
-                                                if (!(ExtractDestinations(checkIfSpent[i].scriptPubKey,
+                                                if (!(txToCheck &&
+                                                      ExtractDestinations(txToCheck->vout[checkIfSpent[i].second].scriptPubKey,
                                                                           newTypeRet,
                                                                           newAddressRet,
                                                                           newNRequired,
@@ -2854,12 +2860,18 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                 }
 
                                                 CSpentIndexValue spentInfo;
-                                                CSpentIndexKey spentKey(newOut.first.txhash, i);
-                                                if (GetSpentIndex(spentKey, spentInfo))
+                                                CSpentIndexKey spentKey(checkIfSpent[i].first, checkIfSpent[i].second);
+                                                // if it's spent, we need to put spender in the wallet
+                                                // if the spender has outputs that we can now spend due to the ID,
+                                                // we need to check for those being spent as well
+                                                if (GetSpentIndex(spentKey, spentInfo) &&
+                                                    !spentInfo.IsNull())
                                                 {
-                                                    if (GetWalletTx(spentInfo.txid) == nullptr &&
+                                                    const CWalletTx *pSpendingTx = GetWalletTx(spentInfo.txid);
+                                                    if (pSpendingTx == nullptr &&
                                                         spentInfo.blockHeight <= nHeight &&
-                                                        myGetTransaction(spentInfo.txid, spendTx, spendBlkHash) && !spendBlkHash.IsNull())
+                                                        myGetTransaction(spentInfo.txid, spendTx, spendBlkHash) &&
+                                                        !spendBlkHash.IsNull())
                                                     {
                                                         CWalletTx spendWtx(this, spendTx);
 
@@ -2876,7 +2888,19 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                             // add these outputs to the outputs we need to check if spent
                                                             // as long as we are adding spending transactions that are earlier
                                                             // or up to this height, we follow the spends
-                                                            checkIfSpent.insert(checkIfSpent.end(), spendTx.vout.begin(), spendTx.vout.end());
+                                                            for (int counter = 0; counter < spendTx.vout.size(); counter++)
+                                                            {
+                                                                checkIfSpent.push_back(std::make_pair(spendTx.GetHash(), counter));
+                                                            }
+                                                        }
+                                                    }
+                                                    else if (pSpendingTx &&
+                                                             spentInfo.blockHeight <= nHeight)
+                                                    {
+                                                        // we may have outputs on a spending transaction that should be considered as well
+                                                        for (int counter = 0; counter < pSpendingTx->vout.size(); counter++)
+                                                        {
+                                                            checkIfSpent.push_back(std::make_pair(pSpendingTx->GetHash(), counter));
                                                         }
                                                     }
                                                 }

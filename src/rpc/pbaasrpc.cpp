@@ -331,27 +331,54 @@ std::pair<uint160, CTransferDestination> ValidateTransferDestination(const std::
 // set default peer nodes in the current connected chains
 bool SetPeerNodes(const UniValue &nodes)
 {
-    if (!nodes.isArray() || nodes.size() == 0)
+    if (mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0)
     {
-        return false;
-    }
-
-    LOCK(ConnectedChains.cs_mergemining);
-    ConnectedChains.defaultPeerNodes.clear();
-
-    for (int i = 0; i < nodes.size(); i++)
-    {
-        CNodeData oneNode(nodes[i]);
-        if (oneNode.networkAddress != "")
+        printf("%s: Ignoring seednodes due to nodes specified in \"-connect\" parameter\n", __func__);
+        LogPrintf("%s: Ignoring seednodes due to nodes specified in \"-connect\" parameter\n", __func__);
+        std::vector<std::string> connectNodes = mapMultiArgs["-connect"];
+        for (int i = 0; i < connectNodes.size(); i++)
         {
-            ConnectedChains.defaultPeerNodes.push_back(oneNode);
+            CNodeData oneNode = CNodeData(connectNodes[i], "");
+            if (oneNode.networkAddress != "")
+            {
+                ConnectedChains.defaultPeerNodes.push_back(oneNode);
+            }
+        }
+    }
+    else
+    {
+        if (!nodes.isArray() || nodes.size() == 0)
+        {
+            return false;
+        }
+
+        LOCK(ConnectedChains.cs_mergemining);
+        ConnectedChains.defaultPeerNodes.clear();
+
+        for (int i = 0; i < nodes.size(); i++)
+        {
+            CNodeData oneNode(nodes[i]);
+            if (oneNode.networkAddress != "")
+            {
+                ConnectedChains.defaultPeerNodes.push_back(oneNode);
+            }
+        }
+
+        std::vector<std::string> seedNodes = mapMultiArgs["-seednode"];
+        for (int i = 0; i < seedNodes.size(); i++)
+        {
+            CNodeData oneNode = CNodeData(seedNodes[i], "");
+            if (oneNode.networkAddress != "")
+            {
+                ConnectedChains.defaultPeerNodes.push_back(oneNode);
+            }
         }
     }
 
-    std::vector<std::string> seedNodes = mapMultiArgs["-seednode"];
-    for (int i = 0; i < seedNodes.size(); i++)
+    std::vector<std::string> addNodes = mapMultiArgs["-addnode"];
+    for (int i = 0; i < addNodes.size(); i++)
     {
-        CNodeData oneNode = CNodeData(seedNodes[i], "");
+        CNodeData oneNode = CNodeData(addNodes[i], "");
         if (oneNode.networkAddress != "")
         {
             ConnectedChains.defaultPeerNodes.push_back(oneNode);
@@ -360,16 +387,22 @@ bool SetPeerNodes(const UniValue &nodes)
 
     // set all command line parameters into mapArgs from chain definition
     vector<string> nodeStrs;
+
     for (auto node : ConnectedChains.defaultPeerNodes)
     {
         nodeStrs.push_back(node.networkAddress);
     }
 
-    mapMultiArgs["-seednode"] = nodeStrs;
-    for (auto &oneNode : seedNodes)
+    if (!(mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0))
+    {
+        mapMultiArgs["-seednode"] = nodeStrs;
+    }
+
+    for (auto &oneNode : nodeStrs)
     {
         AddOneShot(oneNode);
     }
+
     if (int port = ConnectedChains.GetThisChainPort())
     {
         mapArgs["-port"] = to_string(port);
@@ -3154,7 +3187,7 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     {
         throw runtime_error(
             "estimateconversion '{\"currency\":\"name\",\"convertto\":\"name\",\"amount\":n}'\n"
-            "\nThis estimates conversion from one currency to another, taking into account pending conversions and slippage.\n"
+            "\nThis estimates conversion from one currency to another, taking into account pending conversions, fees and slippage.\n"
 
             "\nArguments\n"
             "1. {\n"
@@ -3360,11 +3393,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
             "      \"amount\":amount        (numeric, required) The numeric amount of currency, denominated in source currency\n"
             "      \"convertto\":\"name\",  (string, optional) Valid currency to convert to, either a reserve of a fractional, or fractional\n"
+            "      \"exportto\":\"name\",   (string, optional) Valid chain or system name or ID to export to\n"
+            "      \"feecurrency\":\"name\", (string, optional) Valid currency that should be pulled from the current wallet and used to pay fee\n"
             "      \"via\":\"name\",        (string, optional) If source and destination currency are reserves, via is a common fractional to convert through\n"
             "      \"address\":\"dest\"     (string, required) The address and optionally chain/system after the \"@\" as a system specific destination\n"
             "      \"refundto\":\"dest\"    (string, optional) For pre-conversions, this is where refunds will go, defaults to fromaddress\n"
             "      \"memo\":memo            (string, optional) If destination is a zaddr (not supported on testnet), a string message (not hexadecimal) to include.\n"
             "      \"preconvert\":\"false\", (bool,  optional) convert to currency at market price (default=false), only works if transaction is mined before start of currency\n"
+            "      \"burn\":\"false\",      (bool,  optional) destroy the currency and subtract it from the supply. Currency must be a token.\n"
+            "      \"mintnew\":\"false\",   (bool,  optional) if the transaction is sent from the currency ID of a centralized currency, this creates new currency to send\n"
             "    }, ... ]\n"
             "3. \"feeamount\"               (bool,   optional) specific fee amount requested instead of default miner's fee\n"
 
@@ -3491,9 +3528,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                  exportToStr.size() ||
                  burnCurrency ||
                  mintNew ||
-                 preConvert))
+                 preConvert ||
+                 sourceCurrencyID != ASSETCHAINS_CHAINID))
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert, preconvert, mint, cross-chain send, or burn currency being sent to a z-address.");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert, preconvert, mint, cross-chain send, burn or send non-native currency when sending to a z-address.");
             }
 
             // re-encode destination, in case it is specified as the private address of an ID
@@ -4078,7 +4116,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             // if we're converting and then sending, we don't need an initial fee, so all
                             // fees go into the final destination
                             dest.type |= dest.FLAG_DEST_GATEWAY;
-                            dest.gatewayID = destSystemID;
+                            dest.gatewayID = exportSystemDef.GetID();
                             CChainNotarizationData cnd;
                             if (!GetNotarizationData(convertToCurrencyID, cnd) ||
                                 !cnd.IsConfirmed())
@@ -4912,9 +4950,16 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "name and ID as the currency being defined.\n"
             "\nArguments\n"
             "      {\n"
-            "         \"options\" : n,                  (int,    optional) bits:\n"
-            "                                                             1 = FRACTIONAL, 2 = IDRESTRICTED, 4 = IDSTAKING, 8 = IDREFERRALS\n"
-            "                                                             0x10 = IDREFERRALSREQUIRED, 0x20 = TOKEN, 0x40 = CANBERESERVE\n"
+            "         \"options\" : n,                  (int,    optional) bits (in hexadecimal):\n"
+            "                                                             1 = FRACTIONAL\n"
+            "                                                             2 = IDRESTRICTED\n"
+            "                                                             4 = IDSTAKING\n"
+            "                                                             8 = IDREFERRALS\n"
+            "                                                             0x10 = IDREFERRALSREQUIRED\n"
+            "                                                             0x20 = TOKEN\n"
+            "                                                             0x40 = CANBERESERVE\n"
+            "                                                             0x100 = IS_PBAAS_CHAIN\n"
+            "\n"
             "         \"name\" : \"xxxx\",              (string, required) name of existing identity with no active or pending blockchain\n"
             "         \"idregistrationprice\" : \"xx.xx\", (value, required) price of an identity in native currency\n"
             "         \"idreferrallevels\" : n,         (int, required) how many levels ID referrals go back in reward\n"
