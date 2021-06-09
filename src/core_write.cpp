@@ -969,9 +969,9 @@ UniValue CReserveTransfer::ToUniValue() const
         ret.push_back(Pair("exportto", EncodeDestination(CIdentityID(destSystemID))));
     }
     if (IsRefund())
-        ret.push_back(Pair("importtosource", true));
-    if (IsImportToSource())
         ret.push_back(Pair("refund", true));
+    if (IsImportToSource())
+        ret.push_back(Pair("importtosource", true));
     if (IsConversion())
         ret.push_back(Pair("convert", true));
     if (IsPreConversion())
