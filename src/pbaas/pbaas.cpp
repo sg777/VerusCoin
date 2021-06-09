@@ -501,13 +501,124 @@ extern uint32_t ASSETCHAINS_ALGO, ASSETCHAINS_VERUSHASH, ASSETCHAINS_LASTERA;
 extern std::string VERUS_CHAINNAME;
 extern uint160 VERUS_CHAINID;
 
-// ensures that the chain definition is valid and that there are no other definitions of the same name
+// ensures that the currency definition is valid and that there are no other definitions of the same name
 // that have been confirmed.
-bool ValidateChainDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
+bool ValidateCurrencyDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
-    // the chain definition output can be spent when the chain is at the end of its life and only then
-    // TODO
     return false;
+}
+
+bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    // ensure that the currency definition follows all rules of currency definition, meaning:
+    // 1) it is defined by an identity that controls the currency for the first time
+    // 2) it is imported by another system that controls the currency for the first time
+    // 3) it is defined in block 1 as part of a PBaaS chain launch, where it was required
+    //
+    // Further conditions, such as valid start block, or flag combinations apply, and as a special case,
+    // if the currency is the ETH bridge and this is the Verus (or Rinkeby wrt VerusTest) blockchain, 
+    // it will assert itself as the notary chain of this network and use the gateway config information
+    // to locate the RPC of the Alan (Monty Python's gatekeeper) bridge.
+    //
+
+    // first, let's figure out what kind of currency definition this is
+    // valid definitions:
+    // 1. Currency defined on this system by an ID on this system
+    // 2. Imported currency controlled by or launched from another system defined on block 1's coinbase
+    // 3. Imported currency from another system on an import from a system, which controls the imported currency
+    bool isBlockOneDefinition = spendingTx.IsCoinBase() && height == 1;
+    bool isImportDefinition = false;
+
+    CIdentity oldIdentity;
+    CCrossChainImport cci, sysCCI;
+    CPBaaSNotarization pbn;
+    int sysCCIOut = -1, notarizationOut = -1, eOutStart = -1, eOutEnd = -1;
+    CCrossChainExport ccx;
+    std::vector<CReserveTransfer> transfers;
+    CTransaction idTx;
+    uint256 blkHash;
+
+    CCurrencyDefinition newCurrency;
+    COptCCParams currencyOptParams;
+    if (!(spendingTx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(currencyOptParams) &&
+         currencyOptParams.IsValid() &&
+         currencyOptParams.evalCode == EVAL_CURRENCY_DEFINITION &&
+         currencyOptParams.vData.size() > 1 &&
+         (newCurrency = CCurrencyDefinition(currencyOptParams.vData[0])).IsValid()))
+    {
+        return state.Error("Invalid currency definition in output");
+    }
+
+    if (!isBlockOneDefinition)
+    {
+        // if this is an imported currency definition,
+        // just be sure that it is part of an import and can be imported from the source
+        // if so, it is fine
+        for (int i = 0; i < spendingTx.vout.size(); i++)
+        {
+            const CTxOut &oneOut = spendingTx.vout[i];
+            COptCCParams p;
+            if (i != outNum &&
+                oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                p.vData.size() > 1 &&
+                (cci = CCrossChainImport(p.vData[0])).IsValid())
+            {
+                if (cci.sourceSystemID != ASSETCHAINS_CHAINID &&
+                    cci.GetImportInfo(spendingTx, height, i, ccx, sysCCI, sysCCIOut, pbn, notarizationOut, eOutStart, eOutEnd, transfers) &&
+                    outNum <= eOutEnd && 
+                    outNum >= eOutEnd)
+                {
+                    // TODO: HARDENING ensure that this currency is valid as an import from the source 
+                    // system to this chain.
+                    //
+                    isImportDefinition = true;
+                    break;
+                }
+            }
+        }
+
+        // in this case, it must either spend an identity or be on an import transaction
+        // that has a reserve transfer which imports the currency
+        if (!isImportDefinition)
+        {
+            LOCK(mempool.cs);
+            for (auto &input : spendingTx.vin)
+            {
+                COptCCParams p;
+                // first time through may be null
+                if ((!input.prevout.hash.IsNull() && input.prevout.hash == idTx.GetHash()) || myGetTransaction(input.prevout.hash, idTx, blkHash))
+                {
+                    if (idTx.vout[input.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                        p.vData.size() > 1 &&
+                        (oldIdentity = CIdentity(p.vData[0])).IsValid())
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    COptCCParams p;
+
+    if (!(isBlockOneDefinition || isImportDefinition))
+    {
+        if (!oldIdentity.IsValid())
+        {
+            return state.Error("No valid identity found for currency definition");
+        }
+        
+        if (oldIdentity.HasActiveCurrency())
+        {
+            return state.Error("Identity already has used its one-time ability to define a currency");
+        }
+    }
+
+    return true;
 }
 
 CCurrencyValueMap CCrossChainExport::CalculateExportFee(const CCurrencyValueMap &fees, int numIn)
@@ -4489,7 +4600,7 @@ void CConnectedChains::QueueEarnedNotarization(CBlock &blk, int32_t txIndex, int
     earnedNotarizationIndex = txIndex;
 }
 
-bool IsChainDefinitionInput(const CScript &scriptSig)
+bool IsCurrencyDefinitionInput(const CScript &scriptSig)
 {
     uint32_t ecode;
     return scriptSig.IsPayToCryptoCondition(&ecode) && ecode == EVAL_CURRENCY_DEFINITION;
