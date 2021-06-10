@@ -969,9 +969,9 @@ UniValue CReserveTransfer::ToUniValue() const
         ret.push_back(Pair("exportto", EncodeDestination(CIdentityID(destSystemID))));
     }
     if (IsRefund())
-        ret.push_back(Pair("importtosource", true));
-    if (IsImportToSource())
         ret.push_back(Pair("refund", true));
+    if (IsImportToSource())
+        ret.push_back(Pair("importtosource", true));
     if (IsConversion())
         ret.push_back(Pair("convert", true));
     if (IsPreConversion())
@@ -1228,7 +1228,9 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
             {
                 CCurrencyDefinition definition;
 
-                if (p.vData.size() && (definition = CCurrencyDefinition(p.vData[0])).IsValid())
+                if (p.vData.size() &&
+                    p.version >= COptCCParams::VERSION_V3 &&
+                    (definition = CCurrencyDefinition(p.vData[0])).IsValid())
                 {
                     out.push_back(Pair("currencydefinition", definition.ToUniValue()));
                 }

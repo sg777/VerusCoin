@@ -87,6 +87,95 @@ CIdentity::CIdentity(const CTransaction &tx, int *voutNum)
     }
 }
 
+bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height, uint32_t expiryHeight) const
+{
+    auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    if (parent != newIdentity.parent ||
+        (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name) ||
+        (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 &&
+            nSolVersion < CActivationHeight::ACTIVATE_PBAAS && 
+            (newIdentity.HasActiveCurrency() || 
+            newIdentity.IsLocked() ||
+            newIdentity.nVersion >= VERSION_PBAAS)) ||
+        (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && (newIdentity.nVersion < VERSION_PBAAS ||
+                                                                (newIdentity.systemID != (nVersion < VERSION_PBAAS ? parent : systemID)))) ||
+        GetID() != newIdentity.GetID() ||
+        ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
+        ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
+        (IsLocked(height) && (!newIdentity.IsRevoked() && !newIdentity.IsLocked(height))) ||
+        ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
+        newIdentity.nVersion < VERSION_FIRSTVALID ||
+        newIdentity.nVersion > VERSION_LASTVALID)
+    {
+        return true;
+    }
+
+    // we cannot unlock instantly unless we are revoked, we also cannot relock
+    // to enable an earlier unlock time
+    if (newIdentity.nVersion >= VERSION_PBAAS)
+    {
+        if (IsLocked(height))
+        {
+            if (!newIdentity.IsRevoked())
+            {
+                // if we are locked due to the lock flag and not counting down
+                if (IsLocked())
+                {
+                    /*// TODO: HARDENING replace the code block below with this commented code to 
+                    // prevent shortening of a relative lock without revocation
+                    if (newIdentity.IsLocked() && newIdentity.unlockAfter < unlockAfter)
+                    {
+                        return true;
+                    }
+                    else if (!newIdentity.IsLocked() &&
+                                (newIdentity.unlockAfter < (unlockAfter + expiryHeight)) &&
+                                !(unlockAfter > MAX_UNLOCK_DELAY && newIdentity.unlockAfter == (MAX_UNLOCK_DELAY + expiryHeight)))
+                    {
+                        return true;
+                    } //*/
+
+                    if (!newIdentity.IsLocked() &&
+                        (newIdentity.unlockAfter != (unlockAfter + expiryHeight)) &&
+                        !(unlockAfter > MAX_UNLOCK_DELAY && newIdentity.unlockAfter == (MAX_UNLOCK_DELAY + expiryHeight)))
+                    {
+                        return true;
+                    }
+                }
+                else if (!IsLocked())
+                {
+                    // only revocation can change unlock after time, and we don't allow re-lock to an earlier time until unlock either, 
+                    // which can change the new unlock time
+                    if (newIdentity.IsLocked())
+                    {
+                        if ((expiryHeight + newIdentity.unlockAfter < unlockAfter))
+                        {
+                            return true;
+                        }
+                    }
+                    else if (newIdentity.unlockAfter != unlockAfter)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        else if (newIdentity.IsLocked(height))
+        {
+            if (newIdentity.IsLocked() && newIdentity.unlockAfter > MAX_UNLOCK_DELAY)
+            {
+                return true;
+            }
+            else if (!newIdentity.IsLocked() && newIdentity.unlockAfter <= expiryHeight)
+            {
+                // we never set the locked bit, but we are counting down to the block set to unlock
+                // cannot lock with unlock before the expiry height
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn)
 {
     LOCK(mempool.cs);
@@ -974,7 +1063,6 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     return state.Error("Invalid primary identity - does not include identity reservation or spend matching identity");
 }
 
-CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx=nullptr, uint32_t *pHeight=nullptr);
 CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx, uint32_t *pHeight)
 {
     CTransaction _sourceTx;
