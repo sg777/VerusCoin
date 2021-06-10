@@ -363,9 +363,9 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             strcpy(cp->normaladdr,PBaaSDefinitionAddr.c_str());
             strcpy(cp->CChexstr,PBaaSDefinitionPubKey.c_str());
             memcpy(cp->CCpriv,DecodeSecret(PBaaSDefinitionWIF).begin(),32);
-            cp->validate = ValidateChainDefinition;
-            cp->ismyvin = IsChainDefinitionInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->validate = ValidateCurrencyDefinition;
+            cp->ismyvin = IsCurrencyDefinitionInput;
+            cp->contextualprecheck = PrecheckCurrencyDefinition;
             break;
 
         case EVAL_EARNEDNOTARIZATION:
