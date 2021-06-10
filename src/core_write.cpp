@@ -1228,7 +1228,9 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
             {
                 CCurrencyDefinition definition;
 
-                if (p.vData.size() && (definition = CCurrencyDefinition(p.vData[0])).IsValid())
+                if (p.vData.size() &&
+                    p.version >= COptCCParams::VERSION_V3 &&
+                    (definition = CCurrencyDefinition(p.vData[0])).IsValid())
                 {
                     out.push_back(Pair("currencydefinition", definition.ToUniValue()));
                 }

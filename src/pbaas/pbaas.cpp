@@ -510,6 +510,12 @@ bool ValidateCurrencyDefinition(struct CCcontract_info *cp, Eval* eval, const CT
 
 bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, CValidationState &state, uint32_t height)
 {
+    if (IsVerusMainnetActive() &&
+        CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_PBAAS)
+    {
+        return true;
+    }
+
     // ensure that the currency definition follows all rules of currency definition, meaning:
     // 1) it is defined by an identity that controls the currency for the first time
     // 2) it is imported by another system that controls the currency for the first time
