@@ -320,6 +320,11 @@ bool operator==(const CProofRoot &op1, const CProofRoot &op2)
            op1.compactPower == op2.compactPower;
 }
 
+bool operator!=(const CProofRoot &op1, const CProofRoot &op2)
+{
+    return !(op1 == op2);
+}
+
 CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
 {
     if (blockHeight > chainActive.Height())
@@ -538,7 +543,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 // first time through is export, second is import, then we finish clearing the launch
                 // check if the chain is qualified to launch or should refund
                 CCurrencyValueMap minPreMap, fees;
-                CCurrencyValueMap preConvertedMap = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves).CanonicalMap();
+                CCurrencyValueMap preConvertedMap = (CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserveIn) +
+                                                     newPreConversionReservesIn).CanonicalMap();
 
                 if (destCurrency.minPreconvert.size() && destCurrency.minPreconvert.size() == destCurrency.currencies.size())
                 {
@@ -558,6 +564,14 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 {
                     newNotarization.SetLaunchConfirmed();
                     newNotarization.currencyState.SetLaunchConfirmed();
+
+                    // if this is a launch notarization for a PBaaS chain, add a proofroot of the
+                    // current chain as an anchor for the block one import
+                    if (destCurrency.IsPBaaSChain() &&
+                        destCurrency.launchSystemID == ASSETCHAINS_CHAINID)
+                    {
+                        newNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(destCurrency.startBlock);
+                    }
                 }
             }
         }
@@ -2277,6 +2291,30 @@ bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const 
     //    reference. If that is the case, it is rejected.
     // 4. Has all relevant inputs, including finalizes all necessary transactions, both confirmed and orphaned
     //printf("ValidateAcceptedNotarization\n");
+    return true;
+}
+
+bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    // ensure that we never accept an invalid proofroot for this chain in a notarization
+    CPBaaSNotarization currentNotarization(tx.vout[outNum].scriptPubKey);
+    if (!currentNotarization.IsValid())
+    {
+        return state.Error("Invalid notarization output");
+    }
+    if (currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
+    {
+        CProofRoot notarizationRoot = currentNotarization.proofRoots[ASSETCHAINS_CHAINID];
+        if (notarizationRoot.rootHeight >= height)
+        {
+            return state.Error("Cannot notarize same or greater height as notarization transaction");
+        }
+        CProofRoot correctRoot = CProofRoot::GetProofRoot(notarizationRoot.rootHeight);
+        if (correctRoot != notarizationRoot)
+        {
+            return state.Error("Incorrect proof root in notarization transaction " + tx.GetHash().GetHex() + " for height " + std::to_string(height));
+        }
+    }
     return true;
 }
 

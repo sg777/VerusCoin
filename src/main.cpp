@@ -3907,7 +3907,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             CNotaryEvidence notarizationEvidence;
             CPartialTransactionProof partialNotarizationEvidenceTx;
             CUTXORef partialNotarizationEvidenceUTXO;
-            CPBaaSNotarization lastNotarization;
+            CPBaaSNotarization lastNotarization, launchNotarization;
+            uint256 txProofRoot;
             CAmount converterIssuance = 0;
 
             // move through block one imports and add associated fee to the coinbase fees
@@ -3929,6 +3930,16 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
                     {
                         uint160 cbCurID = cbCurDef.GetID();
+
+                        // TODO: HARDENING - make this fail in the next testnet reset, not just print a message
+                        // earlier launch notarizations did not always have proofroots
+                        if (!(cci.sourceSystemID == cbCurDef.launchSystemID &&
+                              launchNotarization.proofRoots.count(cci.sourceSystemID) &&
+                              txProofRoot == launchNotarization.proofRoots[cci.sourceSystemID].stateRoot))
+                        {
+                            printf("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing" );
+                        }
+
                         if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&
                             cbCurDef.IsValid() &&
                             cci.importCurrencyID == cbCurID &&
@@ -4078,11 +4089,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                         CNotaryEvidence evidence;
                         CPBaaSNotarization nextNotarization;
 
-                        // TODO: HARDENING - should check proof of this notarization
                         evidence = CNotaryEvidence(p.vData[0]);
                         if (evidence.IsValid() &&
                             evidence.evidence.size() &&
-                            !(txProof = evidence.evidence[0]).GetPartialTransaction(nTx).IsNull())
+                            !(txProofRoot = (txProof = evidence.evidence[0]).CheckPartialTransaction(nTx)).IsNull())
                         {
                             COptCCParams notaryP;
                             if (nTx.vout.size() > evidence.output.n &&
@@ -4096,6 +4106,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 partialNotarizationEvidenceTx = txProof;
                                 partialNotarizationEvidenceUTXO = evidence.output;
                                 lastNotarization = nextNotarization;
+                                if (nextNotarization.currencyID == ASSETCHAINS_CHAINID)
+                                {
+                                    launchNotarization = lastNotarization;
+                                }
                             }
                         }
                     }

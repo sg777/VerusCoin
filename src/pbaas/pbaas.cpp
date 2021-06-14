@@ -2845,9 +2845,9 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
             {
                 CChainNotarizationData cnd;
                 if ((launchNotarization = CPBaaSNotarization(notarizationTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
-                    GetNotarizationData(ASSETCHAINS_CHAINID, cnd) &&
-                    cnd.IsConfirmed() &&
-                    (notaryNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid())
+                     GetNotarizationData(ASSETCHAINS_CHAINID, cnd) &&
+                     cnd.IsConfirmed() &&
+                     (notaryNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid())
                 {
                     auto blockIt = mapBlockIndex.find(blkHash);
                     if (blockIt != mapBlockIndex.end() &&

@@ -375,7 +375,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(EarnedNotarizationWIF).begin(),32);
             cp->validate = ValidateEarnedNotarization;
             cp->ismyvin = IsEarnedNotarizationInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PreCheckAcceptedOrEarnedNotarization;
             break;
 
         case EVAL_ACCEPTEDNOTARIZATION:
@@ -385,7 +385,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(AcceptedNotarizationWIF).begin(),32);
             cp->validate = ValidateAcceptedNotarization;
             cp->ismyvin = IsAcceptedNotarizationInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PreCheckAcceptedOrEarnedNotarization;
             break;
 
         case EVAL_FINALIZE_NOTARIZATION:
