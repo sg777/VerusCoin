@@ -129,13 +129,6 @@ unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const 
         return maxDiffAdjust.GetCompact();
     }
 
-    // TODO: HARDENING - remove for testnet after testing
-    if (_IsVerusActive() && pindexLast->GetHeight() <= 300 && pindexLast->GetHeight() >= 200)
-    {
-        arith_uint256 maxDiffAdjust = UintToArith256(uint256S("000f0f0f00000000000000000000000000000000000000000000000000000000"));
-        return maxDiffAdjust.GetCompact();
-    }
-
     if (ASSETCHAINS_ALGO == ASSETCHAINS_EQUIHASH)
     {
         bnLimit = UintToArith256(params.powLimit);
