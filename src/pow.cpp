@@ -123,6 +123,12 @@ unsigned int lwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlock
 unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params)
 {
     arith_uint256 nextTarget {0}, sumTarget {0}, bnTmp, bnLimit;
+    if (_IsVerusMainnetActive() && pindexLast && pindexLast->GetHeight() <= 1568100 && pindexLast->GetHeight() >= 1568000)
+    {
+        arith_uint256 maxDiffAdjust = UintToArith256(uint256S("00000000000f0f0f000000000000000000000000000000000000000000000000"));
+        return maxDiffAdjust.GetCompact();
+    }
+
     if (ASSETCHAINS_ALGO == ASSETCHAINS_EQUIHASH)
     {
         bnLimit = UintToArith256(params.powLimit);

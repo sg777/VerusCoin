@@ -359,6 +359,7 @@ bool ValidateEarnedNotarization(struct CCcontract_info *cp, Eval* eval, const CT
 bool IsEarnedNotarizationInput(const CScript &scriptSig);
 bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsAcceptedNotarizationInput(const CScript &scriptSig);
+bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsFinalizeNotarizationInput(const CScript &scriptSig);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);

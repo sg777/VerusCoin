@@ -3750,8 +3750,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 feeCurrencyID = ValidateCurrencyName(feeCurrencyStr, true, &feeCurrencyDef);
                 if (!feeCurrencyID.IsNull())
                 {
-                    feeCurrencyID = destSystemID;
-                    feeCurrencyDef = destSystemDef;
+                    if (!(feeCurrencyID == ASSETCHAINS_CHAINID ||
+                          (!IsVerusActive() && feeCurrencyID == ConnectedChains.ThisChain().launchSystemID)))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency specified");
+                    }
                 }
                 else
                 {

@@ -2832,6 +2832,9 @@ namespace Consensus {
                      (nSpendHeight - coins->nHeight) < COINBASE_MATURITY &&
                      !coins->vout[prevout.n].scriptPubKey.IsInstantSpend())
                 {
+                    // DEBUG ONLY
+                    coins->vout[prevout.n].scriptPubKey.IsInstantSpend();
+                    //
                     return state.DoS(0,
                         error("CheckInputs(): tried to spend coinbase at depth %d", nSpendHeight - coins->nHeight),
                         REJECT_INVALID, "bad-txns-premature-spend-of-coinbase");
@@ -3587,6 +3590,13 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (!CheckBlock(&futureblock,pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck) || futureblock != 0 )
     {
         //fprintf(stderr,"checkblock failure in connectblock futureblock.%d\n",futureblock);
+        LogPrintf("%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock);
+        return false;
+    }
+
+    if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(true, &block, pindex->GetHeight()))
+    {
+        LogPrintf("%s: invalid PoS block in connectblock futureblock.%d\n", __func__,futureblock);
         return false;
     }
 
@@ -3740,6 +3750,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (nSigOps > MAX_BLOCK_SIGOPS)
             return state.DoS(100, error("ConnectBlock(): too many sigops"),
                              REJECT_INVALID, "bad-blk-sigops");
+
+        // Check transaction contextually against consensus rules at block height
+        if (!ContextualCheckTransaction(tx, state, chainparams, nHeight, 10)) {
+            return false; // Failure reason has been set in validation state object
+        }
 
         CReserveTransactionDescriptor rtxd(tx, view, nHeight);
         if (rtxd.IsReject())
@@ -3907,7 +3922,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             CNotaryEvidence notarizationEvidence;
             CPartialTransactionProof partialNotarizationEvidenceTx;
             CUTXORef partialNotarizationEvidenceUTXO;
-            CPBaaSNotarization lastNotarization;
+            CPBaaSNotarization lastNotarization, launchNotarization;
+            uint256 txProofRoot;
             CAmount converterIssuance = 0;
 
             // move through block one imports and add associated fee to the coinbase fees
@@ -3929,6 +3945,16 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     if (p.evalCode == EVAL_CROSSCHAIN_IMPORT)
                     {
                         uint160 cbCurID = cbCurDef.GetID();
+
+                        // TODO: HARDENING - make this fail in the next testnet reset, not just print a message
+                        // earlier launch notarizations did not always have proofroots
+                        if (!(cci.sourceSystemID == cbCurDef.launchSystemID &&
+                              launchNotarization.proofRoots.count(cci.sourceSystemID) &&
+                              txProofRoot == launchNotarization.proofRoots[cci.sourceSystemID].stateRoot))
+                        {
+                            printf("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing" );
+                        }
+
                         if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&
                             cbCurDef.IsValid() &&
                             cci.importCurrencyID == cbCurID &&
@@ -4078,11 +4104,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                         CNotaryEvidence evidence;
                         CPBaaSNotarization nextNotarization;
 
-                        // TODO: HARDENING - should check proof of this notarization
                         evidence = CNotaryEvidence(p.vData[0]);
                         if (evidence.IsValid() &&
                             evidence.evidence.size() &&
-                            !(txProof = evidence.evidence[0]).GetPartialTransaction(nTx).IsNull())
+                            !(txProofRoot = (txProof = evidence.evidence[0]).CheckPartialTransaction(nTx)).IsNull())
                         {
                             COptCCParams notaryP;
                             if (nTx.vout.size() > evidence.output.n &&
@@ -4096,6 +4121,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 partialNotarizationEvidenceTx = txProof;
                                 partialNotarizationEvidenceUTXO = evidence.output;
                                 lastNotarization = nextNotarization;
+                                if (nextNotarization.currencyID == ASSETCHAINS_CHAINID)
+                                {
+                                    launchNotarization = lastNotarization;
+                                }
                             }
                         }
                     }
@@ -5647,7 +5676,7 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
             return state.DoS(100, error("CheckBlock: duplicate transaction"),
                              REJECT_INVALID, "bad-txns-duplicate", true);
     }
-    
+
     // All potential-corruption validation must be done before we do any
     // transaction validation, as otherwise we may mark the header as invalid
     // because we receive the wrong transactions for it.
@@ -5895,6 +5924,19 @@ bool ContextualCheckBlock(
         {
             return state.DoS(10, error("%s: block header has incorrect version %d, should be %d", __func__, ver, solutionVersion), REJECT_INVALID, "incorrect-block-version");
         }
+        if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(false, &block, nHeight))
+        {
+            if (IsVerusMainnetActive() && nHeight < 1564700)
+            {
+                printf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                LogPrintf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+            }
+            else
+            {
+                LogPrintf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                return state.DoS(10, error("%s: invalid proof of stake block", __func__), REJECT_INVALID, "invalid-pos");
+            }
+        }
     }
 
     // Check that all transactions are finalized, reject stake transactions, and
@@ -5903,11 +5945,6 @@ bool ContextualCheckBlock(
     for (uint32_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = block.vtx[i];
         
-        // Check transaction contextually against consensus rules at block height
-        if (!ContextualCheckTransaction(tx, state, chainparams, nHeight, 10)) {
-            return false; // Failure reason has been set in validation state object
-        }
-
         // this is the only place where a duplicate name definition of the same name is checked in a block
         // all other cases are covered via mempool and pre-registered check, doing this would require a malicious
         // client, so immediate ban score
@@ -6086,6 +6123,14 @@ static bool AcceptBlock(int32_t *futureblockp, const CBlock& block, CValidationS
     {
         if ( *futureblockp == 0 )
         {
+            // DEBUG ONLY
+            if (state.IsInvalid() &&
+                !state.CorruptionPossible() &&
+                block.IsVerusPOSBlock())
+            {
+                verusCheckPOSBlock(false, &block, pindex->GetHeight());
+            } //*/
+
             if (state.IsInvalid() && !state.CorruptionPossible()) {
                 pindex->nStatus |= BLOCK_FAILED_VALID;
                 setDirtyBlockIndex.insert(pindex);
@@ -6094,7 +6139,7 @@ static bool AcceptBlock(int32_t *futureblockp, const CBlock& block, CValidationS
             return false;
         }
     }
-    
+
     int nHeight = pindex->GetHeight();
     // Write block to history file
     try {

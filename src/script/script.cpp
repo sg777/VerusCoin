@@ -531,8 +531,29 @@ bool CScript::IsInstantSpend() const
         // TODO: fix this check
         if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
             p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
+            p.evalCode == EVAL_FINALIZE_EXPORT || 
             p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
             p.evalCode == EVAL_CROSSCHAIN_EXPORT)
+        {
+            isInstantSpend = true;
+        }
+    }
+    return isInstantSpend;
+}
+
+bool CScript::IsInstantSpendOrUnspendable() const
+{
+    COptCCParams p;
+    bool isInstantSpend = false;
+    if (IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+    {
+        // instant spends must be to expected instant spend crypto conditions and to the right address as well
+        // TODO: fix this check
+        if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
+            p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
+            p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
+            p.evalCode == EVAL_CROSSCHAIN_EXPORT ||
+            p.evalCode == EVAL_FEE_POOL)
         {
             isInstantSpend = true;
         }
