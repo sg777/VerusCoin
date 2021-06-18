@@ -785,6 +785,7 @@ public:
     bool MayAcceptCryptoCondition() const;
     bool MayAcceptCryptoCondition(int evalCode) const;
     bool IsInstantSpend() const;
+    bool IsInstantSpendOrUnspendable() const;
 
     // insightexplorer, there may be more script types in the future
     enum ScriptType : int {

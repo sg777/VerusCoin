@@ -2307,13 +2307,24 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
         CProofRoot notarizationRoot = currentNotarization.proofRoots[ASSETCHAINS_CHAINID];
         if (notarizationRoot.rootHeight >= height)
         {
-            return state.Error("Cannot notarize same or greater height as notarization transaction");
+            return true;
         }
         CProofRoot correctRoot = CProofRoot::GetProofRoot(notarizationRoot.rootHeight);
+
+        if (!correctRoot.IsValid())
+        {
+            return true;
+        }
+
+        // TODO: HARDENING - make this a fail at next testnet reset 2021/06/17
         if (correctRoot != notarizationRoot)
         {
-            return state.Error("Incorrect proof root in notarization transaction " + tx.GetHash().GetHex() + " for height " + std::to_string(height));
+            printf("%s: Incorrect proof root in notarization transaction - warning only will be fixed at next testnet reset, block %s, height: %u\n", __func__, tx.GetHash().GetHex().c_str(), height);
         }
+        /*if (correctRoot != notarizationRoot)
+        {
+            return state.Error("Incorrect proof root in notarization transaction " + tx.GetHash().GetHex() + " for height " + std::to_string(height));
+        } */
     }
     return true;
 }
