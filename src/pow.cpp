@@ -123,7 +123,7 @@ unsigned int lwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlock
 unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params)
 {
     arith_uint256 nextTarget {0}, sumTarget {0}, bnTmp, bnLimit;
-    if (_IsVerusMainnetActive() && pindexLast && pindexLast->GetHeight() <= 1568100 && pindexLast->GetHeight() >= 1568000)
+    if (_IsVerusMainnetActive() && pindexLast && pindexLast->GetHeight() <= 1568100 && pindexLast->GetHeight() >= 1567999)
     {
         arith_uint256 maxDiffAdjust = UintToArith256(uint256S("00000000000f0f0f000000000000000000000000000000000000000000000000"));
         return maxDiffAdjust.GetCompact();
@@ -475,7 +475,7 @@ bool CheckProofOfWork(const CBlockHeader &blkHeader, uint8_t *pubkey33, int32_t 
         int32_t verusVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(height);
         if (verusVersion >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV2)
         {
-            int32_t pbaasAdjust = !_IsVerusActive() && height < params.nPOSAveragingWindow ? 4 : 0;
+            int32_t pbaasAdjust = !_IsVerusMainnetActive() && height < params.nPOSAveragingWindow ? 4 : 0;
             bnLimit = UintToArith256(params.powAlternate) << (VERUSHASH2_SHIFT - pbaasAdjust);
         }
         else
