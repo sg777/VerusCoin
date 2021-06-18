@@ -1458,11 +1458,11 @@ int32_t komodo_is_PoSblock(int32_t slowflag,int32_t height,CBlock *pblock,arith_
 }
 
 bool GetStakeParams(const CTransaction &stakeTx, CStakeParams &stakeParams);
-bool ValidateMatchingStake(const CTransaction &ccTx, uint32_t voutNum, const CTransaction &stakeTx, bool &cheating);
+bool ValidateMatchingStake(const CTransaction &ccTx, uint32_t voutNum, const CTransaction &stakeTx, bool &cheating, bool slowValidation=true);
 bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakeParams, bool validateSig = true);
 
 // for now, we will ignore slowFlag in the interest of keeping success/fail simpler for security purposes
-bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
+bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
 {
     CBlockIndex *pastBlockIndex;
     uint256 txid, blkHash;
@@ -1493,12 +1493,27 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
             bool validHash = (value != 0);
             bool enablePOSNonce = CPOSNonce::NewPOSActive(height);
             bool newPOSEnforcement = enablePOSNonce && (Params().GetConsensus().vUpgrades[Consensus::UPGRADE_SAPLING].nActivationHeight <= height);
-            bool supportInstantSpend = !IsVerusActive() && CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::ACTIVATE_PBAAS;
+            bool supportInstantSpend = CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::ACTIVATE_PBAAS;
             bool extendedStake = CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
             uint256 rawHash;
             arith_uint256 posHash;
 
-            if (validHash && newPOSEnforcement)
+            int fullCheckHeight = 1568000;
+            bool fullCheckFix = true;
+            bool attackMitigation = false;
+            if (IsVerusMainnetActive())
+            {
+                if (height < fullCheckHeight)
+                {
+                    fullCheckFix = false;
+                }
+                if (height > 1535787)
+                {
+                    attackMitigation = true;
+                }
+            }
+
+            if (!attackMitigation && validHash && newPOSEnforcement)
             {
                 validHash = pblock->GetRawVerusPOSHash(rawHash, height);
                 posHash = UintToArith256(rawHash) / value;
@@ -1515,7 +1530,7 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                     for (int i = 0; validHash && i < pblock->vtx[0].vout.size(); i++)
                     {
                         validHash = false;
-                        if (pblock->vtx[0].vout[i].scriptPubKey.IsInstantSpend() || ValidateMatchingStake(pblock->vtx[0], i, pblock->vtx[txn_count-1], validHash) && !validHash)
+                        if (pblock->vtx[0].vout[i].scriptPubKey.IsInstantSpendOrUnspendable() || ValidateMatchingStake(pblock->vtx[0], i, pblock->vtx[txn_count-1], validHash, slowflag) && !validHash)
                         {
                             if ((p.prevHash == pblock->hashPrevBlock) && (int32_t)p.blkHeight == height)
                             {
@@ -1534,13 +1549,13 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
             }
             if (validHash)
             {
-                if (slowflag == 0)
+                if (!slowflag || !fullCheckFix)
                 {
                     isPOS = true;
                 }
                 else if (!(pastBlockIndex = komodo_chainactive(height - 100)))
                 {
-                    fprintf(stderr,"ERROR: chain not fully loaded or invalid PoS block %s - no past block found\n",blkHash.ToString().c_str());
+                    LogPrintf("block %s - no past block found\n",blkHash.ToString().c_str());
                 }
                 else 
 #ifndef KOMODO_ZCASH
@@ -1560,14 +1575,16 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                     CPOSNonce nonce = pblock->nNonce;
 
                     //printf("before nNonce: %s, height: %d\n", pblock->nNonce.GetHex().c_str(), height);
-                    //validHash = pblock->GetRawVerusPOSHash(rawHash, height);
-                    //hash = UintToArith256(rawHash) / tx.vout[voutNum].nValue;
+                    validHash = pblock->GetRawVerusPOSHash(rawHash, height);
+                    hash = UintToArith256(rawHash) / tx.vout[voutNum].nValue;
                     //printf("Raw POShash:   %s\n", hash.GetHex().c_str());
 
                     hash = UintToArith256(tx.GetVerusPOSHash(&nonce, voutNum, height, pastHash));
 
                     //printf("after nNonce:  %s, height: %d\n", nonce.GetHex().c_str(), height);
                     //printf("POShash:       %s\n\n", hash.GetHex().c_str());
+                    //printf("blkHash:       %s\n\n", blkHash.GetHex().c_str());
+                    //printf("posHash:       %s\n\n", posHash.GetHex().c_str());
 
                     if ((!newPOSEnforcement || posHash == hash) && hash <= target)
                     {
@@ -1607,11 +1624,15 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                                 {
                                     if (cTarget != target)
                                     {
-                                        fprintf(stderr,"ERROR: invalid PoS block %s - invalid diff target\n",blkHash.ToString().c_str());
+                                        LogPrintf("ERROR: invalid PoS block %s - invalid diff target, actual: %u, correct: %u\n", blkHash.ToString().c_str(), pblock->GetVerusPOSTarget(), nBits);
+                                        if (IsVerusMainnetActive() && height < fullCheckHeight)
+                                        {
+                                            return true;
+                                        }
                                         return false;
                                     }
                                 }
-                                CTransaction &stakeTx = pblock->vtx[txn_count-1];
+                                const CTransaction &stakeTx = pblock->vtx[txn_count-1];
                                 CStakeParams sp;
                                 std::vector<CTxDestination> destinations;
                                 txnouttype outType;
@@ -1619,7 +1640,7 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                                 if (nonceOK && 
                                     ExtractDestinations(stakeTx.vout[0].scriptPubKey, outType, destinations, nRequired) &&
                                     destinations.size() &&
-                                    ValidateStakeTransaction(stakeTx, sp, false) &&
+                                    ValidateStakeTransaction(stakeTx, sp, true) &&
                                     ExtractDestination(tx.vout[voutNum].scriptPubKey, destaddress))
                                 {
                                     isPOS = true;
@@ -1669,7 +1690,7 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                                         for (auto &oneOut : pblock->vtx[0].vout)
                                         {
                                             if (!supportInstantSpend ||
-                                                !oneOut.scriptPubKey.IsInstantSpend())
+                                                !oneOut.scriptPubKey.IsInstantSpendOrUnspendable())
                                             {
                                                 std::vector<CTxDestination> oneOutDests;
                                                 if (!ExtractDestinations(oneOut.scriptPubKey, cbType, oneOutDests, numRequired) || 
@@ -1691,8 +1712,8 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                                                     COptCCParams p;
                                                     CCurrencyValueMap outVal = oneOut.scriptPubKey.ReserveOutValue(p);
                                                     if (p.version >= p.VERSION_V3 &&
-                                                        (oneOut.scriptPubKey.IsSpendableOutputType() || 
-                                                        p.evalCode == EVAL_RESERVE_TRANSFER))
+                                                        !oneOut.scriptPubKey.IsInstantSpendOrUnspendable() &&
+                                                        (oneOut.scriptPubKey.IsSpendableOutputType()))
                                                     {
                                                         // we need to make sure we output only to delegate or back to the currency
                                                         // TODO: enable currency contribution, now all goes to miner/staker
@@ -1705,19 +1726,19 @@ bool verusCheckPOSBlock(int32_t slowflag, CBlock *pblock, int32_t height)
                                                             p.n > 1 ||
                                                             p.vKeys[0] != sp.delegate)
                                                         {
-                                                            printf("ERROR: in staking block %s - invalid coinbase destinations\n", blkHash.ToString().c_str());
-                                                            LogPrintf("ERROR: in staking block %s - invalid coinbase destinations\n", blkHash.ToString().c_str());
+                                                            printf("%s: staking block %s - invalid coinbase destinations\n", __func__, blkHash.ToString().c_str());
+                                                            LogPrintf("%s: staking block %s - invalid coinbase destinations\n", __func__, blkHash.ToString().c_str());
                                                             return false;
                                                         }
+                                                        outVal.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
+                                                        cbOutputs[p.vKeys[0]] += outVal;
                                                     }
-                                                    else
+                                                    else if (!oneOut.scriptPubKey.IsInstantSpendOrUnspendable())
                                                     {
-                                                        printf("ERROR: in staking block %s - invalid coinbase output type\n", blkHash.ToString().c_str());
-                                                        LogPrintf("ERROR: in staking block %s - invalid coinbase output type\n", blkHash.ToString().c_str());
+                                                        printf("%s: ERROR: in staking block %s - invalid coinbase output type\n", __func__, blkHash.ToString().c_str());
+                                                        LogPrintf("%s: ERROR: in staking block %s - invalid coinbase output type\n", __func__, blkHash.ToString().c_str());
                                                         return false;
                                                     }
-                                                    outVal.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
-                                                    cbOutputs[p.vKeys[0]] += outVal;
                                                 }
                                                 else
                                                 {

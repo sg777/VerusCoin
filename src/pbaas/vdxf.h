@@ -331,7 +331,7 @@ public:
     }
     static std::string StructuredDataKeyName()
     {
-        return "vrsc::system.structured-data";
+        return "vrsc::system.structureddata";
     }
     static uint160 StructuredDataKey()
     {

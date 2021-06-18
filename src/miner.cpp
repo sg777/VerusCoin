@@ -647,7 +647,6 @@ bool DecodeOneExport(const UniValue obj, CCrossChainExport &ccx,
     CScript outputScript;
     CAmount outputValue;
 
-    // TODO: HARDENING - check the proof against the actual notarization here
     if (!partialTxProof.IsValid() ||
         partialTxProof.GetPartialTransaction(exportTx).IsNull() ||
         partialTxProof.TransactionHash() != txId ||
