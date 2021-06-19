@@ -2296,6 +2296,10 @@ bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const 
 
 bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
+    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(height) < CActivationHeight::ACTIVATE_PBAAS)
+    {
+        return true;
+    }
     // ensure that we never accept an invalid proofroot for this chain in a notarization
     CPBaaSNotarization currentNotarization(tx.vout[outNum].scriptPubKey);
     if (!currentNotarization.IsValid())

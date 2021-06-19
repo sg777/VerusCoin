@@ -2541,9 +2541,7 @@ int IsNotInSync()
          (pindexBestHeader == 0) || 
          ((pindexBestHeader->GetHeight() - 1) > pbi->GetHeight()))
     {
-        return (pbi && pindexBestHeader && (pindexBestHeader->GetHeight() - 1) > pbi->GetHeight()) ?
-                pindexBestHeader->GetHeight() - pbi->GetHeight() :
-                true;
+        return (pbi && pindexBestHeader) ? pindexBestHeader->GetHeight() - pbi->GetHeight() : true;
     }
     return false;
 }
