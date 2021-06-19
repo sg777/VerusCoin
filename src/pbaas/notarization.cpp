@@ -2296,7 +2296,7 @@ bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const 
 
 bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
-    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(height) < CActivationHeight::ACTIVATE_PBAAS)
+    if (height < 1567999 && CConstVerusSolutionVector::activationHeight.ActiveVersion(height) < CActivationHeight::ACTIVATE_PBAAS)
     {
         return true;
     }
