@@ -1498,7 +1498,10 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
             uint256 rawHash;
             arith_uint256 posHash;
 
-            int fullCheckHeight = 1568000;
+            // for June 17th attack mitigation
+            int attackMitigationStartHeight = 1535787;  // the first stake transaction that fails validation, but should be accepted
+            int fullCheckHeight = 1568000;              // height at which full checks resume
+            int stakingBackOnHeight = 1573000;          // height after which staking is fully reenabled
             bool fullCheckFix = true;
             bool attackMitigation = false;
             if (IsVerusMainnetActive())
@@ -1507,7 +1510,7 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                 {
                     fullCheckFix = false;
                 }
-                if (height > 1535787)
+                if (height > attackMitigationStartHeight && height < stakingBackOnHeight)
                 {
                     attackMitigation = true;
                 }
