@@ -1501,7 +1501,7 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
             // for June 17th attack mitigation
             int attackMitigationStartHeight = 915055;   // the first stake transaction that fails validation, but should be accepted
             int fullCheckHeight = 1568000;              // height at which full checks resume
-            int stakingBackOnHeight = 1573000;          // height after which staking is fully reenabled
+            int stakingBackOnHeight = 1576200;          // height after which staking is fully reenabled
 
             bool fullCheckFix = true;
             bool attackMitigation = false;
