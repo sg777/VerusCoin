@@ -148,7 +148,7 @@ unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const 
     uint32_t height = pindexLast->GetHeight() + 1;
     if (CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV2)
     {
-        int32_t pbaasAdjust = !_IsVerusMainnetActive() && height < params.nPOSAveragingWindow ? 4 : 0;
+        int32_t pbaasAdjust = !_IsVerusActive() && height < params.nPOSAveragingWindow ? 4 : 0;
         targetShift = (VERUSHASH2_SHIFT - pbaasAdjust);
         bnLimit <<= targetShift;
     }
@@ -178,16 +178,7 @@ unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const 
     // Check we have enough blocks
     if (!pindexFirst)
     {
-        if (!_IsVerusActive() && ASSETCHAINS_ALGO == ASSETCHAINS_VERUSHASH)
-        {
-            // startup 16 times harder on PBaaS chains
-            bnLimit = bnLimit >> 4;
-            return bnLimit.GetCompact();
-        }
-        else
-        {
-            return bnLimit.GetCompact();
-        }
+        return bnLimit.GetCompact();
     }
 
     // Keep t reasonable in case strange solvetimes occurred.
@@ -487,7 +478,7 @@ bool CheckProofOfWork(const CBlockHeader &blkHeader, uint8_t *pubkey33, int32_t 
         int32_t verusVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(height);
         if (verusVersion >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV2)
         {
-            int32_t pbaasAdjust = !_IsVerusMainnetActive() && height < params.nPOSAveragingWindow ? 4 : 0;
+            int32_t pbaasAdjust = !_IsVerusActive() && height < params.nPOSAveragingWindow ? 4 : 0;
             bnLimit = UintToArith256(params.powAlternate) << (VERUSHASH2_SHIFT - pbaasAdjust);
         }
         else
