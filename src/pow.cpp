@@ -231,6 +231,12 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
         maxConsecutivePos = VERUS_V2_CONSECUTIVE_POS_THRESHOLD;
     }
 
+    if (_IsVerusMainnetActive() && pindexLast && pindexLast->GetHeight() >= 1567999)
+    {
+        bnLimit = UintToArith256(uint256S("00000000000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"));
+        nProofOfStakeLimit = bnLimit.GetCompact();
+    }
+
     struct solveSequence {
         int64_t solveTime;
         bool consecutive;
@@ -254,7 +260,9 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
     for (int64_t i = 0; i < VERUS_NOPOS_THRESHHOLD; i++)
     {
         if (!pindexFirst)
+        {
             return nProofOfStakeLimit;
+        }
 
         CBlockHeader hdr = pindexFirst->GetBlockHeader();
 
@@ -280,7 +288,9 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
             pindexFirst = pindexFirst->pprev;
 
             if (!pindexFirst)
+            {
                 return nProofOfStakeLimit;
+            }
 
             CBlockHeader hdr = pindexFirst->GetBlockHeader();
             if (hdr.IsVerusPOSBlock())
