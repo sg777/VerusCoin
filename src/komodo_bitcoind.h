@@ -1499,7 +1499,7 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
             arith_uint256 posHash;
 
             // for June 17th attack mitigation
-            int attackMitigationStartHeight = 915055;   // the first stake transaction that fails validation, but should be accepted
+            int exploitMitigationStartHeight = 915055;  // the first stake transaction that fails validation, but should be accepted
             int fullCheckHeight = 1568000;              // height at which full checks resume
             int stakingBackOnHeight = 1576200;          // height after which staking is fully reenabled
 
@@ -1511,26 +1511,7 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                 {
                     fullCheckFix = false;
                 }
-                if (height >= attackMitigationStartHeight && height < stakingBackOnHeight)
-                {
-                    // there were no staking blocks on mainnet between 
-                    if (height >= fullCheckHeight && height < stakingBackOnHeight)
-                    {
-                        validHash = false;
-                    }
-                    attackMitigation = true;
-                }
-            }
-            else if (IsVerusActive())
-            {
-                attackMitigationStartHeight = 150;      // the first stake transaction that fails validation, but should be accepted
-                fullCheckHeight = 200;                  // height at which full checks resume
-                stakingBackOnHeight = 360;              // height after which staking is fully reenabled, make sure to skip 160 blocks
-                if (height < fullCheckHeight)
-                {
-                    fullCheckFix = false;
-                }
-                if (height >= attackMitigationStartHeight && height < stakingBackOnHeight)
+                if (height >= exploitMitigationStartHeight && height < stakingBackOnHeight)
                 {
                     // there were no staking blocks on mainnet between 
                     if (height >= fullCheckHeight && height < stakingBackOnHeight)
