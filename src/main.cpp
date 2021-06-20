@@ -3589,13 +3589,13 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     {
         //fprintf(stderr,"checkblock failure in connectblock futureblock.%d\n",futureblock);
         return state.DoS(100, error("%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock),
-                         REJECT_INVALID, "hashPrevBlock-not-bestblock");
+                         REJECT_INVALID, "invalid-block");
     }
 
     if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(true, &block, pindex->GetHeight()))
     {
         return state.DoS(100, error("%s: invalid PoS block in connectblock futureblock.%d\n", __func__, futureblock),
-                         REJECT_INVALID, "hashPrevBlock-not-bestblock");
+                         REJECT_INVALID, "invalid-pos-block");
     }
 
     // verify that the view's current state corresponds to the previous block
