@@ -145,10 +145,12 @@ unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const 
 
     // if changing from VerusHash V1 to V2, shift the last blocks by the same shift as the limit
     int targetShift = 0;
-    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(pindexLast->GetHeight() + 1) > CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV1)
+    uint32_t height = pindexLast->GetHeight() + 1;
+    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(height) > CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV1)
     {
-        bnLimit <<= VERUSHASH2_SHIFT;
-        targetShift = VERUSHASH2_SHIFT;
+        int32_t pbaasAdjust = !_IsVerusMainnetActive() && height < params.nPOSAveragingWindow ? 4 : 0;
+        targetShift = (VERUSHASH2_SHIFT - pbaasAdjust);
+        bnLimit <<= targetShift;
     }
 
     for (int i = 0, j = N - 1; pindexFirst && i < N; i++, j--) {
