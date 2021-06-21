@@ -148,8 +148,7 @@ unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const 
     uint32_t height = pindexLast->GetHeight() + 1;
     if (CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV2)
     {
-        int32_t pbaasAdjust = !_IsVerusActive() && height < params.nPowAveragingWindow ? 4 : 0;
-        targetShift = (VERUSHASH2_SHIFT - pbaasAdjust);
+        targetShift = VERUSHASH2_SHIFT;
         bnLimit <<= targetShift;
     }
 
@@ -178,6 +177,11 @@ unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const 
     // Check we have enough blocks
     if (!pindexFirst)
     {
+        if (!_IsVerusActive() && ASSETCHAINS_ALGO == ASSETCHAINS_VERUSHASH)
+        {
+            // startup 16 times harder on PBaaS chains
+            bnLimit = bnLimit >> 4;
+        }
         return bnLimit.GetCompact();
     }
 
