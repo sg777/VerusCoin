@@ -366,7 +366,7 @@ VDXFData DeserializeVDXFData(const std::vector<unsigned char> &sourceVector)
     else
     {
         CVDXF_Data Data;
-        ::FromVector(sourceVector, sData);
+        ::FromVector(sourceVector, Data);
         if (Data.IsValid())
         {
             return Data;

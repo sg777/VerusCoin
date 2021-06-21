@@ -1498,7 +1498,11 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
             uint256 rawHash;
             arith_uint256 posHash;
 
-            int fullCheckHeight = 1568000;
+            // for June 17th attack mitigation
+            int exploitMitigationStartHeight = 915055;  // the first stake transaction that fails validation, but should be accepted
+            int fullCheckHeight = 1568000;              // height at which full checks resume
+            int stakingBackOnHeight = 1576200;          // height after which staking is fully reenabled
+
             bool fullCheckFix = true;
             bool attackMitigation = false;
             if (IsVerusMainnetActive())
@@ -1507,43 +1511,58 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                 {
                     fullCheckFix = false;
                 }
-                if (height > 1535787)
+                if (height >= exploitMitigationStartHeight && height < stakingBackOnHeight)
                 {
+                    // there were no staking blocks on mainnet between 
+                    if (height >= fullCheckHeight && height < stakingBackOnHeight)
+                    {
+                        validHash = false;
+                    }
                     attackMitigation = true;
                 }
             }
 
-            if (!attackMitigation && validHash && newPOSEnforcement)
+            if (validHash && newPOSEnforcement)
             {
                 validHash = pblock->GetRawVerusPOSHash(rawHash, height);
                 posHash = UintToArith256(rawHash) / value;
-                if (!validHash || posHash > target)
+
+                if (!validHash)
                 {
                     validHash = false;
-                    printf("ERROR: invalid nonce value for PoS block\nnNonce: %s\nrawHash: %s\nposHash: %s\nvalue: %lu\n",
-                            pblock->nNonce.GetHex().c_str(), rawHash.GetHex().c_str(), posHash.GetHex().c_str(), value);
+                    printf("%s: invalid nonce value for PoS block\nnNonce: %s\nrawHash: %s\nposHash: %s\nvalue: %lu\n",
+                            __func__, pblock->nNonce.GetHex().c_str(), rawHash.GetHex().c_str(), posHash.GetHex().c_str(), value);
                 }
-                // make sure prev block hash and block height are correct
-                CStakeParams p;
-                if (validHash && (validHash = GetStakeParams(pblock->vtx[txn_count-1], p)))
+                else if (!attackMitigation)
                 {
-                    for (int i = 0; validHash && i < pblock->vtx[0].vout.size(); i++)
+                    if (posHash > target)
                     {
                         validHash = false;
-                        if (pblock->vtx[0].vout[i].scriptPubKey.IsInstantSpendOrUnspendable() || ValidateMatchingStake(pblock->vtx[0], i, pblock->vtx[txn_count-1], validHash, slowflag) && !validHash)
+                        printf("%s: invalid nonce value for PoS block\nnNonce: %s\nrawHash: %s\nposHash: %s\nvalue: %lu\n",
+                                __func__, pblock->nNonce.GetHex().c_str(), rawHash.GetHex().c_str(), posHash.GetHex().c_str(), value);
+                    }
+                    // make sure prev block hash and block height are correct
+                    CStakeParams p;
+                    if (validHash && (validHash = GetStakeParams(pblock->vtx[txn_count-1], p)))
+                    {
+                        for (int i = 0; validHash && i < pblock->vtx[0].vout.size(); i++)
                         {
-                            if ((p.prevHash == pblock->hashPrevBlock) && (int32_t)p.blkHeight == height)
+                            validHash = false;
+                            if (pblock->vtx[0].vout[i].scriptPubKey.IsInstantSpendOrUnspendable() || ValidateMatchingStake(pblock->vtx[0], i, pblock->vtx[txn_count-1], validHash, slowflag) && !validHash)
                             {
-                                validHash = true;
+                                if ((p.prevHash == pblock->hashPrevBlock) && (int32_t)p.blkHeight == height)
+                                {
+                                    validHash = true;
+                                }
+                                else
+                                {
+                                    printf("ERROR: invalid block data for stake tx\nblkHash:   %s\ntxBlkHash: %s\nblkHeight: %d, txBlkHeight: %d\n",
+                                            pblock->hashPrevBlock.GetHex().c_str(), p.prevHash.GetHex().c_str(), height, p.blkHeight);
+                                    validHash = false;
+                                }
                             }
-                            else
-                            {
-                                printf("ERROR: invalid block data for stake tx\nblkHash:   %s\ntxBlkHash: %s\nblkHeight: %d, txBlkHeight: %d\n",
-                                        pblock->hashPrevBlock.GetHex().c_str(), p.prevHash.GetHex().c_str(), height, p.blkHeight);
-                                validHash = false;
-                            }
+                            else validHash = false;
                         }
-                        else validHash = false;
                     }
                 }
             }
