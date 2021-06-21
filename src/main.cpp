@@ -2541,9 +2541,7 @@ int IsNotInSync()
          (pindexBestHeader == 0) || 
          ((pindexBestHeader->GetHeight() - 1) > pbi->GetHeight()))
     {
-        return (pbi && pindexBestHeader && (pindexBestHeader->GetHeight() - 1) > pbi->GetHeight()) ?
-                pindexBestHeader->GetHeight() - pbi->GetHeight() :
-                true;
+        return (pbi && pindexBestHeader) ? pindexBestHeader->GetHeight() - pbi->GetHeight() : true;
     }
     return false;
 }
@@ -3590,14 +3588,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (!CheckBlock(&futureblock,pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck) || futureblock != 0 )
     {
         //fprintf(stderr,"checkblock failure in connectblock futureblock.%d\n",futureblock);
-        LogPrintf("%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock);
-        return false;
+        return state.DoS(100, error("%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock),
+                         REJECT_INVALID, "invalid-block");
     }
 
     if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(true, &block, pindex->GetHeight()))
     {
-        LogPrintf("%s: invalid PoS block in connectblock futureblock.%d\n", __func__,futureblock);
-        return false;
+        return state.DoS(100, error("%s: invalid PoS block in connectblock futureblock.%d\n", __func__, futureblock),
+                         REJECT_INVALID, "invalid-pos-block");
     }
 
     // verify that the view's current state corresponds to the previous block
@@ -6376,7 +6374,7 @@ bool TestBlockValidity(CValidationState& state, const CChainParams& chainparams,
     {
         success = true;
     }
-    assert(state.IsValid());
+    //assert(state.IsValid());
 
     RemoveCoinbaseFromMemPool(block);
     return success;
