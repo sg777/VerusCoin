@@ -1825,8 +1825,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 return false;
             }
 
-            if (oneIT.first.second.GetBlockHeight() &&
-                proofNotarization.proofRoots[sourceSystemID].stateRoot != oneIT.first.second.CheckPartialTransaction(exportTx))
+            if (proofNotarization.proofRoots[sourceSystemID].stateRoot != oneIT.first.second.CheckPartialTransaction(exportTx))
             {
                 LogPrintf("%s: export tx %s fails verification\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
                 return false;
