@@ -228,7 +228,7 @@ public:
     static uint160 GetDataKey(const std::string &keyName, uint160 &nameSpaceID);
     bool IsValid()
     {
-        return key == STRUCTURED_DATA_KEY || !registered ) && version >= FIRST_VERSION && version <= LAST_VERSION;
+        return !key.IsNull() && version >= FIRST_VERSION && version <= LAST_VERSION;
     }
 };
 
