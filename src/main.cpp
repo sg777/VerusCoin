@@ -6121,14 +6121,6 @@ static bool AcceptBlock(int32_t *futureblockp, const CBlock& block, CValidationS
     {
         if ( *futureblockp == 0 )
         {
-            // DEBUG ONLY
-            if (state.IsInvalid() &&
-                !state.CorruptionPossible() &&
-                block.IsVerusPOSBlock())
-            {
-                verusCheckPOSBlock(false, &block, pindex->GetHeight());
-            } //*/
-
             if (state.IsInvalid() && !state.CorruptionPossible()) {
                 pindex->nStatus |= BLOCK_FAILED_VALID;
                 setDirtyBlockIndex.insert(pindex);
