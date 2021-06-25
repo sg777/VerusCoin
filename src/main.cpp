@@ -8429,9 +8429,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 {
                     if (nDoS > 0 && futureblock == 0)
                     {
-                        // TODO: UNCOMMENT AND REMOVE LINE BELOW
-                        //Misbehaving(pfrom->GetId(), nDoS);
-                        Misbehaving(pfrom->GetId(), 1);
+                        Misbehaving(pfrom->GetId(), nDoS);
                     }
                     return error("invalid header received");
                 }
