@@ -8422,7 +8422,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 if (state.IsInvalid(nDoS) && futureblock == 0)
                 {
                     if (nDoS > 0 && futureblock == 0)
-                        Misbehaving(pfrom->GetId(), nDoS/nDoS);
+                    {
+                        Misbehaving(pfrom->GetId(), nDoS);
+                    }
                     return error("invalid header received");
                 }
             }
