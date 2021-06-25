@@ -7576,6 +7576,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             
             if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK)
             {
+                LogPrint("net", "%s: inv %s\n", __func__, inv.type == MSG_BLOCK ? "MSG_BLOCK" : "MSG_FILTERED_BLOCK");
+
                 bool send = false;
                 BlockMap::iterator mi = mapBlockIndex.find(inv.hash);
                 if (mi != mapBlockIndex.end())
@@ -7599,6 +7601,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                 // it's available before trying to send.
                 if (send && (mi->second->nStatus & BLOCK_HAVE_DATA))
                 {
+                    LogPrint("net", "%s: is send\n", __func__);
+
                     // Send block from disk
                     CBlock block;
                     if (!ReadBlockFromDisk(block, (*mi).second, consensusParams, 1))
@@ -7653,6 +7657,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             }
             else if (inv.IsKnownType())
             {
+                LogPrint("net", "%s: inv 3 %d\n", __func__, inv.type);
+
                 // Check the mempool to see if a transaction is expiring soon.  If so, do not send to peer.
                 // Note that a transaction enters the mempool first, before the serialized form is cached
                 // in mapRelay after a successful relay.
@@ -8423,7 +8429,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 {
                     if (nDoS > 0 && futureblock == 0)
                     {
-                        Misbehaving(pfrom->GetId(), nDoS);
+                        // TODO: UNCOMMENT AND REMOVE LINE BELOW
+                        //Misbehaving(pfrom->GetId(), nDoS);
+                        Misbehaving(pfrom->GetId(), 1);
                     }
                     return error("invalid header received");
                 }
@@ -8475,7 +8483,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             }
         }
     }
-    
+
     
     // This asymmetric behavior for inbound and outbound connections was introduced
     // to prevent a fingerprinting attack: an attacker can send specific fake addresses
