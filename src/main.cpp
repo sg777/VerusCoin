@@ -7556,7 +7556,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
     
     LOCK(cs_main);
 
-    LogPrint("net", "%s\n", __func__);
+    LogPrint("getdata", "%s\n", __func__);
 
     while (it != pfrom->vRecvGetData.end()) {
         // Don't bother if send buffer is too full to respond anyway
@@ -7569,14 +7569,14 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
 
         const CInv &inv = *it;
         {
-            LogPrint("net", "%s: one inventory item %s\n", __func__, inv.ToString().c_str());
+            LogPrint("getdata", "%s: one inventory item %s\n", __func__, inv.ToString().c_str());
 
             boost::this_thread::interruption_point();
             it++;
 
             if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK)
             {
-                LogPrint("net", "%s: inv %s\n", __func__, inv.type == MSG_BLOCK ? "MSG_BLOCK" : "MSG_FILTERED_BLOCK");
+                LogPrint("getdata", "%s: inv %s\n", __func__, inv.type == MSG_BLOCK ? "MSG_BLOCK" : "MSG_FILTERED_BLOCK");
 
                 bool send = false;
                 BlockMap::iterator mi = mapBlockIndex.find(inv.hash);
@@ -7601,7 +7601,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                 // it's available before trying to send.
                 if (send && (mi->second->nStatus & BLOCK_HAVE_DATA))
                 {
-                    LogPrint("net", "%s: is send\n", __func__);
+                    LogPrint("getdata", "%s: is send\n", __func__);
 
                     // Send block from disk
                     CBlock block;
@@ -7657,7 +7657,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             }
             else if (inv.IsKnownType())
             {
-                LogPrint("net", "%s: inv 3 %d\n", __func__, inv.type);
+                LogPrint("getdata", "%s: inv 3 %d\n", __func__, inv.type);
 
                 // Check the mempool to see if a transaction is expiring soon.  If so, do not send to peer.
                 // Note that a transaction enters the mempool first, before the serialized form is cached
@@ -8090,6 +8090,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     
     else if (strCommand == "getdata")
     {
+        LogPrint("getdata", "received getdata peer=%d\n", pfrom->id);
         vector<CInv> vInv;
         vRecv >> vInv;
         if (vInv.size() > MAX_INV_SZ)
@@ -8105,6 +8106,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             LogPrint("net", "received getdata for: %s peer=%d\n", vInv[0].ToString(), pfrom->id);
         
         pfrom->vRecvGetData.insert(pfrom->vRecvGetData.end(), vInv.begin(), vInv.end());
+        LogPrint("getdata", "calling ProcessGetData\n");
         ProcessGetData(pfrom, chainparams.GetConsensus());
     }
     
