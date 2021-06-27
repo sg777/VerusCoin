@@ -7559,13 +7559,19 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
     while (it != pfrom->vRecvGetData.end()) {
         // Don't bother if send buffer is too full to respond anyway
         if (pfrom->nSendSize >= SendBufferSize())
+        {
+            LogPrint("net", "%s: send buffer too full\n", __func__);
             break;
-        
+        }
+
+
         const CInv &inv = *it;
         {
+            LogPrint("net", "%s: one inventory item %s\n", __func__, inv.ToString().c_str());
+
             boost::this_thread::interruption_point();
             it++;
-            
+
             if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK)
             {
                 LogPrint("net", "%s: inv %s\n", __func__, inv.type == MSG_BLOCK ? "MSG_BLOCK" : "MSG_FILTERED_BLOCK");
@@ -7824,7 +7830,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         pfrom->ssSend.SetVersion(min(pfrom->nVersion, CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS ? 
                                                                                  MIN_PBAAS_VERSION : 
                                                                                  MIN_PEER_PROTO_VERSION));
-        
+
         if (!pfrom->fInbound)
         {
             // Advertise our address

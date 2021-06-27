@@ -271,6 +271,12 @@ TransactionBuilderResult TransactionBuilder::Build()
         view.SetBackend(viewMemPool);
 
         CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height() + 1);
+        if (!rtxd.IsValid())
+        {
+            CReserveTransactionDescriptor checkRtxd(mtx, view, chainActive.Height() + 1);
+            LogPrint("txbuilder", "Invalid reserve transaction descriptor\n", __func__);
+            return TransactionBuilderResult("Invalid reserve transaction descriptor");
+        }
         reserveChange = (rtxd.ReserveInputMap() - rtxd.ReserveOutputMap()) - reserveFee;
 
         //printf("\n%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
@@ -301,7 +307,7 @@ TransactionBuilderResult TransactionBuilder::Build()
             //TxToUniv(mtx, uint256(), jsonTx);
             //printf("%s: mtx: %s\n", __func__, jsonTx.write(1,2).c_str());
             printf("%s: Change cannot be negative, %s\n", __func__, ("native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write()).c_str());
-            return TransactionBuilderResult("Change cannot be negative, native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write() + "\n");
+            return TransactionBuilderResult("Change cannot be negative, native: " + std::to_string(change) + "\nreserves: " + reserveChange.ToUniValue().write());
         }
 
         if ((rtxd.NativeFees() - this->fee) != change)
