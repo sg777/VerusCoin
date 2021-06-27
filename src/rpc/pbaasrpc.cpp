@@ -3403,7 +3403,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "      \"burn\":\"false\",      (bool,  optional) destroy the currency and subtract it from the supply. Currency must be a token.\n"
             "      \"mintnew\":\"false\",   (bool,  optional) if the transaction is sent from the currency ID of a centralized currency, this creates new currency to send\n"
             "    }, ... ]\n"
-            "3. \"feeamount\"               (bool,   optional) specific fee amount requested instead of default miner's fee\n"
+            "3. \"feeamount\"               (number, optional) specific fee amount requested instead of default miner's fee\n"
 
             "\nResult:\n"
             "   \"txid\" : \"transactionid\" (string) The transaction id if (returntx) is false\n"
@@ -4814,24 +4814,6 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
     {
         // it is a PBaaS chain, and it is its own system, responsible for its own communication and currency control
         newCurrency.systemID = newCurrency.GetID();
-
-        std::vector<CNodeData> vNodes;
-        UniValue nodeArr = find_value(uniObj, "nodes");
-        if (nodeArr.isArray() && nodeArr.size())
-        {
-            for (int i = 0; i < nodeArr.size(); i++)
-            {
-                CNodeData nd(nodeArr[i]);
-                if (nd.IsValid())
-                {
-                    vNodes.push_back(nd);
-                    if (vNodes.size() == 2)
-                    {
-                        break;
-                    }
-                }
-            }
-        }
     }
 
     if (currentChainDefinition)
