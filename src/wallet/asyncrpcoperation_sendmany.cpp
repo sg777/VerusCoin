@@ -1084,6 +1084,7 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
 
     bool wildCardPKH = false;
     bool wildCardID = false;
+    bool isFromSpecificID = false;
 
     // if no specific address type, wildcard outputs to all transparent addresses and IDs are valid to consider
     if (fromtaddr_.which() == COptCCParams::ADDRTYPE_INVALID)
@@ -1104,6 +1105,7 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
     else
     {
         destinations.insert(fromtaddr_);
+        isFromSpecificID = true;
     }
 
     vector<COutput> vecOutputs;
@@ -1129,7 +1131,7 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
     BOOST_FOREACH(const COutput& out, vecOutputs) {
         CTxDestination dest;
 
-        if (!out.fSpendable) {
+        if (!isFromSpecificID && !out.fSpendable) {
             continue;
         }
 

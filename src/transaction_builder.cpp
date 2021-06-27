@@ -550,7 +550,7 @@ TransactionBuilderResult TransactionBuilder::Build()
             //extern void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry);
             //TxToUniv(txNewConst, uint256(), jsonTx);
             //printf("Failed to sign for script:\n%s\n", jsonTx.write(1,2).c_str());
-            return TransactionBuilderResult("Failed to sign transaction");
+            return TransactionBuilderResult("Failed to sign transaction 1");
         } else {
             UpdateTransaction(mtx, nIn, sigdata);
         }
