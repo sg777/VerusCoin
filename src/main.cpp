@@ -8427,7 +8427,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 {
                     if (nDoS > 0 && futureblock == 0)
                     {
-                        Misbehaving(pfrom->GetId(), nDoS);
+                        // TODO: HARDENING - DEBUG reduction of ban score as per pre-Verus as honeypot to
+                        // catch specific issues
+                        Misbehaving(pfrom->GetId(), 1);
+                        //Misbehaving(pfrom->GetId(), nDoS);
                     }
                     return error("invalid header received");
                 }
