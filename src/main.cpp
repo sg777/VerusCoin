@@ -6004,8 +6004,8 @@ static bool AcceptBlockHeader(int32_t *futureblockp,const CBlockHeader& block, C
             *ppindex = pindex;
         if ( pindex != 0 && pindex->nStatus & BLOCK_FAILED_MASK )
         {
-            LogPrintf("block height: %u\n", pindex->GetHeight());
-            return state.Invalid(error("%s: block is marked invalid", __func__), 0, "duplicate");
+            LogPrint("net", "block height: %u\n", pindex->GetHeight());
+            return state.DoS(100, error("%s: block is marked invalid", __func__), REJECT_INVALID, "banned-for-invalid-block");
         }
         /*if ( pindex != 0 && hash == komodo_requestedhash )
         {
@@ -6080,7 +6080,9 @@ static bool AcceptBlock(int32_t *futureblockp, const CBlock& block, CValidationS
     CBlockIndex *&pindex = *ppindex;
     if (!AcceptBlockHeader(futureblockp, block, state, chainparams, &pindex))
     {
-        if ( *futureblockp == 0 )
+        int nDoS = 0;
+
+        if ( *futureblockp == 0 || (state.IsInvalid(nDoS) && nDoS >= 100) )
         {
             LogPrintf("AcceptBlock AcceptBlockHeader error\n");
             return false;
@@ -8429,12 +8431,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 int nDoS;
                 if (state.IsInvalid(nDoS) && futureblock == 0)
                 {
-                    if (nDoS > 0 && futureblock == 0)
+                    if ((nDoS > 0 && futureblock == 0) || nDoS == 100)
                     {
-                        // TODO: HARDENING - ensure that this setting of "1" is removed and replaced with the commented line
-                        // that uses nDoS
-                        Misbehaving(pfrom->GetId(), 1);
-                        //Misbehaving(pfrom->GetId(), nDoS);
+                        Misbehaving(pfrom->GetId(), nDoS);
                     }
                     return error("invalid header received");
                 }
@@ -8778,6 +8777,7 @@ bool ProcessMessages(CNode* pfrom)
         // Scan for message start
         if (memcmp(msg.hdr.pchMessageStart, chainparams.MessageStart(), MESSAGE_START_SIZE) != 0) {
             LogPrintf("PROCESSMESSAGE: MESSAGESTART DOES NOT MATCH NETWORK %s peer=%d\n", SanitizeString(msg.hdr.GetCommand()), pfrom->id);
+            Misbehaving(pfrom->GetId(), 100);
             fOk = false;
             break;
         }
@@ -8787,6 +8787,7 @@ bool ProcessMessages(CNode* pfrom)
         if (!hdr.IsValid(chainparams.MessageStart()))
         {
             LogPrintf("PROCESSMESSAGE: ERRORS IN HEADER %s peer=%d\n", SanitizeString(hdr.GetCommand()), pfrom->id);
+            Misbehaving(pfrom->GetId(), 20);
             continue;
         }
         string strCommand = hdr.GetCommand();
