@@ -164,7 +164,7 @@ public:
 
     void SendChangeTo(const CTxDestination &changeAddr);
 
-    TransactionBuilderResult Build();
+    TransactionBuilderResult Build(bool throwTxWithPartialSig=false);
 
 private:
     void CreateJSDescriptions();

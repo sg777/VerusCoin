@@ -251,7 +251,7 @@ void TransactionBuilder::SendChangeTo(const CTxDestination &changeAddr)
     sproutChangeAddr = boost::none;
 }
 
-TransactionBuilderResult TransactionBuilder::Build()
+TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
 {
     //
     // Consistency checks
@@ -538,6 +538,7 @@ TransactionBuilderResult TransactionBuilder::Build()
     }
 
     // Transparent signatures
+    bool throwPartialSig = false;
     CTransaction txNewConst(mtx);
     for (int nIn = 0; nIn < mtx.vin.size(); nIn++) {
         auto tIn = tIns[nIn];
@@ -550,10 +551,23 @@ TransactionBuilderResult TransactionBuilder::Build()
             //extern void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry);
             //TxToUniv(txNewConst, uint256(), jsonTx);
             //printf("Failed to sign for script:\n%s\n", jsonTx.write(1,2).c_str());
-            return TransactionBuilderResult("Failed to sign transaction 1");
+            if (sigdata.scriptSig.size() && throwTxWithPartialSig)
+            {
+                UpdateTransaction(mtx, nIn, sigdata);
+                throwPartialSig = true;
+            }
+            else
+            {
+                return TransactionBuilderResult("Failed to sign transaction");
+            }
         } else {
             UpdateTransaction(mtx, nIn, sigdata);
         }
+    }
+
+    if (throwTxWithPartialSig)
+    {
+        return TransactionBuilderResult(EncodeHexTx(mtx));
     }
 
     return TransactionBuilderResult(CTransaction(mtx));

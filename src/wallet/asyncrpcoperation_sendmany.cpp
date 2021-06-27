@@ -253,6 +253,8 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     bool isPureTaddrOnlyTx = (isfromtaddr_ && z_outputs_.size() == 0);
     CAmount minersFee = fee_;
 
+    bool isFromSpecificID = false;
+
     uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1);
 
     // figure out just how much we need before getting inputs
@@ -285,6 +287,12 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     // When spending coinbase utxos, you can only specify a single zaddr as the change must go somewhere
     // and if there are multiple zaddrs, we don't know where to send it.
     if (isfromtaddr_) {
+        CTxDestination checkDest = DecodeDestination(fromaddress_);
+        if (checkDest.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(checkDest).IsNull())
+        {
+            isFromSpecificID = true;
+        }
+
         // if we don't need to protect coinbases, they can be included in inputs
         if (isSingleZaddrOutput || !Params().GetConsensus().fCoinbaseMustBeProtected) {
             bool b = find_utxos(true);
@@ -637,7 +645,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         }
 
         // Build the transaction
-        tx_ = builder_.Build().GetTxOrThrow();
+        tx_ = builder_.Build(isFromSpecificID).GetTxOrThrow();
 
         UniValue sendResult = SendTransaction(tx_, keyChange, testmode);
         set_result(sendResult);
