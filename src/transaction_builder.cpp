@@ -32,6 +32,17 @@ bool TransactionBuilderResult::IsTx() { return maybeTx != boost::none; }
 
 bool TransactionBuilderResult::IsError() { return maybeError != boost::none; }
 
+bool TransactionBuilderResult::IsHexTx()
+{
+    CTransaction tx;
+    if (maybeError != boost::none &&
+        IsHex(maybeError.get()))
+    {
+        return DecodeHexTx(tx, maybeError.get());
+    }
+    return false;
+}
+
 CTransaction TransactionBuilderResult::GetTxOrThrow() {
     if (maybeTx) {
         return maybeTx.get();

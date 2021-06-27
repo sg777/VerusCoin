@@ -7555,7 +7555,9 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
     vector<CInv> vNotFound;
     
     LOCK(cs_main);
-    
+
+    LogPrint("net", "%s\n", __func__);
+
     while (it != pfrom->vRecvGetData.end()) {
         // Don't bother if send buffer is too full to respond anyway
         if (pfrom->nSendSize >= SendBufferSize())
@@ -8427,7 +8429,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 {
                     if (nDoS > 0 && futureblock == 0)
                     {
-                        Misbehaving(pfrom->GetId(), nDoS);
+                        // TODO: HARDENING - ensure that this setting of "1" is removed and replaced with the commented line
+                        // that uses nDoS
+                        Misbehaving(pfrom->GetId(), 1);
+                        //Misbehaving(pfrom->GetId(), nDoS);
                     }
                     return error("invalid header received");
                 }
