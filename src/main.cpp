@@ -8429,17 +8429,14 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             int32_t futureblock;
             if (!AcceptBlockHeader(&futureblock, header, state, chainparams, &pindexLast)) {
                 int nDoS;
-                if (state.IsInvalid(nDoS) && futureblock == 0)
+                if (state.IsInvalid(nDoS) && (futureblock == 0 || nDoS >= 100))
                 {
-                    if ((nDoS > 0 && futureblock == 0) || nDoS == 100)
-                    {
-                        Misbehaving(pfrom->GetId(), nDoS);
-                    }
+                    Misbehaving(pfrom->GetId(), nDoS);
                     return error("invalid header received");
                 }
             }
         }
-        
+
         if (pindexLast)
             UpdateBlockAvailability(pfrom->GetId(), pindexLast->GetBlockHash());
         
