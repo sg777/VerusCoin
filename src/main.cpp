@@ -6004,8 +6004,8 @@ static bool AcceptBlockHeader(int32_t *futureblockp,const CBlockHeader& block, C
             *ppindex = pindex;
         if ( pindex != 0 && pindex->nStatus & BLOCK_FAILED_MASK )
         {
-            LogPrintf("block height: %u\n", pindex->GetHeight());
-            return state.Invalid(error("%s: block is marked invalid", __func__), 0, "duplicate");
+            LogPrint("net", "block height: %u\n", pindex->GetHeight());
+            return state.DoS(100, error("%s: block is marked invalid", __func__), REJECT_INVALID, "banned-for-invalid-block");
         }
         /*if ( pindex != 0 && hash == komodo_requestedhash )
         {
@@ -6080,7 +6080,9 @@ static bool AcceptBlock(int32_t *futureblockp, const CBlock& block, CValidationS
     CBlockIndex *&pindex = *ppindex;
     if (!AcceptBlockHeader(futureblockp, block, state, chainparams, &pindex))
     {
-        if ( *futureblockp == 0 )
+        int nDoS = 0;
+
+        if ( *futureblockp == 0 || (state.IsInvalid(nDoS) && nDoS >= 100) )
         {
             LogPrintf("AcceptBlock AcceptBlockHeader error\n");
             return false;
@@ -6121,14 +6123,6 @@ static bool AcceptBlock(int32_t *futureblockp, const CBlock& block, CValidationS
     {
         if ( *futureblockp == 0 )
         {
-            // DEBUG ONLY
-            if (state.IsInvalid() &&
-                !state.CorruptionPossible() &&
-                block.IsVerusPOSBlock())
-            {
-                verusCheckPOSBlock(false, &block, pindex->GetHeight());
-            } //*/
-
             if (state.IsInvalid() && !state.CorruptionPossible()) {
                 pindex->nStatus |= BLOCK_FAILED_VALID;
                 setDirtyBlockIndex.insert(pindex);
@@ -7563,19 +7557,29 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
     vector<CInv> vNotFound;
     
     LOCK(cs_main);
-    
+
+    LogPrint("getdata", "%s\n", __func__);
+
     while (it != pfrom->vRecvGetData.end()) {
         // Don't bother if send buffer is too full to respond anyway
         if (pfrom->nSendSize >= SendBufferSize())
+        {
+            LogPrint("net", "%s: send buffer too full\n", __func__);
             break;
-        
+        }
+
+
         const CInv &inv = *it;
         {
+            LogPrint("getdata", "%s: one inventory item %s\n", __func__, inv.ToString().c_str());
+
             boost::this_thread::interruption_point();
             it++;
-            
+
             if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK)
             {
+                LogPrint("getdata", "%s: inv %s\n", __func__, inv.type == MSG_BLOCK ? "MSG_BLOCK" : "MSG_FILTERED_BLOCK");
+
                 bool send = false;
                 BlockMap::iterator mi = mapBlockIndex.find(inv.hash);
                 if (mi != mapBlockIndex.end())
@@ -7599,6 +7603,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                 // it's available before trying to send.
                 if (send && (mi->second->nStatus & BLOCK_HAVE_DATA))
                 {
+                    LogPrint("getdata", "%s: is send\n", __func__);
+
                     // Send block from disk
                     CBlock block;
                     if (!ReadBlockFromDisk(block, (*mi).second, consensusParams, 1))
@@ -7653,6 +7659,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             }
             else if (inv.IsKnownType())
             {
+                LogPrint("getdata", "%s: inv 3 %d\n", __func__, inv.type);
+
                 // Check the mempool to see if a transaction is expiring soon.  If so, do not send to peer.
                 // Note that a transaction enters the mempool first, before the serialized form is cached
                 // in mapRelay after a successful relay.
@@ -7826,7 +7834,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         pfrom->ssSend.SetVersion(min(pfrom->nVersion, CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight) >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS ? 
                                                                                  MIN_PBAAS_VERSION : 
                                                                                  MIN_PEER_PROTO_VERSION));
-        
+
         if (!pfrom->fInbound)
         {
             // Advertise our address
@@ -8084,6 +8092,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     
     else if (strCommand == "getdata")
     {
+        LogPrint("getdata", "received getdata peer=%d\n", pfrom->id);
         vector<CInv> vInv;
         vRecv >> vInv;
         if (vInv.size() > MAX_INV_SZ)
@@ -8099,6 +8108,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             LogPrint("net", "received getdata for: %s peer=%d\n", vInv[0].ToString(), pfrom->id);
         
         pfrom->vRecvGetData.insert(pfrom->vRecvGetData.end(), vInv.begin(), vInv.end());
+        LogPrint("getdata", "calling ProcessGetData\n");
         ProcessGetData(pfrom, chainparams.GetConsensus());
     }
     
@@ -8419,15 +8429,14 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             int32_t futureblock;
             if (!AcceptBlockHeader(&futureblock, header, state, chainparams, &pindexLast)) {
                 int nDoS;
-                if (state.IsInvalid(nDoS) && futureblock == 0)
+                if (state.IsInvalid(nDoS) && (futureblock == 0 || nDoS >= 100))
                 {
-                    if (nDoS > 0 && futureblock == 0)
-                        Misbehaving(pfrom->GetId(), nDoS/nDoS);
+                    Misbehaving(pfrom->GetId(), nDoS);
                     return error("invalid header received");
                 }
             }
         }
-        
+
         if (pindexLast)
             UpdateBlockAvailability(pfrom->GetId(), pindexLast->GetBlockHash());
         
@@ -8473,7 +8482,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             }
         }
     }
-    
+
     
     // This asymmetric behavior for inbound and outbound connections was introduced
     // to prevent a fingerprinting attack: an attacker can send specific fake addresses
@@ -8765,6 +8774,7 @@ bool ProcessMessages(CNode* pfrom)
         // Scan for message start
         if (memcmp(msg.hdr.pchMessageStart, chainparams.MessageStart(), MESSAGE_START_SIZE) != 0) {
             LogPrintf("PROCESSMESSAGE: MESSAGESTART DOES NOT MATCH NETWORK %s peer=%d\n", SanitizeString(msg.hdr.GetCommand()), pfrom->id);
+            Misbehaving(pfrom->GetId(), 100);
             fOk = false;
             break;
         }
@@ -8774,6 +8784,7 @@ bool ProcessMessages(CNode* pfrom)
         if (!hdr.IsValid(chainparams.MessageStart()))
         {
             LogPrintf("PROCESSMESSAGE: ERRORS IN HEADER %s peer=%d\n", SanitizeString(hdr.GetCommand()), pfrom->id);
+            Misbehaving(pfrom->GetId(), 20);
             continue;
         }
         string strCommand = hdr.GetCommand();
