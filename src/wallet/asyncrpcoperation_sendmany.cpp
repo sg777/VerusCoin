@@ -287,8 +287,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     // When spending coinbase utxos, you can only specify a single zaddr as the change must go somewhere
     // and if there are multiple zaddrs, we don't know where to send it.
     if (isfromtaddr_) {
-        CTxDestination checkDest = DecodeDestination(fromaddress_);
-        if (checkDest.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(checkDest).IsNull())
+        if (fromtaddr_.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(fromtaddr_).IsNull())
         {
             isFromSpecificID = true;
         }
@@ -1084,7 +1083,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
     return true;
 }
 
-bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false) 
+bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase) 
 {
     assert(isfromtaddr_);
 
@@ -1092,7 +1091,7 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
 
     bool wildCardPKH = false;
     bool wildCardID = false;
-    bool isFromSpecificID = false;
+    bool isFromSpecificID = fromtaddr_.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(fromtaddr_).IsNull();
 
     // if no specific address type, wildcard outputs to all transparent addresses and IDs are valid to consider
     if (fromtaddr_.which() == COptCCParams::ADDRTYPE_INVALID)
@@ -1113,7 +1112,6 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
     else
     {
         destinations.insert(fromtaddr_);
-        isFromSpecificID = true;
     }
 
     vector<COutput> vecOutputs;
@@ -1147,32 +1145,76 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase=false)
             continue;
         }
 
+        std::vector<CTxDestination> addresses;
+        int nRequired;
+        bool canSign, canSpend;
         CTxDestination address;
-        if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address)) {
+        txnouttype txType;
+        if (!ExtractDestinations(out.tx->vout[out.i].scriptPubKey, txType, addresses, nRequired, pwalletMain, &canSign, &canSpend))
+        {
             continue;
         }
 
-        if (wildCardID || wildCardPKH)
+        if (isFromSpecificID)
         {
-            bool keep = false;
-            if (wildCardPKH)
-            {
-                keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
-            }
-            if (!keep && wildCardID)
-            {
-                keep = address.which() == COptCCParams::ADDRTYPE_ID;
-            }
-            if (!keep)
+            // if we have more address destinations than just this address and have specified from a single ID only,
+            // the condition must be such that the ID itself can spend, even if this wallet cannot due to a multisig
+            // ID. if the ID cannot spend, even given a valid multisig ID, then to select this as a source without
+            // an explicit, multisig match would cause potentially unwanted sourcing of funds. a spend just to this ID
+            // is fine.
+
+            COptCCParams p, m;
+            // if we can't spend and can only sign,
+            // ensure that this output is spendable by just this ID as a 1 of n and 1 of n at the master
+            // smart transaction level as well
+            if (!canSpend &&
+                !(out.tx->vout[out.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                 p.IsValid() &&
+                 (p.version < COptCCParams::VERSION_V3 &&
+                  p.m == 1) ||
+                 (p.vData.size() > 1 &&
+                  (m = COptCCParams(p.vData.back())).IsValid() &&
+                  p.m == 1 &&
+                  m.m == 1)))
             {
                 continue;
             }
         }
-        else
+
+        bool keep = false;
+        for (auto &address : addresses)
         {
-            if (!destinations.count(address)) {
-                continue;
+            if (isFromSpecificID)
+            {
+                if (address == fromtaddr_)
+                {
+                    keep = true;
+                }
             }
+            else if (wildCardID || wildCardPKH)
+            {
+                if (wildCardPKH)
+                {
+                    keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
+                }
+                if (!keep && wildCardID)
+                {
+                    keep = address.which() == COptCCParams::ADDRTYPE_ID;
+                }
+            }
+            else
+            {
+                keep = destinations.count(address);
+            }
+            if (keep)
+            {
+                break;
+            }
+        }
+
+        if (!keep)
+        {
+            continue;
         }
 
         t_inputs_.push_back(out);

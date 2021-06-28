@@ -3433,7 +3433,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         spentCurrencyOut.valueMap[importCurrencyID] += netPrimaryOut;
     }
 
-    newCurrencyState.primaryCurrencyOut = netPrimaryOut;
+    newCurrencyState.primaryCurrencyOut = netPrimaryOut - (burnedChangePrice + burnedChangeWeight);
     if (importCurrencyDef.IsPBaaSChain() && importCurrencyState.IsLaunchConfirmed() && !importCurrencyState.IsLaunchClear())
     {
         // pre-conversions should already be on this chain as gateway deposits on behalf of the
