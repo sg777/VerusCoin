@@ -47,7 +47,7 @@ CTransaction TransactionBuilderResult::GetTxOrThrow() {
     if (maybeTx) {
         return maybeTx.get();
     } else {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Failed to build transaction: " + GetError());
+        throw JSONRPCError(RPC_WALLET_ERROR, GetError());
     }
 }
 
@@ -576,7 +576,7 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
         }
     }
 
-    if (throwTxWithPartialSig)
+    if (throwPartialSig)
     {
         return TransactionBuilderResult(EncodeHexTx(mtx));
     }
