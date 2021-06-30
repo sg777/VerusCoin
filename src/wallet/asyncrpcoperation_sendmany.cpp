@@ -1134,7 +1134,8 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
         pwalletMain->AvailableCoins(vecOutputs, false, NULL, false, true, fAcceptProtectedCoinbase);
     }
 
-    BOOST_FOREACH(const COutput& out, vecOutputs) {
+    for (COutput& out : vecOutputs) 
+    {
         CTxDestination dest;
 
         if (!isFromSpecificID && !out.fSpendable) {
@@ -1168,15 +1169,26 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
             // ensure that this output is spendable by just this ID as a 1 of n and 1 of n at the master
             // smart transaction level as well
             if (!canSpend &&
-                !(out.tx->vout[out.i].scriptPubKey.IsPayToCryptoCondition(p) &&
-                 p.IsValid() &&
-                 (p.version < COptCCParams::VERSION_V3 &&
-                  p.m == 1) ||
-                 (((p.vData.size() > 1 &&
-                    (m = COptCCParams(p.vData.back())).IsValid() &&
-                    m.m == 1) ||
-                   p.vData.size() <= 1) &&
-                  p.m == 1)))
+                (!canSign ||
+                 !(out.tx->vout[out.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                   p.IsValid() &&
+                   (p.version < COptCCParams::VERSION_V3) ||
+                    ((p.vData.size() > 1 &&
+                      (m = COptCCParams(p.vData.back())).IsValid() &&
+                      m.m == 1) ||
+                     p.vData.size() <= 1) &&
+                   p.m == 1)))
+            {
+                continue;
+            }
+            else
+            {
+                out.fSpendable = true;      // this may not really be spendable, but set it if its the correct ID source and can sign
+            }
+        }
+        else
+        {
+            if (!out.fSpendable)
             {
                 continue;
             }
