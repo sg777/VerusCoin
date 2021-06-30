@@ -47,7 +47,14 @@ CTransaction TransactionBuilderResult::GetTxOrThrow() {
     if (maybeTx) {
         return maybeTx.get();
     } else {
-        throw JSONRPCError(RPC_WALLET_ERROR, GetError());
+        if (IsHex(GetError()))
+        {
+            throw JSONRPCError(RPC_WALLET_ERROR, GetError());
+        }
+        else
+        {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to build transaction: " + GetError());
+        }
     }
 }
 
