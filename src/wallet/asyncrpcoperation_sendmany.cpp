@@ -302,9 +302,9 @@ bool AsyncRPCOperation_sendmany::main_impl() {
             bool b = find_utxos(false);
             if (!b) {
                 if (isMultipleZaddrOutput) {
-                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Could not find any coinbase UTXOs without shielding requirements to spend. Protected coinbase UTXOs can only be sent to a single zaddr recipient.");
+                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Could not find enough UTXOs without shielding requirements to spend. Protected coinbase UTXOs can only be sent to a single zaddr recipient.");
                 } else {
-                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Could not find any coinbase UTXOs without shielding requirements to spend.");
+                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Could not find enough UTXOs without shielding requirements to spend.");
                 }
             }
         }
@@ -1172,10 +1172,11 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
                  p.IsValid() &&
                  (p.version < COptCCParams::VERSION_V3 &&
                   p.m == 1) ||
-                 (p.vData.size() > 1 &&
-                  (m = COptCCParams(p.vData.back())).IsValid() &&
-                  p.m == 1 &&
-                  m.m == 1)))
+                 (((p.vData.size() > 1 &&
+                    (m = COptCCParams(p.vData.back())).IsValid() &&
+                    m.m == 1) ||
+                   p.vData.size() <= 1) &&
+                  p.m == 1)))
             {
                 continue;
             }
