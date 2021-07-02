@@ -1172,11 +1172,10 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
                 (!canSign ||
                  !(out.tx->vout[out.i].scriptPubKey.IsPayToCryptoCondition(p) &&
                    p.IsValid() &&
-                   (p.version < COptCCParams::VERSION_V3) ||
-                    ((p.vData.size() > 1 &&
-                      (m = COptCCParams(p.vData.back())).IsValid() &&
-                      m.m == 1) ||
-                     p.vData.size() <= 1) &&
+                   (p.version < COptCCParams::VERSION_V3 ||
+                    (p.vData.size() &&
+                     (m = COptCCParams(p.vData.back())).IsValid() &&
+                     m.m == 1)) &&
                    p.m == 1)))
             {
                 continue;
