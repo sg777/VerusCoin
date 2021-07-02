@@ -1189,7 +1189,7 @@ UniValue signrawtransaction(const UniValue& params, bool fHelp)
         if (!fHashSingle || (i < mergedTx.vout.size()))
             ProduceSignature(MutableTransactionSignatureCreator(&keystore, &mergedTx, i, amount, prevPubKey, INT32_MAX, nHashType), prevPubKey, sigdata, consensusBranchId);
 
-        TransactionSignatureChecker checker(&txConst, i, amount, &prevPubKey, &keystore);
+        TransactionSignatureChecker checker(&txConst, i, amount);
 
         // ... and merge in other signatures:
         BOOST_FOREACH(const CMutableTransaction& txv, txVariants) {

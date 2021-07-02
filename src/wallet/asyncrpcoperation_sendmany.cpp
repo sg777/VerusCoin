@@ -1175,7 +1175,7 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
                    (p.version < COptCCParams::VERSION_V3 ||
                     (p.vData.size() &&
                      (m = COptCCParams(p.vData.back())).IsValid() &&
-                     m.m == 1)) &&
+                     (m.m == 1 || m.m == 0))) &&
                    p.m == 1)))
             {
                 continue;
