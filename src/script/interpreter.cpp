@@ -1468,7 +1468,7 @@ int TransactionSignatureChecker::CheckCryptoCondition(
 
     int expectedEvals = 1;
     CC *outputCC = nullptr;
-    int nHashType;
+    int nHashType = SIGHASH_ALL;
 
     if (p.IsValid() && p.version >= p.VERSION_V3 && p.vData.size())
     {
@@ -1645,6 +1645,10 @@ int TransactionSignatureChecker::CheckCryptoCondition(
                 {
                     return true;
                 }
+            }
+            else // early out
+            {
+                return false;
             }
         }
         else
