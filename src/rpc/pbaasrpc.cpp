@@ -3403,7 +3403,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "      \"burn\":\"false\",      (bool,  optional) destroy the currency and subtract it from the supply. Currency must be a token.\n"
             "      \"mintnew\":\"false\",   (bool,  optional) if the transaction is sent from the currency ID of a centralized currency, this creates new currency to send\n"
             "    }, ... ]\n"
-            "3. \"feeamount\"               (bool,   optional) specific fee amount requested instead of default miner's fee\n"
+            "3. \"feeamount\"               (number, optional) specific fee amount requested instead of default miner's fee\n"
 
             "\nResult:\n"
             "   \"txid\" : \"transactionid\" (string) The transaction id if (returntx) is false\n"
@@ -4814,24 +4814,6 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
     {
         // it is a PBaaS chain, and it is its own system, responsible for its own communication and currency control
         newCurrency.systemID = newCurrency.GetID();
-
-        std::vector<CNodeData> vNodes;
-        UniValue nodeArr = find_value(uniObj, "nodes");
-        if (nodeArr.isArray() && nodeArr.size())
-        {
-            for (int i = 0; i < nodeArr.size(); i++)
-            {
-                CNodeData nd(nodeArr[i]);
-                if (nd.IsValid())
-                {
-                    vNodes.push_back(nd);
-                    if (vNodes.size() == 2)
-                    {
-                        break;
-                    }
-                }
-            }
-        }
     }
 
     if (currentChainDefinition)
@@ -5707,7 +5689,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 1 || params.size() > 2)
     {
         throw runtime_error(
-            "registeridentity \"jsonidregistration\" feeoffer\n"
+            "registeridentity \"jsonidregistration\" (returntx) feeoffer\n"
             "\n\n"
 
             "\nArguments\n"
@@ -5725,6 +5707,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             "        ...\n"
             "    }\n"
             "}\n"
+            "returntx                           (bool, optional) default=false if true, return a transaction for additional signatures rather than committing it\n"
             "feeoffer                           (amount, optional) amount to offer miner/staker for the registration fee, if missing, uses standard price\n\n"
 
             "\nResult:\n"
@@ -5793,14 +5776,16 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         newID.recoveryAuthority = newID.GetID();
     }
 
+    bool returnTx = params.size() > 1 ? uni_get_bool(params[1]) : false;
+
     CAmount feeOffer;
     CAmount minFeeOffer = reservation.referral.IsNull() ? 
                           ConnectedChains.ThisChain().IDFullRegistrationAmount() : 
                           ConnectedChains.ThisChain().IDReferredRegistrationAmount();
 
-    if (params.size() > 1)
+    if (params.size() > 2)
     {
-        feeOffer = AmountFromValue(params[1]);
+        feeOffer = AmountFromValue(params[2]);
     }
     else
     {
@@ -5993,18 +5978,22 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
         signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
 
-        if (!signSuccess)
+        if (!signSuccess && !returnTx)
         {
             LogPrintf("%s: failure to sign identity registration tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             printf("%s: failure to sign identity registration tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
-        } else {
+        } else if (sigdata.scriptSig.size()) {
             UpdateTransaction(mtx, i, sigdata);
         }
     }
     *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
 
-    if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+    if (returnTx)
+    {
+        return EncodeHexTx(wtx);
+    }
+    else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
     {
         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
     }
@@ -6193,12 +6182,12 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
         signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
 
-        if (!signSuccess)
+        if (!signSuccess && !returnTx)
         {
             LogPrintf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             printf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
-        } else {
+        } else if (sigdata.scriptSig.size()) {
             UpdateTransaction(mtx, i, sigdata);
         }
     }
@@ -6304,12 +6293,12 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
         signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
 
-        if (!signSuccess)
+        if (!signSuccess && !returnTx)
         {
             LogPrintf("%s: failure to sign identity revocation tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             printf("%s: failure to sign identity revocation tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
-        } else {
+        } else if (sigdata.scriptSig.size()) {
             UpdateTransaction(mtx, i, sigdata);
         }
     }
@@ -6422,12 +6411,12 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
         signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
 
-        if (!signSuccess)
+        if (!signSuccess && !returnTx)
         {
             LogPrintf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             printf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
-        } else {
+        } else if (sigdata.scriptSig.size()) {
             UpdateTransaction(mtx, i, sigdata);
         }
     }

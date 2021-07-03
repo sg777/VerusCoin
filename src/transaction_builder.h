@@ -64,6 +64,7 @@ public:
     TransactionBuilderResult(const std::string& error);
     bool IsTx();
     bool IsError();
+    bool IsHexTx();
     CTransaction GetTxOrThrow();
     std::string GetError();
 };
@@ -164,7 +165,7 @@ public:
 
     void SendChangeTo(const CTxDestination &changeAddr);
 
-    TransactionBuilderResult Build();
+    TransactionBuilderResult Build(bool throwTxWithPartialSig=false);
 
 private:
     void CreateJSDescriptions();

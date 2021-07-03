@@ -1588,22 +1588,16 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                 else
                 {
                     uint256 pastHash = chainActive.GetVerusEntropyHash(height);
-                    // if height is over when Nonce is required to be the new format, we check that the new format is correct
+
+                    // if we are on a version requiring the new nonce format, we check that the new format is correct
                     // if over when we have the new POS hash function, we validate that as well
                     // they are 100 blocks apart
                     CPOSNonce nonce = pblock->nNonce;
 
                     //printf("before nNonce: %s, height: %d\n", pblock->nNonce.GetHex().c_str(), height);
                     validHash = pblock->GetRawVerusPOSHash(rawHash, height);
-                    hash = UintToArith256(rawHash) / tx.vout[voutNum].nValue;
-                    //printf("Raw POShash:   %s\n", hash.GetHex().c_str());
 
                     hash = UintToArith256(tx.GetVerusPOSHash(&nonce, voutNum, height, pastHash));
-
-                    //printf("after nNonce:  %s, height: %d\n", nonce.GetHex().c_str(), height);
-                    //printf("POShash:       %s\n\n", hash.GetHex().c_str());
-                    //printf("blkHash:       %s\n\n", blkHash.GetHex().c_str());
-                    //printf("posHash:       %s\n\n", posHash.GetHex().c_str());
 
                     if ((!newPOSEnforcement || posHash == hash) && hash <= target)
                     {
@@ -1834,8 +1828,22 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                     }
                     else
                     {
-                        printf("ERROR: malformed nonce value for PoS block\nnNonce: %s\nrawHash: %s\nposHash: %s\nvalue: %lu\n",
-                            pblock->nNonce.GetHex().c_str(), rawHash.GetHex().c_str(), posHash.GetHex().c_str(), value);
+                        // improved logging
+                        if ((newPOSEnforcement && posHash != hash))
+                        {
+                            LogPrint("pos", "%s: conflicting hash values between GetRawVerusPOSHash (%s/%s) and GetVerusPOSHash (%s)\n", 
+                                        __func__,
+                                        rawHash.GetHex().c_str(),
+                                        ArithToUint256(posHash).GetHex().c_str(),
+                                        ArithToUint256(hash).GetHex().c_str());
+                        }
+
+                        LogPrint("pos", "%s: malformed nonce value for PoS block\nnNonce: %s\nrawHash: %s\nposHash: %s\nvalue: %lu\n",
+                            __func__,
+                            pblock->nNonce.GetHex().c_str(),
+                            rawHash.GetHex().c_str(),
+                            posHash.GetHex().c_str(),
+                            value);
                     }
                 }
             }

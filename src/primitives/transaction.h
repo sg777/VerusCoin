@@ -1233,6 +1233,7 @@ public:
         TYPE_FULLTX = 1,
         TYPE_PBAAS = 2,
         TYPE_ETH = 3,
+        TYPE_LAST = 3
     };
     int8_t version;                                     // to enable versioning of this type of proof
     int8_t type;                                        // this may represent transactions from different systems
@@ -1315,20 +1316,22 @@ public:
     // chain proofs have a tx proof in block, a merkle proof bridge, and a chain proof
     bool IsChainProof() const
     {
-        return TYPE_PBAAS == type && 
-               txProof.proofSequence.size() >= 3 && 
-               txProof.proofSequence[1]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_NODE &&
-               txProof.proofSequence[2]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE;
+        return IsValid() &&
+               ((type == TYPE_ETH) ||
+                (TYPE_PBAAS == type && 
+                 txProof.proofSequence.size() >= 3 && 
+                 txProof.proofSequence[1]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_NODE &&
+                 txProof.proofSequence[2]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE));
     }
 
     bool IsValid() const
     {
-        return version >= VERSION_FIRST && version <= VERSION_LAST;
+        return version >= VERSION_FIRST && version <= VERSION_LAST && type != TYPE_INVALID && type <= TYPE_LAST;
     }
 
     uint256 GetBlockHash() const
     {
-        if (IsChainProof())
+        if ((type == TYPE_PBAAS || type == TYPE_FULLTX) && IsChainProof())
         {
             std::vector<uint256> &branch = ((CMMRNodeBranch *)(txProof.proofSequence[1]))->branch;
             if (branch.size() == 1)
@@ -1341,7 +1344,7 @@ public:
 
     uint256 GetBlockPower() const
     {
-        if (IsChainProof())
+        if (type == TYPE_PBAAS && IsChainProof())
         {
             std::vector<uint256> &branch = ((CMMRPowerNodeBranch *)(txProof.proofSequence[2]))->branch;
             if (branch.size() >= 1)
@@ -1354,7 +1357,7 @@ public:
 
     uint32_t GetBlockHeight() const
     {
-        if (IsChainProof())
+        if ((type == TYPE_PBAAS || type == TYPE_FULLTX) && IsChainProof())
         {
             return ((CMMRPowerNodeBranch *)(txProof.proofSequence[2]))->nIndex;
         }
@@ -1363,7 +1366,7 @@ public:
 
     uint32_t GetProofHeight() const
     {
-        if (IsChainProof())
+        if ((type == TYPE_PBAAS || type == TYPE_FULLTX) && IsChainProof())
         {
             return ((CMMRPowerNodeBranch *)(txProof.proofSequence[2]))->nSize - 1;
         }
