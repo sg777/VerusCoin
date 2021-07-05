@@ -5525,6 +5525,47 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                        &fromID,
                                        &totalCurrenciesNeeded, 
                                        false);
+
+    for (COutput &out : vCoins) 
+    {
+        std::vector<CTxDestination> addresses;
+        int nRequired;
+        bool canSign, canSpend;
+        CTxDestination address;
+        txnouttype txType;
+        if (!ExtractDestinations(out.tx->vout[out.i].scriptPubKey, txType, addresses, nRequired, pwalletMain, &canSign, &canSpend))
+        {
+            continue;
+        }
+
+        // if we have more address destinations than just this address and have specified from a single ID only,
+        // the condition must be such that the ID itself can spend, even if this wallet cannot due to a multisig
+        // ID. if the ID cannot spend, even given a valid multisig ID, then to select this as a source without
+        // an explicit, multisig match would cause potentially unwanted sourcing of funds. a spend just to this ID
+        // is fine.
+
+        COptCCParams p, m;
+        // if we can't spend and can only sign,
+        // ensure that this output is spendable by just this ID as a 1 of n and 1 of n at the master
+        // smart transaction level as well
+        if (!canSpend &&
+            (!canSign ||
+                !(out.tx->vout[out.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                (p.version < COptCCParams::VERSION_V3 ||
+                (p.vData.size() &&
+                    (m = COptCCParams(p.vData.back())).IsValid() &&
+                    (m.m == 1 || m.m == 0))) &&
+                p.m == 1)))
+        {
+            continue;
+        }
+        else
+        {
+            out.fSpendable = true;      // this may not really be spendable, but set it if its the correct ID source and can sign
+        }
+    }
+
     CCurrencyValueMap reservesUsed;
     CAmount nativeUsed;
     if (!pwalletMain->SelectReserveCoinsMinConf(rtxd.ReserveOutputMap(),
@@ -5547,12 +5588,18 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
 
     auto builtTxResult = tb.Build();
-    if (!builtTxResult.IsTx())
+
+    CTransaction retTx;
+    bool partialSig = !builtTxResult.IsTx() && IsHex(builtTxResult.GetError()) && DecodeHexTx(retTx, builtTxResult.GetError());
+
+    if (!builtTxResult.IsTx() && !partialSig)
     {
         throw JSONRPCError(RPC_TRANSACTION_ERROR, newChain.name + ": " + builtTxResult.GetError());
     }
-
-    CTransaction retTx = builtTxResult.GetTxOrThrow();
+    else if (!partialSig)
+    {
+        retTx = builtTxResult.GetTxOrThrow();
+    }
 
     UniValue uvret(UniValue::VOBJ);
     UniValue txJSon(UniValue::VOBJ);
