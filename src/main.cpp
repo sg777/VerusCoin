@@ -3577,7 +3577,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             pNotarizedIndex = mapBlockIndex[notarizedhash];
             if (pNotarizedIndex && chainActive.Height() >= pNotarizedIndex->GetHeight() && !chainActive.Contains(pNotarizedIndex))
             {
-                return(false);
+                return state.DoS(1, error("%s: attempt to add block in conflict with notarized chain\n", __func__), REJECT_INVALID, "invalid-block");
             }
         }
     }
