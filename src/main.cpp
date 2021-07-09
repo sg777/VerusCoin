@@ -3567,21 +3567,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     //fprintf(stderr,"connectblock ht.%d\n",(int32_t)pindex->GetHeight());
     AssertLockHeld(cs_main);
 
-    // do not connect a tip that is in conflict with an existing notarization
-    {
-        int32_t prevMoMheight; uint256 notarizedhash, txid;
-        komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
-        CBlockIndex *pNotarizedIndex = nullptr;
-        if (mapBlockIndex.count(notarizedhash))
-        {
-            pNotarizedIndex = mapBlockIndex[notarizedhash];
-            if (pNotarizedIndex && chainActive.Height() >= pNotarizedIndex->GetHeight() && !chainActive.Contains(pNotarizedIndex))
-            {
-                return state.DoS(1, error("%s: attempt to add block in conflict with notarized chain\n", __func__), REJECT_INVALID, "invalid-block");
-            }
-        }
-    }
-
     // either set at activate best chain or when we connect block 1
     if (pindex->GetHeight() == 1)
     {
@@ -3623,7 +3608,26 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                          REJECT_INVALID, "hashPrevBlock-not-bestblock");
     }
     assert(hashPrevBlock == view.GetBestBlock());
-    
+
+    // do not connect a tip that is in conflict with an existing notarization
+    if (pindex->pprev != NULL)
+    {
+        int32_t prevMoMheight; uint256 notarizedhash, txid;
+        komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+        CBlockIndex *pNotarizedIndex = nullptr;
+        if (mapBlockIndex.count(notarizedhash))
+        {
+            pNotarizedIndex = mapBlockIndex[notarizedhash];
+            if (pNotarizedIndex &&
+                pindex->pprev->GetHeight() >= pNotarizedIndex->GetHeight() &&
+                !chainActive.Contains(pNotarizedIndex) &&
+                chainActive.Contains(pindex->pprev))
+            {
+                return state.DoS(1, error("%s: attempt to add block in conflict with notarized chain\n", __func__), REJECT_INVALID, "invalid-block");
+            }
+        }
+    }
+
     // Special case for the genesis block, skipping connection of its transactions
     // (its coinbase is unspendable)
     if (block.GetHash() == chainparams.GetConsensus().hashGenesisBlock) {
