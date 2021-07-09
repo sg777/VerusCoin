@@ -712,28 +712,6 @@ public:
     }
 };
 
-class CCurrencyRegistrationDestination
-{
-public:
-    CIdentity identity;
-    CCurrencyDefinition currency;
-
-    CCurrencyRegistrationDestination() {}
-    CCurrencyRegistrationDestination(const CIdentity &Identity, const CCurrencyDefinition &Currency) : identity(Identity), currency(Currency) {}
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(identity);
-        READWRITE(currency);
-    }
-    bool IsValid() const
-    {
-        return identity.IsValid() && currency.IsValid() && identity.GetID() == currency.GetID();
-    }
-};
-
 struct CCcontract_info;
 struct Eval;
 class CValidationState;

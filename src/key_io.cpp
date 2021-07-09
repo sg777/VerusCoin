@@ -771,10 +771,10 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
 
         case CTransferDestination::DEST_REGISTERCURRENCY:
         {
-            CCurrencyRegistrationDestination curRegistration({CIdentity(find_value(obj, "identity")), CCurrencyDefinition(find_value(obj, "currency"))});
-            if (curRegistration.IsValid())
+            CCurrencyDefinition currencyToRegister(find_value(obj, "currency"));
+            if (currencyToRegister.IsValid())
             {
-                destination = ::AsVector(curRegistration);
+                destination = ::AsVector(currencyToRegister);
             }
             else
             {

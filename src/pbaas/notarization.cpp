@@ -2080,14 +2080,23 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     // look for finalized notarizations for our notary chains in recent blocks
     // if we find any and are connected, submit them
     uint160 systemID = externalSystem.chainDefinition.GetID();
+
     CChainNotarizationData cnd;
+    std::vector<std::pair<CTransaction, uint256>> notarizationTxes;
+
+    // we need to start with a confirmed notarization to move forward
+    // this is to ensure that any transaction we intend to finalize has both a minimum number of mining/staking confirmations
+    // and a minimum number of notary confirmation signatures
+    if (!GetNotarizationData(systemID, cnd, &notarizationTxes))
+    {
+        return retVal;
+    }
+
     CPBaaSNotarization lastConfirmedNotarization;
     CObjectFinalization confirmedFinalization;
     CTransaction finTx, nTx;
     uint256 finBlkHash, notBlkHash;
     CNotaryEvidence allEvidence(CNotaryEvidence::TYPE_NOTARY_SIGNATURE), scratchEvidence(CNotaryEvidence::TYPE_NOTARY_SIGNATURE);
-
-    bool confirmedFound = false;
 
     {
         LOCK2(cs_main, mempool.cs);
@@ -2147,7 +2156,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                             confirmedFinalization.output.hash.GetHex().c_str(), confirmedFinalization.output.n);
                         return retVal;
                     }
-                    confirmedFound = true;
                 }
             }
         }

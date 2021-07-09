@@ -4758,7 +4758,7 @@ UniValue getsaplingtree(const UniValue& params, bool fHelp)
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
-CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj, uint32_t height, const uint160 systemID)
+CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj, uint32_t height, const uint160 systemID, std::map<uint160, std::string> &requiredDefinitions)
 {
     CCurrencyDefinition newCurrency(uniObj);
 
@@ -4801,7 +4801,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
     // as the ID can only have its bit set or unset by one transaction at any time and only as part of a transaction that changes the
     // the state of a potentially active currency.
 
-    if (newCurrency.IsToken())
+    if (newCurrency.IsToken() || newCurrency.IsGateway())
     {
         if (newCurrency.rewards.size())
         {
@@ -4845,7 +4845,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
     {
         // if we have no emission parameters, this is not a PBaaS blockchain, it is a controlled or bridged token.
         // controlled tokens can be centrally or algorithmically controlled.
-        if (newCurrency.rewards.empty())
+        if (!newCurrency.IsGateway() && newCurrency.rewards.empty())
         {
             throw JSONRPCError(RPC_INVALID_PARAMS, "A currency must either be based on a token protocol or must specify blockchain rewards, even if 0\n");
         }
@@ -4856,10 +4856,45 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         }
 
         // we need to also be able to set PBaaS converter and gateway
-        if (!(newCurrency.options & newCurrency.OPTION_GATEWAY))
+        if (!newCurrency.IsGateway())
         {
             newCurrency.options |= newCurrency.OPTION_PBAAS;
         }
+    }
+
+    UniValue currencyNames = find_value(uniObj, "currencies");
+    std::set<uint160> currencySet;
+
+    for (int i = 0; i < currencyNames.size(); i++)
+    {
+        std::string oneCurName = uni_get_str(currencyNames[i]);
+        if (!oneCurName.size())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid (null) currency name");
+        }
+        uint160 oneCurID = ValidateCurrencyName(oneCurName, true);
+        if (oneCurID.IsNull())
+        {
+            if (!(newCurrency.IsPBaaSConverter() && systemID == ASSETCHAINS_CHAINID && newCurrency.parent != ASSETCHAINS_CHAINID) ||
+                (oneCurID = ValidateCurrencyName(oneCurName)).IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency " + oneCurName + " in \"currencies\"");
+            }
+
+            uint160 parent;
+            std::string cleanName = CleanName(oneCurName + "@", parent);
+            if (parent != newCurrency.parent || cleanName == "")
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to auto-create currency " + oneCurName + " in \"currencies\"");
+            }
+            requiredDefinitions[oneCurID] = cleanName;
+        }
+        currencySet.insert(oneCurID);
+    }
+
+    if (currencyNames.size() != currencySet.size())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Duplicate currency specified in \"currencies\"");
     }
 
     // if this is a fractional reserve currency, ensure that all reserves are currently active 
@@ -4880,11 +4915,14 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         }
 
         newCurrency.preconverted = newCurrency.contributions;
+
         for (auto &currency : newCurrency.currencies)
         {
+            currencySet.insert(currency);
             if (currency == ASSETCHAINS_CHAINID)
             {
                 hasCoreReserve = true;
+                continue;
             }
 
             if (newCurrency.systemID == currency)
@@ -4894,20 +4932,23 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
             reserveCurrencies.push_back(CCurrencyDefinition());
 
-            if (!GetCurrencyDefinition(currency, reserveCurrencies.back()) ||
-                (reserveCurrencies.back().launchSystemID == ASSETCHAINS_CHAINID && reserveCurrencies.back().startBlock >= height))
+            bool currencyIsRegistered = false;
+            if (!requiredDefinitions.count(currency))
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserve currencies of a fractional currency must be valid and past the start block " + EncodeDestination(CIdentityID(currency)));
-            }
+                if (!GetCurrencyDefinition(currency, reserveCurrencies.back()) || 
+                    (reserveCurrencies.back().launchSystemID == ASSETCHAINS_CHAINID && reserveCurrencies.back().startBlock >= height))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserve currencies of a fractional currency must be valid and past the start block " + EncodeDestination(CIdentityID(currency)));
+                }
+                if (reserveCurrencies.back().endBlock && (!newCurrency.endBlock || reserveCurrencies.back().endBlock < newCurrency.endBlock))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Reserve currency " + EncodeDestination(CIdentityID(currency)) + " ends its life before the fractional currency's endblock");
+                }
 
-            if (reserveCurrencies.back().endBlock && (!newCurrency.endBlock || reserveCurrencies.back().endBlock < newCurrency.endBlock))
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Reserve currency " + EncodeDestination(CIdentityID(currency)) + " ends its life before the fractional currency's endblock");
-            }
-
-            if (!reserveCurrencies.back().CanBeReserve())
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + EncodeDestination(CIdentityID(currency)) + " may not be used as a reserve");
+                if (!reserveCurrencies.back().CanBeReserve())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + EncodeDestination(CIdentityID(currency)) + " may not be used as a reserve");
+                }
             }
         }
         if (!hasCoreReserve)
@@ -4920,11 +4961,11 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
 UniValue definecurrency(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 2)
+    if (fHelp || params.size() < 1 || params.size() > 14)
     {
         throw runtime_error(
             "definecurrency '{\"name\": \"coinortokenname\", ..., \"nodes\":[{\"networkaddress\":\"identity\"},..]}'\\\n"
-            "                '({\"name\": \"fractionalgatewayname\", ..., })'\n"
+            "                '({\"name\": \"fractionalgatewayname\", ..., })' ({\"name\": \"reserveonename\", ..., }) ...\n"
             "\nThis defines a blockchain currency, either as an independent blockchain, or as a token on this blockchain. It also spends\n"
             "the identity after which this currency is named and sets a bit indicating that it has a currently active blockchain in its name.\n"
             "\nTo create a currency of any kind, the identity it is named after must be minted on the blockchain on which the currency is created.\n"
@@ -5021,7 +5062,13 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
     uint32_t height = chainActive.Height();
 
-    CCurrencyDefinition newChain(ValidateNewUnivalueCurrencyDefinition(params[0], height, ASSETCHAINS_CHAINID));
+    std::map<uint160, std::string> requiredCurrencyDefinitions;
+    CCurrencyDefinition newChain(ValidateNewUnivalueCurrencyDefinition(params[0], height, ASSETCHAINS_CHAINID, requiredCurrencyDefinitions));
+
+    if (requiredCurrencyDefinitions.size())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "currency definition has invalid or undefined currency references");
+    }
 
     if ((newChain.GetID() == ASSETCHAINS_CHAINID && ASSETCHAINS_CHAINID != VERUS_CHAINID) || 
         (newChain.parent != thisChainID && !(newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull())))
@@ -5072,6 +5119,8 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // if this is a PBaaS chain definition, and we have a gateway converter currency to also start,
     // validate and start the converter currency as well
     CCurrencyDefinition newGatewayConverter;
+    std::map<uint160, std::map<std::string, UniValue>> newReserveDefinitions;
+    std::map<uint160, CCurrencyDefinition> newReserveCurrencies;
     std::vector<CNodeData> startupNodes;
     if (newChain.IsPBaaSChain() || newChain.IsGateway())
     {
@@ -5113,7 +5162,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             gatewayConverterMap.insert(std::make_pair("name", newChain.gatewayConverterName));
             gatewayConverterMap.insert(std::make_pair("launchsystemid", EncodeDestination(CIdentityID(thisChainID))));
 
-            // if this is a gateway, the converter runs on the launching chain by defaylt
+            // if this is a gateway, the converter runs on the launching chain by default
             // if PBaaS chain, on the new system
             if (newChain.IsGateway())
             {
@@ -5159,7 +5208,91 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             //printf("%s: gatewayConverter definition:\n%s\n", __func__, newCurUni.write(1,2).c_str());
 
             // set the parent and system of the new gateway converter to the new currency
-            newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(newCurUni, height, newChainID);
+            std::map<uint160, std::string> autoCurrencyNames;
+            newGatewayConverter = ValidateNewUnivalueCurrencyDefinition(newCurUni, height, newChain.systemID, autoCurrencyNames);
+
+            if (autoCurrencyNames.size())
+            {
+                if (!newChain.IsGateway())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Only a gateway definition may also define currencies to use as bridge converter reserves");
+                }
+
+                // any required currency definitions will include their text name and have a parent of the gateway
+                // to qualify for auto-definition. we also need to parse the remaining parameters
+                // and verify that they are only needed definitions
+
+                for (auto &oneCurrencyName : autoCurrencyNames)
+                {
+                    // for each name, we will create a definition that has a systemID of the current system and parent of the gateway
+                    std::map<std::string, UniValue> oneCurEntry;
+                    oneCurEntry["name"] = oneCurrencyName.second;
+                    oneCurEntry["parent"] = EncodeDestination(CIdentityID(newChain.GetID()));
+                    oneCurEntry["systemid"] = EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID));
+                    oneCurEntry["launchsystemid"] = EncodeDestination(CIdentityID(newChain.GetID()));
+                    oneCurEntry["nativecurrencyid"] = DestinationToTransferDestination(CIdentityID(oneCurrencyName.first)).ToUniValue();
+                    oneCurEntry["options"] = CCurrencyDefinition::OPTION_CANBERESERVE + CCurrencyDefinition::OPTION_TOKEN;
+                    oneCurEntry["proofprotocol"] = CCurrencyDefinition::PROOF_PBAASMMR;
+                    oneCurEntry["notarizationprotocol"] = CCurrencyDefinition::NOTARIZATION_AUTO;
+                    
+                    newReserveDefinitions[oneCurrencyName.first] = oneCurEntry;
+                }
+
+                if (params.size() > 2)
+                {
+                    for (int paramIdx = 2; paramIdx < params.size(); paramIdx++)
+                    {
+                        uint160 reserveParentID;
+                        std::string checkName = CleanName(uni_get_str(find_value(params[paramIdx], "name")), reserveParentID);
+                        if (reserveParentID != newChainID && reserveParentID != ASSETCHAINS_CHAINID)
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Only reserves on the gateway may be defined as additional currency definition parameters");
+                        }
+                        reserveParentID = newChainID;
+                        uint160 autoReserveID = CIdentity::GetID(checkName, reserveParentID);
+                        if (!newReserveDefinitions.count(autoReserveID))
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + checkName + " is not a required reserve definition");
+                        }
+                        auto curKeys = params[paramIdx].getKeys();
+                        auto curValues = params[paramIdx].getValues();
+                        for (int i = 0; i < curKeys.size(); i++)
+                        {
+                            newReserveDefinitions[autoReserveID][curKeys[i]] = curValues[i];
+                        }
+                    }
+                }
+                // now, loop through all new currency definitions and define them
+                // disallow: pre-allocation, prelaunch discount, future start block, fractional currency, any form of launch
+                for (auto &oneDefinition : newReserveDefinitions)
+                {
+                    UniValue oneDefUni(UniValue::VOBJ);
+                    for (auto &oneProp : oneDefinition.second)
+                    {
+                        oneDefUni.pushKV(oneProp.first, oneProp.second);
+                    }
+                    CCurrencyDefinition newReserveDef(oneDefUni);
+                    if (!(newReserveDef.IsValid() &&
+                          newReserveDef.IsToken() &&
+                          !newReserveDef.IsFractional() &&
+                          newReserveDef.CanBeReserve() &&
+                          newReserveDef.systemID == ASSETCHAINS_CHAINID &&
+                          newReserveDef.parent == newChainID &&
+                          newReserveDef.nativeCurrencyID.IsValid() &&
+                          newReserveDef.launchSystemID == newChainID &&
+                          newReserveDef.startBlock == 0 &&
+                          newReserveDef.endBlock == 0 &&
+                          newReserveDef.proofProtocol != CCurrencyDefinition::PROOF_CHAINID))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid auto-reserve currency definition");
+                    }
+                    newReserveCurrencies[oneDefinition.first] = newReserveDef;
+                }
+            }
+            else if (params.size() > 2)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Too many parameters. Please see help.");
+            }
 
             // check that basics are correct, fractional that includes correct currencies, etc.
             if (newGatewayConverter.parent != newChainID ||
@@ -5177,6 +5310,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "A gateway currency must be a fractional token that includes both the launch coin and PBaaS native coin at 10% or greater ratio each");
             }
+        }
+        else if (params.size() > 1)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Too many parameters. Please see help.");
         }
     }
     else if (!newChain.gatewayConverterName.empty() || params.size() > 1)
@@ -5304,6 +5441,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     CAmount mainImportFee = ConnectedChains.ThisChain().LaunchFeeImportShare(newChain.options);
     CCurrencyValueMap mainImportFees(std::vector<uint160>({thisChainID}), std::vector<CAmount>({mainImportFee}));
     CAmount converterImportFee = 0;
+    CAmount newReserveImportFees = 0;
     CCurrencyValueMap converterImportFees;
 
     CCrossChainExport ccx = CCrossChainExport(thisChainID, 0, height, newChain.systemID, newChainID, 0, mainImportFees, mainImportFees, uint256());
@@ -5354,6 +5492,20 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     {
         if (newGatewayConverter.IsValid())
         {
+            cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
+
+            // create any new reserve currencies needed that are mapped to the gateway
+            // for now, there is only an import fee for these currencies, since they do not launch
+            for (auto oneNewReserve : newReserveCurrencies)
+            {
+                // define one currency
+                // and add one import currency fee for each new reserve
+                newReserveImportFees += ConnectedChains.ThisChain().currencyImportFee;
+                std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
+                tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &oneNewReserve.second)), 
+                                                    CCurrencyDefinition::DEFAULT_OUTPUT_VALUE);
+            }
+
             newGatewayConverter.gatewayConverterIssuance = newChain.gatewayConverterIssuance;
 
             cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
@@ -5384,13 +5536,15 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
             pk = CPubKey(ParseHex(CC.CChexstr));
 
-            if (newGatewayConverter.proofProtocol == newGatewayConverter.PROOF_PBAASMMR || newGatewayConverter.proofProtocol == newGatewayConverter.PROOF_CHAINID)
+            if (newGatewayConverter.proofProtocol == newGatewayConverter.PROOF_PBAASMMR ||
+                newGatewayConverter.proofProtocol == newGatewayConverter.PROOF_CHAINID ||
+                newGatewayConverter.proofProtocol == newGatewayConverter.PROOF_ETHNOTARIZATION)
             {
                 dests = std::vector<CTxDestination>({pk.GetID()});
             }
             else
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "None or invalid notarization protocol specified");
             }
 
             // if this is a token on this chain, the transfer that is output here is burned through the export 
@@ -5475,6 +5629,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     {
         totalLaunchFee += ConnectedChains.ThisChain().GetCurrencyRegistrationFee(newGatewayConverter.options);
     }
+    totalLaunchFee += newReserveImportFees;
 
     CAmount totalLaunchExportFee = totalLaunchFee - (mainImportFee + converterImportFee);
     if (newCurrencyState.GetID() != ASSETCHAINS_CHAINID)

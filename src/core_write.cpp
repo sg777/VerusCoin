@@ -926,10 +926,7 @@ UniValue CTransferDestination::ToUniValue() const
 
         case CTransferDestination::DEST_REGISTERCURRENCY:
         {
-            CCurrencyRegistrationDestination curRegistration;
-            ::FromVector(destination, curRegistration);
-            destVal.push_back(Pair("identity", curRegistration.identity.ToUniValue()));
-            destVal.push_back(Pair("currency", curRegistration.currency.ToUniValue()));
+            destVal.push_back(Pair("currency", CCurrencyDefinition(destination).ToUniValue()));
             break;
         }
 
