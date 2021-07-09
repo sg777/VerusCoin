@@ -3623,7 +3623,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 !chainActive.Contains(pNotarizedIndex) &&
                 chainActive.Contains(pindex->pprev))
             {
-                return state.DoS(1, error("%s: attempt to add block in conflict with notarized chain\n", __func__), REJECT_INVALID, "invalid-block");
+                LogPrint("komodonotaries", "%s: attempt to add block in conflict with notarized chain\n", __func__);
+                return false;
             }
         }
     }
