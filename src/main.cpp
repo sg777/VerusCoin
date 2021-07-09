@@ -3567,6 +3567,21 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     //fprintf(stderr,"connectblock ht.%d\n",(int32_t)pindex->GetHeight());
     AssertLockHeld(cs_main);
 
+    // do not connect a tip that is in conflict with an existing notarization
+    {
+        int32_t prevMoMheight; uint256 notarizedhash, txid;
+        komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+        CBlockIndex *pNotarizedIndex = nullptr;
+        if (mapBlockIndex.count(notarizedhash))
+        {
+            pNotarizedIndex = mapBlockIndex[notarizedhash];
+            if (pNotarizedIndex && chainActive.Height() >= pNotarizedIndex->GetHeight() && !chainActive.Contains(pNotarizedIndex))
+            {
+                return(false);
+            }
+        }
+    }
+
     // either set at activate best chain or when we connect block 1
     if (pindex->GetHeight() == 1)
     {
