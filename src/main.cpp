@@ -3608,7 +3608,27 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                          REJECT_INVALID, "hashPrevBlock-not-bestblock");
     }
     assert(hashPrevBlock == view.GetBestBlock());
-    
+
+    // do not connect a tip that is in conflict with an existing notarization
+    if (pindex->pprev != NULL)
+    {
+        int32_t prevMoMheight; uint256 notarizedhash, txid;
+        komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+        CBlockIndex *pNotarizedIndex = nullptr;
+        if (mapBlockIndex.count(notarizedhash))
+        {
+            pNotarizedIndex = mapBlockIndex[notarizedhash];
+            if (pNotarizedIndex &&
+                pindex->pprev->GetHeight() >= pNotarizedIndex->GetHeight() &&
+                !chainActive.Contains(pNotarizedIndex) &&
+                chainActive.Contains(pindex->pprev))
+            {
+                LogPrint("komodonotaries", "%s: attempt to add block in conflict with notarized chain\n", __func__);
+                return false;
+            }
+        }
+    }
+
     // Special case for the genesis block, skipping connection of its transactions
     // (its coinbase is unspendable)
     if (block.GetHash() == chainparams.GetConsensus().hashGenesisBlock) {
