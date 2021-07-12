@@ -147,8 +147,8 @@ std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> Serve
                             uint32_t idHeightDef;
                             if ((id = CIdentity::LookupFirstIdentity(destId, &idHeightDef)).IsValid())
                             {
-                                LogPrintf("%s: ERROR - ACTION REQUIRED: Corrupt Index, should not move forward as a node. Please bootstrap, sync from scratch, or reindex to continue.", __func__);
-                                printf("%s: ERROR - ACTION REQUIRED: Corrupt Index, should not move forward as a node. Please bootstrap, sync from scratch, or reindex to continue.", __func__);
+                                LogPrintf("%s: ERROR - ACTION REQUIRED: Corrupt Index, should not move forward as a node. Please bootstrap, sync from scratch, or reindex to continue\n", __func__);
+                                printf("%s: ERROR - ACTION REQUIRED: Corrupt Index, should not move forward as a node. Please bootstrap, sync from scratch, or reindex to continue\n", __func__);
                                 KOMODO_STOPAT = chainActive.Height();
                             }
                         }
