@@ -473,7 +473,7 @@ bool SetThisChain(const UniValue &chainDefinition)
 
         //printf("%s: %s\n", __func__, EncodeDestination(CIdentityID(notaryChainDef.GetID())).c_str());
         ConnectedChains.notarySystems[notaryChainDef.GetID()] = 
-            CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CCurrencyDefinition(), CPBaaSNotarization());
+            CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CPBaaSNotarization());
         CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
         ASSETCHAINS_SUPPLY = currencyState.supply;
     }
@@ -3377,10 +3377,10 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
 
 UniValue sendcurrency(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 2 || params.size() > 3)
+    if (fHelp || params.size() < 2 || params.size() > 4)
     {
         throw runtime_error(
-            "sendcurrency \"fromaddress\" '[{\"address\":... ,\"amount\":...},...]' (feeamount)\n"
+            "sendcurrency \"fromaddress\" '[{\"address\":... ,\"amount\":...},...]' (minconfs) (feeamount)\n"
             "\nThis sends one or many Verus outputs to one or many addresses on the same or another chain.\n"
             "Funds are sourced automatically from the current wallet, which must be present, as in sendtoaddress.\n"
             "If \"fromaddress\" is specified, all funds will be taken from that address, otherwise funds may come\n"
@@ -3403,7 +3403,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "      \"burn\":\"false\",      (bool,  optional) destroy the currency and subtract it from the supply. Currency must be a token.\n"
             "      \"mintnew\":\"false\",   (bool,  optional) if the transaction is sent from the currency ID of a centralized currency, this creates new currency to send\n"
             "    }, ... ]\n"
-            "3. \"feeamount\"               (number, optional) specific fee amount requested instead of default miner's fee\n"
+            "3. \"minconf\"                 (numeric, optional, default=1) only use funds confirmed at least this many times.\n"
+            "4. \"feeamount\"               (number, optional) specific fee amount requested instead of default miner's fee\n"
 
             "\nResult:\n"
             "   \"txid\" : \"transactionid\" (string) The transaction id if (returntx) is false\n"
@@ -3456,10 +3457,16 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. Second parameter must be array of outputs. See help.");
     }
 
-    CAmount feeAmount = DEFAULT_TRANSACTION_FEE;
+    int minConfs = 0;
     if (params.size() > 2)
     {
-        feeAmount = AmountFromValue(params[2]);
+        minConfs = uni_get_int(params[2]);
+    }
+
+    CAmount feeAmount = DEFAULT_TRANSACTION_FEE;
+    if (params.size() > 3)
+    {
+        feeAmount = AmountFromValue(params[3]);
     }
 
     const UniValue &uniOutputs = params[1];
@@ -4373,6 +4380,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     }
 
     // Create operation and add to global queue
+    if (hasZSource && minConfs ==0)
+    {
+        minConfs = 1;
+    }
     CMutableTransaction contextualTx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), height + 1);
     std::shared_ptr<AsyncRPCQueue> q = getAsyncRPCQueue();
     std::shared_ptr<AsyncRPCOperation> operation(new AsyncRPCOperation_sendmany(tb, 
@@ -4380,7 +4391,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                                 sourceAddress, 
                                                                                 tOutputs, 
                                                                                 zOutputs,
-                                                                                hasZSource ? 1 : 0, 
+                                                                                minConfs, 
                                                                                 feeAmount, 
                                                                                 uniOutputs,
                                                                                 true) );

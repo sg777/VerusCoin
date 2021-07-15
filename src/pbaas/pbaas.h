@@ -1298,14 +1298,12 @@ public:
     uint32_t notarySystemType;
     uint32_t height;                            // height of last notarization
     CRPCChainData notaryChain;                  // notary chain information and connectivity for PBaaS protocol
-    CCurrencyDefinition notaryConverter;        // fractional currency to convert between this native currency and the notary currency
     CPBaaSNotarization lastConfirmedNotarization;
 
     CNotarySystemInfo() : notarySystemVersion(VERSION_INVALID), height(0) {}
 
     CNotarySystemInfo(uint32_t Height, 
                       const CRPCChainData &NotaryChain, 
-                      const CCurrencyDefinition &NotaryConverter,
                       const CPBaaSNotarization &lastNotarization,
                       uint32_t NotarySystemType=TYPE_PBAAS,
                       uint32_t notaryVersion=VERSION_CURRENT) :
@@ -1313,7 +1311,6 @@ public:
                       notarySystemType(NotarySystemType),
                       height(Height),
                       notaryChain(NotaryChain),
-                      notaryConverter(NotaryConverter),
                       lastConfirmedNotarization(lastNotarization)
     {}
 };
@@ -1537,6 +1534,8 @@ public:
     bool CheckVerusPBaaSAvailable();      // may use RPC to call Verus
     bool IsVerusPBaaSAvailable();
     bool IsNotaryAvailable(bool callToCheck=false);
+    bool ConfigureEthBridge();
+
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {
         std::vector<CCurrencyDefinition> ret;

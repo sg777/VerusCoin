@@ -1754,6 +1754,24 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         // if we don't have a connected root PBaaS chain, we can't properly check
         // and notarize the start block, so we have to pass the notarization and cross chain steps
         bool notaryConnected = ConnectedChains.IsNotaryAvailable();
+        uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+
+        if (isVerusActive &&
+            solutionVersion >= CActivationHeight::ACTIVATE_PBAAS &&
+            !notaryConnected)
+        {
+            // until we have connected to the ETH bridge, after PBaaS has launched, we check each block to see if there is now an
+            // ETH bridge defined
+            if (ConnectedChains.FirstNotaryChain().IsValid())
+            {
+                // once PBaaS is active, we attempt to connect to the Ethereum bridge, in case it is active
+                notaryConnected = ConnectedChains.IsNotaryAvailable(true);
+            }
+            else
+            {
+                notaryConnected = ConnectedChains.ConfigureEthBridge();
+            }
+        }
 
         // at block 1 for a PBaaS chain, we validate launch conditions
         if (!isVerusActive && nHeight == 1)
@@ -1782,7 +1800,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             TransactionBuilder notarizationBuilder = TransactionBuilder(consensusParams, nHeight, pwalletMain);
             bool finalized;
             CTransaction notarizationTx;
-            if (CPBaaSNotarization::ConfirmOrRejectNotarizations(pwalletMain, ConnectedChains.FirstNotaryChain(), state, notarizationBuilder, finalized))
+            const CRPCChainData &notaryChain = ConnectedChains.FirstNotaryChain();
+            if (notaryChain.IsValid() &&
+                CPBaaSNotarization::ConfirmOrRejectNotarizations(pwalletMain, ConnectedChains.FirstNotaryChain(), state, notarizationBuilder, finalized))
             {
                 if (!notarizationBuilder.mtx.vin.size())
                 {
@@ -1930,7 +1950,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             return NULL;
         }
 
-        uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
         if (solutionVersion >= CActivationHeight::ACTIVATE_PBAAS && !feePool.IsValid())
         {
             // first block with a fee pool, so make it valid and empty

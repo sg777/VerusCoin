@@ -1136,6 +1136,68 @@ bool CConnectedChains::IsNotaryAvailable(bool callToCheck)
            CheckVerusPBaaSAvailable();
 }
 
+bool CConnectedChains::ConfigureEthBridge()
+{
+    // first time through, we initialize the VETH gateway config file
+    if (!_IsVerusActive())
+    {
+        return false;
+    }
+    if (IsNotaryAvailable())
+    {
+        return true;
+    }
+    LOCK(cs_main);
+    if (FirstNotaryChain().IsValid())
+    {
+        return IsNotaryAvailable(true);
+    }
+
+    CRPCChainData vethNotaryChain;
+    uint160 gatewayParent = ASSETCHAINS_CHAINID;
+    static uint160 gatewayID;
+    if (gatewayID.IsNull())
+    {
+        gatewayID = CIdentity::GetID("veth", gatewayParent);
+    }
+    vethNotaryChain.chainDefinition = ConnectedChains.GetCachedCurrency(gatewayID);
+    if (vethNotaryChain.chainDefinition.IsValid())
+    {
+        map<string, string> settings;
+        map<string, vector<string>> settingsmulti;
+
+        // create config file for our notary chain if one does not exist already
+        if (ReadConfigFile("veth", settings, settingsmulti))
+        {
+            // the Ethereum bridge, "VETH", serves as the root currency to VRSC and for Rinkeby to VRSCTEST
+            vethNotaryChain.rpcUserPass = PBAAS_USERPASS = settingsmulti.find("-rpcuser")->second[0] + ":" + settingsmulti.find("-rpcpassword")->second[0];
+            vethNotaryChain.rpcPort = PBAAS_PORT = atoi(settingsmulti.find("-rpcport")->second[0]);
+            PBAAS_HOST = settingsmulti.find("-rpchost")->second[0];
+            if (!PBAAS_HOST.size())
+            {
+                PBAAS_HOST = "127.0.0.1";
+            }
+            vethNotaryChain.rpcHost = PBAAS_HOST;
+            CNotarySystemInfo notarySystem;
+            CChainNotarizationData cnd;
+            if (!GetNotarizationData(gatewayID, cnd))
+            {
+                LogPrintf("%s: Failed to get notarization data for notary chain %s\n", __func__, vethNotaryChain.chainDefinition.name.c_str());
+                return false;
+            }
+
+            notarySystems.insert(std::make_pair(gatewayID, 
+                                                CNotarySystemInfo(cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : 0, 
+                                                    vethNotaryChain,
+                                                    cnd.vtx.size() ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second : CPBaaSNotarization(),
+                                                    CNotarySystemInfo::TYPE_ETHERC20,
+                                                    CNotarySystemInfo::VERSION_CURRENT)));
+            return IsNotaryAvailable(true);
+        }
+    }
+    return false;
+}
+
 int CConnectedChains::GetThisChainPort() const
 {
     int port;
