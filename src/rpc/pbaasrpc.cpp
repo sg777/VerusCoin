@@ -4842,7 +4842,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
     if (!newCurrency.startBlock || newCurrency.startBlock < (chainActive.Height() + 10))
     {
-        newCurrency.startBlock = chainActive.Height() + 15;    // give a little time to send the tx
+        newCurrency.startBlock = chainActive.Height() + DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA;  // give a little time to send the tx
     }
 
     if (newCurrency.endBlock && newCurrency.endBlock < (newCurrency.startBlock + CCurrencyDefinition::MIN_CURRENCY_LIFE))
@@ -5200,7 +5200,26 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             }
 
             // set start block and gateway converter issuance
-            gatewayConverterMap["startblock"] = newChain.startBlock;
+            if (newChain.IsGateway())
+            {
+                CEthGateway gatewayCheck;
+                if (newChain.GetID() != gatewayCheck.GatewayID())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Only the Ethereum gateway is supported at this time");
+                }
+
+                if (uni_get_int(gatewayConverterMap["startblock"]) < (int32_t)(height + DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA))
+                {
+                    gatewayConverterMap["startblock"] = (int32_t)(height + DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA);
+                }
+                // gateways start already running
+                newChain.startBlock = 0;
+            }
+            else
+            {
+                gatewayConverterMap["startblock"] = newChain.startBlock;
+            }
+
             gatewayConverterMap["gatewayconverterissuance"] = newChain.gatewayConverterIssuance;
 
             UniValue newCurUni(UniValue::VOBJ);
@@ -5498,6 +5517,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         }
     }
 
+    CAmount totalLaunchFee = ConnectedChains.ThisChain().GetCurrencyRegistrationFee(newChain.options);
+    CAmount notaryFeeShare = 0;
+
     // now, setup the gateway converter currency, if appropriate
     if ((newChain.IsPBaaSChain() || newChain.IsGateway()))
     {
@@ -5515,6 +5537,22 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
                 tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &oneNewReserve.second)), 
                                                     CCurrencyDefinition::DEFAULT_OUTPUT_VALUE);
+            }
+
+            if (newChain.IsGateway() &&
+                newChain.notaries.size() &&
+                (newChain.notarizationProtocol == newChain.NOTARIZATION_AUTO ||
+                 newChain.notarizationProtocol == newChain.NOTARIZATION_NOTARY_CONFIRM))
+            {
+                // notaries all get an even share of 10% of a currency launch fee to use for notarizing
+                notaryFeeShare = ConnectedChains.ThisChain().GetCurrencyRegistrationFee(newChain.options) / 100;
+                totalLaunchFee -= notaryFeeShare;
+                CAmount oneNotaryShare = notaryFeeShare / newChain.notaries.size();
+                CAmount notaryModExtra = notaryFeeShare % newChain.notaries.size();
+                for (auto &oneNotary : newChain.notaries)
+                {
+                    tb.AddTransparentOutput(CIdentityID(oneNotary), notaryModExtra ? notaryModExtra--, oneNotaryShare + 1 : oneNotaryShare);
+                }
             }
 
             newGatewayConverter.gatewayConverterIssuance = newChain.gatewayConverterIssuance;
@@ -5635,7 +5673,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
 
     // figure all launch fees, including export and import
-    CAmount totalLaunchFee = ConnectedChains.ThisChain().GetCurrencyRegistrationFee(newChain.options);
     if (converterImportFee)
     {
         totalLaunchFee += ConnectedChains.ThisChain().GetCurrencyRegistrationFee(newGatewayConverter.options);

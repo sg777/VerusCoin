@@ -810,15 +810,16 @@ public:
     virtual bool ValidateDestination(const std::string &destination) const = 0;
     virtual CTransferDestination ToTransferDestination(const std::string &destination) const = 0;
     virtual std::set<uint160> FeeCurrencies() const = 0;
-    virtual const CCurrencyDefinition &GetConverter() const = 0;
+    virtual uint160 GatewayID() const = 0;
 };
 
 class CEthGateway : public CGateway
 {
+public:
     virtual bool ValidateDestination(const std::string &destination) const;
     virtual CTransferDestination ToTransferDestination(const std::string &destination) const;
     virtual std::set<uint160> FeeCurrencies() const;
-    virtual const CCurrencyDefinition &GetConverter() const;
+    virtual uint160 GatewayID() const;
 };
 
 // This is the data for a PBaaS notarization transaction, either of a PBaaS chain into the Verus chain, or the Verus
@@ -1290,7 +1291,7 @@ public:
     {
         TYPE_INVALID = 0,
         TYPE_PBAAS = 1,
-        TYPE_ETHERC20 = 2,
+        TYPE_ETH = 2,
         TYPE_KOMODO = 3,
     };
 
