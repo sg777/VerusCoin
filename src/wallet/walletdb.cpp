@@ -718,7 +718,7 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             ssValue >> extfvk;
             vector<unsigned char> vchCryptedSecret;
             ssValue >> vchCryptedSecret;
-            wss.nCKeys++;
+            wss.nCZKeys++;
 
             if (!pwallet->LoadCryptedSaplingZKey(extfvk, vchCryptedSecret))
             {
@@ -982,6 +982,8 @@ DBErrors CWalletDB::LoadWallet(CWallet* pwallet)
 
     LogPrintf("ZKeys: %u plaintext, %u encrypted, %u w/metadata, %u total\n",
            wss.nZKeys, wss.nCZKeys, wss.nZKeyMeta, wss.nZKeys + wss.nCZKeys);
+
+    LogPrintf("Sapling Addresses: %u \n",wss.nSapZAddrs);
 
     // nTimeFirstKey is only reliable if all keys have metadata
     if ((wss.nKeys + wss.nCKeys) != wss.nKeyMeta)
