@@ -717,15 +717,9 @@ std::set<uint160> CEthGateway::FeeCurrencies() const
     return retVal;
 }
 
-const CCurrencyDefinition &CEthGateway::GetConverter() const
+uint160 CEthGateway::GatewayID() const
 {
-    // just returns true if it looks like a non-NULL ETH address
-    static CCurrencyDefinition ethFeeConverter;
-    if (!ethFeeConverter.IsValid())
-    {
-        GetCurrencyDefinition("vrsc-eth-dai", ethFeeConverter);
-    }
-    return ethFeeConverter;
+    return CCrossChainRPCData::GetID("veth@");
 }
 
 bool CConnectedChains::RemoveMergedBlock(uint160 chainID)
@@ -1043,6 +1037,9 @@ bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue
 {
     if (chainInfoUni.isObject() && chainDefUni.isObject())
     {
+        // TODO: HARDENING - ensure we confirm the correct PBaaS version
+        // and ensure that the chainDef is correct as well
+
         UniValue uniVer = find_value(chainInfoUni, "VRSCversion");
         if (uniVer.isStr())
         {
@@ -1089,6 +1086,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                 params.push_back(EncodeDestination(CIdentityID(FirstNotaryChain().chainDefinition.GetID())));
                 chainDef = find_value(RPCCallRoot("getcurrency", params), "result");
 
+                // TODO: HARDENING - ensure that the ID from chainDef is the same ID
                 if (!chainDef.isNull() && CheckVerusPBaaSAvailable(chainInfo, chainDef))
                 {
                     // if we have not passed block 1 yet, store the best known update of our current state
@@ -1190,7 +1188,7 @@ bool CConnectedChains::ConfigureEthBridge()
                                                 CNotarySystemInfo(cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : 0, 
                                                     vethNotaryChain,
                                                     cnd.vtx.size() ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second : CPBaaSNotarization(),
-                                                    CNotarySystemInfo::TYPE_ETHERC20,
+                                                    CNotarySystemInfo::TYPE_ETH,
                                                     CNotarySystemInfo::VERSION_CURRENT)));
             return IsNotaryAvailable(true);
         }
