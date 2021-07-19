@@ -720,8 +720,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
     obj.push_back(Pair("startblock", (int64_t)startBlock));
     obj.push_back(Pair("endblock", (int64_t)endBlock));
 
-    // notaries are identities that perform specific functions for the currency's operation
-    // related to notarizing an external currency source, as well as proving imports
+     // currencies that can be converted for pre-launch or fractional usage
     if (currencies.size())
     {
         UniValue currencyArr(UniValue::VARR);

@@ -5205,7 +5205,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 CEthGateway gatewayCheck;
                 if (newChain.GetID() != gatewayCheck.GatewayID())
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Only the Ethereum gateway is supported at this time");
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Ethereum is the only gateway supported at this time");
                 }
 
                 if (uni_get_int(gatewayConverterMap["startblock"]) < (int32_t)(height + DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA))
@@ -5232,6 +5232,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             converterOptions &= ~(CCurrencyDefinition::OPTION_GATEWAY + CCurrencyDefinition::OPTION_PBAAS);
             converterOptions |= CCurrencyDefinition::OPTION_FRACTIONAL +
                                 CCurrencyDefinition::OPTION_TOKEN +
+                                CCurrencyDefinition::OPTION_CANBERESERVE +
                                 CCurrencyDefinition::OPTION_PBAAS_CONVERTER;
             gatewayConverterMap["options"] = (int64_t)converterOptions;
 
