@@ -539,7 +539,7 @@ libbitcoin_common_a_SOURCES = \
   netbase.cpp \
   metrics.cpp \
   mmr.cpp \
-  ETH.cpp \
+  pbaas/ethproof.cpp \
   pbaas/crosschainrpc.cpp \
   pbaas/vdxf.cpp \
   primitives/block.cpp \
