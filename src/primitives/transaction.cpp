@@ -755,7 +755,7 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
             {
                 // unpack data specific to export and reserve transfers
                 CDataStream s = CDataStream(vdxfObj.data, SER_NETWORK, PROTOCOL_VERSION);
-                //std::vector<CReserveTransfer> reserveTransfers;
+                std::vector<CReserveTransfer> reserveTransfers;
                 CCrossChainExport ccx;
                 CCcontract_info CC;
                 CCcontract_info *cp;
@@ -763,7 +763,7 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                 try
                 {
                     s >> ccx;
-               //     s >> reserveTransfers;
+                    s >> reserveTransfers;
                 }
                 catch (const std::runtime_error &e)
                     {
