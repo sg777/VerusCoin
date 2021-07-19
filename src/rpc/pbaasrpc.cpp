@@ -1702,7 +1702,6 @@ UniValue getexports(const UniValue& params, bool fHelp)
 UniValue submitimports(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
-    
     {
         throw runtime_error(
             "submitimports '{\"sourcesystemid\":\"systemid\", \"notarizationtxid\":\"txid\", \"notarizationtxoutnum\":n,\n"
