@@ -125,6 +125,46 @@ public:
     {
     }
 
+    template <typename K, typename T>
+    bool WriteTxn(const K& key, const T& value, std::string calling, bool fOverwrite = true)
+    {
+
+        LOCK(bitdb.cs_db);
+        bool txnWrite = false;
+        int retries = 0;
+
+        while(!txnWrite) {
+            //Writing transaction to the database
+            if(!TxnBegin()) {
+                LogPrintf("%s: Failed to begin txn, will retry.\n", calling);
+                TxnAbort();
+            } else {
+                TxnSetTimeout();
+                txnWrite = Write(key, value, fOverwrite);
+                if (!txnWrite) {
+                    LogPrintf("%s: Failed to write txn, will retry.\n", calling);
+                    TxnAbort();
+                } else {
+                    if(!TxnCommit()) {
+                      LogPrintf("%s: Failed to commit txn, warning.\n", calling);
+                    }
+                }
+            }
+
+            if (!txnWrite) {
+              TxnAbort();
+              MilliSleep(500);
+              retries++;
+            }
+
+            if (retries > 3) {
+              LogPrintf("%s Failed!!! Retry, attempts #%d.\n", calling, retries - 1);
+              return false;
+            }
+        }
+        return true;
+    }
+
     bool WriteName(const std::string& strAddress, const std::string& strName);
     bool EraseName(const std::string& strAddress);
 
