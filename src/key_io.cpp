@@ -941,7 +941,7 @@ CIdentity::CIdentity(const CScript &scriptPubKey)
 
 CIdentityID CIdentity::GetID(const std::string &Name, uint160 &parent)
 {
-    std::string cleanName = CleanName(Name, parent);
+    std::string cleanName = CleanName(Name, parent, false, parent.IsNull());
 
     std::string subName = boost::algorithm::to_lower_copy(cleanName);
     const char *idName = subName.c_str();

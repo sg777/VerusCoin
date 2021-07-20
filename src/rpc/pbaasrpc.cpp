@@ -4894,11 +4894,16 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
             uint160 parent;
             std::string cleanName = CleanName(oneCurName + "@", parent);
-            if (parent != newCurrency.parent || cleanName == "")
+
+            // the parent of the currency does not require a new definition
+            if (oneCurID != newCurrency.parent)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to auto-create currency " + oneCurName + " in \"currencies\"");
+                if (parent != newCurrency.parent || cleanName == "")
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to auto-create currency " + oneCurName + " in \"currencies\"");
+                }
+                requiredDefinitions[oneCurID] = oneCurName;
             }
-            requiredDefinitions[oneCurID] = cleanName;
         }
         currencySet.insert(oneCurID);
     }
@@ -4937,6 +4942,11 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             }
 
             if (newCurrency.systemID == currency)
+            {
+                continue;
+            }
+
+            if (newCurrency.parent == currency)
             {
                 continue;
             }
