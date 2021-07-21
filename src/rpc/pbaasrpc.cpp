@@ -5489,7 +5489,15 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     CAmount newReserveImportFees = 0;
     CCurrencyValueMap converterImportFees;
 
-    CCrossChainExport ccx = CCrossChainExport(thisChainID, 0, height, newChain.systemID, newChainID, 0, mainImportFees, mainImportFees, uint256());
+    CCrossChainExport ccx = CCrossChainExport(thisChainID,
+                                              0,
+                                              height,
+                                              newChain.IsGateway() ? newChain.gatewayID : newChain.systemID,
+                                              newChainID,
+                                              0,
+                                              mainImportFees,
+                                              mainImportFees,
+                                              uint256());
     ccx.SetChainDefinition();
     if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID)
     {
