@@ -5414,7 +5414,11 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     uint32_t lastImportHeight = newChain.IsPBaaSChain() || newChain.IsGateway() ? 1 : height;
 
-    CCrossChainImport cci = CCrossChainImport(newChain.systemID, lastImportHeight, newChainID, CCurrencyValueMap(), CCurrencyValueMap());
+    CCrossChainImport cci = CCrossChainImport(newChain.IsGateway() ? newChain.gatewayID : newChain.systemID,
+                                              lastImportHeight,
+                                              newChainID,
+                                              CCurrencyValueMap(),
+                                              CCurrencyValueMap());
     cci.SetSameChain(newChain.systemID == ASSETCHAINS_CHAINID);
     cci.SetDefinitionImport(true);
     if (newChainID == ASSETCHAINS_CHAINID)
