@@ -1169,7 +1169,9 @@ public:
 
     // this should be done no more than once to prepare a currency state to be moved to the next state
     // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
-    CCurrencyState &UpdateWithEmission(CAmount emitted);
+    // excess ratio is used in the case of issuance into a liquidity pool. in that case, the total reserve ratio
+    // to be subtracted is first offset by the excessRatio before deduction.
+    CCurrencyState &UpdateWithEmission(CAmount emitted, int32_t excessRatio=0);
 
     cpp_dec_float_50 GetReserveRatio(int32_t reserveIndex=0) const
     {
@@ -1430,7 +1432,7 @@ public:
 
     UniValue ToUniValue() const;
 
-    CCoinbaseCurrencyState &UpdateWithEmission(CAmount toEmit);
+    CCoinbaseCurrencyState &UpdateWithEmission(CAmount toEmit, int32_t excessRatio=0);
     CCoinbaseCurrencyState &ApplyCarveouts(int32_t carveOut);
 
     void ClearForNextBlock()

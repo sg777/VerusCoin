@@ -554,6 +554,15 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         {
             contributions = preconverted = std::vector<int64_t>(currencyArr.size());
 
+            if (initialContributionArr.isNull())
+            {
+                initialContributionArr = UniValue(UniValue::VARR);
+                for (int i = 0; i < currencyArr.size(); i++)
+                {
+                    initialContributionArr.push_back((CAmount)0);
+                }
+            }
+
             if (IsFractional())
             {
                 preLaunchDiscount = AmountFromValueNoErr(find_value(obj, "prelaunchdiscount"));
@@ -646,7 +655,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                     weights.size() != currencyArr.size() ||
                     !IsFractional())
                 {
-                    LogPrintf("%s: reserve currencies must have weights, initial contributions in at least one currency\n", __func__);
+                    LogPrintf("%s: fractional currencies must have weights, initial contributions in at least one currency\n", __func__);
                     nVersion = PBAAS_VERSION_INVALID;
                 }
             }

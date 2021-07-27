@@ -1198,9 +1198,12 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     UniValue params(UniValue::VARR);
 
     UniValue oneParam(UniValue::VOBJ);
-    if (!isGatewayFirstContact)
+    if (proofRootsUni.size())
     {
         oneParam.push_back(Pair("proofroots", proofRootsUni));
+    }
+    if (!isGatewayFirstContact)
+    {
         oneParam.push_back(Pair("lastconfirmed", cnd.lastConfirmed));
     }
     params.push_back(oneParam);

@@ -3115,7 +3115,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
 
-    if (isFractional && newCurrencyState.IsLaunchConfirmed())
+    int32_t issuedWeight = 0;
+    CAmount totalRatio = 0;
+    bool fractionalLaunchClearConfirm = false;
+
+    if (isFractional && importCurrencyState.IsLaunchConfirmed())
     {
         CCoinbaseCurrencyState scratchCurrencyState = importCurrencyState;
 
@@ -3131,15 +3135,36 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
         }
 
-        if (importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
+        if (importCurrencyState.IsLaunchClear())
         {
+            fractionalLaunchClearConfirm = true;
+
+            for (auto weight : importCurrencyDef.weights)
+            {
+                totalRatio += weight;
+            }
+
+            //CAmount tempIssuedWeight = issuedWeight = importCurrencyState.weights[currencyIndexMap[importCurrencyDef.systemID]];
+            CAmount tempIssuedWeight = issuedWeight = 0;
+
             if (totalCarveOut)
             {
-                scratchCurrencyState.ApplyCarveouts(totalCarveOut);
+                if (tempIssuedWeight < totalCarveOut)
+                {
+                    scratchCurrencyState.ApplyCarveouts(totalCarveOut - tempIssuedWeight);
+                    tempIssuedWeight = 0;
+                }
+                else
+                {
+                    tempIssuedWeight -= totalCarveOut;
+                }
             }
             if (importCurrencyDef.preLaunchDiscount)
             {
-                scratchCurrencyState.ApplyCarveouts(importCurrencyDef.preLaunchDiscount);
+                if (tempIssuedWeight <= importCurrencyDef.preLaunchDiscount)
+                {
+                    scratchCurrencyState.ApplyCarveouts(importCurrencyDef.preLaunchDiscount - tempIssuedWeight);
+                }
             }
         }
 
@@ -3384,25 +3409,46 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         extraPreconverted = 0;
     }
 
-    if (isFractional && importCurrencyState.IsLaunchClear() && importCurrencyState.IsLaunchConfirmed())
+    if (fractionalLaunchClearConfirm)
     {
-        //printf("currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
         if (totalCarveOut)
         {
-            //printf("%s: applying carveout %d to weights\n", __func__, totalCarveOut);
-            newCurrencyState.ApplyCarveouts(totalCarveOut);
+            if (issuedWeight < totalCarveOut)
+            {
+                newCurrencyState.ApplyCarveouts(totalCarveOut - issuedWeight);
+                issuedWeight = 0;
+            }
+            else
+            {
+                issuedWeight -= totalCarveOut;
+            }
         }
         if (importCurrencyDef.preLaunchDiscount)
         {
-            //printf("%s: applying prelaunch discount %d to weights\n", __func__, importCurrencyDef.preLaunchDiscount);
-            newCurrencyState.ApplyCarveouts(importCurrencyDef.preLaunchDiscount);
+            if (issuedWeight <= importCurrencyDef.preLaunchDiscount)
+            {
+                newCurrencyState.ApplyCarveouts(importCurrencyDef.preLaunchDiscount - issuedWeight);
+                issuedWeight = 0;
+            }
+            else
+            {
+                issuedWeight -= importCurrencyDef.preLaunchDiscount;
+            }
         }
+
         //printf("new currency state: %s\n", newCurrencyState.ToUniValue().write(1,2).c_str());
     }
 
     if (totalMinted || preAllocTotal)
     {
-        newCurrencyState.UpdateWithEmission(totalMinted + preAllocTotal);
+        if (preAllocTotal)
+        {
+            newCurrencyState.UpdateWithEmission(preAllocTotal, issuedWeight);
+        }
+        if (totalMinted)
+        {
+            newCurrencyState.UpdateWithEmission(totalMinted);
+        }
         netPrimaryOut += (totalMinted + preAllocTotal);
         netPrimaryIn += (totalMinted + preAllocTotal);
     }
@@ -3686,7 +3732,7 @@ std::vector<CAmount> CReserveTransactionDescriptor::ReserveConversionFeesVec(con
 
 // this should be done no more than once to prepare a currency state to be updated to the next state
 // emission occurs for a block before any conversion or exchange and that impact on the currency state is calculated
-CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmit)
+CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmit, int32_t excessRatio)
 {
     emitted = 0;
 
@@ -3742,6 +3788,23 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmi
         // distribute any modulus excess randomly among the currencies
         std::vector<CAmount> extraWeight(currencies.size());
         arith_uint256 bigRatioDelta(InitialRatio - newRatio);
+
+        // adjust the ratio adjustment if we have a non-zero excessRatio
+        if (excessRatio > 0)
+        {
+            CAmount adjustedRatioDelta = InitialRatio - newRatio;
+            if (excessRatio < adjustedRatioDelta)
+            {
+                bigRatioDelta = arith_uint256(adjustedRatioDelta - excessRatio);
+                newRatio += excessRatio;
+            }
+            else
+            {
+                bigRatioDelta = 0;
+                newRatio = InitialRatio;
+            }
+        }
+
         CAmount totalUpdates = 0;
 
         for (auto &weight : weights)
