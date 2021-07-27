@@ -541,7 +541,7 @@ bool CScript::IsInstantSpend() const
     bool isInstantSpend = false;
 
     // TODO: HARDENING - this must run on the Verus chain, but should have a version check and parameter
-    if (!_IsVerusActive() && IsPayToCryptoCondition(p) && p.IsValid())
+    if (!_IsVerusMainnetActive() && IsPayToCryptoCondition(p) && p.IsValid())
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
         // TODO: fix this check
