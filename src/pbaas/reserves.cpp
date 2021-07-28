@@ -3144,7 +3144,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 totalRatio += weight;
             }
 
-            CAmount tempIssuedWeight = issuedWeight = importCurrencyState.weights[currencyIndexMap[importCurrencyDef.systemID]];
+            CAmount tempIssuedWeight = 
+                issuedWeight = 
+                    importCurrencyDef.gatewayConverterIssuance ? importCurrencyState.weights[currencyIndexMap[importCurrencyDef.systemID]] : 0;
 
             if (totalCarveOut)
             {

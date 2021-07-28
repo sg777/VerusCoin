@@ -562,6 +562,7 @@ public:
         FLAG_SUPPLEMENTAL = 0x20,                       // this flag indicates that this is a supplemental output to a prior output
         FLAG_SOURCESYSTEM = 0x40,
     };
+
     uint16_t nVersion;
     uint16_t flags;
     uint160 sourceSystemID;                             // the native source currency system from where these transactions are imported

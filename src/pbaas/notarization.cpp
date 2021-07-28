@@ -1879,7 +1879,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
             std::set<uint160> sigSet;
 
-            int minimumNotariesConfirm = (externalSystem.GetID() == ConnectedChains.FirstNotaryChain().GetID()) ?
+            int minimumNotariesConfirm = (externalSystem.GetID() == ConnectedChains.FirstNotaryChain().GetID()) && !IsVerusActive() ?
                                         minimumNotariesConfirm = ConnectedChains.ThisChain().minNotariesConfirm :
                                         minimumNotariesConfirm = ConnectedChains.FirstNotaryChain().chainDefinition.minNotariesConfirm;
 

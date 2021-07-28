@@ -147,9 +147,253 @@ bool IsReserveTransferInput(const CScript &scriptSig)
     return true;
 }
 
+CReserveDeposit GetSpendingReserveDeposit(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx, uint32_t *pHeight)
+{
+    CTransaction _sourceTx;
+    CTransaction &sourceTx(pSourceTx ? *pSourceTx : _sourceTx);
+
+    // if not fulfilled, ensure that no part of the primary identity is modified
+    CReserveDeposit oldReserveDeposit;
+    uint256 blkHash;
+    if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
+    {
+        if (pHeight)
+        {
+            auto bIt = mapBlockIndex.find(blkHash);
+            if (bIt == mapBlockIndex.end() || !bIt->second)
+            {
+                *pHeight = chainActive.Height();
+            }
+            else
+            {
+                *pHeight = bIt->second->GetHeight();
+            }
+        }
+        COptCCParams p;
+        if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() && 
+            p.evalCode == EVAL_RESERVE_DEPOSIT && 
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
+        {
+            oldReserveDeposit = CReserveDeposit(p.vData[0]);
+        }
+    }
+    return oldReserveDeposit;
+}
+
 bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    return true;
+    // reserve deposits can only spend to the following:
+    // 1. If the reserve deposit is controlled by an alternate system or gateway currency, it can be
+    //    spent by an import that includes a sys import from the alternate system/gateway. The total
+    //    input of all inputs to the tx from the deposit controller is considered and all but the amount
+    //    specified in gateway imports of the import must come out as change back to the reserve deposit.
+    // 2. If the reserve deposit is controlled by the currency of an import, exactly the amount spent by
+    //    the import may be released in total and not sent back to change.
+
+    // first, get the prior reserve deposit and determine the controlling currency
+    CTransaction sourceTx;
+    uint32_t sourceHeight;
+    CReserveDeposit sourceRD = GetSpendingReserveDeposit(tx, nIn, &sourceTx, &sourceHeight);
+    if (!sourceRD.IsValid())
+    {
+        LogPrintf("%s: attempting to spend invalid reserve deposit output %s\n", __func__, tx.vin[nIn].ToString().c_str());
+        return false;
+    }
+
+    // now, ensure that the spender transaction includes an import output of this specific currency or
+    // where this currency is a system gateway source
+    CCrossChainImport authorizingImport;
+    CCrossChainImport mainImport;
+
+    // looking for an import output to the controlling currency
+    int i;
+    for (i = 0; i < tx.vout.size(); i++)
+    {
+        COptCCParams p;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+            p.vData.size() &&
+            (authorizingImport = CCrossChainImport(p.vData[0])).IsValid() &&
+            authorizingImport.importCurrencyID == sourceRD.controllingCurrencyID)
+        {
+            break;
+        }
+    }
+
+    if (i >= tx.vout.size())
+    {
+        if (!LogAcceptCategory("reservedeposits"))
+        {
+            LogPrintf("%s: non import transaction attempting to spend reserve deposit\n", __func__);
+        }
+        else
+        {
+            LogPrint("reservedeposits", "%s: non import transaction %s attempting to spend reserve deposit %s\n", __func__, EncodeHexTx(tx).c_str(), tx.vin[nIn].ToString().c_str());
+        }
+        return false;
+    }
+
+    // if we found a valid output, determine if the output is direct or system source
+    bool gatewaySource = false;
+    if (gatewaySource = authorizingImport.IsSourceSystemImport())
+    {
+        COptCCParams p;
+        i--;        // set i to the actual import
+        if (!(i > 0 &
+              tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+              p.IsValid() &&
+              p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+              p.vData.size() &&
+              (mainImport = CCrossChainImport(p.vData[0])).IsValid()))
+        {
+            if (!LogAcceptCategory("reservedeposits"))
+            {
+                LogPrintf("%s: malformed import transaction attempting to spend reserve deposit\n", __func__);
+            }
+            else
+            {
+                LogPrint("reservedeposits", "%s: malformed import transaction %s attempting to spend reserve deposit %s\n", __func__, EncodeHexTx(tx).c_str(), tx.vin[nIn].ToString().c_str());
+            }
+            return false;
+        }
+    }
+    else
+    {
+        mainImport = authorizingImport;
+    }
+
+    CCrossChainExport ccxSource;
+    CPBaaSNotarization importNotarization;
+    int32_t sysCCIOut, importNotarizationOut, evidenceOutStart, evidenceOutEnd;
+    std::vector<CReserveTransfer> reserveTransfers;
+
+    if (mainImport.GetImportInfo(tx,
+                                 chainActive.Height(),
+                                 i,
+                                 ccxSource,
+                                 authorizingImport,
+                                 sysCCIOut,
+                                 importNotarization,
+                                 importNotarizationOut,
+                                 evidenceOutStart,
+                                 evidenceOutEnd,
+                                 reserveTransfers))
+    {
+        // TODO: HARDENING - confirm that all checks are complete
+        // now, check all inputs of the transaction, and if we are the first in the array spent from
+        // deposits controlled by this currency, be sure that all input is accounted for by valid reserves out
+        // and/or gateway deposits, and/or change
+
+        LOCK(mempool.cs);
+
+        CCoinsView dummy;
+        CCoinsViewCache view(&dummy);
+        CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+        view.SetBackend(viewMemPool);
+
+        CCurrencyValueMap totalDeposits;
+
+        for (int i = 0; i < tx.vin.size(); i++)
+        {
+            if (tx.vin[i].prevout.hash.IsNull())
+            {
+                continue;
+            }
+            const CCoins *pCoins = view.AccessCoins(tx.vin[i].prevout.hash);
+
+            COptCCParams p;
+
+            // if we can't find the output we are spending, we fail
+            if (pCoins->vout.size() <= tx.vin[i].prevout.n)
+            {
+                LogPrintf("%s: cannot get output being spent by input (%s) from current view\n", __func__, tx.vin[i].ToString().c_str());
+                return false;
+            }
+
+            CReserveDeposit oneBeingSpent;
+
+            if (pCoins->vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_RESERVE_DEPOSIT)
+            {
+                if (!(p.vData.size() &&
+                      (oneBeingSpent = CReserveDeposit(p.vData[0])).IsValid()))
+                {
+                    LogPrintf("%s: reserve deposit being spent by input (%s) is invalid in view\n", __func__, tx.vin[i].ToString().c_str());
+                    return false;
+                }
+            }
+
+            if (oneBeingSpent.IsValid() &&
+                oneBeingSpent.controllingCurrencyID == sourceRD.controllingCurrencyID)
+            {
+                // if we are not first, this will have to have passed by the first input to have gotten here
+                if (i < nIn)
+                {
+                    return true;
+                }
+                else
+                {
+                    totalDeposits += oneBeingSpent.reserveValues;
+                }
+            }
+        }
+
+        // now, determine how much is used and how much change is left
+        CCoinbaseCurrencyState checkState = importNotarization.currencyState;
+        CCoinbaseCurrencyState newCurState;
+
+        checkState.RevertReservesAndSupply();
+        CReserveTransactionDescriptor rtxd;
+
+        CCurrencyDefinition sourceSysDef = ConnectedChains.GetCachedCurrency(ccxSource.sourceSystemID);
+        CCurrencyDefinition destSysDef = ConnectedChains.GetCachedCurrency(ccxSource.destSystemID);
+        CCurrencyDefinition destCurDef = ConnectedChains.GetCachedCurrency(ccxSource.destCurrencyID);
+
+        if (!(sourceSysDef.IsValid() && destSysDef.IsValid() && destCurDef.IsValid()))
+        {
+            LogPrintf("%s: invalid currencies in export: %s\n", __func__, ccxSource.ToUniValue().write(1,2).c_str());
+            return false;
+        }
+
+        std::vector<CTxOut> vOutputs;
+        CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
+
+        if (!rtxd.AddReserveTransferImportOutputs(sourceSysDef,
+                                                  destSysDef,
+                                                  destCurDef,
+                                                  checkState,
+                                                  reserveTransfers,
+                                                  vOutputs,
+                                                  importedCurrency,
+                                                  gatewayCurrencyUsed,
+                                                  spentCurrencyOut,
+                                                  &newCurState))
+        {
+            return false;
+        }
+
+        // add up the reserve deposits out, which are controlled by this currency and check them against what
+        // was used to ensure that all reserve deposits either went to reserves out or change
+
+        // get outputs
+
+        if (gatewaySource)
+        {
+            // gateway total input - gatewaycurrencyused must be sent as change to gateway reserves
+        }
+        else
+        {
+
+        }
+
+        return true;
+    }
+
+    return false;
 }
 bool IsReserveDepositInput(const CScript &scriptSig)
 {
