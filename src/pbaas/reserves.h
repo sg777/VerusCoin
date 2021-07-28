@@ -72,24 +72,12 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        std::vector<uint160> currencies;
-        std::vector<int64_t> values;
         if (ser_action.ForRead())
         {
             READWRITE(VARINT(nVersion));
             if (nVersion & VERSION_MULTIVALUE)
             {
-                READWRITE(currencies);
-                READWRITE(values);
-                if (currencies.size() == values.size())
-                {
-                    reserveValues = CCurrencyValueMap(currencies, values);
-                }
-                else
-                {
-                    nVersion = VERSION_INVALID;
-                    reserveValues = CCurrencyValueMap();
-                }
+                READWRITE(reserveValues);
                 nVersion &= ~VERSION_MULTIVALUE;
             }
             else
@@ -118,14 +106,7 @@ public:
             {
                 nVersion |= VERSION_MULTIVALUE;
                 READWRITE(VARINT(nVersion));
-
-                for (auto &oneCur : reserveValues.valueMap)
-                {
-                    currencies.push_back(oneCur.first);
-                    values.push_back(oneCur.second);
-                }
-                READWRITE(currencies);
-                READWRITE(values);
+                READWRITE(reserveValues);
             }
         }
     }
