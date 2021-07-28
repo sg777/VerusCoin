@@ -237,23 +237,6 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(valueMap);
-        std::vector<std::pair<uint160, int64_t>> vPairs;
-        if (ser_action.ForRead())
-        {
-            READWRITE(vPairs);
-            for (auto &oneVal : vPairs)
-            {
-                valueMap.insert(oneVal);
-            }
-        }
-        else
-        {
-            for (auto &oneVal : valueMap)
-            {
-                vPairs.push_back(oneVal);
-            }
-            READWRITE(vPairs);
-        }
     }
 
     friend bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b);

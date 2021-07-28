@@ -3482,10 +3482,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     newCurrencyState.primaryCurrencyOut = netPrimaryOut - (burnedChangePrice + burnedChangeWeight);
 
-    // TODO: REMOVE the next commented code line. it is here for compatibility with the current public testnet, but will not be needed
-    // at next testnet reset
-    //newCurrencyState.primaryCurrencyOut = netPrimaryOut;
-
     if (importCurrencyDef.IsPBaaSChain() && importCurrencyState.IsLaunchConfirmed() && !importCurrencyState.IsLaunchClear())
     {
         // pre-conversions should already be on this chain as gateway deposits on behalf of the
