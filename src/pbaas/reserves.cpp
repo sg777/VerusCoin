@@ -4240,3 +4240,16 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             (rt = CReserveTransfer(p.vData[0])).IsValid() &&
             rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue);
 }
+
+bool PrecheckReserveDeposit(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    // do a basic sanity check that this reserve transfer's values are consistent
+    COptCCParams p;
+    CReserveDeposit rd;
+    return (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.evalCode == EVAL_RESERVE_DEPOSIT &&
+            p.vData.size() &&
+            (rd = CReserveDeposit(p.vData[0])).IsValid() &&
+            rd.reserveValues.valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue);
+}

@@ -5708,7 +5708,12 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
         pk = CPubKey(ParseHex(CC.CChexstr));
         dests = std::vector<CTxDestination>({pk});
+
         CReserveDeposit launchDeposit = CReserveDeposit(newChainID, CCurrencyValueMap());
+        if (mainImportFee)
+        {
+            launchDeposit.reserveValues.valueMap[ASSETCHAINS_CHAINID] = mainImportFee;
+        }
         tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
                                             mainImportFee);
     }
@@ -5721,6 +5726,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                            newGatewayConverter.GetID() :
                                            newGatewayConverter.systemID;
         CReserveDeposit launchDeposit = CReserveDeposit(gatewayDepositCurrencyID, CCurrencyValueMap());
+        if (converterImportFee)
+        {
+            launchDeposit.reserveValues.valueMap[ASSETCHAINS_CHAINID] = converterImportFee;
+        }
         tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &launchDeposit)), 
                                             converterImportFee);
     }

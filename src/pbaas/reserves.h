@@ -1670,5 +1670,6 @@ bool ValidateFeePool(struct CCcontract_info *cp, Eval* eval, const CTransaction 
 bool IsFeePoolInput(const CScript &scriptSig);
 bool PrecheckFeePool(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
+bool PrecheckReserveDeposit(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 
 #endif // PBAAS_RESERVES_H

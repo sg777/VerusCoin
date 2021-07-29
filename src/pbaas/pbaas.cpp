@@ -376,18 +376,47 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             return false;
         }
 
-        // add up the reserve deposits out, which are controlled by this currency and check them against what
-        // was used to ensure that all reserve deposits either went to reserves out or change
-
-        // get outputs
+        // get outputs total amount to this reserve deposit
+        CCurrencyValueMap reserveDepositChange;
+        for (int i = 0; i < tx.vout.size(); i++)
+        {
+            COptCCParams p;
+            CReserveDeposit rd;
+            if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_RESERVE_DEPOSIT &&
+                p.vData.size() &&
+                (rd = CReserveDeposit(p.vData[0])).IsValid() &&
+                rd.controllingCurrencyID == sourceRD.controllingCurrencyID)
+            {
+                reserveDepositChange += rd.reserveValues;
+            }
+        }
 
         if (gatewaySource)
         {
-            // gateway total input - gatewaycurrencyused must be sent as change to gateway reserves
+            if (totalDeposits != (gatewayCurrencyUsed + reserveDepositChange))
+            {
+                LogPrintf("%s: invalid use of gateway reserve deposits for currency: %s\n", __func__, destCurDef.GetID().GetHex().c_str());
+                // TODO: HARDENING - uncomment the following line and return false, when it is confirmed that
+                // this passes in all intended cases.
+                //return false;
+            }
         }
         else
         {
-
+            CCurrencyValueMap currenciesIn(newCurState.currencies, newCurState.reserveIn);
+            if (newCurState.primaryCurrencyOut)
+            {
+                currenciesIn.valueMap[newCurState.GetID()] = newCurState.primaryCurrencyOut;
+            }
+            if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut))
+            {
+                LogPrintf("%s: invalid use of reserve deposits for currency: %s\n", __func__, destCurDef.GetID().GetHex().c_str());
+                // TODO: HARDENING - uncomment the following line and return false, when it is confirmed that
+                // this passes in all intended cases.
+                //return false;
+            }
         }
 
         return true;
@@ -3824,13 +3853,13 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     CAmount nativeReserveDeposit = 0;
     if (newReserveDeposits.valueMap.count(ASSETCHAINS_CHAINID))
     {
-        nativeReserveDeposit += newReserveDeposits.valueMap[ASSETCHAINS_CHAINID];
+        nativeReserveDeposit = newReserveDeposits.valueMap[ASSETCHAINS_CHAINID];
     }
 
     CCcontract_info CC;
     CCcontract_info *cp;
 
-    if (nativeReserveDeposit || newReserveDeposits.valueMap.size())
+    if (newReserveDeposits.valueMap.size())
     {
         /* printf("%s: nativeDeposit %ld, reserveDeposits: %s\n",
             __func__,
