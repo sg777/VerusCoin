@@ -315,7 +315,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
             CReserveDeposit oneBeingSpent;
 
-            if (pCoins->vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+            if (pCoins->vout[tx.vin[i].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_RESERVE_DEPOSIT)
             {
@@ -1713,8 +1713,7 @@ CCurrencyDefinition CConnectedChains::GetCachedCurrency(const uint160 &currencyI
     if ((it != currencyDefCache.end() && !(currencyDef = it->second).IsValid()) ||
         (it == currencyDefCache.end() && !GetCurrencyDefinition(currencyID, currencyDef, &defHeight, true)))
     {
-        printf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
-        LogPrintf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
+        LogPrint("notarization", "%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
         return currencyDef;
     }
     if (it == currencyDefCache.end())
