@@ -3588,6 +3588,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (!CheckBlock(&futureblock,pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck) || futureblock != 0 )
     {
         //fprintf(stderr,"checkblock failure in connectblock futureblock.%d\n",futureblock);
+        if (futureblock)
+        {
+            // if this is a future block, don't invalidate it
+            LogPrint("net", "%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock);
+            return false;
+        }
         return state.DoS(100, error("%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock),
                          REJECT_INVALID, "invalid-block");
     }

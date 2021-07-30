@@ -771,13 +771,12 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                     checkOK = false;
                 }
                 auto hw = CDefaultETHNode::GetHashWriter();
-               
 
                 // TODO: HARDENING - ensure this is completely valid
 
                 for (unsigned int n = 0; n < ccx.reserveTransfers.size(); n++)
                 {
-                    hw << ccx.reserveTransfers[n];
+                    hw << reserveTransfers[n];
                 }
 
                 if (!ccx.IsValid() || !checkOK || (ccx.hashReserveTransfers != hw.GetHash()) )
@@ -801,7 +800,6 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                     isPartial = true;
                     
                     outTx = mtx;
-                    
                 }
                 else
                 {

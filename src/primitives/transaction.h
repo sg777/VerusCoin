@@ -1762,8 +1762,8 @@ public:
         return signatureKey;
     }
 
-    CIdentitySignature::ESignatureVerification SignConfirmed(const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height);
-    CIdentitySignature::ESignatureVerification SignRejected(const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height);
+    CIdentitySignature::ESignatureVerification SignConfirmed(const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EProofProtocol hashType);
+    CIdentitySignature::ESignatureVerification SignRejected(const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EProofProtocol hashType);
 
     bool IsPartialTxProof() const
     {
