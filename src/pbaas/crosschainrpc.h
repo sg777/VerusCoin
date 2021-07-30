@@ -892,21 +892,43 @@ public:
         SIGNATURE_COMPLETE = 2
     };
 
-    enum EHashTypes {
-        HASHTYPE_PBAAS = CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR,
-        HASHTYPE_ETH = CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION
-    };
-
     uint8_t version;
     uint8_t hashType;
     uint32_t blockHeight;
     std::set<std::vector<unsigned char>> signatures;
 
-    CIdentitySignature() : version(VERSION_DEFAULT), hashType(HASHTYPE_PBAAS), blockHeight(0) {}
     CIdentitySignature(const UniValue &uni);
-    CIdentitySignature(uint8_t Version, EHashTypes hType=HASHTYPE_PBAAS) : version(Version), hashType(hType), blockHeight(0) {}
-    CIdentitySignature(uint32_t height, const std::vector<unsigned char> &oneSig, uint8_t ver=VERSION_DEFAULT, EHashTypes hType=HASHTYPE_PBAAS) : version(ver), hashType(hType), blockHeight(height), signatures({oneSig}) {}
-    CIdentitySignature(uint32_t height, const std::set<std::vector<unsigned char>> &sigs, uint8_t ver=VERSION_DEFAULT, EHashTypes hType=HASHTYPE_PBAAS) : version(ver), hashType(hType), blockHeight(height), signatures(sigs) {}
+    CIdentitySignature(CCurrencyDefinition::EProofProtocol hType=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR, uint8_t ver=VERSION_DEFAULT) : 
+        version(ver), hashType(hType), blockHeight(0)
+    {
+        if (IsValidHashType(hType) &&
+            hType != CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR)
+        {
+            version = VERSION_ETHBRIDGE;
+        }
+    }
+
+    CIdentitySignature(uint32_t height, const std::vector<unsigned char> &oneSig,
+        CCurrencyDefinition::EProofProtocol hType=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR, uint8_t ver=VERSION_DEFAULT) : 
+        version(ver), hashType(hType), blockHeight(height), signatures({oneSig})
+    {
+        if (IsValidHashType(hType) &&
+            hType != CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR)
+        {
+            version = VERSION_ETHBRIDGE;
+        }
+    }
+    CIdentitySignature(uint32_t height, const std::set<std::vector<unsigned char>> &sigs,
+        CCurrencyDefinition::EProofProtocol hType=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR, uint8_t ver=VERSION_DEFAULT) : 
+        version(ver), hashType(hType), blockHeight(height), signatures(sigs)
+    {
+        if (IsValidHashType(hType) &&
+            hType != CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR)
+        {
+            version = VERSION_ETHBRIDGE;
+        }
+    }
+
     CIdentitySignature(const std::vector<unsigned char> &asVector)
     {
         ::FromVector(asVector, *this);
@@ -923,7 +945,7 @@ public:
             }
             else
             {
-                hashType = HASHTYPE_PBAAS;
+                hashType = CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR;
             }
             READWRITE(blockHeight);
             std::vector<std::vector<unsigned char>> sigs;
@@ -949,6 +971,11 @@ public:
     }
 
     ADD_SERIALIZE_METHODS;
+
+    static bool IsValidHashType(CCurrencyDefinition::EProofProtocol hashType)
+    {
+        return (hashType == CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR || hashType == CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
+    }
 
     void AddSignature(const std::vector<unsigned char> &signature)
     {
@@ -1021,7 +1048,8 @@ public:
 
     uint32_t IsValid()
     {
-        return version <= VERSION_LAST && version >= VERSION_FIRST && (version < VERSION_ETHBRIDGE || hashType == HASHTYPE_PBAAS);
+        return version <= VERSION_LAST && version >= VERSION_FIRST && 
+            ((version >= VERSION_ETHBRIDGE && IsValidHashType((CCurrencyDefinition::EProofProtocol)hashType)) || hashType == CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
     }
 };
 

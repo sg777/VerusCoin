@@ -92,7 +92,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
     auto hw = CNativeHashWriter(hashType);
     uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
 
-    CIdentitySignature idSignature;
+    CIdentitySignature idSignature(hashType);
 
     /* CPBaaSNotarization debugNotarization(p.vData[0]);
     printf("%s: notarization:\n%s\n", __func__, debugNotarization.ToUniValue().write(1,2).c_str());
@@ -149,10 +149,10 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const C
     }
 
     // write the object to the hash writer without a vector length prefix
-    auto hw = CNativeHashWriter();
+    auto hw = CNativeHashWriter(hashType);
     uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
 
-    CIdentitySignature idSignature;
+    CIdentitySignature idSignature(hashType);
 
     CIdentitySignature::ESignatureVerification sigResult = idSignature.NewSignature(keyAndIdentity.second, 
                                 std::vector<uint160>({NotaryRejectedKey()}), 
