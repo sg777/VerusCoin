@@ -1015,14 +1015,16 @@ public:
                        int32_t &nextOutput,
                        CPBaaSNotarization &exportNotarization, 
                        std::vector<CReserveTransfer> &reserveTransfers,
-                       CValidationState &state) const;
+                       CValidationState &state,
+                       CCurrencyDefinition::EProofProtocol hashType=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR) const;
 
     bool GetExportInfo(const CTransaction &exportTx, 
                        int numExportOut, 
                        int &primaryExportOutNumOut,
                        int32_t &nextOutput,
                        CPBaaSNotarization &exportNotarization, 
-                       std::vector<CReserveTransfer> &reserveTransfers) const;
+                       std::vector<CReserveTransfer> &reserveTransfers,
+                       CCurrencyDefinition::EProofProtocol hashType=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR) const;
 
     static std::string CurrencyExportKeyName()
     {

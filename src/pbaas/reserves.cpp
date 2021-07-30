@@ -127,7 +127,8 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                                       int32_t &nextOutput,
                                       CPBaaSNotarization &exportNotarization,
                                       std::vector<CReserveTransfer> &reserveTransfers,
-                                      CValidationState &state) const
+                                      CValidationState &state,
+                                      CCurrencyDefinition::EProofProtocol hashType) const
 {
     // we can assume that to get here, we have decoded the first output, which is the export output
     // specified in numExportOut, our "this" pointer
@@ -138,7 +139,7 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
         return state.Error(strprintf("%s: cannot get export data directly from a supplemental data output. must be in context",__func__));
     }
 
-    auto hw = CMMRNode<>::GetHashWriter();
+    CNativeHashWriter hw(hashType);
 
     // this can be called passing either a system export or a normal currency export, and it will always
     // retrieve information from the same normal currency export in either case and return the primary output num
@@ -223,7 +224,11 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
     }
 
     // now, we should have accurate reserve transfers
-    uint256 rtHash = reserveTransfers.size() ? hw.GetHash() : uint256();
+    uint256 rtHash;
+    if (reserveTransfers.size())
+    {
+        rtHash = hw.GetHash();
+    }
     if (rtHash != hashReserveTransfers)
     {
         return state.Error(strprintf("%s: reserve transfers do not match reserve transfer hash in export",__func__));
@@ -273,12 +278,27 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                                     int &primaryExportOutNumOut,
                                     int32_t &nextOutput,
                                     CPBaaSNotarization &exportNotarization, 
-                                    std::vector<CReserveTransfer> &reserveTransfers) const
+                                    std::vector<CReserveTransfer> &reserveTransfers,
+                                    CCurrencyDefinition::EProofProtocol hashType) const
 {
     CValidationState state;
-    return GetExportInfo(exportTx, numExportOut, primaryExportOutNumOut, nextOutput, exportNotarization, reserveTransfers, state);
+    return GetExportInfo(exportTx, numExportOut, primaryExportOutNumOut, nextOutput, exportNotarization, reserveTransfers, state, hashType);
 }
 
+bool GetNotarizationFromOutput(const CTransaction tx, int32_t outNum, CValidationState &state, CPBaaSNotarization &outNotarization)
+{
+    COptCCParams p;
+    if (!(tx.vout.size() > outNum &&
+          tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+          p.IsValid() &&
+          (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+          p.vData.size() &&
+          (outNotarization = CPBaaSNotarization(p.vData[0])).IsValid()))
+    {
+        return state.Error(strprintf("%s: invalid import notarization for import",__func__));
+    }
+    return true;
+}
 
 bool CCrossChainImport::GetImportInfo(const CTransaction &importTx, 
                                       uint32_t nHeight,
@@ -360,6 +380,13 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             return state.Error(strprintf("%s: cannot retrieve export transaction for import",__func__));
         }
 
+        // next output after import out is notarization
+        if (!GetNotarizationFromOutput(importTx, importNotarizationOut, state, importNotarization))
+        {
+            // if error, state will be set
+            return false;
+        }
+
         if (!pBaseImport->IsDefinitionImport())
         {
             int32_t nextOutput;
@@ -370,7 +397,6 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 return false;
             }
         }
-        // next output after import out is notarization
     }
     else
     {
@@ -397,6 +423,13 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             importNotarizationOut++;
         }
 
+        if (!GetNotarizationFromOutput(importTx, importNotarizationOut, state, importNotarization))
+        {
+            // if error, state will be set
+            return false;
+        }
+
+        // TODO: HARDENING - review
         if (!isPBaaSDefinitionOrLaunch ||
             pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
             (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID()))
@@ -425,15 +458,36 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 exportTx.vout.size() > exportTxOutNum &&
                 exportTx.vout[exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
+                p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
                 p.vData.size() &&
                 (ccx = CCrossChainExport(p.vData[0])).IsValid()))
             {
                 return state.Error(strprintf("%s: invalid export evidence for import", __func__));
             }
+
+            uint160 externalSystemID = ccx.sourceSystemID == ASSETCHAINS_CHAINID ? 
+                                       ((ccx.destSystemID  == ASSETCHAINS_CHAINID) ? uint160() : ccx.destSystemID) : 
+                                       ccx.sourceSystemID;
+
+            std::map<uint160, CProofRoot>::iterator proofIt;
+            CCurrencyDefinition::EProofProtocol hashType = CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR;
+            if (!externalSystemID.IsNull() &&
+                (proofIt = importNotarization.proofRoots.find(externalSystemID)) != importNotarization.proofRoots.end())
+            {
+                switch (proofIt->second.type)
+                {
+                    case CProofRoot::TYPE_ETHEREUM:
+                    {
+                        hashType = CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION;
+                        break;
+                    }
+                }
+            }
+
             int32_t nextOutput;
             CPBaaSNotarization xNotarization;
             int primaryOutNumOut;
-            if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers))
+            if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers, hashType))
             {
                 //UniValue jsonTx(UniValue::VOBJ);
                 //TxToUniv(importTx, uint256(), jsonTx);
@@ -444,16 +498,6 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             // evidence out end points to the last evidence out, not beyond
             evidenceOutEnd = nextOutput - 1;
         }
-    }
-    COptCCParams p;
-    if (!(importTx.vout.size() > importNotarizationOut &&
-          importTx.vout[importNotarizationOut].scriptPubKey.IsPayToCryptoCondition(p) &&
-          p.IsValid() &&
-          (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
-          p.vData.size() &&
-          (importNotarization = CPBaaSNotarization(p.vData[0])).IsValid()))
-    {
-        return state.Error(strprintf("%s: invalid import notarization for import",__func__));
     }
     if (sysCCITemp.IsValid())
     {

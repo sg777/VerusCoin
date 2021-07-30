@@ -60,7 +60,7 @@ CNotaryEvidence::CNotaryEvidence(const UniValue &uni)
     }
 }
 
-CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height)
+CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EProofProtocol hashType)
 {
     if (signatures.size() && !confirmed)
     {
@@ -89,7 +89,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
     }
 
     // write the object to the hash writer without a vector length prefix
-    auto hw = CMMRNode<>::GetHashWriter();
+    auto hw = CNativeHashWriter(hashType);
     uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
 
     CIdentitySignature idSignature;
@@ -120,7 +120,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
     return sigResult;
 }
 
-CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height)
+CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EProofProtocol hashType)
 {
     if (signatures.size() && confirmed)
     {
@@ -149,7 +149,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const C
     }
 
     // write the object to the hash writer without a vector length prefix
-    auto hw = CMMRNode<>::GetHashWriter();
+    auto hw = CNativeHashWriter();
     uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
 
     CIdentitySignature idSignature;
@@ -445,6 +445,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                               bool forcedRefund) const
 {
     uint160 sourceSystemID = sourceSystem.GetID();
+    uint160 destSystemID = destCurrency.IsGateway() ? destCurrency.gatewayID : destCurrency.systemID;
 
     newNotarization = *this;
     newNotarization.SetDefinitionNotarization(false);
@@ -453,11 +454,49 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     newNotarization.prevHeight = newNotarization.notarizationHeight;
     newNotarization.notarizationHeight = currentHeight;
 
-    auto hw = CMMRNode<>::GetHashWriter();
+    // if we are communicating with an external system that uses a different hash, use it for everything
+    CCurrencyDefinition::EProofProtocol hashType = CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR;
+
+    uint160 externalSystemID = sourceSystem.systemID == ASSETCHAINS_CHAINID ? 
+                                ((destSystemID  == ASSETCHAINS_CHAINID) ? uint160() : destSystemID) : 
+                                sourceSystem.systemID;
+
+    CCurrencyDefinition externalSystemDef;
+    if (externalSystemID.IsNull())
+    {
+        externalSystemDef = ConnectedChains.ThisChain();
+    }
+    else if (externalSystemID == sourceSystemID)
+    {
+        externalSystemDef = sourceSystem;
+    }
+    else if (externalSystemID == destSystemID)
+    {
+        if (destCurrency.GetID() == destSystemID)
+        {
+            externalSystemDef = destCurrency;
+        }
+        else
+        {
+            externalSystemDef = ConnectedChains.GetCachedCurrency(externalSystemID);
+            if (!externalSystemDef.IsValid())
+            {
+                LogPrintf("%s: cannot retrieve system definitoin for %s\n", __func__, EncodeDestination(CIdentityID(externalSystemID)));
+                return false;
+            }
+        }
+    }
+
+    if (!externalSystemID.IsNull())
+    {
+        hashType = (CCurrencyDefinition::EProofProtocol)externalSystemDef.proofProtocol;
+    }
+
+    CNativeHashWriter hw(hashType);
     hw << *this;
     newNotarization.hashPrevNotarization = hw.GetHash();
 
-    hw = CMMRNode<>::GetHashWriter();
+    hw = CNativeHashWriter(hashType);
 
     CCurrencyValueMap newPreConversionReservesIn;
 
@@ -902,7 +941,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         return state.Error(errorPrefix + "earned notarization proof root cannot be verified as later than prior confirmed for this chain");
     }
 
-    auto hw = CMMRNode<>::GetHashWriter();
+    auto hw = CNativeHashWriter();
 
     std::vector<unsigned char> notarizationVec = ::AsVector(earnedNotarization);
     uint256 objHash = hw.write((const char *)&(notarizationVec[0]), notarizationVec.size()).GetHash();
@@ -1353,7 +1392,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     notarization.nodes = GetGoodNodes(CPBaaSNotarization::MAX_NODES);
 
     notarization.prevNotarization = cnd.vtx[notaryIdx].first;
-    auto hw = CMMRNode<>::GetHashWriter();
+    CNativeHashWriter hw;
     hw << cnd.vtx[notaryIdx].second;
     notarization.hashPrevNotarization = hw.GetHash();
     notarization.prevHeight = cnd.vtx[notaryIdx].second.notarizationHeight;
@@ -1589,6 +1628,8 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
     std::string errorPrefix(strprintf("%s: ", __func__));
 
     finalized = false;
+
+    CCurrencyDefinition::EProofProtocol hashType = (CCurrencyDefinition::EProofProtocol)externalSystem.chainDefinition.proofProtocol;
 
     CChainNotarizationData cnd;
     std::vector<std::pair<CTransaction, uint256>> txes;
@@ -1944,7 +1985,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     {
                         printf("Signing notarization (%s:%u) to confirm for %s\n", ne.output.hash.GetHex().c_str(), ne.output.n, EncodeDestination(oneID).c_str());
 
-                        auto signResult = ne.SignConfirmed(*pWallet, txes[idx].first, oneID, height);
+                        auto signResult = ne.SignConfirmed(*pWallet, txes[idx].first, oneID, height, hashType);
                         if (signResult == CIdentitySignature::SIGNATURE_PARTIAL || signResult == CIdentitySignature::SIGNATURE_COMPLETE)
                         {
                             sigSet.insert(oneID);
@@ -2563,7 +2604,7 @@ bool CObjectFinalization::GetOutputTransaction(const CTransaction &initialTx, CT
 }
 
 // Sign the output object with an ID or signing authority of the ID from the wallet.
-CNotaryEvidence CObjectFinalization::SignConfirmed(const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID) const
+CNotaryEvidence CObjectFinalization::SignConfirmed(const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, CCurrencyDefinition::EProofProtocol hashType) const
 {
     CNotaryEvidence retVal = CNotaryEvidence(ASSETCHAINS_CHAINID, output);
 
@@ -2574,12 +2615,12 @@ CNotaryEvidence CObjectFinalization::SignConfirmed(const CWallet *pWallet, const
     uint256 blockHash;
     if (GetOutputTransaction(initialTx, tx, blockHash))
     {
-        retVal.SignConfirmed(*pWallet, tx, signatureID, nHeight);
+        retVal.SignConfirmed(*pWallet, tx, signatureID, nHeight, hashType);
     }
     return retVal;
 }
 
-CNotaryEvidence CObjectFinalization::SignRejected(const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID) const
+CNotaryEvidence CObjectFinalization::SignRejected(const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, CCurrencyDefinition::EProofProtocol hashType) const
 {
     CNotaryEvidence retVal = CNotaryEvidence(ASSETCHAINS_CHAINID, output);
 
@@ -2590,7 +2631,7 @@ CNotaryEvidence CObjectFinalization::SignRejected(const CWallet *pWallet, const 
     uint256 blockHash;
     if (GetOutputTransaction(initialTx, tx, blockHash))
     {
-        retVal.SignRejected(*pWallet, tx, signatureID, nHeight);
+        retVal.SignRejected(*pWallet, tx, signatureID, nHeight, hashType);
     }
     return retVal;
 }
@@ -2607,6 +2648,30 @@ CIdentitySignature::ESignatureVerification CObjectFinalization::VerifyOutputSign
     CCurrencyDefinition curDef;
     int32_t defHeight;
 
+    CCurrencyDefinition::EProofProtocol hashType = CCurrencyDefinition::EProofProtocol::PROOF_INVALID;
+    for (auto oneSig : signature.signatures)
+    {
+        if (hashType == CCurrencyDefinition::EProofProtocol::PROOF_INVALID)
+        {
+            hashType = (CCurrencyDefinition::EProofProtocol)oneSig.second.hashType;
+            if (!CNativeHashWriter::IsValidHashType(hashType))
+            {
+                hashType = CCurrencyDefinition::EProofProtocol::PROOF_INVALID;
+                break;
+            }
+        }
+        else if (hashType != (CCurrencyDefinition::EProofProtocol)oneSig.second.hashType)
+        {
+            // all signatures must have the same hash type
+            hashType = CCurrencyDefinition::EProofProtocol::PROOF_INVALID;
+            break;
+        }
+    }
+    if (hashType == CCurrencyDefinition::EProofProtocol::PROOF_INVALID)
+    {
+        return CIdentitySignature::SIGNATURE_INVALID;
+    }
+
     if (p.IsValid() && 
         p.version >= p.VERSION_V3 && 
         p.vData.size() &&
@@ -2618,7 +2683,7 @@ CIdentitySignature::ESignatureVerification CObjectFinalization::VerifyOutputSign
         std::vector<uint256> statements;
 
         // check that signature is of the hashed vData[0] data
-        auto hw = CMMRNode<>::GetHashWriter();
+        CNativeHashWriter hw(hashType);
         hw.write((const char *)&(p.vData[0][0]), p.vData[0].size());
         uint256 msgHash = hw.GetHash();
 
@@ -2777,7 +2842,7 @@ bool ValidateNotarizationEvidence(const CTransaction &tx, int32_t outNum, CValid
             std::vector<uint256> statements;
 
             // check that signature is of the hashed vData[0] data
-            auto hw = CMMRNode<>::GetHashWriter();
+            CNativeHashWriter hw;
             hw.write((const char *)&(p.vData[0][0]), p.vData[0].size());
             uint256 msgHash = hw.GetHash();
 

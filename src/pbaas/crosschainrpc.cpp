@@ -322,7 +322,7 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
     }
     else
     {
-        auto ss = CMMRNode<>::GetHashWriter();
+        auto ss = CNativeHashWriter((CCurrencyDefinition::EProofProtocol)hashType);
 
         if (vdxfCodes.size())
         {
