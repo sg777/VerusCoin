@@ -202,7 +202,7 @@ RLP::rlpDecoded RLP::decode(std::vector<unsigned char> inputBytes){
             //    std::cout << c << ' ';
         }
         if (length == 2 && inProgress[0] < 0x80) {
-            throw std::runtime_error("invalid rlp encoding: byte must be less 0x80");
+            throw std::invalid_argument("invalid rlp encoding: byte must be less 0x80");
         }
         output.data.push_back(inProgress);
         output.remainder = std::vector<unsigned char>(inputBytes.begin()+length,inputBytes.end());
@@ -219,7 +219,7 @@ RLP::rlpDecoded RLP::decode(std::vector<unsigned char> inputBytes){
         // inProgress = std::std::vector<unsigned char>(inputBytes.begin() + length,inputBytes.begin() + length + dataLength );
         std::vector<unsigned char>inProgress(inputBytes.begin() + dataLength,inputBytes.begin() + length + dataLength);
         if(inProgress.size() < length){
-            throw std::runtime_error("invalid RLP");
+            throw std::invalid_argument("invalid RLP");
         }
         output.data.push_back(inProgress);
         output.remainder = std::vector<unsigned char>(inputBytes.begin() + dataLength + length,inputBytes.end());
@@ -251,12 +251,12 @@ RLP::rlpDecoded RLP::decode(std::vector<unsigned char> inputBytes){
         length = std::stoul(lengthString, nullptr, 16);
         int totalLength = dataLength + length;
         if(totalLength > inputBytes.size()) {
-            throw std::runtime_error("invalid rlp: total length is larger than the data");
+            throw std::invalid_argument("invalid rlp: total length is larger than the data");
         }
         innerRemainder = std::vector<unsigned char>(inputBytes.begin() + dataLength,inputBytes.begin() + totalLength);
         
         if(innerRemainder.size() == 0){
-            throw std::runtime_error("invalid rlp: List has an invalid length");
+            throw std::invalid_argument("invalid rlp: List has an invalid length");
         }
         while(innerRemainder.size()){
             rlpDecoded innerRLP = decode(innerRemainder);
@@ -298,7 +298,7 @@ std::vector<unsigned char> CETHPATRICIABranch::verifyProof(uint256& rootHash,std
         if(writer.GetHash() != wantedHash){
             std::string error("Bad proof node: i=");
             error += std::to_string(i);
-            throw std::runtime_error(error);
+            throw std::invalid_argument(error);
         } 
         //create a trie node
         TrieNode node(rlp.decode(proof[i]).data);
@@ -306,7 +306,7 @@ std::vector<unsigned char> CETHPATRICIABranch::verifyProof(uint256& rootHash,std
         if(node.type == node.BRANCH) {
             if(key.size() == 0) {
                 if(i != proof.size() -1){
-                    throw std::runtime_error(std::string("Additional nodes at end of proof (branch)"));
+                    throw std::invalid_argument(std::string("Additional nodes at end of proof (branch)"));
                 }
                 return node.value;
             }
@@ -323,18 +323,18 @@ std::vector<unsigned char> CETHPATRICIABranch::verifyProof(uint256& rootHash,std
                 TrieNode embeddedNode(rlp.decode(child).data);
 
                 if(i != proof.size() -1){
-                    throw std::runtime_error(std::string("Additional nodes at end of proof (embeddedNode)"));
+                    throw std::invalid_argument(std::string("Additional nodes at end of proof (embeddedNode)"));
                 }
 
                 if(matchingNibbleLength(node.key,key)!= node.key.size()){
-                    throw std::runtime_error(std::string("Key length does not match with the proof one (embeddedNode)"));
+                    throw std::invalid_argument(std::string("Key length does not match with the proof one (embeddedNode)"));
                 }
 
                 //check that the embedded node key matches the relevant portion of the node key
 
                 key = std::vector<unsigned char>(key.begin() + embeddedNode.key.size(),key.end());
                 if(key.size() !=0){
-                    throw std::runtime_error(std::string("Key does not match with the proof one (embeddedNode)"));
+                    throw std::invalid_argument(std::string("Key does not match with the proof one (embeddedNode)"));
                 }
 
                 return embeddedNode.value;
@@ -345,7 +345,7 @@ std::vector<unsigned char> CETHPATRICIABranch::verifyProof(uint256& rootHash,std
             } 
         } else if(node.type == node.EXTENSION || node.type == node.LEAF){
             if(matchingNibbleLength(node.key,key) != node.key.size()){
-                throw std::runtime_error(std::string("Key does not match with the proof one (embeddedNode)"));
+                throw std::invalid_argument(std::string("Key does not match with the proof one (embeddedNode)"));
             } 
             child = node.value;
             key = std::vector<unsigned char>(key.begin() + node.key.size(),key.end());
@@ -357,7 +357,7 @@ std::vector<unsigned char> CETHPATRICIABranch::verifyProof(uint256& rootHash,std
                     //key = std::vector<unsigned char>(key.begin() + 1,key.end());
                 }
                 if (i != proof.size() - 1) {
-                    throw std::runtime_error(std::string("Additional nodes at end of proof (extention|leaf)"));
+                    throw std::invalid_argument(std::string("Additional nodes at end of proof (extention|leaf)"));
                 }
                 return child;
             } else {
@@ -367,7 +367,7 @@ std::vector<unsigned char> CETHPATRICIABranch::verifyProof(uint256& rootHash,std
             }
             
         } else {
-                throw std::runtime_error(std::string("Invalid node type"));
+                throw std::invalid_argument(std::string("Invalid node type"));
         }
 
     }            
@@ -388,11 +388,11 @@ std::vector<unsigned char> CPATRICIABranch<CHashWriter>::verifyAccountProof(){
         //As we dont have the state root from the Notaries, spoof the state root to pass for first RLP loop check
         stateRoot =  stateroot_hasher.GetHash();       
         return verifyProof(stateRoot,address_hash,proofdata.proof_branch);
-    }catch(const std::exception& e){
+    }catch(const std::invalid_argument& e){
 
         memset(&stateRoot,0,stateRoot.size());
         std::cerr << "exception: " << e.what() << std::endl;
-        throw std::runtime_error(std::string("verifyAccountProof"));
+        throw std::invalid_argument(std::string("verifyAccountProof"));
     }
 
 }
@@ -403,21 +403,26 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
     //Check the storage value hash, which is the hash of the crosschain export transaction
     //matches the the RLP decoded information from the bridge keeper
 
-    std::vector<unsigned char> storageProofKey_vec(storageProofKey.begin(),storageProofKey.end());
+    
 
     std::vector<unsigned char> ccExporthash_vec(ccExporthash.begin(),ccExporthash.end());
     RLP rlp;
     try{
+        CKeccack256Writer key_hasher(storageProofKey);
+        storageProofKey = key_hasher.GetHash();
+        std::vector<unsigned char> storageProofKey_vec(storageProofKey.begin(),storageProofKey.end());
         std::vector<unsigned char> storageValue = verifyProof(storageHash,storageProofKey_vec,storageProof.proof_branch);
         RLP::rlpDecoded decodedValue = rlp.decode(bytes_to_hex(storageValue));
 
         if(ccExporthash_vec != decodedValue.data[0])
         {
-            throw std::runtime_error(std::string("RLP Storage Value does no match"));
+            throw std::invalid_argument(std::string("RLP Storage Value does no match"));
         }
     
-    }catch(const std::exception& e){
-        throw std::runtime_error(std::string("VerifyProof Routine failed"));
+    }catch(const std::invalid_argument& e){
+        LogPrintf(" %s\n", e.what());
+        memset(&stateRoot,0,stateRoot.size());
+        return stateRoot;
     }
 
     //Storage value has now been cheked that it RLP decodes and matches the storageHash.
@@ -428,11 +433,11 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
     try{
         accountValue = verifyAccountProof();
     }
-    catch(const std::exception& e){
+    catch(const std::invalid_argument& e){
 
+        LogPrintf("Account Proof Failed : %s\n", e.what());
         memset(&stateRoot,0,stateRoot.size());
-        std::cerr << "exception: " << e.what() << std::endl;
-        throw std::runtime_error(std::string("Account proof failed"));
+        return stateRoot;
         
     }
     //rlp encode the nonce , account balance , storageRootHash and codeHash
@@ -447,15 +452,18 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
         toEncode.push_back(codeHash_vec);
         encodedAccount = rlp.encode(toEncode);
 
-    }catch(const std::exception& e){
+    }catch(const std::invalid_argument& e){
+        LogPrintf("RLP Encode failed : %s\n", e.what());
         memset(&stateRoot,0,stateRoot.size());
-        throw std::runtime_error(std::string("RLP Encode of Account failed"));
+        return stateRoot;
     }
     //confim that the encoded account details match those stored in the proof
 
     if(encodedAccount != accountValue){
         memset(&stateRoot,0,stateRoot.size());
-        throw std::runtime_error(std::string("Encoded Account does not match the proof"));
+        LogPrintf("ETH Encoded Account Does not match proof : ");
+        memset(&stateRoot,0,stateRoot.size());
+        return stateRoot;
     }
     else {
         
