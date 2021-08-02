@@ -793,7 +793,7 @@ public:
         FLAG_HASSUPPLEMENT = 4,                 // indicates that we have additional outputs containing the reservetransfers for this export
         FLAG_SUPPLEMENTAL = 8,                  // this flag indicates that this is a supplemental output to a prior output
         FLAG_EVIDENCEONLY = 0x10,               // when set, this is not indexed as an active export
-        FLAG_GATEWAYEXPORT = 0x20,              // when set, will be exported to a gateway currency, which may get routed from this chain as systemID
+        FLAG_UNUSED = 0x20,                     // currently unused
         FLAG_DEFINITIONEXPORT = 0x40,           // set on only the first export
         FLAG_POSTLAUNCH = 0x80,                 // set post launch
         FLAG_SYSTEMTHREAD = 0x100               // export that is there to ensure continuous export thread only

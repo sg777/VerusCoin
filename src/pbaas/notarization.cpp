@@ -492,11 +492,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         hashType = (CCurrencyDefinition::EProofProtocol)externalSystemDef.proofProtocol;
     }
 
-    CNativeHashWriter hw(hashType);
-    hw << *this;
-    newNotarization.hashPrevNotarization = hw.GetHash();
+    CNativeHashWriter hwPrevNotarization(hashType);
+    hwPrevNotarization << *this;
+    newNotarization.hashPrevNotarization = hwPrevNotarization.GetHash();
 
-    hw = CNativeHashWriter(hashType);
+    CNativeHashWriter hw(hashType);
 
     CCurrencyValueMap newPreConversionReservesIn;
 
