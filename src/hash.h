@@ -404,6 +404,11 @@ public:
         sph_keccak256 (&ctx_keccak, (const char*)&uint_data, uint_data.size());
     }
 
+    CKeccack256Writer(const uint256 uint_data) { 
+        sph_keccak256_init(&ctx_keccak); 
+        sph_keccak256 (&ctx_keccak, (const char*)&uint_data, uint_data.size());
+    }
+
     void Reset() { sph_keccak256_init(&ctx_keccak); }
 
     CKeccack256Writer& write(const char *pch, size_t size) {
