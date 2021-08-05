@@ -391,23 +391,7 @@ public:
         sph_keccak256_init(&ctx_keccak); 
     }
 
-
     CKeccack256Writer() { sph_keccak256_init(&ctx_keccak); }
-
-    CKeccack256Writer(const std::vector<unsigned char>& vector) { 
-        sph_keccak256_init(&ctx_keccak); 
-        sph_keccak256 (&ctx_keccak, (const char*)&vector.at(0), vector.size());
-        }
-
-    CKeccack256Writer(const uint160 uint_data) { 
-        sph_keccak256_init(&ctx_keccak); 
-        sph_keccak256 (&ctx_keccak, (const char*)&uint_data, uint_data.size());
-    }
-
-    CKeccack256Writer(const uint256 uint_data) { 
-        sph_keccak256_init(&ctx_keccak); 
-        sph_keccak256 (&ctx_keccak, (const char*)&uint_data, uint_data.size());
-    }
 
     void Reset() { sph_keccak256_init(&ctx_keccak); }
 
