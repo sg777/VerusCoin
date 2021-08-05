@@ -1317,9 +1317,13 @@ public:
                     return uint256();
                 }
                  
-                auto hw2 = CDefaultETHNode::GetHashWriter();
+                auto hw2 = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
                 hw2 << ccx;
-                hw2 << reserveTransfers;
+                
+                for (auto &oneTransfer : reserveTransfers)
+                {
+                    hw2 << oneTransfer;
+                }
                 
                 return hw2.GetHash();
                 

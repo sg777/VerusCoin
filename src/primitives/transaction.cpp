@@ -770,20 +770,18 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                     LogPrintf("Cross Chain : %s\n", e.what());
                     checkOK = false;
                 }
-                auto hw = CDefaultETHNode::GetHashWriter();
+                auto hw  = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
 
                 // TODO: HARDENING - ensure this is completely valid
-
-                
-                hw << reserveTransfers;
-                uint256 hash = hw.GetHash();
-
-                if (!ccx.IsValid() || !checkOK || (ccx.hashReserveTransfers != hash) )
+                for (unsigned int n = 0; n < reserveTransfers.size(); n++)
                 {
-                    
+                    hw << reserveTransfers[n];
+                }
+
+                if (!ccx.IsValid() || !checkOK || (ccx.hashReserveTransfers != hw.GetHash()) )
+                {
 
                     printf("%s: Cross chain ReserveTransfer check invalid.\n", __func__);
-                    cout << "hash of transfers:" << hash.ToString() << std::endl;
                     LogPrintf("%s: Cross chain ReserveTransfer check invalid.\n", __func__);
                     
                     checkOK = false;
@@ -791,7 +789,7 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
 
                 if (checkOK)
                 {
-                    auto hw2 = CDefaultETHNode::GetHashWriter();
+                    auto hw2 = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
                     hw2 << ccx;
                     hw2 << reserveTransfers;
                     txRoot = hw2.GetHash();
