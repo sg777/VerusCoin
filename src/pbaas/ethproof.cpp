@@ -293,8 +293,9 @@ std::vector<unsigned char> CETHPATRICIABranch::verifyProof(uint256& rootHash,std
     for(std::size_t i=0; i< proof.size(); ++i)  {
 
         //check to see if the hash of the node matches the expected hash
-        CKeccack256Writer writer(proof[i]);
-
+        CKeccack256Writer writer;
+        writer.write((const char *)proof[i].data(), proof[i].size());
+        
         if(writer.GetHash() != wantedHash){
             std::string error("Bad proof node: i=");
             error += std::to_string(i);
@@ -378,12 +379,15 @@ std::vector<unsigned char> CETHPATRICIABranch::verifyProof(uint256& rootHash,std
 template<>
 std::vector<unsigned char> CPATRICIABranch<CHashWriter>::verifyAccountProof(){
     
-    CKeccack256Writer key_hasher(address);
+    CKeccack256Writer key_hasher;
+    key_hasher.write((const char *)(&address), address.size());
     uint256 key_hash = key_hasher.GetHash();
+
     std::vector<unsigned char> address_hash(key_hash.begin(),key_hash.end());
     //create key from account address
     try{
-        CKeccack256Writer stateroot_hasher(proofdata.proof_branch[0]);
+        CKeccack256Writer stateroot_hasher;
+        stateroot_hasher.write((const char *)proofdata.proof_branch[0].data(), proofdata.proof_branch[0].size());
 
         //As we dont have the state root from the Notaries, spoof the state root to pass for first RLP loop check
         stateRoot =  stateroot_hasher.GetHash();       
@@ -408,9 +412,11 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
     std::vector<unsigned char> ccExporthash_vec(ccExporthash.begin(),ccExporthash.end());
     RLP rlp;
     try{
-        CKeccack256Writer key_hasher(storageProofKey);
-        storageProofKey = key_hasher.GetHash();
-        std::vector<unsigned char> storageProofKey_vec(storageProofKey.begin(),storageProofKey.end());
+        CKeccack256Writer key_hasher;
+        key_hasher.write((const char *)(&storageProofKey), storageProofKey.size());
+
+        uint256 key_hash = key_hasher.GetHash();
+        std::vector<unsigned char> storageProofKey_vec(key_hash.begin(),key_hash.end());
         std::vector<unsigned char> storageValue = verifyProof(storageHash,storageProofKey_vec,storageProof.proof_branch);
         RLP::rlpDecoded decodedValue = rlp.decode(bytes_to_hex(storageValue));
 
