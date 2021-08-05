@@ -774,14 +774,16 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
 
                 // TODO: HARDENING - ensure this is completely valid
 
-                for (unsigned int n = 0; n < ccx.reserveTransfers.size(); n++)
-                {
-                    hw << reserveTransfers[n];
-                }
+                
+                hw << reserveTransfers;
+                uint256 hash = hw.GetHash();
 
-                if (!ccx.IsValid() || !checkOK || (ccx.hashReserveTransfers != hw.GetHash()) )
+                if (!ccx.IsValid() || !checkOK || (ccx.hashReserveTransfers != hash) )
                 {
+                    
+
                     printf("%s: Cross chain ReserveTransfer check invalid.\n", __func__);
+                    cout << "hash of transfers:" << hash.ToString() << std::endl;
                     LogPrintf("%s: Cross chain ReserveTransfer check invalid.\n", __func__);
                     
                     checkOK = false;
@@ -791,6 +793,7 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                 {
                     auto hw2 = CDefaultETHNode::GetHashWriter();
                     hw2 << ccx;
+                    hw2 << reserveTransfers;
                     txRoot = hw2.GetHash();
                     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});

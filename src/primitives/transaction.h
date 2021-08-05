@@ -1291,7 +1291,7 @@ public:
         {
             CTransaction outTx;
             CTransactionHeader txh;
-            CCrossChainImport cctx;
+            CVDXF_Data vdxfObj;
             if (components[0].elType == CTransactionHeader::TX_HEADER && components[0].Rehydrate(txh))
             {
                 return txh.txHash;
@@ -1300,9 +1300,29 @@ public:
             {
                 return outTx.GetHash();
             }
-            else if (components[0].elType == CTransactionHeader::TX_ETH_OBJECT && components[0].Rehydrate(cctx))
+            else if (components[0].elType == CTransactionHeader::TX_ETH_OBJECT && components[0].Rehydrate(vdxfObj))
             {
-                return SerializeHash(cctx);
+                CDataStream s = CDataStream(vdxfObj.data, SER_NETWORK, PROTOCOL_VERSION);
+                std::vector<CReserveTransfer> reserveTransfers;
+                CCrossChainExport ccx;
+
+                try
+                {
+                    s >> ccx;
+                    s >> reserveTransfers;
+                }
+                catch (const std::runtime_error &e)
+                {
+                    LogPrintf("Deserialization of ETH type object failed : %s\n", e.what());
+                    return uint256();
+                }
+                 
+                auto hw2 = CDefaultETHNode::GetHashWriter();
+                hw2 << ccx;
+                hw2 << reserveTransfers;
+                
+                return hw2.GetHash();
+                
             }
         }
         return uint256();

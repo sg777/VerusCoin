@@ -409,8 +409,8 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
     RLP rlp;
     try{
         CKeccack256Writer key_hasher(storageProofKey);
-        storageProofKey = key_hasher.GetHash();
-        std::vector<unsigned char> storageProofKey_vec(storageProofKey.begin(),storageProofKey.end());
+        uint256 key_hash = key_hasher.GetHash();
+        std::vector<unsigned char> storageProofKey_vec(key_hash.begin(),key_hash.end());
         std::vector<unsigned char> storageValue = verifyProof(storageHash,storageProofKey_vec,storageProof.proof_branch);
         RLP::rlpDecoded decodedValue = rlp.decode(bytes_to_hex(storageValue));
 
