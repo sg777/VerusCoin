@@ -773,9 +773,9 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                 auto hw  = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
 
                 // TODO: HARDENING - ensure this is completely valid
-                for (unsigned int n = 0; n < reserveTransfers.size(); n++)
+                for (auto &oneTransfer : reserveTransfers)
                 {
-                    hw << reserveTransfers[n];
+                    hw << oneTransfer;
                 }
 
                 if (!ccx.IsValid() || !checkOK || (ccx.hashReserveTransfers != hw.GetHash()) )
@@ -791,7 +791,11 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                 {
                     auto hw2 = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
                     hw2 << ccx;
-                    hw2 << reserveTransfers;
+                    for (auto &oneTransfer : reserveTransfers)
+                    {
+                        hw2 << oneTransfer;
+                    }
+                   
                     txRoot = hw2.GetHash();
                     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
