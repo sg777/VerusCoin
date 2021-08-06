@@ -4894,6 +4894,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             // it will be created in this tx as well
             if (newCurrency.IsPBaaSConverter() && oneCurID == newCurrency.parent)
             {
+                currencySet.insert(oneCurID);
                 continue;
             }
             if (!(newCurrency.IsPBaaSConverter() && systemID == ASSETCHAINS_CHAINID && newCurrency.parent != ASSETCHAINS_CHAINID))
