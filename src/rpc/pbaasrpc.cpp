@@ -4886,8 +4886,17 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         uint160 oneCurID = ValidateCurrencyName(oneCurName, true);
         if (oneCurID.IsNull())
         {
-            if (!(newCurrency.IsPBaaSConverter() && systemID == ASSETCHAINS_CHAINID && newCurrency.parent != ASSETCHAINS_CHAINID) ||
-                (oneCurID = ValidateCurrencyName(oneCurName)).IsNull())
+            if ((oneCurID = ValidateCurrencyName(oneCurName)).IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency " + oneCurName + " in \"currencies\" 1");
+            }
+            // if the new currency is a PBaaS or gateway converter, and this is the PBaaS chain or gateway,
+            // it will be created in this tx as well
+            if (newCurrency.IsPBaaSConverter() && oneCurID == newCurrency.parent)
+            {
+                continue;
+            }
+            if (!(newCurrency.IsPBaaSConverter() && systemID == ASSETCHAINS_CHAINID && newCurrency.parent != ASSETCHAINS_CHAINID))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency " + oneCurName + " in \"currencies\"");
             }

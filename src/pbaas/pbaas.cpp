@@ -2586,9 +2586,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
             dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
-            // TODO: HARDENING - limit number of export transfers by total output size in kb, not number of transfers
-
             // now add all reserve transfers in supplemental outputs
+            // ensure that the output doesn't exceed script size limit
             auto transferIT = exportTransfers.begin();
             while (transferIT != exportTransfers.end())
             {
@@ -2602,7 +2601,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 rtSupplement.flags = ccx.FLAG_EVIDENCEONLY + ccx.FLAG_SUPPLEMENTAL;
                 rtSupplement.reserveTransfers.assign(transferIT, transferIT + transferCount);
                 CScript supScript = MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &rtSupplement));
-                while (supScript.size() > supScript.MAX_SCRIPT_ELEMENT_SIZE)
+                while (GetSerializeSize(supScript, SER_NETWORK) > supScript.MAX_SCRIPT_ELEMENT_SIZE)
                 {
                     transferCount--;
                     rtSupplement.reserveTransfers.assign(transferIT, transferIT + transferCount);
