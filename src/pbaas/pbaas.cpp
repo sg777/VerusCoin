@@ -2601,7 +2601,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 rtSupplement.flags = ccx.FLAG_EVIDENCEONLY + ccx.FLAG_SUPPLEMENTAL;
                 rtSupplement.reserveTransfers.assign(transferIT, transferIT + transferCount);
                 CScript supScript = MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &rtSupplement));
-                while (GetSerializeSize(supScript, SER_NETWORK, PROTOCOL_VERSION) > supScript.MAX_SCRIPT_ELEMENT_SIZE)
+                while (GetSerializeSize(CTxOut(0, supScript), SER_NETWORK, PROTOCOL_VERSION) > supScript.MAX_SCRIPT_ELEMENT_SIZE)
                 {
                     transferCount--;
                     rtSupplement.reserveTransfers.assign(transferIT, transferIT + transferCount);
