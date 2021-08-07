@@ -822,9 +822,13 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 
     bool validReservation = false;
     bool validIdentity = false;
+    bool validImport = false;
+    bool validCrossChainImport = false;
 
     CNameReservation nameRes;
     CIdentity identity;
+    CCrossChainImport cci;
+
     COptCCParams p, identityP;
 
     uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
@@ -834,28 +838,71 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     {
         CIdentity checkIdentity;
         auto &output = tx.vout[i];
-        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1 && (nameRes = CNameReservation(p.vData[0])).IsValid())
+        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.vData.size() > 1)
         {
-            // twice through makes it invalid
-            if (validReservation)
+            switch (p.evalCode)
             {
-                return state.Error("Invalid multiple identity reservations on one transaction");
+                case EVAL_IDENTITY_RESERVATION:
+                {
+                    nameRes = CNameReservation(p.vData[0]);
+                    if (!nameRes.IsValid())
+                    {
+                        return state.Error("Invalid identity reservation");
+                    }
+                    // twice through makes it invalid
+                    if (validReservation)
+                    {
+                        return state.Error("Invalid multiple identity reservations on one transaction");
+                    }
+                    validReservation = true;
+                }
+                break;
+
+                case EVAL_IDENTITY_PRIMARY:
+                {
+                    checkIdentity = CIdentity(p.vData[0]);
+                    if (!checkIdentity.IsValid())
+                    {
+                        return state.Error("Invalid identity on transaction output " + std::to_string(i));
+                    }
+
+                    // twice through makes it invalid
+                    if (!(isPBaaS && height == 1) && !validCrossChainImport && validIdentity)
+                    {
+                        return state.Error("Invalid multiple identity definitions on one transaction");
+                    }
+
+                    if (i == outNum)
+                    {
+                        identityP = p;
+                        identity = checkIdentity;
+                    }
+                    validIdentity = true;
+                }
+                break;
+
+                case EVAL_CROSSCHAIN_IMPORT:
+                {
+                    cci = CCrossChainImport(p.vData[0]);
+                    if (!cci.IsValid())
+                    {
+                        return state.Error("Invalid import on transaction output " + std::to_string(i));
+                    }
+
+                    // twice through makes it invalid
+                    if (validImport)
+                    {
+                        return state.Error("Invalid multiple identity definitions on one transaction");
+                    }
+
+                    validImport = true;
+                    if (cci.sourceSystemID != ASSETCHAINS_CHAINID)
+                    {
+                        validCrossChainImport = true;
+                    }
+                }
+                break;
             }
-            validReservation = true;
-        }
-        else if (p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (checkIdentity = CIdentity(p.vData[0])).IsValid())
-        {
-            // twice through makes it invalid
-            if (!(isPBaaS && height == 1) && validIdentity)
-            {
-                return state.Error("Invalid multiple identity definitions on one transaction");
-            }
-            if (i == outNum)
-            {
-                identityP = p;
-                identity = checkIdentity;
-            }
-            validIdentity = true;
         }
     }
 
@@ -1053,11 +1100,20 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
-    // TODO: HARDENING at block one, a new PBaaS chain can mint IDs
-    // ensure they are valid as per the launch parameters
-    if (isPBaaS && height == 1)
+    // TODO: HARDENING at block one, a new PBaaS chain can mint IDs, but only those on its own chain or imported from its launch chain
+    // imported IDs must come from a system that can import the ID in question
+    if (isPBaaS)
     {
-        return true;
+        if (height == 1)
+        {
+            // for block one IDs, ensure they are valid as per the launch parameters
+            return true;
+        }
+        else if (validCrossChainImport)
+        {
+            // ensure that we are importing IDs from a source system that can send us these IDs
+            return true;
+        }
     }
 
     return state.Error("Invalid primary identity - does not include identity reservation or spend matching identity");
