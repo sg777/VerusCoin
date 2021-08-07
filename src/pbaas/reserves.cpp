@@ -2070,6 +2070,91 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
                 dest.which() == COptCCParams::ADDRTYPE_PKH ||
                 dest.which() == COptCCParams::ADDRTYPE_SH)
             {
+                // if we are supposed to make an imported ID registration output, check to see if the ID exists, and if not, make it
+                if (destination.TypeNoFlags() == destination.DEST_FULLID)
+                {
+                    CIdentity importedID(destination.destination);
+
+                    if (!importedID.IsValid())
+                    {
+                        // cannot accept an invalid identity
+                        return false;
+                    }
+
+                    // lookup ID and if not present, make an ID output
+                    CIdentity preexistingID = CIdentity::LookupIdentity(GetDestinationID(dest));
+
+                    // if we have a collision present, sound an alarm and fail
+                    if (preexistingID.IsValid() &&
+                        (boost::to_lower_copy(importedID.name) != boost::to_lower_copy(preexistingID.name) ||
+                         importedID.parent != preexistingID.parent))
+                    {
+                        printf("WARNING!: Imported identity collides with pre-existing identity of another name.\n"
+                               "The only likely reason for this occurance is a hash-collision attack, targeted specifically at\n"
+                               "either the %s or the %s identities. As a result, this transaction is undeliverable.\n"
+                               "Full identity outputs:\n%s\n%s\n",
+                               importedID.name.c_str(), preexistingID.name.c_str(),
+                               importedID.ToUniValue().write(1,2).c_str(), preexistingID.ToUniValue().write(1,2).c_str());
+                        LogPrintf("WARNING!: Imported identity collides with pre-existing identity of another name.\n"
+                               "The only likely reason for this occurance is a hash-collision attack, targeted specifically at\n"
+                               "either the %s or the %s identities. As a result, this transaction is undeliverable.\n"
+                               "Full identity outputs:\n%s\n%s\n",
+                               importedID.name.c_str(), preexistingID.name.c_str(),
+                               importedID.ToUniValue().write(1,2).c_str(), preexistingID.ToUniValue().write(1,2).c_str());
+                        return false;
+                    }
+                    else if (!preexistingID.IsValid())
+                    {
+                        LOCK(mempool.cs);
+                        // check mempool for collision, and if none, make the ID output
+                        uint160 identityKeyID(CCrossChainRPCData::GetConditionID(importedID.GetID(), EVAL_IDENTITY_PRIMARY));
+                        std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> memIndex;
+
+                        if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{identityKeyID, CScript::P2IDX}}), memIndex))
+                        {
+                            // if there is any conflicting entry, we have an issue, otherwise, we are fine
+                            for (auto &oneIdxEntry : memIndex)
+                            {
+                                const CTransaction &identityTx = mempool.mapTx.find(oneIdxEntry.first.txhash)->GetTx();
+                                preexistingID = CIdentity(identityTx.vout[oneIdxEntry.first.index].scriptPubKey);
+                                if (!preexistingID.IsValid() ||
+                                    boost::to_lower_copy(importedID.name) != boost::to_lower_copy(preexistingID.name) ||
+                                    importedID.parent != preexistingID.parent)
+                                {
+                                    printf("WARNING!: Imported identity collides with pre-existing identity of another name in mempool.\n"
+                                        "The only likely reason for this occurance is a hash-collision attack, targeted specifically at\n"
+                                        "either the %s or the %s identities. As a result, this transaction is undeliverable.\n"
+                                        "Full identity outputs:\n%s\n%s\n",
+                                        importedID.name.c_str(), preexistingID.name.c_str(),
+                                        importedID.ToUniValue().write(1,2).c_str(), preexistingID.ToUniValue().write(1,2).c_str());
+                                    LogPrintf("WARNING!: Imported identity collides with pre-existing identity of another name in mempool.\n"
+                                        "The only likely reason for this occurance is a hash-collision attack, targeted specifically at\n"
+                                        "either the %s or the %s identities. As a result, this transaction is undeliverable.\n"
+                                        "Full identity outputs:\n%s\n%s\n",
+                                        importedID.name.c_str(), preexistingID.name.c_str(),
+                                        importedID.ToUniValue().write(1,2).c_str(), preexistingID.ToUniValue().write(1,2).c_str());
+                                    return false;
+                                }
+                            }
+                        }
+                        // if the ID is already in the mempool, we don't need to make an ID output, otherwise, we do
+                        if (!memIndex.size())
+                        {
+                            // TODO: - hardening
+                            // this is actually a functional fix, but it's in as hardening, and we need to do it before we
+                            // import IDs.
+                            // we need to pass height into this level by passing it into the
+                            // AddReserveTransferImportOutputs
+                            // importedID.IdentityUpdateOutputScript(height);
+                        }
+                    }
+
+                    // as long as the ID sent to us is the same as the ID on chain, we accept the ID
+                    // destination, but cannot replace the existing ID definition, so we don't try and pass through
+                }
+
+
+
                 txOut = CTxOut(nativeAmount, GetScriptForDestination(dest));
                 return true;
             }

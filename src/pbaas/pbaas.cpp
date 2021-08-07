@@ -2390,6 +2390,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 LogPrintf("%s: out of order export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), sourceOutputNum);
                 return false;
             }
+            else if (useProofs)
+            {
+                // make sure we have the latest, confirmed proof roots to prove this import
+                lastNotarization.proofRoots[sourceSystemID] = proofNotarization.proofRoots[sourceSystemID];
+            }
         }
         else if (nHeight)
         {
