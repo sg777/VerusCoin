@@ -893,7 +893,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     }
 
                     // twice through makes it invalid
-                    if (!(isPBaaS && height == 1 && !cci.IsDefinitionImport()) && (validSourceSysImport || (validImport && !cci.IsSourceSystemImport())))
+                    if (!(isPBaaS && (height == 1 || cci.IsDefinitionImport())) && (validSourceSysImport || (validImport && !cci.IsSourceSystemImport())))
                     {
                         return state.Error("Invalid multiple cross-chain imports on one transaction");
                     }
