@@ -3394,6 +3394,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "      \"amount\":amount        (numeric, required) The numeric amount of currency, denominated in source currency\n"
             "      \"convertto\":\"name\",  (string, optional) Valid currency to convert to, either a reserve of a fractional, or fractional\n"
             "      \"exportto\":\"name\",   (string, optional) Valid chain or system name or ID to export to\n"
+            "      \"exportid\":\"false\",  (bool, optional) if cross-chain ID, export the ID to the destination chain (will cost to export)\n"
             "      \"feecurrency\":\"name\", (string, optional) Valid currency that should be pulled from the current wallet and used to pay fee\n"
             "      \"via\":\"name\",        (string, optional) If source and destination currency are reserves, via is a common fractional to convert through\n"
             "      \"address\":\"dest\"     (string, required) The address and optionally chain/system after the \"@\" as a system specific destination\n"
@@ -3434,6 +3435,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     std::set<libzcash::PaymentAddress> zaddrDestSet;
 
     LOCK2(cs_main, mempool.cs);
+    LOCK(pwalletMain->cs_wallet);
 
     libzcash::PaymentAddress zaddress;
     bool hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(sourceAddress, zaddress);
@@ -3488,6 +3490,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             auto feeCurrencyStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "feecurrency")));
             auto viaStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "via")));
             auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "address")));
+            auto exportId = uni_get_bool(find_value(uniOutputs[i], "exportid"));
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
@@ -3500,6 +3503,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 memoStr.size() ||
                 preConvert ||
                 mintNew ||
+                exportId ||
                 burnCurrency)
             {
                 CheckPBaaSAPIsValid();
@@ -3991,6 +3995,19 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     // converting with fees via a converter on the source chain first converts fees and optionally more,
                     // then uses case 1 above
 
+                    // if we should export the ID, make a full ID destination
+                    CTransferDestination dest = DestinationToTransferDestination(destination);                    
+                    if (dest.type == dest.DEST_ID && exportId)
+                    {
+                        // get and export the ID
+                        CIdentity destIdentity = CIdentity::LookupIdentity(GetDestinationID(destination));
+                        if (!destIdentity.IsValid())
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot find identity to export (" + EncodeDestination(destination) + ")");
+                        }
+                        dest = CTransferDestination(CTransferDestination::DEST_FULLID, ::AsVector(destIdentity));
+                    }
+
                     // check for potentially unknown currencies or IDs being sent across
                     // for now, we can only send IDs and currencies that were involved in the launch
                     std::set<uint160> validCurrencies;
@@ -4106,7 +4123,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                ASSETCHAINS_CHAINID,
                                                                0,
                                                                convertToCurrencyID,
-                                                               DestinationToTransferDestination(destination));
+                                                               dest);
                         rt.nFees = rt.CalculateTransferFee();
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
@@ -4119,12 +4136,23 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     {
                         // if we convert first, then export, put the follow-on export in an output
                         // to be converted with a cross-chain fee
-                        CTransferDestination dest = DestinationToTransferDestination(destination);
 
                         if (convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
                         {
                             // if we're converting and then sending, we don't need an initial fee, so all
                             // fees go into the final destination
+
+                            // if we are sending a full ID, revert back to just ID and set the full ID bit to enable
+                            // sending the full ID in the next leg without overhead in the first
+                            if (dest.type == dest.DEST_FULLID)
+                            {
+                                dest = CTransferDestination(CTransferDestination::DEST_ID, ::AsVector(GetDestinationBytes(CIdentityID(GetDestinationID(destination)))));
+                            }
+                            else
+                            {
+                                exportId = false;
+                            }
+
                             dest.type |= dest.FLAG_DEST_GATEWAY;
                             dest.gatewayID = exportSystemDef.GetID();
                             CChainNotarizationData cnd;
@@ -4142,6 +4170,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 cnd.vtx[cnd.lastConfirmed].second.currencyState.PriceInReserve(currencyMap[destSystemID]))
                                   / cnd.vtx[cnd.lastConfirmed].second.currencyState.PriceInReserve(currencyMap[feeCurrencyID]);
                             printf("%s: setting transfer fees in currency %s to %ld\n", __func__, EncodeDestination(CIdentityID(feeCurrencyID)).c_str(), dest.fees);
+                            flags &= ~CReserveTransfer::CROSS_SYSTEM;
                         }
                         else
                         {
@@ -4165,6 +4194,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                secondCurrencyID,
                                                                exportSystemDef.GetID());
 
+                        if (!(flags & CReserveTransfer::CROSS_SYSTEM) &&
+                            exportId)
+                        {
+                            // export the identity after conversion
+                            rt.SetIdentityExport(true);
+                        }
+
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
                         oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
@@ -4173,7 +4209,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     else // direct to another system paying with acceptable fee currency
                     {
                         flags |= CReserveTransfer::CROSS_SYSTEM;
-                        auto dest = DestinationToTransferDestination(destination); // add refundDestination to destination
                         auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID, 

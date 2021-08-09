@@ -2020,6 +2020,24 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
             // we need to have correct fees in the destination currency available
             CTransferDestination lastLegDest = CTransferDestination(destination);
             lastLegDest.ClearGatewayLeg();
+
+            // if we're supposed to export the destination identity, do so
+            // by adding the full ID to this transfer destination
+            if (IsIdentityExport())
+            {
+                CTxDestination dest = TransferDestinationToDestination(destination);
+                CIdentity fullID;
+                if (dest.which() != COptCCParams::ADDRTYPE_ID || !(fullID = CIdentity::LookupIdentity(GetDestinationID(dest))).IsValid())
+                {
+                    // TODO: HARDENING - ensure this cannot be exploited by a cross-chain transfer
+                    printf("%s: Invalid export identity or identity not found for %s\n", __func__, EncodeDestination(dest).c_str());
+                    LogPrintf("%s: Invalid export identity or identity not found for %s\n", __func__, EncodeDestination(dest).c_str());
+                    return false;
+                }
+                lastLegDest.type = lastLegDest.DEST_FULLID;
+                lastLegDest.destination = ::AsVector(fullID);
+            }
+
             uint32_t newFlags = CReserveTransfer::VALID;
             if (destination.gatewayID != ASSETCHAINS_CHAINID)
             {
@@ -2152,7 +2170,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
                     // as long as the ID sent to us is the same as the ID on chain, we accept the ID
                     // destination, but cannot replace the existing ID definition, so we don't try and pass through
                 }
-
+                // TODO - need ID output added here
 
 
                 txOut = CTxOut(nativeAmount, GetScriptForDestination(dest));

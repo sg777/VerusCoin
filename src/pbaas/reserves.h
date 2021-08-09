@@ -159,6 +159,7 @@ public:
         IMPORT_TO_SOURCE = 0x200,           // set when the source currency, not destination is the import currency
         RESERVE_TO_RESERVE = 0x400,         // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
         REFUND = 0x800,                     // this transfer should be refunded, individual property when conversions exceed limits
+        IDENTITY_EXPORT = 0x1000,           // this exports a full identity when the next cross-chain leg is processed
     };
 
     enum EConstants
@@ -354,6 +355,23 @@ public:
     bool IsReserveToReserve() const
     {
         return flags & RESERVE_TO_RESERVE;
+    }
+
+    void SetIdentityExport(bool isExport=true)
+    {
+        if (isExport)
+        {
+            flags |= IDENTITY_EXPORT;
+        }
+        else
+        {
+            flags &= ~IDENTITY_EXPORT;
+        }
+    }
+
+    bool IsIdentityExport() const
+    {
+        return flags & IDENTITY_EXPORT;
     }
 
     CReserveTransfer GetRefundTransfer() const;

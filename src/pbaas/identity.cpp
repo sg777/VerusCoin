@@ -833,6 +833,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 
     uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
     bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS;
+    bool isCoinbase = tx.IsCoinBase();
 
     for (int i = 0; i < tx.vout.size(); i++)
     {
@@ -850,7 +851,8 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                         return state.Error("Invalid identity reservation");
                     }
                     // twice through makes it invalid
-                    if (validReservation)
+                    if (!(isPBaaS && isCoinbase && height == 1) &&
+                        validReservation)
                     {
                         return state.Error("Invalid multiple identity reservations on one transaction");
                     }
@@ -892,7 +894,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     // twice through makes it invalid
                     if (validImport)
                     {
-                        return state.Error("Invalid multiple identity definitions on one transaction");
+                        return state.Error("Invalid multiple cross-chain imports on one transaction");
                     }
 
                     validImport = true;
