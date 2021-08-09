@@ -561,7 +561,7 @@ public:
         FLAG_SAMECHAIN = 8,                             // means proof/reerve transfers are from export on chain
         FLAG_HASSUPPLEMENT = 0x10,                      // indicates that we have additional outputs containing the reservetransfers for this export
         FLAG_SUPPLEMENTAL = 0x20,                       // this flag indicates that this is a supplemental output to a prior output
-        FLAG_SOURCESYSTEM = 0x40,
+        FLAG_SOURCESYSTEM = 0x40,                       // import flag used to indicate source system
     };
 
     uint16_t nVersion;

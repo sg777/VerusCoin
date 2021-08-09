@@ -823,6 +823,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     bool validReservation = false;
     bool validIdentity = false;
     bool validImport = false;
+    bool validSourceSysImport = false;
     bool validCrossChainImport = false;
 
     CNameReservation nameRes;
@@ -892,9 +893,13 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     }
 
                     // twice through makes it invalid
-                    if (validImport)
+                    if (validSourceSysImport || (validImport && !cci.IsSourceSystemImport()))
                     {
                         return state.Error("Invalid multiple cross-chain imports on one transaction");
+                    }
+                    else if (cci.IsSourceSystemImport())
+                    {
+                        validSourceSysImport = true;
                     }
 
                     validImport = true;
