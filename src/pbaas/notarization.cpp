@@ -434,7 +434,7 @@ bool CPBaaSNotarization::GetLastUnspentNotarization(const uint160 &currencyID,
 bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceSystem, 
                                               const CCurrencyDefinition &destCurrency, 
                                               uint32_t lastExportHeight, 
-                                              uint32_t currentHeight, 
+                                              uint32_t notaHeight, 
                                               std::vector<CReserveTransfer> &exportTransfers,       // both in and out. this may refund conversions
                                               uint256 &transferHash,
                                               CPBaaSNotarization &newNotarization,
@@ -452,7 +452,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     newNotarization.SetBlockOneNotarization(false);
     newNotarization.prevNotarization = CUTXORef();
     newNotarization.prevHeight = newNotarization.notarizationHeight;
-    newNotarization.notarizationHeight = currentHeight;
+    newNotarization.notarizationHeight = notaHeight;
+
+    uint32_t currentHeight = chainActive.Height() + 1;
 
     // if we are communicating with an external system that uses a different hash, use it for everything
     CCurrencyDefinition::EProofProtocol hashType = CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR;
@@ -557,13 +559,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
     if (destCurrency.launchSystemID == sourceSystemID &&
-        ((thisIsLaunchSys && currentHeight <= (destCurrency.startBlock - 1)) ||
+        ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock - 1)) ||
          (!thisIsLaunchSys &&
           destCurrency.systemID == ASSETCHAINS_CHAINID &&
-          currentHeight == 1)))
+          notaHeight == 1)))
     {
         // we get one pre-launch coming through here, initial supply is set and ready for pre-convert
-        if (((thisIsLaunchSys && currentHeight == (destCurrency.startBlock - 1)) || sourceSystemID != ASSETCHAINS_CHAINID) && 
+        if (((thisIsLaunchSys && notaHeight == (destCurrency.startBlock - 1)) || sourceSystemID != ASSETCHAINS_CHAINID) && 
             newNotarization.IsPreLaunch())
         {
             // the first block executes the second time through
@@ -614,7 +616,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 }
             }
         }
-        else if (thisIsLaunchSys && currentHeight < (destCurrency.startBlock - 1))
+        else if (thisIsLaunchSys && notaHeight < (destCurrency.startBlock - 1))
         {
             newNotarization.currencyState.SetPrelaunch();
         }
@@ -639,6 +641,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            destCurrency, 
                                                            newNotarization.currencyState, 
                                                            exportTransfers, 
+                                                           currentHeight,
                                                            tempOutputs, 
                                                            importedCurrency,
                                                            gatewayDepositsUsed, 
@@ -658,7 +661,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            destSystem,
                                                            destCurrency, 
                                                            newNotarization.currencyState, 
-                                                           exportTransfers, 
+                                                           exportTransfers,
+                                                           currentHeight,
                                                            importOutputs, 
                                                            importedCurrency,
                                                            gatewayDepositsUsed, 
@@ -717,6 +721,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                   destCurrency, 
                                                                   intermediateState, 
                                                                   exportTransfers, 
+                                                                  currentHeight,
                                                                   dummyImportOutputs, 
                                                                   importedCurrency,
                                                                   gatewayDepositsUsed, 
@@ -739,6 +744,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                  destCurrency, 
                                                                  tempCurState, 
                                                                  exportTransfers, 
+                                                                 currentHeight,
                                                                  importOutputs, 
                                                                  importedCurrency,
                                                                  gatewayDepositsUsed, 

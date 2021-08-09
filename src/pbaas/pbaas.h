@@ -1073,7 +1073,7 @@ public:
     bool NextNotarizationInfo(const CCurrencyDefinition &sourceSystem, 
                               const CCurrencyDefinition &destCurrency, 
                               uint32_t lastExportHeight, 
-                              uint32_t currentHeight, 
+                              uint32_t notaHeight, 
                               std::vector<CReserveTransfer> &exportTransfers,
                               uint256 &transferHash,
                               CPBaaSNotarization &newNotarization,

@@ -1788,6 +1788,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                                   importCurrencyDef,
                                                                   checkState,
                                                                   importTransfers,
+                                                                  nHeight,
                                                                   checkOutputs,
                                                                   importedCurrency,
                                                                   gatewayDeposits,
@@ -1988,7 +1989,7 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer() const
     return rt;
 }
 
-bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativeAmount, CTxOut &txOut) const
+bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativeAmount, CTxOut &txOut, std::vector<CTxOut> &txOutputs, uint32_t height) const
 {
     bool makeNormalOutput = true;
     if (HasNextLeg())
@@ -2158,20 +2159,13 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
                         // if the ID is already in the mempool, we don't need to make an ID output, otherwise, we do
                         if (!memIndex.size())
                         {
-                            // TODO: - hardening
-                            // this is actually a functional fix, but it's in as hardening, and we need to do it before we
-                            // import IDs.
-                            // we need to pass height into this level by passing it into the
-                            // AddReserveTransferImportOutputs
-                            // importedID.IdentityUpdateOutputScript(height);
+                            txOutputs.push_back(CTxOut(0, importedID.IdentityUpdateOutputScript(height)));
                         }
                     }
 
                     // as long as the ID sent to us is the same as the ID on chain, we accept the ID
                     // destination, but cannot replace the existing ID definition, so we don't try and pass through
                 }
-                // TODO - need ID output added here
-
 
                 txOut = CTxOut(nativeAmount, GetScriptForDestination(dest));
                 return true;
@@ -2210,6 +2204,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                                                     const CCurrencyDefinition &importCurrencyDef, 
                                                                     const CCoinbaseCurrencyState &importCurrencyState,
                                                                     const std::vector<CReserveTransfer> &exportObjects, 
+                                                                    uint32_t height,
                                                                     std::vector<CTxOut> &vOutputs,
                                                                     CCurrencyValueMap &importedCurrency,
                                                                     CCurrencyValueMap &gatewayDepositsIn,
@@ -2959,7 +2954,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         {
                             nativeIn += newCurrencyConverted;
                         }
-                        curTransfer.GetTxOut(CCurrencyValueMap(), newCurrencyConverted, newOut);
+                        curTransfer.GetTxOut(CCurrencyValueMap(), newCurrencyConverted, newOut, vOutputs, height);
                     }
                     else // all conversions are to primary currency
                     {
@@ -2970,7 +2965,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             AddReserveInput(curTransfer.destCurrencyID, newCurrencyConverted);
                         }
                         curTransfer.GetTxOut(CCurrencyValueMap(std::vector<uint160>({curTransfer.destCurrencyID}), std::vector<int64_t>({newCurrencyConverted})), 
-                                             0, newOut);
+                                             0, newOut, vOutputs, height);
                     }
                 }
             }
@@ -3121,12 +3116,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (outputCurrencyID == systemDestID)
                     {
-                        curTransfer.GetTxOut(CCurrencyValueMap(), newCurrencyConverted, newOut);
+                        curTransfer.GetTxOut(CCurrencyValueMap(), newCurrencyConverted, newOut, vOutputs, height);
                     }
                     else
                     {
                         curTransfer.GetTxOut(CCurrencyValueMap(std::vector<uint160>({outputCurrencyID}), std::vector<int64_t>({newCurrencyConverted})), 
-                                             0, newOut);
+                                             0, newOut, vOutputs, height);
                     }
                 }
             }
@@ -3157,7 +3152,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 else if (!curTransfer.IsMint() && systemDestID == curTransfer.FirstCurrency())
                 {
                     nativeOut += curTransfer.FirstValue();
-                    if (!curTransfer.GetTxOut(CCurrencyValueMap(), curTransfer.FirstValue(), newOut) || newOut.nValue == -1)
+                    if (!curTransfer.GetTxOut(CCurrencyValueMap(), curTransfer.FirstValue(), newOut, vOutputs, height) || newOut.nValue == -1)
                     {
                         printf("%s: invalid transfer %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
                         LogPrintf("%s: invalid transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
@@ -3186,7 +3181,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                     AddReserveOutput(destCurID, curTransfer.FirstValue());
                     curTransfer.GetTxOut(CCurrencyValueMap(std::vector<uint160>({destCurID}), std::vector<int64_t>({curTransfer.FirstValue()})), 
-                                            0, newOut);
+                                            0, newOut, vOutputs, height);
                 }
             }
             if (newOut.nValue < 0)

@@ -294,6 +294,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
         view.SetBackend(viewMemPool);
 
+        uint32_t nHeight = chainActive.Height();
+
         CCurrencyValueMap totalDeposits;
 
         for (int i = 0; i < tx.vin.size(); i++)
@@ -367,6 +369,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                                   destCurDef,
                                                   checkState,
                                                   reserveTransfers,
+                                                  nHeight,
                                                   vOutputs,
                                                   importedCurrency,
                                                   gatewayCurrencyUsed,

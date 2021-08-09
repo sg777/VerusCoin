@@ -405,7 +405,9 @@ public:
 
     // this returns either an output for the next leg or a normal output if there is no next leg
     // the next leg output can enable chaining of conversions and system transfers
-    bool GetTxOut(const CCurrencyValueMap &reserves, int64_t nativeAmount, CTxOut &txOut) const;
+    // typically, the txOutputs vector will not get any additional entry unless there is a support
+    // definition required, such as full ID or currency definition.
+    bool GetTxOut(const CCurrencyValueMap &reserves, int64_t nativeAmount, CTxOut &txOut, std::vector<CTxOut> &txOutputs, uint32_t height) const;
 };
 
 class CReserveDeposit : public CTokenOutput
@@ -1669,10 +1671,11 @@ public:
     void AddReserveTransfer(const CReserveTransfer &rt);
 
     bool AddReserveTransferImportOutputs(const CCurrencyDefinition &systemSource, 
-                                         const CCurrencyDefinition &systemDest, 
+                                         const CCurrencyDefinition &systemDest,
                                          const CCurrencyDefinition &importCurrencyDef, 
                                          const CCoinbaseCurrencyState &importCurrencyState,
-                                         const std::vector<CReserveTransfer> &exportObjects, 
+                                         const std::vector<CReserveTransfer> &exportObjects,
+                                         uint32_t height,
                                          std::vector<CTxOut> &vOutputs,
                                          CCurrencyValueMap &importedCurrency,
                                          CCurrencyValueMap &gatewayDepositsIn,
