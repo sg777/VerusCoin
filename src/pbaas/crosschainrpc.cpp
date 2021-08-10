@@ -324,6 +324,43 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
     {
         auto ss = CNativeHashWriter((CCurrencyDefinition::EProofProtocol)hashType);
 
+        bool crossChainLogging = LogAcceptCategory("crosschain");
+        if (crossChainLogging)
+        {
+            printf("%s: vdxfCodes:\n", __func__);
+            LogPrintf("%s: vdxfCodes:\n", __func__);
+            for (auto &oneCode : vdxfCodes)
+            {
+                printf("%s\n", oneCode.GetHex().c_str());
+                LogPrintf("%s\n", oneCode.GetHex().c_str());
+            }
+            printf("\n");
+            LogPrintf("\n");
+            printf("%s: statements:\n", __func__);
+            LogPrintf("%s: statements:\n", __func__);
+            for (auto &oneStatement : statements)
+            {
+                printf("%s\n", oneStatement.GetHex().c_str());
+                LogPrintf("%s\n", oneStatement.GetHex().c_str());
+            }
+            printf("\n");
+            LogPrintf("\n");
+            printf("systemid: %s, blockheight: %u, identity: %s, prefix: %s\nmsghash: %s\n",
+                EncodeDestination(CIdentityID(systemID)).c_str(),
+                blockHeight,
+                EncodeDestination(CIdentityID(idID)).c_str(),
+                prefixString.c_str(),
+                msgHash.GetHex().c_str());
+            LogPrintf("systemid: %s, blockheight: %u, identity: %s, prefix: %s\nmsghash: %s\n",
+                EncodeDestination(CIdentityID(systemID)).c_str(),
+                blockHeight,
+                EncodeDestination(CIdentityID(idID)).c_str(),
+                prefixString.c_str(),
+                msgHash.GetHex().c_str());
+            printf("\n");
+            LogPrintf("\n");
+        }
+
         if (vdxfCodes.size())
         {
             ss << vdxfCodes;
@@ -341,6 +378,11 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
         }
         ss << msgHash;
         retVal = ss.GetHash();
+        if (crossChainLogging)
+        {
+            printf("%s\n", retVal.GetHex().c_str());
+            LogPrintf("%s\n", retVal.GetHex().c_str());
+        }
     }
     return retVal;
 }
