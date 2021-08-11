@@ -4008,8 +4008,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         dest = CTransferDestination(CTransferDestination::DEST_FULLID, ::AsVector(destIdentity));
                     }
 
-                    // check for potentially unknown currencies or IDs being sent across
-                    // for now, we can only send IDs and currencies that were involved in the launch
+                    // check for potentially unknown currencies being sent across
+                    // for now, we can only send currencies that were involved in the launch
                     std::set<uint160> validCurrencies;
                     std::set<uint160> validIDs;
                     CChainNotarizationData cnd;
@@ -4037,18 +4037,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                     validCurrencies.insert(ASSETCHAINS_CHAINID);
                     validCurrencies.insert(offChainID);
-                    if (IsVerusActive())
-                    {
-                        validIDs.insert(offChainID);
-                        if ((nonVerusChainDef.IsPBaaSChain() || nonVerusChainDef.IsGateway()) && !nonVerusChainDef.GatewayConverterID().IsNull())
-                        {
-                            validIDs.insert(nonVerusChainDef.GatewayConverterID());
-                        }
-                    }
-                    for (auto &oneValidID : nonVerusChainDef.preAllocation)
-                    {
-                        validIDs.insert(oneValidID.first);
-                    }
+
                     for (auto &oneValidCurrency : nonVerusChainDef.currencies)
                     {
                         validCurrencies.insert(oneValidCurrency);
@@ -4066,10 +4055,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             validCurrencies.insert(oneValidCurrency);
                         }
-                        for (auto &oneValidID : gatewayDef.preAllocation)
-                        {
-                            validIDs.insert(oneValidID.first);
-                        }
                     }
                     for (auto &oneCurrencyState : cnd.vtx[cnd.lastConfirmed].second.currencyStates)
                     {
@@ -4078,11 +4063,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             validCurrencies.insert(oneReserve);
                         }
-                    }
-
-                    if (destination.which() == COptCCParams::ADDRTYPE_ID && !validIDs.count(GetDestinationID(destination)))
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send to ID " + EncodeDestination(destination) + ", which is unregistered on specified system");
                     }
 
                     if (!validCurrencies.count(sourceCurrencyID))

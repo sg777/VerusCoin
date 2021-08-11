@@ -1085,7 +1085,7 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
     if (!IsVerusActive() && valid && nHeight == 1)
     {
         // get all currency state information and confirm that all necessary pre-allocations, currencies,
-        // identity and imports are as they sohuld be, given the starting state represented.
+        // identity and imports are as they should be, given the starting state represented.
 
         if (ConnectedChains.ThisChain().preAllocation.size())
         {
