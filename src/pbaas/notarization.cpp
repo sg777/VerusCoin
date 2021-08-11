@@ -94,6 +94,11 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
 
     CIdentitySignature idSignature(hashType);
 
+    if (LogAcceptCategory("notarysignatures"))
+    {
+        printf("%s: signing notary object:\n%s\n", __func__, HexBytes(&(p.vData[0][0]), p.vData.size()).c_str());
+    }
+
     /* CPBaaSNotarization debugNotarization(p.vData[0]);
     printf("%s: notarization:\n%s\n", __func__, debugNotarization.ToUniValue().write(1,2).c_str());
     printf("%s: Signing notarization at height %u on system: %s for identity %s\nconfirmedKey: %s\nobjHash: %s\n", 

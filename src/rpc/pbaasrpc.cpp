@@ -3997,15 +3997,22 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                     // if we should export the ID, make a full ID destination
                     CTransferDestination dest = DestinationToTransferDestination(destination);                    
-                    if (dest.type == dest.DEST_ID && exportId)
+                    if (dest.type == dest.DEST_ID)
                     {
-                        // get and export the ID
-                        CIdentity destIdentity = CIdentity::LookupIdentity(GetDestinationID(destination));
-                        if (!destIdentity.IsValid())
+                        if (!exportSystemDef.IsPBaaSChain())
                         {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot find identity to export (" + EncodeDestination(destination) + ")");
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot use identity as destination on the %s system or gateway (" + EncodeDestination(CIdentityID(exportSystemDef.GetID())) + ")");
                         }
-                        dest = CTransferDestination(CTransferDestination::DEST_FULLID, ::AsVector(destIdentity));
+                        if (exportId)
+                        {
+                            // get and export the ID
+                            CIdentity destIdentity = CIdentity::LookupIdentity(GetDestinationID(destination));
+                            if (!destIdentity.IsValid())
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot find identity to export (" + EncodeDestination(destination) + ")");
+                            }
+                            dest = CTransferDestination(CTransferDestination::DEST_FULLID, ::AsVector(destIdentity));
+                        }
                     }
 
                     // check for potentially unknown currencies being sent across

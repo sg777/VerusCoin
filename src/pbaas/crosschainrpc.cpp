@@ -324,7 +324,7 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
     {
         auto ss = CNativeHashWriter((CCurrencyDefinition::EProofProtocol)hashType);
 
-        bool crossChainLogging = LogAcceptCategory("crosschain");
+        bool crossChainLogging = LogAcceptCategory("notarysignatures");
         if (crossChainLogging)
         {
             printf("%s: vdxfCodes:\n", __func__);
