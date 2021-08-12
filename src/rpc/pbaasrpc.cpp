@@ -5854,7 +5854,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                 oneInput.first->vout[oneInput.second].nValue);
     }
 
-    auto builtTxResult = tb.Build();
+    auto builtTxResult = tb.Build(true);
 
     CTransaction retTx;
     bool partialSig = !builtTxResult.IsTx() && IsHex(builtTxResult.GetError()) && DecodeHexTx(retTx, builtTxResult.GetError());
