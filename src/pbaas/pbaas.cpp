@@ -3692,11 +3692,9 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
         // check our currency and any co-launch currency to determine our eligibility, as ALL
         // co-launch currencies must launch for one to launch
-        if (CCurrencyValueMap(_curDef.currencies, newNotarization.currencyState.reserves) < 
-                CCurrencyValueMap(_curDef.currencies, _curDef.minPreconvert) ||
-            (coLaunchCurrency.IsValid() &&
-             CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserves) < 
-                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert)))
+        if (coLaunchCurrency.IsValid() &&
+             CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < 
+                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert))
         {
             forcedRefunding = true;
         }
