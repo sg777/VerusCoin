@@ -1705,7 +1705,6 @@ extern int64_t MAX_MONEY;
 extern int64_t MAX_SUPPLY;
 extern std::string VERUS_DEFAULT_ZADDR;
 bool SetThisChain(const UniValue &chainDefinition);
-const uint256 &CurrencyDefHash();
 
 void komodo_args(char *argv0)
 {

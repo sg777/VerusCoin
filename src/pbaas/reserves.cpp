@@ -1759,7 +1759,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             return;
                         }
 
-                        // get the chain definition of the chain we are importing
                         std::vector<CTxOut> checkOutputs;
                         CCurrencyValueMap importedCurrency, gatewayDeposits, spentCurrencyOut;
 
@@ -1798,6 +1797,36 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             flags &= ~IS_VALID;
                             flags |= IS_REJECT;
                             return;
+                        }
+
+                        // validate that all outputs match calculated outputs
+                        if (!cci.IsDefinitionImport() &&
+                            !cci.IsSourceSystemImport())
+                        {
+                            int startingOutput = importNotarizationOut + 1;
+                            if (eOutEnd > 0)
+                            {
+                                startingOutput = eOutEnd + 1;
+                            }
+                            if (startingOutput < 0 ||
+                                checkOutputs.size() != cci.numOutputs ||
+                                (startingOutput + checkOutputs.size()) > tx.vout.size())
+                            {
+                                LogPrint("importtransactions", "%s: import outputs would index beyond import transaction\n", __func__);
+                                flags &= ~IS_VALID;
+                                flags |= IS_REJECT;
+                                return;
+                            }
+                            for (int loop = startingOutput; loop < checkOutputs.size(); loop++)
+                            {
+                                if (checkOutputs[loop - startingOutput] != tx.vout[loop])
+                                {
+                                    LogPrint("importtransactions", "%s: calculated outputs do not match outputs on import transaction\n", __func__);
+                                    flags &= ~IS_VALID;
+                                    flags |= IS_REJECT;
+                                    return;
+                                }
+                            }
                         }
 
                         /*if (tx.IsCoinBase())

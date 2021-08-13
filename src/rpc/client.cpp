@@ -31,12 +31,6 @@ bool SetThisChain(const UniValue &chainDefinition) {
     return true; // (?) pbaas/pbaas.h
 }
 
-// non-functional in client
-uint256 CurrencyDefHash(UniValue &chainDefinition)
-{
-    return uint256();
-}
-
 bool uni_get_bool(UniValue uv, bool def)
 {
     try

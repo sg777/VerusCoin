@@ -276,6 +276,11 @@ CIdentity TransferDestinationToIdentity(const CTransferDestination &dest)
     return retIdentity;
 }
 
+CTransferDestination CurrencyToTransferDestination(const CCurrencyDefinition &currency)
+{
+    return CTransferDestination(CTransferDestination::DEST_REGISTERCURRENCY, ::AsVector(currency));
+}
+
 CCurrencyDefinition TransferDestinationToCurrency(const CTransferDestination &dest)
 {
     CCurrencyDefinition retCurrency;

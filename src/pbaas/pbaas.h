@@ -1695,11 +1695,8 @@ bool IsCurrencyDefinitionInput(const CScript &scriptSig);
 bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsCurrencyStateInput(const CScript &scriptSig);
 
-bool GetCCParams(const CScript &scr, COptCCParams &ccParams);
-
 bool SetPeerNodes(const UniValue &nodes);
 bool SetThisChain(const UniValue &chainDefinition);
-const uint256 &CurrencyDefHash(UniValue &chainDefinition);
 
 extern CConnectedChains ConnectedChains;
 extern uint160 ASSETCHAINS_CHAINID;

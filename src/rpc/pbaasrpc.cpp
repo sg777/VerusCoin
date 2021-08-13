@@ -412,13 +412,6 @@ bool SetPeerNodes(const UniValue &nodes)
 
 // adds the chain definition for this chain and nodes as well
 // this also sets up the notarization chain, if there is one
-uint256 CurrencyDefHash()
-{
-    return ::GetHash(ConnectedChains.ThisChain());
-}
-
-// adds the chain definition for this chain and nodes as well
-// this also sets up the notarization chain, if there is one
 bool SetThisChain(const UniValue &chainDefinition)
 {
     ConnectedChains.ThisChain() = CCurrencyDefinition(chainDefinition);
