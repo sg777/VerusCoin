@@ -1572,6 +1572,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     if (chainID == ASSETCHAINS_CHAINID)
     {
         currencyState = GetInitialCurrencyState(thisChain);
+        currencyState.SetLaunchConfirmed();
     }
     // if this is a token on this chain, it will be simply notarized
     else if (curDef.systemID == ASSETCHAINS_CHAINID || (curDef.launchSystemID == ASSETCHAINS_CHAINID && curDef.startBlock > height))
