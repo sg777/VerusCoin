@@ -6040,6 +6040,19 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     UniValue rawID = find_value(params[0], "identity");
 
+    if (uni_get_int(find_value(rawID,"version")) == 0)
+    {
+        rawID.pushKV("version", 
+                     CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_PBAAS ? 
+                        CIdentity::VERSION_PBAAS :
+                        CIdentity::VERSION_VERUSID);
+    }
+
+    if (uni_get_int(find_value(rawID,"minimumsignatures")) == 0)
+    {
+        rawID.pushKV("minimumsignatures", (int32_t)1);
+    }
+
     CIdentity newID(rawID);
     if (!newID.IsValid())
     {
