@@ -121,8 +121,6 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
                 // if we are locked due to the lock flag and not counting down
                 if (IsLocked())
                 {
-                    /*// TODO: HARDENING replace the code block below with this commented code to 
-                    // prevent shortening of a relative lock without revocation
                     if (newIdentity.IsLocked() && newIdentity.unlockAfter < unlockAfter)
                     {
                         return true;
@@ -130,13 +128,6 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
                     else if (!newIdentity.IsLocked() &&
                                 (newIdentity.unlockAfter < (unlockAfter + expiryHeight)) &&
                                 !(unlockAfter > MAX_UNLOCK_DELAY && newIdentity.unlockAfter == (MAX_UNLOCK_DELAY + expiryHeight)))
-                    {
-                        return true;
-                    } //*/
-
-                    if (!newIdentity.IsLocked() &&
-                        (newIdentity.unlockAfter != (unlockAfter + expiryHeight)) &&
-                        !(unlockAfter > MAX_UNLOCK_DELAY && newIdentity.unlockAfter == (MAX_UNLOCK_DELAY + expiryHeight)))
                     {
                         return true;
                     }
