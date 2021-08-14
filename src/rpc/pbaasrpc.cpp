@@ -6644,7 +6644,26 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
     // get identity
     bool returnTx = false;
-    CIdentity newID(params[0]);
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    uint32_t nHeight = chainActive.Height();
+
+    UniValue newUniIdentity = params[0];
+    if (uni_get_int(find_value(newUniIdentity,"version")) == 0)
+    {
+        newUniIdentity.pushKV("version", 
+                              CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS ? 
+                                CIdentity::VERSION_PBAAS :
+                                CIdentity::VERSION_VERUSID);
+    }
+
+    if (uni_get_int(find_value(newUniIdentity,"minimumsignatures")) == 0)
+    {
+        newUniIdentity.pushKV("minimumsignatures", (int32_t)1);
+    }
+
+    CIdentity newID(newUniIdentity);
 
     if (!newID.IsValid())
     {
@@ -6660,8 +6679,6 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     CIdentity oldID;
     uint32_t idHeight;
 
-    LOCK2(cs_main, pwalletMain->cs_wallet);
-
     if (!(oldID = CIdentity::LookupIdentity(newID.GetID(), 0, &idHeight, &idTxIn)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
@@ -6671,8 +6688,6 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity must be revoked in order to recover : " + newID.name);
     }
-
-    uint32_t nHeight = chainActive.Height();
 
     newID.flags &= ~CIdentity::FLAG_REVOKED;
     if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
