@@ -147,9 +147,285 @@ bool IsReserveTransferInput(const CScript &scriptSig)
     return true;
 }
 
+CReserveDeposit GetSpendingReserveDeposit(const CTransaction &spendingTx, uint32_t nIn, CTransaction *pSourceTx, uint32_t *pHeight)
+{
+    CTransaction _sourceTx;
+    CTransaction &sourceTx(pSourceTx ? *pSourceTx : _sourceTx);
+
+    // if not fulfilled, ensure that no part of the primary identity is modified
+    CReserveDeposit oldReserveDeposit;
+    uint256 blkHash;
+    if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
+    {
+        if (pHeight)
+        {
+            auto bIt = mapBlockIndex.find(blkHash);
+            if (bIt == mapBlockIndex.end() || !bIt->second)
+            {
+                *pHeight = chainActive.Height();
+            }
+            else
+            {
+                *pHeight = bIt->second->GetHeight();
+            }
+        }
+        COptCCParams p;
+        if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() && 
+            p.evalCode == EVAL_RESERVE_DEPOSIT && 
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
+        {
+            oldReserveDeposit = CReserveDeposit(p.vData[0]);
+        }
+    }
+    return oldReserveDeposit;
+}
+
 bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    return true;
+    // reserve deposits can only spend to the following:
+    // 1. If the reserve deposit is controlled by an alternate system or gateway currency, it can be
+    //    spent by an import that includes a sys import from the alternate system/gateway. The total
+    //    input of all inputs to the tx from the deposit controller is considered and all but the amount
+    //    specified in gateway imports of the import must come out as change back to the reserve deposit.
+    // 2. If the reserve deposit is controlled by the currency of an import, exactly the amount spent by
+    //    the import may be released in total and not sent back to change.
+
+    // first, get the prior reserve deposit and determine the controlling currency
+    CTransaction sourceTx;
+    uint32_t sourceHeight;
+    CReserveDeposit sourceRD = GetSpendingReserveDeposit(tx, nIn, &sourceTx, &sourceHeight);
+    if (!sourceRD.IsValid())
+    {
+        LogPrintf("%s: attempting to spend invalid reserve deposit output %s\n", __func__, tx.vin[nIn].ToString().c_str());
+        return false;
+    }
+
+    // now, ensure that the spender transaction includes an import output of this specific currency or
+    // where this currency is a system gateway source
+    CCrossChainImport authorizingImport;
+    CCrossChainImport mainImport;
+
+    // looking for an import output to the controlling currency
+    int i;
+    for (i = 0; i < tx.vout.size(); i++)
+    {
+        COptCCParams p;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+            p.vData.size() &&
+            (authorizingImport = CCrossChainImport(p.vData[0])).IsValid() &&
+            authorizingImport.importCurrencyID == sourceRD.controllingCurrencyID)
+        {
+            break;
+        }
+    }
+
+    if (i >= tx.vout.size())
+    {
+        if (!LogAcceptCategory("reservedeposits"))
+        {
+            LogPrintf("%s: non import transaction attempting to spend reserve deposit\n", __func__);
+        }
+        else
+        {
+            LogPrint("reservedeposits", "%s: non import transaction %s attempting to spend reserve deposit %s\n", __func__, EncodeHexTx(tx).c_str(), tx.vin[nIn].ToString().c_str());
+        }
+        return false;
+    }
+
+    // if we found a valid output, determine if the output is direct or system source
+    bool gatewaySource = false;
+    if (gatewaySource = authorizingImport.IsSourceSystemImport())
+    {
+        COptCCParams p;
+        i--;        // set i to the actual import
+        if (!(i > 0 &
+              tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+              p.IsValid() &&
+              p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+              p.vData.size() &&
+              (mainImport = CCrossChainImport(p.vData[0])).IsValid()))
+        {
+            if (!LogAcceptCategory("reservedeposits"))
+            {
+                LogPrintf("%s: malformed import transaction attempting to spend reserve deposit\n", __func__);
+            }
+            else
+            {
+                LogPrint("reservedeposits", "%s: malformed import transaction %s attempting to spend reserve deposit %s\n", __func__, EncodeHexTx(tx).c_str(), tx.vin[nIn].ToString().c_str());
+            }
+            return false;
+        }
+    }
+    else
+    {
+        mainImport = authorizingImport;
+    }
+
+    CCrossChainExport ccxSource;
+    CPBaaSNotarization importNotarization;
+    int32_t sysCCIOut, importNotarizationOut, evidenceOutStart, evidenceOutEnd;
+    std::vector<CReserveTransfer> reserveTransfers;
+
+    if (mainImport.GetImportInfo(tx,
+                                 chainActive.Height(),
+                                 i,
+                                 ccxSource,
+                                 authorizingImport,
+                                 sysCCIOut,
+                                 importNotarization,
+                                 importNotarizationOut,
+                                 evidenceOutStart,
+                                 evidenceOutEnd,
+                                 reserveTransfers))
+    {
+        // TODO: HARDENING - confirm that all checks are complete
+        // now, check all inputs of the transaction, and if we are the first in the array spent from
+        // deposits controlled by this currency, be sure that all input is accounted for by valid reserves out
+        // and/or gateway deposits, and/or change
+
+        LOCK(mempool.cs);
+
+        CCoinsView dummy;
+        CCoinsViewCache view(&dummy);
+        CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+        view.SetBackend(viewMemPool);
+
+        uint32_t nHeight = chainActive.Height();
+
+        CCurrencyValueMap totalDeposits;
+
+        for (int i = 0; i < tx.vin.size(); i++)
+        {
+            if (tx.vin[i].prevout.hash.IsNull())
+            {
+                continue;
+            }
+            const CCoins *pCoins = view.AccessCoins(tx.vin[i].prevout.hash);
+
+            COptCCParams p;
+
+            // if we can't find the output we are spending, we fail
+            if (pCoins->vout.size() <= tx.vin[i].prevout.n)
+            {
+                LogPrintf("%s: cannot get output being spent by input (%s) from current view\n", __func__, tx.vin[i].ToString().c_str());
+                return false;
+            }
+
+            CReserveDeposit oneBeingSpent;
+
+            if (pCoins->vout[tx.vin[i].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_RESERVE_DEPOSIT)
+            {
+                if (!(p.vData.size() &&
+                      (oneBeingSpent = CReserveDeposit(p.vData[0])).IsValid()))
+                {
+                    LogPrintf("%s: reserve deposit being spent by input (%s) is invalid in view\n", __func__, tx.vin[i].ToString().c_str());
+                    return false;
+                }
+            }
+
+            if (oneBeingSpent.IsValid() &&
+                oneBeingSpent.controllingCurrencyID == sourceRD.controllingCurrencyID)
+            {
+                // if we are not first, this will have to have passed by the first input to have gotten here
+                if (i < nIn)
+                {
+                    return true;
+                }
+                else
+                {
+                    totalDeposits += oneBeingSpent.reserveValues;
+                }
+            }
+        }
+
+        // now, determine how much is used and how much change is left
+        CCoinbaseCurrencyState checkState = importNotarization.currencyState;
+        CCoinbaseCurrencyState newCurState;
+
+        checkState.RevertReservesAndSupply();
+        CReserveTransactionDescriptor rtxd;
+
+        CCurrencyDefinition sourceSysDef = ConnectedChains.GetCachedCurrency(ccxSource.sourceSystemID);
+        CCurrencyDefinition destSysDef = ConnectedChains.GetCachedCurrency(ccxSource.destSystemID);
+        CCurrencyDefinition destCurDef = ConnectedChains.GetCachedCurrency(ccxSource.destCurrencyID);
+
+        if (!(sourceSysDef.IsValid() && destSysDef.IsValid() && destCurDef.IsValid()))
+        {
+            LogPrintf("%s: invalid currencies in export: %s\n", __func__, ccxSource.ToUniValue().write(1,2).c_str());
+            return false;
+        }
+
+        std::vector<CTxOut> vOutputs;
+        CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
+
+        if (!rtxd.AddReserveTransferImportOutputs(sourceSysDef,
+                                                  destSysDef,
+                                                  destCurDef,
+                                                  checkState,
+                                                  reserveTransfers,
+                                                  nHeight,
+                                                  vOutputs,
+                                                  importedCurrency,
+                                                  gatewayCurrencyUsed,
+                                                  spentCurrencyOut,
+                                                  &newCurState))
+        {
+            return false;
+        }
+
+        // get outputs total amount to this reserve deposit
+        CCurrencyValueMap reserveDepositChange;
+        for (int i = 0; i < tx.vout.size(); i++)
+        {
+            COptCCParams p;
+            CReserveDeposit rd;
+            if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_RESERVE_DEPOSIT &&
+                p.vData.size() &&
+                (rd = CReserveDeposit(p.vData[0])).IsValid() &&
+                rd.controllingCurrencyID == sourceRD.controllingCurrencyID)
+            {
+                reserveDepositChange += rd.reserveValues;
+            }
+        }
+
+        if (gatewaySource)
+        {
+            if (totalDeposits != (gatewayCurrencyUsed + reserveDepositChange))
+            {
+                LogPrintf("%s: invalid use of gateway reserve deposits for currency: %s\n", __func__, destCurDef.GetID().GetHex().c_str());
+                // TODO: HARDENING - uncomment the following line and return false, when it is confirmed that
+                // this passes in all intended cases.
+                //return false;
+            }
+        }
+        else
+        {
+            CCurrencyValueMap currenciesIn(newCurState.currencies, newCurState.reserveIn);
+            if (newCurState.primaryCurrencyOut)
+            {
+                currenciesIn.valueMap[newCurState.GetID()] = newCurState.primaryCurrencyOut;
+            }
+            if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut))
+            {
+                LogPrintf("%s: invalid use of reserve deposits for currency: %s\n", __func__, destCurDef.GetID().GetHex().c_str());
+                // TODO: HARDENING - uncomment the following line and return false, when it is confirmed that
+                // this passes in all intended cases.
+                //return false;
+            }
+        }
+
+        return true;
+    }
+
+    return false;
 }
 bool IsReserveDepositInput(const CScript &scriptSig)
 {
@@ -717,15 +993,9 @@ std::set<uint160> CEthGateway::FeeCurrencies() const
     return retVal;
 }
 
-const CCurrencyDefinition &CEthGateway::GetConverter() const
+uint160 CEthGateway::GatewayID() const
 {
-    // just returns true if it looks like a non-NULL ETH address
-    static CCurrencyDefinition ethFeeConverter;
-    if (!ethFeeConverter.IsValid())
-    {
-        GetCurrencyDefinition("vrsc-eth-dai", ethFeeConverter);
-    }
-    return ethFeeConverter;
+    return CCrossChainRPCData::GetID("veth@");
 }
 
 bool CConnectedChains::RemoveMergedBlock(uint160 chainID)
@@ -1034,7 +1304,10 @@ uint32_t CConnectedChains::CombineBlocks(CBlockHeader &bh)
 
 bool CConnectedChains::IsVerusPBaaSAvailable()
 {
-    return IsNotaryAvailable() && FirstNotaryChain().chainDefinition.GetID() == VERUS_CHAINID;
+    uint160 parent = VERUS_CHAINID;
+    return IsNotaryAvailable() && 
+           ((_IsVerusActive() && FirstNotaryChain().chainDefinition.GetID() == CIdentity::GetID("veth", parent)) ||
+            FirstNotaryChain().chainDefinition.GetID() == VERUS_CHAINID);
 }
 
 extern string PBAAS_HOST, PBAAS_USERPASS;
@@ -1043,6 +1316,9 @@ bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue
 {
     if (chainInfoUni.isObject() && chainDefUni.isObject())
     {
+        // TODO: HARDENING - ensure we confirm the correct PBaaS version
+        // and ensure that the chainDef is correct as well
+
         UniValue uniVer = find_value(chainInfoUni, "VRSCversion");
         if (uniVer.isStr())
         {
@@ -1089,6 +1365,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                 params.push_back(EncodeDestination(CIdentityID(FirstNotaryChain().chainDefinition.GetID())));
                 chainDef = find_value(RPCCallRoot("getcurrency", params), "result");
 
+                // TODO: HARDENING - ensure that the ID from chainDef is the same ID
                 if (!chainDef.isNull() && CheckVerusPBaaSAvailable(chainInfo, chainDef))
                 {
                     // if we have not passed block 1 yet, store the best known update of our current state
@@ -1134,6 +1411,68 @@ bool CConnectedChains::IsNotaryAvailable(bool callToCheck)
     }
     return !(FirstNotaryChain().rpcHost.empty() || FirstNotaryChain().rpcPort == 0 || FirstNotaryChain().rpcUserPass.empty()) &&
            CheckVerusPBaaSAvailable();
+}
+
+bool CConnectedChains::ConfigureEthBridge()
+{
+    // first time through, we initialize the VETH gateway config file
+    if (!_IsVerusActive())
+    {
+        return false;
+    }
+    if (IsNotaryAvailable())
+    {
+        return true;
+    }
+    LOCK(cs_main);
+    if (FirstNotaryChain().IsValid())
+    {
+        return IsNotaryAvailable(true);
+    }
+
+    CRPCChainData vethNotaryChain;
+    uint160 gatewayParent = ASSETCHAINS_CHAINID;
+    static uint160 gatewayID;
+    if (gatewayID.IsNull())
+    {
+        gatewayID = CIdentity::GetID("veth", gatewayParent);
+    }
+    vethNotaryChain.chainDefinition = ConnectedChains.GetCachedCurrency(gatewayID);
+    if (vethNotaryChain.chainDefinition.IsValid())
+    {
+        map<string, string> settings;
+        map<string, vector<string>> settingsmulti;
+
+        // create config file for our notary chain if one does not exist already
+        if (ReadConfigFile("veth", settings, settingsmulti))
+        {
+            // the Ethereum bridge, "VETH", serves as the root currency to VRSC and for Rinkeby to VRSCTEST
+            vethNotaryChain.rpcUserPass = PBAAS_USERPASS = settingsmulti.find("-rpcuser")->second[0] + ":" + settingsmulti.find("-rpcpassword")->second[0];
+            vethNotaryChain.rpcPort = PBAAS_PORT = atoi(settingsmulti.find("-rpcport")->second[0]);
+            PBAAS_HOST = settingsmulti.find("-rpchost")->second[0];
+            if (!PBAAS_HOST.size())
+            {
+                PBAAS_HOST = "127.0.0.1";
+            }
+            vethNotaryChain.rpcHost = PBAAS_HOST;
+            CNotarySystemInfo notarySystem;
+            CChainNotarizationData cnd;
+            if (!GetNotarizationData(gatewayID, cnd))
+            {
+                LogPrintf("%s: Failed to get notarization data for notary chain %s\n", __func__, vethNotaryChain.chainDefinition.name.c_str());
+                return false;
+            }
+
+            notarySystems.insert(std::make_pair(gatewayID, 
+                                                CNotarySystemInfo(cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : 0, 
+                                                    vethNotaryChain,
+                                                    cnd.vtx.size() ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second : CPBaaSNotarization(),
+                                                    CNotarySystemInfo::TYPE_ETH,
+                                                    CNotarySystemInfo::VERSION_CURRENT)));
+            return IsNotaryAvailable(true);
+        }
+    }
+    return false;
 }
 
 int CConnectedChains::GetThisChainPort() const
@@ -1233,6 +1572,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     if (chainID == ASSETCHAINS_CHAINID)
     {
         currencyState = GetInitialCurrencyState(thisChain);
+        currencyState.SetLaunchConfirmed();
     }
     // if this is a token on this chain, it will be simply notarized
     else if (curDef.systemID == ASSETCHAINS_CHAINID || (curDef.launchSystemID == ASSETCHAINS_CHAINID && curDef.startBlock > height))
@@ -1406,8 +1746,7 @@ CCurrencyDefinition CConnectedChains::GetCachedCurrency(const uint160 &currencyI
     if ((it != currencyDefCache.end() && !(currencyDef = it->second).IsValid()) ||
         (it == currencyDefCache.end() && !GetCurrencyDefinition(currencyID, currencyDef, &defHeight, true)))
     {
-        printf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
-        LogPrintf("%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
+        LogPrint("notarization", "%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
         return currencyDef;
     }
     if (it == currencyDefCache.end())
@@ -2055,6 +2394,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 LogPrintf("%s: out of order export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), sourceOutputNum);
                 return false;
             }
+            else if (useProofs)
+            {
+                // make sure we have the latest, confirmed proof roots to prove this import
+                lastNotarization.proofRoots[sourceSystemID] = proofNotarization.proofRoots[sourceSystemID];
+            }
         }
         else if (nHeight)
         {
@@ -2251,9 +2595,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
             dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
-            // TODO: HARDENING - limit number of export transfers by total output size in kb, not number of transfers
-
             // now add all reserve transfers in supplemental outputs
+            // ensure that the output doesn't exceed script size limit
             auto transferIT = exportTransfers.begin();
             while (transferIT != exportTransfers.end())
             {
@@ -2267,7 +2610,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 rtSupplement.flags = ccx.FLAG_EVIDENCEONLY + ccx.FLAG_SUPPLEMENTAL;
                 rtSupplement.reserveTransfers.assign(transferIT, transferIT + transferCount);
                 CScript supScript = MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &rtSupplement));
-                while (supScript.size() > supScript.MAX_SCRIPT_ELEMENT_SIZE)
+                while (GetSerializeSize(CTxOut(0, supScript), SER_NETWORK, PROTOCOL_VERSION) > supScript.MAX_SCRIPT_ELEMENT_SIZE)
                 {
                     transferCount--;
                     rtSupplement.reserveTransfers.assign(transferIT, transferIT + transferCount);
@@ -3350,11 +3693,9 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
         // check our currency and any co-launch currency to determine our eligibility, as ALL
         // co-launch currencies must launch for one to launch
-        if (CCurrencyValueMap(_curDef.currencies, newNotarization.currencyState.reserves) < 
-                CCurrencyValueMap(_curDef.currencies, _curDef.minPreconvert) ||
-            (coLaunchCurrency.IsValid() &&
-             CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserves) < 
-                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert)))
+        if (coLaunchCurrency.IsValid() &&
+             CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < 
+                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert))
         {
             forcedRefunding = true;
         }
@@ -3518,13 +3859,13 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     CAmount nativeReserveDeposit = 0;
     if (newReserveDeposits.valueMap.count(ASSETCHAINS_CHAINID))
     {
-        nativeReserveDeposit += newReserveDeposits.valueMap[ASSETCHAINS_CHAINID];
+        nativeReserveDeposit = newReserveDeposits.valueMap[ASSETCHAINS_CHAINID];
     }
 
     CCcontract_info CC;
     CCcontract_info *cp;
 
-    if (nativeReserveDeposit || newReserveDeposits.valueMap.size())
+    if (newReserveDeposits.valueMap.size())
     {
         /* printf("%s: nativeDeposit %ld, reserveDeposits: %s\n",
             __func__,

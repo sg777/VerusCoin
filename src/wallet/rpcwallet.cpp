@@ -1136,7 +1136,7 @@ UniValue signmessage(const UniValue& params, bool fHelp)
 
     if (fHelp || params.size() < 2 || params.size() > 3)
         throw runtime_error(
-            "signmessage \"address or identity\" \"message\" \"curentsig\"\n"
+            "signmessage \"address or identity\" \"message\" \"currentsig\"\n"
             "\nSign a message with the private key of a t-addr or the authorities present in this wallet for an identity"
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"

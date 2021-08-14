@@ -445,7 +445,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(ReserveDepositWIF).begin(),32);
             cp->validate = ValidateReserveDeposit;
             cp->ismyvin = IsReserveDepositInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PrecheckReserveDeposit;
             break;
 
         case EVAL_CROSSCHAIN_IMPORT:

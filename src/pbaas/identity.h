@@ -502,7 +502,9 @@ public:
                primaryAddresses.size() &&
                (nVersion < VERSION_PBAAS ||
                (!revocationAuthority.IsNull() &&
-                !recoveryAuthority.IsNull()));
+                !recoveryAuthority.IsNull() &&
+                minSigs > 0 &&
+                minSigs <= primaryAddresses.size()));
     }
 
     bool IsValidUnrevoked() const
@@ -709,28 +711,6 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CIdentity *)this);
         READWRITE(txid);
-    }
-};
-
-class CCurrencyRegistrationDestination
-{
-public:
-    CIdentity identity;
-    CCurrencyDefinition currency;
-
-    CCurrencyRegistrationDestination() {}
-    CCurrencyRegistrationDestination(const CIdentity &Identity, const CCurrencyDefinition &Currency) : identity(Identity), currency(Currency) {}
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(identity);
-        READWRITE(currency);
-    }
-    bool IsValid() const
-    {
-        return identity.IsValid() && currency.IsValid() && identity.GetID() == currency.GetID();
     }
 };
 

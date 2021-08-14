@@ -31,12 +31,6 @@ bool SetThisChain(const UniValue &chainDefinition) {
     return true; // (?) pbaas/pbaas.h
 }
 
-// non-functional in client
-uint256 CurrencyDefHash(UniValue &chainDefinition)
-{
-    return uint256();
-}
-
 bool uni_get_bool(UniValue uv, bool def)
 {
     try
@@ -545,6 +539,18 @@ static const CRPCConvertParam vRPCConvertParams[] =
     // pbaas
     { "definecurrency", 0},
     { "definecurrency", 1},
+    { "definecurrency", 2},
+    { "definecurrency", 3},
+    { "definecurrency", 4},
+    { "definecurrency", 5},
+    { "definecurrency", 6},
+    { "definecurrency", 7},
+    { "definecurrency", 8},
+    { "definecurrency", 9},
+    { "definecurrency", 10},
+    { "definecurrency", 11},
+    { "definecurrency", 12},
+    { "definecurrency", 13},
     { "listcurrencies", 0},
     { "listcurrencies", 1},
     { "sendcurrency", 1},
