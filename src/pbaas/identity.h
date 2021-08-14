@@ -502,7 +502,9 @@ public:
                primaryAddresses.size() &&
                (nVersion < VERSION_PBAAS ||
                (!revocationAuthority.IsNull() &&
-                !recoveryAuthority.IsNull()));
+                !recoveryAuthority.IsNull() &&
+                minSigs > 0 &&
+                minSigs <= primaryAddresses.size()));
     }
 
     bool IsValidUnrevoked() const
