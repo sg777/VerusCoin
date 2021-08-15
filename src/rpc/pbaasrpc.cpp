@@ -6054,7 +6054,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
 
     CIdentity newID(rawID);
-    if (!newID.IsValid())
+    if (!newID.IsValid(true))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
     }
@@ -6422,7 +6422,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     UniValue newUniID = MapToUniObject(uniOldID);
     CIdentity newID(newUniID);
 
-    if (!newID.IsValid())
+    if (!newID.IsValid(true))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
     }
@@ -6678,7 +6678,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
     CIdentity newID(newUniIdentity);
 
-    if (!newID.IsValid())
+    if (!newID.IsValid(true))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
     }
