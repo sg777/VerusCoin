@@ -548,10 +548,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
         }
 
-        notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_NOTARY_CONFIRM);
-        if (notarizationProtocol != NOTARIZATION_NOTARY_CONFIRM && !(IsToken() && notarizationProtocol == NOTARIZATION_AUTO))
+        notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_AUTO);
+        if ((notarizationProtocol != NOTARIZATION_AUTO || notarizationProtocol != NOTARIZATION_NOTARY_CONFIRM))
         {
-            LogPrintf("%s: notarization protocol for PBaaS chains must be %d (NOTARIZATION_NOTARY_CONFIRM) at this time\n", __func__, (int)NOTARIZATION_NOTARY_CONFIRM);
+            LogPrintf("%s: notarization protocol for PBaaS chains must be %d (NOTARIZATION_AUTO) or %d (NOTARIZATION_NOTARY_CONFIRM) at this time\n", __func__, (int)NOTARIZATION_NOTARY_CONFIRM);
             nVersion = PBAAS_VERSION_INVALID;
             return;
         }

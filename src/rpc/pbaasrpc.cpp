@@ -433,18 +433,22 @@ bool SetThisChain(const UniValue &chainDefinition)
         if (PBAAS_TESTMODE)
         {
             // setup Verus test parameters
+            // TODO: HARDENING - for this and VRSC below, construct the CCurrencyDefinition from Univalue to get proper defaults
             notaryChainDef.name = "VRSCTEST";
+            notaryChainDef.proofProtocol = CCurrencyDefinition::PROOF_PBAASMMR;
+            notaryChainDef.proofProtocol = CCurrencyDefinition::NOTARIZATION_AUTO;
             notaryChainDef.preAllocation = {std::make_pair(uint160(), 5000000000000000)};
             notaryChainDef.rewards = std::vector<int64_t>({1200000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
-            Split(GetArg("-ac_halving",""),  ASSETCHAINS_HALVING, 0);
-            notaryChainDef.halving = std::vector<int32_t>({(int32_t)(ASSETCHAINS_HALVING[0])});
+            notaryChainDef.halving = std::vector<int32_t>({5111120});
             notaryChainDef.eraEnd = std::vector<int32_t>({0});
         }
         else
         {
             // first setup Verus parameters
             notaryChainDef.name = "VRSC";
+            notaryChainDef.proofProtocol = CCurrencyDefinition::PROOF_PBAASMMR;
+            notaryChainDef.proofProtocol = CCurrencyDefinition::NOTARIZATION_AUTO;
             notaryChainDef.rewards = std::vector<int64_t>({0,38400000000,2400000000});
             notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
             notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});

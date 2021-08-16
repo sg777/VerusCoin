@@ -1111,7 +1111,6 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
 {
     uint160 thisChainID = ConnectedChains.ThisChain().GetID();
     CCurrencyDefinition &thisChain = ConnectedChains.ThisChain();
-    uint160 firstNotaryID = ConnectedChains.FirstNotaryChain().GetID();
     CCoinbaseCurrencyState currencyState;
     std::map<uint160, std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>>> blockOneExportImports;
 

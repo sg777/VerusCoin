@@ -327,7 +327,8 @@ public:
         NOTARIZATION_INVALID = 0,           // notarization protocol must have valid type
         NOTARIZATION_AUTO = 1,              // PBaaS autonotarization
         NOTARIZATION_NOTARY_CONFIRM = 2,    // autonotarization with confirmation by specified notaries
-        NOTARIZATION_NOTARY_CHAINID = 3     // chain identity controls notarization and currency supply
+        NOTARIZATION_NOTARY_CHAINID = 3,    // chain identity controls notarization and currency supply
+        NOTARIZATION_NOTARY_LAST = 3        // chain identity controls notarization and currency supply
     };
 
     enum EProofProtocol
@@ -335,8 +336,9 @@ public:
         PROOF_INVALID = 0,                  // proof protocol must have valid type
         PROOF_PBAASMMR = 1,                 // Verus MMR proof, no notaries required
         PROOF_CHAINID = 2,                  // if signed by the chain ID, that is considered proof
-        PROOF_KOMODONOTARIZATION = 3,       // proven by Komodo notarization
-        PROOF_ETHNOTARIZATION = 4           // proven by Ethereum notarization
+        PROOF_ETHNOTARIZATION = 3,          // proven by Ethereum notarization
+        PROOF_LASTPROTOCOL = 3,
+        PROOF_KOMODONOTARIZATION = 4        // Komodo protocol is not valid until someone from Komodo finishes it
     };
 
     enum EQueryOptions
