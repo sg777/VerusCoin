@@ -219,8 +219,7 @@ public:
         {
             for (auto &oneAddr : primaryAddresses)
             {
-                if (oneAddr.which() != COptCCParams::ADDRTYPE_PK ||
-                    oneAddr.which() != COptCCParams::ADDRTYPE_PKH)
+                if (!(oneAddr.which() == COptCCParams::ADDRTYPE_PK || oneAddr.which() == COptCCParams::ADDRTYPE_PKH))
                 {
                     primaryOK = false;
                     break;
