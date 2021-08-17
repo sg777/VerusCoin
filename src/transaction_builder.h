@@ -149,7 +149,7 @@ public:
     // Assumes that the value correctly corresponds to the provided UTXO.
     void AddTransparentInput(COutPoint utxo, CScript scriptPubKey, CAmount value, uint32_t nSequence = 0xffffffff);
 
-    void AddTransparentOutput(CTxDestination& to, CAmount value);
+    void AddTransparentOutput(const CTxDestination& to, CAmount value);
 
     bool AddTransparentOutput(const CScript &scriptPubKey, CAmount value);
 

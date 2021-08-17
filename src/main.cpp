@@ -1085,7 +1085,7 @@ bool ContextualCheckCoinbaseTransaction(const CTransaction &tx, uint32_t nHeight
     if (!IsVerusActive() && valid && nHeight == 1)
     {
         // get all currency state information and confirm that all necessary pre-allocations, currencies,
-        // identity and imports are as they sohuld be, given the starting state represented.
+        // identity and imports are as they should be, given the starting state represented.
 
         if (ConnectedChains.ThisChain().preAllocation.size())
         {
@@ -3587,7 +3587,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     // Check it again to verify JoinSplit proofs, and in case a previous version let a bad block in
     if (!CheckBlock(&futureblock,pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck) || futureblock != 0 )
     {
-        //fprintf(stderr,"checkblock failure in connectblock futureblock.%d\n",futureblock);
+        if (futureblock)
+        {
+            // if this is a future block, don't invalidate it
+            LogPrint("net", "%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock);
+            return false;
+        }
         return state.DoS(100, error("%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock),
                          REJECT_INVALID, "invalid-block");
     }

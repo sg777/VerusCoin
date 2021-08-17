@@ -212,14 +212,30 @@ public:
 
     UniValue ToUniValue() const;
 
-    bool IsValid() const
+    bool IsValid(bool strict=false) const
     {
+        bool primaryOK = true;
+        if (strict || nVersion >= VERSION_PBAAS)
+        {
+            for (auto &oneAddr : primaryAddresses)
+            {
+                if (!(oneAddr.which() == COptCCParams::ADDRTYPE_PK || oneAddr.which() == COptCCParams::ADDRTYPE_PKH))
+                {
+                    primaryOK = false;
+                    break;
+                }
+            }
+        }
         return nVersion >= VERSION_FIRSTVALID && 
-               nVersion <= VERSION_LASTVALID && 
+               nVersion <= VERSION_LASTVALID &&
+               primaryOK &&
                primaryAddresses.size() && 
-               primaryAddresses.size() <= 10 && 
                minSigs >= 1 &&
-               minSigs <= primaryAddresses.size();
+               minSigs <= primaryAddresses.size() && 
+               ((nVersion < VERSION_PBAAS &&
+                 primaryAddresses.size() <= 10) ||
+                (primaryAddresses.size() <= 25 &&
+                 minSigs <= 13));
     }
 
     bool IsPrimaryMutation(const CPrincipal &newPrincipal) const
@@ -495,14 +511,16 @@ public:
         return flags & FLAG_ACTIVECURRENCY;
     }
 
-    bool IsValid() const
+    bool IsValid(bool strict=false) const
     {
-        return CPrincipal::IsValid() && name.size() > 0 && 
+        return CPrincipal::IsValid(strict) && name.size() > 0 && 
                (name.size() <= MAX_NAME_LEN) &&
                primaryAddresses.size() &&
                (nVersion < VERSION_PBAAS ||
                (!revocationAuthority.IsNull() &&
-                !recoveryAuthority.IsNull()));
+                !recoveryAuthority.IsNull() &&
+                minSigs > 0 &&
+                minSigs <= primaryAddresses.size()));
     }
 
     bool IsValidUnrevoked() const
@@ -709,28 +727,6 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CIdentity *)this);
         READWRITE(txid);
-    }
-};
-
-class CCurrencyRegistrationDestination
-{
-public:
-    CIdentity identity;
-    CCurrencyDefinition currency;
-
-    CCurrencyRegistrationDestination() {}
-    CCurrencyRegistrationDestination(const CIdentity &Identity, const CCurrencyDefinition &Currency) : identity(Identity), currency(Currency) {}
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(identity);
-        READWRITE(currency);
-    }
-    bool IsValid() const
-    {
-        return identity.IsValid() && currency.IsValid() && identity.GetID() == currency.GetID();
     }
 };
 
