@@ -1809,7 +1809,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 startingOutput = eOutEnd + 1;
                             }
                             if (startingOutput < 0 ||
-                                checkOutputs.size() != cci.numOutputs ||
+                                checkOutputs.size() > cci.numOutputs ||
                                 (startingOutput + checkOutputs.size()) > tx.vout.size())
                             {
                                 LogPrint("importtransactions", "%s: import outputs would index beyond import transaction\n", __func__);
@@ -1817,14 +1817,27 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 flags |= IS_REJECT;
                                 return;
                             }
-                            for (int loop = startingOutput; loop < checkOutputs.size(); loop++)
+
+                            // TODO: HARDENING - this check skips checking imported IDs, as it cannot verify whether they have been skipped
+                            // because they are in the mem pool on the same transaction. we need to confirm that imported IDs are valid 
+                            // from the importing system and not duplicate.
+
+                            int idCheckOffset = 0;
+                            for (int loop = 0; loop < checkOutputs.size(); loop++)
                             {
-                                if (checkOutputs[loop - startingOutput] != tx.vout[loop])
+                                if (checkOutputs[loop] != tx.vout[loop + startingOutput + idCheckOffset])
                                 {
-                                    LogPrint("importtransactions", "%s: calculated outputs do not match outputs on import transaction\n", __func__);
-                                    flags &= ~IS_VALID;
-                                    flags |= IS_REJECT;
-                                    return;
+                                    COptCCParams idImportCheckP;
+                                    if (!(tx.vout[loop + startingOutput + idCheckOffset].scriptPubKey.IsPayToCryptoCondition(idImportCheckP) &&
+                                          idImportCheckP.IsValid() &&
+                                          idImportCheckP.evalCode == EVAL_IDENTITY_PRIMARY &&
+                                          checkOutputs[loop] == tx.vout[loop + startingOutput + ++idCheckOffset]))
+                                    {
+                                        LogPrint("importtransactions", "%s: calculated outputs do not match outputs on import transaction\n", __func__);
+                                        flags &= ~IS_VALID;
+                                        flags |= IS_REJECT;
+                                        return;
+                                    }
                                 }
                             }
                         }
