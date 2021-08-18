@@ -563,6 +563,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             return;
         }
 
+        // TODO: HARDENING - ensure that it makes sense for a chain to have PROOF_CHAINID still or disallow
+
         nativeCurrencyID = CTransferDestination(find_value(obj, "nativecurrencyid"));
 
         std::string launchIDStr = uni_get_str(find_value(obj, "launchsystemid"));
