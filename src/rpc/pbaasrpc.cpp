@@ -2844,7 +2844,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid lastconfirmed");
     }
 
-    std::vector<CProofRoot> proofRootArr;
+    std::map<uint32_t, std::pair<int32_t, CProofRoot>> proofRootMap;
     UniValue uniProofRoots = find_value(params[0], "proofroots");
     if (!uniProofRoots.isArray())
     {
@@ -2853,36 +2853,34 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
 
     for (int i = 0; i < uniProofRoots.size(); i++)
     {
-        proofRootArr.push_back(CProofRoot(uniProofRoots[i]));
-        if (!proofRootArr.back().IsValid())
+        CProofRoot oneRoot(uniProofRoots[i]);
+        if (!oneRoot.IsValid())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid proof root in array");
         }
+        if (oneRoot.systemID != ASSETCHAINS_CHAINID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("oncorrect systemid in proof root for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+        }
+        proofRootMap.insert(std::make_pair(oneRoot.rootHeight, std::make_pair(i, oneRoot)));
     }
 
     LOCK(cs_main);
 
     uint32_t nHeight = chainActive.Height();
 
-    uint32_t curHeight = 0;
     std::map<uint32_t, int32_t> validRoots;       // height, index (only return the first valid at each height)
-    for (int i = 0; i < proofRootArr.size(); i++)
+
+    for (auto &oneRoot : proofRootMap)
     {
-        // proof roots must be valid and in height order, though heights can overlap
-        const CProofRoot &checkRoot = proofRootArr[i];
-        if (checkRoot.rootHeight < curHeight || checkRoot.systemID != ASSETCHAINS_CHAINID)
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid proof root array parameter for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
-        }
         // ignore potential dups
-        if (validRoots.count(checkRoot.rootHeight))
+        if (validRoots.count(oneRoot.second.second.rootHeight))
         {
             continue;
         }
-        if (checkRoot == checkRoot.GetProofRoot(checkRoot.rootHeight))
+        if (oneRoot.second.second == oneRoot.second.second.GetProofRoot(oneRoot.second.second.rootHeight))
         {
-            validRoots.insert(std::make_pair(checkRoot.rootHeight, i));
-            curHeight = checkRoot.rootHeight;
+            validRoots.insert(std::make_pair(oneRoot.second.second.rootHeight, oneRoot.second.first));
         }
     }
 
