@@ -4170,7 +4170,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                convertToCurrencyID, 
                                                                dest,
                                                                secondCurrencyID,
-                                                               exportSystemDef.GetID());
+                                                               destSystemID);
 
                         if (!(flags & CReserveTransfer::CROSS_SYSTEM) &&
                             exportId)
@@ -4196,7 +4196,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                exportToCurrencyID, 
                                                                dest,
                                                                secondCurrencyID,
-                                                               exportSystemDef.GetID());
+                                                               destSystemID);
 
                         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
 
