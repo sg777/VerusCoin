@@ -199,7 +199,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (!sourceRD.IsValid())
     {
         LogPrintf("%s: attempting to spend invalid reserve deposit output %s\n", __func__, tx.vin[nIn].ToString().c_str());
-        return false;
+        return eval->Error(std::string(__func__) + ": attempting to spend invalid reserve deposit output " + tx.vin[nIn].ToString());
     }
 
     // now, ensure that the spender transaction includes an import output of this specific currency or
@@ -225,15 +225,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
     if (i >= tx.vout.size())
     {
-        if (!LogAcceptCategory("reservedeposits"))
-        {
-            LogPrintf("%s: non import transaction attempting to spend reserve deposit\n", __func__);
-        }
-        else
-        {
-            LogPrint("reservedeposits", "%s: non import transaction %s attempting to spend reserve deposit %s\n", __func__, EncodeHexTx(tx).c_str(), tx.vin[nIn].ToString().c_str());
-        }
-        return false;
+        LogPrint("reservedeposits", "%s: non import transaction %s attempting to spend reserve deposit %s\n", __func__, EncodeHexTx(tx).c_str(), tx.vin[nIn].ToString().c_str());
+        return eval->Error(std::string(__func__) + ": non import transaction attempting to spend reserve deposit");
     }
 
     // if we found a valid output, determine if the output is direct or system source
@@ -242,22 +235,15 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
     {
         COptCCParams p;
         i--;        // set i to the actual import
-        if (!(i > 0 &
+        if (!(i >= 0 &
               tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
               p.IsValid() &&
               p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
               p.vData.size() &&
               (mainImport = CCrossChainImport(p.vData[0])).IsValid()))
         {
-            if (!LogAcceptCategory("reservedeposits"))
-            {
-                LogPrintf("%s: malformed import transaction attempting to spend reserve deposit\n", __func__);
-            }
-            else
-            {
-                LogPrint("reservedeposits", "%s: malformed import transaction %s attempting to spend reserve deposit %s\n", __func__, EncodeHexTx(tx).c_str(), tx.vin[nIn].ToString().c_str());
-            }
-            return false;
+            LogPrint("reservedeposits", "%s: malformed import transaction %s attempting to spend reserve deposit %s\n", __func__, EncodeHexTx(tx).c_str(), tx.vin[nIn].ToString().c_str());
+            return eval->Error(std::string(__func__) + ": malformed import transaction attempting to spend reserve deposit");
         }
     }
     else
@@ -311,8 +297,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             // if we can't find the output we are spending, we fail
             if (pCoins->vout.size() <= tx.vin[i].prevout.n)
             {
-                LogPrintf("%s: cannot get output being spent by input (%s) from current view\n", __func__, tx.vin[i].ToString().c_str());
-                return false;
+                return eval->Error(std::string(__func__) + ": cannot get output being spent by input (" + tx.vin[i].ToString() + ") from current view");
             }
 
             CReserveDeposit oneBeingSpent;
@@ -324,8 +309,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                 if (!(p.vData.size() &&
                       (oneBeingSpent = CReserveDeposit(p.vData[0])).IsValid()))
                 {
-                    LogPrintf("%s: reserve deposit being spent by input (%s) is invalid in view\n", __func__, tx.vin[i].ToString().c_str());
-                    return false;
+                    return eval->Error(std::string(__func__) + ": reserve deposit being spent by input (" + tx.vin[i].ToString() + ") is invalid in view");
                 }
             }
 
@@ -357,8 +341,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
         if (!(sourceSysDef.IsValid() && destSysDef.IsValid() && destCurDef.IsValid()))
         {
-            LogPrintf("%s: invalid currencies in export: %s\n", __func__, ccxSource.ToUniValue().write(1,2).c_str());
-            return false;
+            return eval->Error(std::string(__func__) + ": invalid currencies in export: " + ccxSource.ToUniValue().write(1,2));
         }
 
         std::vector<CTxOut> vOutputs;
@@ -376,7 +359,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                                   spentCurrencyOut,
                                                   &newCurState))
         {
-            return false;
+            return eval->Error(std::string(__func__) + ": invalid import transaction");
         }
 
         // get outputs total amount to this reserve deposit
@@ -425,7 +408,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         return true;
     }
 
-    return false;
+    return eval->Error(std::string(__func__) + ": invalid reserve deposit spend");
 }
 bool IsReserveDepositInput(const CScript &scriptSig)
 {
@@ -781,7 +764,7 @@ extern uint160 VERUS_CHAINID;
 // that have been confirmed.
 bool ValidateCurrencyDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
-    return false;
+    return eval->Error("cannot spend currency definition output in current protocol");
 }
 
 bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, CValidationState &state, uint32_t height)
@@ -2939,7 +2922,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 }
             }
 
-            /* DEBUG output only
+            // DEBUG output only
             for (auto &oneTxId : txesToShow)
             {
                 CTransaction inputTx;

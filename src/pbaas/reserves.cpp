@@ -2136,6 +2136,8 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
             }
 
             // lookup ID and if not present, make an ID output
+
+            // TODO: HARDENING - ensure that we can only mint IDs from systems that are able to mint them
             CIdentity preexistingID = CIdentity::LookupIdentity(GetDestinationID(dest));
 
             // if we have a collision present, sound an alarm and fail
