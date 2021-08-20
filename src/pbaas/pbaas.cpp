@@ -198,7 +198,6 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
     CReserveDeposit sourceRD = GetSpendingReserveDeposit(tx, nIn, &sourceTx, &sourceHeight);
     if (!sourceRD.IsValid())
     {
-        LogPrintf("%s: attempting to spend invalid reserve deposit output %s\n", __func__, tx.vin[nIn].ToString().c_str());
         return eval->Error(std::string(__func__) + ": attempting to spend invalid reserve deposit output " + tx.vin[nIn].ToString());
     }
 
