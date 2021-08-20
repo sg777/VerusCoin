@@ -3994,10 +3994,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     CTransferDestination dest = DestinationToTransferDestination(destination);                    
                     if (dest.type == dest.DEST_ID)
                     {
-                        if (!exportSystemDef.IsPBaaSChain())
-                        {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot use identity as destination on the %s system or gateway (" + EncodeDestination(CIdentityID(exportSystemDef.GetID())) + ")");
-                        }
                         if (exportId)
                         {
                             // get and export the ID
