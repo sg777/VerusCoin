@@ -4124,7 +4124,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             // sending the full ID in the next leg without overhead in the first
                             if (dest.type == dest.DEST_FULLID)
                             {
-                                dest = CTransferDestination(CTransferDestination::DEST_ID, ::AsVector(GetDestinationBytes(CIdentityID(GetDestinationID(destination)))));
+                                dest = CTransferDestination(CTransferDestination::DEST_ID, ::AsVector(CIdentityID(GetDestinationID(destination))));
                             }
                             else
                             {
