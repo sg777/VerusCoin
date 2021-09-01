@@ -8112,8 +8112,8 @@ static const CRPCCommand commands[] =
     { "wallet",             "sendtoaddress",            &sendtoaddress,            false },
     { "wallet",             "setaccount",               &setaccount,               true  },
     { "wallet",             "settxfee",                 &settxfee,                 true  },
-    { "wallet",             "signmessage",              &signmessage,              true  },
-    { "wallet",             "signfile",                 &signfile,                 true  },
+    { "identity",           "signmessage",              &signmessage,              true  },
+    { "identity",           "signfile",                 &signfile,                 true  },
     { "hidden",             "printapis",                &printapis,                true  },
     // { "hidden",             "signhash",                 &signhash,                 true  }, // disable due to risk of signing something that doesn't contain the content
     { "wallet",             "walletlock",               &walletlock,               true  },
