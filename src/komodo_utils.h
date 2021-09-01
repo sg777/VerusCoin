@@ -2143,18 +2143,6 @@ void komodo_args(char *argv0)
             sprintf(&magicstr[i<<1],"%02x",magic[i]);
         magicstr[8] = 0;
 
-/* TODO: HARDENING - see if this is needed for any reason before removing commented section
-#ifndef FROM_CLI
-        sprintf(fname,"%s_7776",ASSETCHAINS_SYMBOL);
-        if ( (fp= fopen(fname,"wb")) != 0 )
-        {
-            fprintf(fp,iguanafmtstr,name.c_str(),name.c_str(),name.c_str(),name.c_str(),magicstr,ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT,"78.47.196.146");
-            fclose(fp);
-            //printf("created (%s)\n",fname);
-        } else printf("error creating (%s)\n",fname);
-#endif
-*/
-
         if ( KOMODO_CCACTIVATE != 0 && ASSETCHAINS_CC < 2 )
         {
             ASSETCHAINS_CC = 2;

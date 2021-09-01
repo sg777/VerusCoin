@@ -3969,13 +3969,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     {
                         uint160 cbCurID = cbCurDef.GetID();
 
-                        // TODO: HARDENING - make this fail in the next testnet reset, not just print a message
-                        // earlier launch notarizations did not always have proofroots
                         if (!(cci.sourceSystemID == cbCurDef.launchSystemID &&
                               launchNotarization.proofRoots.count(cci.sourceSystemID) &&
                               txProofRoot == launchNotarization.proofRoots[cci.sourceSystemID].stateRoot))
                         {
-                            printf("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing" );
+                            return state.DoS(10, error("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing"),
+                                            REJECT_INVALID, "invalid-block");
                         }
 
                         if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&

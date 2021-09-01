@@ -714,10 +714,10 @@ UniValue getvdxfid(const UniValue& params, bool fHelp)
             "{                        (object) object with both base58check and hex vdxfid values of string and parents\n"
             "  \"vdxfid\"             (base58check) i-ID of the URI processed with the VDXF\n"
             "  \"hash160result\"      (hexstring) 20 byte hash in hex of the URL string passed in, processed with the VDXF\n"
-            "  \"namewithparent\":    (object) separate name and parent ID value\n"
+            "  \"qualifiedname\":    (object) separate name and parent ID value\n"
             "  {\n"
             "    \"name\":            (string) leaf name\n"
-            "    \"parentid\":        (string) parent ID hash of name\n"
+            "    \"parentid\" | \"namespace\": (string) parent ID (or namespace if VDXF key) of name\n"
             "  }\n"
             "}\n"
             "\nExamples:\n"
@@ -738,6 +738,7 @@ UniValue getvdxfid(const UniValue& params, bool fHelp)
     uint160 vdxfID;
     uint160 parentID;
     std::string cleanName;
+    std::string parentIDName = "parentid";
 
     // first, try to interpret the ID as an ID, in case it is
     CTxDestination idDest = DecodeDestination(vdxfName);
@@ -749,6 +750,7 @@ UniValue getvdxfid(const UniValue& params, bool fHelp)
     }
     else
     {
+        parentIDName = "namespace";
         vdxfID = CVDXF::GetDataKey(vdxfName, parentID);
         cleanName = vdxfName;
     }
@@ -762,9 +764,9 @@ UniValue getvdxfid(const UniValue& params, bool fHelp)
     result.pushKV("vdxfid", EncodeDestination(CIdentityID(vdxfID)));
     result.pushKV("hash160result", vdxfID.GetHex());
     UniValue nameWithParent(UniValue::VOBJ);
-    nameWithParent.pushKV("parentid", EncodeDestination(CIdentityID(parentID)));
+    nameWithParent.pushKV(parentIDName, EncodeDestination(CIdentityID(parentID)));
     nameWithParent.pushKV("name", cleanName);
-    result.pushKV("namewithparent", nameWithParent);
+    result.pushKV("qualifiedname", nameWithParent);
     return result;
 }
 
