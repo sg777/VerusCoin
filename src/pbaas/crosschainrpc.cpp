@@ -451,29 +451,21 @@ uint160 DecodeCurrencyName(std::string currencyStr)
         return retVal;
     }
     std::string copyStr = currencyStr;
+
     uint160 parent;
+
+    // TODO: HARDENING - uncomment the following line and remove the one after it to
+    // prevent testnet VDXF IDs from being different than mainnet for the next testnet release
+    //
+    // currencyStr = CleanName(currencyStr, parent, true, currencyStr.back() != '.');
     currencyStr = CleanName(currencyStr, parent, true);
+
     if (!parent.IsNull() && CCurrencyDefinition::GetID(currencyStr, parent) == ASSETCHAINS_CHAINID)
     {
         return ASSETCHAINS_CHAINID;
     }
 
     CTxDestination currencyDest = DecodeDestination(currencyStr);
-
-    // TODO: HARDENING - this can only be enabled with the reset of testnet, as the testnet values are having
-    // testnet added to them as a parent in the namespace
-    /*
-    if (currencyDest.which() != COptCCParams::ADDRTYPE_INVALID)
-    {
-        if (currencyStr.back() == '@' && parent.IsNull())
-        {
-            currencyStr.insert(currencyStr.begin() + (currencyStr.size() - 1), '.');
-        }
-    }
-    else if (parent.IsNull())
-    {
-        currencyStr = currencyStr + ".";
-    } // */
 
     if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
     {
