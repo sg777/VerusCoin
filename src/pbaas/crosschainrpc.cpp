@@ -457,7 +457,24 @@ uint160 DecodeCurrencyName(std::string currencyStr)
     {
         return ASSETCHAINS_CHAINID;
     }
+
     CTxDestination currencyDest = DecodeDestination(currencyStr);
+
+    // TODO: HARDENING - this can only be enabled with the reset of testnet, as the testnet values are having
+    // testnet added to them as a parent in the namespace
+    /*
+    if (currencyDest.which() != COptCCParams::ADDRTYPE_INVALID)
+    {
+        if (currencyStr.back() == '@' && parent.IsNull())
+        {
+            currencyStr.insert(currencyStr.begin() + (currencyStr.size() - 1), '.');
+        }
+    }
+    else if (parent.IsNull())
+    {
+        currencyStr = currencyStr + ".";
+    } // */
+
     if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
     {
         currencyDest = DecodeDestination(copyStr + "@");
