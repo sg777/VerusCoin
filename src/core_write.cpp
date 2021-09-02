@@ -842,6 +842,15 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
         obj.push_back(Pair("idregistrationprice", ValueFromAmount(idRegistrationFees)));
         obj.push_back(Pair("idreferrallevels", idReferralLevels));
+        if (IsPBaaSChain() || IsGateway())
+        {
+            obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
+            if (!gatewayConverterName.empty())
+            {
+                uint160 gatewayParent = GetID();
+                obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentity::GetID(gatewayConverterName, gatewayParent))));
+            }
+        }
 
         if (IsPBaaSChain())
         {
@@ -856,13 +865,6 @@ UniValue CCurrencyDefinition::ToUniValue() const
                 eraArr.push_back(era);
             }
             obj.push_back(Pair("eras", eraArr));
-
-            obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
-            if (!gatewayConverterName.empty())
-            {
-                uint160 gatewayParent = GetID();
-                obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentity::GetID(gatewayConverterName, gatewayParent))));
-            }
         }
     }
 

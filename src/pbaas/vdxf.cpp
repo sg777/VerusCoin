@@ -246,11 +246,10 @@ uint160 CVDXF::GetDataKey(const std::string &keyName, uint160 &nameSpaceID)
     std::vector<std::string> addressParts;
     boost::split(addressParts, keyCopy, boost::is_any_of(":"));
 
-    // if the first part of the address is a namespace, it is followed by double colon
+    // if the first part of the address is a namespace, it is followed by a double colon
     // namespace specifiers have no implicit root
     if (addressParts.size() > 2 && addressParts[1].empty())
     {
-        // look up to see if this is the private address of an ID. if not, or if the ID does not have a valid, Sapling address, it is invalid
         uint160 nsID = DecodeCurrencyName(addressParts[0] + ".");
         if (!nsID.IsNull())
         {

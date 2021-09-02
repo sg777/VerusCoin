@@ -3494,6 +3494,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             if (currencyStr.size() ||
                 convertToStr.size() ||
+                exportToStr.size() ||
+                feeCurrencyStr.size() ||
+                viaStr.size() ||
                 refundToStr.size() ||
                 memoStr.size() ||
                 preConvert ||
@@ -3708,7 +3711,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     exportToCurrencyID = explicitExportID;
                 }
 
-                if (exportToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
+                if ((exportToCurrencyDef.IsGateway() ? exportToCurrencyDef.GetID() : exportToCurrencyDef.systemID) == ASSETCHAINS_CHAINID)
                 {
                     exportToStr = "";
                     exportToCurrencyID.SetNull();
@@ -3756,8 +3759,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 feeCurrencyID = ValidateCurrencyName(feeCurrencyStr, true, &feeCurrencyDef);
                 if (!feeCurrencyID.IsNull())
                 {
-                    if (!(feeCurrencyID == ASSETCHAINS_CHAINID ||
-                          (!IsVerusActive() && feeCurrencyID == ConnectedChains.ThisChain().launchSystemID)))
+                    if (!(feeCurrencyID == destSystemID ||
+                          destSystemDef.IsPBaaSChain() && feeCurrencyID == destSystemDef.launchSystemID))
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency specified");
                     }
@@ -3779,6 +3782,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             // ensure that any initial export is explicit
             if (sendOffChain && !exportToCurrencyID.IsNull() &&
+                !exportToCurrencyDef.IsGateway() &&
                 !(exportToCurrencyDef.systemID == destSystemID || (convertBeforeOffChain && destSystemID == ASSETCHAINS_CHAINID)))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Conflicting target system for send -- \"exportto\" must be consistent with any other cross-chain currency targets");
@@ -3917,25 +3921,33 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     // first convert, include embedded fees, then send
                 }
 
-                CTransferDestination transferDestination;
+                CTransferDestination dest;
                 if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
                 {
                     if (destSystemDef.IsGateway())
                     {
-                        std::vector<unsigned char> rawDestBytes;
-                        for (int i = 0; i < subNames.size(); i++)
+                        // if we expect an ETH address, only accept that
+                        if (exportSystemDef.proofProtocol == exportSystemDef.PROOF_ETHNOTARIZATION)
                         {
-                            if (i)
+                            dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(dest.DecodeEthDestination(destStr)));
+                        }
+                        else
+                        {
+                            std::vector<unsigned char> rawDestBytes;
+                            for (int i = 0; i < subNames.size(); i++)
                             {
-                                rawDestBytes.push_back('.');
+                                if (i)
+                                {
+                                    rawDestBytes.push_back('.');
+                                }
+                                rawDestBytes.insert(rawDestBytes.end(), subNames[i].begin(), subNames[i].end());
                             }
-                            rawDestBytes.insert(rawDestBytes.end(), subNames[i].begin(), subNames[i].end());
+                            if (!rawDestBytes.size())
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid");
+                            }
+                            dest = CTransferDestination(CTransferDestination::FLAG_DEST_GATEWAY + CTransferDestination::DEST_RAW, rawDestBytes, destSystemID);
                         }
-                        if (!rawDestBytes.size())
-                        {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
-                        }
-                        transferDestination = CTransferDestination(CTransferDestination::FLAG_DEST_GATEWAY + CTransferDestination::DEST_RAW, rawDestBytes);
                     }
                     else
                     {
@@ -3956,6 +3968,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     refundDestination = destination;
                 }
+
+                bool refundValid = refundDestination.which() != COptCCParams::ADDRTYPE_INVALID;
 
                 // make one output
                 CRecipient oneOutput;
@@ -3991,8 +4005,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     // then uses case 1 above
 
                     // if we should export the ID, make a full ID destination
-                    CTransferDestination dest = DestinationToTransferDestination(destination);                    
-                    if (dest.type == dest.DEST_ID)
+                    if (!dest.IsValid())
+                    {
+                        dest = DestinationToTransferDestination(destination);                    
+                    }
+                    if (dest.TypeNoFlags() == dest.DEST_ID)
                     {
                         if (exportId)
                         {
@@ -4104,7 +4121,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                dest);
                         rt.nFees = rt.CalculateTransferFee();
 
-                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
+                                                                          std::vector<CTxDestination>({pk.GetID()});
 
                         oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : rt.CalculateTransferFee();
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
@@ -4122,7 +4140,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                             // if we are sending a full ID, revert back to just ID and set the full ID bit to enable
                             // sending the full ID in the next leg without overhead in the first
-                            if (dest.type == dest.DEST_FULLID)
+                            if (dest.TypeNoFlags() == dest.DEST_FULLID)
                             {
                                 dest = CTransferDestination(CTransferDestination::DEST_ID, ::AsVector(CIdentityID(GetDestinationID(destination))));
                             }
@@ -4179,7 +4197,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             rt.SetIdentityExport(true);
                         }
 
-                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
+                                                                          std::vector<CTxDestination>({pk.GetID()});
 
                         oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
@@ -4198,7 +4217,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                secondCurrencyID,
                                                                destSystemID);
 
-                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
+                                                                          std::vector<CTxDestination>({pk.GetID()});
 
                         oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
@@ -4225,7 +4245,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CCcontract_info *cp;
                         cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                         CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
-                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+
+                        std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
+                                                                          std::vector<CTxDestination>({pk.GetID()});
+
                         auto dest = DestinationToTransferDestination(destination);
                         auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
                         CReserveTransfer rt = CReserveTransfer(flags, 
@@ -4349,7 +4372,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                    dest,
                                                                    secondCurrencyID);
 
-                            std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                            std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
+                                                                            std::vector<CTxDestination>({pk.GetID()});
 
                             oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                             oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));

@@ -751,7 +751,7 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
         case CTransferDestination::DEST_ETH:
         {
             uint160 ethDestID = DecodeEthDestination(uni_get_str(find_value(obj, "address")));
-            destination = std::vector<unsigned char>(ethDestID.begin(), ethDestID.end());
+            destination = ::AsVector(ethDestID);
             break;
         }
 
