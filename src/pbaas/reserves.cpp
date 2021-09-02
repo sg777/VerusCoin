@@ -2108,7 +2108,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
         }
         if (nextLegTransfer.IsValid())
         {
-            // emit a reserve exchange output
+            // emit a reserve transfer output
             CCcontract_info CC;
             CCcontract_info *cp;
             cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
@@ -2205,6 +2205,19 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
         }
 
         // make normal output to the destination, which must be valid
+        // if destination is not valid, and we are supposed to make an output
+        // to an ETH address, make a nested output instead
+        if (dest.which() == COptCCParams::ADDRTYPE_INVALID && destination.TypeNoFlags() == destination.DEST_ETH)
+        {
+            // we make an unspendable P2SH output with the ETH address as the P2SH value
+            CKeyID unspendableP2SH;
+            bool success = false;
+            ::FromVector(destination.destination, unspendableP2SH, &success);
+            if (success)
+            {
+                dest = CTxDestination(CKeyID(unspendableP2SH));
+            }
+        }
         if (!reserves.valueMap.size() && nativeAmount)
         {
             if (dest.which() == COptCCParams::ADDRTYPE_ID || 
@@ -2282,7 +2295,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     std::map<uint160,int32_t> currencyIndexMap = importCurrencyDef.GetCurrenciesMap();
 
     uint160 systemSourceID = systemSource.GetID();
-    uint160 systemDestID = systemDest.GetID();  // native on destination system
+    uint160 systemDestID = importCurrencyDef.IsGateway() ? importCurrencyDef.GetID() : systemDest.GetID();  // native on destination system
     uint160 importCurrencyID = importCurrencyDef.GetID();
 
     // this matrix tracks n-way currency conversion
