@@ -454,11 +454,7 @@ uint160 DecodeCurrencyName(std::string currencyStr)
 
     uint160 parent;
 
-    // TODO: HARDENING: VDXF - uncomment the following line and remove the one after it to
-    // prevent testnet VDXF IDs from being different than mainnet for the next testnet release
-    //
-    // currencyStr = CleanName(currencyStr, parent, true, currencyStr.back() != '.');
-    currencyStr = CleanName(currencyStr, parent, true);
+    currencyStr = CleanName(currencyStr, parent, true, currencyStr.back() != '.');
 
     if (!parent.IsNull() && CCurrencyDefinition::GetID(currencyStr, parent) == ASSETCHAINS_CHAINID)
     {
