@@ -250,7 +250,13 @@ uint160 CVDXF::GetDataKey(const std::string &keyName, uint160 &nameSpaceID)
     // namespace specifiers have no implicit root
     if (addressParts.size() > 2 && addressParts[1].empty())
     {
-        uint160 nsID = DecodeCurrencyName(addressParts[0] + ".");
+        // TODO: HARDENING: VDXF - uncomment the following line and remove the one after it to
+        // prevent testnet VDXF IDs from being different than mainnet for the next testnet release
+        //
+        // uint160 nsID = DecodeCurrencyName(addressParts[0] + ".");
+        uint160 nsID = DecodeCurrencyName(addressParts[0]);
+
+
         if (!nsID.IsNull())
         {
             nameSpaceID = nsID;
