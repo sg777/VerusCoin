@@ -208,7 +208,6 @@ uint160 CVDXF::GetID(const std::string &Name)
     {
         idHash = Hash(idName, idName + strlen(idName));
         idHash = Hash(parent.begin(), parent.end(), idHash.begin(), idHash.end());
-
     }
     return Hash160(idHash.begin(), idHash.end());
 }
@@ -254,12 +253,7 @@ uint160 CVDXF::GetDataKey(const std::string &keyName, uint160 &nameSpaceID)
     // namespace specifiers have no implicit root
     if (addressParts.size() > 2 && addressParts[1].empty())
     {
-        // TODO: HARDENING: VDXF - uncomment the following line and remove the one after it to
-        // prevent testnet VDXF IDs from being different than mainnet for the next testnet release
-        //
-        // uint160 nsID = DecodeCurrencyName(addressParts[0] + ".");
-        uint160 nsID = DecodeCurrencyName(addressParts[0]);
-
+        uint160 nsID = DecodeCurrencyName(addressParts[0] + ".");
 
         if (!nsID.IsNull())
         {
