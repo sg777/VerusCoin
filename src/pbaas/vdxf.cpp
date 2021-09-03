@@ -215,7 +215,11 @@ uint160 CVDXF::GetID(const std::string &Name)
 
 uint160 CVDXF::GetID(const std::string &Name, uint160 &parent)
 {
+    // TODO: HARDENING: VDXF - replace the line below the commented line with the commented line
+    // on testnet reset
+    // std::string cleanName = Name == DATA_KEY_SEPARATOR ? Name : CleanName(Name, parent);
     std::string cleanName = CleanName(Name, parent);
+
     if (cleanName.empty())
     {
         return uint160();
