@@ -208,7 +208,8 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
         std::string cleanName = CleanName(str, parent);
         if (cleanName != "")
         {
-            return CIdentityID(CIdentity::GetID(cleanName, parent));
+            parent.SetNull();
+            return CIdentityID(CIdentity::GetID(str, parent));
         }
     }
 
