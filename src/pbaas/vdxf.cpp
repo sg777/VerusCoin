@@ -214,10 +214,16 @@ uint160 CVDXF::GetID(const std::string &Name)
 
 uint160 CVDXF::GetID(const std::string &Name, uint160 &parent)
 {
-    // TODO: HARDENING: VDXF - replace the line below the commented line with the commented line
-    // on testnet reset
-    // std::string cleanName = Name == DATA_KEY_SEPARATOR ? Name : CleanName(Name, parent);
-    std::string cleanName = CleanName(Name, parent);
+    // TODO: HARDENING: VDXF - remove the conditional on testnet reset and make it equivalent to mainnet
+    std::string cleanName;
+    if (VERUS_CHAINNAME == "VRSC")
+    {
+        cleanName = Name == DATA_KEY_SEPARATOR ? Name : CleanName(Name, parent);
+    }
+    else
+    {
+        cleanName = CleanName(Name, parent);
+    }
 
     if (cleanName.empty())
     {
