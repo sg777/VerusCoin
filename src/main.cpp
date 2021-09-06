@@ -3947,6 +3947,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             CUTXORef partialNotarizationEvidenceUTXO;
             CPBaaSNotarization lastNotarization, launchNotarization;
             uint256 txProofRoot;
+            CPartialTransactionProof txProof;
             CAmount converterIssuance = 0;
 
             // move through block one imports and add associated fee to the coinbase fees
@@ -3969,16 +3970,29 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     {
                         uint160 cbCurID = cbCurDef.GetID();
 
+                        if (!(cci = CCrossChainImport(p.vData[0])).IsValid())
+                        {
+                            return state.DoS(10, error("%s: invalid initial import\n", __func__), REJECT_INVALID, "invalid-block");
+                        }
+
+                        // TODO: HARDENING - this currently does not validate the proof, but it would also not
+                        // be accepted as a valid chain on its parent, since the launch notarization is made at the same
+                        // time as the last export, which may contain important information for launch. The resolution is
+                        // to require a later notarization proof root here.
+                        /* 
+                        uint32_t proofHeight = txProof.GetProofHeight();
+                        uint32_t txHeight = txProof.GetBlockHeight();
+                        auto proofRootIt = launchNotarization.proofRoots.find(cci.sourceSystemID);
                         if (!(cci.sourceSystemID == cbCurDef.launchSystemID &&
-                              launchNotarization.proofRoots.count(cci.sourceSystemID) &&
-                              txProofRoot == launchNotarization.proofRoots[cci.sourceSystemID].stateRoot))
+                              proofRootIt != launchNotarization.proofRoots.end() &&
+                              proofHeight == proofRootIt->second.rootHeight &&
+                              txProofRoot == proofRootIt->second.stateRoot))
                         {
                             return state.DoS(10, error("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing"),
                                             REJECT_INVALID, "invalid-block");
-                        }
+                        } // */
 
-                        if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&
-                            cbCurDef.IsValid() &&
+                        if (cbCurDef.IsValid() &&
                             cci.importCurrencyID == cbCurID &&
                             (cbCurID == ASSETCHAINS_CHAINID || cbCurID == ConnectedChains.ThisChain().GatewayConverterID()) &&
                             cci.GetImportInfo(tx, 1, j, ccx, 
@@ -3997,16 +4011,16 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                             std::vector<CReserveTransfer> exportTransfers(reserveTransfers);
                             if (!tempLastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
-                                                                            cbCurDef,
-                                                                            0,
-                                                                            1,
-                                                                            exportTransfers,
-                                                                            transferHash,
-                                                                            newNotarization,
-                                                                            importOutputs,
-                                                                            importedCurrency,
-                                                                            gatewayDepositsUsed,
-                                                                            spentCurrencyOut))
+                                                                           cbCurDef,
+                                                                           0,
+                                                                           1,
+                                                                           exportTransfers,
+                                                                           transferHash,
+                                                                           newNotarization,
+                                                                           importOutputs,
+                                                                           importedCurrency,
+                                                                           gatewayDepositsUsed,
+                                                                           spentCurrencyOut))
                             {
                                 LogPrintf("%s: invalid coinbase import for currency %s on system %s\n", 
                                     __func__,
@@ -4122,7 +4136,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     else // EVAL_NOTARY_EVIDENCE
                     {
                         CTransaction nTx;
-                        CPartialTransactionProof txProof;
                         CNotaryEvidence evidence;
                         CPBaaSNotarization nextNotarization;
 
