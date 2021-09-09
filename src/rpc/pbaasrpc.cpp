@@ -6792,13 +6792,17 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
 UniValue getidentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 4)
     {
         throw runtime_error(
-            "getidentity \"name\"\n"
+            "getidentity \"name@ || iid\" (height) (txproof) (txproofheight)\n"
             "\n\n"
 
             "\nArguments\n"
+            "    \"name@ || iid\"                       (string, required) name followed by \"@\" or i-address of an identity\n"
+            "    \"height\"                             (number, optional) default=current height, return identity as of this height\n"
+            "    \"txproof\"                            (bool, optional) default=false, if true, returns proof of ID\n"
+            "    \"txproofheight\"                      (number, optional) default=\"height\", height from which to generate a proof\n"
 
             "\nResult:\n"
 
@@ -6816,6 +6820,24 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or identity address: \"" + uni_get_str(params[0]) + "\"");
     }
 
+    LOCK(cs_main);
+
+    uint32_t lteHeight = chainActive.Height();
+    if (params.size() > 1)
+    {
+        uint32_t tmpHeight = uni_get_int64(params[1]);
+        if (tmpHeight > 0 && lteHeight > tmpHeight)
+        {
+            lteHeight = tmpHeight;
+        }
+    }
+    bool txProof = params.size() > 2 ? uni_get_bool(params[2]) : false;
+    uint32_t txProofHeight = params.size() > 3 ? uni_get_int64(params[1]) : 0;
+    if (txProofHeight < lteHeight)
+    {
+        txProofHeight = lteHeight;
+    }
+
     CTxIn idTxIn;
     uint32_t height;
 
@@ -6827,7 +6849,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         LOCK(pwalletMain->cs_wallet);
         uint256 txID;
         std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
-        if (pwalletMain->GetIdentity(GetDestinationID(idID), keyAndIdentity))
+        if (pwalletMain->GetIdentity(GetDestinationID(idID), keyAndIdentity, lteHeight))
         {
             canSign = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SIGN;
             canSpend = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SPEND;
@@ -6835,10 +6857,8 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         }
     }
 
-    LOCK(cs_main);
-
     uint160 identityID = GetDestinationID(idID);
-    identity = CIdentity::LookupIdentity(CIdentityID(identityID), 0, &height, &idTxIn);
+    identity = CIdentity::LookupIdentity(CIdentityID(identityID), lteHeight, &height, &idTxIn);
 
     if (!identity.IsValid() && identityID == VERUS_CHAINID)
     {
@@ -6868,6 +6888,38 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         ret.push_back(Pair("blockheight", (int64_t)height));
         ret.push_back(Pair("txid", idTxIn.prevout.hash.GetHex()));
         ret.push_back(Pair("vout", (int32_t)idTxIn.prevout.n));
+
+        if (txProof &&
+            !idTxIn.prevout.hash.IsNull() &&
+            height > 0 &&
+            height <= chainActive.Height())
+        {
+            CTransaction idTx;
+            uint256 blkHash;
+            CBlockIndex *pIndex;
+            LOCK(mempool.cs);
+            if (!myGetTransaction(idTxIn.prevout.hash, idTx, blkHash) ||
+                blkHash.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMS, "Identity transacton not found or not indexed / committed");
+            }
+            auto blkMapIt = mapBlockIndex.find(blkHash);
+            if (blkMapIt == mapBlockIndex.end()  ||
+                !chainActive.Contains(pIndex = blkMapIt->second))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMS, "Identity transacton not indexed / committed");
+            }
+            CPartialTransactionProof idProof = CPartialTransactionProof(idTx, 
+                                                                        std::vector<int>(), 
+                                                                        std::vector<int>({(int)idTxIn.prevout.n}), 
+                                                                        pIndex, 
+                                                                        txProofHeight);
+            if (idProof.IsValid())
+            {
+                ret.push_back(Pair("proof", idProof.ToUniValue()));
+            }
+        }
+
         return ret;
     }
     else

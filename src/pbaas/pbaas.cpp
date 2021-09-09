@@ -1347,7 +1347,6 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                 params.push_back(EncodeDestination(CIdentityID(FirstNotaryChain().chainDefinition.GetID())));
                 chainDef = find_value(RPCCallRoot("getcurrency", params), "result");
 
-                // TODO: HARDENING - ensure that the ID from chainDef is the same ID
                 if (!chainDef.isNull() && CheckVerusPBaaSAvailable(chainInfo, chainDef))
                 {
                     // if we have not passed block 1 yet, store the best known update of our current state
@@ -3187,6 +3186,7 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
                                                                           std::vector<int>({(int)idx.first.index}),
                                                                           blockIt->second,
                                                                           blockIt->second->GetHeight());
+                        notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(blockIt->second->GetHeight());
                         retVal = true;
                     }
                 }

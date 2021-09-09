@@ -772,10 +772,17 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                 }
                 auto hw  = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
 
-                // TODO: HARDENING - ensure this is completely valid
                 for (auto &oneTransfer : reserveTransfers)
                 {
-                    hw << oneTransfer;
+                    if (checkOK = oneTransfer.IsValid())
+                    {
+                        hw << oneTransfer;
+                    }
+                    else
+                    {
+                        checkOK = false;
+                        break;
+                    }
                 }
 
                 if (!ccx.IsValid() || !checkOK || (ccx.hashReserveTransfers != hw.GetHash()) )

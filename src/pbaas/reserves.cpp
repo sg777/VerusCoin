@@ -1819,7 +1819,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             }
 
                             // TODO: HARDENING - this check skips checking imported IDs, as it cannot verify whether they have been skipped
-                            // because they are in the mem pool on the same transaction. we need to confirm that imported IDs are valid 
+                            // because they are in the mem pool on the same transaction, as we have not
+                            // completed making the transaction yet. we need to confirm that imported IDs are valid 
                             // from the importing system and not duplicate.
 
                             int idCheckOffset = 0;

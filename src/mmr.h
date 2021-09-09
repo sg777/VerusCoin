@@ -597,15 +597,11 @@ public:
         READWRITE(storageProofKey);
         READWRITE(storageProof);
         READWRITE(storageProofValue);
-
-
     }
 
     uint256 SafeCheck(uint256 hash) 
     {
-        
         return verifyStorageProof(hash);
-      
     }
 };
 typedef CPATRICIABranch<CHashWriter> CETHPATRICIABranch;

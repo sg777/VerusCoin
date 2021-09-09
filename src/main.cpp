@@ -3975,10 +3975,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             return state.DoS(10, error("%s: invalid initial import\n", __func__), REJECT_INVALID, "invalid-block");
                         }
 
-                        // TODO: HARDENING - this currently does not validate the proof, but it would also not
-                        // be accepted as a valid chain on its parent, since the launch notarization is made at the same
-                        // time as the last export, which may contain important information for launch. The resolution is
-                        // to require a later notarization proof root here.
+                        // TODO: HARDENING - uncomment this block and confirm check success on new testnet reset
                         /* 
                         uint32_t proofHeight = txProof.GetProofHeight();
                         uint32_t txHeight = txProof.GetBlockHeight();
