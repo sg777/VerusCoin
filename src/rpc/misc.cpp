@@ -778,7 +778,7 @@ UniValue hashdata(const UniValue& params, bool fHelp)
             "\nReturns the hash of the data in a hex message\n"
             "\nArguments:\n"
             "  \"hexdata\"            (string, required) This message is converted from hex, the data is hashed, then returned\n"
-            "  \"hashtype\"           (string, optional) one of (\"sha256rev\", \"sha256D\", \"blake2b\", \"keccak256\", \"verushash2\", \"verushash2b\", \"verushash2.1\"), defaults to sha256\n"
+            "  \"hashtype\"           (string, optional) one of (\"sha256rev\", \"sha256D\", \"blake2b\", \"blake2bnopersonal\", \"keccak256\", \"verushash2\", \"verushash2b\", \"verushash2.1\"), defaults to sha256\n"
             "\nResult:\n"
             "  \"hashresult\"         (hexstring) 32 byte hash in hex of the data passed in using the hash of the specific blockheight\n"
             "\nExamples:\n"
@@ -814,7 +814,7 @@ UniValue hashdata(const UniValue& params, bool fHelp)
     {
         CHashWriterSHA256 hw(SER_GETHASH, PROTOCOL_VERSION);
         hw.write((const char *)vmsg.data(), vmsg.size());
-        uint256 result = hw.GetHash();
+        result = hw.GetHash();
         // to be compatible with data and file hashing tools when users compare the output, such as sha256sum,
         // we reverse the normally little endian value
         std::reverse(result.begin(), result.end());
@@ -828,6 +828,12 @@ UniValue hashdata(const UniValue& params, bool fHelp)
     else if (hashType == "blake2b")
     {
         CBLAKE2bWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+        hw.write((const char *)vmsg.data(), vmsg.size());
+        result = hw.GetHash();
+    }
+    else if (hashType == "blake2bnopersonal")
+    {
+        CBLAKE2bWriter hw(SER_GETHASH, PROTOCOL_VERSION, {0});
         hw.write((const char *)vmsg.data(), vmsg.size());
         result = hw.GetHash();
     }
