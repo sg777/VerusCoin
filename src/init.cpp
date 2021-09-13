@@ -2104,5 +2104,9 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     // SENDALERT
     threadGroup.create_thread(boost::bind(ThreadSendAlert));
 
+    if (pwalletMain->IsCrypted()) {
+        pwalletMain->Lock();
+    }
+
     return !fRequestShutdown;
 }
