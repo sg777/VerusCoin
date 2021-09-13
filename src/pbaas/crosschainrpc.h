@@ -1122,6 +1122,7 @@ public:
     UniValue ToUniValue() const;
 };
 
+// TODO: HARDENING we should make sure we handle PROOF_CHAINID before release rather than an assert
 class CNativeHashWriter
 {
 private:
@@ -1147,7 +1148,6 @@ public:
             }
             case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
             {
-                state.hw_blake2b = new CBLAKE2bWriter(SER_GETHASH, PROTOCOL_VERSION, personal);
                 break;
             }
             case CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION:
@@ -1156,7 +1156,9 @@ public:
                 break;
             }
             default:
+            {
                 assert(false);
+            }
         }
     }
 
