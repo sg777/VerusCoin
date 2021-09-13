@@ -1141,13 +1141,10 @@ public:
         nativeHashType = proofProtocol;
         switch (nativeHashType)
         {
+            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
             case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
             {
                 state.hw_blake2b = new CBLAKE2bWriter(SER_GETHASH, PROTOCOL_VERSION, personal);
-                break;
-            }
-            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
-            {
                 break;
             }
             case CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION:
@@ -1169,6 +1166,7 @@ public:
             switch (nativeHashType)
             {
                 case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
+                case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
                 {
                     delete state.hw_blake2b;
                     break;
@@ -1185,7 +1183,9 @@ public:
 
     static bool IsValidHashType(CCurrencyDefinition::EProofProtocol hashType)
     {
-        return (hashType == CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR || hashType == CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
+        return (hashType == CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR ||
+                hashType == CCurrencyDefinition::EProofProtocol::PROOF_CHAINID ||
+                hashType == CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
     }
 
     bool IsValid()
@@ -1208,6 +1208,7 @@ public:
         switch (nativeHashType)
         {
             case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
+            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
             {
                 state.hw_blake2b->write(pch, size);
                 break;
@@ -1227,6 +1228,7 @@ public:
         switch (nativeHashType)
         {
             case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
+            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
             {
                 result = state.hw_blake2b->GetHash();
                 break;
