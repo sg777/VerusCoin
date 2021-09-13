@@ -1145,6 +1145,11 @@ public:
                 state.hw_blake2b = new CBLAKE2bWriter(SER_GETHASH, PROTOCOL_VERSION, personal);
                 break;
             }
+            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
+            {
+                state.hw_blake2b = new CBLAKE2bWriter(SER_GETHASH, PROTOCOL_VERSION, personal);
+                break;
+            }
             case CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION:
             {
                 state.hw_keccack = new CKeccack256Writer();
