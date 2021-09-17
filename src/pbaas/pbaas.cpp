@@ -216,8 +216,11 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
             p.vData.size() &&
             (authorizingImport = CCrossChainImport(p.vData[0])).IsValid() &&
-            authorizingImport.importCurrencyID == sourceRD.controllingCurrencyID)
+            (authorizingImport.importCurrencyID == sourceRD.controllingCurrencyID ||
+             authorizingImport.sourceSystemID == sourceRD.controllingCurrencyID))
         {
+            // TODO: HARDENING - ensure that we are correctly qualifying a source system import vs.
+            // controlling token import, it should be fine due to the last two lines in the if above, but confirm
             break;
         }
     }
