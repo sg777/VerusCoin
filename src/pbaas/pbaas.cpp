@@ -216,11 +216,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
             p.vData.size() &&
             (authorizingImport = CCrossChainImport(p.vData[0])).IsValid() &&
-            (authorizingImport.importCurrencyID == sourceRD.controllingCurrencyID ||
-             authorizingImport.sourceSystemID == sourceRD.controllingCurrencyID))
+            (authorizingImport.importCurrencyID == sourceRD.controllingCurrencyID))
         {
-            // TODO: HARDENING - ensure that we are correctly qualifying a source system import vs.
-            // controlling token import, it should be fine due to the last two lines in the if above, but confirm
             break;
         }
     }
@@ -2361,13 +2358,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                    CTxIn(lastImportTxID, notarizationOutNum));
 
             // verify that the current export from the source system spends the prior export from the source system
-
-            // TODO: HARDENING - remove the ETH specific check, as the ETH proof should
-            // include the prior export to ensure ordering
             if (useProofs &&
                 !(ccx.IsChainDefinition() ||
                   lastSourceCCI.exportTxId.IsNull() ||
-                  sourceSystemDef.proofProtocol == sourceSystemDef.PROOF_ETHNOTARIZATION ||
                   (ccx.firstInput > 0 &&
                    exportTx.vin[ccx.firstInput - 1].prevout.hash == lastSourceCCI.exportTxId &&
                    exportTx.vin[ccx.firstInput - 1].prevout.n == lastSourceCCI.exportTxOutNum)))
