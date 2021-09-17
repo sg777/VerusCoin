@@ -714,7 +714,7 @@ UniValue getvdxfid(const UniValue& params, bool fHelp)
             "{                        (object) object with both base58check and hex vdxfid values of string and parents\n"
             "  \"vdxfid\"             (base58check) i-ID of the URI processed with the VDXF\n"
             "  \"hash160result\"      (hexstring) 20 byte hash in hex of the URL string passed in, processed with the VDXF\n"
-            "  \"qualifiedname\":    (object) separate name and parent ID value\n"
+            "  \"qualifiedname\":     (object) separate name and parent ID value\n"
             "  {\n"
             "    \"name\":            (string) leaf name\n"
             "    \"parentid\" | \"namespace\": (string) parent ID (or namespace if VDXF key) of name\n"

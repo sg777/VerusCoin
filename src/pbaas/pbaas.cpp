@@ -2358,9 +2358,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                    CTxIn(lastImportTxID, notarizationOutNum));
 
             // verify that the current export from the source system spends the prior export from the source system
+
+            // TODO: HARDENING - remove the ETH specific check, as the ETH proof should
+            // include the prior export to ensure ordering
             if (useProofs &&
                 !(ccx.IsChainDefinition() ||
                   lastSourceCCI.exportTxId.IsNull() ||
+                  sourceSystemDef.proofProtocol == sourceSystemDef.PROOF_ETHNOTARIZATION ||
                   (ccx.firstInput > 0 &&
                    exportTx.vin[ccx.firstInput - 1].prevout.hash == lastSourceCCI.exportTxId &&
                    exportTx.vin[ccx.firstInput - 1].prevout.n == lastSourceCCI.exportTxOutNum)))
