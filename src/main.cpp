@@ -3560,6 +3560,22 @@ static int64_t nTimeIndex = 0;
 static int64_t nTimeCallbacks = 0;
 static int64_t nTimeTotal = 0;
 
+void SetMaxScriptElementSize(uint32_t height)
+{
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_PBAAS;
+    }
+    else if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_IDENTITY)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
+    }
+    else
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
+    }
+}
+
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex, CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck, bool fCheckPOW)
 {
     if ( KOMODO_STOPAT != 0 && pindex->GetHeight() > KOMODO_STOPAT )
@@ -4532,10 +4548,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     // END insightexplorer
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(pindex->GetHeight() + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
+    SetMaxScriptElementSize(pindex->GetHeight() + 1);
 
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
@@ -5230,14 +5243,7 @@ bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams,
         return false;
     }
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
-    else
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
-    }
+    SetMaxScriptElementSize(chainActive.Height() + 1);
 
     return true;
 }
@@ -6366,14 +6372,7 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
     if (nHeight > 250)
         cheatList.Prune(nHeight - 200);
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
-    else
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
-    }
+    SetMaxScriptElementSize(nHeight + 1);
 
     RemoveCoinbaseFromMemPool(*pblock);
     return true;
@@ -6796,14 +6795,7 @@ bool static LoadBlockIndexDB()
     
     EnforceNodeDeprecation(chainActive.Height(), true);
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
-    else
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
-    }
+    SetMaxScriptElementSize(chainActive.Height() + 1);
 
     return true;
 }

@@ -32,7 +32,8 @@ class CCurrencyState;
 class CIdentity;
 
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_V2 = 1024;
-static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_IDENTITY = 3073;    // fulfillment maximum size + 1, MAKE SURE TO KEEP MAX_BINARY_CC_SIZE IN SYNC WITH THIS-1, BUF_SIZE in crypto conditions, should be >=
+static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_IDENTITY = 3073;  // fulfillment maximum size + 1, MAKE SURE TO KEEP MAX_BINARY_CC_SIZE IN SYNC WITH THIS-1, BUF_SIZE in crypto conditions, should be >=
+static const unsigned int MAX_SCRIPT_ELEMENT_SIZE_PBAAS = 5120;     // fulfillment maximum size + 1, MAKE SURE TO KEEP MAX_BINARY_CC_SIZE IN SYNC WITH THIS-1, BUF_SIZE in crypto conditions, should be >=
 
 // Maximum script length in bytes
 static const int MAX_SCRIPT_SIZE = 10000;

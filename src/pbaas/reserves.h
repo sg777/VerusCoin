@@ -836,7 +836,7 @@ public:
     CCurrencyValueMap totalBurned;              // if this is a cross chain export, some currencies will be burned, the rest held in deposits
     CTransferDestination exporter;              // typically the exporting miner or staker's address, to accept deferred payment for the export
 
-    int32_t firstInput;                         // if export is from inputs, on chain of reserveTransfers, this is first input
+    int32_t firstInput;                         // if export is from inputs, on chain of reserveTransfers, this is first input, -1 for cross-chain
     std::vector<CReserveTransfer> reserveTransfers; // reserve transfers for this export, can be split across multiple outputs
 
     CCrossChainExport() : nVersion(VERSION_INVALID), flags(0), sourceHeightStart(0), sourceHeightEnd(0), numInputs(0), firstInput(0) {}
