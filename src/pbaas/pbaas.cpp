@@ -2257,10 +2257,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // or an external chain/gateway
         std::vector<CInputDescriptor> localDeposits;
         std::vector<CInputDescriptor> crossChainDeposits;
-        if (!ConnectedChains.GetReserveDeposits(ccx.destCurrencyID, view, localDeposits))
+
+        if (ccx.sourceSystemID != ccx.destCurrencyID)
         {
-            LogPrintf("%s: cannot get reserve deposits for export in tx %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
-            return false;
+            if (!ConnectedChains.GetReserveDeposits(ccx.destCurrencyID, view, localDeposits))
+            {
+                LogPrintf("%s: cannot get reserve deposits for export in tx %s\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str());
+                return false;
+            }
         }
 
         // DEBUG OUTPUT
@@ -2979,7 +2983,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 }
             }
 
-            // DEBUG output only
+            /*// DEBUG output only
             for (auto &oneTxId : txesToShow)
             {
                 CTransaction inputTx;
@@ -3004,7 +3008,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             if (!myAddtomempool(newImportTx, &state))
             {
                 LogPrintf("%s: %s\n", __func__, state.GetRejectReason().c_str());
-                if (state.GetRejectReason() == "bad-txns-inputs-missing")
+                if (state.GetRejectReason() == "bad-txns-inputs-missing" || state.GetRejectReason() == "bad-txns-inputs-duplicate")
                 {
                     for (auto &oneIn : newImportTx.vin)
                     {
