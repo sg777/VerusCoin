@@ -4430,19 +4430,6 @@ bool PrecheckFeePool(const CTransaction &tx, int32_t outNum, CValidationState &s
     return true;
 }
 
-bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
-{
-    // do a basic sanity check that this reserve transfer's values are consistent
-    COptCCParams p;
-    CReserveTransfer rt;
-    return (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-            p.IsValid() &&
-            p.evalCode == EVAL_RESERVE_TRANSFER &&
-            p.vData.size() &&
-            (rt = CReserveTransfer(p.vData[0])).IsValid() &&
-            rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue);
-}
-
 bool PrecheckReserveDeposit(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     // do a basic sanity check that this reserve transfer's values are consistent
