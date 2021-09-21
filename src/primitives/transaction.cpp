@@ -755,7 +755,7 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
             {
                 // unpack data specific to export and reserve transfers
                 CDataStream s = CDataStream(vdxfObj.data, SER_NETWORK, PROTOCOL_VERSION);
-                std::vector<CReserveTransfer> reserveTransfers;
+                uint256 prevtxid;
                 CCrossChainExport ccx;
                 CCcontract_info CC;
                 CCcontract_info *cp;
@@ -763,45 +763,20 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                 try
                 {
                     s >> ccx;
-                    s >> reserveTransfers;
+                    s >> prevtxid;
                 }
                 catch (const std::runtime_error &e)
                 {
-                    LogPrintf("Cross Chain : %s\n", e.what());
+                    LogPrintf("ETH Rehydrate(vdxfObj) Error : %s\n", e.what());
                     checkOK = false;
                 }
-                auto hw  = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
-
-                for (auto &oneTransfer : reserveTransfers)
-                {
-                    if (checkOK = oneTransfer.IsValid())
-                    {
-                        hw << oneTransfer;
-                    }
-                    else
-                    {
-                        checkOK = false;
-                        break;
-                    }
-                }
-
-                if (!ccx.IsValid() || !checkOK || (ccx.hashReserveTransfers != hw.GetHash()) )
-                {
-
-                    printf("%s: Cross chain ReserveTransfer check invalid.\n", __func__);
-                    LogPrintf("%s: Cross chain ReserveTransfer check invalid.\n", __func__);
-                    
-                    checkOK = false;
-                }
-
-                if (checkOK)
+              
+                if (ccx.IsValid() && checkOK)
                 {
                     auto hw2 = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
                     hw2 << ccx;
-                    for (auto &oneTransfer : reserveTransfers)
-                    {
-                        hw2 << oneTransfer;
-                    }
+                    hw2 << prevtxid;
+                    
                    
                     txRoot = hw2.GetHash();
                     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
@@ -815,6 +790,8 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                 }
                 else
                 {
+                    if(checkOK)
+                        LogPrintf("Invalid ETH ccx : %s\n", __func__);
                     txRoot = uint256();
                 }
             }
