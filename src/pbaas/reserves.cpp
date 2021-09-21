@@ -466,7 +466,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             }
 
             uint160 externalSystemID = ccx.sourceSystemID == ASSETCHAINS_CHAINID ? 
-                                       ((ccx.destSystemID  == ASSETCHAINS_CHAINID) ? uint160() : ccx.destSystemID) : 
+                                       ((ccx.destSystemID == ASSETCHAINS_CHAINID) ? uint160() : ccx.destSystemID) : 
                                        ccx.sourceSystemID;
 
             std::map<uint160, CProofRoot>::iterator proofIt;
@@ -482,6 +482,10 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                         break;
                     }
                 }
+            }
+            else if (!externalSystemID.IsNull())
+            {
+                return state.Error(strprintf("%s: no proof root to validate export for external system %s", __func__, EncodeDestination(CIdentityID(externalSystemID)).c_str()));
             }
 
             int32_t nextOutput;
