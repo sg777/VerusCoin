@@ -898,22 +898,103 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
         rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue)
     {
+        uint160 systemDestID, importCurrencyID;
         CCurrencyDefinition systemDest, importCurrencyDef;
+        CPBaaSNotarization startingNotarization;
+
         if (rt.IsImportToSource())
         {
-            importCurrencyDef = ConnectedChains.GetCachedCurrency(rt.FirstCurrency());
+            importCurrencyID = rt.FirstCurrency();
         }
         else
         {
-            importCurrencyDef = ConnectedChains.GetCachedCurrency(rt.destCurrencyID);
+            importCurrencyID = rt.destCurrencyID;
         }
-        systemDest = ConnectedChains.GetCachedCurrency(importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID);
+
+        importCurrencyDef = ConnectedChains.GetCachedCurrency(importCurrencyID);
+
+        if (!importCurrencyDef.IsValid())
+        {
+            // the only case this is ok is if we are part of a currency definition and this is to a new currency
+            // if that is the case, importCurrencyDef will always be invalid
+            if (!importCurrencyDef.IsValid())
+            {
+                std::vector<CCurrencyDefinition> newCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
+                if (newCurrencies.size())
+                {
+                    for (auto oneCurrency : newCurrencies)
+                    {
+                        if (oneCurrency.GetID() == importCurrencyID)
+                        {
+                            CPBaaSNotarization oneNotarization;
+                            CCurrencyDefinition tempCurDef;
+                            importCurrencyDef = oneCurrency;
+                            systemDestID = importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID;
+                            // we need to get the first notarization and possibly systemDest currency here as well
+                            for (auto oneOut : tx.vout)
+                            {
+                                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                    p.IsValid())
+                                {
+                                    if ((p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                                        p.vData.size() &&
+                                        (oneNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
+                                        oneNotarization.currencyID == importCurrencyID)
+                                    {
+                                        startingNotarization = oneNotarization;
+                                    }
+                                    else if ((p.evalCode == EVAL_CURRENCY_DEFINITION) &&
+                                             p.vData.size() &&
+                                             (tempCurDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
+                                             tempCurDef.GetID() == systemDestID)
+                                    {
+                                        systemDest = tempCurDef;
+                                    }
+                                }
+                                if (oneNotarization.IsValid() &&
+                                    systemDest.IsValid())
+                                {
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
         CChainNotarizationData cnd;
-        if (!(GetNotarizationData(importCurrencyDef.GetID(), cnd) && cnd.IsConfirmed()))
+        if (!(importCurrencyDef.IsValid() &&
+             (startingNotarization.IsValid() ||
+              (GetNotarizationData(importCurrencyDef.GetID(), cnd) &&
+               cnd.IsConfirmed() &&
+               (startingNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid()))))
         {
-            LogPrintf("%s: Valid notarization required and not found for import currency of reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
-            return false;
+            // the only case this is ok is if we are part of a currency definition and this is to a new currency
+            // if that is the case, importCurrencyDef will always be invalid
+            if (!importCurrencyDef.IsValid())
+            {
+                LogPrintf("%s: Invalid currency in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Invalid currency in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+            else
+            {
+                LogPrintf("%s: Valid notarization required and not found for import currency of reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Valid notarization required and not found for import currency of reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+        }
+
+        if (!systemDest.IsValid())
+        {
+            systemDestID = importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID;
+            systemDest = systemDestID == importCurrencyID ? importCurrencyDef : ConnectedChains.GetCachedCurrency(systemDestID);
+        }
+
+        if (!systemDest.IsValid())
+        {
+            LogPrintf("%s: Invalid currency system in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+            return state.Error("Invalid currency system in reserve transfer " + rt.ToUniValue().write(1,2));
         }
 
         CReserveTransactionDescriptor rtxd;
@@ -924,7 +1005,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         if (rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), 
                                                  systemDest, 
                                                  importCurrencyDef, 
-                                                 cnd.vtx[cnd.lastConfirmed].second.currencyState,
+                                                 startingNotarization.currencyState,
                                                  std::vector<CReserveTransfer>({rt}), 
                                                  height,
                                                  vOutputs,
