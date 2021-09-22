@@ -999,8 +999,19 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         CReserveTransactionDescriptor rtxd;
         CCoinbaseCurrencyState dummyState;
+        CPBaaSNotarization nextNotarization;
         std::vector<CTxOut> vOutputs;
         CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
+        CCurrencyValueMap newPreConversionReservesIn = rt.TotalCurrencyOut();
+
+        if (importCurrencyDef.IsFractional() &&
+            !(startingNotarization.IsLaunchCleared() && !startingNotarization.currencyState.IsLaunchCompleteMarker()))
+        {
+            // normalize prices on the way in to prevent overflows on first pass
+            std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(startingNotarization.currencyState.currencies);
+            dummyState.reserves = dummyState.AddVectors(dummyState.reserves, newReservesVector);
+            startingNotarization.currencyState.conversionPrice = dummyState.PricesInReserve();
+        }
 
         if (rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), 
                                                  systemDest, 
