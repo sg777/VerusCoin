@@ -998,7 +998,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
 
         CReserveTransactionDescriptor rtxd;
-        CCoinbaseCurrencyState dummyState;
+        CCoinbaseCurrencyState dummyState = startingNotarization.currencyState;
         CPBaaSNotarization nextNotarization;
         std::vector<CTxOut> vOutputs;
         CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;

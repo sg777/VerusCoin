@@ -770,22 +770,21 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
                     LogPrintf("ETH Rehydrate(vdxfObj) Error : %s\n", e.what());
                     checkOK = false;
                 }
-              
+
                 if (ccx.IsValid() && checkOK)
                 {
                     auto hw2 = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
                     hw2 << ccx;
                     hw2 << prevtxid;
-                    
-                   
+
                     txRoot = hw2.GetHash();
                     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
                     std::vector<CTxDestination> dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
                     mtx.vout.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx))));
-                
+
                     isPartial = true;
-                    
+
                     outTx = mtx;
                 }
                 else
