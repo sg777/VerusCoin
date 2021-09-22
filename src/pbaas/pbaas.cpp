@@ -1012,6 +1012,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             dummyState.reserves = dummyState.AddVectors(dummyState.reserves, newReservesVector);
             startingNotarization.currencyState.conversionPrice = dummyState.PricesInReserve();
         }
+        if (startingNotarization.currencyState.currencies.size() != startingNotarization.currencyState.conversionPrice.size())
+        {
+            startingNotarization.currencyState.conversionPrice = dummyState.PricesInReserve();
+        }
 
         if (rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), 
                                                  systemDest, 
