@@ -474,7 +474,7 @@ bool SetThisChain(const UniValue &chainDefinition)
     }
     else
     {
-        ConnectedChains.ThisChain().options = (CCurrencyDefinition::OPTION_PBAAS | | CCurrencyDefinition::OPTION_ID_REFERRALS);
+        ConnectedChains.ThisChain().options = (CCurrencyDefinition::OPTION_PBAAS || CCurrencyDefinition::OPTION_ID_REFERRALS);
         ConnectedChains.ThisChain().systemID = ConnectedChains.ThisChain().GetID();   
     }
 
