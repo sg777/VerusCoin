@@ -1391,14 +1391,14 @@ public:
         priorWeights(PriorWeights)
     {
         int numCurrencies = currencies.size();
-        if (!reserveIn.size() == numCurrencies) reserveIn.resize(currencies.size());
-        if (!primaryCurrencyIn.size() == numCurrencies) primaryCurrencyIn.resize(currencies.size());
-        if (!reserveOut.size() == numCurrencies) reserveOut.resize(currencies.size());
-        if (!conversionPrice.size() == numCurrencies) conversionPrice.resize(currencies.size());
-        if (!viaConversionPrice.size() == numCurrencies) viaConversionPrice.resize(currencies.size());
-        if (!fees.size() == numCurrencies) fees.resize(currencies.size());
-        if (!conversionFees.size() == numCurrencies) conversionFees.resize(currencies.size());
-        if (!priorWeights.size() == numCurrencies) priorWeights.resize(currencies.size());
+        if (reserveIn.size() != numCurrencies) reserveIn.resize(currencies.size());
+        if (primaryCurrencyIn.size() != numCurrencies) primaryCurrencyIn.resize(currencies.size());
+        if (reserveOut.size() != numCurrencies) reserveOut.resize(currencies.size());
+        if (conversionPrice.size() != numCurrencies) conversionPrice.resize(currencies.size());
+        if (viaConversionPrice.size() != numCurrencies) viaConversionPrice.resize(currencies.size());
+        if (fees.size() != numCurrencies) fees.resize(currencies.size());
+        if (conversionFees.size() != numCurrencies) conversionFees.resize(currencies.size());
+        if (priorWeights.size() != numCurrencies) priorWeights.resize(currencies.size());
     }
 
     CCoinbaseCurrencyState(const UniValue &uni);
@@ -1441,7 +1441,7 @@ public:
 
     void ClearForNextBlock()
     {
-        priorWeights = weights;
+        priorWeights = weights.size() ? weights : std::vector<int32_t>(currencies.size());
         emitted = 0;
         primaryCurrencyOut = 0;
         preConvertedOut = 0;
