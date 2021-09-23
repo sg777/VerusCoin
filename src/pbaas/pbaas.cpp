@@ -901,6 +901,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         uint160 systemDestID, importCurrencyID;
         CCurrencyDefinition systemDest, importCurrencyDef;
         CPBaaSNotarization startingNotarization;
+        CChainNotarizationData cnd;
 
         if (rt.IsImportToSource())
         {
@@ -913,63 +914,59 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         importCurrencyDef = ConnectedChains.GetCachedCurrency(importCurrencyID);
 
-        if (!importCurrencyDef.IsValid())
+        if (importCurrencyDef.IsValid() && GetNotarizationData(importCurrencyDef.GetID(), cnd) && cnd.IsConfirmed())
+        {
+            startingNotarization = cnd.vtx[cnd.lastConfirmed].second;
+        }
+        else
         {
             // the only case this is ok is if we are part of a currency definition and this is to a new currency
             // if that is the case, importCurrencyDef will always be invalid
-            if (!importCurrencyDef.IsValid())
+            std::vector<CCurrencyDefinition> newCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
+            if (newCurrencies.size())
             {
-                std::vector<CCurrencyDefinition> newCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
-                if (newCurrencies.size())
+                for (auto oneCurrency : newCurrencies)
                 {
-                    for (auto oneCurrency : newCurrencies)
+                    if (oneCurrency.GetID() == importCurrencyID)
                     {
-                        if (oneCurrency.GetID() == importCurrencyID)
+                        CPBaaSNotarization oneNotarization;
+                        CCurrencyDefinition tempCurDef;
+                        importCurrencyDef = oneCurrency;
+                        systemDestID = importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID;
+                        // we need to get the first notarization and possibly systemDest currency here as well
+                        for (auto oneOut : tx.vout)
                         {
-                            CPBaaSNotarization oneNotarization;
-                            CCurrencyDefinition tempCurDef;
-                            importCurrencyDef = oneCurrency;
-                            systemDestID = importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID;
-                            // we need to get the first notarization and possibly systemDest currency here as well
-                            for (auto oneOut : tx.vout)
+                            if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                p.IsValid())
                             {
-                                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
-                                    p.IsValid())
+                                if ((p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                                    p.vData.size() &&
+                                    (oneNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
+                                    oneNotarization.currencyID == importCurrencyID)
                                 {
-                                    if ((p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
-                                        p.vData.size() &&
-                                        (oneNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
-                                        oneNotarization.currencyID == importCurrencyID)
-                                    {
-                                        startingNotarization = oneNotarization;
-                                    }
-                                    else if ((p.evalCode == EVAL_CURRENCY_DEFINITION) &&
-                                             p.vData.size() &&
-                                             (tempCurDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
-                                             tempCurDef.GetID() == systemDestID)
-                                    {
-                                        systemDest = tempCurDef;
-                                    }
+                                    startingNotarization = oneNotarization;
                                 }
-                                if (oneNotarization.IsValid() &&
-                                    systemDest.IsValid())
+                                else if ((p.evalCode == EVAL_CURRENCY_DEFINITION) &&
+                                            p.vData.size() &&
+                                            (tempCurDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
+                                            tempCurDef.GetID() == systemDestID)
                                 {
-                                    break;
+                                    systemDest = tempCurDef;
                                 }
                             }
-                            break;
+                            if (oneNotarization.IsValid() &&
+                                systemDest.IsValid())
+                            {
+                                break;
+                            }
                         }
+                        break;
                     }
                 }
             }
         }
 
-        CChainNotarizationData cnd;
-        if (!(importCurrencyDef.IsValid() &&
-             (startingNotarization.IsValid() ||
-              (GetNotarizationData(importCurrencyDef.GetID(), cnd) &&
-               cnd.IsConfirmed() &&
-               (startingNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid()))))
+        if (!(importCurrencyDef.IsValid() && startingNotarization.IsValid()))
         {
             // the only case this is ok is if we are part of a currency definition and this is to a new currency
             // if that is the case, importCurrencyDef will always be invalid
