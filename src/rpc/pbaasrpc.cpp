@@ -455,8 +455,6 @@ bool SetThisChain(const UniValue &chainDefinition)
             notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
         }
         notaryChainDef.options = (notaryChainDef.OPTION_PBAAS |
-                                  notaryChainDef.OPTION_CANBERESERVE |
-                                  notaryChainDef.OPTION_ID_ISSUANCE |
                                   notaryChainDef.OPTION_ID_REFERRALS);
         notaryChainDef.idRegistrationFees = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
         notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
@@ -476,7 +474,7 @@ bool SetThisChain(const UniValue &chainDefinition)
     }
     else
     {
-        ConnectedChains.ThisChain().options = (CCurrencyDefinition::OPTION_PBAAS | CCurrencyDefinition::OPTION_CANBERESERVE | CCurrencyDefinition::OPTION_ID_REFERRALS);
+        ConnectedChains.ThisChain().options = (CCurrencyDefinition::OPTION_PBAAS | | CCurrencyDefinition::OPTION_ID_REFERRALS);
         ConnectedChains.ThisChain().systemID = ConnectedChains.ThisChain().GetID();   
     }
 
@@ -5012,11 +5010,6 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Reserve currency " + EncodeDestination(CIdentityID(currency)) + " ends its life before the fractional currency's endblock");
                 }
-
-                if (!reserveCurrencies.back().CanBeReserve())
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + EncodeDestination(CIdentityID(currency)) + " may not be used as a reserve");
-                }
             }
         }
         if (!hasCoreReserve)
@@ -5051,7 +5044,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "                                                             8 = IDREFERRALS\n"
             "                                                             0x10 = IDREFERRALSREQUIRED\n"
             "                                                             0x20 = TOKEN\n"
-            "                                                             0x40 = CANBERESERVE\n"
+            "                                                             0x40 = RESERVED\n"
             "                                                             0x100 = IS_PBAAS_CHAIN\n"
             "\n"
             "         \"name\" : \"xxxx\",              (string, required) name of existing identity with no active or pending blockchain\n"
@@ -5222,8 +5215,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             // then apply the parameters passed, which will simplify the
             // specification with defaults
             std::map<std::string, UniValue> gatewayConverterMap;
-            gatewayConverterMap.insert(std::make_pair("options", CCurrencyDefinition::OPTION_CANBERESERVE +
-                                                                 CCurrencyDefinition::OPTION_FRACTIONAL +
+            gatewayConverterMap.insert(std::make_pair("options", CCurrencyDefinition::OPTION_FRACTIONAL +
                                                                  CCurrencyDefinition::OPTION_TOKEN +
                                                                  CCurrencyDefinition::OPTION_PBAAS_CONVERTER));
             gatewayConverterMap.insert(std::make_pair("parent", EncodeDestination(CIdentityID(newChainID))));
@@ -5289,7 +5281,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             converterOptions &= ~(CCurrencyDefinition::OPTION_GATEWAY + CCurrencyDefinition::OPTION_PBAAS);
             converterOptions |= CCurrencyDefinition::OPTION_FRACTIONAL +
                                 CCurrencyDefinition::OPTION_TOKEN +
-                                CCurrencyDefinition::OPTION_CANBERESERVE +
                                 CCurrencyDefinition::OPTION_PBAAS_CONVERTER;
             gatewayConverterMap["options"] = (int64_t)converterOptions;
 
@@ -5319,7 +5310,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                     oneCurEntry["systemid"] = EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID));
                     oneCurEntry["launchsystemid"] = EncodeDestination(CIdentityID(newChain.GetID()));
                     oneCurEntry["nativecurrencyid"] = DestinationToTransferDestination(CIdentityID(oneCurrencyName.first)).ToUniValue();
-                    oneCurEntry["options"] = CCurrencyDefinition::OPTION_CANBERESERVE + CCurrencyDefinition::OPTION_TOKEN;
+                    oneCurEntry["options"] = CCurrencyDefinition::OPTION_TOKEN;
                     oneCurEntry["proofprotocol"] = CCurrencyDefinition::PROOF_PBAASMMR;
                     oneCurEntry["notarizationprotocol"] = CCurrencyDefinition::NOTARIZATION_AUTO;
                     
@@ -5363,7 +5354,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                     if (!(newReserveDef.IsValid() &&
                           newReserveDef.IsToken() &&
                           !newReserveDef.IsFractional() &&
-                          newReserveDef.CanBeReserve() &&
                           newReserveDef.systemID == ASSETCHAINS_CHAINID &&
                           newReserveDef.parent == newChainID &&
                           newReserveDef.nativeCurrencyID.IsValid() &&

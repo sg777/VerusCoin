@@ -315,7 +315,7 @@ public:
         OPTION_ID_REFERRALS = 8,            // if set, this chain supports referrals
         OPTION_ID_REFERRALREQUIRED = 0x10,  // if set, this chain requires referrals
         OPTION_TOKEN = 0x20,                // if set, this is a token, not a native currency
-        OPTION_CANBERESERVE = 0x40,         // if set, this currency can be used as a reserve for a liquid currency
+        OPTION_RESERVED = 0x40,
         OPTION_GATEWAY = 0x80,              // if set, this routes external currencies
         OPTION_PBAAS = 0x100,               // this is a PBaaS chain definition
         OPTION_PBAAS_CONVERTER = 0x200,     // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
@@ -753,11 +753,6 @@ public:
     bool IsFractional() const
     {
         return ChainOptions() & OPTION_FRACTIONAL;
-    }
-
-    bool CanBeReserve() const
-    {
-        return ChainOptions() & OPTION_CANBERESERVE;
     }
 
     bool IsToken() const

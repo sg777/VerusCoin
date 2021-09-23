@@ -1820,7 +1820,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_reward"] = "0,38400000000,2400000000";
         mapArgs["-ac_halving"] = "1,43200,1051920";
         mapArgs["-ac_decay"] = "100000000,0,0";
-        mapArgs["-ac_options"] = "72,0,0";      // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
+        mapArgs["-ac_options"] = "264,0,0";      // OPTION_ID_REFERRALS + OPTION_PBAAS
         mapArgs["-ac_end"] = "10080,226080,0";
         mapArgs["-ac_timelockgte"] = "19200000000";
         mapArgs["-ac_timeunlockfrom"] = "129600";
@@ -1845,7 +1845,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_eras"] = "1";
         mapArgs["-ac_reward"] = "1200000000";
         mapArgs["-ac_decay"] = "0";
-        mapArgs["-ac_options"] = "72";       // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
+        mapArgs["-ac_options"] = "264";       // OPTION_ID_REFERRALS + OPTION_PBAAS
         mapArgs["-ac_end"] = "0";
         mapArgs["-ac_veruspos"] = "50";
 
