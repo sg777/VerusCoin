@@ -513,15 +513,20 @@ public:
 
     bool IsValid(bool strict=false) const
     {
-        CDataStream s(SER_DISK, PROTOCOL_VERSION);
+        bool isOK = true;
+        if (strict || nVersion >= VERSION_PBAAS)
+        {
+            CDataStream s(SER_DISK, PROTOCOL_VERSION);
+            isOK = (GetSerializeSize(s, *this) + ID_SCRIPT_ELEMENT_OVERHEAD) <= CScript::MAX_SCRIPT_ELEMENT_SIZE;
+        }
 
-        return CPrincipal::IsValid(strict) && name.size() > 0 && 
+        return isOK &&
+               CPrincipal::IsValid(strict) && name.size() > 0 && 
                (name.size() <= MAX_NAME_LEN) &&
                primaryAddresses.size() &&
                (nVersion < VERSION_PBAAS ||
                (!revocationAuthority.IsNull() &&
                 !recoveryAuthority.IsNull() &&
-                (GetSerializeSize(s, *this) + ID_SCRIPT_ELEMENT_OVERHEAD) <= MAX_SCRIPT_ELEMENT_SIZE_PBAAS &&
                 minSigs > 0 &&
                 minSigs <= primaryAddresses.size()));
     }
