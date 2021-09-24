@@ -138,9 +138,107 @@ bool IsReserveOutputInput(const CScript &scriptSig)
     return true;
 }
 
+CReserveTransfer GetReserveTransferToSpend(const CTransaction &spendingTx, uint32_t nIn, CTransaction &sourceTx, uint32_t &height, COptCCParams &p)
+{
+    // if not fulfilled, ensure that no part of the primary identity is modified
+    CReserveTransfer oldReserveTransfer;
+    uint256 blkHash;
+    if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
+    {
+        auto bIt = blkHash.IsNull() ? mapBlockIndex.end() : mapBlockIndex.find(blkHash);
+        if (bIt == mapBlockIndex.end() || !bIt->second)
+        {
+            height = chainActive.Height();
+        }
+        else
+        {
+            height = bIt->second->GetHeight();
+        }
+
+        if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() && 
+            p.evalCode == EVAL_RESERVE_DEPOSIT && 
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
+        {
+            oldReserveTransfer = CReserveTransfer(p.vData[0]);
+        }
+    }
+    return oldReserveTransfer;
+}
+
+
 bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    return true;
+    uint32_t outNum;
+    uint32_t spendingFromHeight;
+    CTransaction txToSpend;
+    COptCCParams p;
+
+    // get reserve transfer to spend
+    CReserveTransfer rt = GetReserveTransferToSpend(tx, nIn, txToSpend, spendingFromHeight, p);
+
+    if (rt.IsValid())
+    {
+        uint160 systemDestID, importCurrencyID;
+        CCurrencyDefinition systemDest, importCurrencyDef;
+        CPBaaSNotarization startingNotarization;
+        CChainNotarizationData cnd;
+
+        if (rt.IsImportToSource())
+        {
+            importCurrencyID = rt.FirstCurrency();
+        }
+        else
+        {
+            importCurrencyID = rt.destCurrencyID;
+        }
+
+        importCurrencyDef = ConnectedChains.GetCachedCurrency(importCurrencyID);
+        if (!importCurrencyDef.IsValid())
+        {
+            return eval->Error("Invalid currency definition for reserve transfer being spent");
+        }
+
+        // TODO: HARDENING
+        // this should be considered fullfilled only when it is being spent to a refund address/ID
+        // ensure this reserve transfer is being spent by a valid export with the appropriate system
+        // and currency destinations as well as totals, or that it is fulfilled
+        if (!fulfilled)
+        {
+            CCrossChainExport ccx;
+            int32_t primaryExportOut, nextOutput;
+            CPBaaSNotarization pbn;
+            std::vector<CReserveTransfer> reserveTransfers;
+            for (int i = 0; i < tx.vout.size(); i++)
+            {
+                COptCCParams p1;
+                if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p1) &&
+                    p1.IsValid() && 
+                    p1.evalCode == EVAL_CROSSCHAIN_EXPORT && 
+                    p.vData.size() > 1 &&
+                    (ccx = CCrossChainExport(p.vData[0])).IsValid() &&
+                    !ccx.IsSystemThreadExport() &&
+                    ccx.destCurrencyID == importCurrencyID &&
+                    ccx.destSystemID == (importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID))
+                {
+                    CCurrencyDefinition systemDef = ConnectedChains.GetCachedCurrency(ccx.destSystemID);
+                    if (ccx.GetExportInfo(tx, i, primaryExportOut, nextOutput, pbn, reserveTransfers, (CCurrencyDefinition::EProofProtocol)systemDef.proofProtocol) &&
+                        ccx.numInputs > 0 &&
+                        nIn >= ccx.firstInput &&
+                        nIn < (ccx.firstInput + ccx.numInputs))
+                    {
+                        // if we successfully got the export info and are included in the export reserve transfers, additional
+                        // validation is done by the export
+                        return true;
+                    }
+                }
+            }
+            return eval->Error("Unauthorized reserve transfer spend without valid export");
+        }
+        return true;
+    }
+    return eval->Error("Attempt to spend invalid reserve transfer");
 }
 bool IsReserveTransferInput(const CScript &scriptSig)
 {
@@ -925,7 +1023,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             std::vector<CCurrencyDefinition> newCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
             if (newCurrencies.size())
             {
-                for (auto oneCurrency : newCurrencies)
+                for (auto &oneCurrency : newCurrencies)
                 {
                     if (oneCurrency.GetID() == importCurrencyID)
                     {
@@ -934,7 +1032,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         importCurrencyDef = oneCurrency;
                         systemDestID = importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID;
                         // we need to get the first notarization and possibly systemDest currency here as well
-                        for (auto oneOut : tx.vout)
+                        for (auto &oneOut : tx.vout)
                         {
                             if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
                                 p.IsValid())
