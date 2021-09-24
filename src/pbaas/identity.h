@@ -521,7 +521,7 @@ public:
                (nVersion < VERSION_PBAAS ||
                (!revocationAuthority.IsNull() &&
                 !recoveryAuthority.IsNull() &&
-                (GetSerializeSize(s, *this) + MIN_SCRIPT_ELEMENT_OVERHEAD) <= MAX_SCRIPT_ELEMENT_SIZE_PBAAS &&
+                (GetSerializeSize(s, *this) + ID_SCRIPT_ELEMENT_OVERHEAD) <= MAX_SCRIPT_ELEMENT_SIZE_PBAAS &&
                 minSigs > 0 &&
                 minSigs <= primaryAddresses.size()));
     }
