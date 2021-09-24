@@ -513,12 +513,15 @@ public:
 
     bool IsValid(bool strict=false) const
     {
+        CDataStream s(SER_DISK, PROTOCOL_VERSION);
+
         return CPrincipal::IsValid(strict) && name.size() > 0 && 
                (name.size() <= MAX_NAME_LEN) &&
                primaryAddresses.size() &&
                (nVersion < VERSION_PBAAS ||
                (!revocationAuthority.IsNull() &&
                 !recoveryAuthority.IsNull() &&
+                (GetSerializeSize(s, *this) + MIN_SCRIPT_ELEMENT_OVERHEAD) <= MAX_SCRIPT_ELEMENT_SIZE_PBAAS &&
                 minSigs > 0 &&
                 minSigs <= primaryAddresses.size()));
     }
