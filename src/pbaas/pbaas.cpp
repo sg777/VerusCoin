@@ -955,6 +955,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                                 }
                             }
                             if (oneNotarization.IsValid() &&
+                                oneNotarization.currencyID == importCurrencyID &&
                                 systemDest.IsValid())
                             {
                                 break;
