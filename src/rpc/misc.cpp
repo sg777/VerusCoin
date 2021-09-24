@@ -189,6 +189,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
                     acEndSubsidy = std::to_string(ASSETCHAINS_ENDSUBSIDY[i]);
                     if (ASSETCHAINS_ERAOPTIONS[i] & CCurrencyDefinition::OPTION_FRACTIONAL)
                     {
+                        //printf("%s: %s, ac_options: %s\n", __func__, std::to_string(ASSETCHAINS_ERAOPTIONS[i]).c_str(), GetArg("-ac_options","").c_str());
                         isReserve = true;
                     }
                 }
