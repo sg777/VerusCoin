@@ -3991,8 +3991,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             return state.DoS(10, error("%s: invalid initial import\n", __func__), REJECT_INVALID, "invalid-block");
                         }
 
-                        // TODO: HARDENING - uncomment this block and confirm check success on new testnet reset
-                        /* 
                         uint32_t proofHeight = txProof.GetProofHeight();
                         uint32_t txHeight = txProof.GetBlockHeight();
                         auto proofRootIt = launchNotarization.proofRoots.find(cci.sourceSystemID);
@@ -4003,7 +4001,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                         {
                             return state.DoS(10, error("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing"),
                                             REJECT_INVALID, "invalid-block");
-                        } // */
+                        }
 
                         if (cbCurDef.IsValid() &&
                             cci.importCurrencyID == cbCurID &&
