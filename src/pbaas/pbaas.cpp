@@ -212,12 +212,12 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
             std::vector<CReserveTransfer> reserveTransfers;
             for (int i = 0; i < tx.vout.size(); i++)
             {
-                COptCCParams p1;
-                if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p1) &&
-                    p1.IsValid() && 
-                    p1.evalCode == EVAL_CROSSCHAIN_EXPORT && 
-                    p.vData.size() > 1 &&
-                    (ccx = CCrossChainExport(p.vData[0])).IsValid() &&
+                COptCCParams exportP;
+                if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(exportP) &&
+                    exportP.IsValid() && 
+                    exportP.evalCode == EVAL_CROSSCHAIN_EXPORT && 
+                    exportP.vData.size() > 1 &&
+                    (ccx = CCrossChainExport(exportP.vData[0])).IsValid() &&
                     !ccx.IsSystemThreadExport() &&
                     ccx.destCurrencyID == importCurrencyID &&
                     ccx.destSystemID == (importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID))
