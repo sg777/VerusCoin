@@ -229,24 +229,27 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
                         {
                             return eval->Error("Invalid destination system " + EncodeDestination(CIdentityID(ccx.destSystemID)) + " for export");
                         }
-                        // the only case this makes sense is if we are refunding back to the launch chain from the system chain
-                        CChainNotarizationData cnd;
-                        if (!(GetNotarizationData(importCurrencyDef.systemID, cnd) && cnd.IsConfirmed()))
+                        systemDef = ConnectedChains.ThisChain();
+                        if (!ccx.GetExportInfo(tx, i, primaryExportOut, nextOutput, pbn, reserveTransfers, (CCurrencyDefinition::EProofProtocol)systemDef.proofProtocol))
                         {
-                            return eval->Error("No valid notarization found for exporting currency");
+                            return eval->Error("Invalid or malformed export 1");
                         }
-                        if (!cnd.vtx[cnd.lastConfirmed].second.IsRefunding())
+
+                        // the only case this makes sense is if we are refunding back to the launch chain from the system chain
+                        if (!pbn.IsRefunding())
                         {
                             return eval->Error("Attempt to export to launch chain from external home chain that is not refunding");
                         }
-                        systemDef = ConnectedChains.ThisChain();
                     }
                     else
                     {
                         systemDef = ConnectedChains.GetCachedCurrency(ccx.destSystemID);
+                        if (!ccx.GetExportInfo(tx, i, primaryExportOut, nextOutput, pbn, reserveTransfers, (CCurrencyDefinition::EProofProtocol)systemDef.proofProtocol))
+                        {
+                            return eval->Error("Invalid or malformed export 1");
+                        }
                     }
-                    if (ccx.GetExportInfo(tx, i, primaryExportOut, nextOutput, pbn, reserveTransfers, (CCurrencyDefinition::EProofProtocol)systemDef.proofProtocol) &&
-                        ccx.numInputs > 0 &&
+                    if (ccx.numInputs > 0 &&
                         nIn >= ccx.firstInput &&
                         nIn < (ccx.firstInput + ccx.numInputs))
                     {
