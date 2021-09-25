@@ -201,10 +201,10 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
         }
 
         // TODO: HARDENING
-        // this should be considered fullfilled only when it is being spent to a refund address/ID
+        // ensure that this is fullfilled only when it is being spent to a refund address/ID
         // ensure this reserve transfer is being spent by a valid export with the appropriate system
         // and currency destinations as well as totals, or that it is fulfilled
-        if (!fulfilled)
+        //if (!fulfilled)
         {
             CCrossChainExport ccx;
             int32_t primaryExportOut, nextOutput;
