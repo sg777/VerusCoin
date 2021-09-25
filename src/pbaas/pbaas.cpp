@@ -157,7 +157,7 @@ CReserveTransfer GetReserveTransferToSpend(const CTransaction &spendingTx, uint3
 
         if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
             p.IsValid() && 
-            p.evalCode == EVAL_RESERVE_DEPOSIT && 
+            p.evalCode == EVAL_RESERVE_TRANSFER && 
             p.version >= COptCCParams::VERSION_V3 &&
             p.vData.size() > 1)
         {
