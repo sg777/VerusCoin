@@ -328,6 +328,12 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
     // where this currency is a system gateway source
     CCrossChainImport authorizingImport;
     CCrossChainImport mainImport;
+    CCurrencyDefinition launchingCurrency;
+
+    CCrossChainExport ccxSource;
+    CPBaaSNotarization importNotarization;
+    int32_t sysCCIOut, importNotarizationOut, evidenceOutStart, evidenceOutEnd;
+    std::vector<CReserveTransfer> reserveTransfers;
 
     // looking for an import output to the controlling currency
     int i;
@@ -338,10 +344,37 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             p.IsValid() &&
             p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
             p.vData.size() &&
-            (authorizingImport = CCrossChainImport(p.vData[0])).IsValid() &&
-            (authorizingImport.importCurrencyID == sourceRD.controllingCurrencyID))
+            (authorizingImport = CCrossChainImport(p.vData[0])).IsValid())
         {
-            break;
+            // the simple case
+            if (authorizingImport.importCurrencyID == sourceRD.controllingCurrencyID)
+            {
+                break;
+            }
+
+            if (!authorizingImport.IsSourceSystemImport())
+            {
+                if (authorizingImport.GetImportInfo(tx,
+                                                    chainActive.Height(),
+                                                    i,
+                                                    ccxSource,
+                                                    authorizingImport,
+                                                    sysCCIOut,
+                                                    importNotarization,
+                                                    importNotarizationOut,
+                                                    evidenceOutStart,
+                                                    evidenceOutEnd,
+                                                    reserveTransfers))
+                {
+                    if (importNotarization.IsRefunding() &&
+                        (launchingCurrency = ConnectedChains.GetCachedCurrency(authorizingImport.importCurrencyID)).IsValid() &&
+                        launchingCurrency.systemID != ASSETCHAINS_CHAINID &&
+                        launchingCurrency.systemID == sourceRD.controllingCurrencyID)
+                    {
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -372,11 +405,6 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
     {
         mainImport = authorizingImport;
     }
-
-    CCrossChainExport ccxSource;
-    CPBaaSNotarization importNotarization;
-    int32_t sysCCIOut, importNotarizationOut, evidenceOutStart, evidenceOutEnd;
-    std::vector<CReserveTransfer> reserveTransfers;
 
     if (mainImport.GetImportInfo(tx,
                                  chainActive.Height(),
