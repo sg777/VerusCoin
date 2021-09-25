@@ -219,10 +219,32 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
                     exportP.vData.size() > 1 &&
                     (ccx = CCrossChainExport(exportP.vData[0])).IsValid() &&
                     !ccx.IsSystemThreadExport() &&
-                    ccx.destCurrencyID == importCurrencyID &&
-                    ccx.destSystemID == (importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID))
+                    ccx.destCurrencyID == importCurrencyID)
                 {
-                    CCurrencyDefinition systemDef = ConnectedChains.GetCachedCurrency(ccx.destSystemID);
+                    CCurrencyDefinition systemDef;
+                    if (!(ccx.destSystemID == (importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID)))
+                    {
+                        if (ccx.destSystemID != importCurrencyDef.launchSystemID ||
+                            ccx.destSystemID != ASSETCHAINS_CHAINID)
+                        {
+                            return eval->Error("Invalid destination system " + EncodeDestination(CIdentityID(ccx.destSystemID)) + " for export");
+                        }
+                        // the only case this makes sense is if we are refunding back to the launch chain from the system chain
+                        CChainNotarizationData cnd;
+                        if (!(GetNotarizationData(importCurrencyDef.systemID, cnd) && cnd.IsConfirmed()))
+                        {
+                            return eval->Error("No valid notarization found for exporting currency");
+                        }
+                        if (!cnd.vtx[cnd.lastConfirmed].second.IsRefunding())
+                        {
+                            return eval->Error("Attempt to export to launch chain from external home chain that is not refunding");
+                        }
+                        systemDef = ConnectedChains.ThisChain();
+                    }
+                    else
+                    {
+                        systemDef = ConnectedChains.GetCachedCurrency(ccx.destSystemID);
+                    }
                     if (ccx.GetExportInfo(tx, i, primaryExportOut, nextOutput, pbn, reserveTransfers, (CCurrencyDefinition::EProofProtocol)systemDef.proofProtocol) &&
                         ccx.numInputs > 0 &&
                         nIn >= ccx.firstInput &&
