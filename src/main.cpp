@@ -3971,7 +3971,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             {
                 COptCCParams p;
                 CCrossChainImport cci;
-                CCrossChainExport ccx;
+                CCrossChainExport ccx, ccxEvidence;
                 CCrossChainImport dummySysCCI;
                 CPBaaSNotarization importNotarization;
                 CReserveDeposit resDeposit;
@@ -3991,27 +3991,28 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             return state.DoS(10, error("%s: invalid initial import\n", __func__), REJECT_INVALID, "invalid-block");
                         }
 
-                        uint32_t proofHeight = txProof.GetProofHeight();
-                        uint32_t txHeight = txProof.GetBlockHeight();
-                        auto proofRootIt = launchNotarization.proofRoots.find(cci.sourceSystemID);
-                        if (!(cci.sourceSystemID == cbCurDef.launchSystemID &&
-                              proofRootIt != launchNotarization.proofRoots.end() &&
-                              proofHeight == proofRootIt->second.rootHeight &&
-                              txProofRoot == proofRootIt->second.stateRoot))
-                        {
-                            return state.DoS(10, error("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing"),
-                                            REJECT_INVALID, "invalid-block");
-                        }
-
                         if (cbCurDef.IsValid() &&
                             cci.importCurrencyID == cbCurID &&
                             (cbCurID == ASSETCHAINS_CHAINID || cbCurID == ConnectedChains.ThisChain().GatewayConverterID()) &&
                             cci.GetImportInfo(tx, 1, j, ccx, 
-                                            dummySysCCI, sysCCIOut,
-                                            importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
+                                              dummySysCCI, sysCCIOut,
+                                              importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
                             importNotarization.IsValid() &&
                             importNotarization.currencyState.IsValid())
                         {
+                            if (cbCurID == ASSETCHAINS_CHAINID)
+                            {
+                                auto proofRootCurrent = importNotarization.proofRoots.find(cbCurDef.launchSystemID);
+                                if (cci.sourceSystemID != cbCurDef.launchSystemID ||
+                                    proofRootCurrent == importNotarization.proofRoots.end() ||
+                                    txProof.GetProofHeight() != proofRootCurrent->second.rootHeight ||
+                                    txProofRoot != proofRootCurrent->second.stateRoot)
+                                {
+                                    return state.DoS(10, error("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing"),
+                                                    REJECT_INVALID, "invalid-block");
+                                }
+                            }
+
                             uint256 transferHash;
                             std::vector<CTxOut> importOutputs;
                             CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;

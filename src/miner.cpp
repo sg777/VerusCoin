@@ -1117,7 +1117,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     std::pair<CUTXORef, CPartialTransactionProof> launchNotarizationProof;
     std::pair<CUTXORef, CPartialTransactionProof> launchExportProof;
     std::vector<CReserveTransfer> launchExportTransfers;
-    CPBaaSNotarization notaryNotarization;
+    CPBaaSNotarization notaryNotarization, notaryConverterNotarization;
 
     if (!GetBlockOneLaunchNotarization(ConnectedChains.FirstNotaryChain(), 
                                        thisChainID, 
@@ -1177,7 +1177,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                                            converterCurrencyID,
                                            converterCurDef,
                                            converterNotarization,
-                                           notaryNotarization,
+                                           notaryConverterNotarization,
                                            converterNotarizationProof,
                                            converterExportProof,
                                            converterExportTransfers))
@@ -1187,7 +1187,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
             return false;
         }
 
-        notaryNotarization.currencyStates[converterCurrencyID] = converterNotarization.currencyState;
+        notaryConverterNotarization.currencyStates[converterCurrencyID] = converterNotarization.currencyState;
 
         // both currency and primary gateway must have their pre-launch phase complete before we can make a decision
         // about launching
@@ -1263,7 +1263,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     // which is the only currency that can be considered a gateway deposit at launch. this can
     // be used for native currency fee conversions
     CCurrencyValueMap gatewayDeposits;
-
+    launchNotarization.proofRoots[ASSETCHAINS_CHAINID] = notaryNotarization.proofRoots[ASSETCHAINS_CHAINID];
     bool success = AddOneCurrencyImport(thisChain, 
                                         launchNotarization,
                                         &launchNotarizationProof,
@@ -1279,7 +1279,7 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         // TODO: add a new ID for the converter currency, controlled by the same primary addresses as the
         // ID for this chain
         CCurrencyValueMap converterDeposits;
-
+        converterNotarization.proofRoots[ASSETCHAINS_CHAINID] = notaryConverterNotarization.proofRoots[ASSETCHAINS_CHAINID];
         success = AddOneCurrencyImport(converterCurDef, 
                                        converterNotarization,
                                        &converterNotarizationProof,

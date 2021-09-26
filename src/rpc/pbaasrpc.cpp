@@ -2733,7 +2733,8 @@ UniValue getlaunchinfo(const UniValue& params, bool fHelp)
 
     std::pair<CInputDescriptor, CPartialTransactionProof> notarizationTx;
     CPBaaSNotarization launchNotarization, notaryNotarization;
-    if (!ConnectedChains.GetLaunchNotarization(curDef, notarizationTx, launchNotarization, notaryNotarization))
+    if (!ConnectedChains.GetLaunchNotarization(curDef, notarizationTx, launchNotarization, notaryNotarization) ||
+        !notaryNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Valid notarization not found");
     }
