@@ -613,6 +613,11 @@ public:
         return retVal;
     }
 
+    uint160 SystemOrGatewayID() const
+    {
+        return (IsGateway() ? gatewayID : systemID);
+    }
+
     int64_t GetCurrencyRegistrationFee(uint32_t currencyOptions) const
     {
         if (currencyOptions & (OPTION_PBAAS + OPTION_GATEWAY))

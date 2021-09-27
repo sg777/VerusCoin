@@ -1677,7 +1677,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
             }
         } catch (exception e)
         {
-            LogPrintf("%s: Error communicating with %s chain\n", __func__, VERUS_CHAINNAME);
+            LogPrint("crosschain", "%s: Error communicating with %s\n", __func__, FirstNotaryChain().chainDefinition.name.c_str());
         }
     }
     return false;
@@ -4373,7 +4373,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     break;
                 }
 
-                bool isSameChain = destDef.systemID == thisChainID;
+                bool isSameChain = destDef.SystemOrGatewayID() == thisChainID;
 
                 // when we get here, we have a consecutive number of transfer outputs to consume in txInputs
                 // we need an unspent export output to export, or use the last one of it is an export to the same
@@ -4387,13 +4387,13 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 // system, the external system export as well
 
                 bool newSystem = false;
-                if (launchCurrencies.count(lastChain) && destDef.systemID == lastChain)
+                if (launchCurrencies.count(lastChain) && destDef.SystemOrGatewayID() == lastChain)
                 {
                     newSystem = true;
                 }
 
                 if (((ConnectedChains.GetUnspentCurrencyExports(view, lastChain, exportOutputs) && exportOutputs.size()) || newSystem) &&
-                    (isSameChain || (ConnectedChains.GetUnspentSystemExports(view, destDef.systemID, sysExportOutputs) && sysExportOutputs.size())))
+                    (isSameChain || (ConnectedChains.GetUnspentSystemExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size())))
                 {
                     if (!exportOutputs.size())
                     {

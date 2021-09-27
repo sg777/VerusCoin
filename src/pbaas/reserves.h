@@ -941,7 +941,7 @@ public:
 
     bool IsSameChain() const
     {
-        return sourceSystemID == ASSETCHAINS_CHAINID;
+        return sourceSystemID == destSystemID;
     }
 
     bool IsPrelaunch() const
