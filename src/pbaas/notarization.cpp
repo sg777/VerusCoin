@@ -706,9 +706,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
         CCurrencyDefinition destSystem;
 
-        if (destCurrency.systemID != ASSETCHAINS_CHAINID)
+        if (destCurrency.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
         {
-            destSystem = ConnectedChains.GetCachedCurrency(destCurrency.systemID);
+            destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
             newNotarization.SetSameChain(false);
         }
         else
