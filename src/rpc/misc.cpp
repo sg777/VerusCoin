@@ -178,7 +178,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
         {
             std::string acReward = "", acHalving = "", acDecay = "", acEndSubsidy = "";
             int lastEra = (int)ASSETCHAINS_LASTERA;     // this is done to work around an ARM cross compiler
-            bool isReserve = false;
+            bool isFractional = false;
             for (int i = 0; i <= lastEra; i++)
             {
                 if (i == 0)
@@ -190,7 +190,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
                     if (ASSETCHAINS_ERAOPTIONS[i] & CCurrencyDefinition::OPTION_FRACTIONAL)
                     {
                         //printf("%s: %s, ac_options: %s\n", __func__, std::to_string(ASSETCHAINS_ERAOPTIONS[i]).c_str(), GetArg("-ac_options","").c_str());
-                        isReserve = true;
+                        isFractional = true;
                     }
                 }
                 else
@@ -207,14 +207,10 @@ UniValue getinfo(const UniValue& params, bool fHelp)
             obj.push_back(Pair("halving", acHalving));
             obj.push_back(Pair("decay", acDecay));
             obj.push_back(Pair("endsubsidy", acEndSubsidy));
-            if (isReserve)
+            if (isFractional)
             {
-                obj.push_back(Pair("isreserve", "true"));
+                obj.push_back(Pair("fractional", "true"));
                 obj.push_back(Pair("currencystate", ConnectedChains.GetCurrencyState((int)chainActive.Height()).ToUniValue()));
-            }
-            else
-            {
-                obj.push_back(Pair("isreserve", "false"));
             }
         }
 
