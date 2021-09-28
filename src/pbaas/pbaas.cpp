@@ -2756,6 +2756,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             lastNotarization.currencyState.SetLaunchClear(false);
         }
 
+        uint32_t notarHeight = useProofs && lastNotarization.proofRoots.count(ccx.sourceSystemID) ? lastNotarization.proofRoots[ccx.sourceSystemID].rootHeight : lastNotarization.notarizationHeight;
         uint32_t nextHeight = std::max(ccx.sourceHeightEnd, lastNotarization.notarizationHeight);
         if (ccx.IsPostlaunch() || lastNotarization.IsLaunchComplete())
         {
@@ -2765,7 +2766,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         if (!lastNotarization.NextNotarizationInfo(sourceSystemDef,
                                                    destCur,
                                                    ccx.sourceHeightStart,
-                                                   std::max(ccx.sourceHeightEnd, lastNotarization.notarizationHeight),
+                                                   nextHeight,
                                                    exportTransfers,
                                                    transferHash,
                                                    newNotarization,
@@ -3035,7 +3036,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
         }
 
-        /*printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        /* printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
         printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
         printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
         printf("%s: newcurrencyin: %s\n", __func__, incomingCurrency.ToUniValue().write(1,2).c_str());
@@ -3189,6 +3190,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
             tb.SendChangeTo(addr);
         }
+
+        /* UniValue jsonTx(UniValue::VOBJ);
+        uint256 hashBlk;
+        TxToUniv(tb.mtx, hashBlk, jsonTx);
+        printf("%s\n", jsonTx.write(1,2).c_str()); //*/
 
         TransactionBuilderResult result = tb.Build();
         if (result.IsError())
