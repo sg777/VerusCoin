@@ -374,6 +374,10 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                         break;
                     }
                 }
+                else
+                {
+                    importNotarization = CPBaaSNotarization();
+                }
             }
         }
     }
@@ -406,7 +410,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         mainImport = authorizingImport;
     }
 
-    if (mainImport.GetImportInfo(tx,
+    if (importNotarization.IsValid() ||
+        mainImport.GetImportInfo(tx,
                                  chainActive.Height(),
                                  i,
                                  ccxSource,
@@ -533,7 +538,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         {
             if (totalDeposits != (gatewayCurrencyUsed + reserveDepositChange))
             {
-                LogPrintf("%s: invalid use of gateway reserve deposits for currency: %s\n", __func__, destCurDef.GetID().GetHex().c_str());
+                LogPrintf("%s: invalid use of gateway reserve deposits for currency: %s\n", __func__, EncodeDestination(CIdentityID(destCurDef.GetID())).c_str());
                 // TODO: HARDENING - uncomment the following line and return false, when it is confirmed that
                 // this passes in all intended cases.
                 //return false;
@@ -548,7 +553,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             }
             if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut))
             {
-                LogPrintf("%s: invalid use of reserve deposits for currency: %s\n", __func__, destCurDef.GetID().GetHex().c_str());
+                LogPrintf("%s: invalid use of reserve deposits for currency: %s\n", __func__, EncodeDestination(CIdentityID(destCurDef.GetID())).c_str());
                 // TODO: HARDENING - uncomment the following line and return false, when it is confirmed that
                 // this passes in all intended cases.
                 //return false;
