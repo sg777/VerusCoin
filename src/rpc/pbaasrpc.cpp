@@ -5367,6 +5367,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid auto-reserve currency definition");
                     }
+                    if (newChain.IsGateway())
+                    {
+                        newReserveDef.gatewayID = newChainID;
+                    }
                     newReserveCurrencies[oneDefinition.first] = newReserveDef;
                 }
             }
