@@ -548,13 +548,13 @@ public:
         READWRITE(VARINT(idRegistrationFees));
         READWRITE(VARINT(idReferralLevels));
         READWRITE(VARINT(idImportFees));
+        READWRITE(nativeCurrencyID);
+        if (nativeCurrencyID.IsValid())
+        {
+            READWRITE(gatewayID);
+        }
         if (IsGateway() || IsPBaaSChain())
         {
-            if (IsGateway())
-            {
-                READWRITE(nativeCurrencyID);
-                READWRITE(gatewayID);
-            }
             READWRITE(VARINT(currencyRegistrationFee));
             READWRITE(VARINT(pbaasSystemLaunchFee));
             READWRITE(VARINT(currencyImportFee));
