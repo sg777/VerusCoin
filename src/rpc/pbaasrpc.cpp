@@ -3702,7 +3702,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
                 // if we have a converter currency on the same chain as the explicit export, the converter is
                 // our actual export currency
-                if (converterDef.systemID == exportToCurrencyDef.systemID)
+                if (converterDef.systemID == exportToCurrencyDef.SystemOrGatewayID())
                 {
                     exportToCurrencyDef = converterDef;
                     exportToCurrencyID = converterID;
