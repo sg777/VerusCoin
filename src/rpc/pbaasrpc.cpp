@@ -3950,7 +3950,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             dest = CTransferDestination(CTransferDestination::FLAG_DEST_GATEWAY + CTransferDestination::DEST_RAW, rawDestBytes, destSystemID);
                         }
                     }
-                    else if (exportSystemDef.proofProtocol == exportSystemDef.PROOF_ETHNOTARIZATION)
+                    else if (exportSystemDef.IsValid() && exportSystemDef.proofProtocol == exportSystemDef.PROOF_ETHNOTARIZATION)
                     {
                         dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(dest.DecodeEthDestination(destStr)));
                         dest.type |= dest.FLAG_DEST_GATEWAY;
