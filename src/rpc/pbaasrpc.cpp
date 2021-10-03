@@ -3953,6 +3953,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     else if (exportSystemDef.proofProtocol == exportSystemDef.PROOF_ETHNOTARIZATION)
                     {
                         dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(dest.DecodeEthDestination(destStr)));
+                        dest.type |= dest.FLAG_DEST_GATEWAY;
+                        dest.gatewayID = exportSystemDef.GetID();
                     }
                     else
                     {
