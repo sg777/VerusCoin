@@ -3950,6 +3950,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             dest = CTransferDestination(CTransferDestination::FLAG_DEST_GATEWAY + CTransferDestination::DEST_RAW, rawDestBytes, destSystemID);
                         }
                     }
+                    else if (exportSystemDef.proofProtocol == exportSystemDef.PROOF_ETHNOTARIZATION)
+                    {
+                        dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(dest.DecodeEthDestination(destStr)));
+                    }
                     else
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified destination must be valid.");
