@@ -698,7 +698,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     }
     else
     {
-        if (sourceSystemID != destCurrency.launchSystemID || notaHeight >= destCurrency.startBlock)
+        if (sourceSystemID != destCurrency.launchSystemID || lastExportHeight >= destCurrency.startBlock || newNotarization.IsLaunchComplete())
         {
             newNotarization.currencyState.SetLaunchCompleteMarker();
         }

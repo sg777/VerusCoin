@@ -1171,6 +1171,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             startingNotarization.currencyState.conversionPrice = dummyState.PricesInReserve();
         }
 
+        if (startingNotarization.IsLaunchComplete())
+        {
+            startingNotarization.currencyState.SetLaunchCompleteMarker();
+        }
+
         if (rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), 
                                                  systemDest, 
                                                  importCurrencyDef, 
