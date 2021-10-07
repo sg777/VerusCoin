@@ -2486,10 +2486,8 @@ CObjectFinalization GetOldFinalization(const CTransaction &spendingTx, uint32_t 
 
 
 /*
- * Ensures that the finalization, either as validated or orphaned, is determined by
- * 10 confirmations, either of this transaction, or of an alternate transaction on the chain that we do not derive
- * from. If the former, then this should be asserted to be validated, otherwise, it should be asserted to be invalidated.
- *
+ * Ensures that the finalization, either asserted to be confirmed or rejected, has all signatures and evidence
+ * necessary for confirmation.
  */
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
@@ -2546,7 +2544,7 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         }
 
         // now, we have an unconfirmed, non-rejected finalization being spent by a transaction
-        // confirm that the spender contains one finalization output either confirming or rejecting
+        // confirm that the spender contains one finalization output either correctly confirming or invalidating
         // the finalization. rejection may be implicit by confirming another, later notarization.
 
         // First. make sure the oldFinalization is not referring to an earlier notarization than the 
@@ -2556,8 +2554,6 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         {
             return eval->Error("invalid-notarization");
         }
-
-        // TODO: now, validate both rejection and confirmation
 
         CObjectFinalization newFinalization;
         int finalizationOutNum = -1;
@@ -2588,6 +2584,14 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         if (!foundFinalization)
         {
             return eval->Error("invalid-finalization-spend");
+        }
+
+        // TODO: HARDENING - complete
+        // validate both rejection and confirmation
+        // in order to finalize confirmation and not just rejection, we need to spend the last
+        // confirmed transaction. that means that if this finalization asserts it is confirmed, we must find the
+        if (newFinalization.IsConfirmed())
+        {
         }
     }
     return true;

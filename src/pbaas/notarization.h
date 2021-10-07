@@ -78,7 +78,7 @@ public:
         FINALIZE_INVALID = 0,
         FINALIZE_NOTARIZATION = 1,      // confirmed when notarization is deemed correct / final
         FINALIZE_EXPORT = 2,            // confirmed when export has no more work to do
-        FINALIZE_CURRENCY_LAUNCH = 4,   // confirmed on successful currency launch, rejected on refund
+        FINALIZE_PROPOSAL = 4,          // confirmed on approval of a proposed output
         FINALIZE_REJECTED = 0x40,       // flag set when confirmation is rejected and/or proven false
         FINALIZE_CONFIRMED = 0x80,      // flag set when object finalization is confirmed
         FINALIZE_TYPE_MASK = ~(FINALIZE_REJECTED | FINALIZE_CONFIRMED)
@@ -172,9 +172,9 @@ public:
         }
     }
 
-    bool IsLaunchFinalization() const
+    bool IsProposalFinalization() const
     {
-        return (finalizationType & FINALIZE_TYPE_MASK) == FINALIZE_CURRENCY_LAUNCH;
+        return (finalizationType & FINALIZE_TYPE_MASK) == FINALIZE_PROPOSAL;
     }
 
     bool IsExportFinalization() const
