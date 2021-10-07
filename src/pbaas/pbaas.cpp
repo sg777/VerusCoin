@@ -2860,10 +2860,20 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             sysCCI = cci;
             sysCCI.importCurrencyID = sysCCI.sourceSystemID;
             sysCCI.flags |= sysCCI.FLAG_SOURCESYSTEM;
+
             // for exports to the native chain, the system export thread is merged with currency export, so no need to go to next
-            if (cci.importCurrencyID != ASSETCHAINS_CHAINID && sourceSystemDef.IsPBaaSChain())
+            if (cci.importCurrencyID != ASSETCHAINS_CHAINID)
             {
-                sysCCI.exportTxOutNum++;                        // source thread output is +1 from the input
+                // TODO: HARDENING - either get the source exportTxOutNum from the protocol make an explicit requirement that
+                //   in the case of a gateway, the txid is a number that proves the entire UTXO or output at any location
+                if (sourceSystemDef.IsGateway())
+                {
+                    sysCCI.exportTxOutNum = 0;
+                }
+                else
+                {
+                    sysCCI.exportTxOutNum++;                        // source thread output is +1 from the input
+                }
             }
             tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &sysCCI)), 0);
         }
