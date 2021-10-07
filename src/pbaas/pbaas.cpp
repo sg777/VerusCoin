@@ -2861,7 +2861,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             sysCCI.importCurrencyID = sysCCI.sourceSystemID;
             sysCCI.flags |= sysCCI.FLAG_SOURCESYSTEM;
             // for exports to the native chain, the system export thread is merged with currency export, so no need to go to next
-            if (cci.importCurrencyID != ASSETCHAINS_CHAINID)
+            if (cci.importCurrencyID != ASSETCHAINS_CHAINID && sourceSystemDef.IsPBaaSChain())
             {
                 sysCCI.exportTxOutNum++;                        // source thread output is +1 from the input
             }
