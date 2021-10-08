@@ -3697,14 +3697,30 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     newCurrencyState.primaryCurrencyOut = netPrimaryOut - (burnedChangePrice + burnedChangeWeight);
 
-    if (importCurrencyDef.IsPBaaSChain() && importCurrencyState.IsLaunchConfirmed() && !importCurrencyState.IsLaunchClear())
+    if (importCurrencyDef.IsPBaaSChain() && importCurrencyState.IsLaunchConfirmed())
     {
         // pre-conversions should already be on this chain as gateway deposits on behalf of the
         // launching chain
-        newCurrencyState.primaryCurrencyOut -= newCurrencyState.preConvertedOut;
-        gatewayDepositsIn.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
-        importedCurrency = (importedCurrency - preConvertedReserves).CanonicalMap();
-        gatewayDepositsIn += preConvertedReserves;
+        if (!importCurrencyState.IsLaunchClear())
+        {
+            newCurrencyState.primaryCurrencyOut -= newCurrencyState.preConvertedOut;
+            gatewayDepositsIn.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
+            importedCurrency = (importedCurrency - preConvertedReserves).CanonicalMap();
+            gatewayDepositsIn += preConvertedReserves;
+        }
+        else if (!newCurrencyState.IsPrelaunch())
+        {
+            CAmount newLaunchNative = newCurrencyState.ReserveToNative(CCurrencyValueMap(newCurrencyState.currencies, newCurrencyState.reserveIn));
+            newCurrencyState.primaryCurrencyOut += newLaunchNative;
+            newCurrencyState.preConvertedOut += newLaunchNative;
+            newCurrencyState.supply += newLaunchNative;
+        }
+        else
+        {
+            newCurrencyState.supply += importCurrencyState.supply - newCurrencyState.emitted;
+            newCurrencyState.preConvertedOut += importCurrencyState.preConvertedOut;
+            newCurrencyState.primaryCurrencyOut += importCurrencyState.primaryCurrencyOut;
+        }
     }
 
     for (auto &oneInOut : currencies)

@@ -2797,10 +2797,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         newNotarization.prevNotarization = CUTXORef(lastNotarizationOut.txIn.prevout.hash, lastNotarizationOut.txIn.prevout.n);
 
+        CAmount newPrimaryCurrency = newNotarization.currencyState.primaryCurrencyOut;
         CCurrencyValueMap incomingCurrency = importedCurrency + gatewayDepositsUsed;
         CCurrencyValueMap newLocalReserveDeposits;
         CCurrencyValueMap newLocalDepositsRequired;
-        CAmount newPrimaryCurrency = newNotarization.currencyState.primaryCurrencyOut;
         if (newPrimaryCurrency > 0)
         {
             incomingCurrency.valueMap[destCurID] += newPrimaryCurrency;
@@ -2864,13 +2864,15 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // for exports to the native chain, the system export thread is merged with currency export, so no need to go to next
             if (cci.importCurrencyID != ASSETCHAINS_CHAINID)
             {
-                // TODO: HARDENING - either get the source exportTxOutNum from the protocol make an explicit requirement that
-                //   in the case of a gateway, the txid is a number that proves the entire UTXO or output at any location
-                if (sourceSystemDef.IsGateway())
-                {
-                    sysCCI.exportTxOutNum = 0;
-                }
-                else
+                // the source of the export is an external system
+                // only in PBaaS chains do we assume the export out increments
+                // for gateways or other chains, they must use the same output number and adjust on the other
+                // side as needed
+
+                // TODO: HARDENING - this requirement needs to be cleaned up to provide for
+                // the ETH-like model, which doesn't benefit from this and the PBaaS model, which does
+                // being an option for external chains as well
+                if (sourceSystemDef.IsPBaaSChain())
                 {
                     sysCCI.exportTxOutNum++;                        // source thread output is +1 from the input
                 }

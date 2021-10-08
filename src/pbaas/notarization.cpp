@@ -691,6 +691,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         if (tempState.IsPrelaunch())
         {
             tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
+            if (this->currencyState.IsLaunchClear() && !(destCurrency.IsFractional() || this->IsDefinitionNotarization()))
+            {
+                tempState.supply += this->currencyState.supply - this->currencyState.emitted;
+                tempState.preConvertedOut += this->currencyState.preConvertedOut;
+                tempState.primaryCurrencyOut += this->currencyState.primaryCurrencyOut;
+            }
         }
 
         newNotarization.currencyState = tempState;
