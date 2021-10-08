@@ -3710,10 +3710,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
         else if (!newCurrencyState.IsPrelaunch())
         {
+            // adjust gateway deposits for launch
+            newCurrencyState.reserveIn = importCurrencyState.reserveIn; // reserve in must be the same
             CAmount newLaunchNative = newCurrencyState.ReserveToNative(CCurrencyValueMap(newCurrencyState.currencies, newCurrencyState.reserveIn));
+            gatewayDepositsIn.valueMap[importCurrencyID] -= newLaunchNative;
             newCurrencyState.primaryCurrencyOut += newLaunchNative;
             newCurrencyState.preConvertedOut += newLaunchNative;
-            newCurrencyState.supply += newLaunchNative;
         }
         else
         {
