@@ -3428,7 +3428,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         for (auto &oneVal : preConvertedOutput.valueMap)
         {
             newCurrencyState.preConvertedOut += oneVal.second;
-            if (newCurrencyState.IsLaunchConfirmed() && !isFractional)
+            if (!isFractional &&
+                newCurrencyState.IsLaunchConfirmed() &&
+                !(importCurrencyDef.IsPBaaSChain() && !newCurrencyState.IsLaunchClear()))
             {
                 newCurrencyState.supply += oneVal.second;
             }
