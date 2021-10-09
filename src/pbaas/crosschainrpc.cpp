@@ -451,13 +451,18 @@ uint160 DecodeCurrencyName(std::string currencyStr)
         return retVal;
     }
     std::string copyStr = currencyStr;
+
     uint160 parent;
-    currencyStr = CleanName(currencyStr, parent, true);
+
+    currencyStr = CleanName(currencyStr, parent, true, currencyStr.back() != '.');
+
     if (!parent.IsNull() && CCurrencyDefinition::GetID(currencyStr, parent) == ASSETCHAINS_CHAINID)
     {
         return ASSETCHAINS_CHAINID;
     }
+
     CTxDestination currencyDest = DecodeDestination(currencyStr);
+
     if (currencyDest.which() == COptCCParams::ADDRTYPE_INVALID)
     {
         currencyDest = DecodeDestination(copyStr + "@");

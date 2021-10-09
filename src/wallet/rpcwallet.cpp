@@ -4262,7 +4262,7 @@ UniValue z_listaddresses(const UniValue& params, bool fHelp)
 }
 
 CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ignoreUnspendable=true) {
-    std::set<CTxDestination> destinations;
+    CTxDestination destination;
     vector<COutput> vecOutputs;
     CAmount balance = 0;
 
@@ -4276,53 +4276,79 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
     }
 
     if (!(wildCardRAddress || wildCardiAddress) && transparentAddress.length() > 0) {
-        CTxDestination taddr = DecodeDestination(transparentAddress);
-        if (!IsValidDestination(taddr)) {
+        destination = DecodeDestination(transparentAddress);
+        if (!IsValidDestination(destination)) {
             throw std::runtime_error("invalid transparent address");
         }
-        destinations.insert(taddr);
     }
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
 
-    BOOST_FOREACH(const COutput& out, vecOutputs) {
-        if (out.nDepth < minDepth) {
+    BOOST_FOREACH(const COutput& out, vecOutputs) 
+    {
+        if (out.nDepth < minDepth) 
+        {
             continue;
         }
 
-        if (ignoreUnspendable && !out.fSpendable) {
+        if (ignoreUnspendable && !out.fSpendable) 
+        {
             continue;
         }
 
-        if (wildCardRAddress || wildCardiAddress || destinations.size()) {
-            CTxDestination address;
-            if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address)) {
+        if (wildCardRAddress || wildCardiAddress || IsValidDestination(destination)) 
+        {
+            std::vector<CTxDestination> addresses;
+            txnouttype typeRet;
+            bool canSign, canSpend;
+            int nRequired;
+            if (!ExtractDestinations(out.tx->vout[out.i].scriptPubKey, typeRet, addresses, nRequired, pwalletMain, &canSign, &canSpend))
+            {
                 continue;
             }
 
+            int keepCount = 0;
             if (wildCardRAddress || wildCardiAddress)
             {
-                bool keep = false;
-                if (wildCardRAddress)
+                for (auto oneAddr : addresses)
                 {
-                    keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
+                    if (wildCardRAddress && (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK))
+                    {
+                        keepCount++;
+                    }
+                    if (keepCount < nRequired && wildCardiAddress && oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                        {
+                            keepCount++;
+                        }
+                    }
+                    if (keepCount >= nRequired)
+                    {
+                        break;
+                    }
                 }
-                if (!keep && wildCardiAddress)
-                {
-                    keep = address.which() == COptCCParams::ADDRTYPE_ID;
-                }
-                if (!keep)
+                if (keepCount < nRequired)
                 {
                     continue;
                 }
             }
-            else
+            else if (nRequired == 1)
             {
-                if (!destinations.count(address)) {
-                    continue;
+                for (auto oneAddr : addresses)
+                {
+                    if (destination == oneAddr || (oneAddr.which() == COptCCParams::ADDRTYPE_PK && GetDestinationID(oneAddr) == GetDestinationID(destination)))
+                    {
+                        keepCount++;
+                        break;
+                    }
                 }
+            }
+            if (keepCount < nRequired)
+            {
+                continue;
             }
         }
 
@@ -4333,7 +4359,7 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
 }
 
 CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ignoreUnspendable=true) {
-    std::set<CTxDestination> destinations;
+    CTxDestination destination;
     vector<COutput> vecOutputs;
     CCurrencyValueMap balance;
 
@@ -4347,53 +4373,79 @@ CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int mi
     }
 
     if (!(wildCardRAddress || wildCardiAddress) && transparentAddress.length() > 0) {
-        CTxDestination taddr = DecodeDestination(transparentAddress);
-        if (!IsValidDestination(taddr)) {
+        destination = DecodeDestination(transparentAddress);
+        if (!IsValidDestination(destination)) {
             throw std::runtime_error("invalid transparent address");
         }
-        destinations.insert(taddr);
     }
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
 
-    BOOST_FOREACH(const COutput& out, vecOutputs) {
-        if (out.nDepth < minDepth) {
+    BOOST_FOREACH(const COutput& out, vecOutputs)
+    {
+        if (out.nDepth < minDepth) 
+        {
             continue;
         }
 
-        if (ignoreUnspendable && !out.fSpendable) {
+        if (ignoreUnspendable && !out.fSpendable) 
+        {
             continue;
         }
 
-        if (wildCardRAddress || wildCardiAddress || destinations.size()) {
-            CTxDestination address;
-            if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address)) {
+        if (wildCardRAddress || wildCardiAddress || IsValidDestination(destination))
+        {
+            std::vector<CTxDestination> addresses;
+            txnouttype typeRet;
+            bool canSign, canSpend;
+            int nRequired;
+            if (!ExtractDestinations(out.tx->vout[out.i].scriptPubKey, typeRet, addresses, nRequired, pwalletMain, &canSign, &canSpend))
+            {
                 continue;
             }
 
+            int keepCount = 0;
             if (wildCardRAddress || wildCardiAddress)
             {
-                bool keep = false;
-                if (wildCardRAddress)
+                for (auto oneAddr : addresses)
                 {
-                    keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
+                    if (wildCardRAddress && (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK))
+                    {
+                        keepCount++;
+                    }
+                    if (keepCount < nRequired && wildCardiAddress && oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                        {
+                            keepCount++;
+                        }
+                    }
+                    if (keepCount >= nRequired)
+                    {
+                        break;
+                    }
                 }
-                if (!keep && wildCardiAddress)
-                {
-                    keep = address.which() == COptCCParams::ADDRTYPE_ID;
-                }
-                if (!keep)
+                if (keepCount < nRequired)
                 {
                     continue;
                 }
             }
-            else
+            else if (nRequired == 1)
             {
-                if (!destinations.count(address)) {
-                    continue;
+                for (auto oneAddr : addresses)
+                {
+                    if (destination == oneAddr || (oneAddr.which() == COptCCParams::ADDRTYPE_PK && GetDestinationID(oneAddr) == GetDestinationID(destination)))
+                    {
+                        keepCount++;
+                        break;
+                    }
                 }
+            }
+            if (keepCount < nRequired)
+            {
+                continue;
             }
         }
 
@@ -8112,8 +8164,8 @@ static const CRPCCommand commands[] =
     { "wallet",             "sendtoaddress",            &sendtoaddress,            false },
     { "wallet",             "setaccount",               &setaccount,               true  },
     { "wallet",             "settxfee",                 &settxfee,                 true  },
-    { "wallet",             "signmessage",              &signmessage,              true  },
-    { "wallet",             "signfile",                 &signfile,                 true  },
+    { "identity",           "signmessage",              &signmessage,              true  },
+    { "identity",           "signfile",                 &signfile,                 true  },
     { "hidden",             "printapis",                &printapis,                true  },
     // { "hidden",             "signhash",                 &signhash,                 true  }, // disable due to risk of signing something that doesn't contain the content
     { "wallet",             "walletlock",               &walletlock,               true  },

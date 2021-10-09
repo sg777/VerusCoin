@@ -178,7 +178,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
         {
             std::string acReward = "", acHalving = "", acDecay = "", acEndSubsidy = "";
             int lastEra = (int)ASSETCHAINS_LASTERA;     // this is done to work around an ARM cross compiler
-            bool isReserve = false;
+            bool isFractional = false;
             for (int i = 0; i <= lastEra; i++)
             {
                 if (i == 0)
@@ -189,7 +189,8 @@ UniValue getinfo(const UniValue& params, bool fHelp)
                     acEndSubsidy = std::to_string(ASSETCHAINS_ENDSUBSIDY[i]);
                     if (ASSETCHAINS_ERAOPTIONS[i] & CCurrencyDefinition::OPTION_FRACTIONAL)
                     {
-                        isReserve = true;
+                        //printf("%s: %s, ac_options: %s\n", __func__, std::to_string(ASSETCHAINS_ERAOPTIONS[i]).c_str(), GetArg("-ac_options","").c_str());
+                        isFractional = true;
                     }
                 }
                 else
@@ -206,14 +207,10 @@ UniValue getinfo(const UniValue& params, bool fHelp)
             obj.push_back(Pair("halving", acHalving));
             obj.push_back(Pair("decay", acDecay));
             obj.push_back(Pair("endsubsidy", acEndSubsidy));
-            if (isReserve)
+            if (isFractional)
             {
-                obj.push_back(Pair("isreserve", "true"));
+                obj.push_back(Pair("fractional", "true"));
                 obj.push_back(Pair("currencystate", ConnectedChains.GetCurrencyState((int)chainActive.Height()).ToUniValue()));
-            }
-            else
-            {
-                obj.push_back(Pair("isreserve", "false"));
             }
         }
 
@@ -702,6 +699,74 @@ uint256 HashFile(std::string filepath)
     }
 }
 
+UniValue getvdxfid(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "getvdxfid \"vdxfuri\"\n"
+            "\nReturns the VDXF key of the URI string. For example \"vrsc::system.currency.export\"\n"
+            "\nArguments:\n"
+            "  \"vdxfuri\"            (string, required) This message is converted from hex, the data is hashed, then returned\n"
+            "\nResult:\n"
+            "{                        (object) object with both base58check and hex vdxfid values of string and parents\n"
+            "  \"vdxfid\"             (base58check) i-ID of the URI processed with the VDXF\n"
+            "  \"hash160result\"      (hexstring) 20 byte hash in hex of the URL string passed in, processed with the VDXF\n"
+            "  \"qualifiedname\":     (object) separate name and parent ID value\n"
+            "  {\n"
+            "    \"name\":            (string) leaf name\n"
+            "    \"parentid\" | \"namespace\": (string) parent ID (or namespace if VDXF key) of name\n"
+            "  }\n"
+            "}\n"
+            "\nExamples:\n"
+            "\nCreate the signature\n"
+            + HelpExampleCli("getvdxfid", "\"system.currency.export\"") +
+            "\nVerify the signature\n"
+            + HelpExampleCli("getvdxfid", "\"idname::userdefinedgroup.subgroup.publishedname\"") +
+            "\nAs json rpc\n"
+            + HelpExampleRpc("getvdxfid", "\"idname::userdefinedgroup.subgroup.publishedname\"")
+        );
+
+    std::string vdxfName = uni_get_str(params[0]);
+    if (!vdxfName.size())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "No message to hash");
+    }
+
+    uint160 vdxfID;
+    uint160 parentID;
+    std::string cleanName;
+    std::string parentIDName = "parentid";
+
+    // first, try to interpret the ID as an ID, in case it is
+    CTxDestination idDest = DecodeDestination(vdxfName);
+
+    if (idDest.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        cleanName = CleanName(vdxfName, parentID, true, true);
+        vdxfID = GetDestinationID(idDest);
+    }
+    else
+    {
+        parentIDName = "namespace";
+        vdxfID = CVDXF::GetDataKey(vdxfName, parentID);
+        cleanName = vdxfName;
+    }
+
+    if (vdxfID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid ID or URI format");
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("vdxfid", EncodeDestination(CIdentityID(vdxfID)));
+    result.pushKV("hash160result", vdxfID.GetHex());
+    UniValue nameWithParent(UniValue::VOBJ);
+    nameWithParent.pushKV(parentIDName, EncodeDestination(CIdentityID(parentID)));
+    nameWithParent.pushKV("name", cleanName);
+    result.pushKV("qualifiedname", nameWithParent);
+    return result;
+}
+
 UniValue hashdata(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)
@@ -710,9 +775,9 @@ UniValue hashdata(const UniValue& params, bool fHelp)
             "\nReturns the hash of the data in a hex message\n"
             "\nArguments:\n"
             "  \"hexdata\"            (string, required) This message is converted from hex, the data is hashed, then returned\n"
-            "  \"hashtype\"           (string, optional) one of (\"sha256rev\", \"sha256D\", \"blake2b\", \"keccak256\", \"verushash2\", \"verushash2b\", \"verushash2.1\"), defaults to sha256\n"
+            "  \"hashtype\"           (string, optional) one of (\"sha256rev\", \"sha256D\", \"blake2b\", \"blake2bnopersonal\", \"keccak256\", \"verushash2\", \"verushash2b\", \"verushash2.1\"), defaults to sha256\n"
             "\nResult:\n"
-            "  \"hashresult\"         (hexstring) 32 byte has in hex of the data passed in using the hash of the specific blockheight\n"
+            "  \"hashresult\"         (hexstring) 32 byte hash in hex of the data passed in using the hash of the specific blockheight\n"
             "\nExamples:\n"
             "\nCreate the signature\n"
             + HelpExampleCli("signmessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\" \"my message\"") +
@@ -746,7 +811,7 @@ UniValue hashdata(const UniValue& params, bool fHelp)
     {
         CHashWriterSHA256 hw(SER_GETHASH, PROTOCOL_VERSION);
         hw.write((const char *)vmsg.data(), vmsg.size());
-        uint256 result = hw.GetHash();
+        result = hw.GetHash();
         // to be compatible with data and file hashing tools when users compare the output, such as sha256sum,
         // we reverse the normally little endian value
         std::reverse(result.begin(), result.end());
@@ -760,6 +825,12 @@ UniValue hashdata(const UniValue& params, bool fHelp)
     else if (hashType == "blake2b")
     {
         CBLAKE2bWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+        hw.write((const char *)vmsg.data(), vmsg.size());
+        result = hw.GetHash();
+    }
+    else if (hashType == "blake2bnopersonal")
+    {
+        CBLAKE2bWriter hw(SER_GETHASH, PROTOCOL_VERSION, {0});
         hw.write((const char *)vmsg.data(), vmsg.size());
         result = hw.GetHash();
     }
@@ -1913,9 +1984,10 @@ static const CRPCCommand commands[] =
     { "util",               "validateaddress",        &validateaddress,        true  }, /* uses wallet if enabled */
     { "util",               "z_validateaddress",      &z_validateaddress,      true  }, /* uses wallet if enabled */
     { "util",               "createmultisig",         &createmultisig,         true  },
-    { "util",               "verifymessage",          &verifymessage,          true  },
-    { "util",               "verifyfile",             &verifyfile,             true  },
-    { "util",               "verifyhash",             &verifyhash,             true  },
+    { "identity",           "verifymessage",          &verifymessage,          true  },
+    { "identity",           "verifyfile",             &verifyfile,             true  },
+    { "identity",           "verifyhash",             &verifyhash,             true  },
+    { "vdxf",               "getvdxfid",              &getvdxfid,              true  },
     { "hidden",             "hashdata",               &hashdata,               true  }, // not visible in help
 
     // START insightexplorer

@@ -466,7 +466,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             }
 
             uint160 externalSystemID = ccx.sourceSystemID == ASSETCHAINS_CHAINID ? 
-                                       ((ccx.destSystemID  == ASSETCHAINS_CHAINID) ? uint160() : ccx.destSystemID) : 
+                                       ((ccx.destSystemID == ASSETCHAINS_CHAINID) ? uint160() : ccx.destSystemID) : 
                                        ccx.sourceSystemID;
 
             std::map<uint160, CProofRoot>::iterator proofIt;
@@ -482,6 +482,10 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                         break;
                     }
                 }
+            }
+            else if (!externalSystemID.IsNull())
+            {
+                return state.Error(strprintf("%s: no proof root to validate export for external system %s", __func__, EncodeDestination(CIdentityID(externalSystemID)).c_str()));
             }
 
             int32_t nextOutput;
@@ -1819,7 +1823,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             }
 
                             // TODO: HARDENING - this check skips checking imported IDs, as it cannot verify whether they have been skipped
-                            // because they are in the mem pool on the same transaction. we need to confirm that imported IDs are valid 
+                            // because they are in the mem pool on the same transaction, as we have not
+                            // completed making the transaction yet. we need to confirm that imported IDs are valid 
                             // from the importing system and not duplicate.
 
                             int idCheckOffset = 0;
@@ -2108,7 +2113,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
         }
         if (nextLegTransfer.IsValid())
         {
-            // emit a reserve exchange output
+            // emit a reserve transfer output
             CCcontract_info CC;
             CCcontract_info *cp;
             cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
@@ -2205,6 +2210,19 @@ bool CReserveTransfer::GetTxOut(const CCurrencyValueMap &reserves, int64_t nativ
         }
 
         // make normal output to the destination, which must be valid
+        // if destination is not valid, and we are supposed to make an output
+        // to an ETH address, make a nested output instead
+        if (dest.which() == COptCCParams::ADDRTYPE_INVALID && destination.TypeNoFlags() == destination.DEST_ETH)
+        {
+            // we make an unspendable P2SH output with the ETH address as the P2SH value
+            CKeyID unspendableP2SH;
+            bool success = false;
+            ::FromVector(destination.destination, unspendableP2SH, &success);
+            if (success)
+            {
+                dest = CTxDestination(CKeyID(unspendableP2SH));
+            }
+        }
         if (!reserves.valueMap.size() && nativeAmount)
         {
             if (dest.which() == COptCCParams::ADDRTYPE_ID || 
@@ -2282,14 +2300,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     std::map<uint160,int32_t> currencyIndexMap = importCurrencyDef.GetCurrenciesMap();
 
     uint160 systemSourceID = systemSource.GetID();
-    uint160 systemDestID = systemDest.GetID();  // native on destination system
+    uint160 systemDestID = importCurrencyDef.IsGateway() && systemSourceID != importCurrencyDef.GetID() ? 
+                                importCurrencyDef.GetID() : 
+                                systemDest.GetID();  // native on destination system
+
     uint160 importCurrencyID = importCurrencyDef.GetID();
 
     // this matrix tracks n-way currency conversion
     // each entry contains the original amount of the row's (dim 0) currency to be converted to the currency position of its column
     int32_t numCurrencies = importCurrencyDef.currencies.size();
     std::vector<std::vector<CAmount>> crossConversions(numCurrencies, std::vector<CAmount>(numCurrencies, 0));
-    int32_t systemDestIdx = currencyIndexMap.count(systemDestID) ? currencyIndexMap[systemDestID] : -1;
 
     // used to keep track of burned fractional currency. this currency is subtracted from the
     // currency supply, but not converted. In doing so, it can either raise the price of the fractional
@@ -2307,13 +2327,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     // if so, we can use it to mint gateway currencies via the gateway, and deal with fees and conversions on
     // our converter currency
     uint160 nativeSourceCurrencyID = systemSource.IsGateway() ? systemSource.gatewayID : systemSource.systemID;
+    uint160 nativeDestCurrencyID = systemDest.systemID;
+    int32_t systemDestIdx = currencyIndexMap.count(systemDestID) ? currencyIndexMap[systemDestID] : -1;
+
     if (nativeSourceCurrencyID != systemSourceID)
     {
         printf("%s: systemSource import %s is not from either gateway, PBaaS chain, or other system level currency\n", __func__, systemSource.name.c_str());
         LogPrintf("%s: systemSource import %s is not from either gateway, PBaaS chain, or other system level currency\n", __func__, systemSource.name.c_str());
         return false;
     }
-    bool isCrossSystemImport = nativeSourceCurrencyID != systemDestID;
+    bool isCrossSystemImport = nativeSourceCurrencyID != nativeDestCurrencyID;
 
     nativeIn = 0;
     numTransfers = 0;
@@ -2349,9 +2372,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         {
             // this will be the primary fee output
             curTransfer = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT,
-                                           systemDestID,
+                                           nativeDestCurrencyID,
                                            0,
-                                           systemDestID,
+                                           nativeDestCurrencyID,
                                            0,
                                            importCurrencyID,
                                            CTransferDestination());
@@ -2768,7 +2791,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             LogPrintf("%s: currency transfer fees invalid for receiving system\n", __func__);
                             return false;
                         }
-                        if (importCurrencyState.IsRefunding())
+                        if (importCurrencyState.IsRefunding() || curTransfer.IsRefund())
                         {
                             gatewayDepositsIn.valueMap[systemSourceID] += explicitFees;
                         }
@@ -2806,9 +2829,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     if (totalCurrencyInput)
                     {
                         // all currency input must either come from being minted on the import or existing gateway deposits
-                        if (!(importCurrencyState.IsRefunding() && importCurrencyDef.launchSystemID == systemDestID) &&
-                             (inputDef.systemID == systemSourceID ||
-                             (inputDef.IsGateway() && inputDef.gatewayID == systemSourceID)))
+                        // TODO: HARDENING - to both make this easier to understand and more flexible for multiple gateway types,
+                        //   we should have the "nativeCurrencyID" have both an arbitrary destination type as well as a destination
+                        //   gateway to determine the gateway independent of type.
+                        if (!((importCurrencyState.IsRefunding() || curTransfer.IsRefund()) && importCurrencyDef.launchSystemID == systemDestID) &&
+                            (inputDef.systemID == systemSourceID || 
+                             ((inputDef.IsGateway() || inputDef.nativeCurrencyID.TypeNoFlags() == inputDef.nativeCurrencyID.DEST_ETH) && 
+                              inputDef.gatewayID == systemSourceID)))
                         {
                             importedCurrency.valueMap[inputID] += totalCurrencyInput;
                         }
@@ -3401,7 +3428,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         for (auto &oneVal : preConvertedOutput.valueMap)
         {
             newCurrencyState.preConvertedOut += oneVal.second;
-            if (newCurrencyState.IsLaunchConfirmed() && !isFractional)
+            if (!isFractional &&
+                newCurrencyState.IsLaunchConfirmed() &&
+                !(importCurrencyDef.IsPBaaSChain() && !newCurrencyState.IsLaunchClear()))
             {
                 newCurrencyState.supply += oneVal.second;
             }
@@ -3670,14 +3699,32 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     newCurrencyState.primaryCurrencyOut = netPrimaryOut - (burnedChangePrice + burnedChangeWeight);
 
-    if (importCurrencyDef.IsPBaaSChain() && importCurrencyState.IsLaunchConfirmed() && !importCurrencyState.IsLaunchClear())
+    if (importCurrencyDef.IsPBaaSChain() && importCurrencyState.IsLaunchConfirmed())
     {
         // pre-conversions should already be on this chain as gateway deposits on behalf of the
         // launching chain
-        newCurrencyState.primaryCurrencyOut -= newCurrencyState.preConvertedOut;
-        gatewayDepositsIn.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
-        importedCurrency = (importedCurrency - preConvertedReserves).CanonicalMap();
-        gatewayDepositsIn += preConvertedReserves;
+        if (!importCurrencyState.IsLaunchClear())
+        {
+            newCurrencyState.primaryCurrencyOut -= newCurrencyState.preConvertedOut;
+            gatewayDepositsIn.valueMap[importCurrencyID] += newCurrencyState.preConvertedOut;
+            importedCurrency = (importedCurrency - preConvertedReserves).CanonicalMap();
+            gatewayDepositsIn += preConvertedReserves;
+        }
+        else if (!newCurrencyState.IsPrelaunch())
+        {
+            // adjust gateway deposits for launch
+            newCurrencyState.reserveIn = importCurrencyState.reserveIn; // reserve in must be the same
+            CAmount newLaunchNative = newCurrencyState.ReserveToNative(CCurrencyValueMap(newCurrencyState.currencies, newCurrencyState.reserveIn));
+            gatewayDepositsIn.valueMap[importCurrencyID] -= newLaunchNative;
+            newCurrencyState.primaryCurrencyOut += newLaunchNative;
+            newCurrencyState.preConvertedOut += newLaunchNative;
+        }
+        else
+        {
+            newCurrencyState.supply += importCurrencyState.supply - newCurrencyState.emitted;
+            newCurrencyState.preConvertedOut += importCurrencyState.preConvertedOut;
+            newCurrencyState.primaryCurrencyOut += importCurrencyState.primaryCurrencyOut;
+        }
     }
 
     for (auto &oneInOut : currencies)
@@ -3687,6 +3734,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             if (oneInOut.first == systemDestID)
             {
                 systemOutConverted += oneInOut.second.nativeOutConverted;
+            }
+            else if (isCrossSystemImport && (importCurrencyDef.IsGateway() || 
+                                             (importCurrencyDef.IsPBaaSChain() && importCurrencyDef.systemID != systemDestID)))
+            {
+                if (oneInOut.second.reserveIn)
+                {
+                    ReserveInputs.valueMap[oneInOut.first] += oneInOut.second.reserveIn;
+                }
+                if (oneInOut.second.reserveOut)
+                {
+                    spentCurrencyOut.valueMap[oneInOut.first] += oneInOut.second.reserveOut;
+                }
             }
         }
         else
@@ -4414,19 +4473,6 @@ bool IsFeePoolInput(const CScript &scriptSig)
 bool PrecheckFeePool(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     return true;
-}
-
-bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
-{
-    // do a basic sanity check that this reserve transfer's values are consistent
-    COptCCParams p;
-    CReserveTransfer rt;
-    return (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-            p.IsValid() &&
-            p.evalCode == EVAL_RESERVE_TRANSFER &&
-            p.vData.size() &&
-            (rt = CReserveTransfer(p.vData[0])).IsValid() &&
-            rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue);
 }
 
 bool PrecheckReserveDeposit(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)

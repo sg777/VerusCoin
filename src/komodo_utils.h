@@ -1449,6 +1449,8 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     // basic coin parameters. the rest will come from block 1
                     fprintf(fp,"ac_algo=verushash\nac_veruspos=50\nac_cc=1\n");
                     fprintf(fp,"launchsystemid=%s\n", EncodeDestination(CIdentityID(ConnectedChains.thisChain.launchSystemID)).c_str());
+                    fprintf(fp,"parentid=%s\n", EncodeDestination(CIdentityID(ConnectedChains.thisChain.parent)).c_str());
+                    fprintf(fp,"systemid=%s\n", EncodeDestination(CIdentityID(ConnectedChains.thisChain.systemID)).c_str());
                     fprintf(fp,"startblock=%d\n", ConnectedChains.thisChain.startBlock);
                     fprintf(fp,"endblock=%d\n", ConnectedChains.thisChain.endBlock);
                     fprintf(fp,"ac_supply=%s\n", (charPtr = mapArgs["-ac_supply"].c_str())[0] == 0 ? "0" : charPtr);
@@ -1820,7 +1822,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_reward"] = "0,38400000000,2400000000";
         mapArgs["-ac_halving"] = "1,43200,1051920";
         mapArgs["-ac_decay"] = "100000000,0,0";
-        mapArgs["-ac_options"] = "72,0,0";      // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
+        mapArgs["-ac_options"] = "264,264,264";      // OPTION_ID_REFERRALS + OPTION_PBAAS
         mapArgs["-ac_end"] = "10080,226080,0";
         mapArgs["-ac_timelockgte"] = "19200000000";
         mapArgs["-ac_timeunlockfrom"] = "129600";
@@ -1845,7 +1847,7 @@ void komodo_args(char *argv0)
         mapArgs["-ac_eras"] = "1";
         mapArgs["-ac_reward"] = "1200000000";
         mapArgs["-ac_decay"] = "0";
-        mapArgs["-ac_options"] = "72";       // OPTION_ID_REFERRALS + OPTION_CANBERESERVE
+        mapArgs["-ac_options"] = "264";       // OPTION_ID_REFERRALS + OPTION_PBAAS
         mapArgs["-ac_end"] = "0";
         mapArgs["-ac_veruspos"] = "50";
 
@@ -1858,7 +1860,7 @@ void komodo_args(char *argv0)
             LogPrintf("Config file for %s not found.\n", name.c_str());
         }
 
-        std::string halving = GetArg("-ac_halving", mapArgs.count("-ac_halving") ? mapArgs["-ac_halving"] : "1300004"); // this assignment is required for an ARM compiler workaround
+        std::string halving = GetArg("-ac_halving", mapArgs.count("-ac_halving") ? mapArgs["-ac_halving"] : "1200028"); // this assignment is required for an ARM compiler workaround
         mapArgs["-ac_halving"] = halving;    // allow testing easily with different values here
     }
     else
@@ -2143,18 +2145,6 @@ void komodo_args(char *argv0)
             sprintf(&magicstr[i<<1],"%02x",magic[i]);
         magicstr[8] = 0;
 
-/* TODO: HARDENING - see if this is needed for any reason before removing commented section
-#ifndef FROM_CLI
-        sprintf(fname,"%s_7776",ASSETCHAINS_SYMBOL);
-        if ( (fp= fopen(fname,"wb")) != 0 )
-        {
-            fprintf(fp,iguanafmtstr,name.c_str(),name.c_str(),name.c_str(),name.c_str(),magicstr,ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT,"78.47.196.146");
-            fclose(fp);
-            //printf("created (%s)\n",fname);
-        } else printf("error creating (%s)\n",fname);
-#endif
-*/
-
         if ( KOMODO_CCACTIVATE != 0 && ASSETCHAINS_CC < 2 )
         {
             ASSETCHAINS_CC = 2;
@@ -2173,6 +2163,9 @@ void komodo_args(char *argv0)
 
             obj.push_back(Pair("startblock", PBAAS_STARTBLOCK));
             obj.push_back(Pair("endblock", PBAAS_ENDBLOCK));
+            obj.push_back(Pair("launchsystemid", GetArg("-launchsystemid","")));
+            obj.push_back(Pair("systemid", GetArg("-systemid","")));
+            obj.push_back(Pair("parent", GetArg("-parentid","")));
 
             UniValue eras(UniValue::VARR);
             for (int i = 0; i <= ASSETCHAINS_LASTERA; i++)
