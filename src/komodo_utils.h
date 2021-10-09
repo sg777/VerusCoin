@@ -1449,6 +1449,8 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     // basic coin parameters. the rest will come from block 1
                     fprintf(fp,"ac_algo=verushash\nac_veruspos=50\nac_cc=1\n");
                     fprintf(fp,"launchsystemid=%s\n", EncodeDestination(CIdentityID(ConnectedChains.thisChain.launchSystemID)).c_str());
+                    fprintf(fp,"parentid=%s\n", EncodeDestination(CIdentityID(ConnectedChains.thisChain.parent)).c_str());
+                    fprintf(fp,"systemid=%s\n", EncodeDestination(CIdentityID(ConnectedChains.thisChain.systemID)).c_str());
                     fprintf(fp,"startblock=%d\n", ConnectedChains.thisChain.startBlock);
                     fprintf(fp,"endblock=%d\n", ConnectedChains.thisChain.endBlock);
                     fprintf(fp,"ac_supply=%s\n", (charPtr = mapArgs["-ac_supply"].c_str())[0] == 0 ? "0" : charPtr);
@@ -2161,6 +2163,9 @@ void komodo_args(char *argv0)
 
             obj.push_back(Pair("startblock", PBAAS_STARTBLOCK));
             obj.push_back(Pair("endblock", PBAAS_ENDBLOCK));
+            obj.push_back(Pair("launchsystemid", GetArg("-launchsystemid","")));
+            obj.push_back(Pair("systemid", GetArg("-systemid","")));
+            obj.push_back(Pair("parent", GetArg("-parentid","")));
 
             UniValue eras(UniValue::VARR);
             for (int i = 0; i <= ASSETCHAINS_LASTERA; i++)
