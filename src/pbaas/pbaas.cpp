@@ -1860,7 +1860,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     CCoinbaseCurrencyState currencyState;
     std::vector<CAddressIndexDbEntry> notarizationIndex;
 
-    if (chainID == ASSETCHAINS_CHAINID)
+    if ((IsVerusActive() || height == 0) && chainID == ASSETCHAINS_CHAINID)
     {
         currencyState = GetInitialCurrencyState(thisChain);
         currencyState.SetLaunchConfirmed();
