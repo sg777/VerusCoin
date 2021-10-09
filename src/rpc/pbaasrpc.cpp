@@ -3582,18 +3582,20 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             CCurrencyDefinition secondCurrencyDef;
             uint160 secondCurrencyID;
             bool isVia = false;
+            bool isConversion = false;
+
             if (viaStr != "")
             {
                 secondCurrencyID = ValidateCurrencyName(viaStr, true, &secondCurrencyDef);
                 std::map<uint160, int32_t> viaIdxMap = secondCurrencyDef.GetCurrenciesMap();
                 if (secondCurrencyID.IsNull() ||
                     sourceCurrencyID.IsNull() ||
-                    convertToCurrencyID.IsNull() ||
-                    secondCurrencyID == sourceCurrencyID || 
-                    secondCurrencyID == convertToCurrencyID ||
-                    sourceCurrencyID == convertToCurrencyID ||
-                    !viaIdxMap.count(sourceCurrencyID) ||
-                    !viaIdxMap.count(convertToCurrencyID))
+                    (!convertToCurrencyID.IsNull() &&
+                     (secondCurrencyID == sourceCurrencyID || 
+                      secondCurrencyID == convertToCurrencyID ||
+                      sourceCurrencyID == convertToCurrencyID ||
+                      !viaIdxMap.count(convertToCurrencyID))) ||
+                    !viaIdxMap.count(sourceCurrencyID))
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "To specify a fractional currency converter, \"currency\" and \"convertto\" must both be reserves of \"via\"");
                 }
@@ -3601,16 +3603,24 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot combine reserve to reserve conversion with burning, minting, or preconversion");
                 }
-                CCurrencyDefinition tempDef = convertToCurrencyDef;
-                convertToCurrencyDef = secondCurrencyDef;
-                secondCurrencyDef = tempDef;
-                convertToCurrencyID = convertToCurrencyDef.GetID();
-                secondCurrencyID = secondCurrencyDef.GetID();
+                if (convertToCurrencyID.IsNull())
+                {
+                    convertToCurrencyDef = secondCurrencyDef;
+                    convertToCurrencyID = convertToCurrencyDef.GetID();
+                    secondCurrencyDef = CCurrencyDefinition();
+                }
+                else
+                {
+                    CCurrencyDefinition tempDef = convertToCurrencyDef;
+                    convertToCurrencyDef = secondCurrencyDef;
+                    secondCurrencyDef = tempDef;
+                    convertToCurrencyID = convertToCurrencyDef.GetID();
+                    secondCurrencyID = secondCurrencyDef.GetID();
+                    isConversion = true;
+                }
                 isVia = true;
             }
-
-            bool isConversion = false;
-            if (!convertToCurrencyID.IsNull())
+            else if (!convertToCurrencyID.IsNull())
             {
                 isConversion = true;
             }
@@ -3638,8 +3648,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             CCurrencyDefinition exportToCurrencyDef;
             uint160 exportToCurrencyID;
 
-            toFractional = convertToCurrencyDef.IsValid() && convertToCurrencyDef.IsFractional() && convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID);
-            fromFractional = !toFractional &&
+            toFractional = isConversion &&
+                           convertToCurrencyDef.IsValid() &&
+                           convertToCurrencyDef.IsFractional() &&
+                           convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID);
+            fromFractional = isConversion &&
+                             !toFractional &&
                              sourceCurrencyDef.IsFractional() && !convertToCurrencyID.IsNull() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID);
             if (toFractional || preConvert)
             {
