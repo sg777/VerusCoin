@@ -836,7 +836,7 @@ public:
     CCurrencyValueMap totalBurned;              // if this is a cross chain export, some currencies will be burned, the rest held in deposits
     CTransferDestination exporter;              // typically the exporting miner or staker's address, to accept deferred payment for the export
 
-    int32_t firstInput;                         // if export is from inputs, on chain of reserveTransfers, this is first input
+    int32_t firstInput;                         // if export is from inputs, on chain of reserveTransfers, this is first input, -1 for cross-chain
     std::vector<CReserveTransfer> reserveTransfers; // reserve transfers for this export, can be split across multiple outputs
 
     CCrossChainExport() : nVersion(VERSION_INVALID), flags(0), sourceHeightStart(0), sourceHeightEnd(0), numInputs(0), firstInput(0) {}
@@ -941,7 +941,7 @@ public:
 
     bool IsSameChain() const
     {
-        return sourceSystemID == ASSETCHAINS_CHAINID;
+        return sourceSystemID == destSystemID;
     }
 
     bool IsPrelaunch() const
@@ -1391,14 +1391,14 @@ public:
         priorWeights(PriorWeights)
     {
         int numCurrencies = currencies.size();
-        if (!reserveIn.size() == numCurrencies) reserveIn.resize(currencies.size());
-        if (!primaryCurrencyIn.size() == numCurrencies) primaryCurrencyIn.resize(currencies.size());
-        if (!reserveOut.size() == numCurrencies) reserveOut.resize(currencies.size());
-        if (!conversionPrice.size() == numCurrencies) conversionPrice.resize(currencies.size());
-        if (!viaConversionPrice.size() == numCurrencies) viaConversionPrice.resize(currencies.size());
-        if (!fees.size() == numCurrencies) fees.resize(currencies.size());
-        if (!conversionFees.size() == numCurrencies) conversionFees.resize(currencies.size());
-        if (!priorWeights.size() == numCurrencies) priorWeights.resize(currencies.size());
+        if (reserveIn.size() != numCurrencies) reserveIn.resize(currencies.size());
+        if (primaryCurrencyIn.size() != numCurrencies) primaryCurrencyIn.resize(currencies.size());
+        if (reserveOut.size() != numCurrencies) reserveOut.resize(currencies.size());
+        if (conversionPrice.size() != numCurrencies) conversionPrice.resize(currencies.size());
+        if (viaConversionPrice.size() != numCurrencies) viaConversionPrice.resize(currencies.size());
+        if (fees.size() != numCurrencies) fees.resize(currencies.size());
+        if (conversionFees.size() != numCurrencies) conversionFees.resize(currencies.size());
+        if (priorWeights.size() != numCurrencies) priorWeights.resize(currencies.size());
     }
 
     CCoinbaseCurrencyState(const UniValue &uni);
@@ -1441,7 +1441,7 @@ public:
 
     void ClearForNextBlock()
     {
-        priorWeights = weights;
+        priorWeights = weights.size() ? weights : std::vector<int32_t>(currencies.size());
         emitted = 0;
         primaryCurrencyOut = 0;
         preConvertedOut = 0;

@@ -577,8 +577,9 @@ bool AsyncRPCOperation_sendmany::main_impl() {
                         "Could not generate a taddr to use as a change address");
                 }
                 changeAddr = vchPubKey.GetID();
+                keyChange.KeepKey();
             }
-            
+
             builder_.SendChangeTo(changeAddr);
         }
 

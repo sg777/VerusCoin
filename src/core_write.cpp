@@ -842,6 +842,15 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
         obj.push_back(Pair("idregistrationprice", ValueFromAmount(idRegistrationFees)));
         obj.push_back(Pair("idreferrallevels", idReferralLevels));
+        if (IsPBaaSChain() || IsGateway())
+        {
+            obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
+            if (!gatewayConverterName.empty())
+            {
+                uint160 gatewayParent = GetID();
+                obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentity::GetID(gatewayConverterName, gatewayParent))));
+            }
+        }
 
         if (IsPBaaSChain())
         {
@@ -856,13 +865,6 @@ UniValue CCurrencyDefinition::ToUniValue() const
                 eraArr.push_back(era);
             }
             obj.push_back(Pair("eras", eraArr));
-
-            obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
-            if (!gatewayConverterName.empty())
-            {
-                uint160 gatewayParent = GetID();
-                obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentity::GetID(gatewayConverterName, gatewayParent))));
-            }
         }
     }
 
@@ -1197,14 +1199,9 @@ UniValue CMMRProof::ToUniValue() const
             {
                 CETHPATRICIABranch &branch = *(CETHPATRICIABranch *)(proof);
                 retObj.push_back(Pair("branchtype", (int)CMerkleBranchBase::BRANCH_ETH));
-               // retObj.push_back(Pair("index", (int64_t)(branch.nIndex)));
-               // retObj.push_back(Pair("mmvsize", (int64_t)(branch.nSize)));
-              //  for (auto &oneHash : branch.branch)
-              //  {
-              //      branchArray.push_back(oneHash.GetHex());
-               // }
-              //  retObj.push_back(Pair("hashes", branchArray));
-               // break;
+                // univalue of ETH proof is just hex of whole object
+                std::vector<unsigned char> serBytes(::AsVector(*this));
+                retObj.push_back(Pair("data", HexBytes(&(serBytes[0]), serBytes.size())));
             }
         };
     }

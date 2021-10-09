@@ -315,7 +315,7 @@ public:
         OPTION_ID_REFERRALS = 8,            // if set, this chain supports referrals
         OPTION_ID_REFERRALREQUIRED = 0x10,  // if set, this chain requires referrals
         OPTION_TOKEN = 0x20,                // if set, this is a token, not a native currency
-        OPTION_CANBERESERVE = 0x40,         // if set, this currency can be used as a reserve for a liquid currency
+        OPTION_RESERVED = 0x40,
         OPTION_GATEWAY = 0x80,              // if set, this routes external currencies
         OPTION_PBAAS = 0x100,               // this is a PBaaS chain definition
         OPTION_PBAAS_CONVERTER = 0x200,     // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
@@ -548,13 +548,13 @@ public:
         READWRITE(VARINT(idRegistrationFees));
         READWRITE(VARINT(idReferralLevels));
         READWRITE(VARINT(idImportFees));
+        READWRITE(nativeCurrencyID);
+        if (nativeCurrencyID.IsValid())
+        {
+            READWRITE(gatewayID);
+        }
         if (IsGateway() || IsPBaaSChain())
         {
-            if (IsGateway())
-            {
-                READWRITE(nativeCurrencyID);
-                READWRITE(gatewayID);
-            }
             READWRITE(VARINT(currencyRegistrationFee));
             READWRITE(VARINT(pbaasSystemLaunchFee));
             READWRITE(VARINT(currencyImportFee));
@@ -611,6 +611,11 @@ public:
             retVal = GetID(gatewayConverterName, parentID);
         }
         return retVal;
+    }
+
+    uint160 SystemOrGatewayID() const
+    {
+        return (IsGateway() ? gatewayID : systemID);
     }
 
     int64_t GetCurrencyRegistrationFee(uint32_t currencyOptions) const
@@ -753,11 +758,6 @@ public:
     bool IsFractional() const
     {
         return ChainOptions() & OPTION_FRACTIONAL;
-    }
-
-    bool CanBeReserve() const
-    {
-        return ChainOptions() & OPTION_CANBERESERVE;
     }
 
     bool IsToken() const
@@ -1122,6 +1122,7 @@ public:
     UniValue ToUniValue() const;
 };
 
+// TODO: HARDENING we should make sure we handle PROOF_CHAINID before release rather than an assert
 class CNativeHashWriter
 {
 private:
@@ -1140,6 +1141,7 @@ public:
         nativeHashType = proofProtocol;
         switch (nativeHashType)
         {
+            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
             case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
             {
                 state.hw_blake2b = new CBLAKE2bWriter(SER_GETHASH, PROTOCOL_VERSION, personal);
@@ -1151,7 +1153,9 @@ public:
                 break;
             }
             default:
+            {
                 assert(false);
+            }
         }
     }
 
@@ -1162,6 +1166,7 @@ public:
             switch (nativeHashType)
             {
                 case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
+                case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
                 {
                     delete state.hw_blake2b;
                     break;
@@ -1178,7 +1183,9 @@ public:
 
     static bool IsValidHashType(CCurrencyDefinition::EProofProtocol hashType)
     {
-        return (hashType == CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR || hashType == CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
+        return (hashType == CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR ||
+                hashType == CCurrencyDefinition::EProofProtocol::PROOF_CHAINID ||
+                hashType == CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
     }
 
     bool IsValid()
@@ -1201,6 +1208,7 @@ public:
         switch (nativeHashType)
         {
             case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
+            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
             {
                 state.hw_blake2b->write(pch, size);
                 break;
@@ -1220,6 +1228,7 @@ public:
         switch (nativeHashType)
         {
             case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
+            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
             {
                 result = state.hw_blake2b->GetHash();
                 break;

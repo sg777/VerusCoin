@@ -513,7 +513,15 @@ public:
 
     bool IsValid(bool strict=false) const
     {
-        return CPrincipal::IsValid(strict) && name.size() > 0 && 
+        bool isOK = true;
+        if (strict || nVersion >= VERSION_PBAAS)
+        {
+            CDataStream s(SER_DISK, PROTOCOL_VERSION);
+            isOK = (GetSerializeSize(s, *this) + ID_SCRIPT_ELEMENT_OVERHEAD) <= CScript::MAX_SCRIPT_ELEMENT_SIZE;
+        }
+
+        return isOK &&
+               CPrincipal::IsValid(strict) && name.size() > 0 && 
                (name.size() <= MAX_NAME_LEN) &&
                primaryAddresses.size() &&
                (nVersion < VERSION_PBAAS ||

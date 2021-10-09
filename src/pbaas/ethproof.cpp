@@ -66,7 +66,7 @@ std::vector<unsigned char> uint64_to_vec(uint64_t input){
          temp[7 - i] = (input >> (i * 8));
     
     for (int i=0; i<8; i++){
-        if(temp[i] == 0)
+        if(temp[0] == 0)
             temp.erase(temp.begin());
         else 
             break;    

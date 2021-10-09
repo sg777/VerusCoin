@@ -337,7 +337,7 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
 
         bool hasNativeChange = change > 0;
 
-        if ((hasNativeChange && (!tChangeAddr && !saplingChangeAddr && spends.empty())) || (hasReserveChange && !tChangeAddr))
+        if (!tChangeAddr && ((hasNativeChange && !saplingChangeAddr && spends.empty()) || hasReserveChange))
         {
             printf("%s: nativeChange: %ld, reserveChange: %s\n", __func__, change, reserveChange.ToUniValue().write(1,2).c_str());
             LogPrintf("%s: nativeChange: %ld, reserveChange: %s\n", __func__, change, reserveChange.ToUniValue().write(1,2).c_str());
@@ -361,6 +361,7 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
                     hasNativeChange = false;    // no more native change to send
                 }
                 std::vector<CTxDestination> dest(1, tChangeAddr.get());
+
 
                 // one output for all reserves, change gets combined
                 // we should separate, or remove any currency that is not whitelisted if specified after whitelist is supported

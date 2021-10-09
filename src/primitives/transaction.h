@@ -1303,13 +1303,13 @@ public:
             else if (components[0].elType == CTransactionHeader::TX_ETH_OBJECT && components[0].Rehydrate(vdxfObj))
             {
                 CDataStream s = CDataStream(vdxfObj.data, SER_NETWORK, PROTOCOL_VERSION);
-                std::vector<CReserveTransfer> reserveTransfers;
+                uint256 prevtxid;
                 CCrossChainExport ccx;
 
                 try
                 {
                     s >> ccx;
-                    s >> reserveTransfers;
+                    s >> prevtxid;
                 }
                 catch (const std::runtime_error &e)
                 {
@@ -1319,11 +1319,7 @@ public:
                  
                 auto hw2 = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
                 hw2 << ccx;
-                
-                for (auto &oneTransfer : reserveTransfers)
-                {
-                    hw2 << oneTransfer;
-                }
+                hw2 << prevtxid;
                 
                 return hw2.GetHash();
                 

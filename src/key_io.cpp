@@ -208,7 +208,8 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
         std::string cleanName = CleanName(str, parent);
         if (cleanName != "")
         {
-            return CIdentityID(CIdentity::GetID(cleanName, parent));
+            parent.SetNull();
+            return CIdentityID(CIdentity::GetID(str, parent));
         }
     }
 
@@ -676,9 +677,9 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
         {
             try
             {
-                std::vector<unsigned char> vch(ParseHex(keys[i]));
                 uint160 key;
-                if (vch.size() == 20 && !((key = uint160(vch)).IsNull() || i >= values.size()))
+                key.SetHex(keys[i]);
+                if (!key.IsNull() && i < values.size())
                 {
                     contentMap[key] = uint256S(uni_get_str(values[i]));
                 }
@@ -751,7 +752,7 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
         case CTransferDestination::DEST_ETH:
         {
             uint160 ethDestID = DecodeEthDestination(uni_get_str(find_value(obj, "address")));
-            destination = std::vector<unsigned char>(ethDestID.begin(), ethDestID.end());
+            destination = ::AsVector(ethDestID);
             break;
         }
 
@@ -799,7 +800,7 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
     }
     if (type & FLAG_DEST_GATEWAY)
     {
-        gatewayID = DecodeEthDestination(uni_get_str(find_value(obj, "gateway")));
+        gatewayID = GetDestinationID(DecodeDestination(uni_get_str(find_value(obj, "gateway"))));
         fees = uni_get_int64(find_value(obj, "fees"));
     }
 }

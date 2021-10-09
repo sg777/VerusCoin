@@ -3560,6 +3560,22 @@ static int64_t nTimeIndex = 0;
 static int64_t nTimeCallbacks = 0;
 static int64_t nTimeTotal = 0;
 
+void SetMaxScriptElementSize(uint32_t height)
+{
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_PBAAS;
+    }
+    else if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_IDENTITY)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
+    }
+    else
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
+    }
+}
+
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex, CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck, bool fCheckPOW)
 {
     if ( KOMODO_STOPAT != 0 && pindex->GetHeight() > KOMODO_STOPAT )
@@ -3947,6 +3963,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             CUTXORef partialNotarizationEvidenceUTXO;
             CPBaaSNotarization lastNotarization, launchNotarization;
             uint256 txProofRoot;
+            CPartialTransactionProof txProof;
             CAmount converterIssuance = 0;
 
             // move through block one imports and add associated fee to the coinbase fees
@@ -3954,7 +3971,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             {
                 COptCCParams p;
                 CCrossChainImport cci;
-                CCrossChainExport ccx;
+                CCrossChainExport ccx, ccxEvidence;
                 CCrossChainImport dummySysCCI;
                 CPBaaSNotarization importNotarization;
                 CReserveDeposit resDeposit;
@@ -3969,25 +3986,33 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     {
                         uint160 cbCurID = cbCurDef.GetID();
 
-                        // TODO: HARDENING - make this fail in the next testnet reset, not just print a message
-                        // earlier launch notarizations did not always have proofroots
-                        if (!(cci.sourceSystemID == cbCurDef.launchSystemID &&
-                              launchNotarization.proofRoots.count(cci.sourceSystemID) &&
-                              txProofRoot == launchNotarization.proofRoots[cci.sourceSystemID].stateRoot))
+                        if (!(cci = CCrossChainImport(p.vData[0])).IsValid())
                         {
-                            printf("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing" );
+                            return state.DoS(10, error("%s: invalid initial import\n", __func__), REJECT_INVALID, "invalid-block");
                         }
 
-                        if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&
-                            cbCurDef.IsValid() &&
+                        if (cbCurDef.IsValid() &&
                             cci.importCurrencyID == cbCurID &&
                             (cbCurID == ASSETCHAINS_CHAINID || cbCurID == ConnectedChains.ThisChain().GatewayConverterID()) &&
                             cci.GetImportInfo(tx, 1, j, ccx, 
-                                            dummySysCCI, sysCCIOut,
-                                            importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
+                                              dummySysCCI, sysCCIOut,
+                                              importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
                             importNotarization.IsValid() &&
                             importNotarization.currencyState.IsValid())
                         {
+                            if (cbCurID == ASSETCHAINS_CHAINID)
+                            {
+                                auto proofRootCurrent = importNotarization.proofRoots.find(cbCurDef.launchSystemID);
+                                if (cci.sourceSystemID != cbCurDef.launchSystemID ||
+                                    proofRootCurrent == importNotarization.proofRoots.end() ||
+                                    txProof.GetProofHeight() != proofRootCurrent->second.rootHeight ||
+                                    txProofRoot != proofRootCurrent->second.stateRoot)
+                                {
+                                    return state.DoS(10, error("%s: notarization check %s proofroot\n", __func__, launchNotarization.proofRoots.count(cci.sourceSystemID) ? "invalid" :"missing"),
+                                                    REJECT_INVALID, "invalid-block");
+                                }
+                            }
+
                             uint256 transferHash;
                             std::vector<CTxOut> importOutputs;
                             CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
@@ -3998,16 +4023,16 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                             std::vector<CReserveTransfer> exportTransfers(reserveTransfers);
                             if (!tempLastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
-                                                                            cbCurDef,
-                                                                            0,
-                                                                            1,
-                                                                            exportTransfers,
-                                                                            transferHash,
-                                                                            newNotarization,
-                                                                            importOutputs,
-                                                                            importedCurrency,
-                                                                            gatewayDepositsUsed,
-                                                                            spentCurrencyOut))
+                                                                           cbCurDef,
+                                                                           0,
+                                                                           1,
+                                                                           exportTransfers,
+                                                                           transferHash,
+                                                                           newNotarization,
+                                                                           importOutputs,
+                                                                           importedCurrency,
+                                                                           gatewayDepositsUsed,
+                                                                           spentCurrencyOut))
                             {
                                 LogPrintf("%s: invalid coinbase import for currency %s on system %s\n", 
                                     __func__,
@@ -4123,7 +4148,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     else // EVAL_NOTARY_EVIDENCE
                     {
                         CTransaction nTx;
-                        CPartialTransactionProof txProof;
                         CNotaryEvidence evidence;
                         CPBaaSNotarization nextNotarization;
 
@@ -4523,10 +4547,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     // END insightexplorer
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(pindex->GetHeight() + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
+    SetMaxScriptElementSize(pindex->GetHeight() + 1);
 
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
@@ -5221,14 +5242,7 @@ bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams,
         return false;
     }
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
-    else
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
-    }
+    SetMaxScriptElementSize(chainActive.Height() + 1);
 
     return true;
 }
@@ -6357,14 +6371,7 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
     if (nHeight > 250)
         cheatList.Prune(nHeight - 200);
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
-    else
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
-    }
+    SetMaxScriptElementSize(nHeight + 1);
 
     RemoveCoinbaseFromMemPool(*pblock);
     return true;
@@ -6787,14 +6794,7 @@ bool static LoadBlockIndexDB()
     
     EnforceNodeDeprecation(chainActive.Height(), true);
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height() + 1) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
-    else
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
-    }
+    SetMaxScriptElementSize(chainActive.Height() + 1);
 
     return true;
 }
