@@ -420,9 +420,14 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
         std::vector<unsigned char> storageValue = verifyProof(storageHash,storageProofKey_vec,storageProof.proof_branch);
         RLP::rlpDecoded decodedValue = rlp.decode(bytes_to_hex(storageValue));
 
+        while(decodedValue.data[0].size() < 32)
+        {
+            decodedValue.data[0].insert(decodedValue.data[0].begin(), 0x00); //proofs can be truncated on the left.
+        }
+
         if(ccExporthash_vec != decodedValue.data[0])
         {
-            throw std::invalid_argument(std::string("RLP Storage Value does no match"));
+            throw std::invalid_argument(std::string("RLP Storage Value does not match"));
         }
     
     }catch(const std::invalid_argument& e){
@@ -464,6 +469,10 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
         return stateRoot;
     }
     //confim that the encoded account details match those stored in the proof
+    while(accountValue.size() < 32)
+    {
+        accountValue.insert(accountValue.begin(), 0x00); //proofs can be truncated on the left.
+    }
 
     if(encodedAccount != accountValue){
         memset(&stateRoot,0,stateRoot.size());
