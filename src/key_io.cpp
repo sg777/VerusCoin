@@ -801,7 +801,7 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
     if (type & FLAG_DEST_GATEWAY)
     {
         gatewayID = GetDestinationID(DecodeDestination(uni_get_str(find_value(obj, "gateway"))));
-        fees = uni_get_int64(find_value(obj, "fees"));
+        fees = AmountFromValueNoErr(find_value(obj, "fees"));
     }
 }
 
