@@ -2373,11 +2373,11 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
     }
 
     // if we are being asked for a notarization of the current chain, we make one
-    if (currencyID == ASSETCHAINS_CHAINID)
+    uint32_t height = chainActive.Height();
+    if ((IsVerusActive() || height == 0) && currencyID == ASSETCHAINS_CHAINID)
     {
         CIdentityID proposer = VERUS_NOTARYID.IsNull() ? (VERUS_DEFAULTID.IsNull() ? VERUS_NODEID : VERUS_DEFAULTID) : VERUS_NOTARYID;
 
-        uint32_t height = chainActive.Height();
         std::map<uint160, CProofRoot> proofRoots;
         proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(height);
         //printf("%s: returning proof root: %s\n", __func__, proofRoots[ASSETCHAINS_CHAINID].ToUniValue().write(1,2).c_str());
