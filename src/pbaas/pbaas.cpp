@@ -2766,8 +2766,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             lastNotarization.currencyState.SetLaunchClear(false);
         }
 
-        uint32_t notarHeight = useProofs && lastNotarization.proofRoots.count(ccx.sourceSystemID) ? lastNotarization.proofRoots[ccx.sourceSystemID].rootHeight : lastNotarization.notarizationHeight;
-        uint32_t nextHeight = std::max(ccx.sourceHeightEnd, lastNotarization.notarizationHeight);
+        uint32_t nextHeight = destCurID == ASSETCHAINS_CHAINID ? nextHeight = nHeight : std::max(ccx.sourceHeightEnd, lastNotarization.notarizationHeight);
         if (ccx.IsPostlaunch() || lastNotarization.IsLaunchComplete())
         {
             lastNotarization.currencyState.SetLaunchCompleteMarker();
