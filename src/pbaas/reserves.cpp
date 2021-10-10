@@ -2886,7 +2886,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         feeEquivalent = importCurrencyState.NativeToReserveRaw(feeEquivalent, importCurrencyState.viaConversionPrice[systemDestIdx]);
                     }
 
-                    if (feeEquivalent < curTransfer.CalculateTransferFee())
+                    if (!systemDest.IsGateway() && feeEquivalent < curTransfer.CalculateTransferFee())
                     {
                         printf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                         LogPrintf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
