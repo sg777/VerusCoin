@@ -404,7 +404,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 
         // PBaaS launch imports do not spend a separate sys import thread, since we are also importing 
         // system currency on the same tx and and the coinbase has no inputs anyhow
-        if (!isPBaaSDefinitionOrLaunch)
+        if (!isPBaaSDefinitionOrLaunch && pBaseImport->sourceSystemID != pBaseImport->importCurrencyID)
         {
             // next output should be the import for the system from which this export comes
             uint256 hashBlk;
@@ -506,6 +506,10 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     if (sysCCITemp.IsValid())
     {
         sysCCI = sysCCITemp;
+    }
+    else if (pBaseImport->sourceSystemID == pBaseImport->importCurrencyID)
+    {
+        sysCCI = *pBaseImport;
     }
     return true;
 }
