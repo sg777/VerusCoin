@@ -2853,7 +2853,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         // get the source system import as well
         CCrossChainImport sysCCI;
-        if (useProofs)
+        if (useProofs && cci.sourceSystemID != cci.importCurrencyID)
         {
             // we need a new import for the source system
             sysCCI = cci;
@@ -3313,7 +3313,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             printf("%s: newImportTx:\n%s\n", __func__, uni.write(1,2).c_str()); */
 
             lastSourceImportTx = newImportTx;
-            lastSourceCCI = sysCCI;
+            lastSourceCCI = cci.importCurrencyID == cci.sourceSystemID ? cci : sysCCI;
             lastSourceImportTxID = newImportTx.GetHash();
             sourceOutputNum = 1;
         }
