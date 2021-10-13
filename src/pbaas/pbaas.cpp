@@ -2948,7 +2948,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             tb.AddTransparentInput(COutPoint(lastImportTxID, outputNum), lastImportTx.vout[outputNum].scriptPubKey, lastImportTx.vout[outputNum].nValue);
 
             // if we should add a source import input
-            if (useProofs)
+            if (useProofs && cci.sourceSystemID != cci.importCurrencyID)
             {
                 tb.AddTransparentInput(COutPoint(lastSourceImportTxID, sourceOutputNum), 
                                        lastSourceImportTx.vout[sourceOutputNum].scriptPubKey, lastSourceImportTx.vout[sourceOutputNum].nValue);
