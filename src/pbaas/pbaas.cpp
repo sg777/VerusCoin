@@ -1141,7 +1141,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (!systemDest.IsValid())
         {
-            systemDestID = importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID;
+            systemDestID = importCurrencyDef.SystemOrGatewayID();
             systemDest = systemDestID == importCurrencyID ? importCurrencyDef : ConnectedChains.GetCachedCurrency(systemDestID);
         }
 
@@ -2853,7 +2853,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         // get the source system import as well
         CCrossChainImport sysCCI;
-        if (useProofs)
+        if (useProofs && cci.sourceSystemID != cci.importCurrencyID)
         {
             // we need a new import for the source system
             sysCCI = cci;
@@ -2948,7 +2948,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             tb.AddTransparentInput(COutPoint(lastImportTxID, outputNum), lastImportTx.vout[outputNum].scriptPubKey, lastImportTx.vout[outputNum].nValue);
 
             // if we should add a source import input
-            if (useProofs)
+            if (useProofs && cci.sourceSystemID != cci.importCurrencyID)
             {
                 tb.AddTransparentInput(COutPoint(lastSourceImportTxID, sourceOutputNum), 
                                        lastSourceImportTx.vout[sourceOutputNum].scriptPubKey, lastSourceImportTx.vout[sourceOutputNum].nValue);
@@ -3313,7 +3313,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             printf("%s: newImportTx:\n%s\n", __func__, uni.write(1,2).c_str()); */
 
             lastSourceImportTx = newImportTx;
-            lastSourceCCI = sysCCI;
+            lastSourceCCI = cci.importCurrencyID == cci.sourceSystemID ? cci : sysCCI;
             lastSourceImportTxID = newImportTx.GetHash();
             sourceOutputNum = 1;
         }

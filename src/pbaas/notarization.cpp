@@ -464,12 +464,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     // if we are communicating with an external system that uses a different hash, use it for everything
     CCurrencyDefinition::EProofProtocol hashType = CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR;
 
-    uint160 externalSystemID = sourceSystem.systemID == ASSETCHAINS_CHAINID ? 
-                                ((destSystemID  == ASSETCHAINS_CHAINID) ? uint160() : destSystemID) : 
-                                sourceSystem.systemID;
+    uint160 externalSystemID = sourceSystem.SystemOrGatewayID() == ASSETCHAINS_CHAINID ? 
+                                ((destSystemID == ASSETCHAINS_CHAINID) ? uint160() : destSystemID) : 
+                                ASSETCHAINS_CHAINID;
 
     CCurrencyDefinition externalSystemDef;
-    if (externalSystemID.IsNull())
+    if (externalSystemID.IsNull() || externalSystemID == ASSETCHAINS_CHAINID)
     {
         externalSystemDef = ConnectedChains.ThisChain();
     }
@@ -710,25 +710,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
         newNotarization.currencyState.SetLaunchClear(false);
 
-        CCurrencyDefinition destSystem;
-
-        if (destCurrency.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
-        {
-            destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
-            newNotarization.SetSameChain(false);
-        }
-        else
-        {
-            destSystem = ConnectedChains.ThisChain();
-        }
-
         // calculate new state from processing all transfers
         // we are not refunding, and it is possible that we also have
         // normal conversions in addition to pre-conversions. add any conversions that may 
         // be present into the new currency state
         CCoinbaseCurrencyState intermediateState = newNotarization.currencyState;
         bool isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem, 
-                                                                  destSystem,
+                                                                  externalSystemDef,
                                                                   destCurrency, 
                                                                   intermediateState, 
                                                                   exportTransfers, 
@@ -751,7 +739,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             tempCurState.viaConversionPrice = newNotarization.currencyState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
             isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem, 
-                                                                 destSystem,
+                                                                 externalSystemDef,
                                                                  destCurrency, 
                                                                  tempCurState, 
                                                                  exportTransfers, 
