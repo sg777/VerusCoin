@@ -5239,8 +5239,8 @@ void CConnectedChains::SubmissionThread()
                                 ds << oneTransfer;
                             }
                             std::vector<unsigned char> streamVec(ds.begin(), ds.end());
-                            printf("%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()));
-                            LogPrint("bridge", "%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()));
+                            printf("%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
+                            LogPrint("bridge", "%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
                         }
 
                         for (auto &oneTransfer : oneExport.second)
