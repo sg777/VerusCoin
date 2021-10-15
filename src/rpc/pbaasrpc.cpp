@@ -3590,6 +3590,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 std::map<uint160, int32_t> viaIdxMap = secondCurrencyDef.GetCurrenciesMap();
                 if (secondCurrencyID.IsNull() ||
                     sourceCurrencyID.IsNull() ||
+                    !secondCurrencyDef.IsFractional() ||
                     (!convertToCurrencyID.IsNull() &&
                      (secondCurrencyID == sourceCurrencyID || 
                       secondCurrencyID == convertToCurrencyID ||
@@ -4009,7 +4010,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     convertToCurrencyID = sourceCurrencyID;
                     convertToCurrencyDef = sourceCurrencyDef;
                 }
-                if (isVia)
+                if (isVia && isConversion)
                 {
                     flags |= CReserveTransfer::RESERVE_TO_RESERVE;
                 }
@@ -4053,6 +4054,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         (destSystemID != thisChainID ? destSystemDef : exportToCurrencyDef) :
                         (ConnectedChains.ThisChain());
                     uint160 offChainID = IsVerusActive() ? nonVerusChainDef.GetID() : VERUS_CHAINID;
+
                     if (!GetNotarizationData(offChainID, cnd) || !cnd.IsConfirmed())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER,
