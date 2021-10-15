@@ -5230,6 +5230,19 @@ void CConnectedChains::SubmissionThread()
                         oneExportUni.pushKV("txoutnum", (int)oneExport.first.first.txIn.prevout.n);
                         oneExportUni.pushKV("partialtransactionproof", oneExport.first.second.ToUniValue());
                         UniValue rtArr(UniValue::VARR);
+
+                        if (LogAcceptCategory("bridge") && IsVerusActive())
+                        {
+                            CDataStream ds = CDataStream(SER_GETHASH, PROTOCOL_VERSION);
+                            for (auto &oneTransfer : oneExport.second)
+                            {
+                                ds << oneTransfer;
+                            }
+                            std::vector<unsigned char> streamVec(ds.begin(), ds.end());
+                            printf("%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()));
+                            LogPrint("bridge", "%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()));
+                        }
+
                         for (auto &oneTransfer : oneExport.second)
                         {
                             rtArr.push_back(oneTransfer.ToUniValue());
