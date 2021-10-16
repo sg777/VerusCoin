@@ -600,7 +600,7 @@ public:
         READWRITE(storageProofValue);
         if (balance == -1)
         {
-            READWRITE(bigBalance)
+            READWRITE(bigBalance);
         }
     }
 
@@ -611,12 +611,11 @@ public:
 
     std::vector<unsigned char> GetBalanceAsBEVector() const
     {
-        arith_uint256 bigValue = balance == -1 ? UintToArith256(bigBalance) : arith_uint256(balance);
+        arith_uint256 bigValue;
         std::vector<unsigned char> vecVal;
-        while (bigValue > 0)
+        for (bigValue = balance == 0xffffffffffffffff ? UintToArith256(bigBalance) : arith_uint256(balance); bigValue > 0; bigValue = bigValue >> 8)
         {
             vecVal.insert(vecVal.begin(), (unsigned char)(bigValue & 0xff).GetLow64());
-            bigValue = bigValue >> 8;
         }
         return vecVal;
     }
