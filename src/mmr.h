@@ -591,7 +591,6 @@ public:
         READWRITE(*(CMerkleBranchBase *)this);
         READWRITE(proofdata);
         READWRITE(address);
-        uint64_t shortBalance;
         READWRITE(FLATDATA(balance));
         if (balance == -1)
         {
