@@ -616,6 +616,7 @@ public:
         while (bigValue > 0)
         {
             vecVal.insert(vecVal.begin(), (unsigned char)(bigValue & 0xff).GetLow64());
+            bigValue = bigValue >> 8;
         }
         return vecVal;
     }
