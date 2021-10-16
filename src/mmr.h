@@ -608,6 +608,17 @@ public:
     {
         return verifyStorageProof(hash);
     }
+
+    std::vector<unsigned char> GetBalanceAsVector() const
+    {
+        arith_uint256 bigValue = balance == -1 ? UintToArith256(bigBalance) : arith_uint256(balance);
+        std::vector<unsigned char> vecVal;
+        while (bigValue > 0)
+        {
+            vecVal.insert(vecVal.begin(), (unsigned char)(bigValue & 0xff).GetLow64());
+        }
+        return vecVal;
+    }
 };
 typedef CPATRICIABranch<CHashWriter> CETHPATRICIABranch;
 
