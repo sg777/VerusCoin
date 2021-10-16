@@ -565,7 +565,8 @@ public:
     std::vector<uint256> branch;
     CRLPProof proofdata;
     CRLPProof storageProof; 
-    uint160 address; 
+    uint160 address;
+    uint256 bigBalance;
     CPATRICIABranch() {}
     CPATRICIABranch(std::vector<std::vector<unsigned char>> a, std::vector<std::vector<unsigned char>> b) : accountProof(a), storageProof(b) {}
     
@@ -590,7 +591,12 @@ public:
         READWRITE(*(CMerkleBranchBase *)this);
         READWRITE(proofdata);
         READWRITE(address);
+        uint64_t shortBalance;
         READWRITE(FLATDATA(balance));
+        if (balance == -1)
+        {
+            READWRITE(bigBalance)
+        }
         READWRITE(codeHash);
         READWRITE(VARINT(nonce));
         READWRITE(storageHash);
