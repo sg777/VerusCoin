@@ -609,7 +609,7 @@ public:
         return verifyStorageProof(hash);
     }
 
-    std::vector<unsigned char> GetBalanceAsVector() const
+    std::vector<unsigned char> GetBalanceAsBEVector() const
     {
         arith_uint256 bigValue = balance == -1 ? UintToArith256(bigBalance) : arith_uint256(balance);
         std::vector<unsigned char> vecVal;
