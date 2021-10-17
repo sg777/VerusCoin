@@ -407,8 +407,6 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
     //Check the storage value hash, which is the hash of the crosschain export transaction
     //matches the the RLP decoded information from the bridge keeper
 
-    
-
     std::vector<unsigned char> ccExporthash_vec(ccExporthash.begin(),ccExporthash.end());
     RLP rlp;
     try{
@@ -454,16 +452,18 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
     //rlp encode the nonce , account balance , storageRootHash and codeHash
     std::vector<unsigned char> encodedAccount;
     std::vector<unsigned char> storage(storageHash.begin(),storageHash.end());
-    try{
+    try
+    {
         std::vector<std::vector<unsigned char>> toEncode;
         toEncode.push_back(ParseHex(uint64_to_hex(nonce)));
-        toEncode.push_back(uint64_to_vec(balance));
+        toEncode.push_back(GetBalanceAsBEVector());
         toEncode.push_back(storage);
         std::vector<unsigned char> codeHash_vec(codeHash.begin(),codeHash.end());
         toEncode.push_back(codeHash_vec);
         encodedAccount = rlp.encode(toEncode);
-
-    }catch(const std::invalid_argument& e){
+    }
+    catch(const std::invalid_argument& e)
+    {
         LogPrintf("RLP Encode failed : %s\n", e.what());
         memset(&stateRoot,0,stateRoot.size());
         return stateRoot;

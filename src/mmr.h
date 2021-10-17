@@ -558,6 +558,7 @@ class CPATRICIABranch : public CMerkleBranchBase
 public:
     std::vector<std::vector<unsigned char>> accountProof;
     uint64_t balance;
+    uint256 bigBalance;
     uint64_t nonce;
     uint256 storageHash;
     uint256 storageProofKey;
@@ -565,7 +566,7 @@ public:
     std::vector<uint256> branch;
     CRLPProof proofdata;
     CRLPProof storageProof; 
-    uint160 address; 
+    uint160 address;
     CPATRICIABranch() {}
     CPATRICIABranch(std::vector<std::vector<unsigned char>> a, std::vector<std::vector<unsigned char>> b) : accountProof(a), storageProof(b) {}
     
@@ -597,11 +598,26 @@ public:
         READWRITE(storageProofKey);
         READWRITE(storageProof);
         READWRITE(storageProofValue);
+        if (balance == -1)
+        {
+            READWRITE(bigBalance);
+        }
     }
 
     uint256 SafeCheck(uint256 hash) 
     {
         return verifyStorageProof(hash);
+    }
+
+    std::vector<unsigned char> GetBalanceAsBEVector() const
+    {
+        arith_uint256 bigValue;
+        std::vector<unsigned char> vecVal;
+        for (bigValue = balance == 0xffffffffffffffff ? UintToArith256(bigBalance) : arith_uint256(balance); bigValue > 0; bigValue = bigValue >> 8)
+        {
+            vecVal.insert(vecVal.begin(), (unsigned char)(bigValue & 0xff).GetLow64());
+        }
+        return vecVal;
     }
 };
 typedef CPATRICIABranch<CHashWriter> CETHPATRICIABranch;
