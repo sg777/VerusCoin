@@ -16,6 +16,52 @@ void ErrorAndBP(std::string msg)
 }
 
 
+CMultiPartProof::CMultiPartProof(const std::vector<CMMRProof> &chunkVec) : CMerkleBranchBase(BRANCH_MULTIPART_END)
+{
+    for (const CMMRProof &oneChunk : chunkVec)
+    {
+        assert(oneChunk.IsMultiPart());
+        vch.insert(vch.end(), ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.begin(), ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.end());
+    }
+}
+
+std::vector<CMMRProof> CMultiPartProof::BreakToChunks(int maxSize) const
+{
+    std::vector<CMMRProof> retVal;
+
+    int curIndex, bytesLeft;
+    CDataStream ds(SER_DISK, PROTOCOL_VERSION);
+    CMMRProof wrapper;
+    wrapper << CMultiPartProof();
+    int minOverhead = GetSerializeSize(ds, wrapper);
+    // make sure we have some space for overhead and vector in each chunk
+    assert(maxSize > minOverhead + 8);
+
+    for (curIndex = 0, bytesLeft = vch.size(); bytesLeft > 0; )
+    {
+        CMMRProof oneChunk;
+        std::vector<unsigned char> oneVch(vch.begin() + curIndex, vch.begin() + (maxSize - minOverhead));
+        oneChunk << CMultiPartProof(CMerkleBranchBase::BRANCH_MULTIPART_END, oneVch);
+
+        int removeBytes = GetSerializeSize(ds, oneChunk) - maxSize;
+
+        // if we are at the end and have space
+        if (removeBytes <= 0)
+        {
+            retVal.push_back(oneChunk);
+            bytesLeft = 0;
+        }
+        else
+        {
+            oneChunk.proofSequence[0]->branchType = CMerkleBranchBase::BRANCH_MULTIPART;
+            ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.erase(vch.begin() + (vch.size() - removeBytes), vch.end());
+            bytesLeft -= ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.size();
+            curIndex += ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.size();
+        }
+    }
+    return retVal;
+}
+
 void CMMRProof::DeleteProofSequence()
 {
     // delete any objects that may be present
@@ -83,6 +129,13 @@ const CMMRProof &CMMRProof::operator<<(const CETHPATRICIABranch &append)
 {
     CETHPATRICIABranch *pNewProof = new CETHPATRICIABranch(append);
     pNewProof->branchType = CMerkleBranchBase::BRANCH_ETH;
+    proofSequence.push_back(pNewProof);
+    return *this;
+}
+
+const CMMRProof &CMMRProof::operator<<(const CMultiPartProof &append)
+{
+    CMultiPartProof *pNewProof = new CMultiPartProof(append);
     proofSequence.push_back(pNewProof);
     return *this;
 }

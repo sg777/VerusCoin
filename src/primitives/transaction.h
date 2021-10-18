@@ -1267,6 +1267,20 @@ public:
     CPartialTransactionProof(const CMMRProof &txRootProof, const CTransaction &tx) : 
         version(VERSION_CURRENT), type(TYPE_FULLTX), txProof(txRootProof), components({CTransactionComponentProof(tx, 0, CMMRProof())}) { }
 
+    CPartialTransactionProof(std::vector<CPartialTransactionProof> &parts)
+    {
+        std::vector<CMMRProof> chunkVec;
+        for (int i = 0; i < parts.size(); i++)
+        {
+            if (parts[i].txProof.IsMultiPart())
+            {
+                chunkVec.push_back(txProof);
+            }
+        }
+        CMultiPartProof assembled = CMultiPartProof(chunkVec);
+        ::FromVector(assembled.vch, *this);
+    }
+
     const CPartialTransactionProof &operator=(const CPartialTransactionProof &operand)
     {
         CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
@@ -1353,6 +1367,30 @@ public:
     bool IsValid() const
     {
         return version >= VERSION_FIRST && version <= VERSION_LAST && type != TYPE_INVALID && type <= TYPE_LAST;
+    }
+
+    bool IsMultipart() const
+    {
+        return IsValid() && txProof.proofSequence.size() == 1 && 
+               (txProof.proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART || txProof.proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART_END);
+    }
+
+    std::vector<CPartialTransactionProof> BreakApart(int maxChunkSize=CScript::MAX_SCRIPT_ELEMENT_SIZE) const
+    {
+        CDataStream ds(SER_DISK, PROTOCOL_VERSION);
+        // we put our entire self into a multipart proof and return multiple parts that must be reconstructed
+        std::vector<unsigned char> serialized = ::AsVector(*this);
+        CMultiPartProof allPartProof(CMerkleBranchBase::BRANCH_MULTIPART_END, ::AsVector(*this));
+
+        // we could be more efficient with variable sized chunks
+        std::vector<CMMRProof> allParts = allPartProof.BreakToChunks(maxChunkSize - GetSerializeSize(ds, txProof));
+
+        std::vector<CPartialTransactionProof> retVal;
+        for (auto &onePart : allParts)
+        {
+            retVal.push_back(CPartialTransactionProof(onePart, std::vector<CTransactionComponentProof>()));
+        }
+        return retVal;
     }
 
     uint256 GetBlockHash() const
@@ -1788,6 +1826,11 @@ public:
     bool IsPartialTxProof() const
     {
         return type == TYPE_PARTIAL_TXPROOF;
+    }
+
+    bool IsMultipartTxProof() const
+    {
+        return IsPartialTxProof() && evidence.size() == 1 && evidence[0].IsMultipart();
     }
 
     bool IsNotarySignature() const
