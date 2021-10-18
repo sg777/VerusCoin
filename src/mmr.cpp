@@ -16,7 +16,7 @@ void ErrorAndBP(std::string msg)
 }
 
 
-CMultiPartProof::CMultiPartProof(const std::vector<CMMRProof> &chunkVec) : CMerkleBranchBase(BRANCH_MULTIPART_END)
+CMultiPartProof::CMultiPartProof(const std::vector<CMMRProof> &chunkVec) : CMerkleBranchBase(BRANCH_MULTIPART)
 {
     for (const CMMRProof &oneChunk : chunkVec)
     {
@@ -41,22 +41,22 @@ std::vector<CMMRProof> CMultiPartProof::BreakToChunks(int maxSize) const
     {
         CMMRProof oneChunk;
         std::vector<unsigned char> oneVch(vch.begin() + curIndex, vch.begin() + (maxSize - minOverhead));
-        oneChunk << CMultiPartProof(CMerkleBranchBase::BRANCH_MULTIPART_END, oneVch);
+        oneChunk << CMultiPartProof(CMerkleBranchBase::BRANCH_MULTIPART, oneVch);
 
         int removeBytes = GetSerializeSize(ds, oneChunk) - maxSize;
 
         // if we are at the end and have space
         if (removeBytes <= 0)
         {
-            retVal.push_back(oneChunk);
             bytesLeft = 0;
+            retVal.push_back(oneChunk);
         }
         else
         {
-            oneChunk.proofSequence[0]->branchType = CMerkleBranchBase::BRANCH_MULTIPART;
             ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.erase(vch.begin() + (vch.size() - removeBytes), vch.end());
             bytesLeft -= ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.size();
             curIndex += ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.size();
+            retVal.push_back(oneChunk);
         }
     }
     return retVal;

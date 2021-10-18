@@ -1371,8 +1371,7 @@ public:
 
     bool IsMultipart() const
     {
-        return IsValid() && txProof.proofSequence.size() == 1 && 
-               (txProof.proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART || txProof.proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART_END);
+        return IsValid() && txProof.proofSequence.size() == 1 && txProof.proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART;
     }
 
     std::vector<CPartialTransactionProof> BreakApart(int maxChunkSize=CScript::MAX_SCRIPT_ELEMENT_SIZE) const
@@ -1380,7 +1379,7 @@ public:
         CDataStream ds(SER_DISK, PROTOCOL_VERSION);
         // we put our entire self into a multipart proof and return multiple parts that must be reconstructed
         std::vector<unsigned char> serialized = ::AsVector(*this);
-        CMultiPartProof allPartProof(CMerkleBranchBase::BRANCH_MULTIPART_END, ::AsVector(*this));
+        CMultiPartProof allPartProof(CMerkleBranchBase::BRANCH_MULTIPART, ::AsVector(*this));
 
         // we could be more efficient with variable sized chunks
         std::vector<CMMRProof> allParts = allPartProof.BreakToChunks(maxChunkSize - GetSerializeSize(ds, txProof));
@@ -1388,7 +1387,7 @@ public:
         std::vector<CPartialTransactionProof> retVal;
         for (auto &onePart : allParts)
         {
-            retVal.push_back(CPartialTransactionProof(onePart, std::vector<CTransactionComponentProof>()));
+            retVal.push_back(CPartialTransactionProof(onePart, std::vector<CTransactionComponentProof>(), version, type));
         }
         return retVal;
     }

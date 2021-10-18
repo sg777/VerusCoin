@@ -2924,7 +2924,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 for (auto &oneProof : allPartialProofs)
                 {
                     evidence.evidence = std::vector<CPartialTransactionProof>({oneProof});
-                    // add notarization first, so it will be after the import
+
                     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
                     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)), 0);
                     if (!setBase)
@@ -2936,7 +2936,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
             else
             {
-                // add notarization first, so it will be after the import
                 tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)), 0);
             }
 

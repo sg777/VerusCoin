@@ -314,8 +314,7 @@ public:
         BRANCH_MMRBLAKE_POWERNODE = 3,
         BRANCH_ETH = 4,
         BRANCH_MULTIPART = 5,
-        BRANCH_MULTIPART_END = 6,
-        BRANCH_LAST = 6
+        BRANCH_LAST = 5
     };
 
     uint8_t branchType;
@@ -658,7 +657,7 @@ public:
     CMultiPartProof() : CMerkleBranchBase(BRANCH_MULTIPART) {}
     CMultiPartProof(BRANCH_TYPE type) : CMerkleBranchBase(type)
     {
-        assert(type == BRANCH_MULTIPART || type == BRANCH_MULTIPART_END);
+        assert(type == BRANCH_MULTIPART);
     }
     CMultiPartProof(BRANCH_TYPE type, const std::vector<unsigned char> &b) : CMerkleBranchBase(type) {}
     CMultiPartProof(const std::vector<CMMRProof> &chunkVec);
@@ -785,7 +784,6 @@ public:
                             break;
                         }
                         case CMerkleBranchBase::BRANCH_MULTIPART:
-                        case CMerkleBranchBase::BRANCH_MULTIPART_END:
                         {
                             pMultiProofBranch = new CMultiPartProof();
                             if (pMultiProofBranch)
@@ -853,7 +851,6 @@ public:
                         break;
                     }
                     case CMerkleBranchBase::BRANCH_MULTIPART:
-                    case CMerkleBranchBase::BRANCH_MULTIPART_END:
                     {
                         READWRITE(*(CMultiPartProof *)pProof);
                         break;
@@ -877,9 +874,7 @@ public:
     const CMMRProof &operator<<(const CMultiPartProof &append);
     bool IsMultiPart() const
     {
-        return proofSequence.size() == 1 &&
-               (proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART ||
-                proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART_END);
+        return proofSequence.size() == 1 && proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART;
     }
     uint256 CheckProof(uint256 checkHash) const;
     UniValue ToUniValue() const;
