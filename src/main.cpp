@@ -2053,9 +2053,9 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         if (!ContextualCheckInputs(tx, state, view, nextBlockHeight, true, STANDARD_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId))
         {
             //fprintf(stderr,"accept failure.9\n");
-            //UniValue jsonTx(UniValue::VOBJ);
-            //TxToUniv(tx, uint256(), jsonTx);
-            //printf("\n%s\n", jsonTx.write(1,2).c_str());
+            UniValue jsonTx(UniValue::VOBJ);
+            TxToUniv(tx, uint256(), jsonTx);
+            printf("\n%s\n", jsonTx.write(1,2).c_str());
             return error("AcceptToMemoryPool: ConnectInputs failed (%s) %s", state.GetRejectReason(), hash.ToString());
         }
 

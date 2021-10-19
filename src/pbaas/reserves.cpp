@@ -451,6 +451,31 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
             }
 
+            // reconstruct multipart evidence if necessary
+            if (evidence.IsMultipartTxProof())
+            {
+                COptCCParams eP;
+                CNotaryEvidence supplementalEvidence;
+                std::vector<CPartialTransactionProof> allProofs({evidence.evidence});
+                while (importTx.vout.size() > (evidenceOutStart + 1) &&
+                       importTx.vout[evidenceOutStart + 1].scriptPubKey.IsPayToCryptoCondition(eP) &&
+                       eP.IsValid() &&
+                       eP.evalCode == EVAL_NOTARY_EVIDENCE &&
+                       eP.vData.size() &&
+                       (supplementalEvidence = CNotaryEvidence(eP.vData[0])).IsValid() &&
+                       supplementalEvidence.IsPartialTxProof() &&
+                       supplementalEvidence.evidence.size() == 1)
+                {
+                    evidenceOutStart++;
+                    allProofs.push_back(supplementalEvidence.evidence[0]);
+                }
+                if (!eP.IsValid())
+                {
+                    return state.Error(strprintf("%s: cannot reconstruct export evidence for import", __func__));
+                }
+                evidence.evidence = std::vector<CPartialTransactionProof>({CPartialTransactionProof(allProofs)});
+            }
+
             CTransaction exportTx;
             p = COptCCParams();
             if (!(!evidence.evidence[0].GetPartialTransaction(exportTx).IsNull() &&

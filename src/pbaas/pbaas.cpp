@@ -2889,6 +2889,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         if (useProofs)
         {
+            cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
+            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+
+            CDataStream ds(SER_DISK, PROTOCOL_VERSION);
             // if we need to put the partial transaction proof and follow it with reserve transfers, do it
             CNotaryEvidence evidence = CNotaryEvidence(destCurID,
                                                        CUTXORef(confirmedSourceNotarization.hash, confirmedSourceNotarization.n),
@@ -2897,10 +2901,43 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                        std::vector<CPartialTransactionProof>({oneIT.first.second}),
                                                        CNotaryEvidence::TYPE_PARTIAL_TXPROOF);
 
-            // add notarization first, so it will be after the import
-            cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
-            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-            tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)), 0);
+            int serSize = GetSerializeSize(ds, evidence);
+            std::vector<CPartialTransactionProof> allPartialProofs;
+            if (serSize > CScript::MAX_SCRIPT_ELEMENT_SIZE)
+            {
+                // remove existing proof and break it into chunks
+                evidence.evidence = allPartialProofs;
+                int minOverhead = GetSerializeSize(ds, evidence);
+                // need enough space to store proof
+                if (minOverhead > CScript::MAX_SCRIPT_ELEMENT_SIZE - 128)
+                {
+                    LogPrintf("%s: invalid evidence from system %s - evidence too large\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());
+                    return false;
+                }
+                std::vector<CPartialTransactionProof> allPartialProofs = oneIT.first.second.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - (minOverhead + 128));
+                if (!allPartialProofs.size())
+                {
+                    LogPrintf("%s: failed to package evidence from system %s\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());
+                    return false;
+                }
+                bool setBase = false;
+                for (auto &oneProof : allPartialProofs)
+                {
+                    evidence.evidence = std::vector<CPartialTransactionProof>({oneProof});
+
+                    dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)), 0);
+                    if (!setBase)
+                    {
+                        evidence.signatures.clear();
+                        setBase = true;
+                    }
+                }
+            }
+            else
+            {
+                tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)), 0);
+            }
 
             // supplemental export evidence is posted as a supplemental export
             cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
