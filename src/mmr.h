@@ -659,7 +659,7 @@ public:
     {
         assert(type == BRANCH_MULTIPART);
     }
-    CMultiPartProof(BRANCH_TYPE type, const std::vector<unsigned char> &b) : CMerkleBranchBase(type) {}
+    CMultiPartProof(BRANCH_TYPE type, const std::vector<unsigned char> &vec) : CMerkleBranchBase(type), vch(vec) {}
     CMultiPartProof(const std::vector<CMMRProof> &chunkVec);
 
     CMultiPartProof& operator<<(CMultiPartProof append)

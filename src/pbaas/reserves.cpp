@@ -456,7 +456,6 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             {
                 COptCCParams eP;
                 CNotaryEvidence supplementalEvidence;
-                std::vector<CPartialTransactionProof> allProofs({evidence.evidence});
                 while (importTx.vout.size() > (evidenceOutStart + 1) &&
                        importTx.vout[evidenceOutStart + 1].scriptPubKey.IsPayToCryptoCondition(eP) &&
                        eP.IsValid() &&
@@ -467,13 +466,13 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                        supplementalEvidence.evidence.size() == 1)
                 {
                     evidenceOutStart++;
-                    allProofs.push_back(supplementalEvidence.evidence[0]);
+                    evidence.evidence.push_back(supplementalEvidence.evidence[0]);
                 }
                 if (!eP.IsValid())
                 {
                     return state.Error(strprintf("%s: cannot reconstruct export evidence for import", __func__));
                 }
-                evidence.evidence = std::vector<CPartialTransactionProof>({CPartialTransactionProof(allProofs)});
+                evidence.evidence = std::vector<CPartialTransactionProof>({CPartialTransactionProof(evidence.evidence)});
             }
 
             CTransaction exportTx;
@@ -2027,7 +2026,7 @@ CCurrencyValueMap CReserveTransactionDescriptor::GeneratedImportCurrency(const u
     return retVal;
 }
 
-CReserveTransfer CReserveTransfer::GetRefundTransfer() const
+CReserveTransfer CReserveTransfer::GetRefundTransfer(bool clearCrossSystem) const
 {
     CReserveTransfer rt = *this;
     uint160 newDest;
@@ -2041,26 +2040,34 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer() const
         newDest = rt.destCurrencyID;
     }
 
-    // convert full ID destinations to normal ID outputs, since it's refund, full ID will be on this chain already
-    if (rt.destination.type == CTransferDestination::DEST_FULLID)
-    {
-        CIdentity(rt.destination.destination);
-        rt.destination = CTransferDestination(CTransferDestination::DEST_ID, rt.destination.destination);
-    }
-
     // turn it into a normal transfer, which will create an unconverted output
-    rt.flags &= ~(CReserveTransfer::DOUBLE_SEND |
-                  CReserveTransfer::PRECONVERT |
-                  CReserveTransfer::CONVERT |
-                  CReserveTransfer::CROSS_SYSTEM |
-                  CReserveTransfer::IMPORT_TO_SOURCE);
+    rt.flags &= ~(DOUBLE_SEND | PRECONVERT | CONVERT);
+
+    if (clearCrossSystem)
+    {
+        rt.flags &= ~CROSS_SYSTEM;
+        rt.destSystemID.SetNull();
+        // convert full ID destinations to normal ID outputs, since it's refund, full ID will be on this chain already
+        if (rt.destination.type == CTransferDestination::DEST_FULLID)
+        {
+            CIdentity(rt.destination.destination);
+            rt.destination = CTransferDestination(CTransferDestination::DEST_ID, rt.destination.destination);
+        }
+    }
 
     if (rt.IsMint())
     {
-        rt.flags &= ~CReserveTransfer::MINT_CURRENCY;
+        rt.flags &= ~MINT_CURRENCY;
         rt.reserveValues.valueMap.begin()->second = 0;
     }
-    rt.flags |= rt.REFUND;
+
+    // with the refund flag, we won't import new currency, so we don't set it for cross system refunds
+    // due to a failure
+    if (!rt.IsCrossSystem())
+    {
+        rt.flags |= REFUND;
+    }
+
     rt.destCurrencyID = newDest;
     return rt;
 }
@@ -2409,10 +2416,18 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                            CTransferDestination());
         }
         else if (importCurrencyState.IsRefunding() ||
+                 exportObjects[i].FirstCurrency() == exportObjects[i].destCurrencyID ||
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
-            curTransfer = exportObjects[i].GetRefundTransfer();
+            // TODO: HARDENING - this check is only for debugging because transfers have been made on testnet without appropriate fees
+            // it should be removed
+            if (!importCurrencyState.IsRefunding())
+            {
+                //printf("%s: refunding without conversion\npre-refund transfer: %s\n", __func__, exportObjects[i].ToUniValue().write().c_str());
+                LogPrint("crosschain", "%s: refunding without conversion\npre-refund transfer: %s\n", __func__, exportObjects[i].ToUniValue().write().c_str());
+            }
+            curTransfer = exportObjects[i].GetRefundTransfer(!(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()));
         }
         else
         {
@@ -2917,9 +2932,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (!systemDest.IsGateway() && feeEquivalent < curTransfer.CalculateTransferFee())
                     {
-                        printf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                        LogPrintf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                        return false;
+                        // TODO: HARDENING - this refund check is only here because there was an issue in preconversions being sent without
+                        // having a base transfer fee, both on the same chain and cross chain
+                        if (!curTransfer.IsRefund())
+                        {
+                            printf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                            LogPrintf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                            return false;
+                        }
                     }
 
                     if (curTransfer.FirstCurrency() == systemDestID && !curTransfer.IsMint())
@@ -3077,7 +3097,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 {
                     printf("%s: Conversion does not specify two currencies\n", __func__);
                     LogPrintf("%s: Conversion does not specify two currencies\n", __func__);
-                    return false;
+                    // TODO: HARDENING - we may allow this, but we need to make sure that we charge enough of a fee
+                    // on all conversions.
+                    //return false;
                 }
 
                 // either the source or destination must be a reserve currency of the other fractional currency
@@ -3265,16 +3287,15 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 {
                     // if this is a minting of currency
                     // this is used for both pre-allocation and also centrally, algorithmically, or externally controlled currencies
-                    uint160 destCurID;
-                    if (curTransfer.IsMint() && curTransfer.destCurrencyID == importCurrencyID)
+                    uint160 destCurID = curTransfer.destCurrencyID;
+                    if (curTransfer.IsMint() && destCurID == importCurrencyID)
                     {
                         // minting is emitted in new currency state
-                        destCurID = curTransfer.destCurrencyID;
                         totalMinted += curTransfer.FirstValue();
-                        AddNativeOutConverted(curTransfer.destCurrencyID, curTransfer.FirstValue());
-                        if (curTransfer.destCurrencyID != systemDestID)
+                        AddNativeOutConverted(destCurID, curTransfer.FirstValue());
+                        if (destCurID != systemDestID)
                         {
-                            AddReserveOutConverted(curTransfer.destCurrencyID, curTransfer.FirstValue());
+                            AddReserveOutConverted(destCurID, curTransfer.FirstValue());
                         }
                     }
                     else
@@ -3298,8 +3319,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
         else
         {
-            printf("%s: Invalid reserve transfer on export\n", __func__);
-            LogPrintf("%s: Invalid reserve transfer on export\n", __func__);
+            if (!curTransfer.destination.IsValid())
+            {
+                printf("%s: Invalid destination for reserve transfer\n", __func__);
+            }
+            printf("%s: Invalid reserve transfer on transfer %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
+            LogPrintf("%s: Invalid reserve transfer on export %s\n", __func__);
             return false;
         }
     }
@@ -3764,8 +3789,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 systemOutConverted += oneInOut.second.nativeOutConverted;
             }
-            else if (isCrossSystemImport && (importCurrencyDef.IsGateway() || 
-                                             (importCurrencyDef.IsPBaaSChain() && importCurrencyDef.systemID != systemDestID)))
+            else
             {
                 if (oneInOut.second.reserveIn)
                 {
@@ -3773,7 +3797,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 }
                 if (oneInOut.second.reserveOut)
                 {
-                    spentCurrencyOut.valueMap[oneInOut.first] += oneInOut.second.reserveOut;
+                    spentCurrencyOut.valueMap[oneInOut.first] += oneInOut.second.reserveOut - oneInOut.second.reserveOutConverted;
                 }
             }
         }
