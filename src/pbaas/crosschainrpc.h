@@ -194,7 +194,7 @@ public:
     {
         return TypeNoFlags() != DEST_INVALID &&
                TypeNoFlags() <= LAST_VALID_TYPE_NO_FLAGS &&
-               ((!HasGatewayLeg() && gatewayID.IsNull()) || !gatewayID.IsNull());
+               ((!(type & FLAG_DEST_GATEWAY) && gatewayID.IsNull()) || !gatewayID.IsNull());
     }
 
     static uint160 DecodeEthDestination(const std::string &destStr)

@@ -1056,8 +1056,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
     {
         uint160 systemDestID, importCurrencyID;
         CCurrencyDefinition systemDest, importCurrencyDef;
-        CPBaaSNotarization startingNotarization;
-        CChainNotarizationData cnd;
 
         if (rt.IsImportToSource())
         {
@@ -1070,12 +1068,13 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         importCurrencyDef = ConnectedChains.GetCachedCurrency(importCurrencyID);
 
-        if (importCurrencyDef.IsValid() && GetNotarizationData(importCurrencyDef.GetID(), cnd) && cnd.IsConfirmed())
+        CCoinbaseCurrencyState importState;
+
+        if (!(importCurrencyDef.IsValid() && (importState = ConnectedChains.GetCurrencyState(importCurrencyID, height)).IsValid()))
         {
-            startingNotarization = cnd.vtx[cnd.lastConfirmed].second;
-        }
-        else
-        {
+            CPBaaSNotarization startingNotarization;
+            CChainNotarizationData cnd;
+
             // the only case this is ok is if we are part of a currency definition and this is to a new currency
             // if that is the case, importCurrencyDef will always be invalid
             std::vector<CCurrencyDefinition> newCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
@@ -1100,7 +1099,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                                     (oneNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
                                     oneNotarization.currencyID == importCurrencyID)
                                 {
-                                    startingNotarization = oneNotarization;
+                                    importState = oneNotarization.currencyState;
                                 }
                                 else if ((p.evalCode == EVAL_CURRENCY_DEFINITION) &&
                                             p.vData.size() &&
@@ -1123,7 +1122,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
         }
 
-        if (!(importCurrencyDef.IsValid() && startingNotarization.IsValid()))
+        if (!(importCurrencyDef.IsValid() && importState.IsValid()))
         {
             // the only case this is ok is if we are part of a currency definition and this is to a new currency
             // if that is the case, importCurrencyDef will always be invalid
@@ -1134,8 +1133,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
             else
             {
-                LogPrintf("%s: Valid notarization required and not found for import currency of reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
-                return state.Error("Valid notarization required and not found for import currency of reserve transfer " + rt.ToUniValue().write(1,2));
+                LogPrintf("%s: Valid currency state required and not found for import currency of reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Valid currency state required and not found for import currency of reserve transfer " + rt.ToUniValue().write(1,2));
             }
         }
 
@@ -1152,34 +1151,27 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
 
         CReserveTransactionDescriptor rtxd;
-        CCoinbaseCurrencyState dummyState = startingNotarization.currencyState;
-        CPBaaSNotarization nextNotarization;
+        CCoinbaseCurrencyState dummyState = importState;
         std::vector<CTxOut> vOutputs;
         CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
         CCurrencyValueMap newPreConversionReservesIn = rt.TotalCurrencyOut();
 
-        if (importCurrencyDef.IsFractional() &&
-            !(startingNotarization.IsLaunchCleared() && !startingNotarization.currencyState.IsLaunchCompleteMarker()))
+        if (importCurrencyDef.IsFractional() && !(importState.IsLaunchConfirmed() && !importState.IsLaunchCompleteMarker()))
         {
             // normalize prices on the way in to prevent overflows on first pass
-            std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(startingNotarization.currencyState.currencies);
+            std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(importState.currencies);
             dummyState.reserves = dummyState.AddVectors(dummyState.reserves, newReservesVector);
-            startingNotarization.currencyState.conversionPrice = dummyState.PricesInReserve();
+            importState.conversionPrice = dummyState.PricesInReserve();
         }
-        if (startingNotarization.currencyState.currencies.size() != startingNotarization.currencyState.conversionPrice.size())
+        if (importState.currencies.size() != importState.conversionPrice.size())
         {
-            startingNotarization.currencyState.conversionPrice = dummyState.PricesInReserve();
-        }
-
-        if (startingNotarization.IsLaunchComplete())
-        {
-            startingNotarization.currencyState.SetLaunchCompleteMarker();
+            importState.conversionPrice = dummyState.PricesInReserve();
         }
 
         if (rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), 
                                                  systemDest, 
                                                  importCurrencyDef, 
-                                                 startingNotarization.currencyState,
+                                                 importState,
                                                  std::vector<CReserveTransfer>({rt}), 
                                                  height,
                                                  vOutputs,
@@ -2697,6 +2689,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 // make sure we have the latest, confirmed proof roots to prove this import
                 lastNotarization.proofRoots[sourceSystemID] = proofNotarization.proofRoots[sourceSystemID];
+                if (lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
+                {
+                    lastNotarization.proofRoots[ASSETCHAINS_CHAINID] = proofNotarization.proofRoots[ASSETCHAINS_CHAINID];
+                }
             }
         }
         else if (nHeight)
@@ -2766,7 +2762,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             lastNotarization.currencyState.SetLaunchClear(false);
         }
 
-        uint32_t nextHeight = destCurID == ASSETCHAINS_CHAINID ? nextHeight = nHeight : std::max(ccx.sourceHeightEnd, lastNotarization.notarizationHeight);
+        uint32_t nextHeight = useProofs && destCur.SystemOrGatewayID() == ASSETCHAINS_CHAINID || destCurID == ASSETCHAINS_CHAINID ?
+            nextHeight = nHeight : std::max(ccx.sourceHeightEnd, lastNotarization.notarizationHeight);
+
         if (ccx.IsPostlaunch() || lastNotarization.IsLaunchComplete())
         {
             lastNotarization.currencyState.SetLaunchCompleteMarker();
@@ -2792,6 +2790,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         if (ccx.IsClearLaunch())
         {
             newNotarization.SetLaunchComplete();
+            newNotarization.currencyState.SetLaunchCompleteMarker();
         }
 
         newNotarization.prevNotarization = CUTXORef(lastNotarizationOut.txIn.prevout.hash, lastNotarizationOut.txIn.prevout.n);
@@ -2903,18 +2902,28 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             int serSize = GetSerializeSize(ds, evidence);
             std::vector<CPartialTransactionProof> allPartialProofs;
-            if (serSize > CScript::MAX_SCRIPT_ELEMENT_SIZE)
+
+            // TODO: HARDENING - this is set to break apart using the old value, so the correct one is commented. enforcement is on the larger one
+            // the value should be considered for reduction
+            //if (serSize > CScript::MAX_SCRIPT_ELEMENT_SIZE)
+            if (serSize > 5120)
             {
                 // remove existing proof and break it into chunks
                 evidence.evidence = allPartialProofs;
                 int minOverhead = GetSerializeSize(ds, evidence);
                 // need enough space to store proof
-                if (minOverhead > CScript::MAX_SCRIPT_ELEMENT_SIZE - 128)
+
+                // TODO: HARDENING - this is set to break apart using the old value, so the correct one is commented
+                //if (minOverhead > CScript::MAX_SCRIPT_ELEMENT_SIZE - 128)
+                if (minOverhead > 5120 - 128)
                 {
                     LogPrintf("%s: invalid evidence from system %s - evidence too large\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());
                     return false;
                 }
-                std::vector<CPartialTransactionProof> allPartialProofs = oneIT.first.second.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - (minOverhead + 128));
+
+                // TODO: HARDENING - this is set to break apart using the old value, so the correct one is commented
+                //std::vector<CPartialTransactionProof> allPartialProofs = oneIT.first.second.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - (minOverhead + 128));
+                std::vector<CPartialTransactionProof> allPartialProofs = oneIT.first.second.BreakApart(5120 - (minOverhead + 128));
                 if (!allPartialProofs.size())
                 {
                     LogPrintf("%s: failed to package evidence from system %s\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());

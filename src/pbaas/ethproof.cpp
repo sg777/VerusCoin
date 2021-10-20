@@ -481,9 +481,7 @@ uint256 CPATRICIABranch<CHashWriter>::verifyStorageProof(uint256 ccExporthash){
         return stateRoot;
     }
     else {
-        
-        printf("PATRICIA Tree proof Account Matches\n");
-    
+        LogPrint("crosschain", "%s: PATRICIA Tree proof Account Matches\n", __func__);
     }
     //run the storage proof
 
