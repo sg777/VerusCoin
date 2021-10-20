@@ -374,7 +374,7 @@ public:
         return flags & IDENTITY_EXPORT;
     }
 
-    CReserveTransfer GetRefundTransfer() const;
+    CReserveTransfer GetRefundTransfer(bool clearCrossSystem=true) const;
 
     static std::string ReserveTransferKeyName()
     {

@@ -34,13 +34,14 @@ std::vector<CMMRProof> CMultiPartProof::BreakToChunks(int maxSize) const
     CMMRProof wrapper;
     wrapper << CMultiPartProof();
     int minOverhead = GetSerializeSize(ds, wrapper);
+
     // make sure we have some space for overhead and vector in each chunk
     assert(maxSize > minOverhead + 8);
 
     for (curIndex = 0, bytesLeft = vch.size(); bytesLeft > 0; )
     {
         CMMRProof oneChunk;
-        std::vector<unsigned char> oneVch(vch.begin() + curIndex, vch.begin() + (maxSize - minOverhead));
+        std::vector<unsigned char> oneVch(vch.begin() + curIndex, vch.begin() + curIndex + std::min(vch.size() - curIndex, (size_t)(maxSize - minOverhead)));
         oneChunk << CMultiPartProof(CMerkleBranchBase::BRANCH_MULTIPART, oneVch);
 
         int removeBytes = GetSerializeSize(ds, oneChunk) - maxSize;
@@ -53,9 +54,10 @@ std::vector<CMMRProof> CMultiPartProof::BreakToChunks(int maxSize) const
         }
         else
         {
-            ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.erase(vch.begin() + (vch.size() - removeBytes), vch.end());
-            bytesLeft -= ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.size();
-            curIndex += ((CMultiPartProof *)oneChunk.proofSequence[0])->vch.size();
+            std::vector<unsigned char> &oneChunkVec = ((CMultiPartProof *)oneChunk.proofSequence[0])->vch;
+            oneChunkVec.erase(oneChunkVec.begin() + (oneChunkVec.size() - removeBytes), oneChunkVec.end());
+            bytesLeft -= oneChunkVec.size();
+            curIndex += oneChunkVec.size();
             retVal.push_back(oneChunk);
         }
     }
@@ -88,6 +90,11 @@ void CMMRProof::DeleteProofSequence()
             case CMerkleBranchBase::BRANCH_ETH:
             {
                 delete (CETHPATRICIABranch *)pProof;
+                break;
+            }
+            case CMerkleBranchBase::BRANCH_MULTIPART:
+            {
+                delete (CMultiPartProof *)pProof;
                 break;
             }
             default:
@@ -166,7 +173,7 @@ uint256 CMMRProof::CheckProof(uint256 hash) const
             case CMerkleBranchBase::BRANCH_ETH:
             {
                 hash = ((CETHPATRICIABranch *)pProof)->SafeCheck(hash);
-                printf("Result from ETHBranch check: %s\n", hash.GetHex().c_str());
+                LogPrint("crosschain", "Result from ETHBranch check: %s\n", hash.GetHex().c_str());
                 break;
             }
         }
