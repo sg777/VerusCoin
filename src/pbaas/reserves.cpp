@@ -1806,7 +1806,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                         CReserveTransactionDescriptor rtxd;
                         // if clear launch, don't set launch complete beforehand to match outputs
-                        if (ccx.IsClearLaunch() && IsVerusActive() && !IsVerusMainnetActive() && nHeight >= 14500)
+                        if (ccx.IsClearLaunch() && ccx.sourceSystemID == importCurrencyDef.launchSystemID)
                         {
                             checkState.SetLaunchCompleteMarker(false);
                         }
