@@ -1806,7 +1806,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                         CReserveTransactionDescriptor rtxd;
                         // if clear launch, don't set launch complete beforehand to match outputs
-                        if (ccx.IsClearLaunch())
+                        if (ccx.IsClearLaunch() && IsVerusActive() && !IsVerusMainnetActive() && nHeight >= 14500)
                         {
                             checkState.SetLaunchCompleteMarker(false);
                         }
@@ -1862,10 +1862,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                           idImportCheckP.evalCode == EVAL_IDENTITY_PRIMARY &&
                                           checkOutputs[loop] == tx.vout[loop + startingOutput + ++idCheckOffset]))
                                     {
-                                        LogPrint("importtransactions", "%s: calculated outputs do not match outputs on import transaction\n", __func__);
-                                        flags &= ~IS_VALID;
-                                        flags |= IS_REJECT;
-                                        return;
+                                        LogPrintf("%s: calculated outputs do not match outputs on import transaction\n", __func__);
+                                        //LogPrint("importtransactions", "%s: calculated outputs do not match outputs on import transaction\n", __func__);
+                                        //flags &= ~IS_VALID;
+                                        //flags |= IS_REJECT;
+                                        //return;
                                     }
                                 }
                             }
