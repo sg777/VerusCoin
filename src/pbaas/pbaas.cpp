@@ -502,7 +502,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         std::vector<CTxOut> vOutputs;
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
 
-        if (ccxSource.IsClearLaunch())
+        if (ccxSource.IsClearLaunch() && IsVerusActive() && !IsVerusMainnetActive() && nHeight >= 14500)
         {
             checkState.SetLaunchCompleteMarker(false);
         }
@@ -3979,8 +3979,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         priorExports.size() &&
         (lastExport = CCrossChainExport(priorExports[0].scriptPubKey)).IsValid() &&
         (lastExport.IsClearLaunch() ||
-         intermediateNotarization.IsLaunchComplete() ||
-         (destSystemID != ASSETCHAINS_CHAINID && !isPreLaunch)))
+          intermediateNotarization.IsLaunchComplete() ||
+          (destSystemID != ASSETCHAINS_CHAINID && !isPreLaunch)))
     {
         // now, all exports are post launch
         isPostLaunch = true;
