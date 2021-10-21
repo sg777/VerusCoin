@@ -502,7 +502,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         std::vector<CTxOut> vOutputs;
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
 
-        if (ccxSource.IsClearLaunch() && IsVerusActive() && !IsVerusMainnetActive() && nHeight >= 14500)
+        if (ccxSource.IsClearLaunch() && ccxSource.sourceSystemID == destCurDef.launchSystemID)
         {
             checkState.SetLaunchCompleteMarker(false);
         }
