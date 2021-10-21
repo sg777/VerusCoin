@@ -199,25 +199,16 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                 hw << oneRt;
                 reserveTransfers.push_back(oneRt);
             }
-            if (rtExport.HasSupplement() ||
-                (!rtExport.IsSameChain() && rtExport.numInputs > 0))
+            numOutput++;
+            if (!(exportTx.vout.size() > numOutput &&
+                  exportTx.vout[numOutput].scriptPubKey.IsPayToCryptoCondition(p) &&
+                  p.IsValid() &&
+                  p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                  p.vData.size() &&
+                  (rtExport = CCrossChainExport(p.vData[0])).IsValid() &&
+                  rtExport.IsSupplemental()))
             {
-                numOutput++;
-                if (!(exportTx.vout.size() > numOutput &&
-                      exportTx.vout[numOutput].scriptPubKey.IsPayToCryptoCondition(p) &&
-                      p.IsValid() &&
-                      p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                      p.vData.size() &&
-                      (rtExport = CCrossChainExport(p.vData[0])).IsValid() &&
-                      rtExport.IsSupplemental()))
-                {
-                    numOutput--;
-                    rtExport = CCrossChainExport();
-                }
-            }
-            else
-            {
-                // no more supplements, done
+                numOutput--;
                 rtExport = CCrossChainExport();
             }
         }
@@ -1814,6 +1805,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         }*/
 
                         CReserveTransactionDescriptor rtxd;
+                        // if clear launch, don't set launch complete beforehand to match outputs
+                        if (ccx.IsClearLaunch())
+                        {
+                            checkState.SetLaunchCompleteMarker(false);
+                        }
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                   ConnectedChains.thisChain,
                                                                   importCurrencyDef,
