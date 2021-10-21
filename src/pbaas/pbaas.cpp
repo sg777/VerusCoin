@@ -502,6 +502,11 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         std::vector<CTxOut> vOutputs;
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
 
+        if (ccxSource.IsClearLaunch())
+        {
+            checkState.SetLaunchCompleteMarker(false);
+        }
+
         if (!rtxd.AddReserveTransferImportOutputs(sourceSysDef,
                                                   destSysDef,
                                                   destCurDef,
