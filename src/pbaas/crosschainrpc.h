@@ -585,7 +585,7 @@ public:
             READWRITE(rewardsDecay);
             READWRITE(halving);
             READWRITE(eraEnd);
-            READWRITE(LIMITED_STRING(gatewayConverterName, MAX_NAME_LEN));
+            READWRITE(LIMITED_STRING(gatewayConverterName, MAX_NAME_LEN)); // TODO: HARDENING - this needs to be moved to gateway or pbaas
         }
     }
 
@@ -622,6 +622,34 @@ public:
     uint160 SystemOrGatewayID() const
     {
         return (IsGateway() ? gatewayID : systemID);
+    }
+
+    bool IsValidTransferDestinationType(int destinationType) const
+    {
+        switch (destinationType)
+        {
+            case CTransferDestination::DEST_ETH:
+            {
+                if (proofProtocol != CCurrencyDefinition::PROOF_ETHNOTARIZATION)
+                {
+                    return false;
+                }
+                break;
+            }
+            case CTransferDestination::DEST_FULLID:
+            case CTransferDestination::DEST_ID:
+            case CTransferDestination::DEST_PK:
+            case CTransferDestination::DEST_PKH:
+            case CTransferDestination::DEST_SH:
+            {
+                if (proofProtocol != CCurrencyDefinition::PROOF_PBAASMMR)
+                {
+                    return false;
+                }
+                break;
+            }
+        }
+        return true;
     }
 
     int64_t GetCurrencyRegistrationFee(uint32_t currencyOptions) const
