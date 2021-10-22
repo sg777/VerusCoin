@@ -2418,7 +2418,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
             // TODO: HARDENING - this check is only for debugging because transfers have been made on testnet without appropriate fees
-            // it should be removed
+            // it should be removed. we should also consider rejecting every invalid combination of flags as an explicit part of the
+            // protocol, so that a bridge with such a failure would block until it was fixed.
             if (!importCurrencyState.IsRefunding())
             {
                 //printf("%s: refunding without conversion\npre-refund transfer: %s\n", __func__, exportObjects[i].ToUniValue().write().c_str());

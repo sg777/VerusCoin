@@ -564,7 +564,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
     if (destCurrency.launchSystemID == sourceSystemID &&
-        ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock - 1)) ||
+        ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock ? (destCurrency.startBlock - 1) : 0)) ||
          (!thisIsLaunchSys &&
           destCurrency.systemID == ASSETCHAINS_CHAINID &&
           notaHeight == 1)))
@@ -626,6 +626,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.SetPrelaunch();
         }
 
+        // HARDENING - ensure that destcurrency systemID is correct here, since this should only be prelaunch, otherwise
+        // we need SystemOrGatewayID()
         CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) : 
                                                                          ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
