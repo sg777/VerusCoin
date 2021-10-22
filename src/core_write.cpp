@@ -844,12 +844,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("idreferrallevels", idReferralLevels));
         if (IsPBaaSChain() || IsGateway())
         {
-            obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
-            if (!gatewayConverterName.empty())
-            {
-                uint160 gatewayParent = GetID();
-                obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentity::GetID(gatewayConverterName, gatewayParent))));
-            }
+            obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentityID(GatewayConverterID()))));
         }
 
         if (IsPBaaSChain())

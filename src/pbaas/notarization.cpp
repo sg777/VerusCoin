@@ -1377,14 +1377,14 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     // add currency states that we should include and then we're done
     // currency states to include are either a gateway currency indicated by the
     // gateway or our gateway converter for our PBaaS chain
-    uint160 gatewayConverterID;
-    if (systemDef.IsGateway() && !systemDef.gatewayConverterName.empty())
+    uint160 gatewayConverterID = systemDef.GatewayConverterID();
+    if (systemDef.IsGateway() && (!systemDef.GatewayConverterID().IsNull()))
     {
         gatewayConverterID = systemDef.GatewayConverterID();
     }
-    else if (SystemID == ConnectedChains.FirstNotaryChain().chainDefinition.GetID() && !ConnectedChains.ThisChain().gatewayConverterName.empty())
+    else if (SystemID == ConnectedChains.FirstNotaryChain().chainDefinition.GetID() && !ConnectedChains.ThisChain().GatewayConverterID().IsNull())
     {
-        gatewayConverterID = CCurrencyDefinition::GetID(ConnectedChains.ThisChain().gatewayConverterName, thisChainID);
+        gatewayConverterID = ConnectedChains.ThisChain().GatewayConverterID();
     }
     if (!gatewayConverterID.IsNull())
     {

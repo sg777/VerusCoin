@@ -607,8 +607,14 @@ public:
         uint160 retVal;
         if (!gatewayConverterName.empty())
         {
-            uint160 parentID = GetID();
-            retVal = GetID(gatewayConverterName, parentID);
+            uint160 thisParentID = GetID();
+            retVal = GetID(gatewayConverterName, thisParentID);
+        }
+        // TODO: HARDENING - remove this exception on next testnet reset
+        else if (name == "vETH")
+        {
+            uint160 thisParentID = GetID();
+            retVal = GetID("bridge", thisParentID);
         }
         return retVal;
     }
