@@ -3927,16 +3927,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                 CTxDestination destination = ValidateDestination(destStr);
 
-                if (convertToCurrencyDef.IsValid() &&
-                    convertToCurrencyDef.systemID != destSystemID)
-                {
-                    // send to the converter on the destination system
-                }
-                else
-                {
-                    // first convert, include embedded fees, then send
-                }
-
                 CTransferDestination dest;
                 if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
                 {
@@ -4054,11 +4044,18 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         (destSystemID != thisChainID ? destSystemDef : exportToCurrencyDef) :
                         (ConnectedChains.ThisChain());
                     uint160 offChainID = IsVerusActive() ? nonVerusChainDef.GetID() : VERUS_CHAINID;
+                    const CCurrencyDefinition &offChainDef = (destSystemID != thisChainID ? destSystemDef : exportToCurrencyDef);
+
+                    if (!offChainDef.IsValidTransferDestinationType(dest.TypeNoFlags()))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                            "Invalid destination address for export system " + nonVerusChainDef.name + " (" + dest.ToUniValue().write() + ")");
+                    }
 
                     if (!GetNotarizationData(offChainID, cnd) || !cnd.IsConfirmed())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER,
-                            "Cannot retrieve notarization data for import system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
+                            "Cannot retrieve notarization data for export system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
                     }
 
                     if (!preConvert && cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() && !cnd.vtx[cnd.lastConfirmed].second.IsLaunchCleared())
