@@ -1173,6 +1173,13 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             importState.conversionPrice = dummyState.PricesInReserve();
         }
 
+        // TODO: HARDENING TESTNET - enable this check on next testnet reset
+        /*if (!systemDest.IsValidTransferDestinationType(rt.destination.TypeNoFlags()))
+        {
+            return state.Error("Invalid reserve transfer destination for target system" + rt.ToUniValue().write(1,2));
+        }
+        //*/
+
         if (rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), 
                                                  systemDest, 
                                                  importCurrencyDef, 
@@ -1189,7 +1196,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
     LogPrintf("%s: Invalid reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
-    return false;
+    return state.Error("Invalid reserve transfer " + rt.ToUniValue().write(1,2));
 }
 
 CCurrencyValueMap CCrossChainExport::CalculateExportFee(const CCurrencyValueMap &fees, int numIn)
