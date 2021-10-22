@@ -5425,7 +5425,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
     else if (!newChain.gatewayConverterName.empty() || params.size() > 1)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "A second currency definition is only supported as a gateway currency for a PBaaS chain");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "A second currency definition is only supported as a converter currency for a PBaaS chain or gateway");
     }
 
     // now, we have one or two currencies. if we have two, it is because the first is a PBaaS chain, and the second

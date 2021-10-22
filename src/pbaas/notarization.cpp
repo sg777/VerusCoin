@@ -564,7 +564,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
     if (destCurrency.launchSystemID == sourceSystemID &&
-        ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock - 1)) ||
+        ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock ? (destCurrency.startBlock - 1) : 0)) ||
          (!thisIsLaunchSys &&
           destCurrency.systemID == ASSETCHAINS_CHAINID &&
           notaHeight == 1)))
@@ -626,6 +626,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.SetPrelaunch();
         }
 
+        // HARDENING - ensure that destcurrency systemID is correct here, since this should only be prelaunch, otherwise
+        // we need SystemOrGatewayID()
         CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) : 
                                                                          ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
@@ -1375,14 +1377,14 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     // add currency states that we should include and then we're done
     // currency states to include are either a gateway currency indicated by the
     // gateway or our gateway converter for our PBaaS chain
-    uint160 gatewayConverterID;
-    if (systemDef.IsGateway() && !systemDef.gatewayConverterName.empty())
+    uint160 gatewayConverterID = systemDef.GatewayConverterID();
+    if (systemDef.IsGateway() && (!systemDef.GatewayConverterID().IsNull()))
     {
         gatewayConverterID = systemDef.GatewayConverterID();
     }
-    else if (SystemID == ConnectedChains.FirstNotaryChain().chainDefinition.GetID() && !ConnectedChains.ThisChain().gatewayConverterName.empty())
+    else if (SystemID == ConnectedChains.FirstNotaryChain().chainDefinition.GetID() && !ConnectedChains.ThisChain().GatewayConverterID().IsNull())
     {
-        gatewayConverterID = CCurrencyDefinition::GetID(ConnectedChains.ThisChain().gatewayConverterName, thisChainID);
+        gatewayConverterID = ConnectedChains.ThisChain().GatewayConverterID();
     }
     if (!gatewayConverterID.IsNull())
     {

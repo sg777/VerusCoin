@@ -4047,7 +4047,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                 coLaunchState = GetCurrencyState(coLaunchCurrency, addHeight);
             }
         }
-        else if (_curDef.IsPBaaSChain() && !_curDef.gatewayConverterName.empty())
+        else if (_curDef.IsPBaaSChain() && !_curDef.GatewayConverterID().IsNull())
         {
             coLaunchCurrency = GetCachedCurrency(_curDef.GatewayConverterID());
             if (!coLaunchCurrency.IsValid())
