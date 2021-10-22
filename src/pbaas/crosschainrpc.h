@@ -560,7 +560,6 @@ public:
             READWRITE(VARINT(currencyImportFee));
             READWRITE(VARINT(transactionImportFee));
             READWRITE(VARINT(transactionExportFee));
-            READWRITE(LIMITED_STRING(gatewayConverterName, MAX_NAME_LEN));
         }
         else
         {
@@ -586,6 +585,7 @@ public:
             READWRITE(rewardsDecay);
             READWRITE(halving);
             READWRITE(eraEnd);
+            READWRITE(LIMITED_STRING(gatewayConverterName, MAX_NAME_LEN));
         }
     }
 
