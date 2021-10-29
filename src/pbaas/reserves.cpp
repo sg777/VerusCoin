@@ -1623,7 +1623,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     // or import
                     if (p.version < p.VERSION_V3 ||
                         !p.vData.size() ||
-                        (solutionVersion < CActivationHeight::ACTIVATE_PBAAS && identity.IsValid()) ||
+                        (solutionVersion < CActivationHeight::ACTIVATE_VERUSVAULT && identity.IsValid()) ||
                         !(identity = CIdentity(p.vData[0])).IsValid())
                     {
                         flags &= ~IS_VALID;

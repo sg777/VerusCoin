@@ -929,10 +929,16 @@ bool ValidateCurrencyDefinition(struct CCcontract_info *cp, Eval* eval, const CT
 
 bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, CValidationState &state, uint32_t height)
 {
-    if (IsVerusMainnetActive() &&
-        CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_PBAAS)
+    if (IsVerusMainnetActive())
     {
-        return true;
+        if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_VERUSVAULT)
+        {
+            return true;
+        }
+        else if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_PBAAS)
+        {
+            return false;
+        }
     }
 
     // ensure that the currency definition follows all rules of currency definition, meaning:
@@ -1173,7 +1179,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             importState.conversionPrice = dummyState.PricesInReserve();
         }
 
-        // TODO: HARDENING TESTNET - enable this check on next testnet reset
+        // TODO: HARDENING TESTNET - enable this check on next testnet reset, ensure that consider bounce back or through
         /*if (!systemDest.IsValidTransferDestinationType(rt.destination.TypeNoFlags()))
         {
             return state.Error("Invalid reserve transfer destination for target system" + rt.ToUniValue().write(1,2));

@@ -66,6 +66,62 @@ public:
     UniValue ToUniValue() const;
 };
 
+class COnChainOffer
+{
+public:
+    enum EOfferConstants {
+        MIN_LISTING_DEPOSIT = 100000000
+    };
+
+    static std::string OnChainIdentityOfferKeyName()
+    {
+        return "vrsc::system.exchange.identityoffer";
+    }
+
+    static std::string OnChainCurrencyOfferKeyName()
+    {
+        return "vrsc::system.exchange.currencyoffer";
+    }
+
+    static std::string OnChainOfferForIdentityKeyName()
+    {
+        return "vrsc::system.exchange.offerforidentity";
+    }
+
+    static std::string OnChainOfferForCurrencyKeyName()
+    {
+        return "vrsc::system.exchange.offerforcurrency";
+    }
+
+    static uint160 OnChainIdentityOfferKey(const uint160 &idID)
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(OnChainIdentityOfferKeyName(), nameSpace);
+        return CCrossChainRPCData::GetConditionID(signatureKey, idID);
+    }
+
+    static uint160 OnChainCurrencyOfferKey(const uint160 &currencyID)
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(OnChainCurrencyOfferKeyName(), nameSpace);
+        return CCrossChainRPCData::GetConditionID(signatureKey, currencyID);
+    }
+
+    static uint160 OnChainOfferForIdentityKey(const uint160 &idID)
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(OnChainOfferForIdentityKeyName(), nameSpace);
+        return CCrossChainRPCData::GetConditionID(signatureKey, idID);
+    }
+
+    static uint160 OnChainOfferForCurrencyKey(const uint160 &currencyID)
+    {
+        static uint160 nameSpace;
+        static uint160 signatureKey = CVDXF::GetDataKey(OnChainOfferForCurrencyKeyName(), nameSpace);
+        return CCrossChainRPCData::GetConditionID(signatureKey, currencyID);
+    }
+};
+
 // credentials for now are "user:password"
 UniValue RPCCall(const std::string& strMethod, 
                  const UniValue& params, 

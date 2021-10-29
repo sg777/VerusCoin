@@ -614,7 +614,7 @@ CReserveTransfer::CReserveTransfer(const UniValue &uni) : CTokenOutput(uni), nFe
 
 CPrincipal::CPrincipal(const UniValue &uni)
 {
-    nVersion = uni_get_int(find_value(uni, "version"), VERSION_PBAAS);
+    nVersion = uni_get_int(find_value(uni, "version"), VERSION_VAULT);
     flags = uni_get_int(find_value(uni, "flags"));
     UniValue primaryAddressesUni = find_value(uni, "primaryaddresses");
     if (primaryAddressesUni.isArray())
@@ -655,7 +655,7 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
         parent = (!parentUni.isNull() || GetID() == VERUS_CHAINID) ? uint160() : ASSETCHAINS_CHAINID;
     }
 
-    if (nVersion >= VERSION_PBAAS)
+    if (nVersion >= VERSION_VAULT)
     {
         systemID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "systemid")))));
         if (systemID.IsNull())
@@ -1026,7 +1026,7 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
     CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
 
     // when PBaaS activates, we no longer need redundant entries, so reduce the size a bit
-    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT)
     {
         if (IsRevoked())
         {

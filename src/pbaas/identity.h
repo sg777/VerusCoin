@@ -141,7 +141,7 @@ class CPrincipal
 public:
     static const uint8_t VERSION_INVALID = 0;
     static const uint8_t VERSION_VERUSID = 1;
-    static const uint8_t VERSION_PBAAS = 2;
+    static const uint8_t VERSION_VAULT = 2;
     static const uint8_t VERSION_FIRSTVALID = 1;
     static const uint8_t VERSION_LASTVALID = 2;
 
@@ -215,7 +215,7 @@ public:
     bool IsValid(bool strict=false) const
     {
         bool primaryOK = true;
-        if (strict || nVersion >= VERSION_PBAAS)
+        if (strict || nVersion >= VERSION_VAULT)
         {
             for (auto &oneAddr : primaryAddresses)
             {
@@ -232,7 +232,7 @@ public:
                primaryAddresses.size() && 
                minSigs >= 1 &&
                minSigs <= primaryAddresses.size() && 
-               ((nVersion < VERSION_PBAAS &&
+               ((nVersion < VERSION_VAULT &&
                  primaryAddresses.size() <= 10) ||
                 (primaryAddresses.size() <= 25 &&
                  minSigs <= 13));
@@ -346,7 +346,7 @@ public:
     }
 
     CIdentity(const UniValue &uni);
-    CIdentity(const CTransaction &tx, int *voutNum=nullptr);
+    CIdentity(const CTransaction &tx, int *voutNum=nullptr, const uint160 &onlyThisID=uint160());
     CIdentity(const CScript &scriptPubKey);
     CIdentity(const std::vector<unsigned char> &asVector)
     {
@@ -392,7 +392,7 @@ public:
         READWRITE(recoveryAuthority);
         READWRITE(privateAddresses);
 
-        if (nVersion >= VERSION_PBAAS)
+        if (nVersion >= VERSION_VAULT)
         {
             READWRITE(systemID);
             READWRITE(unlockAfter);
@@ -406,7 +406,7 @@ public:
 
     uint160 GetSystemID() const
     {
-        if (nVersion >= VERSION_PBAAS)
+        if (nVersion >= VERSION_VAULT)
         {
             return parent;
         }
@@ -482,7 +482,7 @@ public:
     // until passed the parameter of the height at which it was unlocked, plus the time lock
     bool IsLocked(uint32_t height) const
     {
-        return nVersion >= VERSION_PBAAS &&
+        return nVersion >= VERSION_VAULT &&
                (IsLocked() || unlockAfter >= height) &&
                !IsRevoked();
     }
@@ -496,7 +496,7 @@ public:
     {
         if (nVersion == VERSION_FIRSTVALID)
         {
-            nVersion = VERSION_PBAAS;
+            nVersion = VERSION_VAULT;
         }
         flags |= FLAG_ACTIVECURRENCY;
     }
@@ -514,7 +514,7 @@ public:
     bool IsValid(bool strict=false) const
     {
         bool isOK = true;
-        if (strict || nVersion >= VERSION_PBAAS)
+        if (strict || nVersion >= VERSION_VAULT)
         {
             CDataStream s(SER_DISK, PROTOCOL_VERSION);
             isOK = (GetSerializeSize(s, *this) + ID_SCRIPT_ELEMENT_OVERHEAD) <= CScript::MAX_SCRIPT_ELEMENT_SIZE;
@@ -524,7 +524,7 @@ public:
                CPrincipal::IsValid(strict) && name.size() > 0 && 
                (name.size() <= MAX_NAME_LEN) &&
                primaryAddresses.size() &&
-               (nVersion < VERSION_PBAAS ||
+               (nVersion < VERSION_VAULT ||
                (!revocationAuthority.IsNull() &&
                 !recoveryAuthority.IsNull() &&
                 minSigs > 0 &&
@@ -591,7 +591,7 @@ public:
     bool IsPrimaryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
-        bool isRevokedExempt = nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && newIdentity.IsRevoked();
+        bool isRevokedExempt = nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && newIdentity.IsRevoked();
         if (CPrincipal::IsPrimaryMutation(newIdentity) ||
             (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
@@ -727,6 +727,7 @@ public:
     uint256 txid;
 
     CIdentityMapValue() : CIdentity() {}
+    CIdentityMapValue(const CIdentity &identity, const uint256 &txID=uint256()) : CIdentity(identity), txid(txID) {}
     CIdentityMapValue(const CTransaction &tx) : CIdentity(tx), txid(tx.GetHash()) {}
 
     ADD_SERIALIZE_METHODS;

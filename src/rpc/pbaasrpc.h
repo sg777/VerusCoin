@@ -31,4 +31,7 @@ UniValue addmergedblock(const UniValue& params, bool fHelp);
 
 void RegisterPBaaSRPCCommands(CRPCTable &tableRPC);
 
+std::map<std::string, UniValue> UniObjectToMap(const UniValue &obj);
+UniValue MapToUniObject(const std::map<std::string, UniValue> &uniMap);
+
 #endif // VERUS_PBAASRPC_H

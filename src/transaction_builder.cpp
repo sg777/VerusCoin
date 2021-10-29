@@ -228,7 +228,7 @@ bool TransactionBuilder::AddOpRetLast()
     return true;
 }
 
-void TransactionBuilder::AddOpRet(CScript &s)
+void TransactionBuilder::AddOpRet(const CScript &s)
 {
     opReturn.emplace(CScript(s));
 }
