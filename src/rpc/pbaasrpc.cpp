@@ -1175,6 +1175,16 @@ void CheckPBaaSAPIsValid()
     }
 }
 
+void CheckVerusVaultAPIsValid()
+{
+    //printf("Solution version running: %d\n\n", CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()));
+    if (!chainActive.LastTip() ||
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.ACTIVATE_VERUSVAULT)
+    {
+        throw JSONRPCError(RPC_INVALID_REQUEST, "Verus Vault and VerusID Marketplace not activated on blockchain.");
+    }
+}
+
 void CheckIdentityAPIsValid()
 {
     if (!chainActive.LastTip() ||
@@ -3553,6 +3563,8 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         );
     }
 
+    CheckVerusVaultAPIsValid();
+
     std::string sourceAddress = uni_get_str(params[0]);
     CTxDestination sourceDest;
 
@@ -4269,6 +4281,18 @@ bool GetOpRetChainOffer(const CTransaction &postedTx, CTransaction &offerTx, CTr
     return false;
 }
 
+/** Pushes a JSON object for script verification or signing errors to vErrorsRet. */
+static void TxInErrorToJSON(const CTxIn& txin, UniValue& vErrorsRet, const std::string& strMessage)
+{
+    UniValue entry(UniValue::VOBJ);
+    entry.push_back(Pair("txid", txin.prevout.hash.ToString()));
+    entry.push_back(Pair("vout", (uint64_t)txin.prevout.n));
+    entry.push_back(Pair("scriptSig", HexStr(txin.scriptSig.begin(), txin.scriptSig.end())));
+    entry.push_back(Pair("sequence", (uint64_t)txin.nSequence));
+    entry.push_back(Pair("error", strMessage));
+    vErrorsRet.push_back(entry);
+}
+
 UniValue takeoffer(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 2 || params.size() > 4)
@@ -4297,6 +4321,8 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             + HelpExampleRpc("takeoffer", "")
         );
     }
+
+    CheckVerusVaultAPIsValid();
 
     bool returnHex = params.size() > 3 ? uni_get_bool(params[3]) : false;
     CAmount feeAmount = params.size() > 4 ? AmountFromValue(params[4]) : DEFAULT_TRANSACTION_FEE;
@@ -4360,10 +4386,13 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     uint256 txIdToTake;
     CTransaction txToTake, inputTxToOffer;
     uint32_t height;
+    uint32_t consensusBranchId;
 
     {
         LOCK2(cs_main, mempool.cs);
         height = chainActive.Height();
+        consensusBranchId = CurrentEpochBranchId(height + 1, Params().GetConsensus());
+
         if (!txIdStringToTake.empty())
         {
             txIdToTake.SetHex(txIdStringToTake);
@@ -4373,7 +4402,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             }
             uint256 blockHash;
             CTransaction postedTx;
-            if (!myGetTransaction(txIdToTake, txToTake, blockHash))
+            if (!myGetTransaction(txIdToTake, postedTx, blockHash))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Transaction " + txIdToTake.GetHex() + " not found");
             }
@@ -4441,212 +4470,291 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         }
     }
 
-    LOCK2(cs_main, pwalletMain->cs_wallet);
-    if (deliver.isStr())
-    {
-        CIdentity revocationIdentity, recoveryIdentity;
-
-        // this needs to be a valid ID in our wallet
-        CTxDestination identityDest = DecodeDestination(uni_get_str(deliver));
-        if (identityDest.which() != COptCCParams::ADDRTYPE_ID)
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "If a VerusID is specified to deliver when taking the offer, it must be a valid ID name or i-address on this chain");
-        }
-        bool idInWallet = pwalletMain->GetIdentity(GetDestinationID(identityDest), keyAndIdentity);
-
-        if (!idInWallet || !(*(CIdentity *)(&keyAndIdentity.second) = CIdentity::LookupIdentity(GetDestinationID(identityDest), 0, nullptr, &idInput)).IsValid())
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "No authority over VerusID or ID not found");
-        }
-
-        uint256 blkHash;
-        CTransaction oldIdTx;
-        if (!myGetTransaction(idInput.prevout.hash, oldIdTx, blkHash))
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + keyAndIdentity.second.name + " (" + EncodeDestination(CIdentityID(keyAndIdentity.second.GetID())) + "), transaction not found ");
-        }
-        oldIdOutput = oldIdTx.vout[idInput.prevout.n];
-
-        if (!keyAndIdentity.first.CanSign())
-        {
-            // we need either signing authority, revocation, recovery, or any combination to be able to create a delivery transaction
-            if (keyAndIdentity.second.revocationAuthority == idIDToDeliver && keyAndIdentity.second.recoveryAuthority == idIDToDeliver)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "No authority over VerusID specified for delivery");
-            }
-            // if recovery is different, get it and see if we have signing authority on that
-            if (keyAndIdentity.second.revocationAuthority != idIDToDeliver)
-            {
-                if (!pwalletMain->GetIdentity(keyAndIdentity.second.revocationAuthority, keyAndRevocation))
-                {
-                    if (!(keyAndRevocation.second = CIdentityMapValue(CIdentity::LookupIdentity(keyAndIdentity.second.revocationAuthority))).IsValid())
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Revocation authority not found for ID specified");
-                    }
-                }
-            }
-            else
-            {
-                keyAndRevocation = keyAndIdentity;
-            }
-            
-            // if recovery is different, get it and see if we have signing authority on that
-            if (keyAndIdentity.second.recoveryAuthority != idIDToDeliver)
-            {
-                if (keyAndIdentity.second.recoveryAuthority == keyAndIdentity.second.revocationAuthority)
-                {
-                    keyAndRecovery = keyAndRevocation;
-                }
-                else if (!pwalletMain->GetIdentity(keyAndIdentity.second.recoveryAuthority, keyAndRecovery))
-                {
-                    if (!(keyAndRecovery.second = CIdentityMapValue(CIdentity::LookupIdentity(keyAndIdentity.second.recoveryAuthority))).IsValid())
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Recovery authority not found for ID specified");
-                    }
-                }
-            }
-            else
-            {
-                keyAndRecovery = keyAndIdentity;
-            }
-        }
-        // if we can't sign for any authority on the ID, don't make a transaction
-        if (!keyAndIdentity.first.CanSign() && !keyAndRevocation.first.CanSign() && !keyAndRecovery.first.CanSign())
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "This wallet has no authority to sign for any part of delivering the ID specified");
-        }
-        currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] = feeAmount;
-    }
-    else if (deliver.isObject())
-    {
-        // determine the currency we are offering to deliver
-        auto currencyStr = TrimSpaces(uni_get_str(find_value(deliver, "currency")));
-        CAmount destinationAmount = AmountFromValue(find_value(deliver, "amount"));
-        uint160 curID = ValidateCurrencyName(currencyStr, true);
-        if (curID.IsNull())
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency specified for delivery not found");
-        }
-        currencyToDeliver.valueMap[curID] = destinationAmount;
-        currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] += feeAmount;
-    }
-
-    // now, ensure that our expected output and the input provided in the offer are the same
-    COptCCParams p;
-    CIdentity offeredIdentity;
-    CCurrencyValueMap offeredCurrency;
-    if (inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-        p.IsValid() &&
-        p.evalCode == EVAL_IDENTITY_PRIMARY &&
-        p.vData.size() &&
-        (offeredIdentity = CIdentity(p.vData[0])).IsValid())
-    {
-        if (offeredIdentity.GetID() != acceptedIdentity.GetID())
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity offered: " + EncodeDestination(CIdentityID(offeredIdentity.GetID())) + ", is not the same as accepted: " + EncodeDestination(CIdentityID(acceptedIdentity.GetID())));
-        }
-    }
-    else if (inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.IsSpendableOutputType())
-    {
-        if (inputTxToOffer.vout[txToTake.vin[0].prevout.n].nValue > 0)
-        {
-            offeredCurrency.valueMap[ASSETCHAINS_CHAINID] = inputTxToOffer.vout[txToTake.vin[0].prevout.n].nValue;
-        }
-        offeredCurrency += inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.ReserveOutValue();
-
-    }
-
-    //CIdentity acceptedIdentity, identityToDeliver;
-    //CCurrencyValueMap acceptedCurrency, currencyToDeliver;
-
+    // for use later
+    CCoinsView viewDummy;
+    CCoinsViewCache view(&viewDummy);
     CMutableTransaction mtx(txToTake);
-
-    CAmount additionalFees = feeAmount;
-
-    // add the output
-    if (acceptedIdentity.IsValid())
+    int firstFundingInput = 0;
     {
-        mtx.vout.push_back(CTxOut(0, identityToDeliver.IdentityUpdateOutputScript(height + 1)));
-    }
-    else if (acceptedCurrency.valueMap.size())
-    {
-        // if our accepted currency is native, no reserve output
-        CAmount nativeOut = acceptedCurrency.valueMap.count(ASSETCHAINS_CHAINID) ? acceptedCurrency.valueMap[ASSETCHAINS_CHAINID] : 0;
-        if (nativeOut >= (feeAmount + DEFAULT_TRANSACTION_FEE))
+        LOCK2(cs_main, mempool.cs);
+        LOCK(pwalletMain->cs_wallet);
+
+        if (deliver.isStr())
         {
-            nativeOut -= feeAmount;
-            additionalFees = 0;
+            CIdentity revocationIdentity, recoveryIdentity;
+
+            // this needs to be a valid ID in our wallet
+            CTxDestination identityDest = DecodeDestination(uni_get_str(deliver));
+            if (identityDest.which() != COptCCParams::ADDRTYPE_ID)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "If a VerusID is specified to deliver when taking the offer, it must be a valid ID name or i-address on this chain");
+            }
+            bool idInWallet = pwalletMain->GetIdentity(GetDestinationID(identityDest), keyAndIdentity);
+
+            if (!idInWallet || !(*(CIdentity *)(&keyAndIdentity.second) = CIdentity::LookupIdentity(GetDestinationID(identityDest), 0, nullptr, &idInput)).IsValid())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "No authority over VerusID or ID not found");
+            }
+
+            uint256 blkHash;
+            CTransaction oldIdTx;
+            if (!myGetTransaction(idInput.prevout.hash, oldIdTx, blkHash))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + keyAndIdentity.second.name + " (" + EncodeDestination(CIdentityID(keyAndIdentity.second.GetID())) + "), transaction not found ");
+            }
+            oldIdOutput = oldIdTx.vout[idInput.prevout.n];
+
+            if (!keyAndIdentity.first.CanSign())
+            {
+                // we need either signing authority, revocation, recovery, or any combination to be able to create a delivery transaction
+                if (keyAndIdentity.second.revocationAuthority == idIDToDeliver && keyAndIdentity.second.recoveryAuthority == idIDToDeliver)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "No authority over VerusID specified for delivery");
+                }
+                // if recovery is different, get it and see if we have signing authority on that
+                if (keyAndIdentity.second.revocationAuthority != idIDToDeliver)
+                {
+                    if (!pwalletMain->GetIdentity(keyAndIdentity.second.revocationAuthority, keyAndRevocation))
+                    {
+                        if (!(keyAndRevocation.second = CIdentityMapValue(CIdentity::LookupIdentity(keyAndIdentity.second.revocationAuthority))).IsValid())
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Revocation authority not found for ID specified");
+                        }
+                    }
+                }
+                else
+                {
+                    keyAndRevocation = keyAndIdentity;
+                }
+                
+                // if recovery is different, get it and see if we have signing authority on that
+                if (keyAndIdentity.second.recoveryAuthority != idIDToDeliver)
+                {
+                    if (keyAndIdentity.second.recoveryAuthority == keyAndIdentity.second.revocationAuthority)
+                    {
+                        keyAndRecovery = keyAndRevocation;
+                    }
+                    else if (!pwalletMain->GetIdentity(keyAndIdentity.second.recoveryAuthority, keyAndRecovery))
+                    {
+                        if (!(keyAndRecovery.second = CIdentityMapValue(CIdentity::LookupIdentity(keyAndIdentity.second.recoveryAuthority))).IsValid())
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Recovery authority not found for ID specified");
+                        }
+                    }
+                }
+                else
+                {
+                    keyAndRecovery = keyAndIdentity;
+                }
+            }
+            // if we can't sign for any authority on the ID, don't make a transaction
+            if (!keyAndIdentity.first.CanSign() && !keyAndRevocation.first.CanSign() && !keyAndRecovery.first.CanSign())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "This wallet has no authority to sign for any part of delivering the ID specified");
+            }
+            currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] = feeAmount;
         }
-        else if (nativeOut >= feeAmount)
+        else if (deliver.isObject())
         {
-            nativeOut = 0;
-            additionalFees = 0;
+            // determine the currency we are offering to deliver
+            auto currencyStr = TrimSpaces(uni_get_str(find_value(deliver, "currency")));
+            CAmount destinationAmount = AmountFromValue(find_value(deliver, "amount"));
+            uint160 curID = ValidateCurrencyName(currencyStr, true);
+            if (curID.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency specified for delivery not found");
+            }
+            currencyToDeliver.valueMap[curID] = destinationAmount;
+            currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] += feeAmount;
         }
 
-        if (acceptedCurrency.valueMap.size() == 1 && nativeOut)
+        // now, ensure that our expected output and the input provided in the offer are the same
+        COptCCParams p;
+        CIdentity offeredIdentity;
+        CCurrencyValueMap offeredCurrency;
+        if (inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.evalCode == EVAL_IDENTITY_PRIMARY &&
+            p.vData.size() &&
+            (offeredIdentity = CIdentity(p.vData[0])).IsValid())
         {
-            mtx.vout.push_back(CTxOut(nativeOut, GetScriptForDestination(acceptToAddress)));
+            if (offeredIdentity.GetID() != acceptedIdentity.GetID())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity offered: " + EncodeDestination(CIdentityID(offeredIdentity.GetID())) + ", is not the same as accepted: " + EncodeDestination(CIdentityID(acceptedIdentity.GetID())));
+            }
+        }
+        else if (inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.IsSpendableOutputType())
+        {
+            if (inputTxToOffer.vout[txToTake.vin[0].prevout.n].nValue > 0)
+            {
+                offeredCurrency.valueMap[ASSETCHAINS_CHAINID] = inputTxToOffer.vout[txToTake.vin[0].prevout.n].nValue;
+            }
+            offeredCurrency += inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.ReserveOutValue();
+
+        }
+
+        CAmount additionalFees = feeAmount;
+
+        // add the output
+        if (acceptedIdentity.IsValid())
+        {
+            mtx.vout.push_back(CTxOut(0, identityToDeliver.IdentityUpdateOutputScript(height + 1)));
+        }
+        else if (acceptedCurrency.valueMap.size())
+        {
+            // if our accepted currency is native, no reserve output
+            CAmount nativeOut = acceptedCurrency.valueMap.count(ASSETCHAINS_CHAINID) ? acceptedCurrency.valueMap[ASSETCHAINS_CHAINID] : 0;
+            if (nativeOut >= (feeAmount + DEFAULT_TRANSACTION_FEE))
+            {
+                nativeOut -= feeAmount;
+                additionalFees = 0;
+            }
+            else if (nativeOut >= feeAmount)
+            {
+                nativeOut = 0;
+                additionalFees = 0;
+            }
+
+            if (acceptedCurrency.valueMap.size() == 1 && nativeOut)
+            {
+                mtx.vout.push_back(CTxOut(nativeOut, GetScriptForDestination(acceptToAddress)));
+            }
+            else
+            {
+                acceptedCurrency.valueMap.erase(ASSETCHAINS_CHAINID);
+                std::vector<CTxDestination> dest({acceptToAddress});
+                CTokenOutput to(acceptedCurrency);
+                mtx.vout.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to))));
+            }
+        }
+
+        // if the identity has been initialized, we are delivering an identity in this transaction, input our identity to the
+        // transaction, and add an output for our return
+        std:vector<COutput> vCoins;
+        std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+        CAmount nativeValueOut;
+        CCurrencyValueMap reserveValueOut;
+
+        firstFundingInput = mtx.vin.size();
+
+        if (keyAndIdentity.second.IsValid())
+        {
+            bool success = true;
+            mtx.vin.push_back(idInput);
+            // one ID input to fund the transaction
+            if (additionalFees)
+            {
+                success = find_utxos(from_taddress, vCoins) &&
+                            pwalletMain->SelectCoinsMinConf(additionalFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+            }
+            if (!success)
+            {
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to fund delivery of identity");
+            }
+        }
+        else if (currencyToDeliver.valueMap.size())
+        {
+            // find enough currency from source to fund the acceptance
+            CAmount nativeValue = (currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] + additionalFees);
+            currencyToDeliver.valueMap.erase(ASSETCHAINS_CHAINID);
+            bool success = find_utxos(from_taddress, vCoins) &&
+                        pwalletMain->SelectReserveCoinsMinConf(currencyToDeliver,
+                                                                nativeValue,
+                                                                0,
+                                                                1,
+                                                                vCoins,
+                                                                setCoinsRet,
+                                                                reserveValueOut,
+                                                                nativeValueOut);
+            if (!success)
+            {
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to fund currency delivery");
+            }
         }
         else
         {
-            acceptedCurrency.valueMap.erase(ASSETCHAINS_CHAINID);
-            std::vector<CTxDestination> dest({acceptToAddress});
-            CTokenOutput to(acceptedCurrency);
-            mtx.vout.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to))));
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "No identity or currency to deliver");
         }
+
+        // now put all vCoins on the input, sign the transaction, and post
+        for (auto &oneInput : vCoins)
+        {
+            mtx.vin.push_back(CTxIn(oneInput.tx->GetHash(), oneInput.i));
+        }
+
+        // Fetch previous transactions (inputs):
+        CCoinsViewCache &viewChain = *pcoinsTip;
+        CCoinsViewMemPool viewMempool(&viewChain, mempool);
+        view.SetBackend(viewMempool); // temporarily switch cache backend to db+mempool view
+        for (auto &txin : mtx.vin)
+        {
+            const uint256& prevHash = txin.prevout.hash;
+            CCoins coins;
+            view.AccessCoins(prevHash); // this can fail
+        }
+        view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
     }
 
-    // if the identity has been initialized, we are delivering an identity in this transaction, input our identity to the
-    // transaction, and add an output for our return
-    std:vector<COutput> vCoins;
-    std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
-    CAmount nativeValueOut;
-    CCurrencyValueMap reserveValueOut;
+    CTransaction txConst(mtx);
+    UniValue vErrors(UniValue::VARR);
 
-    if (keyAndIdentity.second.IsValid())
+    // Sign what we can
+    for (int i = firstFundingInput; i < mtx.vin.size(); i++)
     {
-        bool success = true;
-        mtx.vin.push_back(idInput);
-        // one ID input to fund the transaction
-        if (additionalFees)
-        {
-            success = find_utxos(from_taddress, vCoins) &&
-                        pwalletMain->SelectCoinsMinConf(additionalFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+        CTxIn& txin = mtx.vin[i];
+        const CCoins* coins = view.AccessCoins(txin.prevout.hash);
+        if (coins == NULL || !coins->IsAvailable(txin.prevout.n)) {
+            TxInErrorToJSON(txin, vErrors, "Input not found or already spent");
+            continue;
         }
-        if (!success)
-        {
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to fund delivery of identity");
+        const CScript& prevPubKey = CCoinsViewCache::GetSpendFor(coins, txin);
+        const CAmount& amount = coins->vout[txin.prevout.n].nValue;
+
+        SignatureData sigdata;
+        ProduceSignature(MutableTransactionSignatureCreator(pwalletMain, &mtx, i, amount, prevPubKey), prevPubKey, sigdata, consensusBranchId);
+
+        TransactionSignatureChecker checker(&txConst, i, amount);
+        sigdata = CombineSignatures(prevPubKey, checker, sigdata, DataFromTransaction(txConst, i), consensusBranchId);
+
+        UpdateTransaction(mtx, i, sigdata);
+
+        ScriptError serror = SCRIPT_ERR_OK;
+        if (!VerifyScript(txin.scriptSig, prevPubKey, STANDARD_SCRIPT_VERIFY_FLAGS, checker, consensusBranchId, &serror)) {
+            TxInErrorToJSON(txin, vErrors, ScriptErrorString(serror));
         }
     }
-    else if (currencyToDeliver.valueMap.size())
+    bool fComplete = vErrors.empty();
+    UniValue retVal(UniValue::VOBJ);
+
+    if (fComplete && !returnHex)
     {
-        // find enough currency from source to fund the acceptance
-        CAmount nativeValue = (currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] + additionalFees);
-        currencyToDeliver.valueMap.erase(ASSETCHAINS_CHAINID);
-        bool success = find_utxos(from_taddress, vCoins) &&
-                       pwalletMain->SelectReserveCoinsMinConf(currencyToDeliver,
-                                                              nativeValue,
-                                                              0,
-                                                              1,
-                                                              vCoins,
-                                                              setCoinsRet,
-                                                              reserveValueOut,
-                                                              nativeValueOut);
-        if (!success)
+        CValidationState state;
+        CTransaction finalTx = mtx;
+        LOCK2(cs_main, mempool.cs);
+        // add to mem pool and relay
+        if (!myAddtomempool(finalTx, &state))
         {
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to fund currency delivery");
+            throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Could not commit transaction - rejected");
         }
+        else
+        {
+            //printf("%s: success adding %s to mempool\n", __func__, newImportTx.GetHash().GetHex().c_str());
+            RelayTransaction(finalTx);
+        }
+        retVal.pushKV("txid", finalTx.GetHash().GetHex());
     }
     else
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "No identity or currency to deliver");
+        // if this is an ID swap, spend ID to transaction and take funds or pay requird funds and take ID
+        // if this is a funds swap, pay required funds and take required funds
+        retVal.pushKV("tx", EncodeHexTx(mtx));
+        if (!vErrors.empty())
+        {
+            retVal.pushKV("errors", vErrors);
+        }
     }
 
-    // now put all vCoins on the input, sign the transaction, and post
-
-    // if this is an ID swap, spend ID to transaction and take funds or pay requird funds and take ID
-    // if this is a funds swap, pay required funds and take required funds
-    return NullUniValue;
+    return retVal;
 }
 
 UniValue getoffers(const UniValue& params, bool fHelp)
@@ -4668,6 +4776,8 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             + HelpExampleRpc("sendcurrency", "\"bob@\" '[{\"currency\":\"btc\", \"address\":\"alice@quad\", \"amount\":500.0},...]'")
         );
     }
+
+    CheckVerusVaultAPIsValid();
 
     bool isCurrency = false;
     if (params.size() > 1)
@@ -4899,7 +5009,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 offerJSON.pushKV("accept", wePay.ToUniValue());
                                 offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
-                                uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, offerAmount), offerJSON));
+                                uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, offerAmount / wePay.valueMap[currencyID]), offerJSON));
                             }
                         }
                         else if (isCurrency &&
@@ -4921,7 +5031,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                             offerJSON.pushKV("accept", wePay.ToUniValue());
                             offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                             offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
-                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, payAmount), offerJSON));
+                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, payAmount / wePay.valueMap[currencyID]), offerJSON));
                         }
                         else if (!isCurrency &&
                                  offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -9388,6 +9498,9 @@ static const CRPCCommand commands[] =
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
+    { "marketplace",  "makeoffer",                    &makeoffer,              true  },
+    { "marketplace",  "takeoffer",                    &takeoffer,              true  },
+    { "marketplace",  "getoffers",                    &getoffers,              true  },
     { "multichain",   "definecurrency",               &definecurrency,         true  },
     { "multichain",   "listcurrencies",               &listcurrencies,         true  },
     { "multichain",   "getcurrencyconverters",        &getcurrencyconverters,  true  },
