@@ -3639,6 +3639,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     CInputDescriptor offerIn;
     std::vector<CInputDescriptor> postedOfferIns;
     CTxDestination changeDestination;
+    CTxDestination fundsDestination;
     uint160 offerID;
     uint160 offerCurrencyID;
     uint160 newIDID;
@@ -3763,7 +3764,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 nativeValueOut > (oneOutput.nAmount + DEFAULT_TRANSACTION_FEE))
             {
                 // use the transaction builder to properly make change of native and reserves
-                TransactionBuilder tb(Params().consensus, height + 1);
+                TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
                 tb.AddTransparentOutput(oneOutput.scriptPubKey, oneOutput.nAmount);
                 // just aggregate all inputs into one output with only the offer coins
                 for (auto &oneInput : setCoinsRet)
@@ -3871,6 +3872,16 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             offerIn.scriptPubKey = idTx.vout[idTxIn.prevout.n].scriptPubKey;
             offerTx.vin.push_back(offerIn.txIn);
 
+            auto destStr = TrimSpaces(uni_get_str(find_value(offerValue, "changeaddress")));
+            changeDestination = ValidateDestination(destStr);
+            CRecipient oneOutput;
+
+            CTransferDestination dest;
+            if (changeDestination.which() == COptCCParams::ADDRTYPE_INVALID)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "changedestination must be a valid, transparent address to post a transaction");
+            }
+
             // if not returning, but posting, get the fees needed to post
             if (!returnHex)
             {
@@ -3905,11 +3916,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             auto destStr = TrimSpaces(uni_get_str(find_value(forValue, "address")));
             auto memoStr = TrimSpaces(uni_get_str(find_value(forValue, "memo")));
 
-            if (!currencyStr.empty())
-            {
-                CheckPBaaSAPIsValid();
-            }
-
             CCurrencyDefinition sourceCurrencyDef;
             if (currencyStr.empty())
             {
@@ -3926,33 +3932,41 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 }
             }
 
-            changeDestination = ValidateDestination(destStr);
+            fundsDestination = ValidateDestination(destStr);
             CRecipient oneOutput;
 
             CTransferDestination dest;
-            if (changeDestination.which() == COptCCParams::ADDRTYPE_INVALID)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified changeDestination must be valid");
-            }
-
-            // make the funds output that defines what we are willing to accept for the input we are offering
             libzcash::PaymentAddress zaddressDest;
-            bool hasZDest = pwalletMain->GetAndValidateSaplingZAddress(destStr, zaddressDest);
-            auto saplingAddress = boost::get<libzcash::SaplingPaymentAddress>(&zaddressDest);
-            if (saplingAddress == nullptr)
+            libzcash::SaplingPaymentAddress *saplingAddress;
+            bool hasZDest = false;
+
+            if (fundsDestination.which() == COptCCParams::ADDRTYPE_INVALID)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Any z-address used must be a Sapling address");
-            }
-            if (hasZDest && newCurrencyID != ASSETCHAINS_CHAINID)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send non-native currency when sending proceeds to a private z-address");
-            }
-            else if (!hasZDest && !memoStr.empty())
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot include memo when sending proceeds to a  transparent address or ID");
+                // make the funds output that defines what we are willing to accept for the input we are offering
+                hasZDest = pwalletMain->GetAndValidateSaplingZAddress(destStr, zaddressDest);
+                if (hasZDest)
+                {
+                    saplingAddress = boost::get<libzcash::SaplingPaymentAddress>(&zaddressDest);
+                }
+                else
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified \"for\" destination address must be valid");
+                }
+                if (saplingAddress == nullptr)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Only sapling addresses may be used as a \"for\" destination");
+                }
+                if (hasZDest && newCurrencyID != ASSETCHAINS_CHAINID)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send non-native currency when sending proceeds to a private z-address");
+                }
+                else if (!hasZDest && !memoStr.empty())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot include memo when sending proceeds to a  transparent address or ID");
+                }
             }
 
-            // re-encode changeDestination, in case it is specified as the private address of an ID
+            // re-encode fundsDestination, in case it is specified as the private address of an ID
             if (hasZDest)
             {
                 // if memo starts with "#", convert it from a string to a hex value
@@ -4043,13 +4057,13 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 if (newCurrencyID == ASSETCHAINS_CHAINID)
                 {
                     requestOutput.nAmount = destinationAmount;
-                    requestOutput.scriptPubKey = GetScriptForDestination(changeDestination);
+                    requestOutput.scriptPubKey = GetScriptForDestination(fundsDestination);
                 }
                 else
                 {
                     requestOutput.nAmount = newCurrencyID == ASSETCHAINS_CHAINID ? destinationAmount : 0;
 
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({changeDestination});
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({fundsDestination});
                     CTokenOutput to(newCurrencyID, destinationAmount);
 
                     requestOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
@@ -4196,7 +4210,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             {
                 throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to make offer transaction on chain, try with returnhex as false");
             }
-            TransactionBuilder tb(Params().consensus, height + 1);
+            TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
             for (auto &oneIn : postedOfferIns)
             {
                 tb.AddTransparentInput(COutPoint(oneIn.txIn.prevout.hash, oneIn.txIn.prevout.n), oneIn.scriptPubKey, oneIn.nValue);
@@ -4218,21 +4232,17 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             CCrossChainProof opRetProof;
             opRetProof << CPartialTransactionProof(CMMRProof(), offerTx);
             tb.AddOpRet(StoreOpRetArray(opRetProof.chainObjects));
+            tb.SendChangeTo(changeDestination);
             tb.SetFee(feeAmount);
 
             TransactionBuilderResult result = tb.Build();
-            if (result.IsError())
-            {
-                throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Failed to build offer transaction for posting, " + result.GetError());
-            }
-
             CTransaction offerPostTx = result.GetTxOrThrow();
 
             // add to mem pool and relay
             CValidationState state;
             if (!myAddtomempool(offerPostTx, &state))
             {
-                throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Failed to add transaction to mempool");
+                throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Failed to add offer transaction to mempool");
             }
             else
             {
@@ -4245,8 +4255,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << '\n';
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters.");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot create offer: " + std::string(e.what()));
     }
     return NullUniValue;
 }
@@ -5101,8 +5110,10 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                         while (rSellIT != uniSellToCurrency.rend() || rBuyIT != uniBuyWithCurrency.rend())
                         {
 
-                            while (rSellIT != uniSellToCurrency.rend() &&
-                                (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex())))
+                            for (;
+                                rSellIT != uniSellToCurrency.rend() &&
+                                  (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex()));
+                                rSellIT++)
                             {
                                 uint160 newLast = rSellIT->first.first;
                                 if (lastCurrencyID != newLast)
@@ -5120,10 +5131,13 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 oneOffer.pushKV("offer", rSellIT->second);
                                 oneCategory.push_back(oneOffer);
                                 isBuyLast = false;
+                                rSellIT++;
                             }
 
-                            while (rBuyIT != uniBuyWithCurrency.rend() &&
-                                (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex())))
+                            for (;
+                                rBuyIT != uniBuyWithCurrency.rend() &&
+                                  (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex()));
+                                rBuyIT++)
                             {
                                 uint160 newLast = rBuyIT->first.first;
                                 if (lastCurrencyID != newLast)
@@ -5204,8 +5218,10 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                         while (rSellIT != uniSellToCurrency.rend() || rBuyIT != uniBuyWithCurrency.rend())
                         {
 
-                            while (rSellIT != uniSellToCurrency.rend() &&
-                                (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex())))
+                            for (;
+                                rSellIT != uniSellToCurrency.rend() &&
+                                  (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex()));
+                                rSellIT++)
                             {
                                 uint160 newLast = rSellIT->first.first;
                                 if (lastCurrencyID != newLast)
@@ -5225,8 +5241,10 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 isBuyLast = false;
                             }
 
-                            while (rBuyIT != uniBuyWithCurrency.rend() &&
-                                (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex())))
+                            for (;
+                                rBuyIT != uniBuyWithCurrency.rend() &&
+                                  (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex()));
+                                rBuyIT++)
                             {
                                 uint160 newLast = rBuyIT->first.first;
                                 if (lastCurrencyID != newLast)
