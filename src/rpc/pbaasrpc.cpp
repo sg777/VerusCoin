@@ -4298,7 +4298,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 2 || params.size() > 4)
     {
         throw runtime_error(
-            "takeoffer fromaddress {\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\"}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}} (returntx) (feeamount)\n"
+            "takeoffer fromaddress '{\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\"}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}}' (returntx) (feeamount)\n"
             "\nIf the current wallet can afford the swap, this accepts a swap offer on the blockchain, creates a transaction\n"
             "to execute it, and posts the transaction to the blockchain.\n"
 
@@ -4317,8 +4317,8 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             "   \"hextx\" : \"hex\"         (string) The hexadecimal, serialized transaction if (returntx) is true\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("takeoffer", "")
-            + HelpExampleRpc("takeoffer", "")
+            + HelpExampleCli("takeoffer", "fromaddress '{\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\"}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}}' (returntx) (feeamount)")
+            + HelpExampleRpc("takeoffer", "fromaddress {\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\"}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}} (returntx) (feeamount)")
         );
     }
 
@@ -4772,8 +4772,8 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             "\nResult:\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("sendcurrency", "\"*\" '[{\"currency\":\"btc\",\"address\":\"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\" ,\"amount\":500.0},...]'")
-            + HelpExampleRpc("sendcurrency", "\"bob@\" '[{\"currency\":\"btc\", \"address\":\"alice@quad\", \"amount\":500.0},...]'")
+            + HelpExampleCli("sendcurrency", "\"currencyorid\" (iscurrency)")
+            + HelpExampleRpc("sendcurrency", "\"currencyorid\" (iscurrency)")
         );
     }
 
