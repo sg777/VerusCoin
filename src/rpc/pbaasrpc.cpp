@@ -5104,7 +5104,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                             }
                             offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
-                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, CalculateFractionalPrice(offerToPay.valueMap[currencyOrIdID], payAmount, false)), offerJSON));
+                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, CalculateFractionalPrice(payAmount, offerToPay.valueMap[currencyOrIdID], false)), offerJSON));
                         }
                         else if (!isCurrency &&
                                  offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -5194,7 +5194,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                     {
                         if (oneCategory.size())
                         {
-                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_offers_in_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
                             oneCategory = UniValue(UniValue::VARR);
                         }
                         lastCurrencyID = newLast;
@@ -5217,7 +5217,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                     {
                         if (oneCategory.size())
                         {
-                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_offers_in_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
                             oneCategory = UniValue(UniValue::VARR);
                         }
                         lastCurrencyID = newLast;
@@ -5234,11 +5234,11 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             {
                 if (isBuyLast)
                 {
-                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_offers_in_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
                 }
                 else
                 {
-                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_offers_in_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
                 }
             }
         }
