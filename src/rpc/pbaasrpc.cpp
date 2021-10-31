@@ -4766,6 +4766,16 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     return retVal;
 }
 
+UniValue IdOfferInfo(const CIdentity &identityOffer)
+{
+    UniValue retVal(UniValue::VOBJ);
+    retVal.pushKV("name", identityOffer.name);
+    retVal.pushKV("identityid", EncodeDestination(CIdentityID(identityOffer.GetID())));
+    retVal.pushKV("systemid", EncodeDestination(CIdentityID(identityOffer.systemID)));
+    retVal.pushKV("original", identityOffer.systemID == ASSETCHAINS_CHAINID);
+    return retVal;
+}
+
 UniValue getoffers(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)
@@ -4850,7 +4860,9 @@ UniValue getoffers(const UniValue& params, bool fHelp)
     }
     else
     {
+        UniValue retVal(UniValue::VOBJ);
         unspentOutputs.insert(unspentOutputs.end(), unspentOutputOffers.begin(), unspentOutputOffers.end());
+
         for (auto &oneOffer : unspentOutputs)
         {
             CTransaction postedTx, offerTx, inputToOfferTx;
@@ -4918,8 +4930,8 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 }
                             }
                             UniValue offerJSON(UniValue::VOBJ);
-                            offerJSON.pushKV("offer", offerToTransfer.IsValid() ? offerToTransfer.ToUniValue() : offerToPay.ToUniValue());
-                            offerJSON.pushKV("accept", weTransfer.ToUniValue());
+                            offerJSON.pushKV("offer", offerToTransfer.IsValid() ? IdOfferInfo(offerToTransfer) : offerToPay.ToUniValue());
+                            offerJSON.pushKV("accept", IdOfferInfo(weTransfer));
                             offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                             offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                             if (offerToPay.valueMap.begin() != offerToPay.valueMap.end() && offerToPay.valueMap.begin()->first == currencyOrIdID)
@@ -4940,8 +4952,8 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 (offerToTransfer = CIdentity(p.vData[0])).IsValid())
                             {
                                 UniValue offerJSON(UniValue::VOBJ);
-                                offerJSON.pushKV("offer", offerToTransfer.IsValid() ? offerToTransfer.ToUniValue() : offerToPay.ToUniValue());
-                                offerJSON.pushKV("accept", weTransfer.IsValid() ? weTransfer.ToUniValue() : wePay.ToUniValue());
+                                offerJSON.pushKV("offer", offerToTransfer.IsValid() ? IdOfferInfo(offerToTransfer) : offerToPay.ToUniValue());
+                                offerJSON.pushKV("accept", weTransfer.IsValid() ? IdOfferInfo(weTransfer) : wePay.ToUniValue());
                                 offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                                 uniBuyWithIDs.insert(std::make_pair(std::make_pair(offerToTransfer.GetID(), offerOuts.second.nValue > 0 ? offerOuts.second.nValue : 0), offerJSON));
@@ -4963,8 +4975,8 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                     offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
                                 }
                                 UniValue offerJSON(UniValue::VOBJ);
-                                offerJSON.pushKV("offer", offerToTransfer.IsValid() ? offerToTransfer.ToUniValue() : offerToPay.ToUniValue());
-                                offerJSON.pushKV("accept", weTransfer.IsValid() ? weTransfer.ToUniValue() : wePay.ToUniValue());
+                                offerJSON.pushKV("offer", offerToTransfer.IsValid() ? IdOfferInfo(offerToTransfer) : offerToPay.ToUniValue());
+                                offerJSON.pushKV("accept", weTransfer.IsValid() ? IdOfferInfo(weTransfer) : wePay.ToUniValue());
                                 offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                                 uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, offerAmount), offerJSON));
@@ -4990,7 +5002,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 (offerToTransfer = CIdentity(p.vData[0])).IsValid())
                             {
                                 UniValue offerJSON(UniValue::VOBJ);
-                                offerJSON.pushKV("offer", offerToTransfer.ToUniValue());
+                                offerJSON.pushKV("offer", IdOfferInfo(offerToTransfer));
                                 offerJSON.pushKV("accept", wePay.ToUniValue());
                                 offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
@@ -5050,241 +5062,238 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                  (offerToTransfer = CIdentity(p.vData[0])).IsValid() &&
                                  offerToTransfer.GetID() == currencyOrIdID)
                         {
-                            uint160 currencyID = offerOuts.second.nValue > 0 ? ASSETCHAINS_CHAINID : offerToPay.valueMap.begin()->first;
-                            CAmount payAmount = offerOuts.second.nValue > 0 ? offerOuts.second.nValue : offerToPay.valueMap.begin()->second;
+                            uint160 currencyID = offerOuts.second.nValue > 0 ? ASSETCHAINS_CHAINID : wePay.valueMap.begin()->first;
+                            CAmount payAmount = offerOuts.second.nValue > 0 ? offerOuts.second.nValue : wePay.valueMap.begin()->second;
                             // offer to sell identity we are querying for the output's currency
                             UniValue offerJSON(UniValue::VOBJ);
-                            offerJSON.pushKV("offer", offerToTransfer.ToUniValue());
+                            offerJSON.pushKV("offer", IdOfferInfo(offerToTransfer));
                             offerJSON.pushKV("accept", wePay.ToUniValue());
                             offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                             offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                             uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, payAmount), offerJSON));
                         }
                     }
-                    // now prepare output with buys and sells that are IDs on the other side, followed by currencies on the other side
-                    UniValue retVal(UniValue::VOBJ);
-
-                    if (isCurrency)
-                    {
-                        // for uniSellToIDs (same as offers in this currency for IDs), we will want to order by highest price to lowest price,
-                        // as the query was only for things that could be traded or purchased from the currency. the long tail is likely
-                        // less interesting. we do not end up with buy with IDs on a currency only query
-                        UniValue oneCategory(UniValue::VARR);
-                        for (auto rIT = uniSellToIDs.rbegin(); rIT != uniSellToIDs.rend(); rIT++)
-                        {
-                            UniValue oneOffer(UniValue::VOBJ);
-                            oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
-                            oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
-                            oneOffer.pushKV("offer", rIT->second);
-                            oneCategory.push_back(oneOffer);
-                        }
-
-                        if (oneCategory.size())
-                        {
-                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_ids", oneCategory);
-                            oneCategory = UniValue(UniValue::VARR);
-                        }
-
-                        // buying currency with IDs is basically selling the ID for this currency
-                        for (auto rIT = uniBuyWithIDs.rbegin(); rIT != uniBuyWithIDs.rend(); rIT++)
-                        {
-                            UniValue oneOffer(UniValue::VOBJ);
-                            oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
-                            oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
-                            oneOffer.pushKV("offer", rIT->second);
-                            oneCategory.push_back(oneOffer);
-                        }
-
-                        if (oneCategory.size())
-                        {
-                            retVal.pushKV("ids_for_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
-                            oneCategory = UniValue(UniValue::VARR);
-                        }
-
-                        // we should order these by currency, showing both sellTo and buyWith in each currency together
-                        auto rSellIT = uniSellToCurrency.rbegin();
-                        auto rBuyIT = uniBuyWithCurrency.rbegin();
-                        uint160 lastCurrencyID;
-                        bool isBuyLast = false;
-
-                        while (rSellIT != uniSellToCurrency.rend() || rBuyIT != uniBuyWithCurrency.rend())
-                        {
-
-                            for (;
-                                rSellIT != uniSellToCurrency.rend() &&
-                                  (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex()));
-                                rSellIT++)
-                            {
-                                uint160 newLast = rSellIT->first.first;
-                                if (lastCurrencyID != newLast)
-                                {
-                                    if (oneCategory.size())
-                                    {
-                                        retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
-                                        oneCategory = UniValue(UniValue::VARR);
-                                    }
-                                    lastCurrencyID = newLast;
-                                }
-                                UniValue oneOffer(UniValue::VOBJ);
-                                oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rSellIT->first.first)));
-                                oneOffer.pushKV("amount", ValueFromAmount(rSellIT->first.second));
-                                oneOffer.pushKV("offer", rSellIT->second);
-                                oneCategory.push_back(oneOffer);
-                                isBuyLast = false;
-                                rSellIT++;
-                            }
-
-                            for (;
-                                rBuyIT != uniBuyWithCurrency.rend() &&
-                                  (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex()));
-                                rBuyIT++)
-                            {
-                                uint160 newLast = rBuyIT->first.first;
-                                if (lastCurrencyID != newLast)
-                                {
-                                    if (oneCategory.size())
-                                    {
-                                        retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
-                                        oneCategory = UniValue(UniValue::VARR);
-                                    }
-                                    lastCurrencyID = newLast;
-                                }
-                                UniValue oneOffer(UniValue::VOBJ);
-                                oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rBuyIT->first.first)));
-                                oneOffer.pushKV("amount", ValueFromAmount(rBuyIT->first.second));
-                                oneOffer.pushKV("offer", rBuyIT->second);
-                                oneCategory.push_back(oneOffer);
-                                isBuyLast = true;
-                            }
-                        }
-                        if (oneCategory.size())
-                        {
-                            if (isBuyLast)
-                            {
-                                retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
-                            }
-                            else
-                            {
-                                retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // for uniSellToIDs (same as offer to trade ID in question for other ID(s)) - offered in exchange for IDs
-                        // for uniBuyWithIDs (same as offer to trade other IDs for the ID in question) - IDs offered in exchange for
-
-                        // for uniSellToCurrency, offer(s) to sell for a specific currency at a specific price, list low to high in each currecny
-                        // uniBuyWithCurrency, offers to buy with a specific currency for a specific price, list high to low
-
-                        // for uniSellToIDs (same as this ID on offer for other IDs)
-                        UniValue oneCategory(UniValue::VARR);
-                        for (auto rIT = uniSellToIDs.rbegin(); rIT != uniSellToIDs.rend(); rIT++)
-                        {
-                            UniValue oneOffer(UniValue::VOBJ);
-                            oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
-                            oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
-                            oneOffer.pushKV("offer", rIT->second);
-                            oneCategory.push_back(oneOffer);
-                        }
-
-                        if (oneCategory.size())
-                        {
-                            retVal.pushKV("id_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_ids", oneCategory);
-                            oneCategory = UniValue(UniValue::VARR);
-                        }
-
-                        for (auto rIT = uniBuyWithIDs.rbegin(); rIT != uniBuyWithIDs.rend(); rIT++)
-                        {
-                            UniValue oneOffer(UniValue::VOBJ);
-                            oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
-                            oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
-                            oneOffer.pushKV("offer", rIT->second);
-                            oneCategory.push_back(oneOffer);
-                        }
-
-                        if (oneCategory.size())
-                        {
-                            retVal.pushKV("ids_for_id_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
-                            oneCategory = UniValue(UniValue::VARR);
-                        }
-
-                        // we should order these by currency, showing both sellTo and buyWith in each currency together
-                        auto rSellIT = uniSellToCurrency.rbegin();
-                        auto rBuyIT = uniBuyWithCurrency.rbegin();
-                        uint160 lastCurrencyID;
-                        bool isBuyLast = false;
-
-                        while (rSellIT != uniSellToCurrency.rend() || rBuyIT != uniBuyWithCurrency.rend())
-                        {
-
-                            for (;
-                                rSellIT != uniSellToCurrency.rend() &&
-                                  (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex()));
-                                rSellIT++)
-                            {
-                                uint160 newLast = rSellIT->first.first;
-                                if (lastCurrencyID != newLast)
-                                {
-                                    if (oneCategory.size())
-                                    {
-                                        retVal.pushKV("id_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
-                                        oneCategory = UniValue(UniValue::VARR);
-                                    }
-                                    lastCurrencyID = newLast;
-                                }
-                                UniValue oneOffer(UniValue::VOBJ);
-                                oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rSellIT->first.first)));
-                                oneOffer.pushKV("amount", ValueFromAmount(rSellIT->first.second));
-                                oneOffer.pushKV("offer", rSellIT->second);
-                                oneCategory.push_back(oneOffer);
-                                isBuyLast = false;
-                            }
-
-                            for (;
-                                rBuyIT != uniBuyWithCurrency.rend() &&
-                                  (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex()));
-                                rBuyIT++)
-                            {
-                                uint160 newLast = rBuyIT->first.first;
-                                if (lastCurrencyID != newLast)
-                                {
-                                    if (oneCategory.size())
-                                    {
-                                        retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_id_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
-                                        oneCategory = UniValue(UniValue::VARR);
-                                    }
-                                    lastCurrencyID = newLast;
-                                }
-                                UniValue oneOffer(UniValue::VOBJ);
-                                oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rBuyIT->first.first)));
-                                oneOffer.pushKV("amount", ValueFromAmount(rBuyIT->first.second));
-                                oneOffer.pushKV("offer", rBuyIT->second);
-                                oneCategory.push_back(oneOffer);
-                                isBuyLast = true;
-                            }
-                        }
-                        if (oneCategory.size())
-                        {
-                            if (isBuyLast)
-                            {
-                                retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_id_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
-                            }
-                            else
-                            {
-                                retVal.pushKV("id_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
-                            }
-                        }
-                    }
-                    return retVal;
                 }
             }
             else
             {
-                printf("%s: Cannot retrieve transaction %s, the local index is likely corrupted and either requires reindex, bootstrap, or resync\n", __func__, oneOffer.first.txhash.GetHex().c_str());
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot retrieve transaction " + oneOffer.first.txhash.GetHex() + ", the local index is likely corrupted and either requires reindex, bootstrap, or resync");
                 LogPrintf("%s: Cannot retrieve transaction %s, the local index is likely corrupted and either requires reindex, bootstrap, or resync\n", __func__, oneOffer.first.txhash.GetHex().c_str());
             }
         }
+        if (isCurrency)
+        {
+            // for uniSellToIDs (same as offers in this currency for IDs), we will want to order by highest price to lowest price,
+            // as the query was only for things that could be traded or purchased from the currency. the long tail is likely
+            // less interesting. we do not end up with buy with IDs on a currency only query
+            UniValue oneCategory(UniValue::VARR);
+            for (auto rIT = uniSellToIDs.rbegin(); rIT != uniSellToIDs.rend(); rIT++)
+            {
+                UniValue oneOffer(UniValue::VOBJ);
+                oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
+                oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("offer", rIT->second);
+                oneCategory.push_back(oneOffer);
+            }
+
+            if (oneCategory.size())
+            {
+                retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_ids", oneCategory);
+                oneCategory = UniValue(UniValue::VARR);
+            }
+
+            // buying currency with IDs is basically selling the ID for this currency
+            for (auto rIT = uniBuyWithIDs.rbegin(); rIT != uniBuyWithIDs.rend(); rIT++)
+            {
+                UniValue oneOffer(UniValue::VOBJ);
+                oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
+                oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("offer", rIT->second);
+                oneCategory.push_back(oneOffer);
+            }
+
+            if (oneCategory.size())
+            {
+                retVal.pushKV("ids_for_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                oneCategory = UniValue(UniValue::VARR);
+            }
+
+            // we should order these by currency, showing both sellTo and buyWith in each currency together
+            auto rSellIT = uniSellToCurrency.rbegin();
+            auto rBuyIT = uniBuyWithCurrency.rbegin();
+            uint160 lastCurrencyID;
+            bool isBuyLast = false;
+
+            while (rSellIT != uniSellToCurrency.rend() || rBuyIT != uniBuyWithCurrency.rend())
+            {
+
+                for (;
+                    rSellIT != uniSellToCurrency.rend() &&
+                        (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex()));
+                    rSellIT++)
+                {
+                    uint160 newLast = rSellIT->first.first;
+                    if (lastCurrencyID != newLast)
+                    {
+                        if (oneCategory.size())
+                        {
+                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                            oneCategory = UniValue(UniValue::VARR);
+                        }
+                        lastCurrencyID = newLast;
+                    }
+                    UniValue oneOffer(UniValue::VOBJ);
+                    oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rSellIT->first.first)));
+                    oneOffer.pushKV("amount", ValueFromAmount(rSellIT->first.second));
+                    oneOffer.pushKV("offer", rSellIT->second);
+                    oneCategory.push_back(oneOffer);
+                    isBuyLast = false;
+                    rSellIT++;
+                }
+
+                for (;
+                    rBuyIT != uniBuyWithCurrency.rend() &&
+                        (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex()));
+                    rBuyIT++)
+                {
+                    uint160 newLast = rBuyIT->first.first;
+                    if (lastCurrencyID != newLast)
+                    {
+                        if (oneCategory.size())
+                        {
+                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                            oneCategory = UniValue(UniValue::VARR);
+                        }
+                        lastCurrencyID = newLast;
+                    }
+                    UniValue oneOffer(UniValue::VOBJ);
+                    oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rBuyIT->first.first)));
+                    oneOffer.pushKV("amount", ValueFromAmount(rBuyIT->first.second));
+                    oneOffer.pushKV("offer", rBuyIT->second);
+                    oneCategory.push_back(oneOffer);
+                    isBuyLast = true;
+                }
+            }
+            if (oneCategory.size())
+            {
+                if (isBuyLast)
+                {
+                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                }
+                else
+                {
+                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                }
+            }
+        }
+        else
+        {
+            // for uniSellToIDs (same as offer to trade ID in question for other ID(s)) - offered in exchange for IDs
+            // for uniBuyWithIDs (same as offer to trade other IDs for the ID in question) - IDs offered in exchange for
+
+            // for uniSellToCurrency, offer(s) to sell for a specific currency at a specific price, list low to high in each currecny
+            // uniBuyWithCurrency, offers to buy with a specific currency for a specific price, list high to low
+
+            // for uniSellToIDs (same as this ID on offer for other IDs)
+            UniValue oneCategory(UniValue::VARR);
+            for (auto rIT = uniSellToIDs.rbegin(); rIT != uniSellToIDs.rend(); rIT++)
+            {
+                UniValue oneOffer(UniValue::VOBJ);
+                oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
+                oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("offer", rIT->second);
+                oneCategory.push_back(oneOffer);
+            }
+
+            if (oneCategory.size())
+            {
+                retVal.pushKV("id_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_ids", oneCategory);
+                oneCategory = UniValue(UniValue::VARR);
+            }
+
+            for (auto rIT = uniBuyWithIDs.rbegin(); rIT != uniBuyWithIDs.rend(); rIT++)
+            {
+                UniValue oneOffer(UniValue::VOBJ);
+                oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
+                oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("offer", rIT->second);
+                oneCategory.push_back(oneOffer);
+            }
+
+            if (oneCategory.size())
+            {
+                retVal.pushKV("ids_for_id_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                oneCategory = UniValue(UniValue::VARR);
+            }
+
+            // we should order these by currency, showing both sellTo and buyWith in each currency together
+            auto rSellIT = uniSellToCurrency.rbegin();
+            auto rBuyIT = uniBuyWithCurrency.rbegin();
+            uint160 lastCurrencyID;
+            bool isBuyLast = false;
+
+            while (rSellIT != uniSellToCurrency.rend() || rBuyIT != uniBuyWithCurrency.rend())
+            {
+
+                for (;
+                    rSellIT != uniSellToCurrency.rend() &&
+                        (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex()));
+                    rSellIT++)
+                {
+                    uint160 newLast = rSellIT->first.first;
+                    if (lastCurrencyID != newLast)
+                    {
+                        if (oneCategory.size())
+                        {
+                            retVal.pushKV("id_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                            oneCategory = UniValue(UniValue::VARR);
+                        }
+                        lastCurrencyID = newLast;
+                    }
+                    UniValue oneOffer(UniValue::VOBJ);
+                    oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rSellIT->first.first)));
+                    oneOffer.pushKV("amount", ValueFromAmount(rSellIT->first.second));
+                    oneOffer.pushKV("offer", rSellIT->second);
+                    oneCategory.push_back(oneOffer);
+                    isBuyLast = false;
+                }
+
+                for (;
+                    rBuyIT != uniBuyWithCurrency.rend() &&
+                        (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex()));
+                    rBuyIT++)
+                {
+                    uint160 newLast = rBuyIT->first.first;
+                    if (lastCurrencyID != newLast)
+                    {
+                        if (oneCategory.size())
+                        {
+                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_id_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                            oneCategory = UniValue(UniValue::VARR);
+                        }
+                        lastCurrencyID = newLast;
+                    }
+                    UniValue oneOffer(UniValue::VOBJ);
+                    oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rBuyIT->first.first)));
+                    oneOffer.pushKV("amount", ValueFromAmount(rBuyIT->first.second));
+                    oneOffer.pushKV("offer", rBuyIT->second);
+                    oneCategory.push_back(oneOffer);
+                    isBuyLast = true;
+                }
+            }
+            if (oneCategory.size())
+            {
+                if (isBuyLast)
+                {
+                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_id_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                }
+                else
+                {
+                    retVal.pushKV("id_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                }
+            }
+        }
+        return retVal;
     }
     return NullUniValue;
 }
