@@ -3656,11 +3656,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             CAmount sourceAmount = AmountFromValue(find_value(offerValue, "amount"));
             auto destStr = TrimSpaces(uni_get_str(find_value(offerValue, "changeaddress")));
 
-            if (currencyStr.size())
-            {
-                CheckPBaaSAPIsValid();
-            }
-
             if (!sourceAmount)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "A currency offer must include a valid amount");
@@ -3773,6 +3768,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                                             oneInput.first->vout[oneInput.second].scriptPubKey,
                                             oneInput.first->vout[oneInput.second].nValue);
                 }
+                tb.SendChangeTo(changeDestination);
                 TransactionBuilderResult preResult = tb.Build();
                 CTransaction preTx = preResult.GetTxOrThrow();
 
