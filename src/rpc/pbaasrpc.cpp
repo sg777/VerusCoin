@@ -3574,7 +3574,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     bool wildCardAddress = wildCardTransparentAddress || wildCardRAddress || wildCardiAddress;
 
     std::vector<CRecipient> outputs;
-    std::set<libzcash::PaymentAddress> zaddrDestSet;
 
     LOCK2(cs_main, mempool.cs);
     LOCK(pwalletMain->cs_wallet);
@@ -3645,9 +3644,39 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     uint160 newIDID;
     uint160 newCurrencyID;
 
+    bool hasZDest = false;
+    libzcash::PaymentAddress zaddressDest;
+    libzcash::SaplingPaymentAddress *saplingAddress;
+
     try
     {
         std:vector<COutput> vCoins;
+
+        if (find_value(forValue, "identity").isNull())
+        {
+            auto destStr = TrimSpaces(uni_get_str(find_value(forValue, "address")));
+
+            fundsDestination = ValidateDestination(destStr);
+            CTransferDestination dest;
+
+            if (fundsDestination.which() == COptCCParams::ADDRTYPE_INVALID)
+            {
+                // make the funds output that defines what we are willing to accept for the input we are offering
+                hasZDest = pwalletMain->GetAndValidateSaplingZAddress(destStr, zaddressDest);
+                if (hasZDest)
+                {
+                    saplingAddress = boost::get<libzcash::SaplingPaymentAddress>(&zaddressDest);
+                }
+                else
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified \"for\" destination address must be valid");
+                }
+                if (saplingAddress == nullptr)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Only sapling addresses may be used as a \"for\" destination");
+                }
+            }
+        }
 
         // first, construct the "offer" input, which will either be funds or an ID from this wallet
         if (find_value(offerValue, "identity").isNull())
@@ -3710,23 +3739,26 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             CAmount nativeValueOut;
 
             // first make an input transaction to split the offer funds into an exact input and change, if needed
+            if (hasZDest)
+            {
+
+            }
             if (sourceCurrencyID == ASSETCHAINS_CHAINID)
             {
                 success = find_utxos(from_taddress, vCoins) &&
-                          pwalletMain->SelectCoinsMinConf(oneOutput.nAmount + feeAmount, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+                          pwalletMain->SelectCoinsMinConf(oneOutput.nAmount + (hasZDest ? feeAmount + DEFAULT_TRANSACTION_FEE : feeAmount), 0, 0, vCoins, setCoinsRet, nativeValueOut);
             }
             else
             {
-                CCurrencyValueMap totalValues({ASSETCHAINS_CHAINID, sourceCurrencyID}, {feeAmount, oneOutput.nAmount});
-                success = find_utxos(from_taddress, vCoins) &&
-                          pwalletMain->SelectReserveCoinsMinConf(totalValues,
-                                                                 0,
-                                                                 0,
-                                                                 1,
-                                                                 vCoins,
-                                                                 setCoinsRet,
-                                                                 reserveValueOut,
-                                                                 nativeValueOut);
+                success = find_utxos(from_taddress, vCoins);
+                success = success && pwalletMain->SelectReserveCoinsMinConf(oneOutput.scriptPubKey.ReserveOutValue(),
+                                                                            (hasZDest ? feeAmount + DEFAULT_TRANSACTION_FEE : feeAmount),
+                                                                            0,
+                                                                            1,
+                                                                            vCoins,
+                                                                            setCoinsRet,
+                                                                            reserveValueOut,
+                                                                            nativeValueOut);
             }
             if (!success)
             {
@@ -3783,7 +3815,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                     RelayTransaction(preTx);
                 }
                 offerIn = CInputDescriptor(preTx.vout[0].scriptPubKey, preTx.vout[0].nValue, CTxIn(preTx.GetHash(), 0));
-                postedOfferIns.push_back(CInputDescriptor(preTx.vout[1].scriptPubKey, preTx.vout[1].nValue, CTxIn(preTx.GetHash(), 1)));
 
                 if (!returnHex)
                 {
@@ -3909,7 +3940,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         {
             auto currencyStr = TrimSpaces(uni_get_str(find_value(forValue, "currency")));
             CAmount destinationAmount = AmountFromValue(find_value(forValue, "amount"));
-            auto destStr = TrimSpaces(uni_get_str(find_value(forValue, "address")));
             auto memoStr = TrimSpaces(uni_get_str(find_value(forValue, "memo")));
 
             CCurrencyDefinition sourceCurrencyDef;
@@ -3928,43 +3958,21 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 }
             }
 
-            fundsDestination = ValidateDestination(destStr);
             CRecipient oneOutput;
 
-            CTransferDestination dest;
-            libzcash::PaymentAddress zaddressDest;
-            libzcash::SaplingPaymentAddress *saplingAddress;
-            bool hasZDest = false;
-
-            if (fundsDestination.which() == COptCCParams::ADDRTYPE_INVALID)
+            if (hasZDest && newCurrencyID != ASSETCHAINS_CHAINID)
             {
-                // make the funds output that defines what we are willing to accept for the input we are offering
-                hasZDest = pwalletMain->GetAndValidateSaplingZAddress(destStr, zaddressDest);
-                if (hasZDest)
-                {
-                    saplingAddress = boost::get<libzcash::SaplingPaymentAddress>(&zaddressDest);
-                }
-                else
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified \"for\" destination address must be valid");
-                }
-                if (saplingAddress == nullptr)
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Only sapling addresses may be used as a \"for\" destination");
-                }
-                if (hasZDest && newCurrencyID != ASSETCHAINS_CHAINID)
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send non-native currency when sending proceeds to a private z-address");
-                }
-                else if (!hasZDest && !memoStr.empty())
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot include memo when sending proceeds to a  transparent address or ID");
-                }
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send non-native currency when sending proceeds to a private z-address");
             }
-
-            // re-encode fundsDestination, in case it is specified as the private address of an ID
+            if (!hasZDest && !memoStr.empty())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot include memo when sending proceeds to a  transparent address or ID");
+            }
             if (hasZDest)
             {
+                requestOutput.nAmount = DEFAULT_TRANSACTION_FEE;
+                requestOutput.scriptPubKey = GetScriptForDestination(changeDestination);
+
                 // if memo starts with "#", convert it from a string to a hex value
                 if (memoStr.size() > 1 && memoStr[0] == '#')
                 {
@@ -3987,12 +3995,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                     hexMemo = AsyncRPCOperation_sendmany::get_memo_from_hex_string(memoStr);
                 }
 
-                zaddrDestSet.insert(zaddressDest);
-                destStr = EncodePaymentAddress(zaddressDest);
-
                 // make the z-output
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "z-address recipient yet implemented");
-
                 uint256 ovk;
                 HDSeed seed;
                 if (!pwalletMain->GetHDSeed(seed)) {
@@ -4064,8 +4067,8 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
 
                     requestOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
                 }
-                offerTx.vout.push_back(CTxOut(requestOutput.nAmount, requestOutput.scriptPubKey));
             }
+            offerTx.vout.push_back(CTxOut(requestOutput.nAmount, requestOutput.scriptPubKey));
         }
         else
         {
@@ -4213,13 +4216,13 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             }
 
             // we need one output to create the proper index entry
-            CKeyID offerIDKey = newIDID.IsNull() ? COnChainOffer::OnChainCurrencyOfferKey(newCurrencyID) : COnChainOffer::OnChainIdentityOfferKey(newIDID);
-            CKeyID forIDKey = offerID.IsNull() ? COnChainOffer::OnChainOfferForCurrencyKey(offerCurrencyID) : COnChainOffer::OnChainOfferForIdentityKey(offerID);
+            CKeyID offerIDKey = newIDID.IsNull() ? COnChainOffer::OnChainCurrencyOfferKey(offerCurrencyID) : COnChainOffer::OnChainIdentityOfferKey(offerID);
+            CKeyID forIDKey = offerID.IsNull() ? COnChainOffer::OnChainOfferForCurrencyKey(newCurrencyID) : COnChainOffer::OnChainOfferForIdentityKey(newIDID);
 
             CCommitmentHash commitment = CCommitmentHash(uint256());
             CConditionObj<CCommitmentHash> ccObj1(EVAL_IDENTITY_COMMITMENT, std::vector<CTxDestination>({changeDestination}), 1, &commitment);
-            CConditionObj<CIdentity> ccObj2 = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({offerIDKey}), 1);
-            std::vector<CTxDestination> masterKeyDest({forIDKey});
+            CConditionObj<CIdentity> ccObj2 = CConditionObj<CIdentity>(0, std::vector<CTxDestination>({changeDestination}), 1);
+            std::vector<CTxDestination> masterKeyDest({forIDKey, offerIDKey});
 
             // small deposit on output
             tb.AddTransparentOutput(MakeMofNCCScript(1, ccObj1, ccObj2, &masterKeyDest), COnChainOffer::MIN_LISTING_DEPOSIT);
@@ -4287,7 +4290,7 @@ bool GetOpRetChainOffer(const CTransaction &postedTx, CTransaction &offerTx, CTr
 }
 
 /** Pushes a JSON object for script verification or signing errors to vErrorsRet. */
-static void TxInErrorToJSON(const CTxIn& txin, UniValue& vErrorsRet, const std::string& strMessage)
+void SigningErrorToJSON(const CTxIn& txin, UniValue& vErrorsRet, const std::string& strMessage)
 {
     UniValue entry(UniValue::VOBJ);
     entry.push_back(Pair("txid", txin.prevout.hash.ToString()));
@@ -4709,7 +4712,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         CTxIn& txin = mtx.vin[i];
         const CCoins* coins = view.AccessCoins(txin.prevout.hash);
         if (coins == NULL || !coins->IsAvailable(txin.prevout.n)) {
-            TxInErrorToJSON(txin, vErrors, "Input not found or already spent");
+            SigningErrorToJSON(txin, vErrors, "Input not found or already spent");
             continue;
         }
         const CScript& prevPubKey = CCoinsViewCache::GetSpendFor(coins, txin);
@@ -4725,7 +4728,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
 
         ScriptError serror = SCRIPT_ERR_OK;
         if (!VerifyScript(txin.scriptSig, prevPubKey, STANDARD_SCRIPT_VERIFY_FLAGS, checker, consensusBranchId, &serror)) {
-            TxInErrorToJSON(txin, vErrors, ScriptErrorString(serror));
+            SigningErrorToJSON(txin, vErrors, ScriptErrorString(serror));
         }
     }
     bool fComplete = vErrors.empty();
@@ -4850,7 +4853,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
     std::multimap<std::pair<uint160, CAmount>, UniValue> uniBuyWithCurrency;
     std::multimap<std::pair<uint160, CAmount>, UniValue> uniSellToCurrency;
 
-    if (!GetAddressUnspent(lookupID, CScript::P2PKH, unspentOutputs) || !GetAddressUnspent(lookupForID, CScript::P2PKH, unspentOutputs))
+    if (!GetAddressUnspent(lookupID, CScript::P2PKH, unspentOutputOffers) || !GetAddressUnspent(lookupForID, CScript::P2PKH, unspentOutputs))
     {
         return false;
     }
@@ -5014,8 +5017,9 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 {
                                     continue;
                                 }
-                                uint160 currencyID = offerOuts.first.nValue > 0 ? ASSETCHAINS_CHAINID : offerToPay.valueMap.begin()->first;
-                                CAmount offerAmount = offerOuts.first.nValue > 0 ? offerOuts.first.nValue : offerToPay.valueMap.begin()->second;
+                                bool nativeOffer = offerOuts.first.nValue > 0 && offerToPay.CanonicalMap().valueMap.size() == 1;
+                                uint160 currencyID = nativeOffer ? ASSETCHAINS_CHAINID : offerToPay.valueMap.begin()->first;
+                                CAmount offerAmount = nativeOffer ? offerOuts.first.nValue : offerToPay.valueMap.begin()->second;
                                 if (offerOuts.first.nValue > 0)
                                 {
                                     offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
@@ -5037,8 +5041,9 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                  offerToPay.valueMap[currencyOrIdID] > 0))))
                         {
                             // offer to sell currency we are querying for the output's currency
-                            uint160 currencyID = offerOuts.second.nValue > 0 ? ASSETCHAINS_CHAINID : offerToPay.valueMap.begin()->first;
-                            CAmount payAmount = offerOuts.second.nValue > 0 ? offerOuts.second.nValue : offerToPay.valueMap.begin()->second;
+                            bool nativePay = offerOuts.second.nValue > 0 && wePay.CanonicalMap().valueMap.size() == 1;
+                            uint160 currencyID = nativePay ? ASSETCHAINS_CHAINID : wePay.valueMap.begin()->first;
+                            CAmount payAmount = nativePay ? offerOuts.second.nValue : wePay.valueMap.begin()->second;
                             if (offerOuts.first.nValue > 0)
                             {
                                 offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
@@ -5048,7 +5053,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                             offerJSON.pushKV("accept", wePay.ToUniValue());
                             offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                             offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
-                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, payAmount / wePay.valueMap[currencyID]), offerJSON));
+                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, offerToPay.valueMap[currencyOrIdID] / payAmount), offerJSON));
                         }
                         else if (!isCurrency &&
                                  offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
