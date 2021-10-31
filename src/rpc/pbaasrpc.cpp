@@ -5024,13 +5024,12 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 {
                                     offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
                                 }
-
                                 UniValue offerJSON(UniValue::VOBJ);
                                 offerJSON.pushKV("offer", offerToPay.ToUniValue());
                                 offerJSON.pushKV("accept", wePay.ToUniValue());
                                 offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
-                                uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, offerAmount / wePay.valueMap[currencyID]), offerJSON));
+                                uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, offerAmount / wePay.valueMap[currencyOrIdID]), offerJSON));
                             }
                         }
                         else if (isCurrency &&
@@ -5063,8 +5062,10 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                  (offerToTransfer = CIdentity(p.vData[0])).IsValid() &&
                                  offerToTransfer.GetID() == currencyOrIdID)
                         {
-                            uint160 currencyID = offerOuts.second.nValue > 0 ? ASSETCHAINS_CHAINID : wePay.valueMap.begin()->first;
-                            CAmount payAmount = offerOuts.second.nValue > 0 ? offerOuts.second.nValue : wePay.valueMap.begin()->second;
+                            bool nativePay = offerOuts.second.nValue > 0 && wePay.CanonicalMap().valueMap.size() == 1;
+                            uint160 currencyID = nativePay ? ASSETCHAINS_CHAINID : wePay.valueMap.begin()->first;
+                            CAmount payAmount = nativePay ? offerOuts.second.nValue : wePay.valueMap.begin()->second;
+
                             // offer to sell identity we are querying for the output's currency
                             UniValue offerJSON(UniValue::VOBJ);
                             offerJSON.pushKV("offer", IdOfferInfo(offerToTransfer));
