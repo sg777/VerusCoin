@@ -4775,6 +4775,24 @@ UniValue IdOfferInfo(const CIdentity &identityOffer)
     return retVal;
 }
 
+CAmount CalculateFractionalPrice(CAmount smallNumerator, CAmount smallDenominator, bool roundup)
+{
+    static arith_uint256 bigZero(0);
+    static arith_uint256 BigSatoshi(SATOSHIDEN);
+    static arith_uint256 BigSatoshiSquared = BigSatoshi * BigSatoshi;
+
+    arith_uint256 denominator = smallDenominator * BigSatoshi;
+    arith_uint256 numerator = smallNumerator * BigSatoshiSquared;
+    arith_uint256 bigAnswer = numerator / denominator;
+    int64_t remainder = (numerator - (bigAnswer * denominator)).GetLow64();
+    CAmount answer = bigAnswer.GetLow64();
+    if (remainder && roundup)
+    {
+        answer++;
+    }
+    return answer;
+}
+
 UniValue getoffers(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)
@@ -5010,26 +5028,28 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                             else
                             {
                                 // verify that there is a non-zero offer
-                                p = COptCCParams();
-                                if (!(offerOuts.first.scriptPubKey.IsSpendableOutputType(p) &&
-                                     (offerOuts.first.nValue > 0 ||
-                                      ((offerToPay = offerOuts.first.ReserveOutValue()) > CCurrencyValueMap()))))
-                                {
-                                    continue;
-                                }
-                                bool nativeOffer = offerOuts.first.nValue > 0 && offerToPay.CanonicalMap().valueMap.size() == 1;
-                                uint160 currencyID = nativeOffer ? ASSETCHAINS_CHAINID : offerToPay.valueMap.begin()->first;
-                                CAmount offerAmount = nativeOffer ? offerOuts.first.nValue : offerToPay.valueMap.begin()->second;
+                                offerToPay = offerOuts.first.ReserveOutValue();
                                 if (offerOuts.first.nValue > 0)
                                 {
                                     offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
                                 }
+
+                                p = COptCCParams();
+                                if (!(offerOuts.first.scriptPubKey.IsSpendableOutputType(p) && offerToPay > CCurrencyValueMap()))
+                                {
+                                    continue;
+                                }
+                                
+                                bool nativeOffer = offerOuts.first.nValue > 0 && offerToPay.CanonicalMap().valueMap.size() == 1;
+                                uint160 currencyID = nativeOffer ? ASSETCHAINS_CHAINID : offerToPay.valueMap.begin()->first;
+                                CAmount offerAmount = nativeOffer ? offerOuts.first.nValue : offerToPay.valueMap.begin()->second;
+
                                 UniValue offerJSON(UniValue::VOBJ);
                                 offerJSON.pushKV("offer", offerToPay.ToUniValue());
                                 offerJSON.pushKV("accept", wePay.ToUniValue());
                                 offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
-                                uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, offerAmount / wePay.valueMap[currencyOrIdID]), offerJSON));
+                                uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, CalculateFractionalPrice(offerAmount, wePay.valueMap[currencyOrIdID], true)), offerJSON));
                             }
                         }
                         else if (isCurrency &&
@@ -5039,20 +5059,21 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                  (offerToPay = offerOuts.first.ReserveOutValue()).valueMap.count(currencyOrIdID) &&
                                  offerToPay.valueMap[currencyOrIdID] > 0))))
                         {
-                            // offer to sell currency we are querying for the output's currency
-                            bool nativePay = offerOuts.second.nValue > 0 && wePay.CanonicalMap().valueMap.size() == 1;
-                            uint160 currencyID = nativePay ? ASSETCHAINS_CHAINID : wePay.valueMap.begin()->first;
-                            CAmount payAmount = nativePay ? offerOuts.second.nValue : wePay.valueMap.begin()->second;
                             if (offerOuts.first.nValue > 0)
                             {
                                 offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
                             }
+
+                            // offer to sell currency we are querying for the output's currency
+                            bool nativePay = offerOuts.second.nValue > 0 && wePay.CanonicalMap().valueMap.size() == 1;
+                            uint160 currencyID = nativePay ? ASSETCHAINS_CHAINID : wePay.valueMap.begin()->first;
+                            CAmount payAmount = nativePay ? offerOuts.second.nValue : wePay.valueMap.begin()->second;
                             UniValue offerJSON(UniValue::VOBJ);
                             offerJSON.pushKV("offer", offerToPay.ToUniValue());
                             offerJSON.pushKV("accept", wePay.ToUniValue());
                             offerJSON.pushKV("tx", EncodeHexTx(offerTx));
                             offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
-                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, offerToPay.valueMap[currencyOrIdID] / payAmount), offerJSON));
+                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, CalculateFractionalPrice(offerToPay.valueMap[currencyOrIdID], payAmount, false)), offerJSON));
                         }
                         else if (!isCurrency &&
                                  offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -5128,7 +5149,6 @@ UniValue getoffers(const UniValue& params, bool fHelp)
 
             while (rSellIT != uniSellToCurrency.rend() || rBuyIT != uniBuyWithCurrency.rend())
             {
-
                 for (;
                     rSellIT != uniSellToCurrency.rend() &&
                         (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex()));
@@ -5150,7 +5170,6 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                     oneOffer.pushKV("offer", rSellIT->second);
                     oneCategory.push_back(oneOffer);
                     isBuyLast = false;
-                    rSellIT++;
                 }
 
                 for (;
