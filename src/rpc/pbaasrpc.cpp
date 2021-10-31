@@ -4795,15 +4795,16 @@ CAmount CalculateFractionalPrice(CAmount smallNumerator, CAmount smallDenominato
 
 UniValue getoffers(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 2)
+    if (fHelp || params.size() < 1 || params.size() > 3)
     {
         throw runtime_error(
-            "getoffers \"currencyorid\" (iscurrency)\n"
+            "getoffers \"currencyorid\" (iscurrency) (withtx)\n"
             "\nReturns all open offers for a specific currency or ID\n"
 
             "\nArguments\n"
             "1. \"currencyorid\"        (string, required) The currency or ID to check for offers, both sale and purchase\n"
-            "3. \"iscurrency\"          (bool, optional)   default=false, if false, this looks for ID offers, if true, currencies\n"
+            "2. \"iscurrency\"          (bool, optional)   default=false, if false, this looks for ID offers, if true, currencies\n"
+            "3. \"withtx\"              (bool, optional)   default=false, if true, this returns serialized hex of the exchange transaction for signing\n"
 
             "\nResult:\n"
 
@@ -4819,6 +4820,12 @@ UniValue getoffers(const UniValue& params, bool fHelp)
     if (params.size() > 1)
     {
         isCurrency = uni_get_bool(params[1]);
+    }
+
+    bool withTx = false;
+    if (params.size() > 2)
+    {
+        withTx = uni_get_bool(params[2]);
     }
 
     uint160 lookupID, lookupForID;
@@ -4949,7 +4956,11 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                             UniValue offerJSON(UniValue::VOBJ);
                             offerJSON.pushKV("offer", offerToTransfer.IsValid() ? IdOfferInfo(offerToTransfer) : offerToPay.ToUniValue());
                             offerJSON.pushKV("accept", IdOfferInfo(weTransfer));
-                            offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                            offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                            if (withTx)
+                            {
+                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                            }
                             offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                             if (offerToPay.valueMap.begin() != offerToPay.valueMap.end() && offerToPay.valueMap.begin()->first == currencyOrIdID)
                             {
@@ -4971,7 +4982,11 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 UniValue offerJSON(UniValue::VOBJ);
                                 offerJSON.pushKV("offer", offerToTransfer.IsValid() ? IdOfferInfo(offerToTransfer) : offerToPay.ToUniValue());
                                 offerJSON.pushKV("accept", weTransfer.IsValid() ? IdOfferInfo(weTransfer) : wePay.ToUniValue());
-                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                                if (withTx)
+                                {
+                                    offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                }
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                                 uniBuyWithIDs.insert(std::make_pair(std::make_pair(offerToTransfer.GetID(), offerOuts.second.nValue > 0 ? offerOuts.second.nValue : 0), offerJSON));
                             }
@@ -4994,7 +5009,11 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 UniValue offerJSON(UniValue::VOBJ);
                                 offerJSON.pushKV("offer", offerToTransfer.IsValid() ? IdOfferInfo(offerToTransfer) : offerToPay.ToUniValue());
                                 offerJSON.pushKV("accept", weTransfer.IsValid() ? IdOfferInfo(weTransfer) : wePay.ToUniValue());
-                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                                if (withTx)
+                                {
+                                    offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                }
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                                 uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, offerAmount), offerJSON));
                             }
@@ -5021,7 +5040,11 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 UniValue offerJSON(UniValue::VOBJ);
                                 offerJSON.pushKV("offer", IdOfferInfo(offerToTransfer));
                                 offerJSON.pushKV("accept", wePay.ToUniValue());
-                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                                if (withTx)
+                                {
+                                    offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                }
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                                 uniBuyWithIDs.insert(std::make_pair(std::make_pair(offerToTransfer.GetID(), wePay.valueMap.begin()->second), offerJSON));
                             }
@@ -5047,7 +5070,11 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                                 UniValue offerJSON(UniValue::VOBJ);
                                 offerJSON.pushKV("offer", offerToPay.ToUniValue());
                                 offerJSON.pushKV("accept", wePay.ToUniValue());
-                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                                if (withTx)
+                                {
+                                    offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                }
                                 offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                                 uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, CalculateFractionalPrice(offerAmount, wePay.valueMap[currencyOrIdID], true)), offerJSON));
                             }
@@ -5071,7 +5098,11 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                             UniValue offerJSON(UniValue::VOBJ);
                             offerJSON.pushKV("offer", offerToPay.ToUniValue());
                             offerJSON.pushKV("accept", wePay.ToUniValue());
-                            offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                            offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                            if (withTx)
+                            {
+                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                            }
                             offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                             uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, CalculateFractionalPrice(offerToPay.valueMap[currencyOrIdID], payAmount, false)), offerJSON));
                         }
@@ -5091,7 +5122,11 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                             UniValue offerJSON(UniValue::VOBJ);
                             offerJSON.pushKV("offer", IdOfferInfo(offerToTransfer));
                             offerJSON.pushKV("accept", wePay.ToUniValue());
-                            offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                            offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                            if (withTx)
+                            {
+                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                            }
                             offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
                             uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, payAmount), offerJSON));
                         }
@@ -5114,7 +5149,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             {
                 UniValue oneOffer(UniValue::VOBJ);
                 oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
-                oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("price", ValueFromAmount(rIT->first.second));
                 oneOffer.pushKV("offer", rIT->second);
                 oneCategory.push_back(oneOffer);
             }
@@ -5130,7 +5165,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             {
                 UniValue oneOffer(UniValue::VOBJ);
                 oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
-                oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("price", ValueFromAmount(rIT->first.second));
                 oneOffer.pushKV("offer", rIT->second);
                 oneCategory.push_back(oneOffer);
             }
@@ -5166,7 +5201,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                     }
                     UniValue oneOffer(UniValue::VOBJ);
                     oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rSellIT->first.first)));
-                    oneOffer.pushKV("amount", ValueFromAmount(rSellIT->first.second));
+                    oneOffer.pushKV("price", ValueFromAmount(rSellIT->first.second));
                     oneOffer.pushKV("offer", rSellIT->second);
                     oneCategory.push_back(oneOffer);
                     isBuyLast = false;
@@ -5189,7 +5224,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                     }
                     UniValue oneOffer(UniValue::VOBJ);
                     oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rBuyIT->first.first)));
-                    oneOffer.pushKV("amount", ValueFromAmount(rBuyIT->first.second));
+                    oneOffer.pushKV("price", ValueFromAmount(rBuyIT->first.second));
                     oneOffer.pushKV("offer", rBuyIT->second);
                     oneCategory.push_back(oneOffer);
                     isBuyLast = true;
@@ -5221,7 +5256,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             {
                 UniValue oneOffer(UniValue::VOBJ);
                 oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
-                oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("price", ValueFromAmount(rIT->first.second));
                 oneOffer.pushKV("offer", rIT->second);
                 oneCategory.push_back(oneOffer);
             }
@@ -5236,7 +5271,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             {
                 UniValue oneOffer(UniValue::VOBJ);
                 oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
-                oneOffer.pushKV("amount", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("price", ValueFromAmount(rIT->first.second));
                 oneOffer.pushKV("offer", rIT->second);
                 oneCategory.push_back(oneOffer);
             }
@@ -5273,7 +5308,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                     }
                     UniValue oneOffer(UniValue::VOBJ);
                     oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rSellIT->first.first)));
-                    oneOffer.pushKV("amount", ValueFromAmount(rSellIT->first.second));
+                    oneOffer.pushKV("price", ValueFromAmount(rSellIT->first.second));
                     oneOffer.pushKV("offer", rSellIT->second);
                     oneCategory.push_back(oneOffer);
                     isBuyLast = false;
@@ -5296,7 +5331,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                     }
                     UniValue oneOffer(UniValue::VOBJ);
                     oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rBuyIT->first.first)));
-                    oneOffer.pushKV("amount", ValueFromAmount(rBuyIT->first.second));
+                    oneOffer.pushKV("price", ValueFromAmount(rBuyIT->first.second));
                     oneOffer.pushKV("offer", rBuyIT->second);
                     oneCategory.push_back(oneOffer);
                     isBuyLast = true;
