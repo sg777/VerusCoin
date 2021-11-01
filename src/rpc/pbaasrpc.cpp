@@ -4178,29 +4178,33 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         auto consensusBranchId = CurrentEpochBranchId(height, Params().consensus);
 
         bool signSuccess = ProduceSignature(
-            TransactionSignatureCreator(pwalletMain, &txNewConst, 0, offerIn.nValue, offerIn.scriptPubKey, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY), offerIn.scriptPubKey, sigdata, consensusBranchId);
+            TransactionSignatureCreator(pwalletMain, &txNewConst, 0, offerIn.nValue, offerIn.scriptPubKey, height + 1, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY), offerIn.scriptPubKey, sigdata, consensusBranchId);
 
-        if (!signSuccess) {
-            if (sigdata.scriptSig.size())
-            {
-                UpdateTransaction(offerTx, 0, sigdata);
-            }
-            else
-            {
-                UniValue jsonTx(UniValue::VOBJ);
-                extern void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry);
-                TxToUniv(txNewConst, uint256(), jsonTx);
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Failed to sign for script:\n " + jsonTx.write(1,2) + "\n");
-            }
-        } else {
+        if (signSuccess || sigdata.scriptSig.size())
+        {
             UpdateTransaction(offerTx, 0, sigdata);
+        }
+        else
+        {
+            UniValue jsonTx(UniValue::VOBJ);
+            extern void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry);
+            TxToUniv(txNewConst, uint256(), jsonTx);
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Failed to sign for script:\n " + jsonTx.write(1,2) + "\n");
         }
 
         UniValue retVal(UniValue::VOBJ);
 
         // if we're not just returning the hex tx, create a transaction from the postedOfferIns funds
-        if (returnHex)
+        if (!signSuccess || returnHex)
         {
+            if (signSuccess)
+            {
+                retVal.pushKV("signstatus", "complete");
+            }
+            else
+            {
+                retVal.pushKV("signstatus", "incomplete");
+            }
             retVal.pushKV("hex", EncodeHexTx(offerTx));
         }
         else
@@ -4306,7 +4310,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 2 || params.size() > 4)
     {
         throw runtime_error(
-            "takeoffer fromaddress '{\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\"}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}}' (returntx) (feeamount)\n"
+            "takeoffer fromaddress '{\"txid\":\"txid\" | \"tx\":\"hextx\", \"changeaddress\":\"transparentoriaddress\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\":n}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}}' (returntx) (feeamount)\n"
             "\nIf the current wallet can afford the swap, this accepts a swap offer on the blockchain, creates a transaction\n"
             "to execute it, and posts the transaction to the blockchain.\n"
 
@@ -4332,8 +4336,8 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
 
     CheckVerusVaultAPIsValid();
 
-    bool returnHex = params.size() > 3 ? uni_get_bool(params[3]) : false;
-    CAmount feeAmount = params.size() > 4 ? AmountFromValue(params[4]) : DEFAULT_TRANSACTION_FEE;
+    bool returnHex = params.size() > 2 ? uni_get_bool(params[2]) : false;
+    CAmount feeAmount = params.size() > 3 ? AmountFromValue(params[3]) : DEFAULT_TRANSACTION_FEE;
 
     std::string fundsSource = uni_get_str(params[0]);
     if (fundsSource.empty())
@@ -4341,7 +4345,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "First parameter json object must include a currency funding \"source\", which may be an ID, transparent address, private address, or wildcards (*, R*, i*)");
     }
 
-    CTxDestination sourceDest;
+    CTxDestination sourceDest, changeAddress;
 
     bool wildCardTransparentAddress = fundsSource == "*";
     bool wildCardRAddress = fundsSource == "R*";
@@ -4390,6 +4394,11 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     const UniValue &takeOfferUni = params[1];
     std::string txIdStringToTake = uni_get_str(find_value(takeOfferUni, "txid"));
     std::string txStringToTake = uni_get_str(find_value(takeOfferUni, "tx"));
+    std::string changeAddressStr = uni_get_str(find_value(takeOfferUni, "changeaddress"));
+    if ((changeAddress = DecodeDestination(changeAddressStr)).which() == COptCCParams::ADDRTYPE_INVALID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "\"changeaddress\" must be specified as a transparent address or identity");
+    }
 
     uint256 txIdToTake;
     CTransaction txToTake, inputTxToOffer;
@@ -4454,6 +4463,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
 
     CIdentity acceptedIdentity, identityToDeliver;
     CCurrencyValueMap acceptedCurrency, currencyToDeliver;
+    CAmount subsidizedFees = 0;
 
     if (!accept.isNull() && !accept.isObject())
     {
@@ -4465,6 +4475,10 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         std::string acceptCurrencyStr = uni_get_str(find_value(accept, "currency"));
         std::string acceptToDestStr = uni_get_str(find_value(accept, "address"));
         uint160 currencyID = ValidateCurrencyName(acceptCurrencyStr, true);
+        if (acceptCurrencyStr.empty())
+        {
+            currencyID = ASSETCHAINS_CHAINID;
+        }
         CAmount currencyAmount;
         if (currencyID.IsNull() || (currencyAmount = AmountFromValue(find_value(accept, "amount"))) <= 0)
         {
@@ -4472,9 +4486,9 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         }
         acceptedCurrency.valueMap[currencyID] = currencyAmount;
 
-        if ((acceptToAddress = DecodeDestination(acceptToDestStr)).which() != COptCCParams::ADDRTYPE_INVALID)
+        if ((acceptToAddress = DecodeDestination(acceptToDestStr)).which() == COptCCParams::ADDRTYPE_INVALID)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\", or \"i*\",. See help.");
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. To accept an offer of currency, the accept address must be a transparent address or identity. See help.");
         }
     }
 
@@ -4482,6 +4496,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     CCoinsView viewDummy;
     CCoinsViewCache view(&viewDummy);
     CMutableTransaction mtx(txToTake);
+
     int firstFundingInput = 0;
     {
         LOCK2(cs_main, mempool.cs);
@@ -4608,20 +4623,10 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         {
             mtx.vout.push_back(CTxOut(0, identityToDeliver.IdentityUpdateOutputScript(height + 1)));
         }
-        else if (acceptedCurrency.valueMap.size())
+        else if ((acceptedCurrency = acceptedCurrency.CanonicalMap()).valueMap.size())
         {
             // if our accepted currency is native, no reserve output
             CAmount nativeOut = acceptedCurrency.valueMap.count(ASSETCHAINS_CHAINID) ? acceptedCurrency.valueMap[ASSETCHAINS_CHAINID] : 0;
-            if (nativeOut >= (feeAmount + DEFAULT_TRANSACTION_FEE))
-            {
-                nativeOut -= feeAmount;
-                additionalFees = 0;
-            }
-            else if (nativeOut >= feeAmount)
-            {
-                nativeOut = 0;
-                additionalFees = 0;
-            }
 
             if (acceptedCurrency.valueMap.size() == 1 && nativeOut)
             {
@@ -4634,6 +4639,10 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
                 CTokenOutput to(acceptedCurrency);
                 mtx.vout.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to))));
             }
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must specify valid identity or currency for exchange");
         }
 
         // if the identity has been initialized, we are delivering an identity in this transaction, input our identity to the
@@ -4685,9 +4694,9 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         }
 
         // now put all vCoins on the input, sign the transaction, and post
-        for (auto &oneInput : vCoins)
+        for (auto &oneInput : setCoinsRet)
         {
-            mtx.vin.push_back(CTxIn(oneInput.tx->GetHash(), oneInput.i));
+            mtx.vin.push_back(CTxIn(oneInput.first->GetHash(), oneInput.second));
         }
 
         // Fetch previous transactions (inputs):
@@ -4701,6 +4710,28 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             view.AccessCoins(prevHash); // this can fail
         }
         view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
+    }
+
+    CReserveTransactionDescriptor rtxd(mtx, view, height + 1);
+    if (!rtxd.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Created invalid transaction");
+    }
+    CCurrencyValueMap reserveChange = rtxd.ReserveFees();
+    CAmount nativeChange = rtxd.NativeFees() - feeAmount;
+    if (nativeChange < DEFAULT_TRANSACTION_FEE)
+    {
+        nativeChange = 0;
+    }
+    if (reserveChange.valueMap.size())
+    {
+        std::vector<CTxDestination> dest({changeAddress});
+        CTokenOutput to(reserveChange);
+        mtx.vout.push_back(CTxOut(nativeChange, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to))));
+    }
+    else if (nativeChange)
+    {
+        mtx.vout.push_back(CTxOut(nativeChange, GetScriptForDestination(changeAddress)));
     }
 
     CTransaction txConst(mtx);
