@@ -3532,6 +3532,108 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
     return t_inputs_.size() > 0;
 }
 
+CAmount CalculateFractionalPrice(CAmount smallNumerator, CAmount smallDenominator, bool roundup)
+{
+    static arith_uint256 bigZero(0);
+    static arith_uint256 BigSatoshi(SATOSHIDEN);
+    static arith_uint256 BigSatoshiSquared = BigSatoshi * BigSatoshi;
+
+    arith_uint256 denominator = smallDenominator * BigSatoshi;
+    arith_uint256 numerator = smallNumerator * BigSatoshiSquared;
+    arith_uint256 bigAnswer = numerator / denominator;
+    int64_t remainder = (numerator - (bigAnswer * denominator)).GetLow64();
+    CAmount answer = bigAnswer.GetLow64();
+    if (remainder && roundup)
+    {
+        answer++;
+    }
+    return answer;
+}
+
+bool GetOpRetChainOffer(const CTransaction &postedTx,
+                        CTransaction &offerTx,
+                        CTransaction &inputToOfferTx,
+                        uint32_t height,
+                        bool getUnexpired,
+                        bool getExpired,
+                        uint256 &offerBlockHash)
+{
+    std::vector<CBaseChainObject *> opRetArray;
+    CPartialTransactionProof offerTxProof;
+    bool isPartial;
+    COptCCParams p;
+
+    if (postedTx.vout.size() > 1 &&
+        postedTx.vout.back().scriptPubKey.IsOpReturn() &&
+        postedTx.vout[0].scriptPubKey.IsPayToCryptoCondition(p) &&
+        p.IsValid() &&
+        p.evalCode == EVAL_IDENTITY_COMMITMENT &&
+        postedTx.vout[0].nValue >= COnChainOffer::MIN_LISTING_DEPOSIT &&
+        (opRetArray = RetrieveOpRetArray(postedTx.vout.back().scriptPubKey)).size() == 1 &&
+        opRetArray[0]->objectType == CHAINOBJ_TRANSACTION_PROOF &&
+        (offerTxProof = ((CChainObject<CPartialTransactionProof> *)(opRetArray[0]))->object).IsValid() &&
+        !offerTxProof.GetPartialTransaction(offerTx, &isPartial).IsNull() &&
+        !isPartial &&
+        offerTx.vout.size() == 1 &&
+        offerTx.vin.size() == 1 &&
+        offerTx.vShieldedSpend.size() == 0 &&
+        ((getExpired && offerTx.nExpiryHeight <= height) || (getUnexpired && offerTx.nExpiryHeight > height)) &&
+        myGetTransaction(offerTx.vin[0].prevout.hash, inputToOfferTx, offerBlockHash))
+    {
+        return true;
+    }
+    return false;
+}
+
+bool GetOpRetChainOffer(const CTransaction &postedTx,
+                        CTransaction &offerTx,
+                        CTransaction &inputToOfferTx,
+                        uint32_t height)
+{
+    bool getUnexpired = true;
+    bool getExpired = false;
+    uint256 offerBlockHash;
+    return GetOpRetChainOffer(postedTx, offerTx, inputToOfferTx, height, getUnexpired, getExpired, offerBlockHash);
+}
+
+struct OfferInfo
+{
+public:
+    CTransaction offerTx;
+    CTransaction inputToOfferTx;
+    uint256 blockHash;
+};
+
+// returns a map with the first boolean being the "unexpired" state. if 0, the offer is expired
+bool GetMyOffers(std::map<std::pair<bool, uint256>, OfferInfo> &myOffers, uint32_t height, bool getUnexpired, bool getExpired)
+{
+    bool retVal = false;
+    LOCK(pwalletMain->cs_wallet);
+    for (auto &txPair : pwalletMain->mapWallet)
+    {
+        OfferInfo oneOfferInfo;
+        if (txPair.second.IsInMainChain() &&
+            GetOpRetChainOffer(txPair.second, oneOfferInfo.offerTx, oneOfferInfo.inputToOfferTx, height, getUnexpired, getExpired, oneOfferInfo.blockHash))
+        {
+            myOffers.insert(std::make_pair(std::make_pair(oneOfferInfo.offerTx.nExpiryHeight > height, txPair.first), oneOfferInfo));
+            retVal = true;
+        }
+    }
+    return retVal;
+}
+
+/** Pushes a JSON object for script verification or signing errors to vErrorsRet. */
+void SigningErrorToJSON(const CTxIn& txin, UniValue& vErrorsRet, const std::string& strMessage)
+{
+    UniValue entry(UniValue::VOBJ);
+    entry.push_back(Pair("txid", txin.prevout.hash.ToString()));
+    entry.push_back(Pair("vout", (uint64_t)txin.prevout.n));
+    entry.push_back(Pair("scriptSig", HexStr(txin.scriptSig.begin(), txin.scriptSig.end())));
+    entry.push_back(Pair("sequence", (uint64_t)txin.nSequence));
+    entry.push_back(Pair("error", strMessage));
+    vErrorsRet.push_back(entry);
+}
+
 UniValue makeoffer(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 2 || params.size() > 4)
@@ -3739,10 +3841,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             CAmount nativeValueOut;
 
             // first make an input transaction to split the offer funds into an exact input and change, if needed
-            if (hasZDest)
-            {
-
-            }
             if (sourceCurrencyID == ASSETCHAINS_CHAINID)
             {
                 success = find_utxos(from_taddress, vCoins) &&
@@ -3764,7 +3862,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Insufficient funds for offer");
             }
-
+ 
             // remove all coins that are from the used set from vCoins, so we can look for more if needed
             for (int i = vCoins.size() - 1; i <= 0; i--)
             {
@@ -4220,8 +4318,13 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             }
 
             // we need one output to create the proper index entry
-            CKeyID offerIDKey = newIDID.IsNull() ? COnChainOffer::OnChainCurrencyOfferKey(offerCurrencyID) : COnChainOffer::OnChainIdentityOfferKey(offerID);
-            CKeyID forIDKey = offerID.IsNull() ? COnChainOffer::OnChainOfferForCurrencyKey(newCurrencyID) : COnChainOffer::OnChainOfferForIdentityKey(newIDID);
+            CKeyID offerIDKey = offerID.IsNull() ?
+                COnChainOffer::OnChainCurrencyOfferKey(offerCurrencyID) :
+                COnChainOffer::OnChainIdentityOfferKey(offerID);
+
+            CKeyID forIDKey = newIDID.IsNull() ?
+                COnChainOffer::OnChainOfferForCurrencyKey(newCurrencyID) :
+                COnChainOffer::OnChainOfferForIdentityKey(newIDID);
 
             CCommitmentHash commitment = CCommitmentHash(uint256());
             CConditionObj<CCommitmentHash> ccObj1(EVAL_IDENTITY_COMMITMENT, std::vector<CTxDestination>({changeDestination}), 1, &commitment);
@@ -4261,48 +4364,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot create offer: " + std::string(e.what()));
     }
     return NullUniValue;
-}
-
-bool GetOpRetChainOffer(const CTransaction &postedTx, CTransaction &offerTx, CTransaction &inputToOfferTx, uint32_t height)
-{
-    uint256 blockHash;
-    std::vector<CBaseChainObject *> opRetArray;
-    CPartialTransactionProof offerTxProof;
-    bool isPartial;
-    COptCCParams p;
-
-    if (postedTx.vout.size() > 1 &&
-        postedTx.vout.back().scriptPubKey.IsOpReturn() &&
-        postedTx.vout[0].scriptPubKey.IsPayToCryptoCondition(p) &&
-        p.IsValid() &&
-        p.evalCode == EVAL_IDENTITY_COMMITMENT &&
-        postedTx.vout[0].nValue >= COnChainOffer::MIN_LISTING_DEPOSIT &&
-        (opRetArray = RetrieveOpRetArray(postedTx.vout.back().scriptPubKey)).size() == 1 &&
-        opRetArray[0]->objectType == CHAINOBJ_TRANSACTION_PROOF &&
-        (offerTxProof = ((CChainObject<CPartialTransactionProof> *)(opRetArray[0]))->object).IsValid() &&
-        !offerTxProof.GetPartialTransaction(offerTx, &isPartial).IsNull() &&
-        !isPartial &&
-        offerTx.vout.size() == 1 &&
-        offerTx.vin.size() == 1 &&
-        offerTx.vShieldedSpend.size() == 0 &&
-        offerTx.nExpiryHeight > (height + 3) &&
-        myGetTransaction(offerTx.vin[0].prevout.hash, inputToOfferTx, blockHash))
-    {
-        return true;
-    }
-    return false;
-}
-
-/** Pushes a JSON object for script verification or signing errors to vErrorsRet. */
-void SigningErrorToJSON(const CTxIn& txin, UniValue& vErrorsRet, const std::string& strMessage)
-{
-    UniValue entry(UniValue::VOBJ);
-    entry.push_back(Pair("txid", txin.prevout.hash.ToString()));
-    entry.push_back(Pair("vout", (uint64_t)txin.prevout.n));
-    entry.push_back(Pair("scriptSig", HexStr(txin.scriptSig.begin(), txin.scriptSig.end())));
-    entry.push_back(Pair("sequence", (uint64_t)txin.nSequence));
-    entry.push_back(Pair("error", strMessage));
-    vErrorsRet.push_back(entry);
 }
 
 UniValue takeoffer(const UniValue& params, bool fHelp)
@@ -4815,24 +4876,6 @@ UniValue IdOfferInfo(const CIdentity &identityOffer)
     return retVal;
 }
 
-CAmount CalculateFractionalPrice(CAmount smallNumerator, CAmount smallDenominator, bool roundup)
-{
-    static arith_uint256 bigZero(0);
-    static arith_uint256 BigSatoshi(SATOSHIDEN);
-    static arith_uint256 BigSatoshiSquared = BigSatoshi * BigSatoshi;
-
-    arith_uint256 denominator = smallDenominator * BigSatoshi;
-    arith_uint256 numerator = smallNumerator * BigSatoshiSquared;
-    arith_uint256 bigAnswer = numerator / denominator;
-    int64_t remainder = (numerator - (bigAnswer * denominator)).GetLow64();
-    CAmount answer = bigAnswer.GetLow64();
-    if (remainder && roundup)
-    {
-        answer++;
-    }
-    return answer;
-}
-
 UniValue getoffers(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 3)
@@ -4894,12 +4937,12 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity specified as source is not valid");
         }
         lookupID = GetDestinationID(idDest);
-        lookupForID = COnChainOffer::OnChainOfferForIdentityKey(lookupID);
-        lookupID = COnChainOffer::OnChainIdentityOfferKey(lookupID);
-        if (!(identity = CIdentity::LookupIdentity(GetDestinationID(idDest))).IsValid())
+        if (!(identity = CIdentity::LookupIdentity(lookupID)).IsValid())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Source identity not found");
         }
+        lookupForID = COnChainOffer::OnChainOfferForIdentityKey(lookupID);
+        lookupID = COnChainOffer::OnChainIdentityOfferKey(lookupID);
         currencyOrIdID = identity.GetID();
     }
 
@@ -5392,6 +5435,76 @@ UniValue getoffers(const UniValue& params, bool fHelp)
         return retVal;
     }
     return NullUniValue;
+}
+
+// close an offer by spending its source
+bool CloseOneOffer()
+{
+    return false;
+}
+
+UniValue closeoffers(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error(
+            "closeoffers '[\"offer1_txid\", \"offer2_txid\", ...]'\n"
+            "\nCloses all offers listed, if they are still valid and belong to this wallet.\n"
+            "\nAlways closes expired offers, even if no parameters are given\n"
+
+            "\nArguments\n"
+
+            "\nResult\n"
+        );
+    }
+    CheckVerusVaultAPIsValid();
+
+    UniValue retVal;
+    std::set<uint256> txIds;
+
+    if (params[0].size() > 0)
+    {
+        if (!params[0].isArray())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "First parameter must be an array of transaction IDs that are offers from this wallet to close");
+        }
+        for (int i = 0; i < params[0].size(); i++)
+        {
+            uint256 oneTxId;
+            oneTxId.SetHex(uni_get_str(params[0][i]));
+            if (oneTxId.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid txid specified, txids must be hex strings with no prefix");
+            }
+            txIds.insert(oneTxId);
+        }
+    }
+
+    std::map<std::pair<bool, uint256>, OfferInfo> myOffers;
+
+    LOCK2(cs_main, mempool.cs);
+    LOCK(pwalletMain->cs_wallet);
+
+    uint32_t height = chainActive.Height();
+
+    if (GetMyOffers(myOffers, height, txIds.size() != 0, true))
+    {
+        for (auto &oneOffer : myOffers)
+        {
+            if (oneOffer.first.first)
+            {
+                if (txIds.count(oneOffer.first.second))
+                {
+                    // close this offer by spending the source
+                }
+            }
+            else
+            {
+                // close this offer by spending the source
+            }
+        }
+    }
+    return retVal;
 }
 
 UniValue sendcurrency(const UniValue& params, bool fHelp)
