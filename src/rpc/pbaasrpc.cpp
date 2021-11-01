@@ -4582,11 +4582,20 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             // determine the currency we are offering to deliver
             auto currencyStr = TrimSpaces(uni_get_str(find_value(deliver, "currency")));
             CAmount destinationAmount = AmountFromValue(find_value(deliver, "amount"));
-            uint160 curID = ValidateCurrencyName(currencyStr, true);
-            if (curID.IsNull())
+            uint160 curID;
+            if (!currencyStr.empty())
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency specified for delivery not found");
+                curID = ValidateCurrencyName(currencyStr, true);
+                if (curID.IsNull())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency specified for delivery not found");
+                }
             }
+            else
+            {
+                curID = ASSETCHAINS_CHAINID;
+            }
+            
             currencyToDeliver.valueMap[curID] = destinationAmount;
             currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] += feeAmount;
         }
