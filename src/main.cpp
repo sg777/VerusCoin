@@ -775,7 +775,12 @@ bool IsStandardTx(const CTransaction& tx, string& reason, const CChainParams& ch
             // future-proofing. That's also enough to spend a 20-of-20
             // CHECKMULTISIG scriptPubKey, though such a scriptPubKey is not
             // considered standard)
-            if (txin.scriptSig.size() > 1650) {
+            int scriptSigMaxSize = 1650;
+            if (CVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_VERUSVAULT)
+            {
+                scriptSigMaxSize = CScript::MAX_SCRIPT_ELEMENT_SIZE;
+            }
+            if (txin.scriptSig.size() > scriptSigMaxSize) {
                 reason = "scriptsig-size";
                 return false;
             }

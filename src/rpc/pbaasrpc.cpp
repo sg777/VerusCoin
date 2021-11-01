@@ -4691,7 +4691,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         // add the output
         if (acceptedIdentity.IsValid())
         {
-            mtx.vout.push_back(CTxOut(0, identityToDeliver.IdentityUpdateOutputScript(height + 1)));
+            mtx.vout.push_back(CTxOut(0, acceptedIdentity.IdentityUpdateOutputScript(height + 1)));
         }
         else if ((acceptedCurrency = acceptedCurrency.CanonicalMap()).valueMap.size())
         {
