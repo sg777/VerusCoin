@@ -3839,18 +3839,20 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
             CCurrencyValueMap reserveValueOut;
             CAmount nativeValueOut;
+            CAmount totalOriginationFees = 0;
+            if (!returnHex) totalOriginationFees = (feeAmount << 1);
 
             // first make an input transaction to split the offer funds into an exact input and change, if needed
             if (sourceCurrencyID == ASSETCHAINS_CHAINID)
             {
                 success = find_utxos(from_taddress, vCoins) &&
-                          pwalletMain->SelectCoinsMinConf(oneOutput.nAmount + (hasZDest ? feeAmount + DEFAULT_TRANSACTION_FEE : feeAmount), 0, 0, vCoins, setCoinsRet, nativeValueOut);
+                          pwalletMain->SelectCoinsMinConf(oneOutput.nAmount + totalOriginationFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
             }
             else
             {
                 success = find_utxos(from_taddress, vCoins);
                 success = success && pwalletMain->SelectReserveCoinsMinConf(oneOutput.scriptPubKey.ReserveOutValue(),
-                                                                            (hasZDest ? feeAmount + DEFAULT_TRANSACTION_FEE : feeAmount),
+                                                                            totalOriginationFees,
                                                                             0,
                                                                             1,
                                                                             vCoins,
@@ -3873,6 +3875,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             }
 
             CCurrencyValueMap outputCurrencies({ASSETCHAINS_CHAINID}, {oneOutput.nAmount});
+            outputCurrencies = (outputCurrencies + oneOutput.scriptPubKey.ReserveOutValue()).CanonicalMap();
             CCurrencyValueMap inputCurrencies;
             for (auto oneOut : setCoinsRet)
             {
@@ -3885,8 +3888,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             CCurrencyValueMap changeCurrencies = (inputCurrencies - outputCurrencies).CanonicalMap();
 
             if (setCoinsRet.size() > 1 ||
-                changeCurrencies.valueMap.size() > 1 ||
-                nativeValueOut > (oneOutput.nAmount + DEFAULT_TRANSACTION_FEE))
+                changeCurrencies.valueMap.size() > 0)
             {
                 // use the transaction builder to properly make change of native and reserves
                 TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
