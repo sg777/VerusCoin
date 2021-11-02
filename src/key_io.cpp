@@ -1013,7 +1013,7 @@ CScript CIdentity::TransparentOutput(const CIdentityID &destinationID)
     return MakeMofNCCScript(ccObj);
 }
 
-CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
+CScript CIdentity::IdentityUpdateOutputScript(uint32_t height, const std::vector<CTxDestination> *indexDests) const
 {
     CScript ret;
 
@@ -1028,17 +1028,19 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
     // when PBaaS activates, we no longer need redundant entries, so reduce the size a bit
     if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT)
     {
+        std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
+        CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
         if (IsRevoked())
         {
             std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
             CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
-            ret = MakeMofNCCScript(1, primary, recovery);
+            ret = MakeMofNCCScript(1, primary, recovery, indexDests);
         }
         else
         {
             std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
             CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
-            ret = MakeMofNCCScript(1, primary, revocation);
+            ret = MakeMofNCCScript(1, primary, revocation, recovery, indexDests);
         }
     }
     else
@@ -1047,7 +1049,7 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
         CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
         std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
         CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
-        ret = MakeMofNCCScript(1, primary, revocation, recovery);
+        ret = MakeMofNCCScript(1, primary, revocation, recovery, indexDests);
     }
 
     return ret;

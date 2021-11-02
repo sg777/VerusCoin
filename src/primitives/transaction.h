@@ -489,11 +489,6 @@ public:
         return scriptPubKey.ReserveOutValue();
     }
 
-    bool SetReserveOutValue(CCurrencyValueMap newValues)
-    {
-        return scriptPubKey.SetReserveOutValue(newValues);
-    }
-
     friend bool operator==(const CTxOut& a, const CTxOut& b)
     {
         return (a.nValue == b.nValue && a.scriptPubKey == b.scriptPubKey);

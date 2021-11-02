@@ -805,6 +805,69 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     return true;
 }
 
+bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    AssertLockHeld(cs_main);
+
+    uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS; // this is only PBaaS differences, not Verus Vault
+    bool advancedIdentity = networkVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    COptCCParams p;
+    if (advancedIdentity && !isPBaaS)
+    {
+        if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1 &&
+            p.vData[0].size() == 32)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+    else if (isPBaaS)
+    {
+        if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
+        {
+            CCommitmentHash ch(p.vData[0]);
+            std::vector<unsigned char> vch;
+            vch.assign(p.vData[0].begin(), p.vData[0].begin() + 20);
+            uint160 checkVal(vch);
+            if (p.vData[0].size() == 32 && checkVal != CCommitmentHash::AdvancedCommitmentHashKey())
+            {
+                return true;
+            }
+            else if (p.vData[0].size() > 32)
+            {
+                if (checkVal == CCommitmentHash::AdvancedCommitmentHashKey())
+                {
+                    return ch.IsValid();
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // with the thorough check for an identity reservation, the only thing we need to check is that either 1) this transaction includes an identity reservation output or 2)
 // this transaction spends a prior identity transaction that does not create a clearly invalid mutation between the two
 bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
@@ -825,7 +888,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 
     uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
     bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS; // this is only PBaaS differences, not Verus Vault
-    bool advancedIdentity = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+    bool advancedIdentity = networkVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
     bool isCoinbase = tx.IsCoinBase();
 
     for (int i = 0; i < tx.vout.size(); i++)

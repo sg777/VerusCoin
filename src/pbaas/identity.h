@@ -34,7 +34,7 @@
 
 std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false, bool addVerus=true);
 
-class CCommitmentHash
+class CCommitmentHash : public CTokenOutput
 {
 public:
     static const CAmount DEFAULT_OUTPUT_AMOUNT = 0;
@@ -42,6 +42,17 @@ public:
 
     CCommitmentHash() {}
     CCommitmentHash(const uint256 &Hash) : hash(Hash) {}
+    CCommitmentHash(const uint256 &Hash, const CTokenOutput &to) : hash(Hash), CTokenOutput(to)
+    {
+        if (hash.IsNull() && to.IsValid())
+        {
+            std::vector<unsigned char> hashAsVec = ::AsVector(hash);
+            uint160 keyVal = CCommitmentHash::AdvancedCommitmentHashKey();
+            std::vector<unsigned char> keyValAsVec = ::AsVector(keyVal);
+            std::memcpy(&(hashAsVec[0]), &(keyValAsVec[0]), keyValAsVec.size());
+            hash = uint256(hashAsVec);
+        }
+    }
 
     CCommitmentHash(const UniValue &uni)
     {
@@ -55,11 +66,31 @@ public:
 
     CCommitmentHash(const CTransaction &tx);
 
+    static std::string AdvancedCommitmentHashKeyName()
+    {
+        return "vrsc::system.identity.advancedcommitmenthash";
+    }
+
+    static uint160 AdvancedCommitmentHashKey()
+    {
+        static uint160 nameSpace;
+        static uint160 advancedKey = CVDXF::GetDataKey(AdvancedCommitmentHashKeyName(), nameSpace);
+        return advancedKey;
+    }
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(hash);
+        std::vector<unsigned char> vch;
+        vch.assign(hash.begin(), hash.begin() + 20);
+        uint160 checkVal(vch);
+        // TODO: HARDENING - prepare for mainnet support of currencies after Verus Vault activates
+        if (!_IsVerusMainnetActive() && checkVal == CCommitmentHash::AdvancedCommitmentHashKey())
+        {
+            READWRITE(*(CTokenOutput *)this);
+        }
     }
 
     UniValue ToUniValue() const
@@ -584,7 +615,7 @@ public:
     static CScript TransparentOutput(const CIdentityID &destinationID);
 
     // creates an output script to control updates to this identity
-    CScript IdentityUpdateOutputScript(uint32_t height) const;
+    CScript IdentityUpdateOutputScript(uint32_t height, const std::vector<CTxDestination> *indexDests=nullptr) const;
 
     bool IsInvalidMutation(const CIdentity &newIdentity, uint32_t height, uint32_t expiryHeight) const;
 
