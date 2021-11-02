@@ -3639,7 +3639,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 2 || params.size() > 4)
     {
         throw runtime_error(
-            "makeoffer fromaddress '{\"offer\":{\"changeaddress\":\"myaddress\", \"expiryheight\":blockheight, \"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\", \"changeaddress\":\"myaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)\n"
+            "makeoffer fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"offer\":{\"expiryheight\":blockheight, \"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)\n"
             "\nThis sends a transaction which provides a completely decentralized, fully on-chain an atomic swap offer for\n"
             "\"decentralized swapping of any blockchain asset, including any/multi currencies, NFTs, identities, contractual\n"
             "\"agreements and rights transfers, or to be used as bids for an on-chain auction of any blockchain asset(s).\n"
@@ -3648,10 +3648,13 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "1. \"fromaddress\"             (string, required) The VerusID, or wildcard address to send funds from. \"*\", \"R*\", or \"i*\" are valid wildcards\n"
-            "3. \"offer\"                   (object, required) Funds description or identity name, \"address\" in this object should be an address of the person making an offer for change\n"
-            "4. \"for\"                     (object, required) Funds description or full identity description\n"
-            "4. \"returntx\"                (bool, optional) default = false, if true, returns a transaction waiting for taker completion instead of posting\n"
-            "5. \"feeamount\"               (value, optional) default = 0.0001\n"
+            "2. {\n"
+            "     \"changeaddress\"         (string, required) Change destination when constructing transactions\n"
+            "     \"offer\"                 (object, required) Funds description or identity name, \"address\" in this object should be an address of the person making an offer for change\n"
+            "     \"for\"                   (object, required) Funds description or full identity description\n"
+            "   }\n"
+            "3. \"returntx\"                (bool, optional) default = false, if true, returns a transaction waiting for taker completion instead of posting\n"
+            "4. \"feeamount\"               (value, optional) default = 0.0001\n"
 
             "\nResult:\n"
             "{\n"
@@ -3660,8 +3663,8 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("makeoffer", "'fromaddress '{\"offer\":{\"address\":... \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\"}', \"for\":{\"address\":... \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
-            + HelpExampleRpc("makeoffer", "'fromaddress '{\"offer\":{\"address\":... \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\"}', \"for\":{\"address\":\"myaddressforpayment\", \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
+            + HelpExampleCli("makeoffer", "fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"offer\":{\"expiryheight\":blockheight, \"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
+            + HelpExampleRpc("makeoffer", "fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"offer\":{\"expiryheight\":blockheight, \"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
         );
     }
 
@@ -3750,6 +3753,12 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     libzcash::PaymentAddress zaddressDest;
     libzcash::SaplingPaymentAddress *saplingAddress;
 
+    auto changeAddressStr = TrimSpaces(uni_get_str(find_value(params[1], "changeaddress")));
+    if (changeAddressStr.empty() || (changeDestination = ValidateDestination(changeAddressStr)).which() == COptCCParams::ADDRTYPE_INVALID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "changeaddress must be valid");
+    }
+
     try
     {
         std:vector<COutput> vCoins;
@@ -3785,7 +3794,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         {
             auto currencyStr = TrimSpaces(uni_get_str(find_value(offerValue, "currency")));
             CAmount sourceAmount = AmountFromValue(find_value(offerValue, "amount"));
-            auto destStr = TrimSpaces(uni_get_str(find_value(offerValue, "changeaddress")));
 
             if (!sourceAmount)
             {
@@ -3810,15 +3818,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             }
 
             offerCurrencyID = sourceCurrencyID;
-
-            changeDestination = ValidateDestination(destStr);
             CRecipient oneOutput;
-
-            CTransferDestination dest;
-            if (changeDestination.which() == COptCCParams::ADDRTYPE_INVALID)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified changeDestination must be valid");
-            }
 
             if (sourceCurrencyID == ASSETCHAINS_CHAINID)
             {
@@ -3997,16 +3997,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             offerIn.scriptPubKey = idTx.vout[idTxIn.prevout.n].scriptPubKey;
             offerTx.vin.push_back(offerIn.txIn);
 
-            auto destStr = TrimSpaces(uni_get_str(find_value(offerValue, "changeaddress")));
-            changeDestination = ValidateDestination(destStr);
-            CRecipient oneOutput;
-
-            CTransferDestination dest;
-            if (changeDestination.which() == COptCCParams::ADDRTYPE_INVALID)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "changedestination must be a valid, transparent address to post a transaction");
-            }
-
             // if not returning, but posting, get the fees needed to post
             if (!returnHex)
             {
@@ -4055,8 +4045,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "If source currency is specified, it must be valid.");
                 }
             }
-
-            CRecipient oneOutput;
 
             if (hasZDest && newCurrencyID != ASSETCHAINS_CHAINID)
             {

@@ -832,7 +832,11 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     {
         CIdentity checkIdentity;
         auto &output = tx.vout[i];
-        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.vData.size() > 1)
+        if (output.scriptPubKey.IsPayToCryptoCondition(p) &&
+            (!advancedIdentity || p.AsVector().size() < CScript::MAX_SCRIPT_ELEMENT_SIZE) &&
+            p.IsValid() &&
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
         {
             switch (p.evalCode)
             {
