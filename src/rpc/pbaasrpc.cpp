@@ -5570,7 +5570,7 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
     if (fHelp || params.size() > 3)
     {
         throw runtime_error(
-            "closeoffers '[\"offer1_txid\", \"offer2_txid\", ...]' transparentorprivatefundsdestination (privatefundsdestination)\n"
+            "closeoffers ('[\"offer1_txid\", \"offer2_txid\", ...]') (transparentorprivatefundsdestination) (privatefundsdestination)\n"
             "\nCloses all offers listed, if they are still valid and belong to this wallet.\n"
             "\nAlways closes expired offers, even if no parameters are given\n\n"
 
