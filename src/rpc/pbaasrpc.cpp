@@ -5467,9 +5467,10 @@ UniValue getoffers(const UniValue& params, bool fHelp)
 }
 
 // close an offer by spending its source
-bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxDestination &dest, uint32_t height, const libzcash::PaymentAddress &zdest=libzcash::PaymentAddress());
-bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxDestination &dest, uint32_t height, const PaymentAddress &zdest)
+bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxDestination &_dest, uint32_t height, const libzcash::PaymentAddress &zdest=libzcash::PaymentAddress());
+bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxDestination &_dest, uint32_t height, const PaymentAddress &zdest)
 {
+    CTxDestination dest = _dest;
     // we just need to be able to spend the output to another input/output
     CScript outScript(oneOffer.inputToOfferTx.vout[oneOffer.offerTx.vin[0].prevout.n].scriptPubKey);
     CAmount value = oneOffer.inputToOfferTx.vout[oneOffer.offerTx.vin[0].prevout.n].nValue;
@@ -5482,13 +5483,16 @@ bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxD
     {
         const libzcash::SaplingPaymentAddress *pSaplingAddress = boost::get<libzcash::SaplingPaymentAddress>(&zdest);
         bool hasZDest = pSaplingAddress != nullptr;
+        bool hasTDest = dest.which() != COptCCParams::ADDRTYPE_INVALID;
         bool hasTokens = false;
+
         uint256 ovk;
         if (hasZDest)
         {
             HDSeed seed;
             if (!pwalletMain->GetHDSeed(seed)) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "wallet seed unavailable for z-address output");
+                LogPrintf("%s: Wallet seed unavailable for z-address output\n", __func__);
+                return false;
             }
             ovk = ovkForShieldingFromTaddr(seed);
             tb.SendChangeTo(*pSaplingAddress, ovk);
@@ -5498,7 +5502,13 @@ bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxD
             CIdentity offeredIdentity(p.vData[0]);
             if (!offeredIdentity.IsValid())
             {
-                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Invalid identity");
+                LogPrintf("%s: Invalid identity\n", __func__);
+                return false;
+            }
+            if (!hasTDest)
+            {
+                dest = CIdentityID(offeredIdentity.GetID());
+                hasTDest = true;
             }
             offeredIdentity.UpgradeVersion(height);
             value -= std::min(DEFAULT_TRANSACTION_FEE, value);
@@ -5506,6 +5516,16 @@ bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxD
         }
         else if (p.evalCode == EVAL_IDENTITY_COMMITMENT)
         {
+            if (!hasTDest)
+            {
+                if (p.vKeys.size() > 1)
+                {
+                    LogPrintf("%s: No transparent destination specified and cannot determine from commitment\n", __func__);
+                    return false;
+                }
+                dest = p.vKeys[0];
+                hasTDest = true;
+            }
             CCommitmentHash ch(p.vData[0]);
             if (ch.IsValid() && ch.reserveValues.valueMap.size())
             {
@@ -5521,7 +5541,8 @@ bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxD
                 }
                 else
                 {
-                    throw JSONRPCError(RPC_TRANSACTION_ERROR, "Must close offers with valid, transparent funds destination when offer funds include non-native currency");
+                    LogPrintf("%s: Must close offers with valid, transparent funds destination when offer funds include non-native currency\n", __func__);
+                    return false;
                 }
             }
             else
@@ -5540,26 +5561,16 @@ bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxD
         {
             tb.SendChangeTo(dest);
         }
-        if (hasZDest)
-        {
-            uint256 ovk;
-            HDSeed seed;
-            if (!pwalletMain->GetHDSeed(seed)) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "wallet seed unavailable for z-address output");
-            }
-            ovk = ovkForShieldingFromTaddr(seed);
-            tb.SendChangeTo(*boost::get<libzcash::SaplingPaymentAddress>(&zdest), ovk);
-        }
     }
     return false;
 }
 
 UniValue closeoffers(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 3)
+    if (fHelp || params.size() > 3)
     {
         throw runtime_error(
-            "closeoffers transparentorprivatefundsdestination '[\"offer1_txid\", \"offer2_txid\", ...]' (privatefundsdestination)\n"
+            "closeoffers '[\"offer1_txid\", \"offer2_txid\", ...]' transparentorprivatefundsdestination (privatefundsdestination)\n"
             "\nCloses all offers listed, if they are still valid and belong to this wallet.\n"
             "\nAlways closes expired offers, even if no parameters are given\n\n"
 
@@ -5573,16 +5584,16 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
     UniValue retVal;
     std::set<uint256> txIds;
 
-    if (params.size() > 1)
+    if (params.size() > 0)
     {
-        if (!params[1].isArray())
+        if (!params[0].isArray())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Second parameter must be an array of transaction IDs that are offers from this wallet to close. It may be null '[]'");
         }
-        for (int i = 0; i < params[1].size(); i++)
+        for (int i = 0; i < params[0].size(); i++)
         {
             uint256 oneTxId;
-            oneTxId.SetHex(uni_get_str(params[1][i]));
+            oneTxId.SetHex(uni_get_str(params[0][i]));
             if (oneTxId.IsNull())
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid txid specified, txids must be hex strings with no prefix");
@@ -5592,12 +5603,18 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
     }
 
     libzcash::PaymentAddress zaddressDest;
-    std::string destStr = uni_get_str(params[0]);
-    if (destStr.empty())
+    CTxDestination transparentDest;
+    std::string destStr;
+
+    if (params.size() > 1)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Closing open offers requires a transparent and/or private address to send funds to when closing");
+        destStr = uni_get_str(params[1]);
+        if (destStr.empty())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Closing open offers requires a transparent and/or private address to send funds to when closing");
+        }
+        transparentDest = ValidateDestination(destStr);
     }
-    CTxDestination transparentDest = ValidateDestination(destStr);
 
     bool hasTDest = transparentDest.which() != COptCCParams::ADDRTYPE_INVALID;
     bool hasZDest = !hasTDest && pwalletMain->GetAndValidateSaplingZAddress(destStr, zaddressDest);
