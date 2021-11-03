@@ -4912,6 +4912,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             "3. \"withtx\"              (bool, optional)   default=false, if true, this returns serialized hex of the exchange transaction for signing\n"
 
             "\nResult:\n"
+            "all available offers for or in the indicated currency or ID are displayed\n"
 
             "\nExamples:\n"
             + HelpExampleCli("getoffers", "\"currencyorid\" (iscurrency)")
