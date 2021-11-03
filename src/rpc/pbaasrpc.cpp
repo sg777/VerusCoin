@@ -3779,6 +3779,11 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
 
     if (find_value(forValue, "name").isNull())
     {
+        if (!find_value(forValue, "identity").isNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "To buy an identity, define the identity by the \"for\" object as you would when registering, with \"name\", \"primaryaddresses\", etc. Do not use an \"identity\" tag");
+        }
+
         auto currencyStr = TrimSpaces(uni_get_str(find_value(forValue, "currency")));
         CAmount destinationAmount = AmountFromValue(find_value(forValue, "amount"));
         auto memoStr = TrimSpaces(uni_get_str(find_value(forValue, "memo")));
