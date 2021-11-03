@@ -4545,11 +4545,11 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     std::pair<CIdentityMapKey, CIdentityMapValue> keyAndRevocation;
     std::pair<CIdentityMapKey, CIdentityMapValue> keyAndRecovery;
 
-    CIdentity acceptedIdentity, identityToDeliver;
+    CIdentity acceptedIdentity;
     CCurrencyValueMap acceptedCurrency, currencyToDeliver;
     CAmount subsidizedFees = 0;
 
-    if (!accept.isNull() && !accept.isObject())
+    if (accept.isNull() || !accept.isObject())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity or currency to accept must be a valid json object");
     }

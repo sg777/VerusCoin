@@ -70,13 +70,14 @@ CIdentity::CIdentity(const CTransaction &tx, int *voutNum, const uint160 &onlyTh
     for (int i = 0; i < tx.vout.size(); i++)
     {
         CIdentity foundIdentity(tx.vout[i].scriptPubKey);
-        if (foundIdentity.IsValid() && (onlyThisID.IsNull() || foundIdentity.GetID() == onlyThisID) && !found)
+        bool justFound = (foundIdentity.IsValid() && (onlyThisID.IsNull() || foundIdentity.GetID() == onlyThisID));
+        if (justFound && !found)
         {
             *this = foundIdentity;
             found = true;
             idIndex = i;
         }
-        else if (foundIdentity.IsValid())
+        else if (justFound)
         {
             *this = CIdentity();
         }
@@ -1236,18 +1237,19 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Spending invalid identity");
     }
 
-    int idIndex;
-    CIdentity newIdentity(spendingTx, &idIndex, oldIdentity.GetID());
-    if (!newIdentity.IsValid())
-    {
-        return eval->Error("Attempting to define invalid identity");
-    }
-
     if (!chainActive.LastTip())
     {
         return eval->Error("unable to find chain tip");
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+    bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    int idIndex;
+    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? oldIdentity.GetID() : uint160());
+    if (!newIdentity.IsValid())
+    {
+        return eval->Error("Attempting to define invalid identity");
+    }
 
     if (oldIdentity.IsInvalidMutation(newIdentity, height, spendingTx.nExpiryHeight))
     {
@@ -1290,18 +1292,20 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("Invalid source identity");
     }
 
-    int idIndex;
-    CIdentity newIdentity(spendingTx, &idIndex);
-    if (!newIdentity.IsValid())
-    {
-        return eval->Error("Attempting to replace identity with one that is invalid");
-    }
-
     if (!chainActive.LastTip())
     {
         return eval->Error("unable to find chain tip");
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+
+    bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    int idIndex;
+    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? oldIdentity.GetID() : uint160());
+    if (!newIdentity.IsValid())
+    {
+        return eval->Error("Attempting to replace identity with one that is invalid");
+    }
 
     if (oldIdentity.IsInvalidMutation(newIdentity, height, spendingTx.nExpiryHeight))
     {
@@ -1410,18 +1414,20 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Invalid source identity");
     }
 
-    int idIndex;
-    CIdentity newIdentity(spendingTx, &idIndex);
-    if (!newIdentity.IsValid())
-    {
-        return eval->Error("Attempting to replace identity with one that is invalid");
-    }
-
     if (!chainActive.LastTip())
     {
         return eval->Error("unable to find chain tip");
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+
+    bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    int idIndex;
+    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? oldIdentity.GetID() : uint160());
+    if (!newIdentity.IsValid())
+    {
+        return eval->Error("Attempting to replace identity with one that is invalid");
+    }
 
     if (oldIdentity.IsInvalidMutation(newIdentity, height, spendingTx.nExpiryHeight))
     {
