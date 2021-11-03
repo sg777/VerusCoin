@@ -3777,7 +3777,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "changeaddress must be valid");
     }
 
-    if (find_value(forValue, "identity").isNull())
+    if (find_value(forValue, "name").isNull())
     {
         auto currencyStr = TrimSpaces(uni_get_str(find_value(forValue, "currency")));
         CAmount destinationAmount = AmountFromValue(find_value(forValue, "amount"));
@@ -4087,7 +4087,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
 
         // now we have made and added the offer input, make the output of what we want to exchange directed to us
         // then, sign the transaction, put it in an opreturn, and make the transaction that contains it
-        if (find_value(forValue, "identity").isNull())
+        if (find_value(forValue, "name").isNull())
         {
             auto currencyStr = TrimSpaces(uni_get_str(find_value(forValue, "currency")));
             CAmount destinationAmount = AmountFromValue(find_value(forValue, "amount"));
