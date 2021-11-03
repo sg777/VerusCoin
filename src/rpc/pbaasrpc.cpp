@@ -5574,8 +5574,13 @@ UniValue listopenoffers(const UniValue& params, bool fHelp)
             UniValue oneOfferUni(UniValue::VOBJ);
             if (!oneOffer.first.first)
             {
-                oneOfferUni.pushKV("expired", "true");
+                oneOfferUni.pushKV("expired", true);
             }
+            else
+            {
+                oneOfferUni.pushKV("expires", (int64_t)oneOffer.second.offerTx.nExpiryHeight);
+            }
+            
             oneOfferUni.pushKV("txid", oneOffer.first.second.GetHex());
             UniValue scriptPubKeyUni(UniValue::VOBJ);
             ScriptPubKeyToUniv(oneOffer.second.inputToOfferTx.vout[oneOffer.second.offerTx.vin[0].prevout.n].scriptPubKey, scriptPubKeyUni, false);
