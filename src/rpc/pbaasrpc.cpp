@@ -4914,8 +4914,8 @@ UniValue getoffers(const UniValue& params, bool fHelp)
             "\nResult:\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("sendcurrency", "\"currencyorid\" (iscurrency)")
-            + HelpExampleRpc("sendcurrency", "\"currencyorid\" (iscurrency)")
+            + HelpExampleCli("getoffers", "\"currencyorid\" (iscurrency)")
+            + HelpExampleRpc("getoffers", "\"currencyorid\" (iscurrency)")
         );
     }
 
