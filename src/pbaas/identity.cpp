@@ -847,22 +847,30 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
             }
             else if (p.vData[0].size() > 32)
             {
-                if (checkVal == CCommitmentHash::AdvancedCommitmentHashKey())
+                if (checkVal == CCommitmentHash::AdvancedCommitmentHashKey() &&
+                    ch.IsValid() &&
+                    ch.reserveValues.valueMap.size() &&
+                    !ch.reserveValues.valueMap.count(ASSETCHAINS_CHAINID))
                 {
-                    return ch.IsValid();
+                    // TODO: HARDENING - currently, we are ensuring that a valid, advanced ch is there to
+                    // prevent use of this without actual need. instead of a subclass, we should abstract and contain objects in this output
+                    return true;
                 }
                 else
                 {
+                    LogPrint("onchaincommitment", "Oversized, invalid on chain commitment");
                     return false;
                 }
             }
             else
             {
+                LogPrint("onchaincommitment", "Undersized, invalid on chain commitment");
                 return false;
             }
         }
         else
         {
+            LogPrint("onchaincommitment", "Invalid on chain commitment");
             return false;
         }
     }
