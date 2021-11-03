@@ -4050,7 +4050,8 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 std::vector<CTxDestination> dests({changeDestination});
                 std::vector<CTxDestination> indexDests({forIDKey, offerIDKey});
 
-                tb.AddTransparentOutput(oldID.IdentityUpdateOutputScript(height + 1, &indexDests), totalNativeDeposit);
+                tb.AddTransparentInput(COutPoint(idTxIn.prevout.hash, idTxIn.prevout.n), idTx.vout[idTxIn.prevout.n].scriptPubKey, idTx.vout[idTxIn.prevout.n].nValue);
+                tb.AddTransparentOutput(sourceIdentity.IdentityUpdateOutputScript(height + 1, &indexDests), totalNativeDeposit);
 
                 // aggregate all inputs into one output with only the offer coins and offer indexes
                 for (auto &oneInput : setCoinsRet)
