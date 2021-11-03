@@ -3626,7 +3626,10 @@ bool GetMyOffers(std::map<std::pair<bool, uint256>, OfferInfo> &myOffers, uint32
         if (txPair.second.IsInMainChain() &&
             GetOpRetChainOffer(txPair.second, oneOfferInfo.offerTx, oneOfferInfo.inputToOfferTx, height, getUnexpired, getExpired, oneOfferInfo.blockHash))
         {
-            myOffers.insert(std::make_pair(std::make_pair(oneOfferInfo.offerTx.nExpiryHeight > height, txPair.first), oneOfferInfo));
+            CSpentIndexKey spentKey = CSpentIndexKey(oneOfferInfo.inputToOfferTx.GetHash(), oneOfferInfo.offerTx.vin[0].prevout.n);
+            CSpentIndexValue spentValue;
+            bool isExpired = (oneOfferInfo.offerTx.nExpiryHeight <= height) || GetSpentIndex(spentKey, spentValue);
+            myOffers.insert(std::make_pair(std::make_pair(!isExpired, txPair.first), oneOfferInfo));
             retVal = true;
         }
     }
@@ -5510,6 +5513,7 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
     {
         for (auto &oneOffer : myOffers)
         {
+            // if this is true, it is unexpired
             if (oneOffer.first.first)
             {
                 if (txIds.count(oneOffer.first.second))
@@ -5568,9 +5572,9 @@ UniValue listopenoffers(const UniValue& params, bool fHelp)
         for (auto &oneOffer : myOffers)
         {
             UniValue oneOfferUni(UniValue::VOBJ);
-            if (oneOffer.first.first)
+            if (!oneOffer.first.first)
             {
-                oneOfferUni.pushKV("expired", oneOffer.first.first);
+                oneOfferUni.pushKV("expired", "true");
             }
             oneOfferUni.pushKV("txid", oneOffer.first.second.GetHex());
             UniValue scriptPubKeyUni(UniValue::VOBJ);
