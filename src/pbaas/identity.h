@@ -95,7 +95,13 @@ public:
 
     UniValue ToUniValue() const
     {
-        return UniValue(hash.GetHex());
+        UniValue retVal;
+        if (IsValid())
+        {
+            retVal = ((CTokenOutput *)this)->ToUniValue();
+        }
+        retVal.pushKV("hash", hash.GetHex());
+        return retVal;
     }
 };
 

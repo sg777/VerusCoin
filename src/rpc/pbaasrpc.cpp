@@ -3571,8 +3571,8 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
         postedTx.vout[0].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
         (p.evalCode == EVAL_IDENTITY_COMMITMENT || 
-         p.evalCode == EVAL_IDENTITY_PRIMARY && postedTx.vout[0].nValue >= 
-                                        std::max(ConnectedChains.ThisChain().idRegistrationFees / 10, (int64_t)COnChainOffer::MIN_LISTING_DEPOSIT)) &&
+         (p.evalCode == EVAL_IDENTITY_PRIMARY &&
+          postedTx.vout[0].nValue >= std::max(ConnectedChains.ThisChain().idRegistrationFees / 10, (int64_t)COnChainOffer::MIN_LISTING_DEPOSIT))) &&
         ((postedTx.vout.back().scriptPubKey.IsOpReturn() &&
           (opRetArray = RetrieveOpRetArray((opRetTx = postedTx).vout.back().scriptPubKey)).size() == 1) ||
          (GetSpentIndex(spentKey, spentValue) &&
@@ -3585,6 +3585,9 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
         offerTx.vout.size() == 1 &&
         offerTx.vin.size() == 1 &&
         offerTx.vShieldedSpend.size() == 0 &&
+        (p.evalCode == EVAL_IDENTITY_COMMITMENT || 
+          ((getExpired && (spentKey = CSpentIndexKey(offerTx.vin[0].prevout.hash, offerTx.vin[0].prevout.n), GetSpentIndex(spentKey, spentValue))) ||
+           (getUnexpired && (spentKey = CSpentIndexKey(offerTx.vin[0].prevout.hash, offerTx.vin[0].prevout.n), !GetSpentIndex(spentKey, spentValue))))) &&
         ((getExpired && offerTx.nExpiryHeight <= height) || (getUnexpired && offerTx.nExpiryHeight > height)) &&
         myGetTransaction(offerTx.vin[0].prevout.hash, inputToOfferTx, offerBlockHash))
     {
@@ -5478,7 +5481,7 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
     UniValue retVal;
     std::set<uint256> txIds;
 
-    if (params[0].size() > 0)
+    if (params.size() && params[0].size() > 0)
     {
         if (!params[0].isArray())
         {
@@ -5518,6 +5521,67 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
             {
                 // close this offer by spending the source
             }
+        }
+    }
+    return retVal;
+}
+
+UniValue listopenoffers(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 2)
+    {
+        throw runtime_error(
+            "listopenoffers (unexpired) (expired)'\n"
+            "\nShows offers outstanding in this wallet\n"
+
+            "\nArguments\n"
+
+            "\nResult\n"
+        );
+    }
+    CheckVerusVaultAPIsValid();
+
+    UniValue retVal;
+    std::set<uint256> txIds;
+
+    bool listUnexpired = true; 
+    bool listExpired = true; 
+    if (params.size() > 0)
+    {
+        listUnexpired = uni_get_bool(params[0]);
+    }
+    if (params.size() > 1)
+    {
+        listExpired = uni_get_bool(params[1]);
+    }
+
+    std::map<std::pair<bool, uint256>, OfferInfo> myOffers;
+
+    LOCK2(cs_main, mempool.cs);
+    LOCK(pwalletMain->cs_wallet);
+
+    uint32_t height = chainActive.Height();
+
+    if (GetMyOffers(myOffers, height, listUnexpired, listExpired))
+    {
+        retVal = UniValue(UniValue::VARR);
+        for (auto &oneOffer : myOffers)
+        {
+            UniValue oneOfferUni(UniValue::VOBJ);
+            if (oneOffer.first.first)
+            {
+                oneOfferUni.pushKV("expired", oneOffer.first.first);
+            }
+            oneOfferUni.pushKV("txid", oneOffer.first.second.GetHex());
+            UniValue scriptPubKeyUni(UniValue::VOBJ);
+            ScriptPubKeyToUniv(oneOffer.second.inputToOfferTx.vout[oneOffer.second.offerTx.vin[0].prevout.n].scriptPubKey, scriptPubKeyUni, false);
+            scriptPubKeyUni.pushKV("nativeout", ValueFromAmount(oneOffer.second.inputToOfferTx.vout[oneOffer.second.offerTx.vin[0].prevout.n].nValue));
+            oneOfferUni.pushKV("offer", scriptPubKeyUni);
+            scriptPubKeyUni = UniValue(UniValue::VOBJ);
+            ScriptPubKeyToUniv(oneOffer.second.offerTx.vout[0].scriptPubKey, scriptPubKeyUni, false);
+            scriptPubKeyUni.pushKV("nativeout", ValueFromAmount(oneOffer.second.offerTx.vout[0].nValue));
+            oneOfferUni.pushKV("for", scriptPubKeyUni);
+            retVal.push_back(oneOfferUni);
         }
     }
     return retVal;
@@ -9753,6 +9817,7 @@ static const CRPCCommand commands[] =
     { "marketplace",  "makeoffer",                    &makeoffer,              true  },
     { "marketplace",  "takeoffer",                    &takeoffer,              true  },
     { "marketplace",  "getoffers",                    &getoffers,              true  },
+    { "marketplace",  "listopenoffers",               &listopenoffers,         true  },
     { "multichain",   "definecurrency",               &definecurrency,         true  },
     { "multichain",   "listcurrencies",               &listcurrencies,         true  },
     { "multichain",   "getcurrencyconverters",        &getcurrencyconverters,  true  },

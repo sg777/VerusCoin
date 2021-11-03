@@ -1000,16 +1000,17 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         // we need to have at least 2 of 3 authority spend conditions mandatory at a top level for any primary ID output
         bool revocation = false, recovery = false;
         bool primaryValid = false, revocationValid = false, recoveryValid = false;
+        bool isRevoked = identity.IsRevoked();
         for (auto dest : p.vKeys)
         {
-            if (dest.which() == COptCCParams::ADDRTYPE_ID && (idID == GetDestinationID(dest)) && dest.which() == COptCCParams::ADDRTYPE_ID)
+            if (dest.which() == COptCCParams::ADDRTYPE_ID && idID == GetDestinationID(dest))
             {
                 primaryValid = true;
             }
         }
-        if (!primaryValid)
+        if (!isRevoked && !primaryValid)
         {
-            std::string errorOut = "Primary identity output condition of \"" + identity.name + "\" is not spendable by self";
+            std::string errorOut = "Primary identity output condition of \"" + identity.name + "\" is neither revoked nor spendable by self";
             return state.Error(errorOut.c_str());
         }
         for (int i = 1; i < p.vData.size() - 1; i++)
@@ -1064,7 +1065,6 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
 
         // we need separate spend conditions for both revoke and recover in all cases
-        bool isRevoked = identity.IsRevoked();
         if ((!isRevoked && !revocationValid) || (isRevoked && !recoveryValid))
         {
             std::string errorOut = "Primary identity output \"" + identity.name + "\" must be spendable by revocation and recovery authorities";

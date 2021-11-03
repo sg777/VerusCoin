@@ -1405,8 +1405,20 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 break;
 
             case EVAL_IDENTITY_COMMITMENT:
-                out.push_back(Pair("identitycommitment", ""));
+            {
+                CCommitmentHash ch;
+
+                if (p.vData.size())
+                {
+                    ch = CCommitmentHash(p.vData[0]);
+                    out.push_back(Pair("identitycommitment", ch.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("identitycommitment", ""));
+                }
                 break;
+            }
 
             case EVAL_IDENTITY_RESERVATION:
                 out.push_back(Pair("identityreservation", ""));
