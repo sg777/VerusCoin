@@ -3532,6 +3532,42 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
     return t_inputs_.size() > 0;
 }
 
+std::vector<SaplingNoteEntry> find_unspent_notes(const libzcash::PaymentAddress &fromaddress_)
+{
+    std::vector<SaplingNoteEntry> retVal;
+
+    std::vector<SproutNoteEntry> sproutEntries;
+    std::vector<SaplingNoteEntry> saplingEntries;
+    {
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+        pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, EncodePaymentAddress(fromaddress_));
+    }
+
+    sproutEntries.clear();
+
+    for (auto entry : saplingEntries) {
+        retVal.push_back(entry);
+        std::string data(entry.memo.begin(), entry.memo.end());
+        LogPrint("zrpcunsafe", "found unspent Sapling note (txid=%s, vShieldedSpend=%d, amount=%s, memo=%s)\n",
+            entry.op.hash.ToString().substr(0, 10),
+            entry.op.n,
+            ValueFromAmount(entry.note.value()).write(),
+            HexStr(data).substr(0, 10));
+    }
+
+    if (retVal.empty()) {
+        return retVal;
+    }
+
+    // sort in descending order, so big notes appear first
+    std::sort(retVal.begin(), retVal.end(),
+        [](SaplingNoteEntry i, SaplingNoteEntry j) -> bool {
+            return i.note.value() > j.note.value();
+        });
+
+    return retVal;
+}
+
 CAmount CalculateFractionalPrice(CAmount smallNumerator, CAmount smallDenominator, bool roundup)
 {
     static arith_uint256 bigZero(0);
@@ -3653,7 +3689,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 2 || params.size() > 4)
     {
         throw runtime_error(
-            "makeoffer fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"offer\":{\"expiryheight\":blockheight, \"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)\n"
+            "makeoffer fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"expiryheight\":blockheight, \"offer\":{\"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)\n"
             "\nThis sends a transaction which provides a completely decentralized, fully on-chain an atomic swap offer for\n"
             "\"decentralized swapping of any blockchain asset, including any/multi currencies, NFTs, identities, contractual\n"
             "\"agreements and rights transfers, or to be used as bids for an on-chain auction of any blockchain asset(s).\n"
@@ -3677,8 +3713,8 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("makeoffer", "fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"offer\":{\"expiryheight\":blockheight, \"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
-            + HelpExampleRpc("makeoffer", "fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"offer\":{\"expiryheight\":blockheight, \"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
+            + HelpExampleCli("makeoffer", "fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"expiryheight\":blockheight, \"offer\":{\"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
+            + HelpExampleRpc("makeoffer", "fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"expiryheight\":blockheight, \"offer\":{\"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
         );
     }
 
@@ -3697,10 +3733,31 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     LOCK2(cs_main, mempool.cs);
     LOCK(pwalletMain->cs_wallet);
 
-    // source address for funding the initial input to the tx must be transparent because shielded spends do not have SIGHASH_SINGLE
-    if (!(wildCardAddress || (sourceDest = DecodeDestination(sourceAddress)).which() != COptCCParams::ADDRTYPE_INVALID))
+    libzcash::PaymentAddress zaddressSource;
+    libzcash::SaplingExpandedSpendingKey expsk;
+    uint256 sourceOvk;
+    bool hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(sourceAddress, zaddressSource);
+    // if we have a z-address as a source, re-encode it to a string, which is used
+    // by the async operation, to ensure that we don't need to lookup IDs in that operation
+    if (hasZSource)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be identity, transparent address, \"*\", \"R*\", or \"i*\",. See help.");
+        sourceAddress = EncodePaymentAddress(zaddressSource);
+        // We don't need to lock on the wallet as spending key related methods are thread-safe
+        if (!boost::apply_visitor(HaveSpendingKeyForPaymentAddress(pwalletMain), zaddressSource)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, no spending key found for zaddr");
+        }
+
+        auto spendingkey_ = boost::apply_visitor(GetSpendingKeyForPaymentAddress(pwalletMain), zaddressSource).get();
+        auto sk = boost::get<libzcash::SaplingExtendedSpendingKey>(spendingkey_);
+        expsk = sk.expsk;
+        sourceOvk = expsk.full_viewing_key().ovk;
+    }
+
+    if (!(hasZSource ||
+          wildCardAddress ||
+          (sourceDest = DecodeDestination(sourceAddress)).which() != COptCCParams::ADDRTYPE_INVALID))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\", or \"i*\",. See help.");
     }
 
     CTxDestination from_taddress;
@@ -3897,8 +3954,9 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
             }
 
-            bool success;
+            bool success = false;
             std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+            std::vector<SaplingNoteEntry> saplingNotes;
             CCurrencyValueMap reserveValueOut;
             CAmount nativeValueOut;
             CAmount totalOriginationFees = feeAmount;
@@ -3907,8 +3965,35 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             // first make an input transaction to split the offer funds into an exact input and change, if needed
             if (sourceCurrencyID == ASSETCHAINS_CHAINID)
             {
-                success = find_utxos(from_taddress, vCoins) &&
-                          pwalletMain->SelectCoinsMinConf(oneOutput.nAmount + totalOriginationFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+                if (hasZSource)
+                {
+                    saplingNotes = find_unspent_notes(zaddressSource);
+                    CAmount totalFound = 0;
+                    int i;
+                    for (i = 0; i < saplingNotes.size(); i++)
+                    {
+                        totalFound += saplingNotes[i].note.value();
+                        if (totalFound >= (oneOutput.nAmount + totalOriginationFees))
+                        {
+                            break;
+                        }
+                    }
+                    // remove all but the notes we'll use
+                    if (i < saplingNotes.size())
+                    {
+                        saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
+                        success = true;
+                    }
+                }
+                else
+                {
+                    success = find_utxos(from_taddress, vCoins) &&
+                            pwalletMain->SelectCoinsMinConf(oneOutput.nAmount + totalOriginationFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+                }
+            }
+            else if (hasZSource)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot source non-native currencies from a private address");
             }
             else
             {
@@ -3955,11 +4040,35 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             }
 
             // aggregate all inputs into one output with only the offer coins and offer indexes
-            for (auto &oneInput : setCoinsRet)
+            if (saplingNotes.size())
             {
-                tb.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second),
-                                        oneInput.first->vout[oneInput.second].scriptPubKey,
-                                        oneInput.first->vout[oneInput.second].nValue);
+                std::vector<SaplingOutPoint> notes;
+                for (auto &oneNoteInfo : saplingNotes)
+                {
+                    notes.push_back(oneNoteInfo.op);
+                }
+                // Fetch Sapling anchor and witnesses
+                uint256 anchor;
+                std::vector<boost::optional<SaplingWitness>> witnesses;
+                {
+                    LOCK2(cs_main, pwalletMain->cs_wallet);
+                    pwalletMain->GetSaplingNoteWitnesses(notes, witnesses, anchor);
+                }
+
+                // Add Sapling spends
+                for (size_t i = 0; i < saplingNotes.size(); i++)
+                {
+                    tb.AddSaplingSpend(expsk, saplingNotes[i].note, anchor, witnesses[i].get());
+                }
+            }
+            else
+            {
+                for (auto &oneInput : setCoinsRet)
+                {
+                    tb.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second),
+                                            oneInput.first->vout[oneInput.second].scriptPubKey,
+                                            oneInput.first->vout[oneInput.second].nValue);
+                }
             }
             tb.SendChangeTo(changeDestination);
             tb.SetFee(feeAmount);
