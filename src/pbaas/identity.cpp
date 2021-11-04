@@ -686,6 +686,10 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     std::vector<CTxDestination> referrers;
     bool valid = true;
 
+    uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS; // this is only PBaaS differences, not Verus Vault
+    bool advancedIdentity = networkVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
     AssertLockHeld(cs_main);
 
     for (auto &txout : tx.vout)
@@ -742,6 +746,21 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     else if (!valid)
     {
         return state.Error("Improperly formed identity definition transaction");
+    }
+
+    if (advancedIdentity)
+    {
+        uint160 parentID = newIdentity.parent;
+        auto cleanName = CleanName(newIdentity.name, parentID, true, false);
+        if (cleanName.empty())
+        {
+            return state.Error("Invalid name characters specified in identity registration");
+        }
+        std::vector<unsigned char> base58Vec;
+        if (DecodeBase58Check(cleanName, base58Vec) && base58Vec.size() > 20)
+        {
+            return state.Error("Invalid name specified - cannot use base58 checksum address as the name for an identity");
+        }
     }
 
     int commitmentHeight = 0;

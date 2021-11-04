@@ -3889,7 +3889,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(forValue, "parent")))));
         if (parentID.IsNull())
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure reference to the correct identity, parent must be a correct, non-null value.");
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure reference to the correct identity, parent must be a valid, non-null value.");
         }
         std::string nameStr = CleanName(uni_get_str(find_value(forValue, "name")), parentID);
         newIDID = CIdentity::GetID(nameStr, parentID);
@@ -4297,6 +4297,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                     odesc.cm,
                     encryptor);
                 offerTx.vShieldedOutput.push_back(odesc);
+                librustzcash_sapling_proving_ctx_free(ctx);
             }
             else
             {
@@ -4554,15 +4555,29 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
 
     std::vector<CRecipient> outputs;
 
-    libzcash::PaymentAddress zaddress;
-    bool hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(fundsSource, zaddress);
+    libzcash::PaymentAddress zaddressSource;
+    libzcash::SaplingExpandedSpendingKey expsk;
+    std::vector<SpendDescriptionInfo> saplingSpends;
+    void *saplingSpendCtx = nullptr;
+
+    uint256 sourceOvk;
+    bool hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(fundsSource, zaddressSource);
     // if we have a z-address as a source, re-encode it to a string, which is used
     // by the async operation, to ensure that we don't need to lookup IDs in that operation
     if (hasZSource)
     {
         // TODO: enable z-source for funds
         throw JSONRPCError(RPC_INVALID_PARAMETER, "z-address for payment, not yet implemented");
-        fundsSource = EncodePaymentAddress(zaddress);
+        fundsSource = EncodePaymentAddress(zaddressSource);
+        // We don't need to lock on the wallet as spending key related methods are thread-safe
+        if (!boost::apply_visitor(HaveSpendingKeyForPaymentAddress(pwalletMain), zaddressSource)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, no spending key found for zaddr");
+        }
+
+        auto spendingkey_ = boost::apply_visitor(GetSpendingKeyForPaymentAddress(pwalletMain), zaddressSource).get();
+        auto sk = boost::get<libzcash::SaplingExtendedSpendingKey>(spendingkey_);
+        expsk = sk.expsk;
+        sourceOvk = expsk.full_viewing_key().ovk;
     }
 
     if (!(hasZSource ||
@@ -4595,9 +4610,13 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     std::string txIdStringToTake = uni_get_str(find_value(takeOfferUni, "txid"));
     std::string txStringToTake = uni_get_str(find_value(takeOfferUni, "tx"));
     std::string changeAddressStr = uni_get_str(find_value(takeOfferUni, "changeaddress"));
-    if ((changeAddress = DecodeDestination(changeAddressStr)).which() == COptCCParams::ADDRTYPE_INVALID)
+
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "\"changeaddress\" must be specified as a transparent address or identity");
+        LOCK(cs_main);
+        if ((changeAddress = ValidateDestination(changeAddressStr)).which() == COptCCParams::ADDRTYPE_INVALID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "\"changeaddress\" must be specified as a transparent address or identity");
+        }
     }
 
     uint256 txIdToTake;
@@ -4690,7 +4709,8 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         }
         acceptedCurrency.valueMap[currencyID] = currencyAmount;
 
-        if ((acceptToAddress = DecodeDestination(acceptToDestStr)).which() == COptCCParams::ADDRTYPE_INVALID)
+        LOCK(cs_main);
+        if ((acceptToAddress = ValidateDestination(acceptToDestStr)).which() == COptCCParams::ADDRTYPE_INVALID)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. To accept an offer of currency, the accept address must be a transparent address or identity. See help.");
         }
@@ -4864,6 +4884,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
         CAmount nativeValueOut;
         CCurrencyValueMap reserveValueOut;
+        std::vector<SaplingNoteEntry> saplingNotes;
 
         firstFundingInput = mtx.vin.size();
 
@@ -4874,8 +4895,35 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             // one ID input to fund the transaction
             if (additionalFees)
             {
-                success = find_utxos(from_taddress, vCoins) &&
-                            pwalletMain->SelectCoinsMinConf(additionalFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+                if (hasZSource)
+                {
+                    saplingNotes = find_unspent_notes(zaddressSource);
+                    CAmount totalFound = 0;
+                    int i;
+                    for (i = 0; i < saplingNotes.size(); i++)
+                    {
+                        totalFound += saplingNotes[i].note.value();
+                        if (totalFound >= additionalFees)
+                        {
+                            break;
+                        }
+                    }
+                    // remove all but the notes we'll use
+                    if (i < saplingNotes.size())
+                    {
+                        saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
+                        success = true;
+                    }
+                    else
+                    {
+                        success = false;
+                    }
+                }
+                else
+                {
+                    success = find_utxos(from_taddress, vCoins) &&
+                                pwalletMain->SelectCoinsMinConf(additionalFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+                }
             }
             if (!success)
             {
@@ -4887,7 +4935,35 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             // find enough currency from source to fund the acceptance
             CAmount nativeValue = (currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] + additionalFees);
             currencyToDeliver.valueMap.erase(ASSETCHAINS_CHAINID);
-            bool success = find_utxos(from_taddress, vCoins) &&
+
+            bool success = false;
+            if (hasZSource)
+            {
+                if (currencyToDeliver.CanonicalMap().valueMap.size() != 0)
+                {
+                    throw JSONRPCError(RPC_TRANSACTION_ERROR, "Private address source cannot be used for non-native currency delivery");
+                }
+                saplingNotes = find_unspent_notes(zaddressSource);
+                CAmount totalFound = 0;
+                int i;
+                for (i = 0; i < saplingNotes.size(); i++)
+                {
+                    totalFound += saplingNotes[i].note.value();
+                    if (totalFound >= additionalFees)
+                    {
+                        break;
+                    }
+                }
+                // remove all but the notes we'll use
+                if (i < saplingNotes.size())
+                {
+                    saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
+                    success = true;
+                }
+            }
+            else
+            {
+                success = find_utxos(from_taddress, vCoins) &&
                         pwalletMain->SelectReserveCoinsMinConf(currencyToDeliver,
                                                                 nativeValue,
                                                                 0,
@@ -4896,6 +4972,8 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
                                                                 setCoinsRet,
                                                                 reserveValueOut,
                                                                 nativeValueOut);
+            }
+            
             if (!success)
             {
                 throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to fund currency delivery");
@@ -4906,10 +4984,72 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "No identity or currency to deliver");
         }
 
-        // now put all vCoins on the input, sign the transaction, and post
-        for (auto &oneInput : setCoinsRet)
+        if (saplingNotes.size())
         {
-            mtx.vin.push_back(CTxIn(oneInput.first->GetHash(), oneInput.second));
+            std::vector<SaplingOutPoint> notes;
+            for (size_t i = 0; i < saplingNotes.size(); i++)
+            {
+                notes.push_back(saplingNotes[i].op);
+            }
+
+            // Fetch Sapling anchor and witnesses
+            uint256 anchor;
+            std::vector<boost::optional<SaplingWitness>> witnesses;
+            {
+                LOCK2(cs_main, pwalletMain->cs_wallet);
+                pwalletMain->GetSaplingNoteWitnesses(notes, witnesses, anchor);
+            }
+
+            saplingSpendCtx = librustzcash_sapling_proving_ctx_init();
+
+            // Add Sapling spends
+            for (size_t i = 0; i < saplingNotes.size(); i++)
+            {
+                SpendDescriptionInfo spend(expsk, saplingNotes[i].note, anchor, boost::get(witnesses[i]));
+                //tb.AddSaplingSpend(expsk, saplingNotes[i].note, anchor, witnesses[i].get());
+
+                auto cm = spend.note.cm();
+                auto nf = spend.note.nullifier(
+                    spend.expsk.full_viewing_key(), spend.witness.position());
+                if (!cm || !nf) {
+                    librustzcash_sapling_proving_ctx_free(saplingSpendCtx);
+                    throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Spend is invalid");
+                }
+
+                CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+                ss << spend.witness.path();
+                std::vector<unsigned char> witness(ss.begin(), ss.end());
+
+                SpendDescription sdesc;
+                if (!librustzcash_sapling_spend_proof(
+                        saplingSpendCtx,
+                        spend.expsk.full_viewing_key().ak.begin(),
+                        spend.expsk.nsk.begin(),
+                        spend.note.d.data(),
+                        spend.note.r.begin(),
+                        spend.alpha.begin(),
+                        spend.note.value(),
+                        spend.anchor.begin(),
+                        witness.data(),
+                        sdesc.cv.begin(),
+                        sdesc.rk.begin(),
+                        sdesc.zkproof.data())) {
+                    librustzcash_sapling_proving_ctx_free(saplingSpendCtx);
+                    throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Spend proof failed");
+                }
+
+                sdesc.anchor = spend.anchor;
+                sdesc.nullifier = *nf;
+                mtx.vShieldedSpend.push_back(sdesc);
+            }
+        }
+        else
+        {
+            // put all transparent inputs and spends on the transaction, sign and return or post
+            for (auto &oneInput : setCoinsRet)
+            {
+                mtx.vin.push_back(CTxIn(oneInput.first->GetHash(), oneInput.second));
+            }
         }
 
         // Fetch previous transactions (inputs):
@@ -4951,6 +5091,36 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     UniValue vErrors(UniValue::VARR);
 
     // Sign what we can
+
+    // first Sapling spends, if we have them
+    if (saplingSpends.size())
+    {
+        uint256 dataToBeSigned;
+        CScript scriptCode;
+        try {
+            dataToBeSigned = SignatureHash(scriptCode, mtx, NOT_AN_INPUT, SIGHASH_ALL, 0, consensusBranchId);
+        } catch (std::logic_error ex) {
+            librustzcash_sapling_proving_ctx_free(saplingSpendCtx);
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not construct signature hash");
+        }
+
+        // Create Sapling spendAuth and binding signatures
+        for (size_t i = 0; i < saplingSpends.size(); i++) {
+            librustzcash_sapling_spend_sig(
+                saplingSpends[i].expsk.ask.begin(),
+                saplingSpends[i].alpha.begin(),
+                dataToBeSigned.begin(),
+                mtx.vShieldedSpend[i].spendAuthSig.data());
+        }
+        librustzcash_sapling_binding_sig(
+            saplingSpendCtx,
+            mtx.valueBalance,
+            dataToBeSigned.begin(),
+            mtx.bindingSig.data());
+
+        librustzcash_sapling_proving_ctx_free(saplingSpendCtx);
+    }
+
     for (int i = firstFundingInput; i < mtx.vin.size(); i++)
     {
         CTxIn& txin = mtx.vin[i];
