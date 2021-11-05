@@ -3621,9 +3621,7 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
         offerTx.vout.size() == 1 &&
         offerTx.vin.size() == 1 &&
         offerTx.vShieldedSpend.size() == 0 &&
-        (p.evalCode == EVAL_IDENTITY_COMMITMENT || 
-          ((getExpired && (spentKey = CSpentIndexKey(offerTx.vin[0].prevout.hash, offerTx.vin[0].prevout.n), GetSpentIndex(spentKey, spentValue))) ||
-           (getUnexpired && (spentKey = CSpentIndexKey(offerTx.vin[0].prevout.hash, offerTx.vin[0].prevout.n), !GetSpentIndex(spentKey, spentValue))))) &&
+        ((spentKey = CSpentIndexKey(offerTx.vin[0].prevout.hash, offerTx.vin[0].prevout.n), !GetSpentIndex(spentKey, spentValue))) &&
         ((getExpired && offerTx.nExpiryHeight <= height) || (getUnexpired && offerTx.nExpiryHeight > height)) &&
         myGetTransaction(offerTx.vin[0].prevout.hash, inputToOfferTx, offerBlockHash))
     {
