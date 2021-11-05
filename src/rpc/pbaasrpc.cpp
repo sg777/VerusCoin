@@ -4159,7 +4159,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 }
     
                 // we need one output to create the proper index entry
-                CKeyID offerIDKey = COnChainOffer::OnChainIdentityOfferKey(offerCurrencyID);
+                CKeyID offerIDKey = COnChainOffer::OnChainIdentityOfferKey(offerID);
                 CKeyID forIDKey = newIDID.IsNull() ? 
                     COnChainOffer::OnChainOfferForCurrencyKey(newCurrencyID) :
                     COnChainOffer::OnChainOfferForIdentityKey(newIDID);
@@ -5304,6 +5304,8 @@ UniValue getoffers(const UniValue& params, bool fHelp)
 
     std::multimap<std::pair<uint160, CAmount>, UniValue> uniBuyWithCurrency;
     std::multimap<std::pair<uint160, CAmount>, UniValue> uniSellToCurrency;
+
+    printf("%s: looking up keys: %s, %s\n", __func__, EncodeDestination(CKeyID(lookupID)).c_str(), EncodeDestination(CKeyID(lookupForID)).c_str());
 
     if (!GetAddressUnspent(lookupID, CScript::P2PKH, unspentOutputOffers) || !GetAddressUnspent(lookupForID, CScript::P2PKH, unspentOutputs))
     {
