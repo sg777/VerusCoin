@@ -3958,7 +3958,17 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             CCurrencyValueMap reserveValueOut;
             CAmount nativeValueOut;
             CAmount totalOriginationFees = feeAmount;
-            if (!returnHex) totalOriginationFees += feeAmount;
+            if (!returnHex)
+            {
+                totalOriginationFees += feeAmount;
+                // if we're posting, and it is not a native currency offer, add an extra fee
+                // to enable closing the offer
+                if (sourceCurrencyID != ASSETCHAINS_CHAINID)
+                {
+                    // add one more fee to enable auto-cancellation when offering non-native currencies
+                    totalOriginationFees += feeAmount;
+                }
+            }
 
             // first make an input transaction to split the offer funds into an exact input and change, if needed
             if (sourceCurrencyID == ASSETCHAINS_CHAINID)
@@ -4034,7 +4044,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 CCommitmentHash commitment = CCommitmentHash(uint256(), CTokenOutput(oneOutput.scriptPubKey.ReserveOutValue()));
                 tb.AddTransparentOutput(MakeMofNCCScript(
                     CConditionObj<CCommitmentHash>(EVAL_IDENTITY_COMMITMENT, dests, 1, &commitment), returnHex ? nullptr : &masterKeyDest), 
-                    oneOutput.nAmount);
+                    returnHex ? oneOutput.nAmount : oneOutput.nAmount + feeAmount);
             }
 
             // aggregate all inputs into one output with only the offer coins and offer indexes
