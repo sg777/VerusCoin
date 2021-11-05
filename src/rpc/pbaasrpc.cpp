@@ -4846,7 +4846,10 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
                 offeredCurrency.valueMap[ASSETCHAINS_CHAINID] = inputTxToOffer.vout[txToTake.vin[0].prevout.n].nValue;
             }
             offeredCurrency += inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.ReserveOutValue();
-
+            if (offeredCurrency < acceptedCurrency)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency offered: " + offeredCurrency.ToUniValue().write() + ", is less than accepted: " + acceptedCurrency.ToUniValue().write());
+            }
         }
 
         CAmount additionalFees = feeAmount;
@@ -4932,6 +4935,26 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         }
         else if (currencyToDeliver.valueMap.size())
         {
+            COptCCParams p;
+            CCurrencyValueMap currencyRequested;
+            if (txToTake.vout[0].scriptPubKey.IsSpendableOutputType(p) || (p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT))
+            {
+                if ((txToTake.vout[0].nValue + feeAmount) != 0)
+                {
+                    currencyRequested.valueMap[ASSETCHAINS_CHAINID] = (txToTake.vout[0].nValue + feeAmount);
+                }
+                currencyRequested += txToTake.vout[0].scriptPubKey.ReserveOutValue();
+                if (currencyToDeliver < currencyRequested)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency being delivered: " + currencyToDeliver.ToUniValue().write() + ", is less than requested: " + currencyRequested.ToUniValue().write());
+                }
+                currencyToDeliver = currencyRequested;
+            }
+            else
+            {
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Invalid currency request from offer transaction");
+            }
+
             // find enough currency from source to fund the acceptance
             CAmount nativeValue = (currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] + additionalFees);
             currencyToDeliver.valueMap.erase(ASSETCHAINS_CHAINID);
