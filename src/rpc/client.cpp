@@ -563,7 +563,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "recoveridentity", 0},
     { "makeoffer", 1},
     { "takeoffer", 1},
-    { "closeoffers", 1},
+    { "closeoffers", 0},
     // Zcash addition
     { "z_setmigration", 0},
 };

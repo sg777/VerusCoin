@@ -5894,7 +5894,7 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
     {
         if (!params[0].isArray())
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Second parameter must be an array of transaction IDs that are offers from this wallet to close. It may be null '[]'");
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "First parameter must be an array of transaction IDs that are offers from this wallet to close. It may be null '[]'");
         }
         for (int i = 0; i < params[0].size(); i++)
         {
