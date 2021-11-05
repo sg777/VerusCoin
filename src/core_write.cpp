@@ -1411,11 +1411,11 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 if (p.vData.size())
                 {
                     ch = CCommitmentHash(p.vData[0]);
-                    out.push_back(Pair("identitycommitment", ch.ToUniValue()));
+                    out.push_back(Pair("commitmenthash", ch.ToUniValue()));
                 }
                 else
                 {
-                    out.push_back(Pair("identitycommitment", ""));
+                    out.push_back(Pair("commitmenthash", ""));
                 }
                 break;
             }

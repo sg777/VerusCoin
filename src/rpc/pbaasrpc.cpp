@@ -4139,11 +4139,10 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
                 CCurrencyValueMap reserveValueOut;
                 CAmount nativeValueOut;
-                CAmount totalNativeDeposit = std::max(ConnectedChains.ThisChain().idRegistrationFees / 10, (int64_t)COnChainOffer::MIN_LISTING_DEPOSIT);
                 CAmount totalOriginationFees = feeAmount * 2;
 
                 success = find_utxos(from_taddress, vCoins) &&
-                            pwalletMain->SelectCoinsMinConf(totalNativeDeposit + totalOriginationFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+                            pwalletMain->SelectCoinsMinConf(totalOriginationFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
 
                 // first make an input transaction to split the offer funds into an exact input and change, if needed
                 if (!success)
@@ -4166,7 +4165,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
 
                 tb.AddTransparentInput(COutPoint(idTxIn.prevout.hash, idTxIn.prevout.n), idTx.vout[idTxIn.prevout.n].scriptPubKey, idTx.vout[idTxIn.prevout.n].nValue);
                 sourceIdentity.UpgradeVersion(height + 1);
-                tb.AddTransparentOutput(sourceIdentity.IdentityUpdateOutputScript(height + 1, &indexDests), totalNativeDeposit);
+                tb.AddTransparentOutput(sourceIdentity.IdentityUpdateOutputScript(height + 1, &indexDests), feeAmount);
 
                 // aggregate all inputs into one output with only the offer coins and offer indexes
                 for (auto &oneInput : setCoinsRet)
@@ -5793,6 +5792,8 @@ bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxD
         bool hasTDest = dest.which() != COptCCParams::ADDRTYPE_INVALID;
         bool hasTokens = false;
 
+        value -= std::min(DEFAULT_TRANSACTION_FEE, value);
+
         uint256 ovk;
         if (hasZDest)
         {
@@ -5869,7 +5870,7 @@ bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxD
             tb.SendChangeTo(dest);
         }
     }
-    return false;
+    return true;
 }
 
 UniValue closeoffers(const UniValue& params, bool fHelp)
