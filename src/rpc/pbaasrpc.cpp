@@ -3606,9 +3606,7 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
     if (postedTx.vout.size() > 1 &&
         postedTx.vout[0].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
-        (p.evalCode == EVAL_IDENTITY_COMMITMENT || 
-         (p.evalCode == EVAL_IDENTITY_PRIMARY &&
-          postedTx.vout[0].nValue >= std::max(ConnectedChains.ThisChain().idRegistrationFees / 10, (int64_t)COnChainOffer::MIN_LISTING_DEPOSIT))) &&
+        (p.evalCode == EVAL_IDENTITY_COMMITMENT || p.evalCode == EVAL_IDENTITY_PRIMARY) &&
         ((postedTx.vout.back().scriptPubKey.IsOpReturn() &&
           (opRetArray = RetrieveOpRetArray((opRetTx = postedTx).vout.back().scriptPubKey)).size() == 1) ||
          (GetSpentIndex(spentKey, spentValue) &&

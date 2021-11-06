@@ -616,7 +616,6 @@ public:
             READWRITE(VARINT(currencyImportFee));
             READWRITE(VARINT(transactionImportFee));
             READWRITE(VARINT(transactionExportFee));
-            READWRITE(LIMITED_STRING(gatewayConverterName, MAX_NAME_LEN)); // TODO: HARDENING - this needs to be moved to gateway or pbaas
         }
         else
         {
@@ -642,6 +641,7 @@ public:
             READWRITE(rewardsDecay);
             READWRITE(halving);
             READWRITE(eraEnd);
+            READWRITE(LIMITED_STRING(gatewayConverterName, MAX_NAME_LEN)); // TODO: HARDENING - this needs to be moved to gateway or pbaas
         }
     }
 
