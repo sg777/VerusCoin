@@ -1034,7 +1034,7 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height, const std::vector
         {
             std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
             CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
-            ret = MakeMofNCCScript(recovery, indexDests);
+            ret = MakeMofNCCScript(1, primary, recovery, indexDests);
         }
         else
         {
