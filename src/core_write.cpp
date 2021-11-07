@@ -842,10 +842,8 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
         obj.push_back(Pair("idregistrationprice", ValueFromAmount(idRegistrationFees)));
         obj.push_back(Pair("idreferrallevels", idReferralLevels));
-        if (IsPBaaSChain() || IsGateway())
-        {
-            obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentityID(GatewayConverterID()))));
-        }
+        obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentityID(GatewayConverterID()))));
+        obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
 
         if (IsPBaaSChain())
         {
