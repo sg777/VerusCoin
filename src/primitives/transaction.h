@@ -1528,30 +1528,33 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(version);
-        READWRITE(sigHashType);
-        std::vector<CSmartTransactionSignature> sigVec;
-        if (ser_action.ForRead())
+        if (version >= FIRST_VERSION && version <= LAST_VERSION)
         {
-            READWRITE(sigVec);
-            for (auto oneSig : sigVec)
+            READWRITE(sigHashType);
+            std::vector<CSmartTransactionSignature> sigVec;
+            if (ser_action.ForRead())
             {
-                if (oneSig.sigType == oneSig.SIGTYPE_SECP256K1)
+                READWRITE(sigVec);
+                for (auto oneSig : sigVec)
                 {
-                    CPubKey pk(oneSig.pubKeyData);
-                    if (pk.IsFullyValid())
+                    if (oneSig.sigType == oneSig.SIGTYPE_SECP256K1)
                     {
-                        signatures[pk.GetID()] = oneSig;
+                        CPubKey pk(oneSig.pubKeyData);
+                        if (pk.IsFullyValid())
+                        {
+                            signatures[pk.GetID()] = oneSig;
+                        }
                     }
                 }
             }
-        }
-        else
-        {
-            for (auto oneSigPair : signatures)
+            else
             {
-                sigVec.push_back(oneSigPair.second);
+                for (auto oneSigPair : signatures)
+                {
+                    sigVec.push_back(oneSigPair.second);
+                }
+                READWRITE(sigVec);
             }
-            READWRITE(sigVec);
         }
     }
 

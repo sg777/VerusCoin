@@ -1178,6 +1178,8 @@ bool ContextualCheckTransaction(
     bool saplingActive = chainparams.GetConsensus().NetworkUpgradeActive(nHeight, Consensus::UPGRADE_SAPLING);
     bool isSprout = !overwinterActive;
 
+    bool isVerusVault = CVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
     // If Sprout rules apply, reject transactions which are intended for Overwinter and beyond
     if (isSprout && tx.fOverwintered) {
         return state.DoS(isInitBlockDownload(chainparams) ? 0 : dosLevel,
@@ -1267,13 +1269,36 @@ bool ContextualCheckTransaction(
         auto consensusBranchId = CurrentEpochBranchId(nHeight, chainparams.GetConsensus());
         // Empty output script.
         CScript scriptCode;
+        bool sigHashSingle = false;
+
+        if (isVerusVault && tx.vJoinSplit.empty() && tx.vShieldedSpend.empty() && !tx.vShieldedOutput.empty() && tx.vin.size() > 0)
+        {
+            // if vin[0] is a smart signature for SIGHASH_SINGLE | SIGHASH_ANYONECANPAY, and the tx has no shielded spends, 
+            // but does have shielded outputs, the transaction binding signature is only bound to the transparent input, 
+            // all z-outputs, and no z-inputs. if there are shielded inputs, we do not afford the transaction this exception
+            CSmartTransactionSignatures smartSigs;
+            std::vector<unsigned char> ffVec = GetFulfillmentVector(tx.vin[0].scriptSig);
+            if (ffVec.size() && (smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()))).IsValid())
+            {
+                if (smartSigs.sigHashType == (SIGHASH_SINGLE | SIGHASH_ANYONECANPAY))
+                {
+                    sigHashSingle = true;
+                }
+            }
+        }
         try {
-            dataToBeSigned = SignatureHash(scriptCode, tx, NOT_AN_INPUT, SIGHASH_ALL, 0, consensusBranchId);
+            if (sigHashSingle == true)
+            {
+                dataToBeSigned = SignatureHash(scriptCode, tx, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY, 0, consensusBranchId);
+            }
+            else
+            {
+                dataToBeSigned = SignatureHash(scriptCode, tx, NOT_AN_INPUT, SIGHASH_ALL, 0, consensusBranchId);
+            }
         } catch (std::logic_error ex) {
             return state.DoS(100, error("CheckTransaction(): error computing signature hash"),
                              REJECT_INVALID, "error-computing-signature-hash");
         }
-        
     }
 
     if (!(tx.IsMint() || tx.vJoinSplit.empty()))

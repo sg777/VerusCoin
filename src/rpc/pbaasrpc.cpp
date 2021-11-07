@@ -3823,6 +3823,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     bool hasZDest = false;
     libzcash::PaymentAddress zaddressDest;
     libzcash::SaplingPaymentAddress *saplingAddress;
+    void *saplingOutputCtx = nullptr;
 
     auto changeAddressStr = TrimSpaces(uni_get_str(find_value(params[1], "changeaddress")));
     if (changeAddressStr.empty() || (changeDestination = ValidateDestination(changeAddressStr)).which() == COptCCParams::ADDRTYPE_INVALID)
@@ -4256,14 +4257,14 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 }
                 ovk = ovkForShieldingFromTaddr(seed);
 
-                auto ctx = librustzcash_sapling_proving_ctx_init();
+                saplingOutputCtx = librustzcash_sapling_proving_ctx_init();
                 auto note = libzcash::SaplingNote(*saplingAddress, destinationAmount);
                 OutputDescriptionInfo output(ovk, note, hexMemo);
                 offerTx.valueBalance -= destinationAmount;
 
                 auto cm = output.note.cm();
                 if (!cm) {
-                    librustzcash_sapling_proving_ctx_free(ctx);
+                    librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, "failed attempt to create private output");
                 }
 
@@ -4271,7 +4272,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
 
                 auto res = notePlaintext.encrypt(output.note.pk_d);
                 if (!res) {
-                    librustzcash_sapling_proving_ctx_free(ctx);
+                    librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, "failed to encrypt note with memo");
                 }
                 auto enc = res.get();
@@ -4279,7 +4280,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
 
                 OutputDescription odesc;
                 if (!librustzcash_sapling_output_proof(
-                        ctx,
+                        saplingOutputCtx,
                         encryptor.get_esk().begin(),
                         output.note.d.data(),
                         output.note.pk_d.begin(),
@@ -4287,7 +4288,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                         output.note.value(),
                         odesc.cv.begin(),
                         odesc.zkproof.begin())) {
-                    librustzcash_sapling_proving_ctx_free(ctx);
+                    librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, "output proof failed");
                 }
 
@@ -4302,7 +4303,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                     odesc.cm,
                     encryptor);
                 offerTx.vShieldedOutput.push_back(odesc);
-                librustzcash_sapling_proving_ctx_free(ctx);
             }
             else
             {
@@ -4428,9 +4428,36 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         }
 
         // now, the offer tx is complete, and we need to sign its input with SIGHASH_SINGLE
+        auto consensusBranchId = CurrentEpochBranchId(height, Params().consensus);
+
+        if (offerTx.vShieldedOutput.size())
+        {
+            // has for SIGHASH_SINGLE | SIGHASH_ANYONECANPAY binding signature for
+            // Sapling outputs. Final transaction must only include Sapling outputs, which
+            // have a binding signature bound to the single input along with its output and a zero
+            // amount. the zero amount allows us to generate and validate this hash without
+            // the output script of the prior transaction output, which is bound and verified by the
+            // hash signed on that input already
+            uint256 dataToBeSigned;
+            CScript scriptCode;
+            try {
+                dataToBeSigned = SignatureHash(scriptCode, offerTx, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY, 0, consensusBranchId);
+            } catch (std::logic_error ex) {
+                librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not construct signature hash");
+            }
+
+            librustzcash_sapling_binding_sig(
+                saplingOutputCtx,
+                offerTx.valueBalance,
+                dataToBeSigned.begin(),
+                offerTx.bindingSig.data());
+
+            librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
+        }
+
         CTransaction txNewConst(offerTx);
         SignatureData sigdata;
-        auto consensusBranchId = CurrentEpochBranchId(height, Params().consensus);
 
         bool signSuccess = ProduceSignature(
             TransactionSignatureCreator(pwalletMain, &txNewConst, 0, offerIn.nValue, offerIn.scriptPubKey, height + 1, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY), offerIn.scriptPubKey, sigdata, consensusBranchId);
@@ -5014,6 +5041,11 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
 
         if (saplingNotes.size())
         {
+            if (txToTake.vShieldedOutput.size())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Paying for an offer, which pays to a z-address with a z-address source is not yet implemented");
+            }
+
             std::vector<SaplingOutPoint> notes;
             for (size_t i = 0; i < saplingNotes.size(); i++)
             {
@@ -5303,7 +5335,7 @@ UniValue getoffers(const UniValue& params, bool fHelp)
     std::multimap<std::pair<uint160, CAmount>, UniValue> uniBuyWithCurrency;
     std::multimap<std::pair<uint160, CAmount>, UniValue> uniSellToCurrency;
 
-    printf("%s: looking up keys: %s, %s\n", __func__, EncodeDestination(CKeyID(lookupID)).c_str(), EncodeDestination(CKeyID(lookupForID)).c_str());
+    //printf("%s: looking up keys: %s, %s\n", __func__, EncodeDestination(CKeyID(lookupID)).c_str(), EncodeDestination(CKeyID(lookupForID)).c_str());
 
     if (!GetAddressUnspent(lookupID, CScript::P2PKH, unspentOutputOffers) || !GetAddressUnspent(lookupForID, CScript::P2PKH, unspentOutputs))
     {

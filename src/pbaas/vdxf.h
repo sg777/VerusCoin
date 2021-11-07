@@ -185,7 +185,8 @@ void FromVector(const std::vector<unsigned char> &vch, SERIALIZABLE &obj, bool *
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << '\n';
+        //printf("%s\n", e.what());
+        LogPrint("serialization", "%s\n", e.what());
     }
 }
 
