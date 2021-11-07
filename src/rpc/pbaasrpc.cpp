@@ -3607,6 +3607,7 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
         postedTx.vout[0].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
         (p.evalCode == EVAL_IDENTITY_COMMITMENT || p.evalCode == EVAL_IDENTITY_PRIMARY) &&
+        postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
         ((postedTx.vout.back().scriptPubKey.IsOpReturn() &&
           (opRetArray = RetrieveOpRetArray((opRetTx = postedTx).vout.back().scriptPubKey)).size() == 1) ||
          (GetSpentIndex(spentKey, spentValue) &&
