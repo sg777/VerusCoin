@@ -834,6 +834,10 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
     bool advancedIdentity = networkVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
     COptCCParams p;
+
+    static uint160 nativeCurrencyOffer = COnChainOffer::OnChainCurrencyOfferKey(ASSETCHAINS_CHAINID);
+    static uint160 offerForNativeCurrency = COnChainOffer::OnChainOfferForCurrencyKey(ASSETCHAINS_CHAINID);
+
     if (advancedIdentity && !isPBaaS)
     {
         if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -845,7 +849,25 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
             COptCCParams master(p.vData.back());
             if (master.IsValid())
             {
-                if (master.vKeys.size() <= 1 || (master.vKeys.size() > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE))
+                int numIndexKeys = 0;
+                bool hasNativeOffer = false, hasOfferForNative = false;
+                for (auto &oneKey : master.vKeys)
+                {
+                    if (oneKey.which() == COptCCParams::ADDRTYPE_PKH || oneKey.which() == COptCCParams::ADDRTYPE_PK)
+                    {
+                        numIndexKeys++;
+                        uint160 destID = GetDestinationID(oneKey);
+                        if (destID == nativeCurrencyOffer)
+                        {
+                            hasNativeOffer = true;
+                        }
+                        else if (destID == offerForNativeCurrency)
+                        {
+                            hasOfferForNative = true;
+                        }
+                    }
+                }
+                if (!(hasNativeOffer && hasOfferForNative) && (numIndexKeys <= 1 || (numIndexKeys > 1 && tx.vout[outNum].nValue >= COnChainOffer::MIN_LISTING_DEPOSIT)))
                 {
                     return true;
                 }
@@ -875,7 +897,25 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
                 COptCCParams master(p.vData.back());
                 if (master.IsValid())
                 {
-                    if (master.vKeys.size() <= 1 || (master.vKeys.size() > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE))
+                    int numIndexKeys = 0;
+                    bool hasNativeOffer = false, hasOfferForNative = false;
+                    for (auto &oneKey : master.vKeys)
+                    {
+                        if (oneKey.which() == COptCCParams::ADDRTYPE_PKH || oneKey.which() == COptCCParams::ADDRTYPE_PK)
+                        {
+                            numIndexKeys++;
+                            uint160 destID = GetDestinationID(oneKey);
+                            if (destID == nativeCurrencyOffer)
+                            {
+                                hasNativeOffer = true;
+                            }
+                            else if (destID == offerForNativeCurrency)
+                            {
+                                hasOfferForNative = true;
+                            }
+                        }
+                    }
+                    if (!(hasNativeOffer && hasOfferForNative) && (numIndexKeys <= 1 || (numIndexKeys > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE)))
                     {
                         return true;
                     }
@@ -896,7 +936,27 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
                     COptCCParams master(p.vData.back());
                     if (master.IsValid())
                     {
-                        if (master.vKeys.size() <= 1 || (master.vKeys.size() > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE))
+                        int numIndexKeys = 0;
+                        bool hasNativeOffer = false, hasOfferForNative = false;
+                        for (auto &oneKey : master.vKeys)
+                        {
+                            if (oneKey.which() == COptCCParams::ADDRTYPE_PKH || oneKey.which() == COptCCParams::ADDRTYPE_PK)
+                            {
+                                numIndexKeys++;
+                                uint160 destID = GetDestinationID(oneKey);
+
+                                // TODO: HARDENING - check any currency against itself as we do native
+                                if (destID == nativeCurrencyOffer)
+                                {
+                                    hasNativeOffer = true;
+                                }
+                                else if (destID == offerForNativeCurrency)
+                                {
+                                    hasOfferForNative = true;
+                                }
+                            }
+                        }
+                        if (!(hasNativeOffer && hasOfferForNative) && (numIndexKeys <= 1 || (numIndexKeys > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE)))
                         {
                             return true;
                         }
