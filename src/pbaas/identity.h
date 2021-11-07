@@ -179,8 +179,9 @@ public:
     static const uint8_t VERSION_INVALID = 0;
     static const uint8_t VERSION_VERUSID = 1;
     static const uint8_t VERSION_VAULT = 2;
+    static const uint8_t VERSION_PBAAS = 3;
     static const uint8_t VERSION_FIRSTVALID = 1;
-    static const uint8_t VERSION_LASTVALID = 2;
+    static const uint8_t VERSION_LASTVALID = 3;
 
     uint32_t nVersion;
     uint32_t flags;
@@ -457,12 +458,21 @@ public:
 
     void UpgradeVersion(uint32_t height)
     {
+        // to make the code simpler, these are just done in order, and more than one may be done if an ID
+        // goes through multiple updates
         if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT)
         {
             if (nVersion < VERSION_VAULT)
             {
                 nVersion = VERSION_VAULT;
                 systemID = parent.IsNull() ? GetID() : parent;
+            }
+        }
+        if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
+        {
+            if (nVersion < VERSION_PBAAS)
+            {
+                nVersion = VERSION_PBAAS;
             }
         }
     }

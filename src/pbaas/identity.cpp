@@ -93,16 +93,15 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
     auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
     if (parent != newIdentity.parent ||
         (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name) ||
-        (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 &&
-            nSolVersion < CActivationHeight::ACTIVATE_VERUSVAULT && 
-            (newIdentity.HasActiveCurrency() || 
-            newIdentity.IsLocked() ||
-            newIdentity.nVersion >= VERSION_VAULT)) ||
+        (nSolVersion < CActivationHeight::ACTIVATE_VERUSVAULT && (newIdentity.IsLocked() || newIdentity.nVersion >= VERSION_VAULT)) ||
         (nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && (newIdentity.nVersion < VERSION_VAULT ||
-                                                                (newIdentity.systemID != (nVersion < VERSION_VAULT ? parent : systemID)))) ||
+                                                                  (newIdentity.systemID != (nVersion < VERSION_VAULT ? parent : systemID)))) ||
+        (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && (newIdentity.HasActiveCurrency() || newIdentity.nVersion >= VERSION_PBAAS)) ||
+        (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && (newIdentity.nVersion < VERSION_PBAAS)) ||
         GetID() != newIdentity.GetID() ||
-        ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
-        ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_VAULT)) ||
+        ((newIdentity.flags & ~FLAG_REVOKED) && newIdentity.nVersion < VERSION_VAULT) ||
+        ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_LOCKED)) && newIdentity.nVersion < VERSION_PBAAS) ||
+        ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
         (IsLocked(height) && (!newIdentity.IsRevoked() && !newIdentity.IsLocked(height))) ||
         ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
         newIdentity.nVersion < VERSION_FIRSTVALID ||
