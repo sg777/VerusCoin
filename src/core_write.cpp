@@ -840,7 +840,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         }
         obj.push_back(Pair("minnotariesconfirm", minNotariesConfirm));
 
-        obj.push_back(Pair("idregistrationprice", ValueFromAmount(idRegistrationFees)));
+        obj.push_back(Pair("idregistrationfees", ValueFromAmount(idRegistrationFees)));
         obj.push_back(Pair("idreferrallevels", idReferralLevels));
         obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentityID(GatewayConverterID()))));
         obj.push_back(Pair("gatewayconvertername", gatewayConverterName));

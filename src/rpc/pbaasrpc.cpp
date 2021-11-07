@@ -7790,7 +7790,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "                                                             0x100 = IS_PBAAS_CHAIN\n"
             "\n"
             "         \"name\" : \"xxxx\",              (string, required) name of existing identity with no active or pending blockchain\n"
-            "         \"idregistrationprice\" : \"xx.xx\", (value, required) price of an identity in native currency\n"
+            "         \"idregistrationfees\" : \"xx.xx\", (value, required) price of an identity in native currency\n"
             "         \"idreferrallevels\" : n,         (int, required) how many levels ID referrals go back in reward\n"
 
             "         \"notaries\" : \"[identity,..]\", (list, optional) list of identities that are assigned as chain notaries\n"
