@@ -842,11 +842,20 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
             p.vData.size() > 1 &&
             p.vData[0].size() == 32)
         {
-            return true;
+            COptCCParams master(p.vData.back());
+            if (master.IsValid())
+            {
+                if (master.vKeys.size() <= 1 || (master.vKeys.size() > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE))
+                {
+                    return true;
+                }
+            }
+            LogPrint("onchaincommitment", "Not enough fee to close offer or invalid offer");
+            return state.Error("Not enough fee to close commitment or invalid commitment");
         }
         else
         {
-            return false;
+            return state.Error("Invalid commitment");
         }
     }
     else if (isPBaaS)
@@ -860,9 +869,19 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
             std::vector<unsigned char> vch;
             vch.assign(p.vData[0].begin(), p.vData[0].begin() + 20);
             uint160 checkVal(vch);
+
             if (p.vData[0].size() == 32 && checkVal != CCommitmentHash::AdvancedCommitmentHashKey())
             {
-                return true;
+                COptCCParams master(p.vData.back());
+                if (master.IsValid())
+                {
+                    if (master.vKeys.size() <= 1 || (master.vKeys.size() > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE))
+                    {
+                        return true;
+                    }
+                }
+                LogPrint("onchaincommitment", "Not enough fee to close commitment or invalid commitment");
+                return false;
             }
             else if (p.vData[0].size() > 32)
             {
@@ -872,8 +891,18 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
                     !ch.reserveValues.valueMap.count(ASSETCHAINS_CHAINID))
                 {
                     // TODO: HARDENING - currently, we are ensuring that a valid, advanced ch is there to
-                    // prevent use of this without actual need. instead of a subclass, we should abstract and contain objects in this output
-                    return true;
+                    // prevent use of this without actual need.
+                    // for more general use, instead of a subclass, we should abstract and contain objects in this output
+                    COptCCParams master(p.vData.back());
+                    if (master.IsValid())
+                    {
+                        if (master.vKeys.size() <= 1 || (master.vKeys.size() > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE))
+                        {
+                            return true;
+                        }
+                    }
+                    LogPrint("onchaincommitment", "Not enough fee to close multi-currency commitment or invalid commitment");
+                    return false;
                 }
                 else
                 {
@@ -1023,6 +1052,22 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
             master.m != 1)
         {
             return state.Error("Invalid identity output destinations and/or configuration");
+        }
+
+        for (auto &oneKey : master.vKeys)
+        {
+            // if we have an index present, this is likely an offer, and we need to have a deposit as well
+            if (oneKey.which() == COptCCParams::ADDRTYPE_PKH)
+            {
+                if (tx.vout[outNum].nValue < DEFAULT_TRANSACTION_FEE)
+                {
+                    return state.Error("Invalid identity output destinations and/or configuration");
+                }
+                else
+                {
+                    break;
+                }
+            }
         }
 
         // we need to have at least 2 of 3 authority spend conditions mandatory at a top level for any primary ID output
