@@ -1197,7 +1197,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
 
         // we need separate spend conditions for both revoke and recover in all cases
-        if ((!isRevoked && !revocationValid) || (isRevoked && !recoveryValid))
+        if ((!isRevoked && !(revocationValid && recoveryValid)) || (isRevoked && !recoveryValid))
         {
             std::string errorOut = "Primary identity output \"" + identity.name + "\" must be spendable by revocation and recovery authorities";
             return state.Error(errorOut.c_str());
