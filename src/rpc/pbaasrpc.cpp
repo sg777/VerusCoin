@@ -3878,7 +3878,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             }
             if (saplingAddress == nullptr)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Only sapling addresses may be used as a \"for\" destination");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Only sapling addresses may be used as a private \"for\" destination");
             }
         }
     }
@@ -4972,9 +4972,9 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             CCurrencyValueMap currencyRequested;
             if (txToTake.vout[0].scriptPubKey.IsSpendableOutputType(p) || (p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT))
             {
-                if ((txToTake.vout[0].nValue + feeAmount) != 0)
+                if (txToTake.vout[0].nValue - txToTake.valueBalance > 0)
                 {
-                    currencyRequested.valueMap[ASSETCHAINS_CHAINID] = (txToTake.vout[0].nValue + feeAmount);
+                    currencyRequested.valueMap[ASSETCHAINS_CHAINID] = txToTake.vout[0].nValue - txToTake.valueBalance;
                 }
                 currencyRequested += txToTake.vout[0].scriptPubKey.ReserveOutValue();
                 if (currencyToDeliver < currencyRequested)
