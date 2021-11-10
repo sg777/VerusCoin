@@ -4352,6 +4352,12 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + " (" +EncodeDestination(CIdentityID(newIDID)) + "), not found ");
             }
 
+            oldID.revocationAuthority = oldID.GetID();
+            oldID.recoveryAuthority = oldID.GetID();
+            oldID.privateAddresses.clear();
+            oldID.primaryAddresses.clear();
+            oldID.minSigs = 1;
+
             uint256 blkHash;
             CTransaction oldIdTx;
             if (!myGetTransaction(idTxIn.prevout.hash, oldIdTx, blkHash))
@@ -4367,14 +4373,13 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 uniOldID[oneEl.first] = oneEl.second;
             }
 
-            if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_VERUSVAULT)
+
+            uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(height + 1);
+
+            if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
             {
-                uniOldID["version"] = (int64_t)oldID.VERSION_VAULT;
-                if (oldID.nVersion < oldID.VERSION_VAULT)
-                {
-                    uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
-                }
-                else
+                uniOldID["version"] = solVersion < CActivationHeight::ACTIVATE_PBAAS ? (int64_t)CIdentity::VERSION_VAULT : (int64_t)CIdentity::VERSION_PBAAS;
+                if (oldID.nVersion < CIdentity::VERSION_VAULT)
                 {
                     uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
                 }
@@ -9164,10 +9169,12 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         uniOldID[oneEl.first] = oneEl.second;
     }
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_VERUSVAULT)
+    uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1);
+
+    if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
     {
-        uniOldID["version"] = (int64_t)oldID.VERSION_VAULT;
-        if (oldID.nVersion < oldID.VERSION_VAULT)
+        uniOldID["version"] = solVersion < CActivationHeight::ACTIVATE_PBAAS ? (int64_t)CIdentity::VERSION_VAULT : (int64_t)CIdentity::VERSION_PBAAS;
+        if (oldID.nVersion < CIdentity::VERSION_VAULT)
         {
             uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
         }
