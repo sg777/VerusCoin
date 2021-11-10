@@ -795,7 +795,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("preallocations", preAllocationArr));
     }
 
-    if (IsGateway() && !GatewayConverterID().IsNull())
+    if (!gatewayID.IsNull())
     {
         obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
     }

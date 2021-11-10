@@ -3777,8 +3777,8 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
             }
 
             // if we are exporting a gateway or PBaaS currency back to its system, we do not store it in reserve deposits
-            if ((oneCurDef.IsGateway() && oneCurDef.systemID == sourceSystemID && oneCurDef.gatewayID == destSystemID) ||
-                (oneCurDef.systemID != sourceSystemID && oneCurDef.systemID == destSystemID))
+            if (((oneCurDef.IsGateway() || oneCurDef.gatewayID == oneCurDef.parent) && oneCurDef.systemID == sourceSystemID && oneCurDef.gatewayID == destSystemID) ||
+                 (oneCurDef.systemID != sourceSystemID && oneCurDef.systemID == destSystemID))
             {
                 // we need to burn this currency here, since it will be sent back to where it was originally minted for us to keep
                 // track of on this system
