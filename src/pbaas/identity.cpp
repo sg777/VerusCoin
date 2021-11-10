@@ -60,23 +60,24 @@ UniValue CNameReservation::ToUniValue() const
     return ret;
 }
 
-CIdentity::CIdentity(const CTransaction &tx, int *voutNum)
+CIdentity::CIdentity(const CTransaction &tx, int *voutNum, const uint160 &onlyThisID)
 {
     std::set<uint160> ids;
     int idIndex;
     bool found = false;
 
-    nVersion = PBAAS_VERSION_INVALID;
+    nVersion = VERSION_INVALID;
     for (int i = 0; i < tx.vout.size(); i++)
     {
         CIdentity foundIdentity(tx.vout[i].scriptPubKey);
-        if (foundIdentity.IsValid() && !found)
+        bool justFound = (foundIdentity.IsValid() && (onlyThisID.IsNull() || foundIdentity.GetID() == onlyThisID));
+        if (justFound && !found)
         {
             *this = foundIdentity;
             found = true;
             idIndex = i;
         }
-        else if (foundIdentity.IsValid())
+        else if (justFound)
         {
             *this = CIdentity();
         }
@@ -92,15 +93,14 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
     auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
     if (parent != newIdentity.parent ||
         (nSolVersion < CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name) ||
-        (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 &&
-            nSolVersion < CActivationHeight::ACTIVATE_PBAAS && 
-            (newIdentity.HasActiveCurrency() || 
-            newIdentity.IsLocked() ||
-            newIdentity.nVersion >= VERSION_PBAAS)) ||
-        (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && (newIdentity.nVersion < VERSION_PBAAS ||
-                                                                (newIdentity.systemID != (nVersion < VERSION_PBAAS ? parent : systemID)))) ||
+        (nSolVersion < CActivationHeight::ACTIVATE_VERUSVAULT && (newIdentity.IsLocked() || newIdentity.nVersion >= VERSION_VAULT)) ||
+        (nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && (newIdentity.nVersion < VERSION_VAULT ||
+                                                                  (newIdentity.systemID != (nVersion < VERSION_VAULT ? parent : systemID)))) ||
+        (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && (newIdentity.HasActiveCurrency() || newIdentity.nVersion >= VERSION_PBAAS)) ||
+        (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && (newIdentity.nVersion < VERSION_PBAAS)) ||
         GetID() != newIdentity.GetID() ||
-        ((newIdentity.flags & ~FLAG_REVOKED) && (newIdentity.nVersion == VERSION_FIRSTVALID)) ||
+        ((newIdentity.flags & ~FLAG_REVOKED) && newIdentity.nVersion < VERSION_VAULT) ||
+        ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_LOCKED)) && newIdentity.nVersion < VERSION_PBAAS) ||
         ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
         (IsLocked(height) && (!newIdentity.IsRevoked() && !newIdentity.IsLocked(height))) ||
         ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
@@ -112,7 +112,7 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
 
     // we cannot unlock instantly unless we are revoked, we also cannot relock
     // to enable an earlier unlock time
-    if (newIdentity.nVersion >= VERSION_PBAAS)
+    if (newIdentity.nVersion >= VERSION_VAULT)
     {
         if (IsLocked(height))
         {
@@ -418,7 +418,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     std::vector<CTxDestination> referrers;
     bool valid = true;
 
-    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
+    bool isVault = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
     for (auto &txout : tx.vout)
     {
@@ -494,7 +494,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
 
     // CHECK #2 - must be rooted in this chain
     if (newIdentity.parent != ConnectedChains.ThisChain().GetID() &&
-        !(isPBaaS && newIdentity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive()))
+        !(isVault && newIdentity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive()))
     {
         return state.Error("Identity parent of new identity must be current chain");
     }
@@ -685,6 +685,10 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     std::vector<CTxDestination> referrers;
     bool valid = true;
 
+    uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS; // this is only PBaaS differences, not Verus Vault
+    bool advancedIdentity = networkVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
     AssertLockHeld(cs_main);
 
     for (auto &txout : tx.vout)
@@ -741,6 +745,21 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     else if (!valid)
     {
         return state.Error("Improperly formed identity definition transaction");
+    }
+
+    if (advancedIdentity)
+    {
+        uint160 parentID = newIdentity.parent;
+        auto cleanName = CleanName(newIdentity.name, parentID, true, false);
+        if (cleanName.empty())
+        {
+            return state.Error("Invalid name characters specified in identity registration");
+        }
+        std::vector<unsigned char> base58Vec;
+        if (DecodeBase58Check(cleanName, base58Vec) && base58Vec.size() > 20)
+        {
+            return state.Error("Invalid name specified - cannot use base58 checksum address as the name for an identity");
+        }
     }
 
     int commitmentHeight = 0;
@@ -805,6 +824,166 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     return true;
 }
 
+bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    AssertLockHeld(cs_main);
+
+    uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS; // this is only PBaaS differences, not Verus Vault
+    bool advancedIdentity = networkVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    COptCCParams p;
+
+    static uint160 nativeCurrencyOffer = COnChainOffer::OnChainCurrencyOfferKey(ASSETCHAINS_CHAINID);
+    static uint160 offerForNativeCurrency = COnChainOffer::OnChainOfferForCurrencyKey(ASSETCHAINS_CHAINID);
+
+    if (advancedIdentity && !isPBaaS)
+    {
+        if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1 &&
+            p.vData[0].size() == 32)
+        {
+            COptCCParams master(p.vData.back());
+            if (master.IsValid())
+            {
+                int numIndexKeys = 0;
+                bool hasNativeOffer = false, hasOfferForNative = false;
+                for (auto &oneKey : master.vKeys)
+                {
+                    if (oneKey.which() == COptCCParams::ADDRTYPE_PKH || oneKey.which() == COptCCParams::ADDRTYPE_PK)
+                    {
+                        numIndexKeys++;
+                        uint160 destID = GetDestinationID(oneKey);
+                        if (destID == nativeCurrencyOffer)
+                        {
+                            hasNativeOffer = true;
+                        }
+                        else if (destID == offerForNativeCurrency)
+                        {
+                            hasOfferForNative = true;
+                        }
+                    }
+                }
+                if (!(hasNativeOffer && hasOfferForNative) && (numIndexKeys <= 1 || (numIndexKeys > 1 && tx.vout[outNum].nValue >= COnChainOffer::MIN_LISTING_DEPOSIT)))
+                {
+                    return true;
+                }
+            }
+            LogPrint("onchaincommitment", "Not enough fee to close offer or invalid offer");
+            return state.Error("Not enough fee to close commitment or invalid commitment");
+        }
+        else
+        {
+            return state.Error("Invalid commitment");
+        }
+    }
+    else if (isPBaaS)
+    {
+        if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
+        {
+            CCommitmentHash ch(p.vData[0]);
+            std::vector<unsigned char> vch;
+            vch.assign(p.vData[0].begin(), p.vData[0].begin() + 20);
+            uint160 checkVal(vch);
+
+            if (p.vData[0].size() == 32 && checkVal != CCommitmentHash::AdvancedCommitmentHashKey())
+            {
+                COptCCParams master(p.vData.back());
+                if (master.IsValid())
+                {
+                    int numIndexKeys = 0;
+                    bool hasNativeOffer = false, hasOfferForNative = false;
+                    for (auto &oneKey : master.vKeys)
+                    {
+                        if (oneKey.which() == COptCCParams::ADDRTYPE_PKH || oneKey.which() == COptCCParams::ADDRTYPE_PK)
+                        {
+                            numIndexKeys++;
+                            uint160 destID = GetDestinationID(oneKey);
+                            if (destID == nativeCurrencyOffer)
+                            {
+                                hasNativeOffer = true;
+                            }
+                            else if (destID == offerForNativeCurrency)
+                            {
+                                hasOfferForNative = true;
+                            }
+                        }
+                    }
+                    if (!(hasNativeOffer && hasOfferForNative) && (numIndexKeys <= 1 || (numIndexKeys > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE)))
+                    {
+                        return true;
+                    }
+                }
+                LogPrint("onchaincommitment", "Not enough fee to close commitment or invalid commitment");
+                return false;
+            }
+            else if (p.vData[0].size() > 32)
+            {
+                if (checkVal == CCommitmentHash::AdvancedCommitmentHashKey() &&
+                    ch.IsValid() &&
+                    ch.reserveValues.valueMap.size() &&
+                    !ch.reserveValues.valueMap.count(ASSETCHAINS_CHAINID))
+                {
+                    // TODO: HARDENING - currently, we are ensuring that a valid, advanced ch is there to
+                    // prevent use of this without actual need.
+                    // for more general use, instead of a subclass, we should abstract and contain objects in this output
+                    COptCCParams master(p.vData.back());
+                    if (master.IsValid())
+                    {
+                        int numIndexKeys = 0;
+                        bool hasNativeOffer = false, hasOfferForNative = false;
+                        for (auto &oneKey : master.vKeys)
+                        {
+                            if (oneKey.which() == COptCCParams::ADDRTYPE_PKH || oneKey.which() == COptCCParams::ADDRTYPE_PK)
+                            {
+                                numIndexKeys++;
+                                uint160 destID = GetDestinationID(oneKey);
+
+                                // TODO: HARDENING - check any currency against itself as we do native
+                                if (destID == nativeCurrencyOffer)
+                                {
+                                    hasNativeOffer = true;
+                                }
+                                else if (destID == offerForNativeCurrency)
+                                {
+                                    hasOfferForNative = true;
+                                }
+                            }
+                        }
+                        if (!(hasNativeOffer && hasOfferForNative) && (numIndexKeys <= 1 || (numIndexKeys > 1 && tx.vout[outNum].nValue >= DEFAULT_TRANSACTION_FEE)))
+                        {
+                            return true;
+                        }
+                    }
+                    LogPrint("onchaincommitment", "Not enough fee to close multi-currency commitment or invalid commitment");
+                    return false;
+                }
+                else
+                {
+                    LogPrint("onchaincommitment", "Oversized, invalid on chain commitment");
+                    return false;
+                }
+            }
+            else
+            {
+                LogPrint("onchaincommitment", "Undersized, invalid on chain commitment");
+                return false;
+            }
+        }
+        else
+        {
+            LogPrint("onchaincommitment", "Invalid on chain commitment");
+            return false;
+        }
+    }
+    return true;
+}
+
 // with the thorough check for an identity reservation, the only thing we need to check is that either 1) this transaction includes an identity reservation output or 2)
 // this transaction spends a prior identity transaction that does not create a clearly invalid mutation between the two
 bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
@@ -824,14 +1003,19 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     COptCCParams p, identityP;
 
     uint32_t networkVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
-    bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS;
+    bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS; // this is only PBaaS differences, not Verus Vault
+    bool advancedIdentity = networkVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
     bool isCoinbase = tx.IsCoinBase();
 
     for (int i = 0; i < tx.vout.size(); i++)
     {
         CIdentity checkIdentity;
         auto &output = tx.vout[i];
-        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= COptCCParams::VERSION_V3 && p.vData.size() > 1)
+        if (output.scriptPubKey.IsPayToCryptoCondition(p) &&
+            (!advancedIdentity || p.AsVector().size() < CScript::MAX_SCRIPT_ELEMENT_SIZE) &&
+            p.IsValid() &&
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
         {
             switch (p.evalCode)
             {
@@ -861,7 +1045,9 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     }
 
                     // twice through makes it invalid
-                    if (!(isPBaaS && height == 1) && !validCrossChainImport && validIdentity)
+                    // TODO: HARDENING TESTNET - need to ensure that cross-chain imports only import IDs
+                    // under the control of the importing currency
+                    if (!advancedIdentity && validIdentity)
                     {
                         return state.Error("Invalid multiple identity definitions on one transaction");
                     }
@@ -912,11 +1098,10 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     CIdentityID idID = identity.GetID();
     p = identityP;
 
-    bool advancedIdentity = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
     if (advancedIdentity)
     {
         COptCCParams master;
-        if (identity.nVersion < identity.VERSION_PBAAS)
+        if (identity.nVersion < identity.VERSION_VAULT)
         {
             return state.Error("Inadequate identity version for post-PBaaS activation");
         }
@@ -928,19 +1113,36 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
             return state.Error("Invalid identity output destinations and/or configuration");
         }
 
+        for (auto &oneKey : master.vKeys)
+        {
+            // if we have an index present, this is likely an offer, and we need to have a deposit as well
+            if (oneKey.which() == COptCCParams::ADDRTYPE_PKH)
+            {
+                if (tx.vout[outNum].nValue < DEFAULT_TRANSACTION_FEE)
+                {
+                    return state.Error("Invalid identity output destinations and/or configuration");
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
         // we need to have at least 2 of 3 authority spend conditions mandatory at a top level for any primary ID output
         bool revocation = false, recovery = false;
         bool primaryValid = false, revocationValid = false, recoveryValid = false;
+        bool isRevoked = identity.IsRevoked();
         for (auto dest : p.vKeys)
         {
-            if (dest.which() == COptCCParams::ADDRTYPE_ID && (idID == GetDestinationID(dest)) && dest.which() == COptCCParams::ADDRTYPE_ID)
+            if (dest.which() == COptCCParams::ADDRTYPE_ID && idID == GetDestinationID(dest))
             {
                 primaryValid = true;
             }
         }
-        if (!primaryValid)
+        if (!isRevoked && !primaryValid)
         {
-            std::string errorOut = "Primary identity output condition of \"" + identity.name + "\" is not spendable by self";
+            std::string errorOut = "Primary identity output condition of \"" + identity.name + "\" is neither revoked nor spendable by self";
             return state.Error(errorOut.c_str());
         }
         for (int i = 1; i < p.vData.size() - 1; i++)
@@ -995,8 +1197,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
 
         // we need separate spend conditions for both revoke and recover in all cases
-        bool isRevoked = identity.IsRevoked();
-        if ((!isRevoked && !revocationValid) || (isRevoked && !recoveryValid))
+        if ((!isRevoked && !(revocationValid && recoveryValid)) || (isRevoked && !recoveryValid))
         {
             std::string errorOut = "Primary identity output \"" + identity.name + "\" must be spendable by revocation and recovery authorities";
             return state.Error(errorOut.c_str());
@@ -1004,7 +1205,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     }
     else
     {
-        if (identity.nVersion >= identity.VERSION_PBAAS)
+        if (identity.nVersion >= identity.VERSION_VAULT)
         {
             return state.Error("Invalid identity version before PBaaS activation");
         }
@@ -1091,7 +1292,12 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         // first time through may be null
         if ((!input.prevout.hash.IsNull() && input.prevout.hash == inTx.GetHash()) || myGetTransaction(input.prevout.hash, inTx, blkHash))
         {
-            if (inTx.vout[input.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1 && (identity = CIdentity(p.vData[0])).IsValid())
+            if (inTx.vout[input.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                p.vData.size() > 1 &&
+                (identity = CIdentity(p.vData[0])).IsValid() &&
+                idID == identity.GetID())
             {
                 return true;
             }
@@ -1162,18 +1368,19 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Spending invalid identity");
     }
 
-    int idIndex;
-    CIdentity newIdentity(spendingTx, &idIndex);
-    if (!newIdentity.IsValid())
-    {
-        return eval->Error("Attempting to define invalid identity");
-    }
-
     if (!chainActive.LastTip())
     {
         return eval->Error("unable to find chain tip");
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+    bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    int idIndex;
+    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? oldIdentity.GetID() : uint160());
+    if (!newIdentity.IsValid())
+    {
+        return eval->Error("Attempting to define invalid identity");
+    }
 
     if (oldIdentity.IsInvalidMutation(newIdentity, height, spendingTx.nExpiryHeight))
     {
@@ -1216,18 +1423,20 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("Invalid source identity");
     }
 
-    int idIndex;
-    CIdentity newIdentity(spendingTx, &idIndex);
-    if (!newIdentity.IsValid())
-    {
-        return eval->Error("Attempting to replace identity with one that is invalid");
-    }
-
     if (!chainActive.LastTip())
     {
         return eval->Error("unable to find chain tip");
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+
+    bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    int idIndex;
+    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? oldIdentity.GetID() : uint160());
+    if (!newIdentity.IsValid())
+    {
+        return eval->Error("Attempting to replace identity with one that is invalid");
+    }
 
     if (oldIdentity.IsInvalidMutation(newIdentity, height, spendingTx.nExpiryHeight))
     {
@@ -1249,7 +1458,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("Invalid identity output in spending transaction");
     }
 
-    bool advanced = newIdentity.nVersion >= newIdentity.VERSION_PBAAS;
+    bool advanced = newIdentity.nVersion >= newIdentity.VERSION_VAULT;
 
     if (advanced)
     {
@@ -1336,18 +1545,20 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Invalid source identity");
     }
 
-    int idIndex;
-    CIdentity newIdentity(spendingTx, &idIndex);
-    if (!newIdentity.IsValid())
-    {
-        return eval->Error("Attempting to replace identity with one that is invalid");
-    }
-
     if (!chainActive.LastTip())
     {
         return eval->Error("unable to find chain tip");
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+
+    bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    int idIndex;
+    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? oldIdentity.GetID() : uint160());
+    if (!newIdentity.IsValid())
+    {
+        return eval->Error("Attempting to replace identity with one that is invalid");
+    }
 
     if (oldIdentity.IsInvalidMutation(newIdentity, height, spendingTx.nExpiryHeight))
     {
@@ -1364,7 +1575,7 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Invalid identity output in spending transaction");
     }
 
-    bool advanced = newIdentity.nVersion >= newIdentity.VERSION_PBAAS;
+    bool advanced = newIdentity.nVersion >= newIdentity.VERSION_VAULT;
 
     if (advanced)
     {

@@ -1025,14 +1025,23 @@ SignatureData CombineSignatures(const CScript& scriptPubKey, const BaseSignature
     {
         CSmartTransactionSignatures smartSigs1, smartSigs2;
         std::vector<unsigned char> ffVec1 = _GetFulfillmentVector(scriptSig1.scriptSig);
-        smartSigs1 = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec1.begin(), ffVec1.end()));
-        std::vector<unsigned char> ffVec2 = _GetFulfillmentVector(scriptSig2.scriptSig);
-        smartSigs2 = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec2.begin(), ffVec2.end()));
-        if (smartSigs1.sigHashType == smartSigs2.sigHashType && smartSigs1.version == smartSigs2.version)
+        if (ffVec1.size())
         {
-            for (auto oneSig : smartSigs2.signatures)
+            smartSigs1 = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec1.begin(), ffVec1.end()));
+        }
+        std::vector<unsigned char> ffVec2 = _GetFulfillmentVector(scriptSig2.scriptSig);
+        if (ffVec2.size())
+        {
+            smartSigs2 = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec2.begin(), ffVec2.end()));
+        }
+        if (ffVec2.size())
+        {
+            if (smartSigs1.sigHashType == smartSigs2.sigHashType && smartSigs1.version == smartSigs2.version)
             {
-                smartSigs1.AddSignature(oneSig.second);
+                for (auto oneSig : smartSigs2.signatures)
+                {
+                    smartSigs1.AddSignature(oneSig.second);
+                }
             }
         }
         SignatureData sigRet;

@@ -775,7 +775,12 @@ bool IsStandardTx(const CTransaction& tx, string& reason, const CChainParams& ch
             // future-proofing. That's also enough to spend a 20-of-20
             // CHECKMULTISIG scriptPubKey, though such a scriptPubKey is not
             // considered standard)
-            if (txin.scriptSig.size() > 1650) {
+            int scriptSigMaxSize = 1650;
+            if (CVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_VERUSVAULT)
+            {
+                scriptSigMaxSize = CScript::MAX_SCRIPT_ELEMENT_SIZE;
+            }
+            if (txin.scriptSig.size() > scriptSigMaxSize) {
                 reason = "scriptsig-size";
                 return false;
             }
@@ -1173,6 +1178,8 @@ bool ContextualCheckTransaction(
     bool saplingActive = chainparams.GetConsensus().NetworkUpgradeActive(nHeight, Consensus::UPGRADE_SAPLING);
     bool isSprout = !overwinterActive;
 
+    bool isVerusVault = CVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
     // If Sprout rules apply, reject transactions which are intended for Overwinter and beyond
     if (isSprout && tx.fOverwintered) {
         return state.DoS(isInitBlockDownload(chainparams) ? 0 : dosLevel,
@@ -1262,13 +1269,36 @@ bool ContextualCheckTransaction(
         auto consensusBranchId = CurrentEpochBranchId(nHeight, chainparams.GetConsensus());
         // Empty output script.
         CScript scriptCode;
+        bool sigHashSingle = false;
+
+        if (isVerusVault && tx.vJoinSplit.empty() && tx.vShieldedSpend.empty() && !tx.vShieldedOutput.empty() && tx.vin.size() > 0)
+        {
+            // if vin[0] is a smart signature for SIGHASH_SINGLE | SIGHASH_ANYONECANPAY, and the tx has no shielded spends, 
+            // but does have shielded outputs, the transaction binding signature is only bound to the transparent input, 
+            // all z-outputs, and no z-inputs. if there are shielded inputs, we do not afford the transaction this exception
+            CSmartTransactionSignatures smartSigs;
+            std::vector<unsigned char> ffVec = GetFulfillmentVector(tx.vin[0].scriptSig);
+            if (ffVec.size() && (smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()))).IsValid())
+            {
+                if (smartSigs.sigHashType == (SIGHASH_SINGLE | SIGHASH_ANYONECANPAY))
+                {
+                    sigHashSingle = true;
+                }
+            }
+        }
         try {
-            dataToBeSigned = SignatureHash(scriptCode, tx, NOT_AN_INPUT, SIGHASH_ALL, 0, consensusBranchId);
+            if (sigHashSingle == true)
+            {
+                dataToBeSigned = SignatureHash(scriptCode, tx, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY, 0, consensusBranchId);
+            }
+            else
+            {
+                dataToBeSigned = SignatureHash(scriptCode, tx, NOT_AN_INPUT, SIGHASH_ALL, 0, consensusBranchId);
+            }
         } catch (std::logic_error ex) {
             return state.DoS(100, error("CheckTransaction(): error computing signature hash"),
                              REJECT_INVALID, "error-computing-signature-hash");
         }
-        
     }
 
     if (!(tx.IsMint() || tx.vJoinSplit.empty()))
@@ -7748,7 +7778,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, int64_t nTimeReceived)
 {
     const CChainParams& chainparams = Params();
-    LogPrint("net", "received: %s (%u bytes) peer=%d\n", SanitizeString(strCommand), vRecv.size(), pfrom->id);
+    LogPrint("net", "received: %s (%u bytes) peer=%d\n", SanitizeString(strCommand), (uint32_t)vRecv.size(), pfrom->id);
     //fprintf(stderr, "recv: %s peer=%d\n", SanitizeString(strCommand).c_str(), (int32_t)pfrom->GetId());
     if (mapArgs.count("-dropmessagestest") && GetRand(atoi(mapArgs["-dropmessagestest"])) == 0)
     {
@@ -7772,7 +7802,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             Misbehaving(pfrom->GetId(), 1);
             return false;
         }
-        
+
         int64_t nTime;
         CAddress addrMe;
         CAddress addrFrom;
@@ -7954,8 +7984,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                     vRecv >> hash;
                     ss << ": hash " << hash.ToString();
                 }
-                LogPrint("net", "Reject %s\n", SanitizeString(ss.str()), SanitizeString(strReason));
-                //printf("Reject message %s\n%s\n", SanitizeString(ss.str()).c_str(), SanitizeString(strReason).c_str());
+                LogPrint("net", "Reject %s\n%s\n", SanitizeString(ss.str()), SanitizeString(strReason));
             } catch (const std::ios_base::failure&) {
                 // Avoid feedback loops by preventing reject messages from triggering a new reject message.
                 LogPrint("net", "Unparseable reject message received\n");
@@ -7995,7 +8024,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             Misbehaving(pfrom->GetId(), 20);
             return error("message addr size() = %u", vAddr.size());
         }
-        
+
         // Store the new addresses
         vector<CAddress> vAddrOk;
         int64_t nNow = GetAdjustedTime();

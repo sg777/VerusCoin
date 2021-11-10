@@ -782,7 +782,6 @@ public:
     bool IsSpendableOutputType() const;
     CCurrencyValueMap ReserveOutValue() const;
     CCurrencyValueMap ReserveOutValue(COptCCParams &p, bool spendingOnly=false) const;
-    bool SetReserveOutValue(const CCurrencyValueMap &newValue);
 
     bool IsCoinImport() const;
     bool MayAcceptCryptoCondition() const;

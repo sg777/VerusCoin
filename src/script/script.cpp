@@ -759,6 +759,20 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p, bool spendableOnly) 
                 retVal = cci.totalReserveOutMap;
                 break;
             }
+
+            case EVAL_IDENTITY_COMMITMENT:
+            {
+                // this can only have an advance commitment hash if the serialization data is larger than the first hash
+                // if so, we attempt to get both a hash commitment and a token output from the data. the only time this will be
+                // larger in a way that matters is on testnet for now.
+                CCommitmentHash ch(p.vData[0]);
+
+                // TODO: HARDENING - once Verus Vault activates on mainnet, support currencies
+                if (ch.IsValid() && !_IsVerusMainnetActive())
+                {
+                    retVal = ch.reserveValues;
+                }
+            }
         }
     }
     return retVal;
@@ -768,53 +782,6 @@ CCurrencyValueMap CScript::ReserveOutValue() const
 {
     COptCCParams p;
     return ReserveOutValue(p);
-}
-
-bool CScript::SetReserveOutValue(const CCurrencyValueMap &newValues)
-{
-    COptCCParams p;
-    CAmount newVal = 0;
-
-    // already validated above
-    if (::IsPayToCryptoCondition(*this, p) && p.IsValid())
-    {
-        switch (p.evalCode)
-        {
-            case EVAL_RESERVE_OUTPUT:
-            {
-                CTokenOutput ro(p.vData[0]);
-                ro.reserveValues = newValues;
-                p.vData[0] = ro.AsVector();
-                break;
-            }
-
-            case EVAL_RESERVE_TRANSFER:
-            {
-                if (newValues.valueMap.size() != 1)
-                {
-                    return false;
-                }
-                CReserveTransfer rt(p.vData[0]);
-                rt.reserveValues = newValues;
-                p.vData[0] = rt.AsVector();
-                break;
-            }
-
-            case EVAL_CROSSCHAIN_IMPORT:
-            {
-                CCrossChainImport cci(p.vData[0]);
-                cci.totalReserveOutMap = newValues;
-                p.vData[0] = cci.AsVector();
-                break;
-            }
-
-            default:
-                return false;
-        }
-        *this = ReplaceCCParams(p);
-        return true;
-    }
-    return false;
 }
 
 bool CScript::MayAcceptCryptoCondition() const

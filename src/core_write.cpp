@@ -795,7 +795,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("preallocations", preAllocationArr));
     }
 
-    if (IsGateway() && !GatewayConverterID().IsNull())
+    if (!gatewayID.IsNull())
     {
         obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
     }
@@ -840,12 +840,10 @@ UniValue CCurrencyDefinition::ToUniValue() const
         }
         obj.push_back(Pair("minnotariesconfirm", minNotariesConfirm));
 
-        obj.push_back(Pair("idregistrationprice", ValueFromAmount(idRegistrationFees)));
+        obj.push_back(Pair("idregistrationfees", ValueFromAmount(idRegistrationFees)));
         obj.push_back(Pair("idreferrallevels", idReferralLevels));
-        if (IsPBaaSChain() || IsGateway())
-        {
-            obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentityID(GatewayConverterID()))));
-        }
+        obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentityID(GatewayConverterID()))));
+        obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
 
         if (IsPBaaSChain())
         {
@@ -1405,8 +1403,20 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 break;
 
             case EVAL_IDENTITY_COMMITMENT:
-                out.push_back(Pair("identitycommitment", ""));
+            {
+                CCommitmentHash ch;
+
+                if (p.vData.size())
+                {
+                    ch = CCommitmentHash(p.vData[0]);
+                    out.push_back(Pair("commitmenthash", ch.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("commitmenthash", ""));
+                }
                 break;
+            }
 
             case EVAL_IDENTITY_RESERVATION:
                 out.push_back(Pair("identityreservation", ""));

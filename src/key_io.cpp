@@ -614,7 +614,7 @@ CReserveTransfer::CReserveTransfer(const UniValue &uni) : CTokenOutput(uni), nFe
 
 CPrincipal::CPrincipal(const UniValue &uni)
 {
-    nVersion = uni_get_int(find_value(uni, "version"), VERSION_PBAAS);
+    nVersion = uni_get_int(find_value(uni, "version"), VERSION_VAULT);
     flags = uni_get_int(find_value(uni, "flags"));
     UniValue primaryAddressesUni = find_value(uni, "primaryaddresses");
     if (primaryAddressesUni.isArray())
@@ -655,7 +655,7 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
         parent = (!parentUni.isNull() || GetID() == VERUS_CHAINID) ? uint160() : ASSETCHAINS_CHAINID;
     }
 
-    if (nVersion >= VERSION_PBAAS)
+    if (nVersion >= VERSION_VAULT)
     {
         systemID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "systemid")))));
         if (systemID.IsNull())
@@ -1013,7 +1013,7 @@ CScript CIdentity::TransparentOutput(const CIdentityID &destinationID)
     return MakeMofNCCScript(ccObj);
 }
 
-CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
+CScript CIdentity::IdentityUpdateOutputScript(uint32_t height, const std::vector<CTxDestination> *indexDests) const
 {
     CScript ret;
 
@@ -1026,19 +1026,21 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
     CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
 
     // when PBaaS activates, we no longer need redundant entries, so reduce the size a bit
-    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT)
     {
+        std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
+        CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
         if (IsRevoked())
         {
             std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
             CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
-            ret = MakeMofNCCScript(1, primary, recovery);
+            ret = MakeMofNCCScript(1, primary, recovery, indexDests);
         }
         else
         {
             std::vector<CTxDestination> dests2({CTxDestination(CIdentityID(revocationAuthority))});
             CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
-            ret = MakeMofNCCScript(1, primary, revocation);
+            ret = MakeMofNCCScript(1, primary, revocation, recovery, indexDests);
         }
     }
     else
@@ -1047,7 +1049,7 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height) const
         CConditionObj<CIdentity> revocation(EVAL_IDENTITY_REVOKE, dests2, 1);
         std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
         CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
-        ret = MakeMofNCCScript(1, primary, revocation, recovery);
+        ret = MakeMofNCCScript(1, primary, revocation, recovery, indexDests);
     }
 
     return ret;

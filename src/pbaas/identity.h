@@ -34,7 +34,7 @@
 
 std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false, bool addVerus=true);
 
-class CCommitmentHash
+class CCommitmentHash : public CTokenOutput
 {
 public:
     static const CAmount DEFAULT_OUTPUT_AMOUNT = 0;
@@ -42,6 +42,17 @@ public:
 
     CCommitmentHash() {}
     CCommitmentHash(const uint256 &Hash) : hash(Hash) {}
+    CCommitmentHash(const uint256 &Hash, const CTokenOutput &to) : hash(Hash), CTokenOutput(to)
+    {
+        if (hash.IsNull() && to.IsValid())
+        {
+            std::vector<unsigned char> hashAsVec = ::AsVector(hash);
+            uint160 keyVal = CCommitmentHash::AdvancedCommitmentHashKey();
+            std::vector<unsigned char> keyValAsVec = ::AsVector(keyVal);
+            std::memcpy(&(hashAsVec[0]), &(keyValAsVec[0]), keyValAsVec.size());
+            hash = uint256(hashAsVec);
+        }
+    }
 
     CCommitmentHash(const UniValue &uni)
     {
@@ -55,16 +66,42 @@ public:
 
     CCommitmentHash(const CTransaction &tx);
 
+    static std::string AdvancedCommitmentHashKeyName()
+    {
+        return "vrsc::system.identity.advancedcommitmenthash";
+    }
+
+    static uint160 AdvancedCommitmentHashKey()
+    {
+        static uint160 nameSpace;
+        static uint160 advancedKey = CVDXF::GetDataKey(AdvancedCommitmentHashKeyName(), nameSpace);
+        return advancedKey;
+    }
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(hash);
+        std::vector<unsigned char> vch;
+        vch.assign(hash.begin(), hash.begin() + 20);
+        uint160 checkVal(vch);
+        // TODO: HARDENING - prepare for mainnet support of currencies after Verus Vault activates
+        if (!_IsVerusMainnetActive() && checkVal == CCommitmentHash::AdvancedCommitmentHashKey())
+        {
+            READWRITE(*(CTokenOutput *)this);
+        }
     }
 
     UniValue ToUniValue() const
     {
-        return UniValue(hash.GetHex());
+        UniValue retVal;
+        if (IsValid())
+        {
+            retVal = ((CTokenOutput *)this)->ToUniValue();
+        }
+        retVal.pushKV("hash", hash.GetHex());
+        return retVal;
     }
 };
 
@@ -141,9 +178,10 @@ class CPrincipal
 public:
     static const uint8_t VERSION_INVALID = 0;
     static const uint8_t VERSION_VERUSID = 1;
-    static const uint8_t VERSION_PBAAS = 2;
+    static const uint8_t VERSION_VAULT = 2;
+    static const uint8_t VERSION_PBAAS = 3;
     static const uint8_t VERSION_FIRSTVALID = 1;
-    static const uint8_t VERSION_LASTVALID = 2;
+    static const uint8_t VERSION_LASTVALID = 3;
 
     uint32_t nVersion;
     uint32_t flags;
@@ -215,7 +253,7 @@ public:
     bool IsValid(bool strict=false) const
     {
         bool primaryOK = true;
-        if (strict || nVersion >= VERSION_PBAAS)
+        if (strict || nVersion >= VERSION_VAULT)
         {
             for (auto &oneAddr : primaryAddresses)
             {
@@ -232,7 +270,7 @@ public:
                primaryAddresses.size() && 
                minSigs >= 1 &&
                minSigs <= primaryAddresses.size() && 
-               ((nVersion < VERSION_PBAAS &&
+               ((nVersion < VERSION_VAULT &&
                  primaryAddresses.size() <= 10) ||
                 (primaryAddresses.size() <= 25 &&
                  minSigs <= 13));
@@ -346,7 +384,7 @@ public:
     }
 
     CIdentity(const UniValue &uni);
-    CIdentity(const CTransaction &tx, int *voutNum=nullptr);
+    CIdentity(const CTransaction &tx, int *voutNum=nullptr, const uint160 &onlyThisID=uint160());
     CIdentity(const CScript &scriptPubKey);
     CIdentity(const std::vector<unsigned char> &asVector)
     {
@@ -392,7 +430,7 @@ public:
         READWRITE(recoveryAuthority);
         READWRITE(privateAddresses);
 
-        if (nVersion >= VERSION_PBAAS)
+        if (nVersion >= VERSION_VAULT)
         {
             READWRITE(systemID);
             READWRITE(unlockAfter);
@@ -406,7 +444,7 @@ public:
 
     uint160 GetSystemID() const
     {
-        if (nVersion >= VERSION_PBAAS)
+        if (nVersion >= VERSION_VAULT)
         {
             return parent;
         }
@@ -417,6 +455,27 @@ public:
     }
 
     UniValue ToUniValue() const;
+
+    void UpgradeVersion(uint32_t height)
+    {
+        // to make the code simpler, these are just done in order, and more than one may be done if an ID
+        // goes through multiple updates
+        if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT)
+        {
+            if (nVersion < VERSION_VAULT)
+            {
+                nVersion = VERSION_VAULT;
+                systemID = parent.IsNull() ? GetID() : parent;
+            }
+        }
+        if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
+        {
+            if (nVersion < VERSION_PBAAS)
+            {
+                nVersion = VERSION_PBAAS;
+            }
+        }
+    }
 
     void Revoke()
     {
@@ -482,7 +541,7 @@ public:
     // until passed the parameter of the height at which it was unlocked, plus the time lock
     bool IsLocked(uint32_t height) const
     {
-        return nVersion >= VERSION_PBAAS &&
+        return nVersion >= VERSION_VAULT &&
                (IsLocked() || unlockAfter >= height) &&
                !IsRevoked();
     }
@@ -496,7 +555,7 @@ public:
     {
         if (nVersion == VERSION_FIRSTVALID)
         {
-            nVersion = VERSION_PBAAS;
+            nVersion = VERSION_VAULT;
         }
         flags |= FLAG_ACTIVECURRENCY;
     }
@@ -514,7 +573,7 @@ public:
     bool IsValid(bool strict=false) const
     {
         bool isOK = true;
-        if (strict || nVersion >= VERSION_PBAAS)
+        if (strict || nVersion >= VERSION_VAULT)
         {
             CDataStream s(SER_DISK, PROTOCOL_VERSION);
             isOK = (GetSerializeSize(s, *this) + ID_SCRIPT_ELEMENT_OVERHEAD) <= CScript::MAX_SCRIPT_ELEMENT_SIZE;
@@ -524,7 +583,7 @@ public:
                CPrincipal::IsValid(strict) && name.size() > 0 && 
                (name.size() <= MAX_NAME_LEN) &&
                primaryAddresses.size() &&
-               (nVersion < VERSION_PBAAS ||
+               (nVersion < VERSION_VAULT ||
                (!revocationAuthority.IsNull() &&
                 !recoveryAuthority.IsNull() &&
                 minSigs > 0 &&
@@ -584,14 +643,14 @@ public:
     static CScript TransparentOutput(const CIdentityID &destinationID);
 
     // creates an output script to control updates to this identity
-    CScript IdentityUpdateOutputScript(uint32_t height) const;
+    CScript IdentityUpdateOutputScript(uint32_t height, const std::vector<CTxDestination> *indexDests=nullptr) const;
 
     bool IsInvalidMutation(const CIdentity &newIdentity, uint32_t height, uint32_t expiryHeight) const;
 
     bool IsPrimaryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
-        bool isRevokedExempt = nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && newIdentity.IsRevoked();
+        bool isRevokedExempt = nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && newIdentity.IsRevoked();
         if (CPrincipal::IsPrimaryMutation(newIdentity) ||
             (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
@@ -727,6 +786,7 @@ public:
     uint256 txid;
 
     CIdentityMapValue() : CIdentity() {}
+    CIdentityMapValue(const CIdentity &identity, const uint256 &txID=uint256()) : CIdentity(identity), txid(txID) {}
     CIdentityMapValue(const CTransaction &tx) : CIdentity(tx), txid(tx.GetHash()) {}
 
     ADD_SERIALIZE_METHODS;
@@ -746,6 +806,7 @@ CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransact
 bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
