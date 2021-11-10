@@ -4373,7 +4373,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 uniOldID[oneEl.first] = oneEl.second;
             }
 
-
             uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(height + 1);
 
             if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
@@ -4405,11 +4404,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
-            }
-
-            if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_VERUSVAULT)
-            {
-                newID.SetVersion(CIdentity::VERSION_VAULT);
             }
 
             if (oldID.IsLocked() != newID.IsLocked())
@@ -8823,9 +8817,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
     }
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_VERUSVAULT)
+    uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(height + 1);
+
+    if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
     {
-        newID.SetVersion(CIdentity::VERSION_VAULT);
+        newID.SetVersion(solVersion < CActivationHeight::ACTIVATE_PBAAS ? CIdentity::VERSION_VAULT : CIdentity::VERSION_PBAAS);
     }
     else
     {
@@ -9203,11 +9199,6 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     }
 
     CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight + 1);
-
-    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_VERUSVAULT)
-    {
-        newID.SetVersion(CIdentity::VERSION_VAULT);
-    }
 
     if (oldID.IsLocked() != newID.IsLocked())
     {
