@@ -515,7 +515,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv, DecodeSecret(IdentityCommitmentWIF).begin(),32);
             cp->validate = ValidateIdentityCommitment;
             cp->ismyvin = IsIdentityInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PrecheckIdentityCommitment;
             break;
 
         case EVAL_IDENTITY_RESERVATION:

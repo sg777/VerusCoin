@@ -228,7 +228,7 @@ bool TransactionBuilder::AddOpRetLast()
     return true;
 }
 
-void TransactionBuilder::AddOpRet(CScript &s)
+void TransactionBuilder::AddOpRet(const CScript &s)
 {
     opReturn.emplace(CScript(s));
 }
@@ -339,9 +339,16 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
 
         if (!tChangeAddr && ((hasNativeChange && !saplingChangeAddr && spends.empty()) || hasReserveChange))
         {
-            printf("%s: nativeChange: %ld, reserveChange: %s\n", __func__, change, reserveChange.ToUniValue().write(1,2).c_str());
+            //printf("%s: nativeChange: %ld, reserveChange: %s\n", __func__, change, reserveChange.ToUniValue().write(1,2).c_str());
             LogPrintf("%s: nativeChange: %ld, reserveChange: %s\n", __func__, change, reserveChange.ToUniValue().write(1,2).c_str());
-            return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
+            if (hasReserveChange)
+            {
+                return TransactionBuilderResult("Reserve change must be sent to a transparent change address or VerusID");
+            }
+            else
+            {
+                return TransactionBuilderResult("Change must be sent to a private or transparent change address or VerusID");
+            }
         }
 
         //

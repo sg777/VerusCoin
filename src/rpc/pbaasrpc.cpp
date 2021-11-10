@@ -35,6 +35,8 @@
 #include <univalue.h>
 
 #include "rpc/pbaasrpc.h"
+
+#include <librustzcash.h>
 #include "transaction_builder.h"
 
 using namespace std;
@@ -1170,6 +1172,16 @@ void CheckPBaaSAPIsValid()
         CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS)
     {
         throw JSONRPCError(RPC_INVALID_REQUEST, "PBaaS not activated on blockchain.");
+    }
+}
+
+void CheckVerusVaultAPIsValid()
+{
+    //printf("Solution version running: %d\n\n", CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()));
+    if (!chainActive.LastTip() ||
+        CConstVerusSolutionVector::activationHeight.ActiveVersion(chainActive.LastTip()->GetHeight()) < CConstVerusSolutionVector::activationHeight.ACTIVATE_VERUSVAULT)
+    {
+        throw JSONRPCError(RPC_INVALID_REQUEST, "Verus Vault and VerusID Marketplace not activated on blockchain.");
     }
 }
 
@@ -3189,8 +3201,10 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
             "1. {\n"
             "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
             "      \"amount\":amount        (numeric, required) The numeric amount of currency, denominated in source currency\n"
+            "      \"feecurrency\": \"name\" (string, required) Name of the currency to use for paying fees, defaults to native of destination chain\n"
             "      \"convertto\":\"name\",  (string, optional) Valid currency to convert to, either a reserve of a fractional, or fractional\n"
-            "      \"preconvert\":\"false\", (bool,  optional) convert to currency at market price (default=false), only works if transaction is mined before start of currency\n"
+            "      \"preconvert\":\"false\", (bool,  optional) Convert to currency at market price (default=false), only works if transaction is mined before start of currency\n"
+            "      \"exportto\":\"systemid\" (string, optional) Valid system name or i-addresss to export to another blockchain or gateway"
             "      \"via\":\"name\",        (string, optional) If source and destination currency are reserves, via is a common fractional to convert through\n"
             "   }\n"
 
@@ -3215,6 +3229,7 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     auto currencyStr = TrimSpaces(uni_get_str(find_value(params[0], "currency")));
     CAmount sourceAmount = AmountFromValue(find_value(params[0], "amount"));
     auto convertToStr = TrimSpaces(uni_get_str(find_value(params[0], "convertto")));
+    auto exportToStr = TrimSpaces(uni_get_str(find_value(params[0], "exportto")));
     auto viaStr = TrimSpaces(uni_get_str(find_value(params[0], "via")));
     bool preConvert = uni_get_bool(find_value(params[0], "preconvert"));
 
@@ -3371,6 +3386,2711 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     return NullUniValue;
 }
 
+bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs_) 
+{
+    std::set<CTxDestination> destinations;
+
+    bool wildCardPKH = false;
+    bool wildCardID = false;
+    bool isFromSpecificID = fromtaddr_.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(fromtaddr_).IsNull();
+
+    // if no specific address type, wildcard outputs to all transparent addresses and IDs are valid to consider
+    if (fromtaddr_.which() == COptCCParams::ADDRTYPE_INVALID)
+    {
+        wildCardPKH = true;
+        wildCardID = true;
+    }
+    // wildcard for all transparent addresses, except IDs is null PKH
+    else if (fromtaddr_.which() == COptCCParams::ADDRTYPE_PKH && GetDestinationID(fromtaddr_).IsNull())
+    {
+        wildCardPKH = true;
+    }
+    // wildcard for all ID transparent outputs is null ID
+    else if (fromtaddr_.which() == COptCCParams::ADDRTYPE_ID && GetDestinationID(fromtaddr_).IsNull())
+    {
+        wildCardID = true;
+    }
+    else
+    {
+        destinations.insert(fromtaddr_);
+    }
+
+    vector<COutput> vecOutputs;
+
+    pwalletMain->AvailableReserveCoins(vecOutputs,
+                                       false,
+                                       NULL,
+                                       true,
+                                       true,
+                                       wildCardPKH || wildCardID ? nullptr : &fromtaddr_,
+                                       nullptr,
+                                       false);
+
+    for (COutput& out : vecOutputs) 
+    {
+        CTxDestination dest;
+
+        if (!isFromSpecificID && !out.fSpendable) {
+            continue;
+        }
+
+        if (out.nDepth < 0) {
+            continue;
+        }
+
+        std::vector<CTxDestination> addresses;
+        int nRequired;
+        bool canSign, canSpend;
+        CTxDestination address;
+        txnouttype txType;
+        if (!ExtractDestinations(out.tx->vout[out.i].scriptPubKey, txType, addresses, nRequired, pwalletMain, &canSign, &canSpend))
+        {
+            continue;
+        }
+
+        if (isFromSpecificID)
+        {
+            // if we have more address destinations than just this address and have specified from a single ID only,
+            // the condition must be such that the ID itself can spend, even if this wallet cannot due to a multisig
+            // ID. if the ID cannot spend, even given a valid multisig ID, then to select this as a source without
+            // an explicit, multisig match would cause potentially unwanted sourcing of funds. a spend just to this ID
+            // is fine.
+
+            COptCCParams p, m;
+            // if we can't spend and can only sign,
+            // ensure that this output is spendable by just this ID as a 1 of n and 1 of n at the master
+            // smart transaction level as well
+            if (!canSpend &&
+                (!canSign ||
+                 !(out.tx->vout[out.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                   p.IsValid() &&
+                   (p.version < COptCCParams::VERSION_V3 ||
+                    (p.vData.size() &&
+                     (m = COptCCParams(p.vData.back())).IsValid() &&
+                     (m.m == 1 || m.m == 0))) &&
+                   p.m == 1)))
+            {
+                continue;
+            }
+            else
+            {
+                out.fSpendable = true;      // this may not really be spendable, but set it if its the correct ID source and can sign
+            }
+        }
+        else
+        {
+            if (!out.fSpendable)
+            {
+                continue;
+            }
+        }
+
+        bool keep = false;
+        for (auto &address : addresses)
+        {
+            if (isFromSpecificID)
+            {
+                if (address == fromtaddr_)
+                {
+                    keep = true;
+                }
+            }
+            else if (wildCardID || wildCardPKH)
+            {
+                if (wildCardPKH)
+                {
+                    keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
+                }
+                if (!keep && wildCardID)
+                {
+                    keep = address.which() == COptCCParams::ADDRTYPE_ID;
+                }
+            }
+            else
+            {
+                keep = destinations.count(address);
+            }
+            if (keep)
+            {
+                break;
+            }
+        }
+
+        if (!keep)
+        {
+            continue;
+        }
+
+        t_inputs_.push_back(out);
+    }
+
+    // sort in ascending order, so smaller utxos appear first
+    std::sort(t_inputs_.begin(), t_inputs_.end(), [](COutput i, COutput j) -> bool {
+        return ( i.tx->vout[i.i].nValue < j.tx->vout[j.i].nValue );
+    });
+
+    return t_inputs_.size() > 0;
+}
+
+std::vector<SaplingNoteEntry> find_unspent_notes(const libzcash::PaymentAddress &fromaddress_)
+{
+    std::vector<SaplingNoteEntry> retVal;
+
+    std::vector<SproutNoteEntry> sproutEntries;
+    std::vector<SaplingNoteEntry> saplingEntries;
+    {
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+        pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, EncodePaymentAddress(fromaddress_));
+    }
+
+    sproutEntries.clear();
+
+    for (auto entry : saplingEntries) {
+        retVal.push_back(entry);
+        std::string data(entry.memo.begin(), entry.memo.end());
+        LogPrint("zrpcunsafe", "found unspent Sapling note (txid=%s, vShieldedSpend=%d, amount=%s, memo=%s)\n",
+            entry.op.hash.ToString().substr(0, 10),
+            entry.op.n,
+            ValueFromAmount(entry.note.value()).write(),
+            HexStr(data).substr(0, 10));
+    }
+
+    if (retVal.empty()) {
+        return retVal;
+    }
+
+    // sort in descending order, so big notes appear first
+    std::sort(retVal.begin(), retVal.end(),
+        [](SaplingNoteEntry i, SaplingNoteEntry j) -> bool {
+            return i.note.value() > j.note.value();
+        });
+
+    return retVal;
+}
+
+CAmount CalculateFractionalPrice(CAmount smallNumerator, CAmount smallDenominator, bool roundup)
+{
+    static arith_uint256 bigZero(0);
+    static arith_uint256 BigSatoshi(SATOSHIDEN);
+    static arith_uint256 BigSatoshiSquared = BigSatoshi * BigSatoshi;
+
+    arith_uint256 denominator = smallDenominator * BigSatoshi;
+    arith_uint256 numerator = smallNumerator * BigSatoshiSquared;
+    arith_uint256 bigAnswer = numerator / denominator;
+    int64_t remainder = (numerator - (bigAnswer * denominator)).GetLow64();
+    CAmount answer = bigAnswer.GetLow64();
+    if (remainder && roundup)
+    {
+        answer++;
+    }
+    return answer;
+}
+
+bool GetOpRetChainOffer(const CTransaction &postedTx,
+                        CTransaction &offerTx,
+                        CTransaction &inputToOfferTx,
+                        uint32_t height,
+                        bool getUnexpired,
+                        bool getExpired,
+                        uint256 &offerBlockHash)
+{
+    std::vector<CBaseChainObject *> opRetArray;
+    CPartialTransactionProof offerTxProof;
+    bool isPartial;
+    COptCCParams p;
+    CSpentIndexKey spentKey = CSpentIndexKey(postedTx.GetHash(), 1);
+    CSpentIndexValue spentValue;
+    CTransaction opRetTx;
+    uint256 opRetBlockHash;
+
+    if (postedTx.vout.size() > 1 &&
+        postedTx.vout[0].scriptPubKey.IsPayToCryptoCondition(p) &&
+        p.IsValid() &&
+        (p.evalCode == EVAL_IDENTITY_COMMITMENT || p.evalCode == EVAL_IDENTITY_PRIMARY) &&
+        postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
+        ((postedTx.vout.back().scriptPubKey.IsOpReturn() &&
+          (opRetArray = RetrieveOpRetArray((opRetTx = postedTx).vout.back().scriptPubKey)).size() == 1) ||
+         (GetSpentIndex(spentKey, spentValue) &&
+          myGetTransaction(spentValue.txid, opRetTx, opRetBlockHash)  &&
+          (opRetArray = RetrieveOpRetArray(opRetTx.vout.back().scriptPubKey)).size() == 1)) &&
+        opRetArray[0]->objectType == CHAINOBJ_TRANSACTION_PROOF &&
+        (offerTxProof = ((CChainObject<CPartialTransactionProof> *)(opRetArray[0]))->object).IsValid() &&
+        !offerTxProof.GetPartialTransaction(offerTx, &isPartial).IsNull() &&
+        !isPartial &&
+        offerTx.vout.size() == 1 &&
+        offerTx.vin.size() == 1 &&
+        offerTx.vShieldedSpend.size() == 0 &&
+        ((spentKey = CSpentIndexKey(offerTx.vin[0].prevout.hash, offerTx.vin[0].prevout.n), !GetSpentIndex(spentKey, spentValue))) &&
+        ((getExpired && offerTx.nExpiryHeight <= height) || (getUnexpired && offerTx.nExpiryHeight > height)) &&
+        myGetTransaction(offerTx.vin[0].prevout.hash, inputToOfferTx, offerBlockHash))
+    {
+        return true;
+    }
+    return false;
+}
+
+bool GetOpRetChainOffer(const CTransaction &postedTx,
+                        CTransaction &offerTx,
+                        CTransaction &inputToOfferTx,
+                        uint32_t height)
+{
+    bool getUnexpired = true;
+    bool getExpired = false;
+    uint256 offerBlockHash;
+    return GetOpRetChainOffer(postedTx, offerTx, inputToOfferTx, height, getUnexpired, getExpired, offerBlockHash);
+}
+
+struct OfferInfo
+{
+public:
+    CTransaction offerTx;
+    CTransaction inputToOfferTx;
+    uint256 blockHash;
+};
+
+// returns a map with the first boolean being the "unexpired" state. if 0, the offer is expired
+bool GetMyOffers(std::map<std::pair<bool, uint256>, OfferInfo> &myOffers, uint32_t height, bool getUnexpired, bool getExpired)
+{
+    bool retVal = false;
+    LOCK(pwalletMain->cs_wallet);
+    for (auto &txPair : pwalletMain->mapWallet)
+    {
+        OfferInfo oneOfferInfo;
+        if (txPair.second.IsInMainChain() &&
+            GetOpRetChainOffer(txPair.second, oneOfferInfo.offerTx, oneOfferInfo.inputToOfferTx, height, getUnexpired, getExpired, oneOfferInfo.blockHash))
+        {
+            CSpentIndexKey spentKey = CSpentIndexKey(oneOfferInfo.inputToOfferTx.GetHash(), oneOfferInfo.offerTx.vin[0].prevout.n);
+            CSpentIndexValue spentValue;
+            bool isExpired = (oneOfferInfo.offerTx.nExpiryHeight <= height) || GetSpentIndex(spentKey, spentValue);
+            myOffers.insert(std::make_pair(std::make_pair(!isExpired, txPair.first), oneOfferInfo));
+            retVal = true;
+        }
+    }
+    return retVal;
+}
+
+/** Pushes a JSON object for script verification or signing errors to vErrorsRet. */
+void SigningErrorToJSON(const CTxIn& txin, UniValue& vErrorsRet, const std::string& strMessage)
+{
+    UniValue entry(UniValue::VOBJ);
+    entry.push_back(Pair("txid", txin.prevout.hash.ToString()));
+    entry.push_back(Pair("vout", (uint64_t)txin.prevout.n));
+    entry.push_back(Pair("scriptSig", HexStr(txin.scriptSig.begin(), txin.scriptSig.end())));
+    entry.push_back(Pair("sequence", (uint64_t)txin.nSequence));
+    entry.push_back(Pair("error", strMessage));
+    vErrorsRet.push_back(entry);
+}
+
+UniValue makeoffer(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 2 || params.size() > 4)
+    {
+        throw runtime_error(
+            "makeoffer fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"expiryheight\":blockheight, \"offer\":{\"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)\n"
+            "\nThis sends a transaction which provides a completely decentralized, fully on-chain an atomic swap offer for\n"
+            "\"decentralized swapping of any blockchain asset, including any/multi currencies, NFTs, identities, contractual\n"
+            "\"agreements and rights transfers, or to be used as bids for an on-chain auction of any blockchain asset(s).\n"
+            "\"Sources and destination of funds for swaps can be any valid transparent address capable of holding or controlling\n"
+            "the specific asset.\n"
+
+            "\nArguments\n"
+            "1. \"fromaddress\"             (string, required) The VerusID, or wildcard address to send funds from. \"*\", \"R*\", or \"i*\" are valid wildcards\n"
+            "2. {\n"
+            "     \"changeaddress\"         (string, required) Change destination when constructing transactions\n"
+            "     \"offer\"                 (object, required) Funds description or identity name, \"address\" in this object should be an address of the person making an offer for change\n"
+            "     \"for\"                   (object, required) Funds description or full identity description\n"
+            "   }\n"
+            "3. \"returntx\"                (bool, optional) default = false, if true, returns a transaction waiting for taker completion instead of posting\n"
+            "4. \"feeamount\"               (value, optional) default = 0.0001\n"
+
+            "\nResult:\n"
+            "{\n"
+            "  \"txid\" : \"transactionid\", The hex transaction id on success\n"
+            "  \"hex\" : \"serializedtx\"   If hex is requested, hex serialization of partial transaction instead of txid is returned on success\n"
+            "}\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("makeoffer", "fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"expiryheight\":blockheight, \"offer\":{\"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
+            + HelpExampleRpc("makeoffer", "fromaddress '{\"changeaddress\":\"transparentoriaddress\", \"expiryheight\":blockheight, \"offer\":{\"currency\":\"anycurrency\", \"amount\":...} | {\"identity\":\"idnameoriaddress\",...}', \"for\":{\"address\":..., \"currency\":\"anycurrency\", \"amount\":...} | {\"name\":\"identityforswap\",\"parent\":\"parentid\",\"primaryaddresses\":[\"R-address(s)\"],\"minimumsignatures\":1,...}}' (returntx) (feeamount)")
+        );
+    }
+
+    CheckVerusVaultAPIsValid();
+
+    std::string sourceAddress = uni_get_str(params[0]);
+    CTxDestination sourceDest;
+
+    bool wildCardTransparentAddress = sourceAddress == "*";
+    bool wildCardRAddress = sourceAddress == "R*";
+    bool wildCardiAddress = sourceAddress == "i*";
+    bool wildCardAddress = wildCardTransparentAddress || wildCardRAddress || wildCardiAddress;
+
+    std::vector<CRecipient> outputs;
+
+    LOCK2(cs_main, mempool.cs);
+    LOCK(pwalletMain->cs_wallet);
+
+    libzcash::PaymentAddress zaddressSource;
+    libzcash::SaplingExpandedSpendingKey expsk;
+    uint256 sourceOvk;
+    bool hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(sourceAddress, zaddressSource);
+    // if we have a z-address as a source, re-encode it to a string, which is used
+    // by the async operation, to ensure that we don't need to lookup IDs in that operation
+    if (hasZSource)
+    {
+        sourceAddress = EncodePaymentAddress(zaddressSource);
+        // We don't need to lock on the wallet as spending key related methods are thread-safe
+        if (!boost::apply_visitor(HaveSpendingKeyForPaymentAddress(pwalletMain), zaddressSource)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, no spending key found for zaddr");
+        }
+
+        auto spendingkey_ = boost::apply_visitor(GetSpendingKeyForPaymentAddress(pwalletMain), zaddressSource).get();
+        auto sk = boost::get<libzcash::SaplingExtendedSpendingKey>(spendingkey_);
+        expsk = sk.expsk;
+        sourceOvk = expsk.full_viewing_key().ovk;
+    }
+
+    if (!(hasZSource ||
+          wildCardAddress ||
+          (sourceDest = DecodeDestination(sourceAddress)).which() != COptCCParams::ADDRTYPE_INVALID))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\", or \"i*\",. See help.");
+    }
+
+    CTxDestination from_taddress;
+    if (wildCardTransparentAddress)
+    {
+        from_taddress = CTxDestination();
+    }
+    else if (wildCardRAddress)
+    {
+        from_taddress = CTxDestination(CKeyID(uint160()));
+    }
+    else if (wildCardiAddress)
+    {
+        from_taddress = CTxDestination(CIdentityID(uint160()));
+    }
+    else
+    {
+        from_taddress = sourceDest;
+    }
+
+    if (!params[1].isObject())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. Second parameter must be object. See help.");
+    }
+
+    bool returnHex = false;
+    if (params.size() > 2)
+    {
+        returnHex = uni_get_bool(params[2], returnHex);
+    }
+
+    CAmount feeAmount = DEFAULT_TRANSACTION_FEE;
+    if (params.size() > 3)
+    {
+        feeAmount = AmountFromValue(params[3]);
+    }
+
+    UniValue offerValue = find_value(params[1], "offer");
+    UniValue forValue = find_value(params[1], "for");
+    if (!offerValue.isObject() || !forValue.isObject())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Both \"offer\" and \"for\" must be valid objects in the first parameter object");
+    }
+
+    uint32_t height = chainActive.Height();
+
+    CMutableTransaction offerTx = CreateNewContextualCMutableTransaction(Params().consensus, height + 1);
+    uint32_t expiryHeight = uni_get_int(find_value(params[1], "expiryheight"));
+    if (expiryHeight > offerTx.nExpiryHeight && expiryHeight < TX_EXPIRY_HEIGHT_THRESHOLD)
+    {
+        offerTx.nExpiryHeight = expiryHeight;
+    }
+
+    CInputDescriptor offerIn;
+    std::vector<CInputDescriptor> postedOfferIns;
+    CTxDestination changeDestination;
+    CTxDestination fundsDestination;
+    uint160 offerID;
+    uint160 offerCurrencyID;
+    CTxIn idTxIn;
+    CIdentity oldID;
+    uint32_t idHeight;
+    uint160 newIDID;
+    uint160 newCurrencyID;
+    CTransaction preTx;
+
+    bool hasZDest = false;
+    libzcash::PaymentAddress zaddressDest;
+    libzcash::SaplingPaymentAddress *saplingAddress;
+    void *saplingOutputCtx = nullptr;
+
+    auto changeAddressStr = TrimSpaces(uni_get_str(find_value(params[1], "changeaddress")));
+    if (changeAddressStr.empty() || (changeDestination = ValidateDestination(changeAddressStr)).which() == COptCCParams::ADDRTYPE_INVALID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "changeaddress must be valid");
+    }
+
+    if (find_value(forValue, "name").isNull())
+    {
+        if (!find_value(forValue, "identity").isNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "To buy an identity, define the identity by the \"for\" object as you would when registering, with \"name\", \"primaryaddresses\", etc. Do not use an \"identity\" tag");
+        }
+
+        auto currencyStr = TrimSpaces(uni_get_str(find_value(forValue, "currency")));
+        CAmount destinationAmount = AmountFromValue(find_value(forValue, "amount"));
+        auto memoStr = TrimSpaces(uni_get_str(find_value(forValue, "memo")));
+
+        CCurrencyDefinition sourceCurrencyDef;
+        if (currencyStr.empty())
+        {
+            sourceCurrencyDef = ConnectedChains.ThisChain();
+            newCurrencyID = sourceCurrencyDef.GetID();
+            currencyStr = EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()));
+        }
+        else
+        {
+            newCurrencyID = ValidateCurrencyName(currencyStr, true, &sourceCurrencyDef);
+            if (newCurrencyID.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "If source currency is specified, it must be valid.");
+            }
+        }
+
+        auto destStr = TrimSpaces(uni_get_str(find_value(forValue, "address")));
+
+        fundsDestination = ValidateDestination(destStr);
+        CTransferDestination dest;
+
+        if (fundsDestination.which() == COptCCParams::ADDRTYPE_INVALID)
+        {
+            // make the funds output that defines what we are willing to accept for the input we are offering
+            hasZDest = pwalletMain->GetAndValidateSaplingZAddress(destStr, zaddressDest);
+            if (hasZDest)
+            {
+                saplingAddress = boost::get<libzcash::SaplingPaymentAddress>(&zaddressDest);
+            }
+            else
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Specified \"for\" destination address must be valid");
+            }
+            if (saplingAddress == nullptr)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Only sapling addresses may be used as a private \"for\" destination");
+            }
+        }
+    }
+    else
+    {
+        uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(forValue, "parent")))));
+        if (parentID.IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure reference to the correct identity, parent must be a valid, non-null value.");
+        }
+        std::string nameStr = CleanName(uni_get_str(find_value(forValue, "name")), parentID);
+        newIDID = CIdentity::GetID(nameStr, parentID);
+        if (newIDID.IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + " specification is not valid -- " + (nameStr.empty() ? "must have valid name" : "maybe needs parent?"));
+        }
+
+        if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn)).IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + " (" +EncodeDestination(CIdentityID(newIDID)) + "), not found ");
+        }
+    }
+
+    try
+    {
+        std:vector<COutput> vCoins;
+
+        // first, construct the "offer" input, which will either be funds or an ID from this wallet
+        if (find_value(offerValue, "identity").isNull())
+        {
+            auto currencyStr = TrimSpaces(uni_get_str(find_value(offerValue, "currency")));
+            CAmount sourceAmount = AmountFromValue(find_value(offerValue, "amount"));
+
+            if (!sourceAmount)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "A currency offer must include a valid amount");
+            }
+
+            CCurrencyDefinition sourceCurrencyDef;
+            uint160 sourceCurrencyID;
+            if (currencyStr != "")
+            {
+                sourceCurrencyID = ValidateCurrencyName(currencyStr, true, &sourceCurrencyDef);
+                if (sourceCurrencyID.IsNull())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If source currency is specified, it must be valid.");
+                }
+            }
+            else
+            {
+                sourceCurrencyDef = ConnectedChains.ThisChain();
+                sourceCurrencyID = sourceCurrencyDef.GetID();
+                currencyStr = EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()));
+            }
+
+            offerCurrencyID = sourceCurrencyID;
+            CRecipient oneOutput;
+
+            if (sourceCurrencyID == ASSETCHAINS_CHAINID)
+            {
+                oneOutput.nAmount = sourceAmount;
+                oneOutput.scriptPubKey = GetScriptForDestination(changeDestination);
+            }
+            else
+            {
+                oneOutput.nAmount = 0;
+
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({changeDestination});
+                CTokenOutput to(sourceCurrencyID, sourceAmount);
+
+                oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
+            }
+
+            bool success = false;
+            std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+            std::vector<SaplingNoteEntry> saplingNotes;
+            CCurrencyValueMap reserveValueOut;
+            CAmount nativeValueOut;
+            CAmount totalOriginationFees = feeAmount;
+            if (!returnHex)
+            {
+                totalOriginationFees += feeAmount;
+                // if we're posting, and it is not a native currency offer, add an extra fee
+                // to enable closing the offer
+                if (sourceCurrencyID != ASSETCHAINS_CHAINID)
+                {
+                    // add one more fee to enable auto-cancellation when offering non-native currencies
+                    totalOriginationFees += feeAmount;
+                }
+            }
+
+            // first make an input transaction to split the offer funds into an exact input and change, if needed
+            if (sourceCurrencyID == ASSETCHAINS_CHAINID)
+            {
+                if (hasZSource)
+                {
+                    saplingNotes = find_unspent_notes(zaddressSource);
+                    CAmount totalFound = 0;
+                    int i;
+                    for (i = 0; i < saplingNotes.size(); i++)
+                    {
+                        totalFound += saplingNotes[i].note.value();
+                        if (totalFound >= (oneOutput.nAmount + totalOriginationFees))
+                        {
+                            break;
+                        }
+                    }
+                    // remove all but the notes we'll use
+                    if (i < saplingNotes.size())
+                    {
+                        saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
+                        success = true;
+                    }
+                }
+                else
+                {
+                    success = find_utxos(from_taddress, vCoins) &&
+                            pwalletMain->SelectCoinsMinConf(oneOutput.nAmount + totalOriginationFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+                }
+            }
+            else if (hasZSource)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot source non-native currencies from a private address");
+            }
+            else
+            {
+                success = find_utxos(from_taddress, vCoins);
+                success = success && pwalletMain->SelectReserveCoinsMinConf(oneOutput.scriptPubKey.ReserveOutValue(),
+                                                                            totalOriginationFees,
+                                                                            0,
+                                                                            1,
+                                                                            vCoins,
+                                                                            setCoinsRet,
+                                                                            reserveValueOut,
+                                                                            nativeValueOut);
+            }
+            if (!success)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Insufficient funds for offer");
+            }
+ 
+            // we need one output to create the proper index entry
+            CKeyID offerIDKey = COnChainOffer::OnChainCurrencyOfferKey(offerCurrencyID);
+            CKeyID forIDKey = newIDID.IsNull() ? 
+                COnChainOffer::OnChainOfferForCurrencyKey(newCurrencyID) :
+                COnChainOffer::OnChainOfferForIdentityKey(newIDID);
+
+            // use the transaction builder to properly make change of native and reserves
+            TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
+
+            CCommitmentHash ch;
+            std::vector<CTxDestination> dests({changeDestination});
+            std::vector<CTxDestination> masterKeyDest({forIDKey, offerIDKey});
+            if (sourceCurrencyID == ASSETCHAINS_CHAINID)
+            {
+                CCommitmentHash commitment = CCommitmentHash(uint256());
+                tb.AddTransparentOutput(MakeMofNCCScript(
+                    CConditionObj<CCommitmentHash>(EVAL_IDENTITY_COMMITMENT, dests, 1, &commitment), returnHex ? nullptr : &masterKeyDest),
+                    oneOutput.nAmount);
+            }
+            else
+            {
+                CCommitmentHash commitment = CCommitmentHash(uint256(), CTokenOutput(oneOutput.scriptPubKey.ReserveOutValue()));
+                tb.AddTransparentOutput(MakeMofNCCScript(
+                    CConditionObj<CCommitmentHash>(EVAL_IDENTITY_COMMITMENT, dests, 1, &commitment), returnHex ? nullptr : &masterKeyDest), 
+                    returnHex ? oneOutput.nAmount : oneOutput.nAmount + feeAmount);
+            }
+
+            // aggregate all inputs into one output with only the offer coins and offer indexes
+            if (saplingNotes.size())
+            {
+                std::vector<SaplingOutPoint> notes;
+                for (auto &oneNoteInfo : saplingNotes)
+                {
+                    notes.push_back(oneNoteInfo.op);
+                }
+                // Fetch Sapling anchor and witnesses
+                uint256 anchor;
+                std::vector<boost::optional<SaplingWitness>> witnesses;
+                {
+                    LOCK2(cs_main, pwalletMain->cs_wallet);
+                    pwalletMain->GetSaplingNoteWitnesses(notes, witnesses, anchor);
+                }
+
+                // Add Sapling spends
+                for (size_t i = 0; i < saplingNotes.size(); i++)
+                {
+                    tb.AddSaplingSpend(expsk, saplingNotes[i].note, anchor, witnesses[i].get());
+                }
+            }
+            else
+            {
+                for (auto &oneInput : setCoinsRet)
+                {
+                    tb.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second),
+                                            oneInput.first->vout[oneInput.second].scriptPubKey,
+                                            oneInput.first->vout[oneInput.second].nValue);
+                }
+            }
+            tb.SendChangeTo(changeDestination);
+            tb.SetFee(feeAmount);
+            TransactionBuilderResult preResult = tb.Build();
+            preTx = preResult.GetTxOrThrow();
+
+            // add to mem pool and relay
+            CValidationState state;
+            if (!myAddtomempool(preTx, &state))
+            {
+                throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx: " + state.GetRejectReason());
+            }
+            else
+            {
+                RelayTransaction(preTx);
+            }
+
+            offerIn = CInputDescriptor(preTx.vout[0].scriptPubKey, preTx.vout[0].nValue, CTxIn(preTx.GetHash(), 0));
+            offerTx.vin.push_back(offerIn.txIn);
+
+            if (!returnHex)
+            {
+                postedOfferIns.push_back(CInputDescriptor(preTx.vout[1].scriptPubKey, preTx.vout[1].nValue, CTxIn(preTx.GetHash(), 1)));
+            }
+        }
+        else
+        {
+            CTxDestination idDest = DecodeDestination(uni_get_str(find_value(offerValue, "identity")));
+            if (idDest.which() != COptCCParams::ADDRTYPE_ID)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or i-address: \"" + uni_get_str(params[0]) + "\"");
+            }
+            CIdentityID idID = CIdentityID(GetDestinationID(idDest));
+            // we must have the offer value ID in our wallet to offer it
+            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+            if (!pwalletMain->GetIdentity(idID, keyAndIdentity) && keyAndIdentity.first.CanSign())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "To offer an identity, this wallet must have signing authority over the identity offered");
+            }
+
+            offerID = idID;
+
+            uint32_t idHeight;
+            CTxIn idTxIn;
+            CIdentity sourceIdentity = CIdentity::LookupIdentity(idID, 0, &idHeight, &idTxIn);
+            if (!sourceIdentity.IsValid() && !idTxIn.prevout.hash.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot find identity to offer");
+            }
+
+            CTransaction idTx;
+            uint256 blockHash;
+            if (!myGetTransaction(idTxIn.prevout.hash, idTx, blockHash))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot find identity to offer");
+            }
+
+            if (returnHex)
+            {
+                offerIn.txIn = idTxIn;
+                offerIn.nValue = idTx.vout[idTxIn.prevout.n].nValue;
+                offerIn.scriptPubKey = idTx.vout[idTxIn.prevout.n].scriptPubKey;
+                offerTx.vin.push_back(offerIn.txIn);
+            }
+            else
+            {
+                bool success;
+                std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+                CCurrencyValueMap reserveValueOut;
+                CAmount nativeValueOut;
+                CAmount totalOriginationFees = feeAmount * 2;
+
+                success = find_utxos(from_taddress, vCoins) &&
+                            pwalletMain->SelectCoinsMinConf(totalOriginationFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+
+                // first make an input transaction to split the offer funds into an exact input and change, if needed
+                if (!success)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Insufficient funds for posting offer for identity on chain");
+                }
+    
+                // we need one output to create the proper index entry
+                CKeyID offerIDKey = COnChainOffer::OnChainIdentityOfferKey(offerID);
+                CKeyID forIDKey = newIDID.IsNull() ? 
+                    COnChainOffer::OnChainOfferForCurrencyKey(newCurrencyID) :
+                    COnChainOffer::OnChainOfferForIdentityKey(newIDID);
+
+                // use the transaction builder to properly make change of native and reserves
+                TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
+
+                CCommitmentHash ch;
+                std::vector<CTxDestination> dests({changeDestination});
+                std::vector<CTxDestination> indexDests({forIDKey, offerIDKey});
+
+                tb.AddTransparentInput(COutPoint(idTxIn.prevout.hash, idTxIn.prevout.n), idTx.vout[idTxIn.prevout.n].scriptPubKey, idTx.vout[idTxIn.prevout.n].nValue);
+                sourceIdentity.UpgradeVersion(height + 1);
+                tb.AddTransparentOutput(sourceIdentity.IdentityUpdateOutputScript(height + 1, &indexDests), feeAmount);
+
+                // aggregate all inputs into one output with only the offer coins and offer indexes
+                for (auto &oneInput : setCoinsRet)
+                {
+                    tb.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second),
+                                            oneInput.first->vout[oneInput.second].scriptPubKey,
+                                            oneInput.first->vout[oneInput.second].nValue);
+                }
+                tb.SendChangeTo(changeDestination);
+                tb.SetFee(feeAmount);
+                TransactionBuilderResult preResult = tb.Build();
+                preTx = preResult.GetTxOrThrow();
+
+                // add to mem pool and relay
+                CValidationState state;
+                if (!myAddtomempool(preTx, &state))
+                {
+                    throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx for identity: " + state.GetRejectReason());
+                }
+                else
+                {
+                    RelayTransaction(preTx);
+                }
+
+                offerIn = CInputDescriptor(preTx.vout[0].scriptPubKey, preTx.vout[0].nValue, CTxIn(preTx.GetHash(), 0));
+                offerTx.vin.push_back(offerIn.txIn);
+
+                postedOfferIns.push_back(CInputDescriptor(preTx.vout[1].scriptPubKey, preTx.vout[1].nValue, CTxIn(preTx.GetHash(), 1)));
+            }
+        }
+
+        CRecipient requestOutput;
+
+        // now we have made and added the offer input, make the output of what we want to exchange directed to us
+        // then, sign the transaction, put it in an opreturn, and make the transaction that contains it
+        if (find_value(forValue, "name").isNull())
+        {
+            auto currencyStr = TrimSpaces(uni_get_str(find_value(forValue, "currency")));
+            CAmount destinationAmount = AmountFromValue(find_value(forValue, "amount"));
+            auto memoStr = TrimSpaces(uni_get_str(find_value(forValue, "memo")));
+
+            if (hasZDest && newCurrencyID != ASSETCHAINS_CHAINID)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send non-native currency when sending proceeds to a private z-address");
+            }
+            if (!hasZDest && !memoStr.empty())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot include memo when sending proceeds to a transparent address or ID");
+            }
+            if (hasZDest)
+            {
+                requestOutput.nAmount = DEFAULT_TRANSACTION_FEE;
+                requestOutput.scriptPubKey = GetScriptForDestination(changeDestination);
+
+                // if memo starts with "#", convert it from a string to a hex value
+                if (memoStr.size() > 1 && memoStr[0] == '#')
+                {
+                    // make a hex string out of the chars without the "#"
+                    memoStr = HexBytes((const unsigned char *)&(memoStr[1]), memoStr.size());
+                }
+
+                if (memoStr.size() && !IsHex(memoStr)) 
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Expected memo data in hexadecimal format or as a non-zero length text string, starting with \"#\".");
+                }
+
+                std::array<unsigned char, ZC_MEMO_SIZE> hexMemo;
+
+                if (memoStr.length() > ZC_MEMO_SIZE*2) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER,  strprintf("Size of memo is larger than maximum allowed %d", ZC_MEMO_SIZE));
+                }
+                else if (memoStr.length() > 0)
+                {
+                    hexMemo = AsyncRPCOperation_sendmany::get_memo_from_hex_string(memoStr);
+                }
+
+                // make the z-output
+                uint256 ovk;
+                HDSeed seed;
+                if (!pwalletMain->GetHDSeed(seed)) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "wallet seed unavailable for z-address output");
+                }
+                ovk = ovkForShieldingFromTaddr(seed);
+
+                saplingOutputCtx = librustzcash_sapling_proving_ctx_init();
+                auto note = libzcash::SaplingNote(*saplingAddress, destinationAmount);
+                OutputDescriptionInfo output(ovk, note, hexMemo);
+                offerTx.valueBalance -= destinationAmount;
+
+                auto cm = output.note.cm();
+                if (!cm) {
+                    librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
+                    throw JSONRPCError(RPC_TRANSACTION_REJECTED, "failed attempt to create private output");
+                }
+
+                libzcash::SaplingNotePlaintext notePlaintext(output.note, output.memo);
+
+                auto res = notePlaintext.encrypt(output.note.pk_d);
+                if (!res) {
+                    librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
+                    throw JSONRPCError(RPC_TRANSACTION_REJECTED, "failed to encrypt note with memo");
+                }
+                auto enc = res.get();
+                auto encryptor = enc.second;
+
+                OutputDescription odesc;
+                if (!librustzcash_sapling_output_proof(
+                        saplingOutputCtx,
+                        encryptor.get_esk().begin(),
+                        output.note.d.data(),
+                        output.note.pk_d.begin(),
+                        output.note.r.begin(),
+                        output.note.value(),
+                        odesc.cv.begin(),
+                        odesc.zkproof.begin())) {
+                    librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
+                    throw JSONRPCError(RPC_TRANSACTION_REJECTED, "output proof failed");
+                }
+
+                odesc.cm = *cm;
+                odesc.ephemeralKey = encryptor.get_epk();
+                odesc.encCiphertext = enc.first;
+
+                libzcash::SaplingOutgoingPlaintext outPlaintext(output.note.pk_d, encryptor.get_esk());
+                odesc.outCiphertext = outPlaintext.encrypt(
+                    output.ovk,
+                    odesc.cv,
+                    odesc.cm,
+                    encryptor);
+                offerTx.vShieldedOutput.push_back(odesc);
+            }
+            else
+            {
+                // make transparent output and complete transaction
+                if (newCurrencyID == ASSETCHAINS_CHAINID)
+                {
+                    requestOutput.nAmount = destinationAmount;
+                    requestOutput.scriptPubKey = GetScriptForDestination(fundsDestination);
+                }
+                else
+                {
+                    requestOutput.nAmount = newCurrencyID == ASSETCHAINS_CHAINID ? destinationAmount : 0;
+
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({fundsDestination});
+                    CTokenOutput to(newCurrencyID, destinationAmount);
+
+                    requestOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
+                }
+            }
+            offerTx.vout.push_back(CTxOut(requestOutput.nAmount, requestOutput.scriptPubKey));
+        }
+        else
+        {
+            // create the desired ID output, which the asset this exchange is making an offer for
+            // to take the offer, a party in control of the identity defined by the output
+            // must provide them on input to turn this into a valid transaction
+
+            uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(forValue, "parent")))));
+            if (parentID.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure reference to the correct identity, parent must be a correct, non-null value.");
+            }
+            std::string nameStr = CleanName(uni_get_str(find_value(forValue, "name")), parentID);
+            newIDID = CIdentity::GetID(nameStr, parentID);
+            if (newIDID.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + " specification is not valid -- " + (nameStr.empty() ? "must have valid name" : "maybe needs parent?"));
+            }
+
+            CTxIn idTxIn;
+            CIdentity oldID;
+            uint32_t idHeight;
+
+            if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn)).IsValid())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + " (" +EncodeDestination(CIdentityID(newIDID)) + "), not found ");
+            }
+
+            oldID.revocationAuthority = oldID.GetID();
+            oldID.recoveryAuthority = oldID.GetID();
+            oldID.privateAddresses.clear();
+            oldID.primaryAddresses.clear();
+            oldID.minSigs = 1;
+
+            uint256 blkHash;
+            CTransaction oldIdTx;
+            if (!myGetTransaction(idTxIn.prevout.hash, oldIdTx, blkHash))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + ", transaction not found ");
+            }
+
+            auto uniOldID = UniObjectToMap(oldID.ToUniValue());
+
+            // overwrite old elements
+            for (auto &oneEl : UniObjectToMap(forValue))
+            {
+                uniOldID[oneEl.first] = oneEl.second;
+            }
+
+            uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(height + 1);
+
+            if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
+            {
+                uniOldID["version"] = solVersion < CActivationHeight::ACTIVATE_PBAAS ? (int64_t)CIdentity::VERSION_VAULT : (int64_t)CIdentity::VERSION_PBAAS;
+                if (oldID.nVersion < CIdentity::VERSION_VAULT)
+                {
+                    uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
+                }
+            }
+
+            UniValue newUniID = MapToUniObject(uniOldID);
+            CIdentity newID(newUniID);
+
+            if (!newID.IsValid(true))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
+            }
+
+            // make sure we have a revocation and recovery authority defined
+            CIdentity revocationAuth = newID.revocationAuthority == newIDID ? newID : newID.LookupIdentity(newID.revocationAuthority);
+            CIdentity recoveryAuth = newID.recoveryAuthority == newIDID ? newID : newID.LookupIdentity(newID.recoveryAuthority);
+
+            if (!revocationAuth.IsValid() || !recoveryAuth.IsValid())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid revocation or recovery authority specified");
+            }
+
+            if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
+            }
+
+            if (oldID.IsLocked() != newID.IsLocked())
+            {
+                bool newLocked = newID.IsLocked();
+                uint32_t unlockAfter = newID.unlockAfter;
+                newID.flags = (newID.flags & ~newID.FLAG_LOCKED) | (newID.IsRevoked() ? 0 : (oldID.flags & oldID.FLAG_LOCKED));
+                newID.unlockAfter = oldID.unlockAfter;
+
+                if (!newLocked)
+                {
+                    newID.Unlock(height + 1, offerTx.nExpiryHeight);
+                }
+                else
+                {
+                    newID.Lock(unlockAfter);
+                }
+            }
+
+            newID.UpgradeVersion(height + 1);
+            offerTx.vout.push_back(CTxOut(0, newID.IdentityUpdateOutputScript(height + 1)));
+        }
+
+        // now, the offer tx is complete, and we need to sign its input with SIGHASH_SINGLE
+        auto consensusBranchId = CurrentEpochBranchId(height, Params().consensus);
+
+        if (offerTx.vShieldedOutput.size())
+        {
+            // has for SIGHASH_SINGLE | SIGHASH_ANYONECANPAY binding signature for
+            // Sapling outputs. Final transaction must only include Sapling outputs, which
+            // have a binding signature bound to the single input along with its output and a zero
+            // amount. the zero amount allows us to generate and validate this hash without
+            // the output script of the prior transaction output, which is bound and verified by the
+            // hash signed on that input already
+            uint256 dataToBeSigned;
+            CScript scriptCode;
+            try {
+                dataToBeSigned = SignatureHash(scriptCode, offerTx, 0, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY, 0, consensusBranchId);
+            } catch (std::logic_error ex) {
+                librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not construct signature hash");
+            }
+
+            librustzcash_sapling_binding_sig(
+                saplingOutputCtx,
+                offerTx.valueBalance,
+                dataToBeSigned.begin(),
+                offerTx.bindingSig.data());
+
+            librustzcash_sapling_proving_ctx_free(saplingOutputCtx);
+        }
+
+        CTransaction txNewConst(offerTx);
+        SignatureData sigdata;
+
+        bool signSuccess = ProduceSignature(
+            TransactionSignatureCreator(pwalletMain, &txNewConst, 0, offerIn.nValue, offerIn.scriptPubKey, height + 1, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY), offerIn.scriptPubKey, sigdata, consensusBranchId);
+
+        if (signSuccess || sigdata.scriptSig.size())
+        {
+            UpdateTransaction(offerTx, 0, sigdata);
+        }
+        else
+        {
+            UniValue jsonTx(UniValue::VOBJ);
+            extern void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry);
+            TxToUniv(txNewConst, uint256(), jsonTx);
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Failed to sign for script:\n " + jsonTx.write(1,2) + "\n");
+        }
+
+        UniValue retVal(UniValue::VOBJ);
+
+        // if we're not just returning the hex tx, create a transaction from the postedOfferIns funds
+        if (!signSuccess || returnHex)
+        {
+            if (signSuccess)
+            {
+                retVal.pushKV("signstatus", "complete");
+            }
+            else
+            {
+                retVal.pushKV("signstatus", "incomplete");
+            }
+            retVal.pushKV("hex", EncodeHexTx(offerTx));
+            if (!returnHex)
+            {
+                retVal.pushKV("listingtransactionid", preTx.GetHash().GetHex());
+            }
+        }
+        else
+        {
+            if (!postedOfferIns.size())
+            {
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to make offer transaction on chain, try with returnhex as false");
+            }
+            TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
+            for (auto &oneIn : postedOfferIns)
+            {
+                tb.AddTransparentInput(COutPoint(oneIn.txIn.prevout.hash, oneIn.txIn.prevout.n), oneIn.scriptPubKey, oneIn.nValue);
+            }
+
+            // now, make the opret to contain this transaction
+            CCrossChainProof opRetProof;
+            opRetProof << CPartialTransactionProof(CMMRProof(), offerTx);
+            tb.AddOpRet(StoreOpRetArray(opRetProof.chainObjects));
+            tb.SendChangeTo(changeDestination);
+            tb.SetFee(feeAmount);
+
+            TransactionBuilderResult result = tb.Build();
+            CTransaction offerPostTx = result.GetTxOrThrow();
+
+            // add to mem pool and relay
+            CValidationState state;
+            if (!myAddtomempool(offerPostTx, &state))
+            {
+                throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Failed to add offer transaction to mempool");
+            }
+            else
+            {
+                retVal.pushKV("txid", preTx.GetHash().GetHex());
+                retVal.pushKV("oprettxid", offerPostTx.GetHash().GetHex());
+                RelayTransaction(offerPostTx);
+            }
+        }
+
+        return retVal;
+    }
+    catch(const std::exception& e)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot create offer: " + std::string(e.what()));
+    }
+    return NullUniValue;
+}
+
+UniValue takeoffer(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 2 || params.size() > 4)
+    {
+        throw runtime_error(
+            "takeoffer fromaddress '{\"txid\":\"txid\" | \"tx\":\"hextx\", \"changeaddress\":\"transparentoriaddress\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\":n}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}}' (returntx) (feeamount)\n"
+            "\nIf the current wallet can afford the swap, this accepts a swap offer on the blockchain, creates a transaction\n"
+            "to execute it, and posts the transaction to the blockchain.\n"
+
+            "\nArguments\n"
+            "\"fromaddress\"            (string, required) The Sapling, VerusID, or wildcard address to send funds from, including fees for ID swaps.\n"
+            "                                              \"*\", \"R*\", or \"i*\" are valid wildcards\n"
+            "{\n"
+                "\"txid\"               (string, required) The transaction ID for the offer to accept\n"
+                "\"tx\"                 (string, required) The hex transaction to complete in order to accept the offer\n"
+                "\"deliver\"            (object, required) One of \"fullidnameoriaddresstotrade\" or {\"currency\":\"currencynameorid\", \"amount\":value}\n"
+                "\"feeamount\"          (number, optional) Specific fee amount requested instead of default miner's fee\n"
+            "}\n"
+
+            "\nResult:\n"
+            "   \"txid\" : \"transactionid\" (string) The transaction id if (returntx) is false\n"
+            "   \"hextx\" : \"hex\"         (string) The hexadecimal, serialized transaction if (returntx) is true\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("takeoffer", "fromaddress '{\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\"}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}}' (returntx) (feeamount)")
+            + HelpExampleRpc("takeoffer", "fromaddress {\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\"}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}} (returntx) (feeamount)")
+        );
+    }
+
+    CheckVerusVaultAPIsValid();
+
+    bool returnHex = params.size() > 2 ? uni_get_bool(params[2]) : false;
+    CAmount feeAmount = params.size() > 3 ? AmountFromValue(params[3]) : DEFAULT_TRANSACTION_FEE;
+
+    std::string fundsSource = uni_get_str(params[0]);
+    if (fundsSource.empty())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "First parameter json object must include a currency funding \"source\", which may be an ID, transparent address, private address, or wildcards (*, R*, i*)");
+    }
+
+    CTxDestination sourceDest, changeAddress;
+
+    bool wildCardTransparentAddress = fundsSource == "*";
+    bool wildCardRAddress = fundsSource == "R*";
+    bool wildCardiAddress = fundsSource == "i*";
+    bool wildCardAddress = wildCardTransparentAddress || wildCardRAddress || wildCardiAddress;
+
+    std::vector<CRecipient> outputs;
+
+    libzcash::PaymentAddress zaddressSource;
+    libzcash::SaplingExpandedSpendingKey expsk;
+    std::vector<SpendDescriptionInfo> saplingSpends;
+    void *saplingSpendCtx = nullptr;
+
+    uint256 sourceOvk;
+    bool hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(fundsSource, zaddressSource);
+    // if we have a z-address as a source, re-encode it to a string, which is used
+    // by the async operation, to ensure that we don't need to lookup IDs in that operation
+    if (hasZSource)
+    {
+        // TODO: enable z-source for funds
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "z-address for payment, not yet implemented");
+        fundsSource = EncodePaymentAddress(zaddressSource);
+        // We don't need to lock on the wallet as spending key related methods are thread-safe
+        if (!boost::apply_visitor(HaveSpendingKeyForPaymentAddress(pwalletMain), zaddressSource)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, no spending key found for zaddr");
+        }
+
+        auto spendingkey_ = boost::apply_visitor(GetSpendingKeyForPaymentAddress(pwalletMain), zaddressSource).get();
+        auto sk = boost::get<libzcash::SaplingExtendedSpendingKey>(spendingkey_);
+        expsk = sk.expsk;
+        sourceOvk = expsk.full_viewing_key().ovk;
+    }
+
+    if (!(hasZSource ||
+          wildCardAddress ||
+          (sourceDest = DecodeDestination(fundsSource)).which() != COptCCParams::ADDRTYPE_INVALID))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\", or \"i*\",. See help.");
+    }
+
+    CTxDestination from_taddress;
+    if (wildCardTransparentAddress)
+    {
+        from_taddress = CTxDestination();
+    }
+    else if (wildCardRAddress)
+    {
+        from_taddress = CTxDestination(CKeyID(uint160()));
+    }
+    else if (wildCardiAddress)
+    {
+        from_taddress = CTxDestination(CIdentityID(uint160()));
+    }
+    else
+    {
+        from_taddress = sourceDest;
+    }
+
+    // now, we either have a z-address source, wild card, or single transparent source
+    const UniValue &takeOfferUni = params[1];
+    std::string txIdStringToTake = uni_get_str(find_value(takeOfferUni, "txid"));
+    std::string txStringToTake = uni_get_str(find_value(takeOfferUni, "tx"));
+    std::string changeAddressStr = uni_get_str(find_value(takeOfferUni, "changeaddress"));
+
+    {
+        LOCK(cs_main);
+        if ((changeAddress = ValidateDestination(changeAddressStr)).which() == COptCCParams::ADDRTYPE_INVALID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "\"changeaddress\" must be specified as a transparent address or identity");
+        }
+    }
+
+    uint256 txIdToTake;
+    CTransaction txToTake, inputTxToOffer;
+    uint32_t height;
+    uint32_t consensusBranchId;
+
+    {
+        LOCK2(cs_main, mempool.cs);
+        height = chainActive.Height();
+        consensusBranchId = CurrentEpochBranchId(height + 1, Params().GetConsensus());
+
+        if (!txIdStringToTake.empty())
+        {
+            txIdToTake.SetHex(txIdStringToTake);
+            if (txIdToTake.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid txid specified");
+            }
+            uint256 blockHash;
+            CTransaction postedTx;
+            if (!myGetTransaction(txIdToTake, postedTx, blockHash))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Transaction " + txIdToTake.GetHex() + " not found");
+            }
+
+            // get the actual transaction from the op return
+            if (!GetOpRetChainOffer(postedTx, txToTake, inputTxToOffer, height))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to retrieve valid offer");
+            }
+        }
+        else if (!txStringToTake.empty())
+        {
+            uint256 blockHash;
+            if (!(DecodeHexTx(txToTake, txStringToTake) &&
+                  txToTake.vout.size() == 1 &&
+                  txToTake.vin.size() == 1 &&
+                  txToTake.vShieldedSpend.size() == 0 &&
+                  txToTake.nExpiryHeight > (height + 3) &&
+                  myGetTransaction(txToTake.vin[0].prevout.hash, inputTxToOffer, blockHash)))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Offer transaction supplied is not valid or expired");
+            }
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must either provide a transaction in \"tx\" or a transaction id in \"txid\" to specify the offer");
+        }
+    }
+
+    UniValue deliver = find_value(takeOfferUni, "deliver");
+    UniValue accept = find_value(takeOfferUni, "accept");
+
+    CIdentityID idIDToDeliver;
+    std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+    CTxIn idInput;
+    CTxOut oldIdOutput;
+    CTxDestination acceptToAddress;
+
+    std::pair<CIdentityMapKey, CIdentityMapValue> keyAndRevocation;
+    std::pair<CIdentityMapKey, CIdentityMapValue> keyAndRecovery;
+
+    CIdentity acceptedIdentity;
+    CCurrencyValueMap acceptedCurrency, currencyToDeliver;
+    CAmount subsidizedFees = 0;
+
+    if (accept.isNull() || !accept.isObject())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity or currency to accept must be a valid json object");
+    }
+
+    if ((acceptedIdentity = CIdentity(accept)).IsValid())
+    {
+        acceptedIdentity.UpgradeVersion(height + 1);
+    }
+    else
+    {
+        std::string acceptCurrencyStr = uni_get_str(find_value(accept, "currency"));
+        std::string acceptToDestStr = uni_get_str(find_value(accept, "address"));
+        uint160 currencyID = ValidateCurrencyName(acceptCurrencyStr, true);
+        if (acceptCurrencyStr.empty())
+        {
+            currencyID = ASSETCHAINS_CHAINID;
+        }
+        CAmount currencyAmount;
+        if (currencyID.IsNull() || (currencyAmount = AmountFromValue(find_value(accept, "amount"))) <= 0)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "One of identity or currency to accept must be valid");
+        }
+        acceptedCurrency.valueMap[currencyID] = currencyAmount;
+
+        LOCK(cs_main);
+        if ((acceptToAddress = ValidateDestination(acceptToDestStr)).which() == COptCCParams::ADDRTYPE_INVALID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. To accept an offer of currency, the accept address must be a transparent address or identity. See help.");
+        }
+    }
+
+    // for use later
+    CCoinsView viewDummy;
+    CCoinsViewCache view(&viewDummy);
+    CMutableTransaction mtx(txToTake);
+
+    int firstFundingInput = 0;
+    {
+        LOCK2(cs_main, mempool.cs);
+        LOCK(pwalletMain->cs_wallet);
+
+        if (deliver.isStr())
+        {
+            CIdentity revocationIdentity, recoveryIdentity;
+
+            // this needs to be a valid ID in our wallet
+            CTxDestination identityDest = DecodeDestination(uni_get_str(deliver));
+            if (identityDest.which() != COptCCParams::ADDRTYPE_ID)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "If a VerusID is specified to deliver when taking the offer, it must be a valid ID name or i-address on this chain");
+            }
+            bool idInWallet = pwalletMain->GetIdentity(GetDestinationID(identityDest), keyAndIdentity);
+
+            if (!idInWallet || !(*(CIdentity *)(&keyAndIdentity.second) = CIdentity::LookupIdentity(GetDestinationID(identityDest), 0, nullptr, &idInput)).IsValid())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "No authority over VerusID or ID not found");
+            }
+
+            uint256 blkHash;
+            CTransaction oldIdTx;
+            if (!myGetTransaction(idInput.prevout.hash, oldIdTx, blkHash))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + keyAndIdentity.second.name + " (" + EncodeDestination(CIdentityID(keyAndIdentity.second.GetID())) + "), transaction not found ");
+            }
+            oldIdOutput = oldIdTx.vout[idInput.prevout.n];
+
+            if (!keyAndIdentity.first.CanSign())
+            {
+                // we need either signing authority, revocation, recovery, or any combination to be able to create a delivery transaction
+                if (keyAndIdentity.second.revocationAuthority == idIDToDeliver && keyAndIdentity.second.recoveryAuthority == idIDToDeliver)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "No authority over VerusID specified for delivery");
+                }
+                // if recovery is different, get it and see if we have signing authority on that
+                if (keyAndIdentity.second.revocationAuthority != idIDToDeliver)
+                {
+                    if (!pwalletMain->GetIdentity(keyAndIdentity.second.revocationAuthority, keyAndRevocation))
+                    {
+                        if (!(keyAndRevocation.second = CIdentityMapValue(CIdentity::LookupIdentity(keyAndIdentity.second.revocationAuthority))).IsValid())
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Revocation authority not found for ID specified");
+                        }
+                    }
+                }
+                else
+                {
+                    keyAndRevocation = keyAndIdentity;
+                }
+                
+                // if recovery is different, get it and see if we have signing authority on that
+                if (keyAndIdentity.second.recoveryAuthority != idIDToDeliver)
+                {
+                    if (keyAndIdentity.second.recoveryAuthority == keyAndIdentity.second.revocationAuthority)
+                    {
+                        keyAndRecovery = keyAndRevocation;
+                    }
+                    else if (!pwalletMain->GetIdentity(keyAndIdentity.second.recoveryAuthority, keyAndRecovery))
+                    {
+                        if (!(keyAndRecovery.second = CIdentityMapValue(CIdentity::LookupIdentity(keyAndIdentity.second.recoveryAuthority))).IsValid())
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Recovery authority not found for ID specified");
+                        }
+                    }
+                }
+                else
+                {
+                    keyAndRecovery = keyAndIdentity;
+                }
+            }
+            // if we can't sign for any authority on the ID, don't make a transaction
+            if (!keyAndIdentity.first.CanSign() && !keyAndRevocation.first.CanSign() && !keyAndRecovery.first.CanSign())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "This wallet has no authority to sign for any part of delivering the ID specified");
+            }
+            currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] = feeAmount;
+        }
+        else if (deliver.isObject())
+        {
+            // determine the currency we are offering to deliver
+            auto currencyStr = TrimSpaces(uni_get_str(find_value(deliver, "currency")));
+            CAmount destinationAmount = AmountFromValue(find_value(deliver, "amount"));
+            uint160 curID;
+            if (!currencyStr.empty())
+            {
+                curID = ValidateCurrencyName(currencyStr, true);
+                if (curID.IsNull())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency specified for delivery not found");
+                }
+            }
+            else
+            {
+                curID = ASSETCHAINS_CHAINID;
+            }
+            
+            currencyToDeliver.valueMap[curID] = destinationAmount;
+            currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] += feeAmount;
+        }
+
+        // now, ensure that our expected output and the input provided in the offer are the same
+        COptCCParams p;
+        CIdentity offeredIdentity;
+        CCurrencyValueMap offeredCurrency;
+        if (inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.evalCode == EVAL_IDENTITY_PRIMARY &&
+            p.vData.size() &&
+            (offeredIdentity = CIdentity(p.vData[0])).IsValid())
+        {
+            if (offeredIdentity.GetID() != acceptedIdentity.GetID())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity offered: " + EncodeDestination(CIdentityID(offeredIdentity.GetID())) + ", is not the same as accepted: " + EncodeDestination(CIdentityID(acceptedIdentity.GetID())));
+            }
+        }
+        else if (inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.IsSpendableOutputType())
+        {
+            if (inputTxToOffer.vout[txToTake.vin[0].prevout.n].nValue > 0)
+            {
+                offeredCurrency.valueMap[ASSETCHAINS_CHAINID] = inputTxToOffer.vout[txToTake.vin[0].prevout.n].nValue;
+            }
+            offeredCurrency += inputTxToOffer.vout[txToTake.vin[0].prevout.n].scriptPubKey.ReserveOutValue();
+            if (offeredCurrency < acceptedCurrency)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency offered: " + offeredCurrency.ToUniValue().write() + ", is less than accepted: " + acceptedCurrency.ToUniValue().write());
+            }
+        }
+
+        CAmount additionalFees = feeAmount;
+
+        // add the output
+        if (acceptedIdentity.IsValid())
+        {
+            mtx.vout.push_back(CTxOut(0, acceptedIdentity.IdentityUpdateOutputScript(height + 1)));
+        }
+        else if ((acceptedCurrency = acceptedCurrency.CanonicalMap()).valueMap.size())
+        {
+            // if our accepted currency is native, no reserve output
+            CAmount nativeOut = acceptedCurrency.valueMap.count(ASSETCHAINS_CHAINID) ? acceptedCurrency.valueMap[ASSETCHAINS_CHAINID] : 0;
+
+            if (acceptedCurrency.valueMap.size() == 1 && nativeOut)
+            {
+                mtx.vout.push_back(CTxOut(nativeOut, GetScriptForDestination(acceptToAddress)));
+            }
+            else
+            {
+                acceptedCurrency.valueMap.erase(ASSETCHAINS_CHAINID);
+                std::vector<CTxDestination> dest({acceptToAddress});
+                CTokenOutput to(acceptedCurrency);
+                mtx.vout.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to))));
+            }
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must specify valid identity or currency for exchange");
+        }
+
+        // if the identity has been initialized, we are delivering an identity in this transaction, input our identity to the
+        // transaction, and add an output for our return
+        std:vector<COutput> vCoins;
+        std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+        CAmount nativeValueOut;
+        CCurrencyValueMap reserveValueOut;
+        std::vector<SaplingNoteEntry> saplingNotes;
+
+        firstFundingInput = mtx.vin.size();
+
+        if (keyAndIdentity.second.IsValid())
+        {
+            bool success = true;
+            mtx.vin.push_back(idInput);
+            // one ID input to fund the transaction
+            if (additionalFees)
+            {
+                if (hasZSource)
+                {
+                    saplingNotes = find_unspent_notes(zaddressSource);
+                    CAmount totalFound = 0;
+                    int i;
+                    for (i = 0; i < saplingNotes.size(); i++)
+                    {
+                        totalFound += saplingNotes[i].note.value();
+                        if (totalFound >= additionalFees)
+                        {
+                            break;
+                        }
+                    }
+                    // remove all but the notes we'll use
+                    if (i < saplingNotes.size())
+                    {
+                        saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
+                        success = true;
+                    }
+                    else
+                    {
+                        success = false;
+                    }
+                }
+                else
+                {
+                    success = find_utxos(from_taddress, vCoins) &&
+                                pwalletMain->SelectCoinsMinConf(additionalFees, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+                }
+            }
+            if (!success)
+            {
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to fund delivery of identity");
+            }
+        }
+        else if (currencyToDeliver.valueMap.size())
+        {
+            COptCCParams p;
+            CCurrencyValueMap currencyRequested;
+            if (txToTake.vout[0].scriptPubKey.IsSpendableOutputType(p) || (p.IsValid() && p.evalCode == EVAL_IDENTITY_COMMITMENT))
+            {
+                if (txToTake.vout[0].nValue - txToTake.valueBalance > 0)
+                {
+                    currencyRequested.valueMap[ASSETCHAINS_CHAINID] = txToTake.vout[0].nValue - txToTake.valueBalance;
+                }
+                currencyRequested += txToTake.vout[0].scriptPubKey.ReserveOutValue();
+                if (currencyToDeliver < currencyRequested)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency being delivered: " + currencyToDeliver.ToUniValue().write() + ", is less than requested: " + currencyRequested.ToUniValue().write());
+                }
+                currencyToDeliver = currencyRequested;
+            }
+            else
+            {
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Invalid currency request from offer transaction");
+            }
+
+            // find enough currency from source to fund the acceptance
+            CAmount nativeValue = (currencyToDeliver.valueMap[ASSETCHAINS_CHAINID] + additionalFees);
+            currencyToDeliver.valueMap.erase(ASSETCHAINS_CHAINID);
+
+            bool success = false;
+            if (hasZSource)
+            {
+                if (currencyToDeliver.CanonicalMap().valueMap.size() != 0)
+                {
+                    throw JSONRPCError(RPC_TRANSACTION_ERROR, "Private address source cannot be used for non-native currency delivery");
+                }
+                saplingNotes = find_unspent_notes(zaddressSource);
+                CAmount totalFound = 0;
+                int i;
+                for (i = 0; i < saplingNotes.size(); i++)
+                {
+                    totalFound += saplingNotes[i].note.value();
+                    if (totalFound >= additionalFees)
+                    {
+                        break;
+                    }
+                }
+                // remove all but the notes we'll use
+                if (i < saplingNotes.size())
+                {
+                    saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
+                    success = true;
+                }
+            }
+            else
+            {
+                success = find_utxos(from_taddress, vCoins) &&
+                        pwalletMain->SelectReserveCoinsMinConf(currencyToDeliver,
+                                                                nativeValue,
+                                                                0,
+                                                                1,
+                                                                vCoins,
+                                                                setCoinsRet,
+                                                                reserveValueOut,
+                                                                nativeValueOut);
+            }
+            
+            if (!success)
+            {
+                throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to fund currency delivery");
+            }
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "No identity or currency to deliver");
+        }
+
+        if (saplingNotes.size())
+        {
+            if (txToTake.vShieldedOutput.size())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Paying for an offer, which pays to a z-address with a z-address source is not yet implemented");
+            }
+
+            std::vector<SaplingOutPoint> notes;
+            for (size_t i = 0; i < saplingNotes.size(); i++)
+            {
+                notes.push_back(saplingNotes[i].op);
+            }
+
+            // Fetch Sapling anchor and witnesses
+            uint256 anchor;
+            std::vector<boost::optional<SaplingWitness>> witnesses;
+            {
+                LOCK2(cs_main, pwalletMain->cs_wallet);
+                pwalletMain->GetSaplingNoteWitnesses(notes, witnesses, anchor);
+            }
+
+            saplingSpendCtx = librustzcash_sapling_proving_ctx_init();
+
+            // Add Sapling spends
+            for (size_t i = 0; i < saplingNotes.size(); i++)
+            {
+                SpendDescriptionInfo spend(expsk, saplingNotes[i].note, anchor, boost::get(witnesses[i]));
+                //tb.AddSaplingSpend(expsk, saplingNotes[i].note, anchor, witnesses[i].get());
+
+                auto cm = spend.note.cm();
+                auto nf = spend.note.nullifier(
+                    spend.expsk.full_viewing_key(), spend.witness.position());
+                if (!cm || !nf) {
+                    librustzcash_sapling_proving_ctx_free(saplingSpendCtx);
+                    throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Spend is invalid");
+                }
+
+                CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+                ss << spend.witness.path();
+                std::vector<unsigned char> witness(ss.begin(), ss.end());
+
+                SpendDescription sdesc;
+                if (!librustzcash_sapling_spend_proof(
+                        saplingSpendCtx,
+                        spend.expsk.full_viewing_key().ak.begin(),
+                        spend.expsk.nsk.begin(),
+                        spend.note.d.data(),
+                        spend.note.r.begin(),
+                        spend.alpha.begin(),
+                        spend.note.value(),
+                        spend.anchor.begin(),
+                        witness.data(),
+                        sdesc.cv.begin(),
+                        sdesc.rk.begin(),
+                        sdesc.zkproof.data())) {
+                    librustzcash_sapling_proving_ctx_free(saplingSpendCtx);
+                    throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Spend proof failed");
+                }
+
+                sdesc.anchor = spend.anchor;
+                sdesc.nullifier = *nf;
+                mtx.vShieldedSpend.push_back(sdesc);
+            }
+        }
+        else
+        {
+            // put all transparent inputs and spends on the transaction, sign and return or post
+            for (auto &oneInput : setCoinsRet)
+            {
+                mtx.vin.push_back(CTxIn(oneInput.first->GetHash(), oneInput.second));
+            }
+        }
+
+        // Fetch previous transactions (inputs):
+        CCoinsViewCache &viewChain = *pcoinsTip;
+        CCoinsViewMemPool viewMempool(&viewChain, mempool);
+        view.SetBackend(viewMempool); // temporarily switch cache backend to db+mempool view
+        for (auto &txin : mtx.vin)
+        {
+            const uint256& prevHash = txin.prevout.hash;
+            CCoins coins;
+            view.AccessCoins(prevHash); // this can fail
+        }
+        view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
+    }
+
+    CReserveTransactionDescriptor rtxd(mtx, view, height + 1);
+    if (!rtxd.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Created invalid transaction");
+    }
+    CCurrencyValueMap reserveChange = rtxd.ReserveFees();
+    CAmount nativeChange = rtxd.NativeFees() - feeAmount;
+    if (nativeChange < DEFAULT_TRANSACTION_FEE)
+    {
+        nativeChange = 0;
+    }
+    if (reserveChange.valueMap.size())
+    {
+        std::vector<CTxDestination> dest({changeAddress});
+        CTokenOutput to(reserveChange);
+        mtx.vout.push_back(CTxOut(nativeChange, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &to))));
+    }
+    else if (nativeChange)
+    {
+        mtx.vout.push_back(CTxOut(nativeChange, GetScriptForDestination(changeAddress)));
+    }
+
+    CTransaction txConst(mtx);
+    UniValue vErrors(UniValue::VARR);
+
+    // Sign what we can
+
+    // first Sapling spends, if we have them
+    if (saplingSpends.size())
+    {
+        uint256 dataToBeSigned;
+        CScript scriptCode;
+        try {
+            dataToBeSigned = SignatureHash(scriptCode, mtx, NOT_AN_INPUT, SIGHASH_ALL, 0, consensusBranchId);
+        } catch (std::logic_error ex) {
+            librustzcash_sapling_proving_ctx_free(saplingSpendCtx);
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not construct signature hash");
+        }
+
+        // Create Sapling spendAuth and binding signatures
+        for (size_t i = 0; i < saplingSpends.size(); i++) {
+            librustzcash_sapling_spend_sig(
+                saplingSpends[i].expsk.ask.begin(),
+                saplingSpends[i].alpha.begin(),
+                dataToBeSigned.begin(),
+                mtx.vShieldedSpend[i].spendAuthSig.data());
+        }
+        librustzcash_sapling_binding_sig(
+            saplingSpendCtx,
+            mtx.valueBalance,
+            dataToBeSigned.begin(),
+            mtx.bindingSig.data());
+
+        librustzcash_sapling_proving_ctx_free(saplingSpendCtx);
+    }
+
+    for (int i = firstFundingInput; i < mtx.vin.size(); i++)
+    {
+        CTxIn& txin = mtx.vin[i];
+        const CCoins* coins = view.AccessCoins(txin.prevout.hash);
+        if (coins == NULL || !coins->IsAvailable(txin.prevout.n)) {
+            SigningErrorToJSON(txin, vErrors, "Input not found or already spent");
+            continue;
+        }
+        const CScript& prevPubKey = CCoinsViewCache::GetSpendFor(coins, txin);
+        const CAmount& amount = coins->vout[txin.prevout.n].nValue;
+
+        SignatureData sigdata;
+        ProduceSignature(MutableTransactionSignatureCreator(pwalletMain, &mtx, i, amount, prevPubKey), prevPubKey, sigdata, consensusBranchId);
+
+        TransactionSignatureChecker checker(&txConst, i, amount);
+        sigdata = CombineSignatures(prevPubKey, checker, sigdata, DataFromTransaction(txConst, i), consensusBranchId);
+
+        UpdateTransaction(mtx, i, sigdata);
+
+        ScriptError serror = SCRIPT_ERR_OK;
+        if (!VerifyScript(txin.scriptSig, prevPubKey, STANDARD_SCRIPT_VERIFY_FLAGS, checker, consensusBranchId, &serror)) {
+            SigningErrorToJSON(txin, vErrors, ScriptErrorString(serror));
+        }
+    }
+    bool fComplete = vErrors.empty();
+    UniValue retVal(UniValue::VOBJ);
+
+    if (fComplete && !returnHex)
+    {
+        CValidationState state;
+        CTransaction finalTx = mtx;
+        LOCK2(cs_main, mempool.cs);
+        // add to mem pool and relay
+        if (!myAddtomempool(finalTx, &state))
+        {
+            throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Could not commit transaction - rejected");
+        }
+        else
+        {
+            //printf("%s: success adding %s to mempool\n", __func__, newImportTx.GetHash().GetHex().c_str());
+            RelayTransaction(finalTx);
+        }
+        retVal.pushKV("txid", finalTx.GetHash().GetHex());
+    }
+    else
+    {
+        // if this is an ID swap, spend ID to transaction and take funds or pay requird funds and take ID
+        // if this is a funds swap, pay required funds and take required funds
+        retVal.pushKV("tx", EncodeHexTx(mtx));
+        if (!vErrors.empty())
+        {
+            retVal.pushKV("errors", vErrors);
+        }
+    }
+
+    return retVal;
+}
+
+UniValue IdOfferInfo(const CIdentity &identityOffer)
+{
+    UniValue retVal(UniValue::VOBJ);
+    retVal.pushKV("name", identityOffer.name);
+    retVal.pushKV("identityid", EncodeDestination(CIdentityID(identityOffer.GetID())));
+    retVal.pushKV("systemid", EncodeDestination(CIdentityID(identityOffer.systemID)));
+    retVal.pushKV("original", identityOffer.systemID == ASSETCHAINS_CHAINID);
+    return retVal;
+}
+
+UniValue getoffers(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 3)
+    {
+        throw runtime_error(
+            "getoffers \"currencyorid\" (iscurrency) (withtx)\n"
+            "\nReturns all open offers for a specific currency or ID\n"
+
+            "\nArguments\n"
+            "1. \"currencyorid\"        (string, required) The currency or ID to check for offers, both sale and purchase\n"
+            "2. \"iscurrency\"          (bool, optional)   default=false, if false, this looks for ID offers, if true, currencies\n"
+            "3. \"withtx\"              (bool, optional)   default=false, if true, this returns serialized hex of the exchange transaction for signing\n"
+
+            "\nResult:\n"
+            "all available offers for or in the indicated currency or ID are displayed\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getoffers", "\"currencyorid\" (iscurrency)")
+            + HelpExampleRpc("getoffers", "\"currencyorid\" (iscurrency)")
+        );
+    }
+
+    CheckVerusVaultAPIsValid();
+
+    bool isCurrency = false;
+    if (params.size() > 1)
+    {
+        isCurrency = uni_get_bool(params[1]);
+    }
+
+    bool withTx = false;
+    if (params.size() > 2)
+    {
+        withTx = uni_get_bool(params[2]);
+    }
+
+    uint160 lookupID, lookupForID;
+
+    CCurrencyDefinition currencyDef;
+    uint160 currencyOrIdID;
+    CIdentity identity;
+    std::string currencyOrIDStr(uni_get_str(params[0]));
+
+    if (isCurrency)
+    {
+        lookupID = ValidateCurrencyName(currencyOrIDStr, true, &currencyDef);
+        if (lookupID.IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency specified as source is not valid");
+        }
+        lookupForID = COnChainOffer::OnChainOfferForCurrencyKey(lookupID);
+        lookupID = COnChainOffer::OnChainCurrencyOfferKey(lookupID);
+        currencyOrIdID = currencyDef.GetID();
+    }
+    else
+    {
+        CTxDestination idDest = DecodeDestination(currencyOrIDStr);
+        if (idDest.which() != COptCCParams::ADDRTYPE_ID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity specified as source is not valid");
+        }
+        lookupID = GetDestinationID(idDest);
+        if (!(identity = CIdentity::LookupIdentity(lookupID)).IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Source identity not found");
+        }
+        lookupForID = COnChainOffer::OnChainOfferForIdentityKey(lookupID);
+        lookupID = COnChainOffer::OnChainIdentityOfferKey(lookupID);
+        currencyOrIdID = identity.GetID();
+    }
+
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputOffers;
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
+
+    LOCK(cs_main);
+    uint32_t height = chainActive.Height();
+
+    // bool is "iscurrency" for the offer in a buy and for the request for payment in a sell
+
+    // offers to buy with IDs
+    std::multimap<std::pair<uint160, CAmount>, UniValue> uniBuyWithIDs;
+    std::multimap<std::pair<uint160, CAmount>, UniValue> uniSellToIDs;
+
+    std::multimap<std::pair<uint160, CAmount>, UniValue> uniBuyWithCurrency;
+    std::multimap<std::pair<uint160, CAmount>, UniValue> uniSellToCurrency;
+
+    //printf("%s: looking up keys: %s, %s\n", __func__, EncodeDestination(CKeyID(lookupID)).c_str(), EncodeDestination(CKeyID(lookupForID)).c_str());
+
+    if (!GetAddressUnspent(lookupID, CScript::P2PKH, unspentOutputOffers) || !GetAddressUnspent(lookupForID, CScript::P2PKH, unspentOutputs))
+    {
+        return false;
+    }
+    else
+    {
+        UniValue retVal(UniValue::VOBJ);
+        unspentOutputs.insert(unspentOutputs.end(), unspentOutputOffers.begin(), unspentOutputOffers.end());
+
+        for (auto &oneOffer : unspentOutputs)
+        {
+            CTransaction postedTx, offerTx, inputToOfferTx;
+            uint256 blockHash;
+            CPartialTransactionProof offerTxProof;
+            COptCCParams p;
+            if (myGetTransaction(oneOffer.first.txhash, postedTx, blockHash))
+            {
+                if (GetOpRetChainOffer(postedTx, offerTx, inputToOfferTx, height))
+                {
+                    // find out what the transaction is requesting for payment
+                    CCurrencyValueMap offerToPay, wePay;
+                    CIdentity offerToTransfer, weTransfer;
+
+                    std::pair<bool, CAmount> exchangeForurrencyOrID;
+                    bool isBuy = true;
+
+                    std::pair<CTxOut, CTxOut> offerOuts(std::make_pair(inputToOfferTx.vout[offerTx.vin[0].prevout.n], offerTx.vout[0]));
+                    if (offerTx.vShieldedOutput.size() != 0)
+                    {
+                        offerOuts.second.nValue -= offerTx.valueBalance;
+                    }
+
+                    if (offerOuts.second.scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                        p.vData.size())
+                    {
+                        if (!(weTransfer = CIdentity(p.vData[0])).IsValid())
+                        {
+                            continue;
+                        }
+                        // if this is not what we are looking for, then it must be a request to trade for what we are looking for
+                        if (isCurrency || weTransfer.GetID() != currencyOrIdID)
+                        {
+                            // make sure the offer is offering what we are looking for
+                            if (isCurrency)
+                            {
+                                // verify it is the currency we are looking for
+                                p = COptCCParams();
+                                if (!(offerOuts.first.scriptPubKey.IsSpendableOutputType(p) &&
+                                     ((currencyOrIdID == ASSETCHAINS_CHAINID && offerOuts.first.nValue > 0) ||
+                                      ((currencyOrIdID != ASSETCHAINS_CHAINID && 
+                                       (offerToPay = offerOuts.first.ReserveOutValue()).valueMap.count(currencyOrIdID) &&
+                                        offerToPay.valueMap[currencyOrIdID] > 0)))))
+                                {
+                                    continue;
+                                }
+                                if (offerOuts.first.nValue > 0)
+                                {
+                                    offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
+                                }
+                            }
+                            else
+                            {
+                                // verify it is the ID we are looking for
+                                if (!(offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                      p.IsValid() &&
+                                      p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                                      p.vData.size() &&
+                                      (offerToTransfer = CIdentity(p.vData[0])).IsValid() &&
+                                      offerToTransfer.GetID() == currencyOrIdID))
+                                {
+                                    continue;
+                                }
+                            }
+                            UniValue offerJSON(UniValue::VOBJ);
+                            offerJSON.pushKV("offer", offerToTransfer.IsValid() ? IdOfferInfo(offerToTransfer) : offerToPay.ToUniValue());
+                            offerJSON.pushKV("accept", IdOfferInfo(weTransfer));
+                            offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                            if (withTx)
+                            {
+                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                            }
+                            offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
+                            if (offerToPay.valueMap.begin() != offerToPay.valueMap.end() && offerToPay.valueMap.begin()->first == currencyOrIdID)
+                            {
+                                uniSellToIDs.insert(std::make_pair(std::make_pair(weTransfer.GetID(), offerToPay.valueMap.begin()->second), offerJSON));
+                            }
+                            else // offer to transfer is our query ID
+                            {
+                                uniSellToIDs.insert(std::make_pair(std::make_pair(weTransfer.GetID(), offerOuts.second.nValue > 0 ? offerOuts.second.nValue : 0), offerJSON));
+                            }
+                        }
+                        else // this is an offer to buy the referenced ID for either currency or another ID, which is in the first output
+                        {
+                            if (offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                p.IsValid() &&
+                                p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                                p.vData.size() &&
+                                (offerToTransfer = CIdentity(p.vData[0])).IsValid())
+                            {
+                                UniValue offerJSON(UniValue::VOBJ);
+                                offerJSON.pushKV("offer", offerToTransfer.IsValid() ? IdOfferInfo(offerToTransfer) : offerToPay.ToUniValue());
+                                offerJSON.pushKV("accept", weTransfer.IsValid() ? IdOfferInfo(weTransfer) : wePay.ToUniValue());
+                                offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                                if (withTx)
+                                {
+                                    offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                }
+                                offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
+                                uniBuyWithIDs.insert(std::make_pair(std::make_pair(offerToTransfer.GetID(), offerOuts.second.nValue > 0 ? offerOuts.second.nValue : 0), offerJSON));
+                            }
+                            else
+                            {
+                                // verify that there is a non-zero offer
+                                p = COptCCParams();
+                                if (!(offerOuts.first.scriptPubKey.IsSpendableOutputType(p) &&
+                                     (offerOuts.first.nValue > 0 ||
+                                      ((offerToPay = offerOuts.first.ReserveOutValue()) > CCurrencyValueMap()))))
+                                {
+                                    continue;
+                                }
+                                uint160 currencyID = offerOuts.first.nValue > 0 ? ASSETCHAINS_CHAINID : offerToPay.valueMap.begin()->first;
+                                CAmount offerAmount = offerOuts.first.nValue > 0 ? offerOuts.first.nValue : offerToPay.valueMap.begin()->second;
+                                if (offerOuts.first.nValue > 0)
+                                {
+                                    offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
+                                }
+                                UniValue offerJSON(UniValue::VOBJ);
+                                offerJSON.pushKV("offer", offerToTransfer.IsValid() ? IdOfferInfo(offerToTransfer) : offerToPay.ToUniValue());
+                                offerJSON.pushKV("accept", weTransfer.IsValid() ? IdOfferInfo(weTransfer) : wePay.ToUniValue());
+                                offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                                if (withTx)
+                                {
+                                    offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                }
+                                offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
+                                uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, offerAmount), offerJSON));
+                            }
+                        }
+                    }
+                    else if (offerOuts.second.scriptPubKey.IsSpendableOutputType(p))
+                    {
+                        // see if it is a buy with the currency we are querying for
+                        wePay = offerOuts.second.ReserveOutValue();
+                        if (offerOuts.second.nValue > 0)
+                        {
+                            wePay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.second.nValue;
+                        }
+
+                        if (isCurrency && wePay.valueMap.count(currencyOrIdID) && wePay.valueMap[currencyOrIdID] > 0)
+                        {
+                            // if so, then it is a buy with whatever the input is
+                            if (offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                p.IsValid() &&
+                                p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                                p.vData.size() &&
+                                (offerToTransfer = CIdentity(p.vData[0])).IsValid())
+                            {
+                                UniValue offerJSON(UniValue::VOBJ);
+                                offerJSON.pushKV("offer", IdOfferInfo(offerToTransfer));
+                                offerJSON.pushKV("accept", wePay.ToUniValue());
+                                offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                                if (withTx)
+                                {
+                                    offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                }
+                                offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
+                                uniBuyWithIDs.insert(std::make_pair(std::make_pair(offerToTransfer.GetID(), wePay.valueMap.begin()->second), offerJSON));
+                            }
+                            else
+                            {
+                                // verify that there is a non-zero offer
+                                offerToPay = offerOuts.first.ReserveOutValue();
+                                if (offerOuts.first.nValue > 0)
+                                {
+                                    offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
+                                }
+
+                                p = COptCCParams();
+                                if (!(offerOuts.first.scriptPubKey.IsSpendableOutputType(p) && offerToPay > CCurrencyValueMap()))
+                                {
+                                    continue;
+                                }
+                                
+                                bool nativeOffer = offerOuts.first.nValue > 0 && offerToPay.CanonicalMap().valueMap.size() == 1;
+                                uint160 currencyID = nativeOffer ? ASSETCHAINS_CHAINID : offerToPay.valueMap.begin()->first;
+                                CAmount offerAmount = nativeOffer ? offerOuts.first.nValue : offerToPay.valueMap.begin()->second;
+
+                                UniValue offerJSON(UniValue::VOBJ);
+                                offerJSON.pushKV("offer", offerToPay.ToUniValue());
+                                offerJSON.pushKV("accept", wePay.ToUniValue());
+                                offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                                if (withTx)
+                                {
+                                    offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                                }
+                                offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
+                                uniBuyWithCurrency.insert(std::make_pair(std::make_pair(currencyID, CalculateFractionalPrice(offerAmount, wePay.valueMap[currencyOrIdID], true)), offerJSON));
+                            }
+                        }
+                        else if (isCurrency &&
+                                 offerOuts.first.scriptPubKey.IsSpendableOutputType(p) &&
+                                 ((currencyOrIdID == ASSETCHAINS_CHAINID && offerOuts.first.nValue > 0) ||
+                                 ((currencyOrIdID != ASSETCHAINS_CHAINID && 
+                                 (offerToPay = offerOuts.first.ReserveOutValue()).valueMap.count(currencyOrIdID) &&
+                                 offerToPay.valueMap[currencyOrIdID] > 0))))
+                        {
+                            if (offerOuts.first.nValue > 0)
+                            {
+                                offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
+                            }
+
+                            // offer to sell currency we are querying for the output's currency
+                            bool nativePay = offerOuts.second.nValue > 0 && wePay.CanonicalMap().valueMap.size() == 1;
+                            uint160 currencyID = nativePay ? ASSETCHAINS_CHAINID : wePay.valueMap.begin()->first;
+                            CAmount payAmount = nativePay ? offerOuts.second.nValue : wePay.valueMap.begin()->second;
+                            UniValue offerJSON(UniValue::VOBJ);
+                            offerJSON.pushKV("offer", offerToPay.ToUniValue());
+                            offerJSON.pushKV("accept", wePay.ToUniValue());
+                            offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                            if (withTx)
+                            {
+                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                            }
+                            offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
+                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, CalculateFractionalPrice(payAmount, offerToPay.valueMap[currencyOrIdID], false)), offerJSON));
+                        }
+                        else if (!isCurrency &&
+                                 offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                 p.IsValid() &&
+                                 p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                                 p.vData.size() &&
+                                 (offerToTransfer = CIdentity(p.vData[0])).IsValid() &&
+                                 offerToTransfer.GetID() == currencyOrIdID)
+                        {
+                            bool nativePay = offerOuts.second.nValue > 0 && wePay.CanonicalMap().valueMap.size() == 1;
+                            uint160 currencyID = nativePay ? ASSETCHAINS_CHAINID : wePay.valueMap.begin()->first;
+                            CAmount payAmount = nativePay ? offerOuts.second.nValue : wePay.valueMap.begin()->second;
+
+                            // offer to sell identity we are querying for the output's currency
+                            UniValue offerJSON(UniValue::VOBJ);
+                            offerJSON.pushKV("offer", IdOfferInfo(offerToTransfer));
+                            offerJSON.pushKV("accept", wePay.ToUniValue());
+                            offerJSON.pushKV("blockexpiry", (int64_t)offerTx.nExpiryHeight);
+                            if (withTx)
+                            {
+                                offerJSON.pushKV("tx", EncodeHexTx(offerTx));
+                            }
+                            offerJSON.pushKV("txid", postedTx.GetHash().GetHex());
+                            uniSellToCurrency.insert(std::make_pair(std::make_pair(currencyID, payAmount), offerJSON));
+                        }
+                    }
+                }
+            }
+            else
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot retrieve transaction " + oneOffer.first.txhash.GetHex() + ", the local index is likely corrupted and either requires reindex, bootstrap, or resync");
+            }
+        }
+        if (isCurrency)
+        {
+            // for uniSellToIDs (same as offers in this currency for IDs), we will want to order by highest price to lowest price,
+            // as the query was only for things that could be traded or purchased from the currency. the long tail is likely
+            // less interesting. we do not end up with buy with IDs on a currency only query
+            UniValue oneCategory(UniValue::VARR);
+            for (auto rIT = uniSellToIDs.rbegin(); rIT != uniSellToIDs.rend(); rIT++)
+            {
+                UniValue oneOffer(UniValue::VOBJ);
+                oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
+                oneOffer.pushKV("price", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("offer", rIT->second);
+                oneCategory.push_back(oneOffer);
+            }
+
+            if (oneCategory.size())
+            {
+                retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_ids", oneCategory);
+                oneCategory = UniValue(UniValue::VARR);
+            }
+
+            // buying currency with IDs is basically selling the ID for this currency
+            for (auto rIT = uniBuyWithIDs.rbegin(); rIT != uniBuyWithIDs.rend(); rIT++)
+            {
+                UniValue oneOffer(UniValue::VOBJ);
+                oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
+                oneOffer.pushKV("price", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("offer", rIT->second);
+                oneCategory.push_back(oneOffer);
+            }
+
+            if (oneCategory.size())
+            {
+                retVal.pushKV("ids_for_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                oneCategory = UniValue(UniValue::VARR);
+            }
+
+            // we should order these by currency, showing both sellTo and buyWith in each currency together
+            auto rSellIT = uniSellToCurrency.rbegin();
+            auto rBuyIT = uniBuyWithCurrency.rbegin();
+            uint160 lastCurrencyID;
+            bool isBuyLast = false;
+
+            while (rSellIT != uniSellToCurrency.rend() || rBuyIT != uniBuyWithCurrency.rend())
+            {
+                for (;
+                    rSellIT != uniSellToCurrency.rend() &&
+                        (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex()));
+                    rSellIT++)
+                {
+                    uint160 newLast = rSellIT->first.first;
+                    if (lastCurrencyID != newLast)
+                    {
+                        if (oneCategory.size())
+                        {
+                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_offers_in_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                            oneCategory = UniValue(UniValue::VARR);
+                        }
+                        lastCurrencyID = newLast;
+                    }
+                    UniValue oneOffer(UniValue::VOBJ);
+                    oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rSellIT->first.first)));
+                    oneOffer.pushKV("price", ValueFromAmount(rSellIT->first.second));
+                    oneOffer.pushKV("offer", rSellIT->second);
+                    oneCategory.push_back(oneOffer);
+                    isBuyLast = false;
+                }
+
+                for (;
+                    rBuyIT != uniBuyWithCurrency.rend() &&
+                        (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex()));
+                    rBuyIT++)
+                {
+                    uint160 newLast = rBuyIT->first.first;
+                    if (lastCurrencyID != newLast)
+                    {
+                        if (oneCategory.size())
+                        {
+                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_offers_in_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                            oneCategory = UniValue(UniValue::VARR);
+                        }
+                        lastCurrencyID = newLast;
+                    }
+                    UniValue oneOffer(UniValue::VOBJ);
+                    oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rBuyIT->first.first)));
+                    oneOffer.pushKV("price", ValueFromAmount(rBuyIT->first.second));
+                    oneOffer.pushKV("offer", rBuyIT->second);
+                    oneCategory.push_back(oneOffer);
+                    isBuyLast = true;
+                }
+            }
+            if (oneCategory.size())
+            {
+                if (isBuyLast)
+                {
+                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_offers_in_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                }
+                else
+                {
+                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_offers_in_currency_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                }
+            }
+        }
+        else
+        {
+            // for uniSellToIDs (same as offer to trade ID in question for other ID(s)) - offered in exchange for IDs
+            // for uniBuyWithIDs (same as offer to trade other IDs for the ID in question) - IDs offered in exchange for
+
+            // for uniSellToCurrency, offer(s) to sell for a specific currency at a specific price, list low to high in each currecny
+            // uniBuyWithCurrency, offers to buy with a specific currency for a specific price, list high to low
+
+            // for uniSellToIDs (same as this ID on offer for other IDs)
+            UniValue oneCategory(UniValue::VARR);
+            for (auto rIT = uniSellToIDs.rbegin(); rIT != uniSellToIDs.rend(); rIT++)
+            {
+                UniValue oneOffer(UniValue::VOBJ);
+                oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
+                oneOffer.pushKV("price", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("offer", rIT->second);
+                oneCategory.push_back(oneOffer);
+            }
+
+            if (oneCategory.size())
+            {
+                retVal.pushKV("id_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_ids", oneCategory);
+                oneCategory = UniValue(UniValue::VARR);
+            }
+
+            for (auto rIT = uniBuyWithIDs.rbegin(); rIT != uniBuyWithIDs.rend(); rIT++)
+            {
+                UniValue oneOffer(UniValue::VOBJ);
+                oneOffer.pushKV("identityid", EncodeDestination(CIdentityID(rIT->first.first)));
+                oneOffer.pushKV("price", ValueFromAmount(rIT->first.second));
+                oneOffer.pushKV("offer", rIT->second);
+                oneCategory.push_back(oneOffer);
+            }
+
+            if (oneCategory.size())
+            {
+                retVal.pushKV("ids_for_id_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                oneCategory = UniValue(UniValue::VARR);
+            }
+
+            // we should order these by currency, showing both sellTo and buyWith in each currency together
+            auto rSellIT = uniSellToCurrency.rbegin();
+            auto rBuyIT = uniBuyWithCurrency.rbegin();
+            uint160 lastCurrencyID;
+            bool isBuyLast = false;
+
+            while (rSellIT != uniSellToCurrency.rend() || rBuyIT != uniBuyWithCurrency.rend())
+            {
+
+                for (;
+                    rSellIT != uniSellToCurrency.rend() &&
+                        (rBuyIT == uniBuyWithCurrency.rend() || (rSellIT->first.first.GetHex() >= rBuyIT->first.first.GetHex()));
+                    rSellIT++)
+                {
+                    uint160 newLast = rSellIT->first.first;
+                    if (lastCurrencyID != newLast)
+                    {
+                        if (oneCategory.size())
+                        {
+                            retVal.pushKV("id_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                            oneCategory = UniValue(UniValue::VARR);
+                        }
+                        lastCurrencyID = newLast;
+                    }
+                    UniValue oneOffer(UniValue::VOBJ);
+                    oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rSellIT->first.first)));
+                    oneOffer.pushKV("price", ValueFromAmount(rSellIT->first.second));
+                    oneOffer.pushKV("offer", rSellIT->second);
+                    oneCategory.push_back(oneOffer);
+                    isBuyLast = false;
+                }
+
+                for (;
+                    rBuyIT != uniBuyWithCurrency.rend() &&
+                        (rSellIT == uniSellToCurrency.rend() || (rBuyIT->first.first.GetHex() >= lastCurrencyID.GetHex()));
+                    rBuyIT++)
+                {
+                    uint160 newLast = rBuyIT->first.first;
+                    if (lastCurrencyID != newLast)
+                    {
+                        if (oneCategory.size())
+                        {
+                            retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_id_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                            oneCategory = UniValue(UniValue::VARR);
+                        }
+                        lastCurrencyID = newLast;
+                    }
+                    UniValue oneOffer(UniValue::VOBJ);
+                    oneOffer.pushKV("currencyid", EncodeDestination(CIdentityID(rBuyIT->first.first)));
+                    oneOffer.pushKV("price", ValueFromAmount(rBuyIT->first.second));
+                    oneOffer.pushKV("offer", rBuyIT->second);
+                    oneCategory.push_back(oneOffer);
+                    isBuyLast = true;
+                }
+            }
+            if (oneCategory.size())
+            {
+                if (isBuyLast)
+                {
+                    retVal.pushKV("currency_" + EncodeDestination(CIdentityID(lastCurrencyID)) + "_for_id_" + EncodeDestination(CIdentityID(currencyOrIdID)), oneCategory);
+                }
+                else
+                {
+                    retVal.pushKV("id_" + EncodeDestination(CIdentityID(currencyOrIdID)) + "_for_currency_" + EncodeDestination(CIdentityID(lastCurrencyID)), oneCategory);
+                }
+            }
+        }
+        return retVal;
+    }
+    return NullUniValue;
+}
+
+// close an offer by spending its source
+bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxDestination &_dest, uint32_t height, const libzcash::PaymentAddress &zdest=libzcash::PaymentAddress());
+bool CloseOneOffer(const OfferInfo &oneOffer, TransactionBuilder &tb, const CTxDestination &_dest, uint32_t height, const PaymentAddress &zdest)
+{
+    CTxDestination dest = _dest;
+    // we just need to be able to spend the output to another input/output
+    CScript outScript(oneOffer.inputToOfferTx.vout[oneOffer.offerTx.vin[0].prevout.n].scriptPubKey);
+    CAmount value = oneOffer.inputToOfferTx.vout[oneOffer.offerTx.vin[0].prevout.n].nValue;
+    tb.AddTransparentInput(COutPoint(oneOffer.offerTx.vin[0].prevout.hash, oneOffer.offerTx.vin[0].prevout.n), outScript, value);
+    COptCCParams p;
+    if (outScript.IsPayToCryptoCondition(p) &&
+        p.IsValid() &&
+        (p.evalCode == EVAL_IDENTITY_PRIMARY || p.evalCode == EVAL_IDENTITY_COMMITMENT) &&
+        p.vData.size())
+    {
+        const libzcash::SaplingPaymentAddress *pSaplingAddress = boost::get<libzcash::SaplingPaymentAddress>(&zdest);
+        bool hasZDest = pSaplingAddress != nullptr;
+        bool hasTDest = dest.which() != COptCCParams::ADDRTYPE_INVALID;
+        bool hasTokens = false;
+
+        value -= std::min(DEFAULT_TRANSACTION_FEE, value);
+
+        uint256 ovk;
+        if (hasZDest)
+        {
+            HDSeed seed;
+            if (!pwalletMain->GetHDSeed(seed)) {
+                LogPrintf("%s: Wallet seed unavailable for z-address output\n", __func__);
+                return false;
+            }
+            ovk = ovkForShieldingFromTaddr(seed);
+            tb.SendChangeTo(*pSaplingAddress, ovk);
+        }
+        if (p.evalCode == EVAL_IDENTITY_PRIMARY)
+        {
+            CIdentity offeredIdentity(p.vData[0]);
+            if (!offeredIdentity.IsValid())
+            {
+                LogPrintf("%s: Invalid identity\n", __func__);
+                return false;
+            }
+            if (!hasTDest)
+            {
+                dest = CIdentityID(offeredIdentity.GetID());
+                hasTDest = true;
+            }
+            offeredIdentity.UpgradeVersion(height);
+            value -= std::min(DEFAULT_TRANSACTION_FEE, value);
+            tb.AddTransparentOutput(offeredIdentity.IdentityUpdateOutputScript(height + 1), value);
+        }
+        else if (p.evalCode == EVAL_IDENTITY_COMMITMENT)
+        {
+            if (!hasTDest)
+            {
+                if (p.vKeys.size() > 1)
+                {
+                    LogPrintf("%s: No transparent destination specified and cannot determine from commitment\n", __func__);
+                    return false;
+                }
+                dest = p.vKeys[0];
+                hasTDest = true;
+            }
+            CCommitmentHash ch(p.vData[0]);
+            if (ch.IsValid() && ch.reserveValues.valueMap.size())
+            {
+                hasTokens = true;
+                if (hasZDest)
+                {
+                    tb.AddSaplingOutput(ovk, *pSaplingAddress, value);
+                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, {dest}, 1, (CTokenOutput *)&ch)), 0);
+                }
+                else if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
+                {
+                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, {dest}, 1, (CTokenOutput *)&ch)), value);
+                }
+                else
+                {
+                    LogPrintf("%s: Must close offers with valid, transparent funds destination when offer funds include non-native currency\n", __func__);
+                    return false;
+                }
+            }
+            else
+            {
+                if (hasZDest)
+                {
+                    tb.AddSaplingOutput(ovk, *pSaplingAddress, value);
+                }
+                else
+                {
+                    tb.AddTransparentOutput(dest, value);
+                }
+            }
+        }
+        if (hasTokens || !hasZDest)
+        {
+            tb.SendChangeTo(dest);
+        }
+    }
+    return true;
+}
+
+UniValue closeoffers(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 3)
+    {
+        throw runtime_error(
+            "closeoffers ('[\"offer1_txid\", \"offer2_txid\", ...]') (transparentorprivatefundsdestination) (privatefundsdestination)\n"
+            "\nCloses all offers listed, if they are still valid and belong to this wallet.\n"
+            "\nAlways closes expired offers, even if no parameters are given\n\n"
+
+            "\nArguments\n"
+
+            "\nResult\n"
+        );
+    }
+    CheckVerusVaultAPIsValid();
+
+    UniValue retVal;
+    std::set<uint256> txIds;
+
+    if (params.size() > 0)
+    {
+        if (!params[0].isArray())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "First parameter must be an array of transaction IDs that are offers from this wallet to close. It may be null '[]'");
+        }
+        for (int i = 0; i < params[0].size(); i++)
+        {
+            uint256 oneTxId;
+            oneTxId.SetHex(uni_get_str(params[0][i]));
+            if (oneTxId.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid txid specified, txids must be hex strings with no prefix");
+            }
+            txIds.insert(oneTxId);
+        }
+    }
+
+    libzcash::PaymentAddress zaddressDest;
+    CTxDestination transparentDest;
+    std::string destStr;
+
+    if (params.size() > 1)
+    {
+        destStr = uni_get_str(params[1]);
+        if (destStr.empty())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Closing open offers requires a transparent and/or private address to send funds to when closing");
+        }
+        transparentDest = ValidateDestination(destStr);
+    }
+
+    bool hasTDest = transparentDest.which() != COptCCParams::ADDRTYPE_INVALID;
+    bool hasZDest = !hasTDest && pwalletMain->GetAndValidateSaplingZAddress(destStr, zaddressDest);
+
+    if (hasTDest)
+    {
+        if (params.size() > 2)
+        {
+            if (hasZDest)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Third parameter must be a private address and only one private address may be specified");
+            }
+            std::string zDestStr = uni_get_str(params[2]);
+
+            if (!(hasZDest = pwalletMain->GetAndValidateSaplingZAddress(zDestStr, zaddressDest)))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Third parameter must be a valid private address");
+            }
+        }
+    }
+
+    std::map<std::pair<bool, uint256>, OfferInfo> myOffers;
+    uint32_t height;
+    {
+        LOCK2(cs_main, mempool.cs);
+        LOCK(pwalletMain->cs_wallet);
+        height = chainActive.Height();
+        GetMyOffers(myOffers, height, txIds.size() != 0, true);
+    }
+
+    for (auto &oneOffer : myOffers)
+    {
+        TransactionBuilder tb(Params().GetConsensus(), height + 1, pwalletMain);
+        CTransaction oneTx;
+        {
+            LOCK(pwalletMain->cs_wallet);
+            // if this is true, it is unexpired
+            if (oneOffer.first.first && !txIds.count(oneOffer.first.second))
+            {
+                continue;
+            }
+            if (!CloseOneOffer(oneOffer.second, tb, transparentDest, height, zaddressDest))
+            {
+                continue;
+            }
+            TransactionBuilderResult buildResult = tb.Build();
+            oneTx = buildResult.GetTxOrThrow();
+        }
+        CValidationState state;
+        LOCK2(cs_main, mempool.cs);
+        if (!myAddtomempool(oneTx, &state))
+        {
+            throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Close offer transaction rejected: " + state.GetRejectReason());
+        }
+        else
+        {
+            RelayTransaction(oneTx);
+        }
+    }
+    return retVal;
+}
+
+UniValue listopenoffers(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 2)
+    {
+        throw runtime_error(
+            "listopenoffers (unexpired) (expired)'\n"
+            "\nShows offers outstanding in this wallet\n"
+
+            "\nArguments\n"
+
+            "\nResult\n"
+        );
+    }
+    CheckVerusVaultAPIsValid();
+
+    UniValue retVal;
+    std::set<uint256> txIds;
+
+    bool listUnexpired = true; 
+    bool listExpired = true; 
+    if (params.size() > 0)
+    {
+        listUnexpired = uni_get_bool(params[0]);
+    }
+    if (params.size() > 1)
+    {
+        listExpired = uni_get_bool(params[1]);
+    }
+
+    std::map<std::pair<bool, uint256>, OfferInfo> myOffers;
+
+    LOCK2(cs_main, mempool.cs);
+    LOCK(pwalletMain->cs_wallet);
+
+    uint32_t height = chainActive.Height();
+
+    if (GetMyOffers(myOffers, height, listUnexpired, listExpired))
+    {
+        retVal = UniValue(UniValue::VARR);
+        for (auto &oneOffer : myOffers)
+        {
+            UniValue oneOfferUni(UniValue::VOBJ);
+            if (!oneOffer.first.first)
+            {
+                oneOfferUni.pushKV("expired", true);
+            }
+            else
+            {
+                oneOfferUni.pushKV("expires", (int64_t)oneOffer.second.offerTx.nExpiryHeight);
+            }
+            
+            oneOfferUni.pushKV("txid", oneOffer.first.second.GetHex());
+            UniValue scriptPubKeyUni(UniValue::VOBJ);
+            ScriptPubKeyToUniv(oneOffer.second.inputToOfferTx.vout[oneOffer.second.offerTx.vin[0].prevout.n].scriptPubKey, scriptPubKeyUni, false);
+            scriptPubKeyUni.pushKV("nativeout", ValueFromAmount(oneOffer.second.inputToOfferTx.vout[oneOffer.second.offerTx.vin[0].prevout.n].nValue));
+            oneOfferUni.pushKV("offer", scriptPubKeyUni);
+            scriptPubKeyUni = UniValue(UniValue::VOBJ);
+            ScriptPubKeyToUniv(oneOffer.second.offerTx.vout[0].scriptPubKey, scriptPubKeyUni, false);
+            scriptPubKeyUni.pushKV("nativeout", ValueFromAmount(oneOffer.second.offerTx.vout[0].nValue));
+            oneOfferUni.pushKV("for", scriptPubKeyUni);
+            retVal.push_back(oneOfferUni);
+        }
+    }
+    return retVal;
+}
+
 UniValue sendcurrency(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 2 || params.size() > 4)
@@ -3447,7 +6167,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
           wildCardAddress ||
           (sourceDest = DecodeDestination(sourceAddress)).which() != COptCCParams::ADDRTYPE_INVALID))
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\",, or \"i*\",. See help.");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\", or \"i*\",. See help.");
     }
 
     if (!params[1].isArray() || !params[1].size())
@@ -3499,7 +6219,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 feeCurrencyStr.size() ||
                 viaStr.size() ||
                 refundToStr.size() ||
-                memoStr.size() ||
                 preConvert ||
                 mintNew ||
                 exportId ||
@@ -4049,7 +6768,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     if (!offChainDef.IsValidTransferDestinationType(dest.TypeNoFlags()))
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER,
-                            "Invalid destination address for export system " + nonVerusChainDef.name + " (" + dest.ToUniValue().write() + ")");
+                            "Invalid destination address for export system " + offChainDef.name + " (" + dest.ToUniValue().write() + ")");
                     }
 
                     if (!GetNotarizationData(offChainID, cnd) || !cnd.IsConfirmed())
@@ -5070,7 +7789,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "                                                             0x100 = IS_PBAAS_CHAIN\n"
             "\n"
             "         \"name\" : \"xxxx\",              (string, required) name of existing identity with no active or pending blockchain\n"
-            "         \"idregistrationprice\" : \"xx.xx\", (value, required) price of an identity in native currency\n"
+            "         \"idregistrationfees\" : \"xx.xx\", (value, required) price of an identity in native currency\n"
             "         \"idreferrallevels\" : n,         (int, required) how many levels ID referrals go back in reward\n"
 
             "         \"notaries\" : \"[identity,..]\", (list, optional) list of identities that are assigned as chain notaries\n"
@@ -5446,6 +8165,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // and fund the transaction
 
     // first, we need the identity output with currency activated
+    launchIdentity.UpgradeVersion(height);
     launchIdentity.ActivateCurrency();
     tb.AddTransparentOutput(launchIdentity.IdentityUpdateOutputScript(height + 1), 0);
 
@@ -6081,8 +8801,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     if (uni_get_int(find_value(rawID,"version")) == 0)
     {
         rawID.pushKV("version", 
-                     CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_PBAAS ? 
-                        CIdentity::VERSION_PBAAS :
+                     CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_VERUSVAULT ? 
+                        CIdentity::VERSION_VAULT :
                         CIdentity::VERSION_VERUSID);
     }
 
@@ -6097,9 +8817,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
     }
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_PBAAS)
+    uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(height + 1);
+
+    if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
     {
-        newID.SetVersion(CIdentity::VERSION_PBAAS);
+        newID.SetVersion(solVersion < CActivationHeight::ACTIVATE_PBAAS ? CIdentity::VERSION_VAULT : CIdentity::VERSION_PBAAS);
     }
     else
     {
@@ -6238,7 +8960,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     // create the identity definition transaction & reservation key output
     CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), 1, &reservation);
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(height), 0, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(height + 1), 0, false}});
 
     // add referrals, Verus supports referrals
     if ((ConnectedChains.ThisChain().IDReferrals() || IsVerusActive()) && !reservation.referral.IsNull())
@@ -6406,7 +9128,6 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     CheckIdentityAPIsValid();
 
-    // get identity
     bool returnTx = false;
     if (params.size() > 1)
     {
@@ -6423,7 +9144,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    uint32_t nHeight = chainActive.Height() + 1;
+    uint32_t nHeight = chainActive.Height();
 
     if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn)).IsValid())
     {
@@ -6444,14 +9165,12 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         uniOldID[oneEl.first] = oneEl.second;
     }
 
-    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
+    uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1);
+
+    if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
     {
-        uniOldID["version"] = (int64_t)oldID.VERSION_PBAAS;
-        if (oldID.nVersion < oldID.VERSION_PBAAS)
-        {
-            uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
-        }
-        else
+        uniOldID["version"] = solVersion < CActivationHeight::ACTIVATE_PBAAS ? (int64_t)CIdentity::VERSION_VAULT : (int64_t)CIdentity::VERSION_PBAAS;
+        if (oldID.nVersion < CIdentity::VERSION_VAULT)
         {
             uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
         }
@@ -6479,12 +9198,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
     }
 
-    CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
-
-    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
-    {
-        newID.SetVersion(CIdentity::VERSION_PBAAS);
-    }
+    CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight + 1);
 
     if (oldID.IsLocked() != newID.IsLocked())
     {
@@ -6495,7 +9209,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
         if (!newLocked)
         {
-            newID.Unlock(nHeight, txNew.nExpiryHeight);
+            newID.Unlock(nHeight + 1, txNew.nExpiryHeight);
         }
         else
         {
@@ -6504,7 +9218,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     }
 
     // create the identity definition transaction
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight), 0, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight + 1), 0, false}});
     CWalletTx wtx;
 
     CReserveKey reserveKey(pwalletMain);
@@ -6538,7 +9252,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
         CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
 
-        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
+        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(nHeight, Params().GetConsensus()));
 
         if (!signSuccess && !returnTx)
         {
@@ -6611,9 +9325,9 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
     }
 
     CIdentity newID(oldID);
+    newID.UpgradeVersion(chainActive.Height() + 1);
     newID.Revoke();
 
-    // create the identity definition transaction
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(chainActive.Height()), 0, false}});
     CWalletTx wtx;
 
@@ -6704,8 +9418,8 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     if (uni_get_int(find_value(newUniIdentity,"version")) == 0)
     {
         newUniIdentity.pushKV("version", 
-                              CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS ? 
-                                CIdentity::VERSION_PBAAS :
+                              CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_VERUSVAULT ? 
+                                CIdentity::VERSION_VAULT :
                                 CIdentity::VERSION_VERUSID);
     }
 
@@ -6741,13 +9455,10 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     }
 
     newID.flags &= ~CIdentity::FLAG_REVOKED;
-    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
-    {
-        newID.SetVersion(CIdentity::VERSION_PBAAS);
-    }
+    newID.UpgradeVersion(nHeight + 1);
 
     // create the identity definition transaction
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight), 0, false}});
+    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight + 1), 0, false}});
     CWalletTx wtx;
 
     CReserveKey reserveKey(pwalletMain);
@@ -6880,7 +9591,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     {
         std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
         std::vector<std::pair<uint160, uint256>> contentmap;
-        identity = CIdentity(CIdentity::VERSION_PBAAS, 
+        identity = CIdentity(CIdentity::VERSION_VAULT, 
                              CIdentity::FLAG_ACTIVECURRENCY,
                              primary, 
                              1, 
@@ -7022,7 +9733,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
                         }
                         std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
                         std::vector<std::pair<uint160, uint256>> contentmap;
-                        oneIdentity = CIdentity(CIdentity::VERSION_PBAAS, 
+                        oneIdentity = CIdentity(CIdentity::VERSION_VAULT, 
                                                 CIdentity::FLAG_ACTIVECURRENCY,
                                                 primary, 
                                                 1, 
@@ -7057,7 +9768,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
                         }
                         std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
                         std::vector<std::pair<uint160, uint256>> contentmap;
-                        oneIdentity = CIdentity(CIdentity::VERSION_PBAAS, 
+                        oneIdentity = CIdentity(CIdentity::VERSION_VAULT, 
                                                 CIdentity::FLAG_ACTIVECURRENCY,
                                                 primary, 
                                                 1, 
@@ -7090,7 +9801,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
                         }
                         std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
                         std::vector<std::pair<uint160, uint256>> contentmap;
-                        oneIdentity = CIdentity(CIdentity::VERSION_PBAAS, 
+                        oneIdentity = CIdentity(CIdentity::VERSION_VAULT, 
                                                 CIdentity::FLAG_ACTIVECURRENCY,
                                                 primary, 
                                                 1, 
@@ -7604,6 +10315,11 @@ static const CRPCCommand commands[] =
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
+    { "marketplace",  "makeoffer",                    &makeoffer,              true  },
+    { "marketplace",  "takeoffer",                    &takeoffer,              true  },
+    { "marketplace",  "getoffers",                    &getoffers,              true  },
+    { "marketplace",  "listopenoffers",               &listopenoffers,         true  },
+    { "marketplace",  "closeoffers",                  &closeoffers,            true  },
     { "multichain",   "definecurrency",               &definecurrency,         true  },
     { "multichain",   "listcurrencies",               &listcurrencies,         true  },
     { "multichain",   "getcurrencyconverters",        &getcurrencyconverters,  true  },
