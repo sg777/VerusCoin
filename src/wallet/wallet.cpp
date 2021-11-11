@@ -5105,6 +5105,14 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
                     !IsLockedCoin((*it).first, i) && (pcoin->vout[i].nValue > 0 || fIncludeZeroValue) &&
                     (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*it).first, i)))
                 {
+                    COptCCParams p;
+                    CCurrencyValueMap rOut = pcoin->vout[i].scriptPubKey.ReserveOutValue(p, true);
+
+                    if (p.IsValid() && !pcoin->vout[i].scriptPubKey.IsSpendableOutputType(p))
+                    {
+                        continue;
+                    }
+
                     if (!fIncludeIDLockedCoins)
                     {
                         // if this is sent to an ID in this wallet, ensure that the ID is unlocked or skip it
