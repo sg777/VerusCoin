@@ -8283,7 +8283,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         pfrom->AddInventoryKnown(inv);
         
         LOCK(cs_main);
-        
+
         bool fMissingInputs = false;
         CValidationState state;
         
