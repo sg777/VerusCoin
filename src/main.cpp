@@ -3221,6 +3221,22 @@ enum DisconnectResult
     DISCONNECT_FAILED   // Something else went wrong.
 };
 
+void SetMaxScriptElementSize(uint32_t height)
+{
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_PBAAS;
+    }
+    else if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_IDENTITY)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
+    }
+    else
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
+    }
+}
+
 /** Undo the effects of this block (with given index) on the UTXO set represented by coins.
  *  When UNCLEAN or FAILED is returned, view is left in an indeterminate state.
  *  The addressIndex and spentIndex will be updated if requested.
@@ -3597,22 +3613,6 @@ static int64_t nTimeIndex = 0;
 static int64_t nTimeCallbacks = 0;
 static int64_t nTimeTotal = 0;
 
-void SetMaxScriptElementSize(uint32_t height)
-{
-    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_PBAAS;
-    }
-    else if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
-    else
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
-    }
-}
-
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex, CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck, bool fCheckPOW)
 {
     uint32_t nHeight = pindex->GetHeight();
@@ -3800,7 +3800,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     assert(view.GetSaplingAnchorAt(view.GetBestAnchor(SAPLING), sapling_tree));
 
     // Grab the consensus branch ID for the block's height
-    uint32_t nHeight = pindex->GetHeight();
     auto consensus = Params().GetConsensus();
     auto consensusBranchId = CurrentEpochBranchId(nHeight, consensus);
     bool isVerusActive = IsVerusActive();
