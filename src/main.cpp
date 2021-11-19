@@ -3468,6 +3468,7 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
 
     // move best block pointer to prevout block
     view.SetBestBlock(pindex->pprev->GetBlockHash());
+    SetMaxScriptElementSize(chainActive.Height());
 
     // insightexplorer
     if (fAddressIndex && updateIndices) {
@@ -3614,21 +3615,24 @@ void SetMaxScriptElementSize(uint32_t height)
 
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex, CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck, bool fCheckPOW)
 {
-    if ( KOMODO_STOPAT != 0 && pindex->GetHeight() > KOMODO_STOPAT )
+    uint32_t nHeight = pindex->GetHeight();
+    if ( KOMODO_STOPAT != 0 && nHeight > KOMODO_STOPAT )
         return(false);
     //fprintf(stderr,"connectblock ht.%d\n",(int32_t)pindex->GetHeight());
     AssertLockHeld(cs_main);
 
     // either set at activate best chain or when we connect block 1
-    if (pindex->GetHeight() == 1)
+    if (nHeight == 1)
     {
         InitializePremineSupply();
     }
 
+    SetMaxScriptElementSize(nHeight);
+
     bool fExpensiveChecks = true;
     if (fCheckpointsEnabled) {
         CBlockIndex *pindexLastCheckpoint = Checkpoints::GetLastCheckpoint(chainparams.Checkpoints());
-        if (pindexLastCheckpoint && pindexLastCheckpoint->GetAncestor(pindex->GetHeight()) == pindex) {
+        if (pindexLastCheckpoint && pindexLastCheckpoint->GetAncestor(nHeight) == pindex) {
             // This block is an ancestor of a checkpoint: disable script checks
             fExpensiveChecks = false;
         }
@@ -3649,7 +3653,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                          REJECT_INVALID, "invalid-block");
     }
 
-    if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(true, &block, pindex->GetHeight()))
+    if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(true, &block, nHeight))
     {
         return state.DoS(100, error("%s: invalid PoS block in connectblock futureblock.%d\n", __func__, futureblock),
                          REJECT_INVALID, "invalid-pos-block");

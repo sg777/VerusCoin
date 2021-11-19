@@ -330,6 +330,9 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
 
         if ((rtxd.NativeFees() - this->fee) != change)
         {
+            //UniValue jsonTx(UniValue::VOBJ);
+            //TxToUniv(mtx, uint256(), jsonTx);
+            //printf("%s: mtx: %s\n", __func__, jsonTx.write(1,2).c_str());
             printf("%s: native fees do not match builder: %s, blockchain: %s\n", __func__, ValueFromAmount(change).write(1,2).c_str(), ValueFromAmount(rtxd.NativeFees()).write(1,2).c_str());
             LogPrintf("%s: native fees do not match builder: %s, blockchain: %s\n", __func__, ValueFromAmount(change).write(1,2).c_str(), ValueFromAmount(rtxd.NativeFees()).write(1,2).c_str());
             return TransactionBuilderResult("Native fees do not match builder");

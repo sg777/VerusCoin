@@ -5130,7 +5130,7 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
                 UniValue getexports(const UniValue& params, bool fHelp);
                 result = getexports(params, false);
             }
-            else
+            else if (ConnectedChains.IsNotaryAvailable())
             {
                 result = find_value(RPCCallRoot("getexports", params), "result");
             }
