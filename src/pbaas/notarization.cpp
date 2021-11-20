@@ -563,6 +563,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     bool thisIsLaunchSys = destCurrency.launchSystemID == ASSETCHAINS_CHAINID;
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
+
+    // TODO: HARDENING ensure that the latest proof root of this chain is in on gateway
+
     if (destCurrency.launchSystemID == sourceSystemID &&
         ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock ? (destCurrency.startBlock - 1) : 0)) ||
          (!thisIsLaunchSys &&

@@ -616,7 +616,7 @@ public:
             READWRITE(VARINT(currencyImportFee));
             READWRITE(VARINT(transactionImportFee));
             READWRITE(VARINT(transactionExportFee));
-            READWRITE(LIMITED_STRING(gatewayConverterName, MAX_NAME_LEN)); // TODO: HARDENING - this needs to be moved to gateway or pbaas
+            READWRITE(LIMITED_STRING(gatewayConverterName, MAX_NAME_LEN));
         }
         else
         {
@@ -665,12 +665,6 @@ public:
         {
             uint160 thisParentID = GetID();
             retVal = GetID(gatewayConverterName, thisParentID);
-        }
-        // TODO: HARDENING - remove this exception on next testnet reset
-        else if (name == "vETH")
-        {
-            uint160 thisParentID = GetID();
-            retVal = GetID("bridge", thisParentID);
         }
         return retVal;
     }

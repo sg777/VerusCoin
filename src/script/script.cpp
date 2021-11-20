@@ -325,7 +325,7 @@ std::vector<unsigned char> CStakeInfo::AsVector() const
     return ::AsVector(*this);
 }
 
-unsigned int CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
+unsigned int CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
 
 unsigned int CScript::GetSigOpCount(bool fAccurate) const
 {
