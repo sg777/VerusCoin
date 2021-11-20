@@ -6076,7 +6076,7 @@ static bool AcceptBlockHeader(int32_t *futureblockp,const CBlockHeader& block, C
             *ppindex = pindex;
         if ( pindex != 0 && pindex->nStatus & BLOCK_FAILED_MASK )
         {
-            printf("block height: %u, hash: %s\n", pindex->GetHeight(), pindex->GetBlockHash().GetHex().c_str());
+            //printf("block height: %u, hash: %s\n", pindex->GetHeight(), pindex->GetBlockHash().GetHex().c_str());
             LogPrint("net", "block height: %u\n", pindex->GetHeight());
             return state.DoS(100, error("%s: block is marked invalid", __func__), REJECT_INVALID, "banned-for-invalid-block");
         }
