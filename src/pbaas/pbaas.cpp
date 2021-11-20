@@ -5130,13 +5130,13 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
                 UniValue getexports(const UniValue& params, bool fHelp);
                 result = getexports(params, false);
             }
-            else
+            else if (ConnectedChains.IsNotaryAvailable())
             {
                 result = find_value(RPCCallRoot("getexports", params), "result");
             }
         } catch (exception e)
         {
-            printf("Could not get latest export from external chain %s\n", uni_get_str(params[0]).c_str());
+            LogPrint("notarization", "Could not get latest export from external chain %s\n", uni_get_str(params[0]).c_str());
             return exports;
         }
 

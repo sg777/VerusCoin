@@ -1757,7 +1757,8 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
     if (pfMissingInputs)
         *pfMissingInputs = false;
 
-    int flag=0, nextBlockHeight = simHeight ? simHeight : chainActive.Height() + 1;
+    CBlockIndex *pLastIndex = chainActive.LastTip();
+    int flag=0, nextBlockHeight = simHeight ? simHeight : (pLastIndex ? pLastIndex->GetHeight() + 1 : 1);
     auto consensusBranchId = CurrentEpochBranchId(nextBlockHeight, Params().GetConsensus());
     auto chainParams = Params();
 
@@ -3221,6 +3222,14 @@ enum DisconnectResult
     DISCONNECT_FAILED   // Something else went wrong.
 };
 
+void SetMaxScriptElementSize(uint32_t height)
+{
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_PBAAS;
+    }
+}
+
 /** Undo the effects of this block (with given index) on the UTXO set represented by coins.
  *  When UNCLEAN or FAILED is returned, view is left in an indeterminate state.
  *  The addressIndex and spentIndex will be updated if requested.
@@ -3596,39 +3605,26 @@ static int64_t nTimeIndex = 0;
 static int64_t nTimeCallbacks = 0;
 static int64_t nTimeTotal = 0;
 
-void SetMaxScriptElementSize(uint32_t height)
-{
-    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_PBAAS;
-    }
-    else if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
-    else
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
-    }
-}
-
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex, CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck, bool fCheckPOW)
 {
-    if ( KOMODO_STOPAT != 0 && pindex->GetHeight() > KOMODO_STOPAT )
+    uint32_t nHeight = pindex->GetHeight();
+    if ( KOMODO_STOPAT != 0 && nHeight > KOMODO_STOPAT )
         return(false);
     //fprintf(stderr,"connectblock ht.%d\n",(int32_t)pindex->GetHeight());
     AssertLockHeld(cs_main);
 
     // either set at activate best chain or when we connect block 1
-    if (pindex->GetHeight() == 1)
+    if (nHeight == 1)
     {
         InitializePremineSupply();
     }
 
+    SetMaxScriptElementSize(nHeight);
+
     bool fExpensiveChecks = true;
     if (fCheckpointsEnabled) {
         CBlockIndex *pindexLastCheckpoint = Checkpoints::GetLastCheckpoint(chainparams.Checkpoints());
-        if (pindexLastCheckpoint && pindexLastCheckpoint->GetAncestor(pindex->GetHeight()) == pindex) {
+        if (pindexLastCheckpoint && pindexLastCheckpoint->GetAncestor(nHeight) == pindex) {
             // This block is an ancestor of a checkpoint: disable script checks
             fExpensiveChecks = false;
         }
@@ -3649,7 +3645,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                          REJECT_INVALID, "invalid-block");
     }
 
-    if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(true, &block, pindex->GetHeight()))
+    if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(true, &block, nHeight))
     {
         return state.DoS(100, error("%s: invalid PoS block in connectblock futureblock.%d\n", __func__, futureblock),
                          REJECT_INVALID, "invalid-pos-block");
@@ -3796,7 +3792,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     assert(view.GetSaplingAnchorAt(view.GetBestAnchor(SAPLING), sapling_tree));
 
     // Grab the consensus branch ID for the block's height
-    uint32_t nHeight = pindex->GetHeight();
     auto consensus = Params().GetConsensus();
     auto consensusBranchId = CurrentEpochBranchId(nHeight, consensus);
     bool isVerusActive = IsVerusActive();
@@ -4583,7 +4578,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     // END insightexplorer
 
-    SetMaxScriptElementSize(pindex->GetHeight() + 1);
+    SetMaxScriptElementSize(nHeight + 1);
 
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
@@ -5780,6 +5775,8 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
         // we need this lock to prevent accepting transactions we shouldn't
         LOCK2(cs_main, mempool.cs);
 
+        SetMaxScriptElementSize(height);
+
         //printf("checking block %d\n", height);
         while ( 1 )
         {
@@ -6079,6 +6076,7 @@ static bool AcceptBlockHeader(int32_t *futureblockp,const CBlockHeader& block, C
             *ppindex = pindex;
         if ( pindex != 0 && pindex->nStatus & BLOCK_FAILED_MASK )
         {
+            //printf("block height: %u, hash: %s\n", pindex->GetHeight(), pindex->GetBlockHash().GetHex().c_str());
             LogPrint("net", "block height: %u\n", pindex->GetHeight());
             return state.DoS(100, error("%s: block is marked invalid", __func__), REJECT_INVALID, "banned-for-invalid-block");
         }
