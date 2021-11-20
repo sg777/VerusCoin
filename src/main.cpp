@@ -3228,14 +3228,6 @@ void SetMaxScriptElementSize(uint32_t height)
     {
         CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_PBAAS;
     }
-    else if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_IDENTITY)
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_IDENTITY;
-    }
-    else
-    {
-        CScript::MAX_SCRIPT_ELEMENT_SIZE = MAX_SCRIPT_ELEMENT_SIZE_V2;
-    }
 }
 
 /** Undo the effects of this block (with given index) on the UTXO set represented by coins.
@@ -3485,7 +3477,6 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
 
     // move best block pointer to prevout block
     view.SetBestBlock(pindex->pprev->GetBlockHash());
-    SetMaxScriptElementSize(chainActive.Height());
 
     // insightexplorer
     if (fAddressIndex && updateIndices) {
@@ -4587,7 +4578,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     // END insightexplorer
 
-    SetMaxScriptElementSize(pindex->GetHeight() + 1);
+    SetMaxScriptElementSize(nHeight + 1);
 
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
