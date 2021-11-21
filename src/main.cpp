@@ -5820,12 +5820,14 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                     } else if (state.GetRejectReason() != "already have coins" && 
                                !((missinginputs || state.GetRejectCode() == REJECT_DUPLICATE) && (!fCheckTxInputs || chainActive.Height() < height - 1)))
                     {
-                        // printf("Rejected transaction for %s, reject code %d\n", state.GetRejectReason().c_str(), state.GetRejectCode());
-                        //for (auto input : Tx.vin)
-                        //{
-                        //    LogPrintf("input n: %d, hash: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str());
-                        //    printf("chainActive.Height(): %d, height: %d, input n: %d, hash: %s\n", chainActive.Height(), height, input.prevout.n, input.prevout.hash.GetHex().c_str());
-                        //}
+                        if (LogAcceptCategory("checkblock"))
+                        {
+                            LogPrint("checkblock", "Rejected transaction for %s, reject code %d\n", state.GetRejectReason().c_str(), state.GetRejectCode());
+                            for (auto input : Tx.vin)
+                            {
+                                LogPrint("checkblock", "chainActive.Height(): %d, input n: %d, hash: %s\n", height, input.prevout.n, input.prevout.hash.GetHex().c_str());
+                            }
+                        }
                         rejects++;
                     }
                     else if (state.GetRejectReason() == "bad-txns-invalid-reserve")
