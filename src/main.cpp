@@ -2994,7 +2994,7 @@ bool ContextualCheckInputs(const CTransaction& tx,
                 const CCoins* coins = inputs.AccessCoins(prevout.hash);
                 assert(coins);
 
-                auto idAddresses = ServerTransactionSignatureChecker::ExtractIDMap(coins->vout[prevout.n].scriptPubKey, spendHeight, isStake);
+                auto idAddresses = ServerTransactionSignatureChecker::ExtractIDMap(coins->vout[prevout.n].scriptPubKey, spendHeight - 1, isStake);
 
                 // Verify signature
                 CScriptCheck check(*coins, tx, i, flags, cacheStore, consensusBranchId, &txdata);
@@ -3737,6 +3737,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         const CCoins* coins = view.AccessCoins(tx.GetHash());
         if (coins && !coins->IsPruned())
         {
+            LogPrintf("ConnectBlock(): tried to overwrite transaction: %s\n", tx.GetHash().GetHex().c_str());
             return state.DoS(100, error("ConnectBlock(): tried to overwrite transaction"),
                              REJECT_INVALID, "bad-txns-BIP30");
         }
@@ -6924,6 +6925,10 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             CBlock block;
             if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus(), 0))
                 return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->GetHeight(), pindex->GetBlockHash().ToString());
+            if (pindex->GetHeight() == 1784393)
+            {
+                printf("This is the breakpoint\n");
+            }
             if (!ConnectBlock(block, state, pindex, coins, chainparams, false, true))
             {
                 RemoveCoinbaseFromMemPool(block);
