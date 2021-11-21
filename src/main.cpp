@@ -3608,8 +3608,10 @@ static int64_t nTimeTotal = 0;
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex, CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck, bool fCheckPOW)
 {
     uint32_t nHeight = pindex->GetHeight();
-    if ( KOMODO_STOPAT != 0 && nHeight > KOMODO_STOPAT )
-        return(false);
+    if (KOMODO_STOPAT != 0 && nHeight > KOMODO_STOPAT)
+    {
+        return false;
+    }
     //fprintf(stderr,"connectblock ht.%d\n",(int32_t)pindex->GetHeight());
     AssertLockHeld(cs_main);
 
@@ -3633,7 +3635,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     auto disabledVerifier = libzcash::ProofVerifier::Disabled();
     int32_t futureblock;
     // Check it again to verify JoinSplit proofs, and in case a previous version let a bad block in
-    if (!CheckBlock(&futureblock,pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck) || futureblock != 0 )
+    if (!CheckBlock(&futureblock,pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck, !fJustCheck) || futureblock != 0 )
     {
         if (futureblock)
         {
@@ -4065,11 +4067,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                                            gatewayDepositsUsed,
                                                                            spentCurrencyOut))
                             {
-                                LogPrintf("%s: invalid coinbase import for currency %s on system %s\n", 
-                                    __func__,
-                                    cbCurDef.name.c_str(), 
-                                    EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str());
-                                return false;
+                                return state.DoS(10, 
+                                                 error("%s: invalid coinbase import for currency %s on system %s\n",
+                                                        __func__, 
+                                                        cbCurDef.name.c_str(), 
+                                                        EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str()),
+                                                 REJECT_INVALID, "invalid-block");
                             }
 
                             // if fees are not converted, we will pay out original fees,
