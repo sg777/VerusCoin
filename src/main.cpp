@@ -5822,10 +5822,10 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                     {
                         if (LogAcceptCategory("checkblock"))
                         {
-                            LogPrint("checkblock", "Rejected transaction for %s, reject code %d\n", state.GetRejectReason().c_str(), state.GetRejectCode());
+                            LogPrint("checkblock", "Rejected transaction for %s, reject code %d\nchainActive.Height(): %d, height: %d\n", state.GetRejectReason().c_str(), state.GetRejectCode(), chainActive.Height(), height);
                             for (auto input : Tx.vin)
                             {
-                                LogPrint("checkblock", "chainActive.Height(): %d, input n: %d, hash: %s\n", height, input.prevout.n, input.prevout.hash.GetHex().c_str());
+                                LogPrint("checkblock", "input n: %d, hash: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str());
                             }
                         }
                         rejects++;
