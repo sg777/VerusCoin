@@ -6877,8 +6877,8 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
         if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus(), 0))
             return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->GetHeight(), pindex->GetBlockHash().ToString());
         // check level 1: verify block validity
-        int32_t futureblock;
-        if (nCheckLevel >= 1 && !CheckBlock(&futureblock,pindex->GetHeight(),pindex,block, state, chainparams, verifier, 0, true, false) )
+        int32_t futureblock = 0;
+        if (nCheckLevel >= 1 && !CheckBlock(&futureblock, pindex->GetHeight(), pindex, block, state, chainparams, verifier, 0, true, false) )
             return error("VerifyDB(): *** found bad block at %d, hash=%s\n", pindex->GetHeight(), pindex->GetBlockHash().ToString());
         // check level 2: verify undo validity
         if (nCheckLevel >= 2 && pindex) {
@@ -6924,7 +6924,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             if (!ConnectBlock(block, state, pindex, coins, chainparams, false, true))
             {
                 RemoveCoinbaseFromMemPool(block);
-                return error("VerifyDB(): *** found unconnectable block at %d, hash=%s", pindex->GetHeight(), pindex->GetBlockHash().ToString());
+                return error("VerifyDB(): *** Error (%s) found unconnectable block at %d, hash=%s", state.GetRejectReason().c_str(), pindex->GetHeight(), pindex->GetBlockHash().ToString());
             }
             RemoveCoinbaseFromMemPool(block);
         }
