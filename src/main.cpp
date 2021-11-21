@@ -6925,10 +6925,6 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             CBlock block;
             if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus(), 0))
                 return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->GetHeight(), pindex->GetBlockHash().ToString());
-            if (pindex->GetHeight() == 1784393)
-            {
-                printf("This is the breakpoint\n");
-            }
             if (!ConnectBlock(block, state, pindex, coins, chainparams, false, true))
             {
                 RemoveCoinbaseFromMemPool(block);
