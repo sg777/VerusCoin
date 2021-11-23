@@ -1800,8 +1800,6 @@ void komodo_args(char *argv0)
         name = "VRSC";
     }
 
-    //printf("%s: chain name: %s\n", __func__, name.c_str());
-
     mapArgs["-ac_name"] = name;
     memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
     strcpy(ASSETCHAINS_SYMBOL, name.c_str());
@@ -1812,56 +1810,100 @@ void komodo_args(char *argv0)
 
     bool paramsLoaded = false;
 
-    if (name == "VRSC")
+    CCurrencyDefinition mainVerusCurrency;
+
+    mapArgs["-ac_algo"] = "verushash";
+    mapArgs["-ac_cc"] = "1";
+    mapArgs["-ac_veruspos"] = "50";
+
+    VERUS_CHAINNAME = PBAAS_TESTMODE ? "VRSCTEST" : "VRSC";
+    VERUS_CHAINID = CCrossChainRPCData::GetID(VERUS_CHAINNAME);
+
+    if (name == "VRSC" || name == "VRSCTEST")
     {
-        // first setup Verus parameters
-        mapArgs["-ac_algo"] = "verushash";
-        mapArgs["-ac_cc"] = "1";
-        mapArgs["-ac_supply"] = "0";
-        mapArgs["-ac_eras"] = "3";
-        mapArgs["-ac_reward"] = "0,38400000000,2400000000";
-        mapArgs["-ac_halving"] = "1,43200,1051920";
-        mapArgs["-ac_decay"] = "100000000,0,0";
-        mapArgs["-ac_options"] = "264,264,264";      // OPTION_ID_REFERRALS + OPTION_PBAAS
-        mapArgs["-ac_end"] = "10080,226080,0";
-        mapArgs["-ac_timelockgte"] = "19200000000";
-        mapArgs["-ac_timeunlockfrom"] = "129600";
-        mapArgs["-ac_timeunlockto"] = "1180800";
-        mapArgs["-ac_veruspos"] = "50";
+        mainVerusCurrency = CCurrencyDefinition(name, PBAAS_TESTMODE);
 
-        ASSETCHAINS_TIMELOCKGTE = 19200000000;
-        ASSETCHAINS_TIMEUNLOCKFROM = 129600;
-        ASSETCHAINS_TIMEUNLOCKTO = 1180800;
+        name = mainVerusCurrency.name;
 
-        if (!ReadConfigFile("VRSC", mapArgs, mapMultiArgs))
+        auto numEras = mainVerusCurrency.rewards.size();
+        ASSETCHAINS_LASTERA = numEras - 1;
+        mapArgs["-ac_eras"] = to_string(numEras);
+        mapArgs["-ac_end"] = "";
+        mapArgs["-ac_reward"] = "";
+        mapArgs["-ac_halving"] = "";
+        mapArgs["-ac_decay"] = "";
+        mapArgs["-ac_options"] = "";
+
+        for (int j = 0; j < ASSETCHAINS_MAX_ERAS; j++)
+        {
+            if (j > ASSETCHAINS_LASTERA)
+            {
+                ASSETCHAINS_REWARD[j] = ASSETCHAINS_REWARD[j-1];
+                ASSETCHAINS_DECAY[j] = ASSETCHAINS_DECAY[j-1];
+                ASSETCHAINS_HALVING[j] = ASSETCHAINS_HALVING[j-1];
+                ASSETCHAINS_ENDSUBSIDY[j] = 0;
+                ASSETCHAINS_ERAOPTIONS[j] = 0;
+            }
+            else
+            {
+                ASSETCHAINS_REWARD[j] = mainVerusCurrency.rewards[j];
+                ASSETCHAINS_DECAY[j] = mainVerusCurrency.rewardsDecay[j];
+                ASSETCHAINS_HALVING[j] = mainVerusCurrency.halving[j];
+                ASSETCHAINS_ENDSUBSIDY[j] = mainVerusCurrency.eraEnd[j];
+                ASSETCHAINS_ERAOPTIONS[j] = mainVerusCurrency.options;
+                if (j == 0)
+                {
+                    mapArgs["-ac_reward"] = to_string(ASSETCHAINS_REWARD[j]);
+                    mapArgs["-ac_decay"] = to_string(ASSETCHAINS_DECAY[j]);
+                    mapArgs["-ac_halving"] = to_string(ASSETCHAINS_HALVING[j]);
+                    mapArgs["-ac_end"] = to_string(ASSETCHAINS_ENDSUBSIDY[j]);
+                    mapArgs["-ac_options"] = to_string(ASSETCHAINS_ERAOPTIONS[j]);
+                }
+                else
+                {
+                    mapArgs["-ac_reward"] += "," + to_string(ASSETCHAINS_REWARD[j]);
+                    mapArgs["-ac_decay"] += "," + to_string(ASSETCHAINS_DECAY[j]);
+                    mapArgs["-ac_halving"] += "," + to_string(ASSETCHAINS_HALVING[j]);
+                    mapArgs["-ac_end"] += "," + to_string(ASSETCHAINS_ENDSUBSIDY[j]);
+                    mapArgs["-ac_options"] += "," + to_string(ASSETCHAINS_ERAOPTIONS[j]);
+                }
+            }
+        }
+
+        PBAAS_STARTBLOCK = mainVerusCurrency.startBlock;
+        mapArgs["-startblock"] = to_string(PBAAS_STARTBLOCK);
+        PBAAS_ENDBLOCK = mainVerusCurrency.endBlock;
+        mapArgs["-endblock"] = to_string(PBAAS_ENDBLOCK);
+
+        ASSETCHAINS_SUPPLY = mainVerusCurrency.GetTotalPreallocation();
+        mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
+
+        if (!ReadConfigFile(name, mapArgs, mapMultiArgs))
         {
             LogPrintf("Config file for %s not found.\n", name.c_str());
         }
-    }
-    else if (name == "VRSCTEST")
-    {
-        // setup Verus test parameters
-        mapArgs["-ac_algo"] = "verushash";
-        mapArgs["-ac_cc"] = "1";
-        mapArgs["-ac_supply"] = "5000000000000000";
-        mapArgs["-ac_eras"] = "1";
-        mapArgs["-ac_reward"] = "1200000000";
-        mapArgs["-ac_decay"] = "0";
-        mapArgs["-ac_options"] = "264";       // OPTION_ID_REFERRALS + OPTION_PBAAS
-        mapArgs["-ac_end"] = "0";
-        mapArgs["-ac_veruspos"] = "50";
 
-        ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
-        ASSETCHAINS_TIMEUNLOCKFROM = 0;
-        ASSETCHAINS_TIMEUNLOCKTO = 0;
-
-        if (!ReadConfigFile("VRSCTEST", mapArgs, mapMultiArgs))
+        if (name == "VRSC")
         {
-            LogPrintf("Config file for %s not found.\n", name.c_str());
-        }
+            mapArgs["-ac_timelockgte"] = "19200000000";
+            mapArgs["-ac_timeunlockfrom"] = "129600";
+            mapArgs["-ac_timeunlockto"] = "1180800";
 
-        std::string halving = GetArg("-ac_halving", mapArgs.count("-ac_halving") ? mapArgs["-ac_halving"] : "1174000"); // this assignment is required for an ARM compiler workaround
-        mapArgs["-ac_halving"] = halving;    // allow testing easily with different values here
+            ASSETCHAINS_TIMELOCKGTE = 19200000000;
+            ASSETCHAINS_TIMEUNLOCKFROM = 129600;
+            ASSETCHAINS_TIMEUNLOCKTO = 1180800;
+        }
+        else
+        {
+            ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
+            ASSETCHAINS_TIMEUNLOCKFROM = 0;
+            ASSETCHAINS_TIMEUNLOCKTO = 0;
+
+            uint32_t defaultHalving = mainVerusCurrency.halving[0];
+            std::string halving = GetArg("-ac_halving", mapArgs.count("-ac_halving") ? mapArgs["-ac_halving"] : std::to_string(defaultHalving)); // this assignment is required for an ARM compiler workaround
+            mainVerusCurrency.halving[0] = atoi(halving);
+            mapArgs["-ac_halving"] = halving;    // allow testing easily with different values from conf or overridden by parameters here
+        }
     }
     else
     {
@@ -1949,8 +1991,6 @@ void komodo_args(char *argv0)
         }
     }
 
-    VERUS_CHAINNAME = PBAAS_TESTMODE ? "VRSCTEST" : "VRSC";
-    VERUS_CHAINID = CCrossChainRPCData::GetID(VERUS_CHAINNAME);
     memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
     strcpy(ASSETCHAINS_SYMBOL, name.c_str());
 
@@ -2155,30 +2195,48 @@ void komodo_args(char *argv0)
 
         if (!paramsLoaded)
         {
-            // we need to set the chain definition for this chain based on globals set above
             UniValue obj(UniValue::VOBJ);
 
-            obj.push_back(Pair("premine", ASSETCHAINS_SUPPLY));
-            obj.push_back(Pair("name", ASSETCHAINS_SYMBOL));
-
-            obj.push_back(Pair("startblock", PBAAS_STARTBLOCK));
-            obj.push_back(Pair("endblock", PBAAS_ENDBLOCK));
-            obj.push_back(Pair("launchsystemid", GetArg("-launchsystemid","")));
-            obj.push_back(Pair("systemid", GetArg("-systemid","")));
-            obj.push_back(Pair("parent", GetArg("-parentid","")));
-
-            UniValue eras(UniValue::VARR);
-            for (int i = 0; i <= ASSETCHAINS_LASTERA; i++)
+            if (mainVerusCurrency.IsValid())
             {
-                UniValue era(UniValue::VOBJ);
-                era.push_back(Pair("reward", ASSETCHAINS_REWARD[i]));
-                era.push_back(Pair("decay", ASSETCHAINS_DECAY[i]));
-                era.push_back(Pair("halving", ASSETCHAINS_HALVING[i]));
-                era.push_back(Pair("eraend", ASSETCHAINS_ENDSUBSIDY[i]));
-                era.push_back(Pair("eraoptions", ASSETCHAINS_ERAOPTIONS[i]));
-                eras.push_back(era);
+                obj = mainVerusCurrency.ToUniValue();
             }
-            obj.push_back(Pair("eras", eras));
+            else
+            {
+                // we need to set the chain definition for this chain based on globals set above
+                obj.push_back(Pair("premine", ASSETCHAINS_SUPPLY));
+                obj.push_back(Pair("name", ASSETCHAINS_SYMBOL));
+
+                obj.push_back(Pair("startblock", PBAAS_STARTBLOCK));
+                obj.push_back(Pair("endblock", PBAAS_ENDBLOCK));
+                obj.push_back(Pair("launchsystemid", GetArg("-launchsystemid","")));
+                obj.push_back(Pair("systemid", GetArg("-systemid","")));
+                obj.push_back(Pair("parent", GetArg("-parentid","")));
+
+                UniValue eras(UniValue::VARR);
+                for (int i = 0; i <= ASSETCHAINS_LASTERA; i++)
+                {
+                    UniValue era(UniValue::VOBJ);
+                    era.push_back(Pair("reward", ASSETCHAINS_REWARD[i]));
+                    era.push_back(Pair("decay", ASSETCHAINS_DECAY[i]));
+                    era.push_back(Pair("halving", ASSETCHAINS_HALVING[i]));
+                    era.push_back(Pair("eraend", ASSETCHAINS_ENDSUBSIDY[i]));
+                    era.push_back(Pair("eraoptions", ASSETCHAINS_ERAOPTIONS[i]));
+                    eras.push_back(era);
+                }
+                obj.push_back(Pair("eras", eras));
+
+                // we do not have pre-allocation data here, so fake one lump sum of pre-allocation to a NULL address
+                // this will get replaced from either block 1 of our chain, or a connection to VRSC
+                if (ASSETCHAINS_SUPPLY)
+                {
+                    UniValue preallocArr(UniValue::VARR);
+                    UniValue preallocObj(UniValue::VOBJ);
+                    preallocObj.push_back(Pair("DestinationPending", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
+                    preallocArr.push_back(preallocObj);
+                    obj.push_back(Pair("preallocations", preallocArr));
+                }
+            }
 
             std::vector<std::string> addn;
             UniValue nodeArr(UniValue::VARR);
@@ -2192,16 +2250,6 @@ void komodo_args(char *argv0)
                 obj.pushKV("nodes", nodeArr);
             }
 
-            // we do not have pre-allocation data here, so fake one lump sum of pre-allocation to a NULL address
-            // this will get replaced from either block 1 of our chain, or a connection to VRSC
-            if (ASSETCHAINS_SUPPLY)
-            {
-                UniValue preallocArr(UniValue::VARR);
-                UniValue preallocObj(UniValue::VOBJ);
-                preallocObj.push_back(Pair("DestinationPending", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
-                preallocArr.push_back(preallocObj);
-                obj.push_back(Pair("preallocations", preallocArr));
-            }
             SetThisChain(obj);
             paramsLoaded = true;
         }

@@ -429,54 +429,18 @@ bool SetThisChain(const UniValue &chainDefinition)
 
     if (!IsVerusActive())
     {
-        CCurrencyDefinition notaryChainDef;
         // we set the notary chain to either Verus or VerusTest
-        notaryChainDef.nVersion = CCurrencyDefinition::VERSION_CURRENT;
-        if (PBAAS_TESTMODE)
-        {
-            // setup Verus test parameters
-            // TODO: HARDENING - for this and VRSC below, construct the CCurrencyDefinition from Univalue to get proper defaults
-            notaryChainDef.name = "VRSCTEST";
-            notaryChainDef.proofProtocol = CCurrencyDefinition::PROOF_PBAASMMR;
-            notaryChainDef.proofProtocol = CCurrencyDefinition::NOTARIZATION_AUTO;
-            notaryChainDef.preAllocation = {std::make_pair(uint160(), 5000000000000000)};
-            notaryChainDef.rewards = std::vector<int64_t>({1200000000});
-            notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
-            notaryChainDef.halving = std::vector<int32_t>({5111120});
-            notaryChainDef.eraEnd = std::vector<int32_t>({0});
-        }
-        else
-        {
-            // first setup Verus parameters
-            notaryChainDef.name = "VRSC";
-            notaryChainDef.proofProtocol = CCurrencyDefinition::PROOF_PBAASMMR;
-            notaryChainDef.proofProtocol = CCurrencyDefinition::NOTARIZATION_AUTO;
-            notaryChainDef.rewards = std::vector<int64_t>({0,38400000000,2400000000});
-            notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
-            notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
-            notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
-        }
-        notaryChainDef.options = (notaryChainDef.OPTION_PBAAS + notaryChainDef.OPTION_ID_REFERRALS);
-        notaryChainDef.idRegistrationFees = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
-        notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
+        CCurrencyDefinition notaryChainDef = CCurrencyDefinition("VRSC", PBAAS_TESTMODE);
+
         VERUS_CHAINNAME = notaryChainDef.name;
-        notaryChainDef.systemID = notaryChainDef.GetID();
+        VERUS_CHAINID = notaryChainDef.GetID();
+
         ASSETCHAINS_CHAINID = ConnectedChains.ThisChain().GetID();
 
-        ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
-        ASSETCHAINS_TIMEUNLOCKFROM = 0;
-        ASSETCHAINS_TIMEUNLOCKTO = 0;
-
-        //printf("%s: %s\n", __func__, EncodeDestination(CIdentityID(notaryChainDef.GetID())).c_str());
         ConnectedChains.notarySystems[notaryChainDef.GetID()] = 
             CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CPBaaSNotarization());
         CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
         ASSETCHAINS_SUPPLY = currencyState.supply;
-    }
-    else
-    {
-        ConnectedChains.ThisChain().options = (CCurrencyDefinition::OPTION_PBAAS + CCurrencyDefinition::OPTION_ID_REFERRALS);
-        ConnectedChains.ThisChain().systemID = ConnectedChains.ThisChain().GetID();   
     }
 
     auto numEras = ConnectedChains.ThisChain().rewards.size();

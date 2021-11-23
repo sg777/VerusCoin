@@ -209,6 +209,183 @@ uint160 CCurrencyDefinition::GetConditionID(int32_t condition) const
     return CCrossChainRPCData::GetConditionID(name, condition);
 }
 
+UniValue CCurrencyDefinition::ToUniValue() const
+{
+    UniValue obj(UniValue::VOBJ);
+
+    obj.push_back(Pair("version", (int64_t)nVersion));
+    obj.push_back(Pair("options", (int64_t)options));
+    obj.push_back(Pair("name", name));
+    obj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(GetID()))));
+    if (!parent.IsNull())
+    {
+        obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
+    }
+
+    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    obj.push_back(Pair("notarizationprotocol", (int)notarizationProtocol));
+    obj.push_back(Pair("proofprotocol", (int)proofProtocol));
+
+    if (nativeCurrencyID.IsValid())
+    {
+        obj.push_back(Pair("nativecurrencyid", nativeCurrencyID.ToUniValue()));
+    }
+
+    if (!launchSystemID.IsNull())
+    {
+        obj.push_back(Pair("launchsystemid", EncodeDestination(CIdentityID(launchSystemID))));
+    }
+    obj.push_back(Pair("startblock", (int64_t)startBlock));
+    obj.push_back(Pair("endblock", (int64_t)endBlock));
+
+    // currencies that can be converted for pre-launch or fractional usage
+    if (currencies.size())
+    {
+        UniValue currencyArr(UniValue::VARR);
+        for (auto &currency : currencies)
+        {
+            currencyArr.push_back(EncodeDestination(CIdentityID(currency)));
+        }
+        obj.push_back(Pair("currencies", currencyArr));
+    }
+
+    if (weights.size())
+    {
+        UniValue weightArr(UniValue::VARR);
+        for (auto &weight : weights)
+        {
+            weightArr.push_back(ValueFromAmount(weight));
+        }
+        obj.push_back(Pair("weights", weightArr));
+    }
+
+    if (conversions.size())
+    {
+        UniValue conversionArr(UniValue::VARR);
+        for (auto &conversion : conversions)
+        {
+            conversionArr.push_back(ValueFromAmount(conversion));
+        }
+        obj.push_back(Pair("conversions", conversionArr));
+    }
+
+    if (minPreconvert.size())
+    {
+        UniValue minPreconvertArr(UniValue::VARR);
+        for (auto &oneMin : minPreconvert)
+        {
+            minPreconvertArr.push_back(ValueFromAmount(oneMin));
+        }
+        obj.push_back(Pair("minpreconversion", minPreconvertArr));
+    }
+
+    if (maxPreconvert.size())
+    {
+        UniValue maxPreconvertArr(UniValue::VARR);
+        for (auto &oneMax : maxPreconvert)
+        {
+            maxPreconvertArr.push_back(ValueFromAmount(oneMax));
+        }
+        obj.push_back(Pair("maxpreconversion", maxPreconvertArr));
+    }
+
+    if (preLaunchDiscount)
+    {
+        obj.push_back(Pair("prelaunchdiscount", ValueFromAmount(preLaunchDiscount)));
+    }
+
+    if (IsFractional())
+    {
+        obj.push_back(Pair("initialsupply", ValueFromAmount(initialFractionalSupply)));
+        obj.push_back(Pair("prelaunchcarveout", ValueFromAmount(preLaunchCarveOut)));
+    }
+
+    if (preAllocation.size())
+    {
+        UniValue preAllocationArr(UniValue::VARR);
+        for (auto &onePreAllocation : preAllocation)
+        {
+            UniValue onePreAlloc(UniValue::VOBJ);
+            onePreAlloc.push_back(Pair(onePreAllocation.first.IsNull() ? "blockoneminer" : EncodeDestination(CIdentityID(onePreAllocation.first)), 
+                                       ValueFromAmount(onePreAllocation.second)));
+            preAllocationArr.push_back(onePreAlloc);
+        }
+        obj.push_back(Pair("preallocations", preAllocationArr));
+    }
+
+    if (!gatewayID.IsNull())
+    {
+        obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
+    }
+
+    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
+    {
+        obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
+    }
+
+    if (contributions.size())
+    {
+        UniValue initialContributionArr(UniValue::VARR);
+        for (auto &oneCurContributions : contributions)
+        {
+            initialContributionArr.push_back(ValueFromAmount(oneCurContributions));
+        }
+        obj.push_back(Pair("initialcontributions", initialContributionArr));
+    }
+
+    if (preconverted.size())
+    {
+        UniValue preconversionArr(UniValue::VARR);
+        for (auto &onePreconversion : preconverted)
+        {
+            preconversionArr.push_back(ValueFromAmount(onePreconversion));
+        }
+        obj.push_back(Pair("preconversions", preconversionArr));
+    }
+
+    if (IsGateway() || IsPBaaSChain())
+    {
+        // notaries are identities that perform specific functions for the currency's operation
+        // related to notarizing an external currency source, as well as proving imports
+        if (notaries.size())
+        {
+            UniValue notaryArr(UniValue::VARR);
+            for (auto &notary : notaries)
+            {
+                notaryArr.push_back(EncodeDestination(CIdentityID(notary)));
+            }
+            obj.push_back(Pair("notaries", notaryArr));
+        }
+        obj.push_back(Pair("minnotariesconfirm", minNotariesConfirm));
+
+        obj.push_back(Pair("idregistrationfees", ValueFromAmount(idRegistrationFees)));
+        obj.push_back(Pair("idreferrallevels", idReferralLevels));
+
+        if (!gatewayConverterName.empty())
+        {
+            obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentityID(GatewayConverterID()))));
+            obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
+        }
+
+        if (IsPBaaSChain())
+        {
+            UniValue eraArr(UniValue::VARR);
+            for (int i = 0; i < rewards.size(); i++)
+            {
+                UniValue era(UniValue::VOBJ);
+                era.push_back(Pair("reward", rewards.size() > i ? rewards[i] : (int64_t)0));
+                era.push_back(Pair("decay", rewardsDecay.size() > i ? rewardsDecay[i] : (int64_t)0));
+                era.push_back(Pair("halving", halving.size() > i ? (int32_t)halving[i] : (int32_t)0));
+                era.push_back(Pair("eraend", eraEnd.size() > i ? (int32_t)eraEnd[i] : (int32_t)0));
+                eraArr.push_back(era);
+            }
+            obj.push_back(Pair("eras", eraArr));
+        }
+    }
+
+    return obj;
+}
+
 UniValue CCurrencyState::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
@@ -688,179 +865,6 @@ UniValue CPBaaSNotarization::ToUniValue() const
         nodesUni.push_back(node.ToUniValue());
     }
     obj.push_back(Pair("nodes", nodesUni));
-    return obj;
-}
-
-UniValue CCurrencyDefinition::ToUniValue() const
-{
-    UniValue obj(UniValue::VOBJ);
-
-    obj.push_back(Pair("version", (int64_t)nVersion));
-    obj.push_back(Pair("options", (int64_t)options));
-    obj.push_back(Pair("name", name));
-    obj.push_back(Pair("currencyid", EncodeDestination(CIdentityID(GetID()))));
-    if (!parent.IsNull())
-    {
-        obj.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
-    }
-
-    obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
-    obj.push_back(Pair("notarizationprotocol", (int)notarizationProtocol));
-    obj.push_back(Pair("proofprotocol", (int)proofProtocol));
-
-    if (nativeCurrencyID.IsValid())
-    {
-        obj.push_back(Pair("nativecurrencyid", nativeCurrencyID.ToUniValue()));
-    }
-
-    if (!launchSystemID.IsNull())
-    {
-        obj.push_back(Pair("launchsystemid", EncodeDestination(CIdentityID(launchSystemID))));
-    }
-    obj.push_back(Pair("startblock", (int64_t)startBlock));
-    obj.push_back(Pair("endblock", (int64_t)endBlock));
-
-    // currencies that can be converted for pre-launch or fractional usage
-    if (currencies.size())
-    {
-        UniValue currencyArr(UniValue::VARR);
-        for (auto &currency : currencies)
-        {
-            currencyArr.push_back(EncodeDestination(CIdentityID(currency)));
-        }
-        obj.push_back(Pair("currencies", currencyArr));
-    }
-
-    if (weights.size())
-    {
-        UniValue weightArr(UniValue::VARR);
-        for (auto &weight : weights)
-        {
-            weightArr.push_back(ValueFromAmount(weight));
-        }
-        obj.push_back(Pair("weights", weightArr));
-    }
-
-    if (conversions.size())
-    {
-        UniValue conversionArr(UniValue::VARR);
-        for (auto &conversion : conversions)
-        {
-            conversionArr.push_back(ValueFromAmount(conversion));
-        }
-        obj.push_back(Pair("conversions", conversionArr));
-    }
-
-    if (minPreconvert.size())
-    {
-        UniValue minPreconvertArr(UniValue::VARR);
-        for (auto &oneMin : minPreconvert)
-        {
-            minPreconvertArr.push_back(ValueFromAmount(oneMin));
-        }
-        obj.push_back(Pair("minpreconversion", minPreconvertArr));
-    }
-
-    if (maxPreconvert.size())
-    {
-        UniValue maxPreconvertArr(UniValue::VARR);
-        for (auto &oneMax : maxPreconvert)
-        {
-            maxPreconvertArr.push_back(ValueFromAmount(oneMax));
-        }
-        obj.push_back(Pair("maxpreconversion", maxPreconvertArr));
-    }
-
-    if (preLaunchDiscount)
-    {
-        obj.push_back(Pair("prelaunchdiscount", ValueFromAmount(preLaunchDiscount)));
-    }
-
-    if (IsFractional())
-    {
-        obj.push_back(Pair("initialsupply", ValueFromAmount(initialFractionalSupply)));
-        obj.push_back(Pair("prelaunchcarveout", ValueFromAmount(preLaunchCarveOut)));
-    }
-
-    if (preAllocation.size())
-    {
-        UniValue preAllocationArr(UniValue::VARR);
-        for (auto &onePreAllocation : preAllocation)
-        {
-            UniValue onePreAlloc(UniValue::VOBJ);
-            onePreAlloc.push_back(Pair(onePreAllocation.first.IsNull() ? "blockoneminer" : EncodeDestination(CIdentityID(onePreAllocation.first)), 
-                                       ValueFromAmount(onePreAllocation.second)));
-            preAllocationArr.push_back(onePreAlloc);
-        }
-        obj.push_back(Pair("preallocations", preAllocationArr));
-    }
-
-    if (!gatewayID.IsNull())
-    {
-        obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
-    }
-
-    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
-    {
-        obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
-    }
-
-    if (contributions.size())
-    {
-        UniValue initialContributionArr(UniValue::VARR);
-        for (auto &oneCurContributions : contributions)
-        {
-            initialContributionArr.push_back(ValueFromAmount(oneCurContributions));
-        }
-        obj.push_back(Pair("initialcontributions", initialContributionArr));
-    }
-
-    if (preconverted.size())
-    {
-        UniValue preconversionArr(UniValue::VARR);
-        for (auto &onePreconversion : preconverted)
-        {
-            preconversionArr.push_back(ValueFromAmount(onePreconversion));
-        }
-        obj.push_back(Pair("preconversions", preconversionArr));
-    }
-
-    if (IsGateway() || IsPBaaSChain())
-    {
-        // notaries are identities that perform specific functions for the currency's operation
-        // related to notarizing an external currency source, as well as proving imports
-        if (notaries.size())
-        {
-            UniValue notaryArr(UniValue::VARR);
-            for (auto &notary : notaries)
-            {
-                notaryArr.push_back(EncodeDestination(CIdentityID(notary)));
-            }
-            obj.push_back(Pair("notaries", notaryArr));
-        }
-        obj.push_back(Pair("minnotariesconfirm", minNotariesConfirm));
-
-        obj.push_back(Pair("idregistrationfees", ValueFromAmount(idRegistrationFees)));
-        obj.push_back(Pair("idreferrallevels", idReferralLevels));
-        obj.push_back(Pair("gatewayconverterid", EncodeDestination(CIdentityID(GatewayConverterID()))));
-        obj.push_back(Pair("gatewayconvertername", gatewayConverterName));
-
-        if (IsPBaaSChain())
-        {
-            UniValue eraArr(UniValue::VARR);
-            for (int i = 0; i < rewards.size(); i++)
-            {
-                UniValue era(UniValue::VOBJ);
-                era.push_back(Pair("reward", rewards.size() > i ? rewards[i] : (int64_t)0));
-                era.push_back(Pair("decay", rewardsDecay.size() > i ? rewardsDecay[i] : (int64_t)0));
-                era.push_back(Pair("halving", halving.size() > i ? (int32_t)halving[i] : (int32_t)0));
-                era.push_back(Pair("eraend", eraEnd.size() > i ? (int32_t)eraEnd[i] : (int32_t)0));
-                eraArr.push_back(era);
-            }
-            obj.push_back(Pair("eras", eraArr));
-        }
-    }
-
     return obj;
 }
 
