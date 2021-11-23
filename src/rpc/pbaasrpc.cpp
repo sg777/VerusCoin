@@ -4724,6 +4724,48 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
 
     if ((acceptedIdentity = CIdentity(accept)).IsValid())
     {
+        uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(accept, "parent")))));
+        if (parentID.IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure acceptance of the correct identity, parent must be a correct, non-null value.");
+        }
+
+        CTxIn idTxIn;
+        CIdentity oldID;
+        uint32_t idHeight;
+
+        if (!(oldID = CIdentity::LookupIdentity(acceptedIdentity.GetID(), 0, &idHeight, &idTxIn)).IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + acceptedIdentity.GetID().GetHex() + ", not found ");
+        }
+
+        oldID.revocationAuthority = oldID.GetID();
+        oldID.recoveryAuthority = oldID.GetID();
+        oldID.privateAddresses.clear();
+        oldID.primaryAddresses.clear();
+        oldID.minSigs = 1;
+
+        auto uniOldID = UniObjectToMap(oldID.ToUniValue());
+
+        // overwrite old elements
+        for (auto &oneEl : UniObjectToMap(accept))
+        {
+            uniOldID[oneEl.first] = oneEl.second;
+        }
+
+        uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(height + 1);
+
+        if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
+        {
+            uniOldID["version"] = solVersion < CActivationHeight::ACTIVATE_PBAAS ? (int64_t)CIdentity::VERSION_VAULT : (int64_t)CIdentity::VERSION_PBAAS;
+            if (oldID.nVersion < CIdentity::VERSION_VAULT)
+            {
+                uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
+            }
+        }
+
+        UniValue newUniID = MapToUniObject(uniOldID);
+        acceptedIdentity = CIdentity(newUniID);
         acceptedIdentity.UpgradeVersion(height + 1);
     }
     else
