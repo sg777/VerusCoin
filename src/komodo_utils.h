@@ -1783,6 +1783,7 @@ void komodo_args(char *argv0)
 
     std::string lowerName = boost::to_lower_copy(name);
 
+    // TODO: HARDENING - right now, all PBaaS chains assume testmode. change before mainnet
     if (lowerName != "vrsc")
     {
         PBAAS_TESTMODE = true;

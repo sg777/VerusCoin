@@ -3236,7 +3236,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     for (auto &oneBalance : resBal.valueMap)
     {
-        reserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        reserveBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
     }
     if (reserveBal.size())
     {
@@ -3249,7 +3249,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
             {
                 for (auto &oneBalance : unlockedResBal.valueMap)
                 {
-                    unlockedReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+                    unlockedReserveBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
                 }
                 obj.push_back(Pair("unlocked_reserve_balance", unlockedReserveBal));
             }
@@ -3259,7 +3259,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     UniValue unconfirmedReserveBal(UniValue::VOBJ);
     for (auto &oneBalance : pwalletMain->GetUnconfirmedReserveBalance().valueMap)
     {
-        unconfirmedReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        unconfirmedReserveBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
     }
     if (unconfirmedReserveBal.size())
     {
@@ -3269,7 +3269,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     UniValue immatureReserveBal(UniValue::VOBJ);
     for (auto &oneBalance : pwalletMain->GetImmatureReserveBalance().valueMap)
     {
-        immatureReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        immatureReserveBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
     }
     if (immatureReserveBal.size())
     {

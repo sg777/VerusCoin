@@ -333,16 +333,6 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("initialcontributions", initialContributionArr));
     }
 
-    if (preconverted.size())
-    {
-        UniValue preconversionArr(UniValue::VARR);
-        for (auto &onePreconversion : preconverted)
-        {
-            preconversionArr.push_back(ValueFromAmount(onePreconversion));
-        }
-        obj.push_back(Pair("preconversions", preconversionArr));
-    }
-
     if (IsGateway() || IsPBaaSChain())
     {
         // notaries are identities that perform specific functions for the currency's operation

@@ -1282,6 +1282,17 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
     if (chainDef.IsValid())
     {
         ret = chainDef.ToUniValue();
+        ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyCurrencyName(chainID));
+
+        if (chainDef.currencies.size())
+        {
+            UniValue curNames(UniValue::VOBJ);
+            for (auto &oneCurID : chainDef.currencies)
+            {
+                curNames.pushKV(EncodeDestination(CIdentityID(oneCurID)), ConnectedChains.GetFriendlyCurrencyName(oneCurID));
+            }
+            ret.pushKV("currencynames", curNames);
+        }
 
         int32_t defHeight;
         CUTXORef defUTXO;
@@ -3560,7 +3571,7 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
 {
     std::vector<CBaseChainObject *> opRetArray;
     CPartialTransactionProof offerTxProof;
-    bool isPartial;
+    bool isPartial = false, incompleteTx = false;
     COptCCParams p;
     CSpentIndexKey spentKey = CSpentIndexKey(postedTx.GetHash(), 1);
     CSpentIndexValue spentValue;
@@ -3590,6 +3601,25 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
     {
         return true;
     }
+    else if (getExpired && 
+             p.IsValid() &&
+             p.evalCode == EVAL_IDENTITY_COMMITMENT &&
+             postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
+             p.vData.size() > 1 &&
+             COptCCParams(p.vData.back()).vKeys.size() > 1 &&
+             myGetTransaction(postedTx.GetHash(), inputToOfferTx, offerBlockHash) &&
+             !offerBlockHash.IsNull() &&
+             mapBlockIndex.count(offerBlockHash) &&
+             (mapBlockIndex[offerBlockHash]->GetHeight() + DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) < height)
+    {
+        CMutableTransaction mtx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), height);
+        mtx.vin.push_back(CTxIn(postedTx.GetHash(), 0));
+        mtx.vout.push_back(postedTx.vout[0]);
+        mtx.nExpiryHeight = std::min(height - 1, (uint32_t)0);
+        offerTx = mtx;
+        return true;
+    }
+    
     return false;
 }
 
@@ -3853,6 +3883,13 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure reference to the correct identity, parent must be a valid, non-null value.");
         }
+
+        CIdentity forID(forValue);
+        if (!forID.IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "New ID definition of the ID for which offer is being made must be valid.");
+        }
+
         std::string nameStr = CleanName(uni_get_str(find_value(forValue, "name")), parentID);
         newIDID = CIdentity::GetID(nameStr, parentID);
         if (newIDID.IsNull())

@@ -8,6 +8,9 @@
 
 DIST_SUBDIRS = secp256k1 univalue cryptoconditions
 
+# AM_LDFLAGS = $(PTHREAD_CFLAGS) $(LIBTOOL_LDFLAGS) $(SAN_LDFLAGS) $(HARDENED_LDFLAGS) -Wl,--no-as-needed,-lprofiler,--as-needed
+# AM_CXXFLAGS = $(SAN_CXXFLAGS) $(HARDENED_CXXFLAGS) $(ERROR_CXXFLAGS) -Wl,--no-as-needed -lprofiler -Wl,--as-needed
+# AM_CPPFLAGS = $(HARDENED_CPPFLAGS) -Wl,--no-as-needed -lprofiler -Wl,--as-needed
 AM_LDFLAGS = $(PTHREAD_CFLAGS) $(LIBTOOL_LDFLAGS) $(SAN_LDFLAGS) $(HARDENED_LDFLAGS)
 AM_CXXFLAGS = $(SAN_CXXFLAGS) $(HARDENED_CXXFLAGS) $(ERROR_CXXFLAGS)
 AM_CPPFLAGS = $(HARDENED_CPPFLAGS)
@@ -540,6 +543,7 @@ libbitcoin_common_a_SOURCES = \
   metrics.cpp \
   mmr.cpp \
   pbaas/ethproof.cpp \
+  pbaas/crosschainrpc.h \
   pbaas/crosschainrpc.cpp \
   pbaas/vdxf.cpp \
   primitives/block.cpp \
@@ -594,6 +598,7 @@ endif
 libbitcoin_cli_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
 libbitcoin_cli_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_cli_a_SOURCES = \
+  arith_uint256.cpp \
   rpc/client.cpp \
   $(BITCOIN_CORE_H) \
   $(LIBZCASH_H)
@@ -777,6 +782,8 @@ libzcashconsensus_la_SOURCES = \
   crypto/sha256.cpp \
   crypto/sha512.cpp \
   hash.cpp \
+  pbaas/crosschainrpc.h \
+  pbaas/crosschainrpc.cpp \
   primitives/transaction.cpp \
   primitives/nonce.cpp \
   pubkey.cpp \

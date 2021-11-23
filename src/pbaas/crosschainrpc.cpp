@@ -570,6 +570,14 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         }
 
         // TODO: HARDENING - ensure that it makes sense for a chain to have PROOF_CHAINID still or disallow
+        // to enable it, we will need to ensure that all imports and notarizations are spendable to the chain ID and are
+        // considered valid by definition
+        if (proofProtocol == PROOF_CHAINID)
+        {
+            LogPrintf("%s: proofprotocol %d not yet implemented\n", __func__, (int)PROOF_CHAINID);
+            nVersion = PBAAS_VERSION_INVALID;
+            return;
+        }
 
         nativeCurrencyID = CTransferDestination(find_value(obj, "nativecurrencyid"));
 

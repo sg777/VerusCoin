@@ -2069,6 +2069,46 @@ CCurrencyDefinition CConnectedChains::UpdateCachedCurrency(const uint160 &curren
     return currencyDef;
 }
 
+// this must be protected with main lock
+std::string CConnectedChains::GetFriendlyCurrencyName(const uint160 &currencyID)
+{
+    // basically, we lookup parent until we are at the native currency
+    std::string retName;
+    uint160 curID = currencyID;
+    CCurrencyDefinition curDef;
+    for (curDef = GetCachedCurrency(curID); curDef.IsValid(); curDef = GetCachedCurrency(curID))
+    {
+        if (curDef.parent.IsNull())
+        {
+            // if we are at a Verus root, we can omit it unless there is nothing else
+            if (curDef.GetID() == VERUS_CHAINID)
+            {
+                if (retName.empty())
+                {
+                    retName = curDef.name;
+                }
+            }
+            else
+            {
+                // if we are at a root that is not Verus, add it and then a "."
+                retName += ".";
+            }
+        }
+        else
+        {
+            if (retName.empty())
+            {
+                retName = curDef.name;
+            }
+            else
+            {
+                retName += "." + curDef.name;
+            }
+        }
+        curID = curDef.parent;
+    }
+    return retName;
+}
 
 // returns all unspent chain exports for a specific chain/currency
 bool CConnectedChains::GetUnspentSystemExports(const CCoinsViewCache &view, 

@@ -1212,7 +1212,6 @@ public:
     UniValue ToUniValue() const;
 };
 
-// TODO: HARDENING we should make sure we handle PROOF_CHAINID before release rather than an assert
 class CNativeHashWriter
 {
 private:
