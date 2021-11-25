@@ -9385,20 +9385,23 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity, " + idString + " not found ");
     }
 
-    uint32_t unlockDelay = uni_get_int64(find_value(params[1], "setunlockdelay"));
-    uint32_t absoluteUnlock = uni_get_int64(find_value(params[1], "unlockatblock"));
+    UniValue unlockDelayUni = find_value(params[1], "setunlockdelay");
+    UniValue absoluteUnlockUni = find_value(params[1], "unlockatblock");
 
-    if ((unlockDelay && absoluteUnlock) || (!unlockDelay && !absoluteUnlock))
+    if ((!unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()) || (unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Either \"setunlockdelay\" or \"unlockatblock\" must have a non-zero value and not both");
     }
+
+    uint32_t unlockDelay = uni_get_int64(unlockDelayUni);
+    uint32_t absoluteUnlock = uni_get_int64(absoluteUnlockUni);
 
     {
         LOCK(cs_main);
         uint32_t nextHeight = chainActive.Height() + 1;
         CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nextHeight);
 
-        if (absoluteUnlock)
+        if (unlockDelayUni.isNull())
         {
             oldIdentity.Unlock(nextHeight, txNew.nExpiryHeight);
             oldIdentity.unlockAfter = absoluteUnlock;
