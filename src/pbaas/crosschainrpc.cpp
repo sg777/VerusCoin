@@ -983,10 +983,13 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
         }
         else if (name == "VRSCTEST" || (testMode && name == "VRSC"))
         {
-            name = "VRSCTEST";
+            name = "vrsctest";
 
             UniValue preAllocUni(UniValue::VOBJ);
-            preAllocUni.pushKV(EncodeDestination(CIdentityID()), (int64_t)5000000000000000);
+            preAllocUni.pushKV("blockoneminer", ValueFromAmount((int64_t)5000000000000000));
+            UniValue preAllocArr(UniValue::VARR);
+            preAllocArr.push_back(preAllocUni);
+            uniCurrency.pushKV("preallocations", preAllocArr);
 
             UniValue uniEras(UniValue::VARR);
             UniValue uniEra1(UniValue::VOBJ);
