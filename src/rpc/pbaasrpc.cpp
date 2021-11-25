@@ -285,6 +285,18 @@ CTxDestination ValidateDestination(const std::string &destStr)
     return destination;
 }
 
+CIdentity ValidateIdentityParameter(const std::string &idStr)
+{
+    CIdentity retVal;
+    CTxDestination destination = DecodeDestination(idStr);
+    if (destination.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        AssertLockHeld(cs_main);
+        retVal = CIdentity::LookupIdentity(GetDestinationID(destination));
+    }
+    return retVal;
+}
+
 // returns non-null value, if this is a gateway destination
 std::pair<uint160, CTransferDestination> ValidateTransferDestination(const std::string &destStr)
 {
@@ -9162,6 +9174,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
             "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
 
             "\nResult:\n"
+            "   hex string of either the txid if returnhex is false or the hex serialized transaction if returntx is true\n"
 
             "\nExamples:\n"
             + HelpExampleCli("updateidentity", "\'{\"name\" : \"myname\"}\'")
@@ -9253,6 +9266,10 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         if (!newLocked)
         {
             newID.Unlock(nHeight + 1, txNew.nExpiryHeight);
+            if (unlockAfter > newID.unlockAfter)
+            {
+                newID.unlockAfter = unlockAfter;
+            }
         }
         else
         {
@@ -9317,6 +9334,90 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
     }
     return wtx.GetHash().GetHex();
+}
+
+UniValue setidentitytimelock(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 2 || params.size() > 3)
+    {
+        throw runtime_error(
+            "setidentitytimelock \"id@\" '{\"unlockatblock\":absoluteblockheight || \"setunlockdelay\":numberofblocksdelayafterunlock}' (returntx)\n"
+            "\nEnables timelocking and unlocking of funds access for an on-chain VerusID. This does not affect the lock status of VerusIDs on other chains,\n"
+            "including VerusIDs with the same identity as this one, which has been exported to another chain.\n"
+            "\nUse \"setunlockdelay\" to set a time unlock delay on an identity, which means that once the identity has been unlocked,\n"
+            "numberofblocksdelayafterunlock must then pass before the identity will be able to spend funds on this blockchain. Services\n"
+            "which support VerusID authentication and recognize this setting may also choose to prevent funds transfers when an ID is locked.\n"
+            "\nUse \"unlockatblock\" to either unlock, by passing the current block, which will still require waiting for the specified unlock\n"
+            "delay, or to set a future unlock height that immediately begins counting down. Unlike an unlock delay, which only starts counting\n"
+            "down when the ID is unlocked, an \"unlockatblock\" time lock is absolute and will automatically unlock when the specified\n"
+            "block passes.\n"
+
+            "\nArguments - either \"unlockatblock\" or \"setunlockdelay\" must be specified and not both\n"
+            "{\n"
+            "  \"unlockatblock\"                (number, optional) unlock at an absolute block height, countdown starts when mined into a block\n"
+            "  \"setunlockdelay\"               (number, optional) delay this many blocks after unlock request to unlock, can only be\n"
+            "                                                      circumvented by revoke/recover\n"
+            "}\n"
+
+            "\nResult:\n"
+            "   Hex string of either the txid if returnhex is false or the hex serialized transaction if returntx is true.\n"
+            "   If returntx is true, the transaction will not have been submitted and must be sent with \"sendrawtransaction\"\n"
+            "   after any necessary signatures are applied in the case of multisig.\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("timelockid", "\'{\"name\" : \"myname\"}\'")
+            + HelpExampleRpc("timelockid", "\'{\"name\" : \"myname\"}\'")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+
+    bool returnTx = false;
+    if (params.size() > 1)
+    {
+        returnTx = uni_get_bool(params[1], false);
+    }
+
+    std::string idString = uni_get_str(params[0]);
+    CIdentity oldIdentity = ValidateIdentityParameter(idString);
+    if (!oldIdentity.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity, " + idString + " not found ");
+    }
+
+    uint32_t unlockDelay = uni_get_int64(find_value(params[1], "setunlockdelay"));
+    uint32_t absoluteUnlock = uni_get_int64(find_value(params[1], "unlockatblock"));
+
+    if ((unlockDelay && absoluteUnlock) || (!unlockDelay && !absoluteUnlock))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Either \"setunlockdelay\" or \"unlockatblock\" must have a non-zero value and not both");
+    }
+
+    {
+        LOCK(cs_main);
+        uint32_t nextHeight = chainActive.Height() + 1;
+        CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nextHeight);
+
+        if (absoluteUnlock)
+        {
+            oldIdentity.Unlock(nextHeight, txNew.nExpiryHeight);
+            oldIdentity.unlockAfter = absoluteUnlock;
+        }
+        else
+        {
+            oldIdentity.Lock(unlockDelay);
+        }
+    }
+
+    UniValue newParams(UniValue::VARR);
+
+    newParams.push_back(EncodeDestination(CIdentityID(oldIdentity.GetID())));
+    newParams.push_back(oldIdentity.ToUniValue());
+    if (params.size() > 2)
+    {
+        newParams.push_back(params[2]);
+    }
+    return updateidentity(newParams, fHelp);
 }
 
 UniValue revokeidentity(const UniValue& params, bool fHelp)
@@ -10355,6 +10456,7 @@ static const CRPCCommand commands[] =
     { "identity",     "registeridentity",             &registeridentity,       true  },
     { "identity",     "updateidentity",               &updateidentity,         true  },
     { "identity",     "revokeidentity",               &revokeidentity,         true  },
+    { "identity",     "setidentitytimelock",          &setidentitytimelock,    true  },
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },

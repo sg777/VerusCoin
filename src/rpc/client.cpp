@@ -1629,6 +1629,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "sendcurrency", 1},
     { "registeridentity", 0},
     { "updateidentity", 0},
+    { "setidentitytimelock", 1},
     { "recoveridentity", 0},
     { "makeoffer", 1},
     { "takeoffer", 1},
