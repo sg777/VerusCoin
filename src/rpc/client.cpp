@@ -787,8 +787,9 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             minNotariesConfirm = uni_get_int(find_value(obj, "minnotariesconfirm"));
         }
 
-        idRegistrationFees = uni_get_int64(find_value(obj, "idregistrationprice"), idRegistrationFees);
-        idRegistrationFees = uni_get_int64(find_value(obj, "idregistrationfees"), idRegistrationFees);
+        UniValue registrationFeeValue = find_value(obj, "idregistrationfees");
+        idRegistrationFees = registrationFeeValue.isNull() ? idRegistrationFees : AmountFromValueNoErr(registrationFeeValue);
+
         idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"), idReferralLevels);
         idImportFees = uni_get_int64(find_value(obj, "idimportfees"), idImportFees);
 
