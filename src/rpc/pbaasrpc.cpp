@@ -3703,6 +3703,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             "1. \"fromaddress\"             (string, required) The VerusID, or wildcard address to send funds from. \"*\", \"R*\", or \"i*\" are valid wildcards\n"
             "2. {\n"
             "     \"changeaddress\"         (string, required) Change destination when constructing transactions\n"
+            "     \"expiryheight\"          (number, optional) Block height at which this offer expires. Defaults to 20 blocks (avg 1/minute)\n"
             "     \"offer\"                 (object, required) Funds description or identity name, \"address\" in this object should be an address of the person making an offer for change\n"
             "     \"for\"                   (object, required) Funds description or full identity description\n"
             "   }\n"

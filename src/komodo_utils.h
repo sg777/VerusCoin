@@ -1826,14 +1826,21 @@ void komodo_args(char *argv0)
 
         name = mainVerusCurrency.name;
 
+        if (!ReadConfigFile(name, mapArgs, mapMultiArgs))
+        {
+            LogPrintf("Config file for %s not found.\n", name.c_str());
+        }
+
         auto numEras = mainVerusCurrency.rewards.size();
         ASSETCHAINS_LASTERA = numEras - 1;
         mapArgs["-ac_eras"] = to_string(numEras);
-        mapArgs["-ac_end"] = "";
-        mapArgs["-ac_reward"] = "";
-        mapArgs["-ac_halving"] = "";
-        mapArgs["-ac_decay"] = "";
-        mapArgs["-ac_options"] = "";
+
+        if (PBAAS_TESTMODE)
+        {
+            uint32_t defaultHalving = mainVerusCurrency.halving[0];
+            std::string halving = GetArg("-ac_halving", mapArgs.count("-ac_halving") ? mapArgs["-ac_halving"] : std::to_string(defaultHalving)); // this assignment is required for an ARM compiler workaround
+            mainVerusCurrency.halving[0] = atoi(halving);
+        }
 
         for (int j = 0; j < ASSETCHAINS_MAX_ERAS; j++)
         {
@@ -1879,11 +1886,6 @@ void komodo_args(char *argv0)
         ASSETCHAINS_SUPPLY = mainVerusCurrency.GetTotalPreallocation();
         mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
 
-        if (!ReadConfigFile(name, mapArgs, mapMultiArgs))
-        {
-            LogPrintf("Config file for %s not found.\n", name.c_str());
-        }
-
         if (name == "VRSC")
         {
             mapArgs["-ac_timelockgte"] = "19200000000";
@@ -1899,11 +1901,6 @@ void komodo_args(char *argv0)
             ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
             ASSETCHAINS_TIMEUNLOCKFROM = 0;
             ASSETCHAINS_TIMEUNLOCKTO = 0;
-
-            uint32_t defaultHalving = mainVerusCurrency.halving[0];
-            std::string halving = GetArg("-ac_halving", mapArgs.count("-ac_halving") ? mapArgs["-ac_halving"] : std::to_string(defaultHalving)); // this assignment is required for an ARM compiler workaround
-            mainVerusCurrency.halving[0] = atoi(halving);
-            mapArgs["-ac_halving"] = halving;    // allow testing easily with different values from conf or overridden by parameters here
         }
     }
     else
