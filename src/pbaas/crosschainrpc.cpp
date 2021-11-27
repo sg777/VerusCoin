@@ -964,14 +964,14 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
             uniEras.push_back(uniEra1);
 
             UniValue uniEra2(UniValue::VOBJ);
-            uniEra2.pushKV("reward", 38400000000);
+            uniEra2.pushKV("reward", (int64_t)38400000000);
             uniEra2.pushKV("decay", 0);
             uniEra2.pushKV("halving", 43200);
             uniEra2.pushKV("eraend", 226080);
             uniEras.push_back(uniEra2);
 
             UniValue uniEra3(UniValue::VOBJ);
-            uniEra2.pushKV("reward", 2400000000);
+            uniEra2.pushKV("reward", (int64_t)2400000000);
             uniEra2.pushKV("decay", 0);
             uniEra2.pushKV("halving", 1051920);
             uniEra2.pushKV("eraend", 0);
