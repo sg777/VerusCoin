@@ -2720,7 +2720,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             }
                                         }
 
-
                                         // first, put all the txids of the UTXOs in a set to check intersection with wallet txes
                                         // that may already include outputs to the newly controlled ID. we also need to check wallet
                                         // txes that are not UTXOs to record spends, rather than considering them UTXOs
@@ -2766,7 +2765,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         }
                                     }
 
-                                    std::vector<std::pair<const CWalletTx *, uint32_t>> affectedWalletTxes;
+                                    std::vector<std::pair<const CWalletTx *, uint32_t>> checkIfSpent;
 
                                     // now, look through existing wallet txes for outputs to the ID, which we did not, but now will
                                     // consider as ours and add them to the outputs that need to be checked
@@ -2799,7 +2798,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             {
                                                 if (oneDest.which() == COptCCParams::ADDRTYPE_ID && GetDestinationID(oneDest) == idID)
                                                 {
-                                                    affectedWalletTxes.push_back(std::make_pair(&wtx.second, k));
+                                                    checkIfSpent.push_back(std::make_pair(&wtx.second, k));
                                                     break;
                                                 }
                                             }
@@ -2811,12 +2810,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     // results for the ID.
                                     // that means we need to trace their spent state and add the forward chain of their spending to the
                                     // wallet.
-
-                                    std::vector<std::pair<const CWalletTx *, int>> checkIfSpent;
-                                    for (auto &oneWTx : affectedWalletTxes)
-                                    {
-                                        checkIfSpent.push_back(std::make_pair(oneWTx.first, oneWTx.second));
-                                    }
 
                                     txnouttype newTypeRet;
                                     std::vector<CTxDestination> newAddressRet;
