@@ -791,7 +791,29 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         idRegistrationFees = registrationFeeValue.isNull() ? idRegistrationFees : AmountFromValueNoErr(registrationFeeValue);
 
         idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"), idReferralLevels);
-        idImportFees = uni_get_int64(find_value(obj, "idimportfees"), idImportFees);
+
+        registrationFeeValue = find_value(obj, "idimportfees");
+        idImportFees = registrationFeeValue.isNull() ? idImportFees : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "currencyregistrationfee");
+        currencyRegistrationFee = registrationFeeValue.isNull() ? currencyRegistrationFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "pbaassystemregistrationfee");
+        pbaasSystemLaunchFee = registrationFeeValue.isNull() ? pbaasSystemLaunchFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "currencyimportfee");
+        currencyImportFee = registrationFeeValue.isNull() ? currencyImportFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "transactionimportfee");
+        transactionImportFee = registrationFeeValue.isNull() ? transactionImportFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "transactionexportfee");
+        transactionExportFee = registrationFeeValue.isNull() ? transactionExportFee : AmountFromValueNoErr(registrationFeeValue);
+
+        if (!gatewayID.IsNull())
+        {
+            gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
+        }
 
         auto vEras = uni_getValues(find_value(obj, "eras"));
         if (vEras.size() > ASSETCHAINS_MAX_ERAS)
@@ -801,17 +823,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (vEras.size())
         {
-            currencyRegistrationFee = uni_get_int64(find_value(obj, "currencyregistrationfee"), currencyRegistrationFee);
-            pbaasSystemLaunchFee = uni_get_int64(find_value(obj, "pbaassystemregistrationfee"), pbaasSystemLaunchFee);
-            currencyImportFee = uni_get_int64(find_value(obj, "currencyimportfee"), currencyImportFee);
-            transactionImportFee = uni_get_int64(find_value(obj, "transactionimportfee"), transactionImportFee);
-            transactionExportFee = uni_get_int64(find_value(obj, "transactionexportfee"), transactionExportFee);
-
-            if (!gatewayID.IsNull())
-            {
-                gatewayConverterIssuance = uni_get_int64(find_value(obj, "gatewayconverterissuance"));
-            }
-
             for (auto era : vEras)
             {
                 rewards.push_back(uni_get_int64(find_value(era, "reward")));
@@ -1023,11 +1034,6 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
     }
 
-    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
-    {
-        obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
-    }
-
     if (contributions.size())
     {
         UniValue initialContributionArr(UniValue::VARR);
@@ -1048,6 +1054,15 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("preconversions", preconversionArr));
     }
 
+    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
+    {
+        obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
+    }
+
+    obj.push_back(Pair("idregistrationfees", ValueFromAmount(idRegistrationFees)));
+    obj.push_back(Pair("idreferrallevels", idReferralLevels));
+    obj.push_back(Pair("idimportfees", ValueFromAmount(idImportFees)));
+
     if (IsGateway() || IsPBaaSChain())
     {
         // notaries are identities that perform specific functions for the currency's operation
@@ -1063,8 +1078,11 @@ UniValue CCurrencyDefinition::ToUniValue() const
         }
         obj.push_back(Pair("minnotariesconfirm", minNotariesConfirm));
 
-        obj.push_back(Pair("idregistrationfees", ValueFromAmount(idRegistrationFees)));
-        obj.push_back(Pair("idreferrallevels", idReferralLevels));
+        obj.push_back(Pair("currencyregistrationfee", ValueFromAmount(currencyRegistrationFee)));
+        obj.push_back(Pair("pbaassystemregistrationfee", ValueFromAmount(pbaasSystemLaunchFee)));
+        obj.push_back(Pair("currencyimportfee", ValueFromAmount(currencyImportFee)));
+        obj.push_back(Pair("transactionimportfee", ValueFromAmount(transactionImportFee)));
+        obj.push_back(Pair("transactionexportfee", ValueFromAmount(transactionExportFee)));
 
         if (!gatewayConverterName.empty())
         {

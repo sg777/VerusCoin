@@ -318,11 +318,6 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
     }
 
-    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
-    {
-        obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
-    }
-
     if (contributions.size())
     {
         UniValue initialContributionArr(UniValue::VARR);
@@ -332,6 +327,15 @@ UniValue CCurrencyDefinition::ToUniValue() const
         }
         obj.push_back(Pair("initialcontributions", initialContributionArr));
     }
+
+    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
+    {
+        obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
+    }
+
+    obj.push_back(Pair("idregistrationfees", ValueFromAmount(idRegistrationFees)));
+    obj.push_back(Pair("idreferrallevels", idReferralLevels));
+    obj.push_back(Pair("idimportfees", ValueFromAmount(idImportFees)));
 
     if (IsGateway() || IsPBaaSChain())
     {
@@ -348,8 +352,11 @@ UniValue CCurrencyDefinition::ToUniValue() const
         }
         obj.push_back(Pair("minnotariesconfirm", minNotariesConfirm));
 
-        obj.push_back(Pair("idregistrationfees", ValueFromAmount(idRegistrationFees)));
-        obj.push_back(Pair("idreferrallevels", idReferralLevels));
+        obj.push_back(Pair("currencyregistrationfee", ValueFromAmount(currencyRegistrationFee)));
+        obj.push_back(Pair("pbaassystemregistrationfee", ValueFromAmount(pbaasSystemLaunchFee)));
+        obj.push_back(Pair("currencyimportfee", ValueFromAmount(currencyImportFee)));
+        obj.push_back(Pair("transactionimportfee", ValueFromAmount(transactionImportFee)));
+        obj.push_back(Pair("transactionexportfee", ValueFromAmount(transactionExportFee)));
 
         if (!gatewayConverterName.empty())
         {

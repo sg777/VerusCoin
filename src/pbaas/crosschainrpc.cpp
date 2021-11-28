@@ -884,7 +884,29 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         idRegistrationFees = registrationFeeValue.isNull() ? idRegistrationFees : AmountFromValueNoErr(registrationFeeValue);
 
         idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"), idReferralLevels);
-        idImportFees = uni_get_int64(find_value(obj, "idimportfees"), idImportFees);
+
+        registrationFeeValue = find_value(obj, "idimportfees");
+        idImportFees = registrationFeeValue.isNull() ? idImportFees : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "currencyregistrationfee");
+        currencyRegistrationFee = registrationFeeValue.isNull() ? currencyRegistrationFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "pbaassystemregistrationfee");
+        pbaasSystemLaunchFee = registrationFeeValue.isNull() ? pbaasSystemLaunchFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "currencyimportfee");
+        currencyImportFee = registrationFeeValue.isNull() ? currencyImportFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "transactionimportfee");
+        transactionImportFee = registrationFeeValue.isNull() ? transactionImportFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "transactionexportfee");
+        transactionExportFee = registrationFeeValue.isNull() ? transactionExportFee : AmountFromValueNoErr(registrationFeeValue);
+
+        if (!gatewayID.IsNull())
+        {
+            gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
+        }
 
         auto vEras = uni_getValues(find_value(obj, "eras"));
         if (vEras.size() > ASSETCHAINS_MAX_ERAS)
@@ -894,17 +916,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (vEras.size())
         {
-            currencyRegistrationFee = uni_get_int64(find_value(obj, "currencyregistrationfee"), currencyRegistrationFee);
-            pbaasSystemLaunchFee = uni_get_int64(find_value(obj, "pbaassystemregistrationfee"), pbaasSystemLaunchFee);
-            currencyImportFee = uni_get_int64(find_value(obj, "currencyimportfee"), currencyImportFee);
-            transactionImportFee = uni_get_int64(find_value(obj, "transactionimportfee"), transactionImportFee);
-            transactionExportFee = uni_get_int64(find_value(obj, "transactionexportfee"), transactionExportFee);
-
-            if (!gatewayID.IsNull())
-            {
-                gatewayConverterIssuance = uni_get_int64(find_value(obj, "gatewayconverterissuance"));
-            }
-
             for (auto era : vEras)
             {
                 rewards.push_back(uni_get_int64(find_value(era, "reward")));
