@@ -4568,6 +4568,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
                 "\"txid\"               (string, required) The transaction ID for the offer to accept\n"
                 "\"tx\"                 (string, required) The hex transaction to complete in order to accept the offer\n"
                 "\"deliver\"            (object, required) One of \"fullidnameoriaddresstotrade\" or {\"currency\":\"currencynameorid\", \"amount\":value}\n"
+                "\"accept\"             (object, required) One of {\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} or {identitydefinition}\n"
                 "\"feeamount\"          (number, optional) Specific fee amount requested instead of default miner's fee\n"
             "}\n"
 
