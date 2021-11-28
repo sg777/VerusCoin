@@ -983,11 +983,11 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
             uniEras.push_back(uniEra2);
 
             UniValue uniEra3(UniValue::VOBJ);
-            uniEra2.pushKV("reward", (int64_t)2400000000);
-            uniEra2.pushKV("decay", 0);
-            uniEra2.pushKV("halving", 1051920);
-            uniEra2.pushKV("eraend", 0);
-            uniEras.push_back(uniEra2);
+            uniEra3.pushKV("reward", (int64_t)2400000000);
+            uniEra3.pushKV("decay", 0);
+            uniEra3.pushKV("halving", 1051920);
+            uniEra3.pushKV("eraend", 0);
+            uniEras.push_back(uniEra3);
 
             uniCurrency.pushKV("eras", uniEras);
 
