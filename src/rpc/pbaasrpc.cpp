@@ -2182,11 +2182,12 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
 
         UniValue oneChain(UniValue::VOBJ);
         UniValue oneDefUni = def.ToUniValue();
+        oneDefUni.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyCurrencyName(def.GetID()));
 
         if (oneDef.first.first.IsValid())
         {
-            ret.push_back(Pair("definitiontxid", oneDef.first.first.hash.GetHex()));
-            ret.push_back(Pair("definitiontxout", (int)oneDef.first.first.n));
+            oneDefUni.push_back(Pair("definitiontxid", oneDef.first.first.hash.GetHex()));
+            oneDefUni.push_back(Pair("definitiontxout", (int)oneDef.first.first.n));
         }
 
         if (oneDef.first.second.size())
