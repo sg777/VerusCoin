@@ -285,6 +285,18 @@ CTxDestination ValidateDestination(const std::string &destStr)
     return destination;
 }
 
+CIdentity ValidateIdentityParameter(const std::string &idStr)
+{
+    CIdentity retVal;
+    CTxDestination destination = DecodeDestination(idStr);
+    if (destination.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        AssertLockHeld(cs_main);
+        retVal = CIdentity::LookupIdentity(GetDestinationID(destination));
+    }
+    return retVal;
+}
+
 // returns non-null value, if this is a gateway destination
 std::pair<uint160, CTransferDestination> ValidateTransferDestination(const std::string &destStr)
 {
@@ -429,54 +441,18 @@ bool SetThisChain(const UniValue &chainDefinition)
 
     if (!IsVerusActive())
     {
-        CCurrencyDefinition notaryChainDef;
         // we set the notary chain to either Verus or VerusTest
-        notaryChainDef.nVersion = CCurrencyDefinition::VERSION_CURRENT;
-        if (PBAAS_TESTMODE)
-        {
-            // setup Verus test parameters
-            // TODO: HARDENING - for this and VRSC below, construct the CCurrencyDefinition from Univalue to get proper defaults
-            notaryChainDef.name = "VRSCTEST";
-            notaryChainDef.proofProtocol = CCurrencyDefinition::PROOF_PBAASMMR;
-            notaryChainDef.proofProtocol = CCurrencyDefinition::NOTARIZATION_AUTO;
-            notaryChainDef.preAllocation = {std::make_pair(uint160(), 5000000000000000)};
-            notaryChainDef.rewards = std::vector<int64_t>({1200000000});
-            notaryChainDef.rewardsDecay = std::vector<int64_t>({0});
-            notaryChainDef.halving = std::vector<int32_t>({5111120});
-            notaryChainDef.eraEnd = std::vector<int32_t>({0});
-        }
-        else
-        {
-            // first setup Verus parameters
-            notaryChainDef.name = "VRSC";
-            notaryChainDef.proofProtocol = CCurrencyDefinition::PROOF_PBAASMMR;
-            notaryChainDef.proofProtocol = CCurrencyDefinition::NOTARIZATION_AUTO;
-            notaryChainDef.rewards = std::vector<int64_t>({0,38400000000,2400000000});
-            notaryChainDef.rewardsDecay = std::vector<int64_t>({100000000,0,0});
-            notaryChainDef.halving = std::vector<int32_t>({1,43200,1051920});
-            notaryChainDef.eraEnd = std::vector<int32_t>({10080,226080,0});
-        }
-        notaryChainDef.options = (notaryChainDef.OPTION_PBAAS + notaryChainDef.OPTION_ID_REFERRALS);
-        notaryChainDef.idRegistrationFees = CCurrencyDefinition::DEFAULT_ID_REGISTRATION_AMOUNT;
-        notaryChainDef.idReferralLevels = CCurrencyDefinition::DEFAULT_ID_REFERRAL_LEVELS;
+        CCurrencyDefinition notaryChainDef = CCurrencyDefinition("VRSC", PBAAS_TESTMODE);
+
         VERUS_CHAINNAME = notaryChainDef.name;
-        notaryChainDef.systemID = notaryChainDef.GetID();
+        VERUS_CHAINID = notaryChainDef.GetID();
+
         ASSETCHAINS_CHAINID = ConnectedChains.ThisChain().GetID();
 
-        ASSETCHAINS_TIMELOCKGTE = _ASSETCHAINS_TIMELOCKOFF;
-        ASSETCHAINS_TIMEUNLOCKFROM = 0;
-        ASSETCHAINS_TIMEUNLOCKTO = 0;
-
-        //printf("%s: %s\n", __func__, EncodeDestination(CIdentityID(notaryChainDef.GetID())).c_str());
         ConnectedChains.notarySystems[notaryChainDef.GetID()] = 
             CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CPBaaSNotarization());
         CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
         ASSETCHAINS_SUPPLY = currencyState.supply;
-    }
-    else
-    {
-        ConnectedChains.ThisChain().options = (CCurrencyDefinition::OPTION_PBAAS + CCurrencyDefinition::OPTION_ID_REFERRALS);
-        ConnectedChains.ThisChain().systemID = ConnectedChains.ThisChain().GetID();   
     }
 
     auto numEras = ConnectedChains.ThisChain().rewards.size();
@@ -1318,6 +1294,17 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
     if (chainDef.IsValid())
     {
         ret = chainDef.ToUniValue();
+        ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyCurrencyName(chainID));
+
+        if (chainDef.currencies.size())
+        {
+            UniValue curNames(UniValue::VOBJ);
+            for (auto &oneCurID : chainDef.currencies)
+            {
+                curNames.pushKV(EncodeDestination(CIdentityID(oneCurID)), ConnectedChains.GetFriendlyCurrencyName(oneCurID));
+            }
+            ret.pushKV("currencynames", curNames);
+        }
 
         int32_t defHeight;
         CUTXORef defUTXO;
@@ -2195,11 +2182,12 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
 
         UniValue oneChain(UniValue::VOBJ);
         UniValue oneDefUni = def.ToUniValue();
+        oneDefUni.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyCurrencyName(def.GetID()));
 
         if (oneDef.first.first.IsValid())
         {
-            ret.push_back(Pair("definitiontxid", oneDef.first.first.hash.GetHex()));
-            ret.push_back(Pair("definitiontxout", (int)oneDef.first.first.n));
+            oneDefUni.push_back(Pair("definitiontxid", oneDef.first.first.hash.GetHex()));
+            oneDefUni.push_back(Pair("definitiontxout", (int)oneDef.first.first.n));
         }
 
         if (oneDef.first.second.size())
@@ -3486,6 +3474,7 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
         }
 
         bool keep = false;
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
         for (auto &address : addresses)
         {
             if (isFromSpecificID)
@@ -3499,11 +3488,14 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
             {
                 if (wildCardPKH)
                 {
-                    keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
+                    keep = (address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK) &&
+                            pwalletMain->HaveKey(GetDestinationID(address));
                 }
                 if (!keep && wildCardID)
                 {
-                    keep = address.which() == COptCCParams::ADDRTYPE_ID;
+                    keep = address.which() == COptCCParams::ADDRTYPE_ID  &&
+                           pwalletMain->GetIdentity(CIdentityID(GetDestinationID(address)), keyAndIdentity) &&
+                           keyAndIdentity.first.CanSign();
                 }
             }
             else
@@ -3596,7 +3588,7 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
 {
     std::vector<CBaseChainObject *> opRetArray;
     CPartialTransactionProof offerTxProof;
-    bool isPartial;
+    bool isPartial = false, incompleteTx = false;
     COptCCParams p;
     CSpentIndexKey spentKey = CSpentIndexKey(postedTx.GetHash(), 1);
     CSpentIndexValue spentValue;
@@ -3626,6 +3618,25 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
     {
         return true;
     }
+    else if (getExpired && 
+             p.IsValid() &&
+             p.evalCode == EVAL_IDENTITY_COMMITMENT &&
+             postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
+             p.vData.size() > 1 &&
+             COptCCParams(p.vData.back()).vKeys.size() > 1 &&
+             myGetTransaction(postedTx.GetHash(), inputToOfferTx, offerBlockHash) &&
+             !offerBlockHash.IsNull() &&
+             mapBlockIndex.count(offerBlockHash) &&
+             (mapBlockIndex[offerBlockHash]->GetHeight() + DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) < height)
+    {
+        CMutableTransaction mtx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), height);
+        mtx.vin.push_back(CTxIn(postedTx.GetHash(), 0));
+        mtx.vout.push_back(postedTx.vout[0]);
+        mtx.nExpiryHeight = std::min(height - 1, (uint32_t)0);
+        offerTx = mtx;
+        return true;
+    }
+    
     return false;
 }
 
@@ -3657,12 +3668,17 @@ bool GetMyOffers(std::map<std::pair<bool, uint256>, OfferInfo> &myOffers, uint32
     {
         OfferInfo oneOfferInfo;
         if (txPair.second.IsInMainChain() &&
+            txPair.second.vout.size() > 0 &&
+            !pwalletMain->IsSpent(txPair.second.GetHash(), 0) &&
             GetOpRetChainOffer(txPair.second, oneOfferInfo.offerTx, oneOfferInfo.inputToOfferTx, height, getUnexpired, getExpired, oneOfferInfo.blockHash))
         {
             CSpentIndexKey spentKey = CSpentIndexKey(oneOfferInfo.inputToOfferTx.GetHash(), oneOfferInfo.offerTx.vin[0].prevout.n);
             CSpentIndexValue spentValue;
-            bool isExpired = (oneOfferInfo.offerTx.nExpiryHeight <= height) || GetSpentIndex(spentKey, spentValue);
-            myOffers.insert(std::make_pair(std::make_pair(!isExpired, txPair.first), oneOfferInfo));
+            if (!GetSpentIndex(spentKey, spentValue))
+            {
+                bool isExpired = (oneOfferInfo.offerTx.nExpiryHeight <= height);
+                myOffers.insert(std::make_pair(std::make_pair(!isExpired, txPair.first), oneOfferInfo));
+            }
             retVal = true;
         }
     }
@@ -3697,6 +3713,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             "1. \"fromaddress\"             (string, required) The VerusID, or wildcard address to send funds from. \"*\", \"R*\", or \"i*\" are valid wildcards\n"
             "2. {\n"
             "     \"changeaddress\"         (string, required) Change destination when constructing transactions\n"
+            "     \"expiryheight\"          (number, optional) Block height at which this offer expires. Defaults to 20 blocks (avg 1/minute)\n"
             "     \"offer\"                 (object, required) Funds description or identity name, \"address\" in this object should be an address of the person making an offer for change\n"
             "     \"for\"                   (object, required) Funds description or full identity description\n"
             "   }\n"
@@ -3885,10 +3902,17 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     else
     {
         uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(forValue, "parent")))));
-        if (parentID.IsNull())
+        if (parentID.IsNull() && (parentID = ValidateCurrencyName(uni_get_str(find_value(forValue, "parent")), true)).IsNull())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure reference to the correct identity, parent must be a valid, non-null value.");
         }
+
+        CIdentity forID(forValue);
+        if (!forID.IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "New ID definition of the ID for which offer is being made must be valid.");
+        }
+
         std::string nameStr = CleanName(uni_get_str(find_value(forValue, "name")), parentID);
         newIDID = CIdentity::GetID(nameStr, parentID);
         if (newIDID.IsNull())
@@ -4332,7 +4356,8 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             // must provide them on input to turn this into a valid transaction
 
             uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(forValue, "parent")))));
-            if (parentID.IsNull())
+
+            if (parentID.IsNull() && (parentID = ValidateCurrencyName(uni_get_str(find_value(forValue, "parent")), true)).IsNull())
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure reference to the correct identity, parent must be a correct, non-null value.");
             }
@@ -4554,6 +4579,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
                 "\"txid\"               (string, required) The transaction ID for the offer to accept\n"
                 "\"tx\"                 (string, required) The hex transaction to complete in order to accept the offer\n"
                 "\"deliver\"            (object, required) One of \"fullidnameoriaddresstotrade\" or {\"currency\":\"currencynameorid\", \"amount\":value}\n"
+                "\"accept\"             (object, required) One of {\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} or {identitydefinition}\n"
                 "\"feeamount\"          (number, optional) Specific fee amount requested instead of default miner's fee\n"
             "}\n"
 
@@ -4723,6 +4749,48 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
 
     if ((acceptedIdentity = CIdentity(accept)).IsValid())
     {
+        uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(accept, "parent")))));
+        if (parentID.IsNull() && (parentID = ValidateCurrencyName(uni_get_str(find_value(accept, "parent")), true)).IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure acceptance of the correct identity, parent must be a correct, non-null value.");
+        }
+
+        CTxIn idTxIn;
+        CIdentity oldID;
+        uint32_t idHeight;
+
+        if (!(oldID = CIdentity::LookupIdentity(acceptedIdentity.GetID(), 0, &idHeight, &idTxIn)).IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + acceptedIdentity.GetID().GetHex() + ", not found ");
+        }
+
+        oldID.revocationAuthority = oldID.GetID();
+        oldID.recoveryAuthority = oldID.GetID();
+        oldID.privateAddresses.clear();
+        oldID.primaryAddresses.clear();
+        oldID.minSigs = 1;
+
+        auto uniOldID = UniObjectToMap(oldID.ToUniValue());
+
+        // overwrite old elements
+        for (auto &oneEl : UniObjectToMap(accept))
+        {
+            uniOldID[oneEl.first] = oneEl.second;
+        }
+
+        uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(height + 1);
+
+        if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
+        {
+            uniOldID["version"] = solVersion < CActivationHeight::ACTIVATE_PBAAS ? (int64_t)CIdentity::VERSION_VAULT : (int64_t)CIdentity::VERSION_PBAAS;
+            if (oldID.nVersion < CIdentity::VERSION_VAULT)
+            {
+                uniOldID["systemid"] = EncodeDestination(CIdentityID(parentID.IsNull() ? oldID.GetID() : parentID));
+            }
+        }
+
+        UniValue newUniID = MapToUniObject(uniOldID);
+        acceptedIdentity = CIdentity(newUniID);
         acceptedIdentity.UpgradeVersion(height + 1);
     }
     else
@@ -9119,6 +9187,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
             "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
 
             "\nResult:\n"
+            "   hex string of either the txid if returnhex is false or the hex serialized transaction if returntx is true\n"
 
             "\nExamples:\n"
             + HelpExampleCli("updateidentity", "\'{\"name\" : \"myname\"}\'")
@@ -9135,6 +9204,10 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     }
 
     uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(params[0], "parent")))));
+    if (parentID.IsNull())
+    {
+        parentID = ValidateCurrencyName(uni_get_str(find_value(params[0], "parent")), true);
+    }
     std::string nameStr = CleanName(uni_get_str(find_value(params[0], "name")), parentID);
     uint160 newIDID = CIdentity::GetID(nameStr, parentID);
 
@@ -9210,6 +9283,10 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         if (!newLocked)
         {
             newID.Unlock(nHeight + 1, txNew.nExpiryHeight);
+            if (unlockAfter > newID.unlockAfter)
+            {
+                newID.unlockAfter = unlockAfter;
+            }
         }
         else
         {
@@ -9274,6 +9351,93 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
     }
     return wtx.GetHash().GetHex();
+}
+
+UniValue setidentitytimelock(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 2 || params.size() > 3)
+    {
+        throw runtime_error(
+            "setidentitytimelock \"id@\" '{\"unlockatblock\":absoluteblockheight || \"setunlockdelay\":numberofblocksdelayafterunlock}' (returntx)\n"
+            "\nEnables timelocking and unlocking of funds access for an on-chain VerusID. This does not affect the lock status of VerusIDs on other chains,\n"
+            "including VerusIDs with the same identity as this one, which has been exported to another chain.\n"
+            "\nUse \"setunlockdelay\" to set a time unlock delay on an identity, which means that once the identity has been unlocked,\n"
+            "numberofblocksdelayafterunlock must then pass before the identity will be able to spend funds on this blockchain. Services\n"
+            "which support VerusID authentication and recognize this setting may also choose to prevent funds transfers when an ID is locked.\n"
+            "\nUse \"unlockatblock\" to either unlock, by passing the current block, which will still require waiting for the specified unlock\n"
+            "delay, or to set a future unlock height that immediately begins counting down. Unlike an unlock delay, which only starts counting\n"
+            "down when the ID is unlocked, an \"unlockatblock\" time lock is absolute and will automatically unlock when the specified\n"
+            "block passes.\n"
+
+            "\nArguments - either \"unlockatblock\" or \"setunlockdelay\" must be specified and not both\n"
+            "{\n"
+            "  \"unlockatblock\"                (number, optional) unlock at an absolute block height, countdown starts when mined into a block\n"
+            "  \"setunlockdelay\"               (number, optional) delay this many blocks after unlock request to unlock, can only be\n"
+            "                                                      circumvented by revoke/recover\n"
+            "}\n"
+
+            "\nResult:\n"
+            "   Hex string of either the txid if returnhex is false or the hex serialized transaction if returntx is true.\n"
+            "   If returntx is true, the transaction will not have been submitted and must be sent with \"sendrawtransaction\"\n"
+            "   after any necessary signatures are applied in the case of multisig.\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("timelockid", "\'{\"name\" : \"myname\"}\'")
+            + HelpExampleRpc("timelockid", "\'{\"name\" : \"myname\"}\'")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+
+    bool returnTx = false;
+    if (params.size() > 1)
+    {
+        returnTx = uni_get_bool(params[1], false);
+    }
+
+    std::string idString = uni_get_str(params[0]);
+    CIdentity oldIdentity = ValidateIdentityParameter(idString);
+    if (!oldIdentity.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity, " + idString + " not found ");
+    }
+
+    UniValue unlockDelayUni = find_value(params[1], "setunlockdelay");
+    UniValue absoluteUnlockUni = find_value(params[1], "unlockatblock");
+
+    if ((!unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()) || (unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Either \"setunlockdelay\" or \"unlockatblock\" must have a non-zero value and not both");
+    }
+
+    uint32_t unlockDelay = uni_get_int64(unlockDelayUni);
+    uint32_t absoluteUnlock = uni_get_int64(absoluteUnlockUni);
+
+    {
+        LOCK(cs_main);
+        uint32_t nextHeight = chainActive.Height() + 1;
+        CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nextHeight);
+
+        if (unlockDelayUni.isNull())
+        {
+            oldIdentity.Unlock(nextHeight, txNew.nExpiryHeight);
+            oldIdentity.unlockAfter = absoluteUnlock;
+        }
+        else
+        {
+            oldIdentity.Lock(unlockDelay);
+        }
+    }
+
+    UniValue newParams(UniValue::VARR);
+
+    newParams.push_back(EncodeDestination(CIdentityID(oldIdentity.GetID())));
+    newParams.push_back(oldIdentity.ToUniValue());
+    if (params.size() > 2)
+    {
+        newParams.push_back(params[2]);
+    }
+    return updateidentity(newParams, fHelp);
 }
 
 UniValue revokeidentity(const UniValue& params, bool fHelp)
@@ -10312,6 +10476,7 @@ static const CRPCCommand commands[] =
     { "identity",     "registeridentity",             &registeridentity,       true  },
     { "identity",     "updateidentity",               &updateidentity,         true  },
     { "identity",     "revokeidentity",               &revokeidentity,         true  },
+    { "identity",     "setidentitytimelock",          &setidentitytimelock,    true  },
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },

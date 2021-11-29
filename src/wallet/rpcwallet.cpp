@@ -3236,7 +3236,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     for (auto &oneBalance : resBal.valueMap)
     {
-        reserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        reserveBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
     }
     if (reserveBal.size())
     {
@@ -3249,7 +3249,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
             {
                 for (auto &oneBalance : unlockedResBal.valueMap)
                 {
-                    unlockedReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+                    unlockedReserveBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
                 }
                 obj.push_back(Pair("unlocked_reserve_balance", unlockedReserveBal));
             }
@@ -3259,7 +3259,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     UniValue unconfirmedReserveBal(UniValue::VOBJ);
     for (auto &oneBalance : pwalletMain->GetUnconfirmedReserveBalance().valueMap)
     {
-        unconfirmedReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        unconfirmedReserveBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
     }
     if (unconfirmedReserveBal.size())
     {
@@ -3269,7 +3269,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     UniValue immatureReserveBal(UniValue::VOBJ);
     for (auto &oneBalance : pwalletMain->GetImmatureReserveBalance().valueMap)
     {
-        immatureReserveBal.push_back(make_pair(ConnectedChains.GetCachedCurrency(oneBalance.first).name, ValueFromAmount(oneBalance.second)));
+        immatureReserveBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
     }
     if (immatureReserveBal.size())
     {
@@ -4310,20 +4310,24 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
             }
 
             int keepCount = 0;
+            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
             if (wildCardRAddress || wildCardiAddress)
             {
                 for (auto oneAddr : addresses)
                 {
-                    if (wildCardRAddress && (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK))
+                    if (wildCardRAddress &&
+                        (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK) &&
+                        pwalletMain->HaveKey(GetDestinationID(oneAddr)))
                     {
                         keepCount++;
                     }
-                    if (keepCount < nRequired && wildCardiAddress && oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                    if (keepCount < nRequired &&
+                        wildCardiAddress &&
+                        oneAddr.which() == COptCCParams::ADDRTYPE_ID &&
+                        pwalletMain->GetIdentity(CIdentityID(GetDestinationID(oneAddr)), keyAndIdentity) &&
+                        keyAndIdentity.first.CanSign())
                     {
-                        if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
-                        {
-                            keepCount++;
-                        }
+                        keepCount++;
                     }
                     if (keepCount >= nRequired)
                     {
@@ -4407,20 +4411,24 @@ CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int mi
             }
 
             int keepCount = 0;
+            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
             if (wildCardRAddress || wildCardiAddress)
             {
                 for (auto oneAddr : addresses)
                 {
-                    if (wildCardRAddress && (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK))
+                    if (wildCardRAddress &&
+                        (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK) &&
+                        pwalletMain->HaveKey(GetDestinationID(oneAddr)))
                     {
                         keepCount++;
                     }
-                    if (keepCount < nRequired && wildCardiAddress && oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                    if (keepCount < nRequired &&
+                        wildCardiAddress &&
+                        oneAddr.which() == COptCCParams::ADDRTYPE_ID &&
+                        pwalletMain->GetIdentity(CIdentityID(GetDestinationID(oneAddr)), keyAndIdentity) &&
+                        keyAndIdentity.first.CanSign())
                     {
-                        if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
-                        {
-                            keepCount++;
-                        }
+                        keepCount++;
                     }
                     if (keepCount >= nRequired)
                     {
@@ -4453,6 +4461,7 @@ CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int mi
         balance += out.tx->vout[out.i].ReserveOutValue();
         if (nValue)
         {
+            //printf("%s: hash: %s, amount %ld\n", __func__, out.tx->GetHash().GetHex().c_str(), nValue);
             balance.valueMap[ASSETCHAINS_CHAINID] += nValue;
         }
     }
