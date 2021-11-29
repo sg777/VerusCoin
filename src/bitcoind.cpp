@@ -81,6 +81,7 @@ void WaitForShutdown(boost::thread_group* threadGroup)
             {
                 LogPrintf("%s: Error %s\n", __func__, e.what());
             }
+            curTimeSec = (GetTimeMillis() / 1000);
         }
         fShutdown = ShutdownRequested();
     }
