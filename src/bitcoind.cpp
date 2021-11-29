@@ -78,7 +78,7 @@ void WaitForShutdown(boost::thread_group* threadGroup)
                 UniValue params(UniValue::VARR);
                 closeoffers(params, false);
             }
-            catch(const std::exception& e)
+            catch(...)
             {
                 //LogPrintf("%s: Error %s\n", __func__, e.what());
             }

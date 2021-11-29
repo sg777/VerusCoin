@@ -3663,12 +3663,17 @@ bool GetMyOffers(std::map<std::pair<bool, uint256>, OfferInfo> &myOffers, uint32
     {
         OfferInfo oneOfferInfo;
         if (txPair.second.IsInMainChain() &&
+            txPair.second.vout.size() > 0 &&
+            !pwalletMain->IsSpent(txPair.second.GetHash(), 0) &&
             GetOpRetChainOffer(txPair.second, oneOfferInfo.offerTx, oneOfferInfo.inputToOfferTx, height, getUnexpired, getExpired, oneOfferInfo.blockHash))
         {
             CSpentIndexKey spentKey = CSpentIndexKey(oneOfferInfo.inputToOfferTx.GetHash(), oneOfferInfo.offerTx.vin[0].prevout.n);
             CSpentIndexValue spentValue;
-            bool isExpired = (oneOfferInfo.offerTx.nExpiryHeight <= height) || GetSpentIndex(spentKey, spentValue);
-            myOffers.insert(std::make_pair(std::make_pair(!isExpired, txPair.first), oneOfferInfo));
+            if (!GetSpentIndex(spentKey, spentValue))
+            {
+                bool isExpired = (oneOfferInfo.offerTx.nExpiryHeight <= height);
+                myOffers.insert(std::make_pair(std::make_pair(!isExpired, txPair.first), oneOfferInfo));
+            }
             retVal = true;
         }
     }
@@ -3892,7 +3897,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     else
     {
         uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(forValue, "parent")))));
-        if (parentID.IsNull())
+        if (parentID.IsNull() && (parentID = ValidateCurrencyName(uni_get_str(find_value(forValue, "parent")), true)).IsNull())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure reference to the correct identity, parent must be a valid, non-null value.");
         }
@@ -4346,7 +4351,8 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             // must provide them on input to turn this into a valid transaction
 
             uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(forValue, "parent")))));
-            if (parentID.IsNull())
+
+            if (parentID.IsNull() && (parentID = ValidateCurrencyName(uni_get_str(find_value(forValue, "parent")), true)).IsNull())
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure reference to the correct identity, parent must be a correct, non-null value.");
             }
@@ -4739,7 +4745,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     if ((acceptedIdentity = CIdentity(accept)).IsValid())
     {
         uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(accept, "parent")))));
-        if (parentID.IsNull())
+        if (parentID.IsNull() && (parentID = ValidateCurrencyName(uni_get_str(find_value(accept, "parent")), true)).IsNull())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "To ensure acceptance of the correct identity, parent must be a correct, non-null value.");
         }
@@ -9193,6 +9199,10 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     }
 
     uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(params[0], "parent")))));
+    if (parentID.IsNull())
+    {
+        parentID = ValidateCurrencyName(uni_get_str(find_value(params[0], "parent")), true);
+    }
     std::string nameStr = CleanName(uni_get_str(find_value(params[0], "name")), parentID);
     uint160 newIDID = CIdentity::GetID(nameStr, parentID);
 
