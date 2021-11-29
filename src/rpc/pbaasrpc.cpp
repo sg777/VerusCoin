@@ -442,7 +442,8 @@ bool SetThisChain(const UniValue &chainDefinition)
     if (!IsVerusActive())
     {
         // we set the notary chain to either Verus or VerusTest
-        CCurrencyDefinition notaryChainDef = CCurrencyDefinition("VRSC", PBAAS_TESTMODE);
+        // TODO: HARDENING - ensure that we don't need to check which name here and do the right thing in all cases
+        CCurrencyDefinition notaryChainDef = CCurrencyDefinition(PBAAS_TESTMODE ? "VRSCTEST" : "VRSC", PBAAS_TESTMODE);
 
         VERUS_CHAINNAME = notaryChainDef.name;
         VERUS_CHAINID = notaryChainDef.GetID();
@@ -1277,7 +1278,6 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
         );
     }
 
-    CheckPBaaSAPIsValid();
     LOCK2(cs_main, mempool.cs);
 
     UniValue ret(UniValue::VOBJ);
@@ -1285,6 +1285,12 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition chainDef;
     uint160 chainID = GetChainIDFromParam(params[0], &chainDef);
+
+    if (chainID == VERUS_CHAINID)
+    {
+        return chainDef.ToUniValue();
+    }
+    CheckPBaaSAPIsValid();
 
     if (chainID.IsNull())
     {
@@ -9382,8 +9388,8 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
             "   after any necessary signatures are applied in the case of multisig.\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("timelockid", "\'{\"name\" : \"myname\"}\'")
-            + HelpExampleRpc("timelockid", "\'{\"name\" : \"myname\"}\'")
+            + HelpExampleCli("setidentitytimelock", "\"id@\" '{\"unlockatblock\":absoluteblockheight || \"setunlockdelay\":numberofblocksdelayafterunlock}' (returntx)")
+            + HelpExampleRpc("setidentitytimelock", "\"id@\" '{\"unlockatblock\":absoluteblockheight || \"setunlockdelay\":numberofblocksdelayafterunlock}' (returntx)")
         );
     }
 
