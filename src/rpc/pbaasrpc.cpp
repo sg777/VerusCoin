@@ -3474,6 +3474,7 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
         }
 
         bool keep = false;
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
         for (auto &address : addresses)
         {
             if (isFromSpecificID)
