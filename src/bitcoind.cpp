@@ -69,7 +69,8 @@ void WaitForShutdown(boost::thread_group* threadGroup)
             MilliSleep(20000);
         }
         // attempt to close any open offers every 5 minutes
-        if (pwalletMain && ((GetTimeMillis() / 1000) - curTimeSec) > 300)
+        if (pwalletMain && ((GetTimeMillis() / 1000) - curTimeSec) > 300 &&
+            !IsInitialBlockDownload(Params()))
         {
             try
             {
