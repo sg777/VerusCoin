@@ -4752,14 +4752,14 @@ UniValue getcurrencybalance(const UniValue& params, bool fHelp)
     UniValue currencyBal(UniValue::VOBJ);
     if (balance.valueMap.count(ASSETCHAINS_CHAINID))
     {
-        std::string name = friendlyNames ? ConnectedChains.ThisChain().name : EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()));
+        std::string name = friendlyNames ? ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID) : EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()));
         currencyBal.push_back(make_pair(name, ValueFromAmount(balance.valueMap[ASSETCHAINS_CHAINID])));
         balance.valueMap.erase(ASSETCHAINS_CHAINID);
     }
     for (auto &oneBalance : balance.valueMap)
     {
-        std::string name = friendlyNames ? ConnectedChains.GetCachedCurrency(oneBalance.first).name : 
-                                           EncodeDestination(CIdentityID(ConnectedChains.GetCachedCurrency(oneBalance.first).GetID()));
+        std::string name = friendlyNames ? ConnectedChains.GetFriendlyCurrencyName(oneBalance.first) : 
+                                           EncodeDestination(CIdentityID(oneBalance.first));
         currencyBal.push_back(make_pair(name, ValueFromAmount(oneBalance.second)));
     }
 
