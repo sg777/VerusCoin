@@ -1195,6 +1195,7 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
         }
 
         bool keep = false;
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
         for (auto &address : addresses)
         {
             if (isFromSpecificID)
@@ -1208,11 +1209,14 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
             {
                 if (wildCardPKH)
                 {
-                    keep = address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK;
+                    keep = (address.which() == COptCCParams::ADDRTYPE_PKH || address.which() == COptCCParams::ADDRTYPE_PK) &&
+                            pwalletMain->HaveKey(GetDestinationID(address));
                 }
                 if (!keep && wildCardID)
                 {
-                    keep = address.which() == COptCCParams::ADDRTYPE_ID;
+                    keep = address.which() == COptCCParams::ADDRTYPE_ID  &&
+                           pwalletMain->GetIdentity(CIdentityID(GetDestinationID(address)), keyAndIdentity) &&
+                           keyAndIdentity.first.CanSign();
                 }
             }
             else

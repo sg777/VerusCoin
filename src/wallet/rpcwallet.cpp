@@ -4310,20 +4310,24 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
             }
 
             int keepCount = 0;
+            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
             if (wildCardRAddress || wildCardiAddress)
             {
                 for (auto oneAddr : addresses)
                 {
-                    if (wildCardRAddress && (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK))
+                    if (wildCardRAddress &&
+                        (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK) &&
+                        pwalletMain->HaveKey(GetDestinationID(oneAddr)))
                     {
                         keepCount++;
                     }
-                    if (keepCount < nRequired && wildCardiAddress && oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                    if (keepCount < nRequired &&
+                        wildCardiAddress &&
+                        oneAddr.which() == COptCCParams::ADDRTYPE_ID &&
+                        pwalletMain->GetIdentity(CIdentityID(GetDestinationID(oneAddr)), keyAndIdentity) &&
+                        keyAndIdentity.first.CanSign())
                     {
-                        if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
-                        {
-                            keepCount++;
-                        }
+                        keepCount++;
                     }
                     if (keepCount >= nRequired)
                     {
@@ -4407,20 +4411,24 @@ CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int mi
             }
 
             int keepCount = 0;
+            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
             if (wildCardRAddress || wildCardiAddress)
             {
                 for (auto oneAddr : addresses)
                 {
-                    if (wildCardRAddress && (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK))
+                    if (wildCardRAddress &&
+                        (oneAddr.which() == COptCCParams::ADDRTYPE_PKH || oneAddr.which() == COptCCParams::ADDRTYPE_PK) &&
+                        pwalletMain->HaveKey(GetDestinationID(oneAddr)))
                     {
                         keepCount++;
                     }
-                    if (keepCount < nRequired && wildCardiAddress && oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                    if (keepCount < nRequired &&
+                        wildCardiAddress &&
+                        oneAddr.which() == COptCCParams::ADDRTYPE_ID &&
+                        pwalletMain->GetIdentity(CIdentityID(GetDestinationID(oneAddr)), keyAndIdentity) &&
+                        keyAndIdentity.first.CanSign())
                     {
-                        if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
-                        {
-                            keepCount++;
-                        }
+                        keepCount++;
                     }
                     if (keepCount >= nRequired)
                     {
@@ -4453,6 +4461,7 @@ CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int mi
         balance += out.tx->vout[out.i].ReserveOutValue();
         if (nValue)
         {
+            //printf("%s: hash: %s, amount %ld\n", __func__, out.tx->GetHash().GetHex().c_str(), nValue);
             balance.valueMap[ASSETCHAINS_CHAINID] += nValue;
         }
     }
