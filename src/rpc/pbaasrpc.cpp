@@ -1277,7 +1277,6 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
         );
     }
 
-    CheckPBaaSAPIsValid();
     LOCK2(cs_main, mempool.cs);
 
     UniValue ret(UniValue::VOBJ);
@@ -1285,6 +1284,12 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition chainDef;
     uint160 chainID = GetChainIDFromParam(params[0], &chainDef);
+
+    if (chainID == VERUS_CHAINID)
+    {
+        return chainDef.ToUniValue();
+    }
+    CheckPBaaSAPIsValid();
 
     if (chainID.IsNull())
     {
