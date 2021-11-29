@@ -2657,89 +2657,135 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     // add all UTXOs sent to this ID to this wallet
                                     // and also check any other outputs that are sent to this ID to see if they have
                                     // been spent, and if so, add them as spends as well
-                                    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
-                                    std::set<uint256> unspentTxSet;
-                                    GetAddressUnspent(idID, CScript::P2ID, unspentOutputs);
+                                    std::set<std::pair<uint256, uint32_t>> unspentOutputSet;
+                                    auto consensus = Params().GetConsensus();
 
-                                    // to prevent forced rescans, don't rescan anything that has too many UTXOs
-                                    // unless this is a real rescan, and above a very small threshold, only dynamically scan
-                                    // if this wallet holds revoke and recover as well
-                                    if (!isRescan &&
-                                        unspentOutputs.size() > MAX_UTXOS_ID_RESCAN)
+                                    // Do not flush the wallet here for performance reasons
+                                    // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
+                                    CWalletDB walletdb(strWalletFile, "r+", false);
+
                                     {
-                                        if (unspentOutputs.size() > MAX_OUR_UTXOS_ID_RESCAN)
-                                        {
-                                            unspentOutputs.clear();
-                                        }
-                                        // the exception would currently be if all of the following are true:
-                                        // 1) We have spending, not just signing power over the ID,
-                                        // 2) the ID has no separate revoke and recover, so it cannot be pulled back, and
-                                        // 3) the ID does not have an average of < 0.00001 in native outputs of a random sample
-                                        //    of its UTXOs
-                                        if (unspentOutputs.size() &&
-                                            canSignCanSpend.second &&
-                                            identity.revocationAuthority == identity.recoveryAuthority &&
-                                            identity.revocationAuthority == idID)
-                                        {
-                                            seed_insecure_rand();
-                                            std::set<int> counted;
-                                            int loopMax = std::min((int)MAX_OUR_UTXOS_ID_RESCAN, (int)unspentOutputs.size());
+                                        std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
+                                        GetAddressUnspent(idID, CScript::P2ID, unspentOutputs);
 
-                                            CAmount total = 0;
-                                            for (int loop = 0; loop < loopMax; loop++)
+                                        // to prevent forced rescans, don't rescan anything that has too many UTXOs
+                                        // unless this is a real rescan, and above a very small threshold, only dynamically scan
+                                        // if this wallet holds revoke and recover as well
+                                        if (!isRescan &&
+                                            unspentOutputs.size() > MAX_UTXOS_ID_RESCAN)
+                                        {
+                                            if (unspentOutputs.size() > MAX_OUR_UTXOS_ID_RESCAN)
                                             {
-                                                int index = insecure_rand() % unspentOutputs.size();
-                                                int retry = 0;
-                                                for (; counted.count(index) && retry < 2; retry++)
-                                                {
-                                                    index = insecure_rand() % unspentOutputs.size();
-                                                }
-                                                if (retry == 2)
-                                                {
-                                                    continue;
-                                                }
-                                                counted.insert(index);
-                                                total += unspentOutputs[index].second.satoshis;
+                                                unspentOutputs.clear();
                                             }
-                                            if (!counted.size() ||
-                                                (total / (CAmount)counted.size() < 10000))
+                                            // the exception would currently be if all of the following are true:
+                                            // 1) We have spending, not just signing power over the ID,
+                                            // 2) the ID has no separate revoke and recover, so it cannot be pulled back, and
+                                            // 3) the ID does not have an average of < 0.00001 in native outputs of a random sample
+                                            //    of its UTXOs
+                                            if (unspentOutputs.size() &&
+                                                canSignCanSpend.second &&
+                                                identity.revocationAuthority == identity.recoveryAuthority &&
+                                                identity.revocationAuthority == idID)
+                                            {
+                                                seed_insecure_rand();
+                                                std::set<int> counted;
+                                                int loopMax = std::min((int)MAX_OUR_UTXOS_ID_RESCAN, (int)unspentOutputs.size());
+
+                                                CAmount total = 0;
+                                                for (int loop = 0; loop < loopMax; loop++)
+                                                {
+                                                    int index = insecure_rand() % unspentOutputs.size();
+                                                    int retry = 0;
+                                                    for (; counted.count(index) && retry < 2; retry++)
+                                                    {
+                                                        index = insecure_rand() % unspentOutputs.size();
+                                                    }
+                                                    if (retry == 2)
+                                                    {
+                                                        continue;
+                                                    }
+                                                    counted.insert(index);
+                                                    total += unspentOutputs[index].second.satoshis;
+                                                }
+                                                if (!counted.size() ||
+                                                    (total / (CAmount)counted.size() < 10000))
+                                                {
+                                                    unspentOutputs.clear();
+                                                }
+                                            }
+                                            else if (unspentOutputs.size())
                                             {
                                                 unspentOutputs.clear();
                                             }
                                         }
-                                        else if (unspentOutputs.size())
+
+                                        // first, put all the txids of the UTXOs in a set to check intersection with wallet txes
+                                        // that may already include outputs to the newly controlled ID. we also need to check wallet
+                                        // txes that are not UTXOs to record spends, rather than considering them UTXOs
+                                        for (auto &newOut : unspentOutputs)
                                         {
-                                            unspentOutputs.clear();
+                                            unspentOutputSet.insert(std::make_pair(newOut.first.txhash, newOut.first.index));
+
+                                            txnouttype newTypeRet;
+                                            std::vector<CTxDestination> newAddressRet;
+                                            int newNRequired;
+                                            bool newCanSign, newCanSpend;
+                                            const CWalletTx *pWtx = GetWalletTx(newOut.first.txhash);
+
+                                            // check if already present and if its a CC output, so we know it can be sent to an identity
+                                            if (pWtx == nullptr)
+                                            {
+                                                CWalletTx wtx;
+                                                if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend, nHeight == 0 ? INT_MAX : nHeight + 1) && newCanSign))
+                                                {
+                                                    continue;
+                                                }
+                                                uint256 blkHash;
+                                                CTransaction newTx;
+                                                if (myGetTransaction(newOut.first.txhash, newTx, blkHash))
+                                                {
+                                                    wtx = CWalletTx(this, newTx);
+
+                                                    // Get merkle branch if transaction was found in a block
+                                                    CBlock block;
+                                                    auto blkIndexIt = mapBlockIndex.find(blkHash);
+                                                    if (!blkHash.IsNull() && blkIndexIt != mapBlockIndex.end() && chainActive.Contains(blkIndexIt->second))
+                                                    {
+                                                        // if it's supposed to be in a block, but can't be loaded, don't add without merkle
+                                                        if (!ReadBlockFromDisk(block, blkIndexIt->second, consensus))
+                                                        {
+                                                            continue;
+                                                        }
+                                                        wtx.SetMerkleBranch(block);
+                                                        AddToWallet(wtx, false, &walletdb);
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
 
-                                    // first, put all the txids of the UTXOs in a set to check intersection with wallet txes
-                                    // that may already include outputs to the newly controlled ID. we also need to check wallet
-                                    // txes that are not UTXOs to record spends, rather than considering them UTXOs
-                                    for (auto &newOut : unspentOutputs)
-                                    {
-                                        unspentTxSet.insert(newOut.first.txhash);
-                                    }
+                                    std::vector<std::pair<const CWalletTx *, uint32_t>> checkIfSpent;
 
                                     // now, look through existing wallet txes for outputs to the ID, which we did not, but now will
                                     // consider as ours and add them to the outputs that need to be checked
                                     for (auto &wtx : mapWallet)
                                     {
-                                        // if it's not in the chain, or already in the unspent set to check, we don't need to add it to
-                                        // anything
-                                        if (!wtx.second.IsInMainChain() ||
-                                            unspentTxSet.count(wtx.first))
-                                        {
-                                            continue;
-                                        }
-                                        int unspentOutputsSize = unspentOutputs.size();
                                         for (int k = 0; k < wtx.second.vout.size(); k++)
                                         {
+                                            // if it's not in the chain, or already in the unspent set, we don't need to check it further
+                                            if (!wtx.second.IsInMainChain() ||
+                                                unspentOutputSet.count(std::make_pair(wtx.first, k)))
+                                            {
+                                                continue;
+                                            }
+
                                             const CTxOut &oneOut = wtx.second.vout[k];
                                             txnouttype newTypeRet;
                                             std::vector<CTxDestination> newAddressRet;
                                             int newNRequired;
                                             bool newCanSign, newCanSpend;
+
                                             // if we think this output isn't spent and we couldn't sign for it, but the ID enables us to,
                                             // then we need to check it further to see if we need to add other spending txes now
                                             if (IsSpent(wtx.first, k) ||
@@ -2747,160 +2793,91 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                             {
                                                 continue;
                                             }
+
                                             for (auto &oneDest : newAddressRet)
                                             {
                                                 if (oneDest.which() == COptCCParams::ADDRTYPE_ID && GetDestinationID(oneDest) == idID)
                                                 {
-                                                    CAddressUnspentKey unspentKey(CScript::P2ID, idID, wtx.first, k);
-                                                    CBlockIndex *pIndex = mapBlockIndex[wtx.second.hashBlock];
-                                                    unspentTxSet.insert(wtx.first);
-                                                    unspentOutputs.push_back(
-                                                        make_pair(unspentKey, CAddressUnspentValue(oneOut.nValue, oneOut.scriptPubKey, pIndex->GetHeight())));
-                                                    // if we add one on a tx, no need to check more here
+                                                    checkIfSpent.push_back(std::make_pair(&wtx.second, k));
                                                     break;
                                                 }
                                             }
-                                            // we only need to add one output to check all outputs below
-                                            if (unspentOutputsSize < unspentOutputs.size())
-                                            {
-                                                break;
-                                            }
-                                        }
-                                        if (unspentOutputsSize < unspentOutputs.size())
-                                        {
-                                            continue;
                                         }
                                     }
 
-                                    auto consensus = Params().GetConsensus();
-                                    for (auto &newOut : unspentOutputs)
+                                    // now we have a list of outputs that were in our wallet, are sent to the new ID, are not known
+                                    // by the wallet to be spent, but are almost certainly spent, since they are also not in the unspent
+                                    // results for the ID.
+                                    // that means we need to trace their spent state and add the forward chain of their spending to the
+                                    // wallet.
+
+                                    txnouttype newTypeRet;
+                                    std::vector<CTxDestination> newAddressRet;
+                                    int newNRequired;
+                                    bool newCanSign, newCanSpend;
+
+                                    // while we know there is an unspent index to this ID on the new transaction output, we don't know
+                                    // if there are other outputs to this ID on the transaction, which are already spent.
+                                    // if so, we need to record the spends in the wallet as well, or it will add them but
+                                    // not consider them spent.
+                                    uint256 spendBlkHash;
+                                    CTransaction spendTx;
+
+                                    for (int i = 0; i < checkIfSpent.size(); i++)
                                     {
-                                        // Do not flush the wallet here for performance reasons
-                                        // this is safe, as in case of a crash, we rescan the necessary blocks on startup through our SetBestChain-mechanism
-                                        CWalletDB walletdb(strWalletFile, "r+", false);
+                                        const CWalletTx *txToCheck = checkIfSpent[i].first;
 
-                                        txnouttype newTypeRet;
-                                        std::vector<CTxDestination> newAddressRet;
-                                        int newNRequired;
-                                        bool newCanSign, newCanSpend;
-                                        const CWalletTx *pWtx = GetWalletTx(newOut.first.txhash);
+                                        CSpentIndexValue spentInfo;
+                                        CSpentIndexKey spentKey(txToCheck->GetHash(), checkIfSpent[i].second);
 
-                                        // check if already present and if its a CC output, so we know it can be sent to an identity
-                                        if (pWtx == nullptr && newOut.second.script.IsPayToCryptoCondition())
+                                        // if it's spent, we need to put spender in the wallet
+                                        // if the spender has outputs that we can now spend due to the ID,
+                                        // we need to check for those being spent as well
+                                        if (GetSpentIndex(spentKey, spentInfo) &&
+                                            !spentInfo.IsNull())
                                         {
-                                            CWalletTx wtx;
-                                            if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend, nHeight == 0 ? INT_MAX : nHeight + 1) && newCanSign))
+                                            const CWalletTx *pSpendingTx = GetWalletTx(spentInfo.txid);
+                                            if (pSpendingTx == nullptr &&
+                                                spentInfo.blockHeight <= nHeight &&
+                                                myGetTransaction(spentInfo.txid, spendTx, spendBlkHash) &&
+                                                !spendBlkHash.IsNull())
                                             {
-                                                continue;
-                                            }
-                                            uint256 blkHash;
-                                            CTransaction newTx;
-                                            if (myGetTransaction(newOut.first.txhash, newTx, blkHash))
-                                            {
-                                                wtx = CWalletTx(this, newTx);
+                                                CWalletTx spendWtx(this, spendTx);
 
                                                 // Get merkle branch if transaction was found in a block
-                                                CBlock block;
-                                                auto blkIndexIt = mapBlockIndex.find(blkHash);
-                                                if (!blkHash.IsNull() && blkIndexIt != mapBlockIndex.end() && chainActive.Contains(blkIndexIt->second))
+                                                CBlock spendBlock;
+                                                auto spendBlkIndexIt = mapBlockIndex.find(spendBlkHash);
+                                                if (spendBlkIndexIt != mapBlockIndex.end() &&
+                                                    chainActive.Contains(spendBlkIndexIt->second) &&
+                                                    ReadBlockFromDisk(spendBlock, spendBlkIndexIt->second, consensus))
                                                 {
-                                                    // if it's supposed to be in a block, but can't be loaded, don't add without merkle
-                                                    if (!ReadBlockFromDisk(block, blkIndexIt->second, consensus))
+                                                    spendWtx.SetMerkleBranch(spendBlock);
+                                                    AddToWallet(spendWtx, false, &walletdb);
+                                                    const CWalletTx *pNewWTx = GetWalletTx(spendWtx.GetHash());
+                                                    if (!pNewWTx)
                                                     {
+                                                        LogPrintf("%s: ERROR: Failure to add transaction %s to wallet\n", __func__, spendWtx.GetHash().GetHex().c_str());
                                                         continue;
                                                     }
-                                                    wtx.SetMerkleBranch(block);
-                                                    AddToWallet(wtx, false, &walletdb);
-                                                }
-                                                pWtx = GetWalletTx(newOut.first.txhash);
-                                            }
-                                        }
-                                        else if (pWtx)
-                                        {
-                                            if (!(ExtractDestinations(newOut.second.script, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend, nHeight == 0 ? INT_MAX : nHeight + 1) && newCanSign))
-                                            {
-                                                continue;
-                                            }
-                                        }
 
-                                        // if we were or are now in the wallet, we need to see if we should record new spends
-                                        if (pWtx)
-                                        {
-                                            // while we know there is an unspent index to this ID on the new transaction output, we don't know
-                                            // if there are other outputs to this ID on the transaction, which are already spent.
-                                            // if so, we need to record the spends in the wallet as well, or it will add them but
-                                            // not consider them spent.
-                                            uint256 spendBlkHash;
-                                            CTransaction spendTx;
-                                            std::vector<std::pair<uint256, int>> checkIfSpent;
-                                            for (int counter = 0; counter < pWtx->vout.size(); counter++)
-                                            {
-                                                checkIfSpent.push_back(std::make_pair(pWtx->GetHash(), counter));
-                                            }
-                                            const CWalletTx *txToCheck = pWtx;
-                                            for (int i = 0; i < checkIfSpent.size(); i++)
-                                            {
-                                                if (txToCheck->GetHash() != checkIfSpent[i].first)
-                                                {
-                                                    txToCheck = GetWalletTx(checkIfSpent[i].first);
-                                                }
-
-                                                // if we can't spend it, no need to check for spends
-                                                if (!(txToCheck &&
-                                                      ExtractDestinations(txToCheck->vout[checkIfSpent[i].second].scriptPubKey,
-                                                                          newTypeRet,
-                                                                          newAddressRet,
-                                                                          newNRequired,
-                                                                          this,
-                                                                          &newCanSign,
-                                                                          &newCanSpend,
-                                                                          nHeight == 0 ? INT_MAX : nHeight + 1) && newCanSign))
-                                                {
-                                                    continue;
-                                                }
-
-                                                CSpentIndexValue spentInfo;
-                                                CSpentIndexKey spentKey(checkIfSpent[i].first, checkIfSpent[i].second);
-                                                // if it's spent, we need to put spender in the wallet
-                                                // if the spender has outputs that we can now spend due to the ID,
-                                                // we need to check for those being spent as well
-                                                if (GetSpentIndex(spentKey, spentInfo) &&
-                                                    !spentInfo.IsNull())
-                                                {
-                                                    const CWalletTx *pSpendingTx = GetWalletTx(spentInfo.txid);
-                                                    if (pSpendingTx == nullptr &&
-                                                        spentInfo.blockHeight <= nHeight &&
-                                                        myGetTransaction(spentInfo.txid, spendTx, spendBlkHash) &&
-                                                        !spendBlkHash.IsNull())
+                                                    // add these outputs to the outputs we need to check if spent
+                                                    // as long as we are adding spending transactions that are earlier
+                                                    // or up to this height, we follow the spends
+                                                    for (int counter = 0; counter < pNewWTx->vout.size(); counter++)
                                                     {
-                                                        CWalletTx spendWtx(this, spendTx);
-
-                                                        // Get merkle branch if transaction was found in a block
-                                                        CBlock spendBlock;
-                                                        auto spendBlkIndexIt = mapBlockIndex.find(spendBlkHash);
-                                                        if (spendBlkIndexIt != mapBlockIndex.end() &&
-                                                            chainActive.Contains(spendBlkIndexIt->second) &&
-                                                            ReadBlockFromDisk(spendBlock, spendBlkIndexIt->second, consensus))
+                                                        if (IsSpent(pNewWTx->GetHash(), counter) ||
+                                                            (ExtractDestinations(pNewWTx->vout[counter].scriptPubKey, newTypeRet, newAddressRet, newNRequired, this, &newCanSign, &newCanSpend, nHeight == 0 ? INT_MAX : nHeight) && newCanSign))
                                                         {
-                                                            spendWtx.SetMerkleBranch(spendBlock);
-                                                            AddToWallet(spendWtx, false, &walletdb);
-
-                                                            // add these outputs to the outputs we need to check if spent
-                                                            // as long as we are adding spending transactions that are earlier
-                                                            // or up to this height, we follow the spends
-                                                            for (int counter = 0; counter < spendTx.vout.size(); counter++)
-                                                            {
-                                                                checkIfSpent.push_back(std::make_pair(spendTx.GetHash(), counter));
-                                                            }
+                                                            continue;
                                                         }
-                                                    }
-                                                    else if (pSpendingTx &&
-                                                             spentInfo.blockHeight <= nHeight)
-                                                    {
-                                                        // we may have outputs on a spending transaction that should be considered as well
-                                                        for (int counter = 0; counter < pSpendingTx->vout.size(); counter++)
+
+                                                        for (auto &oneDest : newAddressRet)
                                                         {
-                                                            checkIfSpent.push_back(std::make_pair(pSpendingTx->GetHash(), counter));
+                                                            if (oneDest.which() == COptCCParams::ADDRTYPE_ID && GetDestinationID(oneDest) == idID)
+                                                            {
+                                                                checkIfSpent.push_back(std::make_pair(pNewWTx, counter));
+                                                                break;
+                                                            }
                                                         }
                                                     }
                                                 }

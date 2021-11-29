@@ -50,6 +50,7 @@ extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 extern std::string VERUS_CHAINNAME;
 
+
 //
 // Exception thrown on connection error.  This error is used to determine
 // when to wait if -rpcwait is given.
@@ -569,6 +570,14 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         }
 
         // TODO: HARDENING - ensure that it makes sense for a chain to have PROOF_CHAINID still or disallow
+        // to enable it, we will need to ensure that all imports and notarizations are spendable to the chain ID and are
+        // considered valid by definition
+        if (proofProtocol == PROOF_CHAINID && IsPBaaSChain())
+        {
+            LogPrintf("%s: proofprotocol %d not yet implemented\n", __func__, (int)PROOF_CHAINID);
+            nVersion = PBAAS_VERSION_INVALID;
+            return;
+        }
 
         nativeCurrencyID = CTransferDestination(find_value(obj, "nativecurrencyid"));
 
@@ -871,10 +880,33 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             minNotariesConfirm = uni_get_int(find_value(obj, "minnotariesconfirm"));
         }
 
-        idRegistrationFees = uni_get_int64(find_value(obj, "idregistrationprice"), idRegistrationFees);
-        idRegistrationFees = uni_get_int64(find_value(obj, "idregistrationfees"), idRegistrationFees);
+        UniValue registrationFeeValue = find_value(obj, "idregistrationfees");
+        idRegistrationFees = registrationFeeValue.isNull() ? idRegistrationFees : AmountFromValueNoErr(registrationFeeValue);
+
         idReferralLevels = uni_get_int(find_value(obj, "idreferrallevels"), idReferralLevels);
-        idImportFees = uni_get_int64(find_value(obj, "idimportfees"), idImportFees);
+
+        registrationFeeValue = find_value(obj, "idimportfees");
+        idImportFees = registrationFeeValue.isNull() ? idImportFees : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "currencyregistrationfee");
+        currencyRegistrationFee = registrationFeeValue.isNull() ? currencyRegistrationFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "pbaassystemregistrationfee");
+        pbaasSystemLaunchFee = registrationFeeValue.isNull() ? pbaasSystemLaunchFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "currencyimportfee");
+        currencyImportFee = registrationFeeValue.isNull() ? currencyImportFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "transactionimportfee");
+        transactionImportFee = registrationFeeValue.isNull() ? transactionImportFee : AmountFromValueNoErr(registrationFeeValue);
+
+        registrationFeeValue = find_value(obj, "transactionexportfee");
+        transactionExportFee = registrationFeeValue.isNull() ? transactionExportFee : AmountFromValueNoErr(registrationFeeValue);
+
+        if (!gatewayID.IsNull())
+        {
+            gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
+        }
 
         auto vEras = uni_getValues(find_value(obj, "eras"));
         if (vEras.size() > ASSETCHAINS_MAX_ERAS)
@@ -884,17 +916,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (vEras.size())
         {
-            currencyRegistrationFee = uni_get_int64(find_value(obj, "currencyregistrationfee"), currencyRegistrationFee);
-            pbaasSystemLaunchFee = uni_get_int64(find_value(obj, "pbaassystemregistrationfee"), pbaasSystemLaunchFee);
-            currencyImportFee = uni_get_int64(find_value(obj, "currencyimportfee"), currencyImportFee);
-            transactionImportFee = uni_get_int64(find_value(obj, "transactionimportfee"), transactionImportFee);
-            transactionExportFee = uni_get_int64(find_value(obj, "transactionexportfee"), transactionExportFee);
-
-            if (!gatewayID.IsNull())
-            {
-                gatewayConverterIssuance = uni_get_int64(find_value(obj, "gatewayconverterissuance"));
-            }
-
             for (auto era : vEras)
             {
                 rewards.push_back(uni_get_int64(find_value(era, "reward")));
@@ -917,16 +938,94 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     }
 }
 
-int64_t CCurrencyDefinition::CalculateRatioOfValue(int64_t value, int64_t ratio)
+CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool testMode) :
+    nVersion(VERSION_CURRENT),
+    preLaunchDiscount(0),
+    initialFractionalSupply(0),
+    gatewayConverterIssuance(0),
+    minNotariesConfirm(0),
+    idRegistrationFees(IDENTITY_REGISTRATION_FEE),
+    idReferralLevels(DEFAULT_ID_REFERRAL_LEVELS),
+    idImportFees(IDENTITY_IMPORT_FEE),
+    currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
+    pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
+    currencyImportFee(CURRENCY_IMPORT_FEE),
+    transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
+    transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
 {
-    arith_uint256 bigAmount(value);
-    static const arith_uint256 bigSatoshi(SATOSHIDEN);
+    name = boost::to_upper_copy(CleanName(currencyName, parent));
+    if (parent.IsNull())
+    {
+        UniValue uniCurrency(UniValue::VOBJ);
+        uint160 thisCurrencyID = GetID();
 
-    int64_t retVal = ((bigAmount * arith_uint256(ratio)) / bigSatoshi).GetLow64();
-    return retVal;
+        uniCurrency.pushKV("options", CCurrencyDefinition::OPTION_PBAAS + CCurrencyDefinition::OPTION_ID_REFERRALS);
+        uniCurrency.pushKV("name", name);
+        uniCurrency.pushKV("systemid", EncodeDestination(CIdentityID(thisCurrencyID)));
+        uniCurrency.pushKV("notarizationprotocol", (int32_t)NOTARIZATION_AUTO);
+        uniCurrency.pushKV("proofprotocol", (int32_t)PROOF_PBAASMMR);
+
+        if (name == "VRSC" && !testMode)
+        {
+            UniValue uniEras(UniValue::VARR);
+            UniValue uniEra1(UniValue::VOBJ);
+            uniEra1.pushKV("reward", 0);
+            uniEra1.pushKV("decay", 100000000);
+            uniEra1.pushKV("halving", 1);
+            uniEra1.pushKV("eraend", 10080);
+            uniEras.push_back(uniEra1);
+
+            UniValue uniEra2(UniValue::VOBJ);
+            uniEra2.pushKV("reward", (int64_t)38400000000);
+            uniEra2.pushKV("decay", 0);
+            uniEra2.pushKV("halving", 43200);
+            uniEra2.pushKV("eraend", 226080);
+            uniEras.push_back(uniEra2);
+
+            UniValue uniEra3(UniValue::VOBJ);
+            uniEra3.pushKV("reward", (int64_t)2400000000);
+            uniEra3.pushKV("decay", 0);
+            uniEra3.pushKV("halving", 1051920);
+            uniEra3.pushKV("eraend", 0);
+            uniEras.push_back(uniEra3);
+
+            uniCurrency.pushKV("eras", uniEras);
+
+            *this = CCurrencyDefinition(uniCurrency);
+        }
+        else if (name == "VRSCTEST" || (testMode && name == "VRSC"))
+        {
+            name = "vrsctest";
+
+            UniValue preAllocUni(UniValue::VOBJ);
+            preAllocUni.pushKV("blockoneminer", ValueFromAmount((int64_t)5000000000000000));
+            UniValue preAllocArr(UniValue::VARR);
+            preAllocArr.push_back(preAllocUni);
+            uniCurrency.pushKV("preallocations", preAllocArr);
+
+            UniValue uniEras(UniValue::VARR);
+            UniValue uniEra1(UniValue::VOBJ);
+            uniEra1.pushKV("reward", 1200000000);
+            uniEra1.pushKV("decay", 0);
+            uniEra1.pushKV("halving", 1174000);
+            uniEra1.pushKV("eraend", 0);
+            uniEras.push_back(uniEra1);
+
+            uniCurrency.pushKV("eras", uniEras);
+
+            *this = CCurrencyDefinition(uniCurrency);
+        }
+        else
+        {
+            nVersion = VERSION_INVALID;
+        }
+    }
+    else
+    {
+        nVersion = VERSION_INVALID;
+    }
 }
 
-// this will only return an accurate result after total preconversion has been updated and before any emission
 int64_t CCurrencyDefinition::GetTotalPreallocation() const
 {
     CAmount totalPreallocatedNative = 0;
@@ -937,7 +1036,15 @@ int64_t CCurrencyDefinition::GetTotalPreallocation() const
     return totalPreallocatedNative;
 }
 
-// this will only return an accurate result after total preconversion has been updated and before any emission
+int64_t CCurrencyDefinition::CalculateRatioOfValue(int64_t value, int64_t ratio)
+{
+    arith_uint256 bigAmount(value);
+    static const arith_uint256 bigSatoshi(SATOSHIDEN);
+
+    int64_t retVal = ((bigAmount * arith_uint256(ratio)) / bigSatoshi).GetLow64();
+    return retVal;
+}
+
 int32_t CCurrencyDefinition::GetTotalCarveOut() const
 {
     return preLaunchCarveOut;

@@ -1390,6 +1390,7 @@ public:
     bool SetLatestMiningOutputs(const std::vector<CTxOut> &minerOutputs);
     void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
+    std::string GetFriendlyCurrencyName(const uint160 &currencyID);
     CCurrencyDefinition UpdateCachedCurrency(const uint160 &currencyID, uint32_t height);
 
     bool GetLastImport(const uint160 &currencyID, 

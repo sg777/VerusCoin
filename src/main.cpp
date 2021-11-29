@@ -2994,7 +2994,7 @@ bool ContextualCheckInputs(const CTransaction& tx,
                 const CCoins* coins = inputs.AccessCoins(prevout.hash);
                 assert(coins);
 
-                auto idAddresses = ServerTransactionSignatureChecker::ExtractIDMap(coins->vout[prevout.n].scriptPubKey, spendHeight, isStake);
+                auto idAddresses = ServerTransactionSignatureChecker::ExtractIDMap(coins->vout[prevout.n].scriptPubKey, spendHeight - 1, isStake);
 
                 // Verify signature
                 CScriptCheck check(*coins, tx, i, flags, cacheStore, consensusBranchId, &txdata);
@@ -3608,8 +3608,10 @@ static int64_t nTimeTotal = 0;
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex, CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck, bool fCheckPOW)
 {
     uint32_t nHeight = pindex->GetHeight();
-    if ( KOMODO_STOPAT != 0 && nHeight > KOMODO_STOPAT )
-        return(false);
+    if (KOMODO_STOPAT != 0 && nHeight > KOMODO_STOPAT)
+    {
+        return false;
+    }
     //fprintf(stderr,"connectblock ht.%d\n",(int32_t)pindex->GetHeight());
     AssertLockHeld(cs_main);
 
@@ -3633,7 +3635,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     auto disabledVerifier = libzcash::ProofVerifier::Disabled();
     int32_t futureblock;
     // Check it again to verify JoinSplit proofs, and in case a previous version let a bad block in
-    if (!CheckBlock(&futureblock,pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck) || futureblock != 0 )
+    if (!CheckBlock(&futureblock,pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck, !fJustCheck) || futureblock != 0 )
     {
         if (futureblock)
         {
@@ -3735,6 +3737,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         const CCoins* coins = view.AccessCoins(tx.GetHash());
         if (coins && !coins->IsPruned())
         {
+            LogPrintf("ConnectBlock(): tried to overwrite transaction: %s\n", tx.GetHash().GetHex().c_str());
             return state.DoS(100, error("ConnectBlock(): tried to overwrite transaction"),
                              REJECT_INVALID, "bad-txns-BIP30");
         }
@@ -4065,11 +4068,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                                            gatewayDepositsUsed,
                                                                            spentCurrencyOut))
                             {
-                                LogPrintf("%s: invalid coinbase import for currency %s on system %s\n", 
-                                    __func__,
-                                    cbCurDef.name.c_str(), 
-                                    EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str());
-                                return false;
+                                return state.DoS(10, 
+                                                 error("%s: invalid coinbase import for currency %s on system %s\n",
+                                                        __func__, 
+                                                        cbCurDef.name.c_str(), 
+                                                        EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str()),
+                                                 REJECT_INVALID, "invalid-block");
                             }
 
                             // if fees are not converted, we will pay out original fees,
@@ -5820,12 +5824,14 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                     } else if (state.GetRejectReason() != "already have coins" && 
                                !((missinginputs || state.GetRejectCode() == REJECT_DUPLICATE) && (!fCheckTxInputs || chainActive.Height() < height - 1)))
                     {
-                        // printf("Rejected transaction for %s, reject code %d\n", state.GetRejectReason().c_str(), state.GetRejectCode());
-                        //for (auto input : Tx.vin)
-                        //{
-                        //    LogPrintf("input n: %d, hash: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str());
-                        //    printf("chainActive.Height(): %d, height: %d, input n: %d, hash: %s\n", chainActive.Height(), height, input.prevout.n, input.prevout.hash.GetHex().c_str());
-                        //}
+                        if (LogAcceptCategory("checkblock"))
+                        {
+                            LogPrint("checkblock", "Rejected transaction for %s, reject code %d\nchainActive.Height(): %d, height: %d\n", state.GetRejectReason().c_str(), state.GetRejectCode(), chainActive.Height(), height);
+                            for (auto input : Tx.vin)
+                            {
+                                LogPrint("checkblock", "input n: %d, hash: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str());
+                            }
+                        }
                         rejects++;
                     }
                     else if (state.GetRejectReason() == "bad-txns-invalid-reserve")
@@ -6875,8 +6881,8 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
         if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus(), 0))
             return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->GetHeight(), pindex->GetBlockHash().ToString());
         // check level 1: verify block validity
-        int32_t futureblock;
-        if (nCheckLevel >= 1 && !CheckBlock(&futureblock,pindex->GetHeight(),pindex,block, state, chainparams, verifier, 0, true, false) )
+        int32_t futureblock = 0;
+        if (nCheckLevel >= 1 && !CheckBlock(&futureblock, pindex->GetHeight(), pindex, block, state, chainparams, verifier, 0, true, false) )
             return error("VerifyDB(): *** found bad block at %d, hash=%s\n", pindex->GetHeight(), pindex->GetBlockHash().ToString());
         // check level 2: verify undo validity
         if (nCheckLevel >= 2 && pindex) {
@@ -6922,7 +6928,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             if (!ConnectBlock(block, state, pindex, coins, chainparams, false, true))
             {
                 RemoveCoinbaseFromMemPool(block);
-                return error("VerifyDB(): *** found unconnectable block at %d, hash=%s", pindex->GetHeight(), pindex->GetBlockHash().ToString());
+                return error("VerifyDB(): *** Error (%s) found unconnectable block at %d, hash=%s", state.GetRejectReason().c_str(), pindex->GetHeight(), pindex->GetBlockHash().ToString());
             }
             RemoveCoinbaseFromMemPool(block);
         }
