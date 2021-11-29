@@ -442,7 +442,8 @@ bool SetThisChain(const UniValue &chainDefinition)
     if (!IsVerusActive())
     {
         // we set the notary chain to either Verus or VerusTest
-        CCurrencyDefinition notaryChainDef = CCurrencyDefinition("VRSC", PBAAS_TESTMODE);
+        // TODO: HARDENING - ensure that we don't need to check which name here and do the right thing in all cases
+        CCurrencyDefinition notaryChainDef = CCurrencyDefinition(PBAAS_TESTMODE ? "VRSCTEST" : "VRSC", PBAAS_TESTMODE);
 
         VERUS_CHAINNAME = notaryChainDef.name;
         VERUS_CHAINID = notaryChainDef.GetID();
@@ -9387,8 +9388,8 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
             "   after any necessary signatures are applied in the case of multisig.\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("timelockid", "\'{\"name\" : \"myname\"}\'")
-            + HelpExampleRpc("timelockid", "\'{\"name\" : \"myname\"}\'")
+            + HelpExampleCli("setidentitytimelock", "\"id@\" '{\"unlockatblock\":absoluteblockheight || \"setunlockdelay\":numberofblocksdelayafterunlock}' (returntx)")
+            + HelpExampleRpc("setidentitytimelock", "\"id@\" '{\"unlockatblock\":absoluteblockheight || \"setunlockdelay\":numberofblocksdelayafterunlock}' (returntx)")
         );
     }
 
