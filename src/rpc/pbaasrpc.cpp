@@ -3625,7 +3625,7 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
         return true;
     }
     else if (getExpired &&
-             !(offerTxProof.IsValid() && !isPartial || offerTx.nExpiryHeight > height) &&
+             !(offerTxProof.IsValid() && !isPartial && offerTx.nExpiryHeight > height) &&
              p.IsValid() &&
              p.evalCode == EVAL_IDENTITY_COMMITMENT &&
              postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
