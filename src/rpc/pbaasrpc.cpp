@@ -3624,7 +3624,8 @@ bool GetOpRetChainOffer(const CTransaction &postedTx,
     {
         return true;
     }
-    else if (getExpired && 
+    else if (getExpired &&
+             !(offerTxProof.IsValid() && !isPartial && offerTx.nExpiryHeight > height) &&
              p.IsValid() &&
              p.evalCode == EVAL_IDENTITY_COMMITMENT &&
              postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
@@ -5994,11 +5995,15 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
         throw runtime_error(
             "closeoffers ('[\"offer1_txid\", \"offer2_txid\", ...]') (transparentorprivatefundsdestination) (privatefundsdestination)\n"
             "\nCloses all offers listed, if they are still valid and belong to this wallet.\n"
-            "\nAlways closes expired offers, even if no parameters are given\n\n"
+            "Always closes expired offers, even if no parameters are given\n\n"
 
             "\nArguments\n"
+            "  [\"offer1_txid\", \"offer2_txid\", ...]      (array, optional) array of hex tx ids of offers to close\n"
+            "  transparentorprivatefundsdestination         (transparent or private address, optional) destination for closing funds\n"
+            "  privatefundsdestination                      (private address, optional) destination for native funds only\n"
 
             "\nResult\n"
+            "  null return\n"
         );
     }
     CheckVerusVaultAPIsValid();
@@ -6108,8 +6113,11 @@ UniValue listopenoffers(const UniValue& params, bool fHelp)
             "\nShows offers outstanding in this wallet\n"
 
             "\nArguments\n"
+            "  unexpired                (bool, optional) default=true, list those offers in the wallet which are not expired\n"
+            "  expired                  (bool, optional) default=true, list those offers in the wallet which are expired\n"
 
             "\nResult\n"
+            "  all open offers\n"
         );
     }
     CheckVerusVaultAPIsValid();
@@ -9396,9 +9404,9 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
     CheckIdentityAPIsValid();
 
     bool returnTx = false;
-    if (params.size() > 1)
+    if (params.size() > 2)
     {
-        returnTx = uni_get_bool(params[1], false);
+        returnTx = uni_get_bool(params[2], false);
     }
 
     std::string idString = uni_get_str(params[0]);
@@ -9411,7 +9419,7 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
     UniValue unlockDelayUni = find_value(params[1], "setunlockdelay");
     UniValue absoluteUnlockUni = find_value(params[1], "unlockatblock");
 
-    if ((!unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()) || (unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()))
+    if ((!unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()) || (unlockDelayUni.isNull() && absoluteUnlockUni.isNull()))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Either \"setunlockdelay\" or \"unlockatblock\" must have a non-zero value and not both");
     }
@@ -9437,7 +9445,6 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
 
     UniValue newParams(UniValue::VARR);
 
-    newParams.push_back(EncodeDestination(CIdentityID(oldIdentity.GetID())));
     newParams.push_back(oldIdentity.ToUniValue());
     if (params.size() > 2)
     {

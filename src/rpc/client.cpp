@@ -1608,7 +1608,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "z_shieldcoinbase", 3},
     { "z_getoperationstatus", 0},
     { "z_getoperationresult", 0},
-    { "z_importkey", 1 },
+    //{ "z_importkey", 1 },
     { "paxprice", 4 },
     { "paxprices", 3 },
     { "paxpending", 0 },
