@@ -9419,7 +9419,7 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
     UniValue unlockDelayUni = find_value(params[1], "setunlockdelay");
     UniValue absoluteUnlockUni = find_value(params[1], "unlockatblock");
 
-    if ((!unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()) || (unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()))
+    if ((!unlockDelayUni.isNull() && !absoluteUnlockUni.isNull()) || (unlockDelayUni.isNull() && absoluteUnlockUni.isNull()))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Either \"setunlockdelay\" or \"unlockatblock\" must have a non-zero value and not both");
     }
