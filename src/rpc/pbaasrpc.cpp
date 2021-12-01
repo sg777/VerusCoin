@@ -9404,9 +9404,9 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
     CheckIdentityAPIsValid();
 
     bool returnTx = false;
-    if (params.size() > 1)
+    if (params.size() > 2)
     {
-        returnTx = uni_get_bool(params[1], false);
+        returnTx = uni_get_bool(params[2], false);
     }
 
     std::string idString = uni_get_str(params[0]);
@@ -9445,7 +9445,6 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
 
     UniValue newParams(UniValue::VARR);
 
-    newParams.push_back(EncodeDestination(CIdentityID(oldIdentity.GetID())));
     newParams.push_back(oldIdentity.ToUniValue());
     if (params.size() > 2)
     {
