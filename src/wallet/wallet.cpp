@@ -2421,6 +2421,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
         uint256 txHash = tx.GetHash();
 
         bool fExisted = mapWallet.count(txHash) != 0;
+        bool isNewID = false;
         if (fExisted && !fUpdate) return false;
         auto sproutNoteData = FindMySproutNotes(tx);
         auto saplingNoteDataAndAddressesToAdd = FindMySaplingNotes(tx);
@@ -2631,6 +2632,10 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                                                 (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
                                                                 (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
                                 AddUpdateIdentity(idMapKey, identity);
+                                if (canSignCanSpend.first)
+                                {
+                                    isNewID = true;
+                                }
                             }
                         }
                         else
@@ -3079,7 +3084,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
         // for IsMine, the default height is max, not 0
         nHeight = nHeight == 0 ? INT_MAX : nHeight;
-        if (fExisted || IsMine(tx, nHeight) || IsFromMe(tx, nHeight) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
+        if (fExisted || isNewID || IsMine(tx, nHeight) || IsFromMe(tx, nHeight) || sproutNoteData.size() > 0 || saplingNoteData.size() > 0)
         {
             CWalletTx wtx(this, tx);
 
