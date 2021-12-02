@@ -431,7 +431,7 @@ UniValue importwallet_impl(const UniValue& params, bool fHelp, bool fImportZKeys
         pwalletMain->nTimeFirstKey = nTimeBegin;
 
     LogPrintf("Rescanning last %i blocks\n", chainActive.Height() - pindex->GetHeight() + 1);
-    pwalletMain->ScanForWalletTransactions(pindex);
+    pwalletMain->ScanForWalletTransactions(pindex, true);
     pwalletMain->MarkDirty();
 
     if (!fGood)
