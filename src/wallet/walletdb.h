@@ -34,6 +34,7 @@ class uint256;
 enum DBErrors
 {
     DB_LOAD_OK,
+    DB_LOAD_CRYPTED,
     DB_CORRUPT,
     DB_NONCRITICAL_ERROR,
     DB_TOO_NEW,
@@ -183,6 +184,9 @@ public:
     bool WriteWatchOnly(const CScript &script);
     bool EraseWatchOnly(const CScript &script);
 
+    //Write crypted status of the wallet
+    bool WriteIsCrypted(const bool &crypted);
+
     bool WriteIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &id);
     bool EraseIdentity(const CIdentityMapKey &mapKey);
 
@@ -214,6 +218,8 @@ public:
     void ListAccountCreditDebit(const std::string& strAccount, std::list<CAccountingEntry>& acentries);
 
     DBErrors ReorderTransactions(CWallet* pwallet);
+    DBErrors InitalizeCryptedLoad(CWallet* pwallet);
+    DBErrors LoadCryptedSeedFromDB(CWallet* pwallet); 
     DBErrors LoadWallet(CWallet* pwallet);
     DBErrors FindWalletTxToZap(CWallet* pwallet, std::vector<uint256>& vTxHash, std::vector<CWalletTx>& vWtx);
     DBErrors ZapWalletTx(CWallet* pwallet, std::vector<CWalletTx>& vWtx);

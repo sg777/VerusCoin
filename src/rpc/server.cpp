@@ -33,6 +33,7 @@ using namespace std;
 
 static bool fRPCRunning = false;
 static bool fRPCInWarmup = true;
+static bool fRPCNeedUnlocked = false;
 static std::string rpcWarmupStatus("RPC server started");
 static CCriticalSection cs_rpcWarmup;
 /* Timer-creating functions */
@@ -613,6 +614,12 @@ void StopRPC()
 bool IsRPCRunning()
 {
     return fRPCRunning;
+}
+
+void SetRPCNeedsUnlocked(const bool& newStatus)
+{
+    LOCK(cs_rpcWarmup);
+    fRPCNeedUnlocked = newStatus;
 }
 
 void SetRPCWarmupStatus(const std::string& newStatus)

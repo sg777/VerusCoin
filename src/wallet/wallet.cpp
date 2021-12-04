@@ -911,6 +911,16 @@ bool CWallet::IsNoteSaplingChange(const std::set<std::pair<libzcash::PaymentAddr
     }
     return false;
 }
+bool CWallet::SetWalletCrypted(CWalletDB* pwalletdb) {
+    LOCK(cs_wallet);
+
+    if (fFileBacked)
+    {
+            return pwalletdb->WriteIsCrypted(true);
+    }
+
+    return false;
+}
 
 bool CWallet::SetMinVersion(enum WalletFeature nVersion, CWalletDB* pwalletdbIn, bool fExplicit)
 {
@@ -1491,6 +1501,10 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
             LogPrintf("Encrypt Keys failed!!!");
             return false;
         }
+
+        //Write Crypted statuses
+        SetWalletCrypted(pwalletdbEncryption);
+        SetDBCrypted();
 
         // Encryption was introduced in version 0.4.0
         SetMinVersion(FEATURE_WALLETCRYPT, pwalletdbEncryption, true);
@@ -7200,6 +7214,16 @@ CAmount CWallet::GetMinimumFee(unsigned int nTxBytes, unsigned int nConfirmTarge
 
 
 void komodo_prefetch(FILE *fp);
+
+DBErrors CWallet::InitalizeCryptedLoad()
+{
+    return CWalletDB(strWalletFile,"cr+").InitalizeCryptedLoad(this);
+}
+
+DBErrors CWallet::LoadCryptedSeedFromDB()
+{
+    return CWalletDB(strWalletFile,"cr+").LoadCryptedSeedFromDB(this);
+}
 
 DBErrors CWallet::LoadWallet(bool& fFirstRunRet)
 {
