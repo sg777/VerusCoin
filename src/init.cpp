@@ -1850,9 +1850,6 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             }
         }
 
-        // Set sapling migration status
-        pwalletMain->fSaplingMigrationEnabled = GetBoolArg("-migration", false);
-
         if (fFirstRun)
         {
             // Create new keyUser and set as default key
