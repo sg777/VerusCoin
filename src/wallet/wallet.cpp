@@ -4260,6 +4260,7 @@ void CWallet::ReorderWalletTransactions(std::map<std::pair<int,int>, CWalletTx*>
  */
 int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
 {
+    LOCK2(cs_main, cs_wallet);
     int ret = 0;
     int64_t nNow = GetTime();
     const CChainParams& chainParams = Params();
@@ -4273,8 +4274,10 @@ int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
 
     std::vector<uint256> myTxHashes;
 
+
     {
-        LOCK2(cs_main, cs_wallet);
+        //Lock cs_keystore to prevent wallet from locking during rescan
+        LOCK(cs_KeyStore);
 
         // no need to read and scan block, if block was created before
         // our wallet birthday (as adjusted for block time variability)
