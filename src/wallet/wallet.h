@@ -954,6 +954,7 @@ public:
      *      strWalletFile (immutable after instantiation)
      */
     mutable CCriticalSection cs_wallet;
+    mutable CCriticalSection cs_wallet_threadedfunction;
 
     bool fFileBacked;
     std::string strWalletFile;
