@@ -5367,6 +5367,8 @@ UniValue getoffers(const UniValue& params, bool fHelp)
     CIdentity identity;
     std::string currencyOrIDStr(uni_get_str(params[0]));
 
+    LOCK(cs_main);
+
     if (isCurrency)
     {
         lookupID = ValidateCurrencyName(currencyOrIDStr, true, &currencyDef);
@@ -5398,7 +5400,6 @@ UniValue getoffers(const UniValue& params, bool fHelp)
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputOffers;
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
 
-    LOCK(cs_main);
     uint32_t height = chainActive.Height();
 
     // bool is "iscurrency" for the offer in a buy and for the request for payment in a sell

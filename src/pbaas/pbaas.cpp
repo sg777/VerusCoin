@@ -1380,6 +1380,27 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
     return true;
 }
 
+bool CConnectedChains::GetLastBlock(CBlock &block, uint32_t height)
+{
+    LOCK(cs_mergemining);
+    if (lastBlockHeight == height && (GetAdjustedTime() - block.nTime) > (Params().consensus.nPowTargetSpacing / 2))
+    {
+        block = lastBlock;
+        return true;
+    }
+    return false;
+}
+
+void CConnectedChains::SetLastBlock(CBlock &block, uint32_t height)
+{
+    LOCK(cs_mergemining);
+    if (lastBlock.GetHash() != block.GetHash())
+    {
+        lastBlock = block;
+        lastBlockHeight = height;
+    }
+}
+
 bool CInputDescriptor::operator<(const CInputDescriptor &op) const
 {
     arith_uint256 left = UintToArith256(txIn.prevout.hash);
@@ -1543,6 +1564,7 @@ uint32_t CConnectedChains::CombineBlocks(CBlockHeader &bh)
     vector<UniValue> toCombine;
     arith_uint256 blkHash = UintToArith256(bh.GetHash());
     arith_uint256 target(0);
+    target.SetCompact(bh.nBits);
     
     CPBaaSBlockHeader pbh;
 

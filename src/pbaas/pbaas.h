@@ -780,7 +780,6 @@ public:
 class CPBaaSMergeMinedChainData : public CRPCChainData
 {
 public:
-    static const uint32_t MAX_MERGE_CHAINS = 15;
     CBlock          block;                  // full block to submit upon winning header
 
     CPBaaSMergeMinedChainData() {}
@@ -1322,6 +1321,8 @@ protected:
     CPBaaSMergeMinedChainData *GetChainInfo(uint160 chainID);
 
 public:
+    uint32_t lastBlockHeight;
+    CBlock lastBlock;
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
@@ -1355,7 +1356,7 @@ public:
     CCriticalSection cs_mergemining;
     CSemaphore sem_submitthread;
 
-    CConnectedChains() : readyToStart(0), sem_submitthread(0), earnedNotarizationHeight(0), dirty(0), lastSubmissionFailed(0) {}
+    CConnectedChains() : lastBlockHeight(0), readyToStart(0), sem_submitthread(0), earnedNotarizationHeight(0), dirty(0), lastSubmissionFailed(0) {}
 
     arith_uint256 LowestTarget()
     {
@@ -1380,6 +1381,9 @@ public:
     // send new imports from this chain to the specified chain, which generally will be the notary chain
     void ProcessLocalImports();
 
+    // return the last block if one is cached
+    bool GetLastBlock(CBlock &block, uint32_t height);
+    void SetLastBlock(CBlock &block, uint32_t height);
     bool AddMergedBlock(CPBaaSMergeMinedChainData &blkData);
     bool RemoveMergedBlock(uint160 chainID);
     bool GetChainInfo(uint160 chainID, CRPCChainData &rpcChainData);
