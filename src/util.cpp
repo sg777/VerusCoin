@@ -16,6 +16,7 @@
 #include "utilstrencodings.h"
 #include "utiltime.h"
 #include "komodo_defs.h"
+#include "key_io.h"
 
 #include <stdarg.h>
 #include <sstream>
@@ -762,26 +763,48 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
     return path;
 }
 
+std::string CanonicalChainFileName(std::string chainName)
+{
+    if (chainName != "VRSC")
+    {
+        // except for VRSC and vrsctest, all chains config files are named the hex value of the
+        // uint160 hash of the chain's name. this ensures no issues with either case sensitive or
+        // insensitive file systems in any locale
+        chainName = boost::to_lower_copy(chainName);
+        if (chainName != "vrsctest")
+        {
+            uint160 parent;
+            chainName = GetDestinationID(DecodeDestination(chainName)).GetHex();
+        }
+    }
+    return chainName;
+}
+
 const boost::filesystem::path GetDataDir(std::string chainName)
 {
     namespace fs = boost::filesystem;
     fs::path path;
-    if (chainName != "VRSC")
-    {
-        chainName = boost::to_lower_copy(chainName);
-    }
+    chainName = CanonicalChainFileName(chainName);
 
     if ((chainName == "VRSC" || chainName == "vrsctest") && mapArgs.count("-datadir")) {
         path = fs::system_complete(mapArgs["-datadir"]);
         if (!fs::is_directory(path)) {
             path = GetDefaultDataDir(chainName);
         }
-    } else
+    } else if (mapArgs.count("-datadir"))
+    {
+        path = fs::system_complete(mapArgs["-datadir"] + chainName);
+        if (!fs::is_directory(path)) {
+            path = GetDefaultDataDir(chainName);
+        }
+    }
+    else
     {
         path = GetDefaultDataDir(chainName);
     }
     return path;
 }
+
 void ClearDatadirCache()
 {
     pathCached = boost::filesystem::path();
@@ -815,15 +838,9 @@ boost::filesystem::path GetConfigFile()
 
 boost::filesystem::path GetConfigFile(std::string chainName)
 {
-    if (chainName != "VRSC")
-    {
-        chainName = boost::to_lower_copy(chainName);
-    }
-    char confname[512];
-    if (chainName.size() >= KOMODO_ASSETCHAIN_MAXLEN)
-        chainName.resize(KOMODO_ASSETCHAIN_MAXLEN - 1);
-    sprintf(confname, "%s.conf", chainName.c_str());
-    boost::filesystem::path pathConfigFile(GetArg("-conf",confname));
+    chainName = CanonicalChainFileName(chainName);
+    std::string confname = chainName + ".conf";
+    boost::filesystem::path pathConfigFile(GetArg("-conf", confname));
     if (!pathConfigFile.is_complete())
         pathConfigFile = GetDataDir(chainName) / pathConfigFile;
 
