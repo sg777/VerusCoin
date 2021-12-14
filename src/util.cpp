@@ -510,14 +510,27 @@ void PrintExceptionContinue(const std::exception* pex, const char* pszThread)
 //int64_t MAX_MONEY = 200000000 * 100000000LL;
 //int64_t MAX_SUPPLY = 500000000000LL * 100000000LL;
 
+std::string CanonicalChainFileName(std::string chainName)
+{
+    if (chainName != "VRSC")
+    {
+        // except for VRSC and vrsctest, all chains config files are named the hex value of the
+        // uint160 hash of the chain's name. this ensures no issues with either case sensitive or
+        // insensitive file systems in any locale
+        chainName = boost::to_lower_copy(chainName);
+        if (chainName != "vrsctest")
+        {
+            uint160 parent;
+            chainName = GetDestinationID(DecodeDestination(chainName)).GetHex();
+        }
+    }
+    return chainName;
+}
+
 boost::filesystem::path GetDefaultDataDir()
 {
     namespace fs = boost::filesystem;
-    std::string chainName = std::string(ASSETCHAINS_SYMBOL);
-    if (chainName != "VRSC")
-    {
-        chainName = boost::to_lower_copy(chainName);
-    }
+    std::string chainName = CanonicalChainFileName(std::string(ASSETCHAINS_SYMBOL));
     const char *symbol = chainName.c_str();
 
     // Windows < Vista: C:\Documents and Settings\Username\Application Data\Zcash
@@ -589,13 +602,10 @@ boost::filesystem::path GetDefaultDataDir()
 
 boost::filesystem::path GetDefaultDataDir(std::string chainName)
 {
+    chainName = CanonicalChainFileName(chainName);
     char symbol[KOMODO_ASSETCHAIN_MAXLEN];
     if (chainName.size() >= KOMODO_ASSETCHAIN_MAXLEN)
         chainName.resize(KOMODO_ASSETCHAIN_MAXLEN - 1);
-    if (chainName != "VRSC")
-    {
-        chainName = boost::to_lower_copy(chainName);
-    }
     strcpy(symbol, chainName.c_str());
 
     namespace fs = boost::filesystem;
@@ -763,23 +773,6 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
     return path;
 }
 
-std::string CanonicalChainFileName(std::string chainName)
-{
-    if (chainName != "VRSC")
-    {
-        // except for VRSC and vrsctest, all chains config files are named the hex value of the
-        // uint160 hash of the chain's name. this ensures no issues with either case sensitive or
-        // insensitive file systems in any locale
-        chainName = boost::to_lower_copy(chainName);
-        if (chainName != "vrsctest")
-        {
-            uint160 parent;
-            chainName = GetDestinationID(DecodeDestination(chainName)).GetHex();
-        }
-    }
-    return chainName;
-}
-
 const boost::filesystem::path GetDataDir(std::string chainName)
 {
     namespace fs = boost::filesystem;
@@ -814,13 +807,9 @@ void ClearDatadirCache()
 boost::filesystem::path GetConfigFile()
 {
     char confname[2048];
-    std::string chainName(ASSETCHAINS_SYMBOL);
-    if (chainName != "VRSC")
-    {
-        chainName = boost::to_lower_copy(chainName);
-    }
+    std::string chainName = CanonicalChainFileName(ASSETCHAINS_SYMBOL);
     if ( ASSETCHAINS_SYMBOL[0] != 0 )
-        sprintf(confname,"%s.conf", chainName.c_str());
+        sprintf(confname, "%s.conf", chainName.c_str());
     else
     {
 #ifdef __APPLE__
