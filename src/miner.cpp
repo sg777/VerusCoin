@@ -3022,7 +3022,7 @@ void static BitcoinMiner_noeq()
                     continue;
                 }
 
-                unique_ptr<CBlockTemplate> pblocktemplate(ptr);
+                pblocktemplate = unique_ptr<CBlockTemplate>(ptr);
                 if (!pblocktemplate.get())
                 {
                     if (GetArg("-mineraddress", "").empty()) {
