@@ -521,7 +521,7 @@ std::string CanonicalChainFileName(std::string chainName)
         if (chainName != "vrsctest")
         {
             uint160 parent;
-            chainName = GetDestinationID(DecodeDestination(chainName)).GetHex();
+            chainName = GetDestinationID(DecodeDestination(chainName + "@")).GetHex();
         }
     }
     return chainName;
