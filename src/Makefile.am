@@ -63,6 +63,7 @@ LIBCRYPTOCONDITIONS=cryptoconditions/libcryptoconditions_core.la
 LIBSNARK=snark/libsnark.a
 LIBUNIVALUE=univalue/libunivalue.la
 LIBZCASH=libzcash.a
+LIBTLS=libtls.a
 
 if ENABLE_ZMQ
 LIBBITCOIN_ZMQ=libbitcoin_zmq.a
@@ -111,7 +112,9 @@ EXTRA_LIBRARIES += \
   $(LIBBITCOIN_COMMON) \
   $(LIBBITCOIN_SERVER) \
   $(LIBBITCOIN_CLI) \
-  libzcash.a
+  libzcash.a \
+  libtls.a
+
 if ENABLE_WALLET
 BITCOIN_INCLUDES += $(BDB_CPPFLAGS)
 EXTRA_LIBRARIES += $(LIBBITCOIN_WALLET)
@@ -300,6 +303,8 @@ BITCOIN_CORE_H = \
   zmq/zmqnotificationinterface.h \
   zmq/zmqpublishnotifier.h
 
+LIBTLS_H = \
+  tls/utiltls.h
 
 obj/build.h: FORCE
 	@$(MKDIR_P) $(builddir)/obj
@@ -392,7 +397,8 @@ libbitcoin_server_a_SOURCES = \
   txmempool.cpp \
   validationinterface.cpp \
   $(BITCOIN_CORE_H) \
-  $(LIBZCASH_H)
+  $(LIBZCASH_H) \
+  $(LIBTLS_H)
 
 if ENABLE_ZMQ
 libbitcoin_zmq_a_CPPFLAGS = $(BITCOIN_INCLUDES) $(ZMQ_CFLAGS)
@@ -636,6 +642,7 @@ verusd_LDADD = \
   $(LIBVERUS_PORTABLE_CRYPTO) \
   $(LIBZCASH) \
   $(LIBSNARK) \
+  $(LIBTLS) \
   $(LIBLEVELDB) \
   $(LIBMEMENV) \
   $(LIBSECP256K1) \
@@ -731,13 +738,14 @@ endif
 
 verus_tx_LDADD = \
   $(LIBUNIVALUE) \
-	$(BOOST_LIBS) \
+  $(BOOST_LIBS) \
   $(LIBBITCOIN_COMMON) \
   $(LIBBITCOIN_UTIL) \
-	$(EVENT_LIBS) \
+  $(EVENT_LIBS) \
   $(LIBSECP256K1) \
   $(LIBZCASH) \
   $(LIBSNARK) \
+  $(LIBTLS) \
   $(LIBBITCOIN_CRYPTO) \
   $(LIBVERUS_CRYPTO) \
   $(LIBVERUS_PORTABLE_CRYPTO) \
@@ -759,7 +767,7 @@ libzcash_a_SOURCES = \
 	zcash/address/sapling.cpp \
 	zcash/address/sprout.cpp \
 	zcash/util.cpp \
-        zcash/address/zip32.cpp \
+  zcash/zip32.cpp \
 	zcash/circuit/commitment.tcc \
 	zcash/circuit/gadget.tcc \
 	zcash/circuit/merkle.tcc \
@@ -810,6 +818,14 @@ libzcashconsensus_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
 endif
 #
+
+libtls_a_SOURCES = \
+    tls/utiltls.cpp\
+    tls/tlsmanager.cpp
+
+libtls_a_CPPFLAGS = -DMULTICORE -fopenmp -fPIC -DBINARY_OUTPUT -DCURVE_ALT_BN128 -DBOOST_SPIRIT_THREADSAFE -DHAVE_BUILD_INFO -D__STDC_FORMAT_MACROS $(HARDENED_CPPFLAGS) -pipe -O2 -g  -Wstack-protector -fstack-protector-all -fPIE -fvisibility=hidden -DSTATIC $(BITCOIN_INCLUDES)
+libtls_a_CXXFLAGS = $(HARDENED_CXXFLAGS) -fwrapv -fno-strict-aliasing
+libtls_a_CPPFLAGS += -DMONTGOMERY_OUTPUT
 
 CLEANFILES = leveldb/libleveldb.a leveldb/libmemenv.a *.gcda *.gcno */*.gcno wallet/*/*.gcno
 
