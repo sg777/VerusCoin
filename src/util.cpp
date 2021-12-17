@@ -602,11 +602,12 @@ boost::filesystem::path GetDefaultDataDir()
 
 boost::filesystem::path GetDefaultDataDir(std::string chainName)
 {
-    chainName = CanonicalChainFileName(chainName);
+    std::string canonicalName = CanonicalChainFileName(chainName);
+
     char symbol[KOMODO_ASSETCHAIN_MAXLEN];
-    if (chainName.size() >= KOMODO_ASSETCHAIN_MAXLEN)
-        chainName.resize(KOMODO_ASSETCHAIN_MAXLEN - 1);
-    strcpy(symbol, chainName.c_str());
+    if (canonicalName.size() >= KOMODO_ASSETCHAIN_MAXLEN)
+        canonicalName.resize(KOMODO_ASSETCHAIN_MAXLEN - 1);
+    strcpy(symbol, canonicalName.c_str());
 
     namespace fs = boost::filesystem;
 
@@ -777,7 +778,7 @@ const boost::filesystem::path GetDataDir(std::string chainName)
 {
     namespace fs = boost::filesystem;
     fs::path path;
-    chainName = CanonicalChainFileName(chainName);
+    std::string canonicalName = CanonicalChainFileName(chainName);
 
     if ((chainName == "VRSC" || chainName == "vrsctest") && mapArgs.count("-datadir")) {
         path = fs::system_complete(mapArgs["-datadir"]);
@@ -786,7 +787,7 @@ const boost::filesystem::path GetDataDir(std::string chainName)
         }
     } else if (mapArgs.count("-datadir"))
     {
-        path = fs::system_complete(mapArgs["-datadir"] + chainName);
+        path = fs::system_complete(mapArgs["-datadir"] + canonicalName);
         if (!fs::is_directory(path)) {
             path = GetDefaultDataDir(chainName);
         }
@@ -827,8 +828,8 @@ boost::filesystem::path GetConfigFile()
 
 boost::filesystem::path GetConfigFile(std::string chainName)
 {
-    chainName = CanonicalChainFileName(chainName);
-    std::string confname = chainName + ".conf";
+    std::string canonicalName = CanonicalChainFileName(chainName);
+    std::string confname = canonicalName + ".conf";
     boost::filesystem::path pathConfigFile(GetArg("-conf", confname));
     if (!pathConfigFile.is_complete())
         pathConfigFile = GetDataDir(chainName) / pathConfigFile;
