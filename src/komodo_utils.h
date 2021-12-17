@@ -1513,18 +1513,12 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
     } //else printf("couldnt open.(%s)\n",fname);
 }
 
+extern boost::filesystem::path GetConfigFile();
 uint16_t komodo_userpass(char *userpass, char *symbol)
 {
     FILE *fp; uint16_t port = 0; char fname[512],username[512],password[512],confname[KOMODO_ASSETCHAIN_MAXLEN + 5];
     userpass[0] = 0;
-    std::string fileName(symbol);
-    if (fileName != "VRSC")
-    {
-        fileName = boost::to_lower_copy(fileName);
-    }
-    sprintf(confname, "%s.conf", fileName.c_str());
-    komodo_statefname(fname, symbol, confname);
-    if ( (fp= fopen(fname,"rb")) != 0 )
+    if ( (fp = fopen(GetConfigFile().c_str(),"rb")) != 0 )
     {
         port = _komodo_userpass(username,password,fp);
         sprintf(userpass,"%s:%s",username,password);
