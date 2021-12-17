@@ -767,7 +767,7 @@ libzcash_a_SOURCES = \
 	zcash/address/sapling.cpp \
 	zcash/address/sprout.cpp \
 	zcash/util.cpp \
-  zcash/zip32.cpp \
+  zcash/address/zip32.cpp \
 	zcash/circuit/commitment.tcc \
 	zcash/circuit/gadget.tcc \
 	zcash/circuit/merkle.tcc \
