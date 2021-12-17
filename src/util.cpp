@@ -617,7 +617,7 @@ boost::filesystem::path GetDefaultDataDir(std::string chainName)
     // Unix: ~/.zcash
 #ifdef _WIN32
     // Windows
-    if (chainName == "VRSC" || chainName == "vrsctest")
+    if (canonicalName == "VRSC" || canonicalName == "vrsctest")
     {
         return GetSpecialFolderPath(CSIDL_APPDATA) / "Komodo" / symbol;
     }
@@ -636,7 +636,7 @@ boost::filesystem::path GetDefaultDataDir(std::string chainName)
     // Mac
     pathRet /= "Library/Application Support";
     TryCreateDirectory(pathRet);
-    if (chainName == "VRSC" || chainName == "vrsctest")
+    if (canonicalName == "VRSC" || canonicalName == "vrsctest")
     {
         pathRet /= "Komodo";
         TryCreateDirectory(pathRet);
@@ -651,7 +651,7 @@ boost::filesystem::path GetDefaultDataDir(std::string chainName)
     return pathRet / symbol;
 #else
     // Unix
-    if (chainName == "VRSC" || chainName == "vrsctest")
+    if (canonicalName == "VRSC" || canonicalName == "vrsctest")
     {
         return pathRet / ".komodo" / symbol;
     }
@@ -780,7 +780,7 @@ const boost::filesystem::path GetDataDir(std::string chainName)
     fs::path path;
     std::string canonicalName = CanonicalChainFileName(chainName);
 
-    if ((chainName == "VRSC" || chainName == "vrsctest") && mapArgs.count("-datadir")) {
+    if ((canonicalName == "VRSC" || canonicalName == "vrsctest") && mapArgs.count("-datadir")) {
         path = fs::system_complete(mapArgs["-datadir"]);
         if (!fs::is_directory(path)) {
             path = GetDefaultDataDir(chainName);
