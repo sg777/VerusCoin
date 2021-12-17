@@ -1315,6 +1315,17 @@ bool MakeBlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     return success;
 }
 
+uint256 RandomizedNonce()
+{
+    // Randomize nonce
+    arith_uint256 nonce = UintToArith256(GetRandHash());
+
+    // Clear the top 16 and bottom 16 or 24 bits (for local use as thread flags and counters)
+    nonce <<= ASSETCHAINS_NONCESHIFT[ASSETCHAINS_ALGO];
+    nonce >>= 16;
+    return ArithToUint256(nonce);
+}
+
 CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vector<CTxOut> &minerOutputs, bool isStake)
 {
     // instead of one scriptPubKeyIn, we take a vector of them along with relative weight. each is assigned a percentage of the block subsidy and
@@ -2391,13 +2402,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         // if not Verus stake, setup nonce, otherwise, leave it alone
         if (!isStake || ASSETCHAINS_LWMAPOS == 0)
         {
-            // Randomize nonce
-            arith_uint256 nonce = UintToArith256(GetRandHash());
-
-            // Clear the top 16 and bottom 16 or 24 bits (for local use as thread flags and counters)
-            nonce <<= ASSETCHAINS_NONCESHIFT[ASSETCHAINS_ALGO];
-            nonce >>= 16;
-            pblock->nNonce = ArithToUint256(nonce);
+            pblock->nNonce = RandomizedNonce();
         }
         
         // Fill in header
@@ -2979,47 +2984,60 @@ void static BitcoinMiner_noeq()
 
             miningTimer.start();
 
-#ifdef ENABLE_WALLET
-            CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, Mining_height);
-#else
-            CBlockTemplate *ptr = CreateNewBlockWithKey();
-#endif
-            if ( ptr == 0 )
-            {
-                static uint32_t counter;
-                if ( counter++ % 40 == 0 )
-                {
-                    if (!IsVerusActive() &&
-                        ConnectedChains.IsNotaryAvailable() &&
-                        !ConnectedChains.readyToStart)
-                    {
-                        fprintf(stderr,"waiting for confirmation of launch at or after block %u on %s chain to start\n", (uint32_t)ConnectedChains.ThisChain().startBlock,
-                                                                                        ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
-                    }
-                    else
-                    {
-                        fprintf(stderr,"Unable to create valid block... will continue to try\n");
-                    }
-                }
-                MilliSleep(2000);
-                continue;
-            }
+            CBlock *pblock = nullptr;
+            unique_ptr<CBlockTemplate> pblocktemplate(new CBlockTemplate);
 
-            unique_ptr<CBlockTemplate> pblocktemplate(ptr);
-            if (!pblocktemplate.get())
+            boost::shared_ptr<CReserveScript> tmpScript;
+            if ((USE_EXTERNAL_PUBKEY != 0 || (!GetArg("-mineraddress", "").empty() && (GetScriptForMinerAddress(tmpScript), tmpScript->reserveScript.size()))) &&
+                pblocktemplate.get() &&
+                ConnectedChains.GetLastBlock(pblocktemplate->block, Mining_height))
             {
-                if (GetArg("-mineraddress", "").empty()) {
-                    LogPrintf("Error in %s miner: Keypool ran out, please call keypoolrefill before restarting the mining thread\n",
-                              ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]);
-                } else {
-                    // Should never reach here, because -mineraddress validity is checked in init.cpp
-                    LogPrintf("Error in %s miner: Invalid %s -mineraddress\n", ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO], ASSETCHAINS_SYMBOL);
-                }
-                miningTimer.stop();
-                miningTimer.clear();
-                return;
+                pblock = &pblocktemplate->block;
             }
-            CBlock *pblock = &pblocktemplate->block;
+            else
+            {
+#ifdef ENABLE_WALLET
+                CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, Mining_height);
+#else
+                CBlockTemplate *ptr = CreateNewBlockWithKey();
+#endif
+                if ( ptr == 0 )
+                {
+                    static uint32_t counter;
+                    if ( counter++ % 40 == 0 )
+                    {
+                        if (!IsVerusActive() &&
+                            ConnectedChains.IsNotaryAvailable() &&
+                            !ConnectedChains.readyToStart)
+                        {
+                            fprintf(stderr,"waiting for confirmation of launch at or after block %u on %s chain to start\n", (uint32_t)ConnectedChains.ThisChain().startBlock,
+                                                                                            ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
+                        }
+                        else
+                        {
+                            fprintf(stderr,"Unable to create valid block... will continue to try\n");
+                        }
+                    }
+                    MilliSleep(2000);
+                    continue;
+                }
+
+                pblocktemplate = unique_ptr<CBlockTemplate>(ptr);
+                if (!pblocktemplate.get())
+                {
+                    if (GetArg("-mineraddress", "").empty()) {
+                        LogPrintf("Error in %s miner: Keypool ran out, please call keypoolrefill before restarting the mining thread\n",
+                                ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]);
+                    } else {
+                        // Should never reach here, because -mineraddress validity is checked in init.cpp
+                        LogPrintf("Error in %s miner: Invalid %s -mineraddress\n", ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO], ASSETCHAINS_SYMBOL);
+                    }
+                    miningTimer.stop();
+                    miningTimer.clear();
+                    return;
+                }
+                pblock = &pblocktemplate->block;
+            }
 
             uint32_t savebits;
             bool mergeMining = false;
@@ -3052,6 +3070,12 @@ void static BitcoinMiner_noeq()
                     } else fprintf(stderr,"%s vouts.%d mining.%d vs %d\n",ASSETCHAINS_SYMBOL,(int32_t)pblock->vtx[0].vout.size(),Mining_height,ASSETCHAINS_MINHEIGHT);
                 }
             }
+
+            // cache the last block or copy of last
+            ConnectedChains.SetLastBlock(*pblock, Mining_height);
+
+            // randomize the nonce for each thread
+            pblock->nNonce = RandomizedNonce();
 
             // set our easiest target, if V3+, no need to rebuild the merkle tree
             IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, verusSolutionPBaaS ? false : true, &savebits);

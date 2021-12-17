@@ -1171,6 +1171,25 @@ void CheckIdentityAPIsValid()
     }
 }
 
+// returns an i-address string when given a 20 byte hex representation
+std::string ConvertAlternateRepresentations(const std::string &paramStr)
+{
+    // to enable easy conversion from a hex value representation of a currency, which is used in PBaaS folders and
+    // conf file names to ensure case insensitive support for unique folders and file names, the prefix "hex:" is allowed
+    // on currency names, or even IDs.
+    if (paramStr.length() == 44 && paramStr.substr(0, 4) == "hex:")
+    {
+        std::string hexVal = paramStr.substr(4, 40);
+        if (IsHex(hexVal))
+        {
+            CIdentityID idID;
+            idID.SetHex(hexVal);
+            return EncodeDestination(idID);
+        }
+    }
+    return paramStr;
+}
+
 uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=false, CCurrencyDefinition *pCurrencyDef=NULL)
 {
     std::string extraName;
@@ -1225,7 +1244,7 @@ uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=f
 
 uint160 GetChainIDFromParam(const UniValue &param, CCurrencyDefinition *pCurrencyDef=NULL)
 {
-    return ValidateCurrencyName(uni_get_str(param), true, pCurrencyDef);
+    return ValidateCurrencyName(ConvertAlternateRepresentations(uni_get_str(param)), true, pCurrencyDef);
 }
 
 UniValue getcurrency(const UniValue& params, bool fHelp)
@@ -5367,6 +5386,8 @@ UniValue getoffers(const UniValue& params, bool fHelp)
     CIdentity identity;
     std::string currencyOrIDStr(uni_get_str(params[0]));
 
+    LOCK(cs_main);
+
     if (isCurrency)
     {
         lookupID = ValidateCurrencyName(currencyOrIDStr, true, &currencyDef);
@@ -5398,7 +5419,6 @@ UniValue getoffers(const UniValue& params, bool fHelp)
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputOffers;
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
 
-    LOCK(cs_main);
     uint32_t height = chainActive.Height();
 
     // bool is "iscurrency" for the offer in a buy and for the request for payment in a sell

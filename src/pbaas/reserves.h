@@ -825,14 +825,14 @@ public:
     // these amounts are not serialized for supplemental export outputs, which identify themselves,
     // indicate their position in the relative group of outputs, and carry the additional reserve transfers.
     uint160 sourceSystemID;                     // imported from native system or gateway (notarization payout to this system)
-    uint32_t sourceHeightStart;                 // exporting all items to the destination from source system height...
-    uint32_t sourceHeightEnd;                   // to height, inclusive of end, last before start block from launch chain is needed to start a currency
+    uint256 hashReserveTransfers;               // hash of complete reserve transfer list in order of (txinputs, m=0, m=1, ..., m=(n-1))
     uint160 destSystemID;                       // exported to target blockchain or system
     uint160 destCurrencyID;                     // exported to target currency
+    uint32_t sourceHeightStart;                 // exporting all items to the destination from source system height...
+    uint32_t sourceHeightEnd;                   // to height, inclusive of end, last before start block from launch chain is needed to start a currency
     int32_t numInputs;                          // total number of inputs aggregated for validation
     CCurrencyValueMap totalAmounts;             // total amount exported of each currency, including fees
     CCurrencyValueMap totalFees;                // total fees in all currencies to split between this export and import
-    uint256 hashReserveTransfers;               // hash of complete reserve transfer list in order of (txinputs, m=0, m=1, ..., m=(n-1))
     CCurrencyValueMap totalBurned;              // if this is a cross chain export, some currencies will be burned, the rest held in deposits
     CTransferDestination exporter;              // typically the exporting miner or staker's address, to accept deferred payment for the export
 
@@ -863,17 +863,16 @@ public:
                       nVersion(Version), 
                       flags(Flags), 
                       sourceSystemID(SourceSystemID), 
-                      sourceHeightStart(SourceHeightStart), 
-                      sourceHeightEnd(SourceHeightEnd), 
+                      hashReserveTransfers(HashReserveTransfers),
                       destSystemID(DestSystemID), 
                       destCurrencyID(DestCurrencyID), 
+                      sourceHeightStart(SourceHeightStart), 
+                      sourceHeightEnd(SourceHeightEnd), 
                       numInputs(numin),
                       totalBurned(TotalBurned),
                       firstInput(firstin), 
                       totalAmounts(values), 
                       totalFees(transferFees), 
-                      hashReserveTransfers(HashReserveTransfers),
-
                       exporter(Exporter), 
                       reserveTransfers(ReserveTransfers)
     {}
@@ -891,14 +890,14 @@ public:
         READWRITE(sourceSystemID);
         if (!(flags & FLAG_SUPPLEMENTAL))
         {
-            READWRITE(VARINT(sourceHeightStart));
-            READWRITE(VARINT(sourceHeightEnd));
+            READWRITE(hashReserveTransfers);
             READWRITE(destSystemID);
             READWRITE(destCurrencyID);
+            READWRITE(VARINT(sourceHeightStart));
+            READWRITE(VARINT(sourceHeightEnd));
             READWRITE(numInputs);
             READWRITE(totalAmounts);
             READWRITE(totalFees);
-            READWRITE(hashReserveTransfers);
             READWRITE(totalBurned);
             READWRITE(exporter);
             READWRITE(firstInput);
