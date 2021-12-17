@@ -1402,14 +1402,13 @@ void komodo_statefname(char *fname,char *symbol,char *str)
 
 // create a config file. if this is a PBaaS chain, we assume that the loaded CCurrencyDefinition is complete, which may not
 // be the case when loading without VRSC active.
+extern std::string CanonicalChainFileName(std::string chainName);
+
 void komodo_configfile(char *symbol, uint16_t rpcport)
 {
-    std::string fileName(symbol);
-    if (fileName != "VRSC")
-    {
-        fileName = boost::to_lower_copy(fileName);
-    }
+    std::string fileName = CanonicalChainFileName(symbol);
     const char *_symbol = fileName.c_str();
+
     static char myusername[512], mypassword[7168];
     FILE *fp; uint16_t kmdport; uint8_t buf2[33]; char fname[512],buf[128],username[512],password[7168]; uint32_t crc,r,r2,i;
     if ( !fileName.empty() && rpcport != 0 )
