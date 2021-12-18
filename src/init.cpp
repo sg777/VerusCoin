@@ -25,6 +25,7 @@
 #include "metrics.h"
 #include "miner.h"
 #include "net.h"
+#include "params.h"
 #include "rpc/server.h"
 #include "rpc/pbaasrpc.h"
 #include "rpc/register.h"
@@ -719,7 +720,7 @@ bool InitSanityCheck(void)
 
 
 static void ZC_LoadParams(
-    const CChainParams& chainparams
+    const CChainParams& chainparams, bool verified
 )
 {
     struct timeval tv_start, tv_end;
@@ -1347,7 +1348,20 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     libsnark::inhibit_profiling_counters = true;
 
     // Initialize Zcash circuit parameters
-    ZC_LoadParams(chainparams);
+    uiInterface.InitMessage(_("Verifying Params..."));
+    initalizeMapParam();
+    bool paramsVerified = checkParams();
+    if(!paramsVerified) {
+        downloadFiles("Network Params");
+    }
+    if (fRequestShutdown)
+    {
+        LogPrintf("Shutdown requested. Exiting.\n");
+        return false;
+    }
+
+    // Initialize Zcash circuit parameters
+    ZC_LoadParams(chainparams, paramsVerified);
 
     if (GetBoolArg("-savesproutr1cs", false)) {
         boost::filesystem::path r1cs_path = ZC_GetParamsDir() / "r1cs";

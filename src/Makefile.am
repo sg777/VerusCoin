@@ -50,7 +50,7 @@ BITCOIN_INCLUDES += -I$(srcdir)/snark
 BITCOIN_INCLUDES += -I$(srcdir)/snark/libsnark
 BITCOIN_INCLUDES += -I$(srcdir)/univalue/include
 
-LIBBITCOIN_SERVER=libbitcoin_server.a -lcurl
+LIBBITCOIN_SERVER=libbitcoin_server.a -lcurl -larchive
 LIBBITCOIN_WALLET=libbitcoin_wallet.a
 LIBBITCOIN_COMMON=libbitcoin_common.a
 LIBBITCOIN_CLI=libbitcoin_cli.a
@@ -373,6 +373,7 @@ libbitcoin_server_a_SOURCES = \
   net.cpp \
   noui.cpp \
   notarisationdb.cpp \
+	params.cpp \
   pbaas/identity.cpp \
   pbaas/notarization.cpp \
   pbaas/pbaas.cpp \
