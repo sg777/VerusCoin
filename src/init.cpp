@@ -1571,6 +1571,58 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 
     fReindex = GetBoolArg("-reindex", false);
 
+    bool useBootstrap = false;
+    bool newInstall = GetBoolArg("-bootstrapinstall", false);
+    if (!boost::filesystem::exists(GetDataDir() / "blocks") || !boost::filesystem::exists(GetDataDir() / "chainstate"))
+        newInstall = true;
+
+    //Prompt on new install
+    if (newInstall && !GetBoolArg("-bootstrap", false)) {
+        bool fBoot = uiInterface.ThreadSafeMessageBox(
+            "\n\n" + _("New install detected.\n\nPress OK to download the blockchain bootstrap (faster, less secure).\n\nPress Cancel to continue on and sync the blockchain from peer nodes (slower, more secure)."),
+            "", CClientUIInterface::ICON_INFORMATION | CClientUIInterface::MSG_INFORMATION | CClientUIInterface::MODAL | CClientUIInterface::BTN_OK | CClientUIInterface::BTN_CANCEL);
+        if (fBoot) {
+            useBootstrap = true;
+        }
+    }
+
+    //Prompt GUI
+    if (GetBoolArg("-bootstrap", false) && GetArg("-bootstrap", "1") != "2" && !useBootstrap) {
+        bool fBoot = uiInterface.ThreadSafeMessageBox(
+            "\n\n" + _("Bootstrap option detected.\n\nPress OK to download the blockchain bootstrap (faster, less secure).\n\nPress Cancel to continue on and sync the blockchain from peer nodes (slower, more secure)."),
+            "", CClientUIInterface::ICON_INFORMATION | CClientUIInterface::MSG_INFORMATION | CClientUIInterface::MODAL | CClientUIInterface::BTN_OK | CClientUIInterface::BTN_CANCEL);
+        if (fBoot) {
+            useBootstrap = true;
+        }
+    }
+
+    //Force Download- used for CLI
+    if (GetBoolArg("-bootstrap", false) && GetArg("-bootstrap", "1") == "2") {
+        useBootstrap = true;
+    }
+
+    if (useBootstrap) {
+        fReindex = false;
+        //wipe transactions from wallet to create a clean slate
+        OverrideSetArg("-zappwallettxes","2");
+        boost::filesystem::remove_all(GetDataDir() / "blocks");
+        boost::filesystem::remove_all(GetDataDir() / "chainstate");
+        boost::filesystem::remove_all(GetDataDir() / "notarisations");
+        boost::filesystem::remove(GetDataDir() / "peers.dat");
+        boost::filesystem::remove(GetDataDir() / "komodostate");
+        boost::filesystem::remove(GetDataDir() / "signedmasks");
+        boost::filesystem::remove(GetDataDir() / "komodostate.ind");
+        if (!getBootstrap() && !fRequestShutdown ) {
+            bool keepRunning = uiInterface.ThreadSafeMessageBox(
+                "\n\n" + _("Bootstrap download failed!!!\n\nPress OK to continue and sync from the network."),
+                "", CClientUIInterface::ICON_INFORMATION | CClientUIInterface::MSG_INFORMATION | CClientUIInterface::MODAL | CClientUIInterface::BTN_OK | CClientUIInterface::BTN_CANCEL);
+
+            if (!keepRunning) {
+                fRequestShutdown = true;
+            }
+        }
+    }
+
     // Upgrading to 0.8; hard-link the old blknnnn.dat files into /blocks/
     boost::filesystem::path blocksDir = GetDataDir() / "blocks";
     if (!boost::filesystem::exists(blocksDir))

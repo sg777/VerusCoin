@@ -73,8 +73,8 @@ struct JsonDownload {
     CurlProgress prog;
 };
 
-
 extern std::map<std::string, ParamFile> mapParams;
+
 extern JsonDownload downloadedJSON;
 
 extern bool checkParams();

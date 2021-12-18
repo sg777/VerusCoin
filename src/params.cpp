@@ -94,13 +94,21 @@ void initalizeMapParamBootstrap() {
 
   ParamFile bootFile;
   bootFile.name = "bootstrap";
-  bootFile.URL = "http://bootstrap.arrr.black/ARRR-bootstrap.tar.gz";
+  bootFile.URL = "https://bootstrap.verus.io/VRSC-bootstrap.tar.gz";
   bootFile.verified = false;
-  bootFile.path = GetDataDir() / "ARRR-bootstrap.tar.gz";
+  bootFile.path = GetDataDir() / "VRSC-bootstrap.tar.gz";
   bootFile.dlnow = 0;
   bootFile.dltotal = 0;
   mapParams[bootFile.URL] = bootFile;
 
+  ParamFile bootSigFile;
+  bootSigFile.name = "bootstrap-signature";
+  bootSigFile.URL = "https://bootstrap.verus.io/VRSC-bootstrap.tar.gz.verusid";
+  bootSigFile.verified = false;
+  bootSigFile.path = GetDataDir() / "https://bootstrap.verus.io/VRSC-bootstrap.tar.gz.verusid";
+  bootSigFile.dlnow = 0;
+  bootSigFile.dltotal = 0;
+  mapParams[bootSigFile.URL] = bootSigFile;
 }
 
 
@@ -346,7 +354,6 @@ bool downloadFiles(std::string title)
         }
     }
 
-
     return downloadComplete;
 }
 
@@ -417,18 +424,36 @@ bool getBootstrap() {
     initalizeMapParamBootstrap();
     bool dlsuccess = downloadFiles("Bootstrap");
 
-    for (std::map<std::string, ParamFile>::iterator it = mapParams.begin(); it != mapParams.end(); ++it) {
-        if (dlsuccess) {
-            if (!extract(it->second.path)) {
-                boost::filesystem::remove_all(GetDataDir() / "blocks");
-                boost::filesystem::remove_all(GetDataDir() / "chainstate");
-                dlsuccess = false;
+    ParamFile bootstrap;
+    ParamFile signature;
+
+    if (dlsuccess)
+    {
+        for (std::map<std::string, ParamFile>::iterator it = mapParams.begin(); it != mapParams.end(); ++it) {
+            if (it->second.name == "bootstrap")
+            {
+                bootstrap = it->second;
+            }
+            else if (it->second.name == "bootstrap-signature")
+            {
+                signature = it->second;
             }
         }
-        if (boost::filesystem::exists(it->second.path.string())) {
-            boost::filesystem::remove(it->second.path.string());
+    }
+
+    // check signature of downloaded bootstrap archive, then extract
+
+    if (dlsuccess) {
+        if (!extract(bootstrap.path)) {
+            boost::filesystem::remove_all(GetDataDir() / "blocks");
+            boost::filesystem::remove_all(GetDataDir() / "chainstate");
+            dlsuccess = false;
         }
     }
+    if (boost::filesystem::exists(bootstrap.path.string())) {
+        boost::filesystem::remove(bootstrap.path.string());
+    }
+
     return dlsuccess;
 }
 
