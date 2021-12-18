@@ -140,7 +140,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
     if ( chainActive.LastTip() != 0 )
         obj.push_back(Pair("tiptime", (int)chainActive.LastTip()->nTime));
     obj.push_back(Pair("connections",   (int)vNodes.size()));
-    obj.push_back(Pair("tls_connections", std::count_if(vNodes.begin(), vNodes.end(), [](CNode* n) {return n->ssl != NULL;})));
+    obj.push_back(Pair("tls_connections", (int64_t)std::count_if(vNodes.begin(), vNodes.end(), [](CNode* n) {return n->ssl != NULL;})));
     obj.push_back(Pair("proxy",         (proxy.IsValid() ? proxy.proxy.ToStringIPPort() : string())));
     obj.push_back(Pair("difficulty",    (double)GetDifficulty()));
     obj.push_back(Pair("testnet",       PBAAS_TESTMODE));
