@@ -105,7 +105,7 @@ void initalizeMapParamBootstrap() {
   bootSigFile.name = "bootstrap-signature";
   bootSigFile.URL = "https://bootstrap.verus.io/VRSC-bootstrap.tar.gz.verusid";
   bootSigFile.verified = false;
-  bootSigFile.path = GetDataDir() / "https://bootstrap.verus.io/VRSC-bootstrap.tar.gz.verusid";
+  bootSigFile.path = GetDataDir() / "VRSC-bootstrap.tar.gz.verusid";
   bootSigFile.dlnow = 0;
   bootSigFile.dltotal = 0;
   mapParams[bootSigFile.URL] = bootSigFile;

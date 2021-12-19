@@ -1572,32 +1572,15 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     fReindex = GetBoolArg("-reindex", false);
 
     bool useBootstrap = false;
-    bool newInstall = GetBoolArg("-bootstrapinstall", false);
-    if (!boost::filesystem::exists(GetDataDir() / "blocks") || !boost::filesystem::exists(GetDataDir() / "chainstate"))
-        newInstall = true;
+    bool newInstall = (!boost::filesystem::exists(GetDataDir() / "blocks") || !boost::filesystem::exists(GetDataDir() / "chainstate"));
 
     //Prompt on new install
-    if (newInstall && !GetBoolArg("-bootstrap", false)) {
-        bool fBoot = uiInterface.ThreadSafeMessageBox(
-            "\n\n" + _("New install detected.\n\nPress OK to download the blockchain bootstrap (faster, less secure).\n\nPress Cancel to continue on and sync the blockchain from peer nodes (slower, more secure)."),
-            "", CClientUIInterface::ICON_INFORMATION | CClientUIInterface::MSG_INFORMATION | CClientUIInterface::MODAL | CClientUIInterface::BTN_OK | CClientUIInterface::BTN_CANCEL);
-        if (fBoot) {
-            useBootstrap = true;
-        }
-    }
-
-    //Prompt GUI
-    if (GetBoolArg("-bootstrap", false) && GetArg("-bootstrap", "1") != "2" && !useBootstrap) {
-        bool fBoot = uiInterface.ThreadSafeMessageBox(
-            "\n\n" + _("Bootstrap option detected.\n\nPress OK to download the blockchain bootstrap (faster, less secure).\n\nPress Cancel to continue on and sync the blockchain from peer nodes (slower, more secure)."),
-            "", CClientUIInterface::ICON_INFORMATION | CClientUIInterface::MSG_INFORMATION | CClientUIInterface::MODAL | CClientUIInterface::BTN_OK | CClientUIInterface::BTN_CANCEL);
-        if (fBoot) {
-            useBootstrap = true;
-        }
+    if (newInstall && GetBoolArg("-bootstrapinstall", false)) {
+        useBootstrap = true;
     }
 
     //Force Download- used for CLI
-    if (GetBoolArg("-bootstrap", false) && GetArg("-bootstrap", "1") == "2") {
+    if (GetBoolArg("-bootstrap", false)) {
         useBootstrap = true;
     }
 
@@ -1613,13 +1596,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         boost::filesystem::remove(GetDataDir() / "signedmasks");
         boost::filesystem::remove(GetDataDir() / "komodostate.ind");
         if (!getBootstrap() && !fRequestShutdown ) {
-            bool keepRunning = uiInterface.ThreadSafeMessageBox(
-                "\n\n" + _("Bootstrap download failed!!!\n\nPress OK to continue and sync from the network."),
-                "", CClientUIInterface::ICON_INFORMATION | CClientUIInterface::MSG_INFORMATION | CClientUIInterface::MODAL | CClientUIInterface::BTN_OK | CClientUIInterface::BTN_CANCEL);
-
-            if (!keepRunning) {
-                fRequestShutdown = true;
-            }
+            printf("\n\nBootstrap download failed!!! Shutting down. Try to bootstrap again or load and sync without the -bootstrap option\n");
+            fRequestShutdown = true;
         }
     }
 
