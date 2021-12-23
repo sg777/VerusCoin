@@ -713,7 +713,7 @@ UniValue CRPCTable::execute(const std::string &strMethod, const UniValue &params
         LOCK(cs_rpcWarmup);
         if (fRPCInWarmup)
         {
-            if (!(fRPCNeedUnlocked && strMethod == "openwallet"))
+            if (!(fRPCNeedUnlocked && (strMethod == "openwallet" || strMethod == "stop")))
             {
                 throw JSONRPCError(RPC_IN_WARMUP, rpcWarmupStatus);
             }
