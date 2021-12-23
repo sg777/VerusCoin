@@ -1873,7 +1873,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         DBErrors nInitalizeCryptedLoad = pwalletMain->InitalizeCryptedLoad();
         if (nInitalizeCryptedLoad == DB_LOAD_CRYPTED) {
             pwalletMain->SetDBCrypted();
-            uiInterface.InitMessage(_("Encrypted wallet waiting for passphrase..."));
+            uiInterface.InitMessage(_("Wallet waiting for passphrase..."));
             SetRPCNeedsUnlocked(true);
             DBErrors nLoadCryptedSeed = pwalletMain->LoadCryptedSeedFromDB();
             if (nLoadCryptedSeed != DB_LOAD_OK) {
