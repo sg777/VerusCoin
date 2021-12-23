@@ -1863,8 +1863,6 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             pwalletMain = NULL;
         }
 
-        uiInterface.InitMessage(_("Loading wallet..."));
-
         nStart = GetTimeMillis();
         bool fFirstRun = true;
         pwalletMain = new CWallet(strWalletFile);
