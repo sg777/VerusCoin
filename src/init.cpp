@@ -1890,6 +1890,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                 return false;
             }
         }
+
+        uiInterface.InitMessage(_("Loading wallet..."));
         SetRPCNeedsUnlocked(false);
 
         DBErrors nLoadWalletRet = pwalletMain->LoadWallet(fFirstRun);
