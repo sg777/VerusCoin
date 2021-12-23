@@ -2224,6 +2224,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
 
         UniValue oneChain(UniValue::VOBJ);
         UniValue oneDefUni = def.ToUniValue();
+        oneDefUni.pushKV("currencyidhex", def.GetID().GetHex());
         oneDefUni.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyCurrencyName(def.GetID()));
 
         if (oneDef.first.first.IsValid())
