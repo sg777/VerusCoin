@@ -591,17 +591,20 @@ bool CWallet::AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMa
     return CWalletDB(strWalletFile).WriteIdentity(mapKey, identity);
 }
 
-void CWallet::ClearIdentities()
+void CWallet::ClearIdentities(uint32_t fromHeight)
 {
     if (fFileBacked)
     {
-        for (auto idPair : mapIdentities)
+        for (auto &idPair : mapIdentities)
         {
-            CWalletDB(strWalletFile).EraseIdentity(idPair.first);
+            if (CIdentityMapKey(idPair.first).blockHeight >= fromHeight)
+            {
+                CWalletDB(strWalletFile).EraseIdentity(idPair.first);
+            }
         }    
     }
 
-    CCryptoKeyStore::ClearIdentities();
+    CCryptoKeyStore::ClearIdentities(fromHeight);
 }
 
 bool CWallet::RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid)
@@ -4279,13 +4282,9 @@ int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
 
     CBlockIndex* pindex = pindexStart;
 
-    if (pindexStart->GetHeight() <= 1)
-    {
-        pwalletMain->ClearIdentities();
-    }
+    pwalletMain->ClearIdentities(pindexStart->GetHeight());
 
     std::vector<uint256> myTxHashes;
-
 
     {
         //Lock cs_keystore to prevent wallet from locking during rescan

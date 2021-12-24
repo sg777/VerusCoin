@@ -5904,7 +5904,7 @@ bool ContextualCheckBlockHeader(
         return true;
     
     assert(pindexPrev);
-    
+
     int nHeight = pindexPrev->GetHeight()+1;
 
     // Check proof of work

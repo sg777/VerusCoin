@@ -133,6 +133,34 @@ UniValue convertpassphrase(const UniValue& params, bool fHelp)
     return ret;
 }
 
+UniValue rescanfromheight(const UniValue& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return NullUniValue;
+
+    if (fHelp || params.size() > 1)
+        throw runtime_error(
+            "rescanfromheight (height)\n"
+            "\nRescans the current wallet from a specified height\n"
+            "\nArguments:\n"
+            "1. \"height\"      (int, optional) Defaults to 0, height to start rescanning from\n"
+            "\nNote: This call can take minutes or even hours to complete on very large wallets and rescans\n"
+            "\nExamples:\n"
+            "\nInitiate rescan of entire chain\n"
+            + HelpExampleCli("rescanfromheight", "") +
+            "\nInitiate rescan from block 1000000\n"
+            + HelpExampleCli("rescanfromheight", "1000000")
+        );
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    EnsureWalletIsUnlocked();
+
+    uint32_t fromHeight = params.size() < 1 ? 0 : uni_get_int64(params[0]);
+    pwalletMain->ScanForWalletTransactions(chainActive.Genesis(), true);
+    return NullUniValue;
+}
+
 UniValue importprivkey(const UniValue& params, bool fHelp)
 {
     if (!EnsureWalletIsAvailable(fHelp))

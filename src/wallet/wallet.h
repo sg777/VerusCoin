@@ -1130,7 +1130,7 @@ public:
     bool AddCScript(const CScript& redeemScript);
     bool LoadCScript(const CScript& redeemScript);
 
-    void ClearIdentities();
+    void ClearIdentities(uint32_t fromHeight);
     bool AddIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
     bool UpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
     bool AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);

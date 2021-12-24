@@ -104,9 +104,27 @@ bool CBasicKeyStore::GetCScript(const CScriptID &hash, CScript& redeemScriptOut)
     return false;
 }
 
-void CBasicKeyStore::ClearIdentities()
+void CBasicKeyStore::ClearIdentities(uint32_t fromHeight)
 {
-    mapIdentities.clear();
+    if (fromHeight <= 1)
+    {
+        mapIdentities.clear();
+    }
+    else
+    {
+        std::vector<arith_uint256> vKeys;
+        for (auto &idPair : mapIdentities)
+        {
+            if (CIdentityMapKey(idPair.first).blockHeight >= fromHeight)
+            {
+                vKeys.push_back(idPair.first);
+            }
+        }
+        for (auto &idKey : vKeys)
+        {
+            mapIdentities.erase(idKey);
+        }
+    }
 }
 
 bool CBasicKeyStore::HaveIdentity(const CIdentityID &idID) const
