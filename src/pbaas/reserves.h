@@ -890,14 +890,14 @@ public:
         READWRITE(sourceSystemID);
         if (!(flags & FLAG_SUPPLEMENTAL))
         {
-            READWRITE(hashReserveTransfers);
-            READWRITE(destSystemID);
-            READWRITE(destCurrencyID);
             READWRITE(VARINT(sourceHeightStart));
             READWRITE(VARINT(sourceHeightEnd));
+            READWRITE(destSystemID);
+            READWRITE(destCurrencyID);
             READWRITE(numInputs);
             READWRITE(totalAmounts);
             READWRITE(totalFees);
+            READWRITE(hashReserveTransfers);
             READWRITE(totalBurned);
             READWRITE(exporter);
             READWRITE(firstInput);
