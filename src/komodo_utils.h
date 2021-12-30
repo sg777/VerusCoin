@@ -1356,6 +1356,10 @@ uint16_t _komodo_userpass(char *username,char *password, FILE *fp)
     return(port);
 }
 
+// create a config file. if this is a PBaaS chain, we assume that the loaded CCurrencyDefinition is complete, which may not
+// be the case when loading without VRSC active.
+extern std::string CanonicalChainFileName(std::string chainName);
+
 void komodo_statefname(char *fname,char *symbol,char *str)
 {
     int32_t n,len;
@@ -1365,7 +1369,7 @@ void komodo_statefname(char *fname,char *symbol,char *str)
         checkName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
     }
 
-    const char *chkName = checkName.c_str();
+    const char *chkName = CanonicalChainFileName(checkName).c_str();
     sprintf(fname, "%s", GetDataDir(false).string().c_str());
     if ( (n = (int32_t)strlen(chkName)) != 0 )
     {
@@ -1388,7 +1392,7 @@ void komodo_statefname(char *fname,char *symbol,char *str)
     }
     if ( symbol != 0 && symbol[0] != 0 && strcmp("KMD",symbol) != 0 )
     {
-        strcat(fname, symbol);
+        strcat(fname, chkName);
         //printf("statefname.(%s) -> (%s)\n",symbol,fname);
 #ifdef _WIN32
         strcat(fname,"\\");
@@ -1399,10 +1403,6 @@ void komodo_statefname(char *fname,char *symbol,char *str)
     strcat(fname,str);
     //printf("test.(%s) -> [%s] statename.(%s) %s\n",test,ASSETCHAINS_SYMBOL,symbol,fname);
 }
-
-// create a config file. if this is a PBaaS chain, we assume that the loaded CCurrencyDefinition is complete, which may not
-// be the case when loading without VRSC active.
-extern std::string CanonicalChainFileName(std::string chainName);
 
 void komodo_configfile(char *symbol, uint16_t rpcport)
 {
