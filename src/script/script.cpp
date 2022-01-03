@@ -1459,8 +1459,9 @@ bool operator>(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
     return b < a;
 }
 
-bool operator==(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+bool operator==(const CCurrencyValueMap& _a, const CCurrencyValueMap& _b)
 {
+    CCurrencyValueMap a = _a.CanonicalMap(), b = _b.CanonicalMap();
     if (a.valueMap.size() != b.valueMap.size())
     {
         return false;
