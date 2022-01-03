@@ -6211,7 +6211,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             "\nExamples:\n"
             + HelpExampleCli("sendcurrency", "\"*\" '[{\"currency\":\"btc\",\"address\":\"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\" ,\"amount\":500.0},...]'")
-            + HelpExampleRpc("sendcurrency", "\"bob@\" '[{\"currency\":\"btc\", \"address\":\"alice@quad\", \"amount\":500.0},...]'")
+            + HelpExampleRpc("sendcurrency", "\"bob@\", [{\"currency\":\"btc\", \"address\":\"alice@quad\", \"amount\":500.0},...]")
         );
     }
 
