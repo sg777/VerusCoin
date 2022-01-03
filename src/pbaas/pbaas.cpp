@@ -551,11 +551,13 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         }
         else
         {
-            CCurrencyValueMap currenciesIn(newCurState.currencies, newCurState.reserveIn);
+            CCurrencyValueMap currenciesIn(importedCurrency);
+
             if (newCurState.primaryCurrencyOut)
             {
-                currenciesIn.valueMap[newCurState.GetID()] = newCurState.primaryCurrencyOut;
+                currenciesIn.valueMap[newCurState.GetID()] += newCurState.primaryCurrencyOut;
             }
+
             if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut)) // TODO: HARDENING account for fees to balance
             {
                 LogPrintf("%s: invalid use of reserve deposits for currency: %s\n", __func__, EncodeDestination(CIdentityID(destCurDef.GetID())).c_str());

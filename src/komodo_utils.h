@@ -1369,7 +1369,8 @@ void komodo_statefname(char *fname,char *symbol,char *str)
         checkName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
     }
 
-    const char *chkName = CanonicalChainFileName(checkName).c_str();
+    std::string chkNameStr = CanonicalChainFileName(checkName);
+    const char *chkName = chkNameStr.c_str();
     sprintf(fname, "%s", GetDataDir(false).string().c_str());
     if ( (n = (int32_t)strlen(chkName)) != 0 )
     {
@@ -1378,7 +1379,7 @@ void komodo_statefname(char *fname,char *symbol,char *str)
             fname[len - n] = 0;
         else
         {
-            printf("unexpected fname.(%s) vs %s [%s] n.%d len.%d (%s)\n",fname,symbol,ASSETCHAINS_SYMBOL,n,len,&fname[len - n]);
+            printf("unexpected fname.(%s) vs %s [%s] n.%d len.%d (%s)\n",fname, chkName, ASSETCHAINS_SYMBOL, n, len, &fname[len - n]);
             return;
         }
     }
