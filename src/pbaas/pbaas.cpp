@@ -1163,6 +1163,66 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             return state.Error("Invalid currency system in reserve transfer " + rt.ToUniValue().write(1,2));
         }
 
+        if (rt.flags & rt.CROSS_SYSTEM)
+        {
+            if (systemDestID != rt.destSystemID)
+            {
+                LogPrintf("%s: Mismatched destination system in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Mismatched destination system in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+            // TODO:HARDENING - ensure that the source currency can be sent to the destination system
+            // in order for that to be possible, the source currency must have inherent export capability or
+            // be previously exported
+        }
+
+        if (rt.IsCurrencyExport())
+        {
+            CCurrencyDefinition curToExport;
+            // first currency must be valid and equal the exported currency
+            if (!(rt.flags & rt.CROSS_SYSTEM) ||
+                rt.destination.TypeNoFlags() != rt.destination.DEST_REGISTERCURRENCY ||
+                !(curToExport = CCurrencyDefinition(rt.destination.destination)).IsValid() ||
+                curToExport.GetID() != rt.FirstCurrency())
+            {
+                LogPrintf("%s: Invalid currency export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Invalid currency export in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+            CCurrencyDefinition registeredCurrency = ConnectedChains.GetCachedCurrency(rt.FirstCurrency());
+
+            // TODO: HARDENING - implement (or confirm serialization as acceptable) equality operators on currency definition
+            if (::AsVector(registeredCurrency) != rt.destination.destination)
+            {
+                LogPrintf("%s: Mismatched export and currency registration in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Mismatched export and currency registration in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+        }
+        else if (rt.IsIdentityExport())
+        {
+            CIdentity idToExport;
+            // first currency must be valid and equal the exported currency
+            if (!(rt.flags & rt.CROSS_SYSTEM) ||
+                rt.destination.TypeNoFlags() != rt.destination.DEST_FULLID ||
+                !(idToExport = CIdentity(rt.destination.destination)).IsValid())
+            {
+                LogPrintf("%s: Invalid identity export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Invalid identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+            CIdentity registeredIdentity = CIdentity::LookupIdentity(idToExport.GetID(), height);
+
+            // validate everything relating to name and control
+            if (registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
+                registeredIdentity.minSigs != idToExport.minSigs ||
+                registeredIdentity.revocationAuthority != idToExport.revocationAuthority ||
+                registeredIdentity.recoveryAuthority != idToExport.recoveryAuthority ||
+                registeredIdentity.privateAddresses != idToExport.privateAddresses ||
+                registeredIdentity.parent != idToExport.parent ||
+                boost::to_lower_copy(registeredIdentity.name) != boost::to_lower_copy(idToExport.name))
+            {
+                LogPrintf("%s: Mismatched identity export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Mismatched identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+        }
+
         CReserveTransactionDescriptor rtxd;
         CCoinbaseCurrencyState dummyState = importState;
         std::vector<CTxOut> vOutputs;
@@ -3801,6 +3861,13 @@ bool CConnectedChains::GetPendingSystemExports(const uint160 systemID,
     }
 }
 
+// Determines if the currency, when exported to the destination system from the current system should:
+// 1) have its accounting stored locally as reserve deposits controlled by the destination
+//    system, meaning the destination system considers this system the source and controller of
+//    those currencies, or
+// 2) burn the outgoing currency because the destination system is considered the controlling system.
+// 3) fail the export because one or more of the currencies being sent has not yet been exported
+//    to the destination system.
 bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExports,
                                             const uint160 &sourceSystemID,
                                             const uint160 &destSystemID,
@@ -3824,43 +3891,92 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
                 newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
                 continue;
             }
+            else if (oneCur.first == destSystemID)
+            {
+                exportBurn.valueMap[oneCur.first] += oneCur.second;
+                continue;
+            }
 
             CCurrencyDefinition oneCurDef;
-            uint160 oneCurID;
 
-            if (oneCur.first != oneCurID)
+            // look up the chain to find if the destination system is in the chain of the currency before the source system
+            oneCurDef = ConnectedChains.GetCachedCurrency(oneCur.first);
+
+            if (!oneCurDef.IsValid())
             {
-                oneCurDef = ConnectedChains.GetCachedCurrency(oneCur.first);
-                if (!oneCurDef.IsValid())
+                printf("%s: Invalid currency for export or corrupt chain state\n", __func__);
+                LogPrintf("%s: Invalid currency for export or corrupt chain state\n", __func__);
+                return false;
+            }
+
+            uint160 currencySystemID = (oneCurDef.IsGateway() || oneCurDef.gatewayID == oneCurDef.parent) ?
+                                        oneCurDef.gatewayID :
+                                        oneCurDef.systemID;
+
+            if (currencySystemID == sourceSystemID)
+            {
+                newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
+                continue;
+            }
+            else if (currencySystemID == destSystemID)
+            {
+                exportBurn.valueMap[oneCur.first] += oneCur.second;
+                continue;
+            }
+
+            // the system from which the currency comes is not source or destination
+            CCurrencyDefinition thirdCurSystem;
+
+            do
+            {
+                thirdCurSystem = ConnectedChains.GetCachedCurrency(currencySystemID);
+                if (!thirdCurSystem.IsValid())
                 {
-                    printf("%s: Invalid currency for export or corrupt chain state\n", __func__);
-                    LogPrintf("%s: Invalid currency for export or corrupt chain state\n", __func__);
+                    printf("%s: Invalid currency in origin chain. Index may be corrupt.\n", __func__);
+                    LogPrintf("%s: Invalid currency in origin chain. Index may be corrupt.\n", __func__);
                     return false;
                 }
-                oneCurID = oneCur.first;
-            }
 
-            // if we are exporting a gateway or PBaaS currency back to its system, we do not store it in reserve deposits
-            if (((oneCurDef.IsGateway() || oneCurDef.gatewayID == oneCurDef.parent) && oneCurDef.systemID == sourceSystemID && oneCurDef.gatewayID == destSystemID) ||
-                 (oneCurDef.systemID != sourceSystemID && oneCurDef.systemID == destSystemID))
-            {
-                // we need to burn this currency here, since it will be sent back to where it was originally minted for us to keep
-                // track of on this system
-                exportBurn.valueMap[oneCur.first] += oneCur.second;
+                uint160 thirdCurSystemID = currencySystemID;
 
-                // TODO: if we're exporting to a gateway or other chain, ensure that our export currency is registered for import
-                //
-            }
-            else if (oneCurDef.systemID == sourceSystemID)
+                // get the system ID of the PBaaS chain with the gateway or parent PBaaS chain of the PBaaS chain
+                currencySystemID = thirdCurSystem.IsGateway() ? oneCurDef.systemID : oneCurDef.parent;
+
+                if (currencySystemID == sourceSystemID)
+                {
+                    newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
+                    break;
+                }
+                else if (currencySystemID == destSystemID)
+                {
+                    exportBurn.valueMap[oneCur.first] += oneCur.second;
+                    break;
+                }
+            } while (!currencySystemID.IsNull());
+
+            // if the ultimate parent is null before it is us, then we must assume it is controlled outside our scope
+            // meaning that if we are sending to the source system's launch system, the destination is the controller,
+            // otherwise, source is the controller.
+            if (currencySystemID.IsNull())
             {
-                // exporting from one currency on this system to another currency on this system, store reserve deposits
-                newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
-            }
-            else if (destSystemID != oneCurDef.systemID)
-            {
-                printf("%s: Cannot export from one external currency system or PBaaS chain to another external system\n", __func__);
-                LogPrintf("%s: Cannot export from one external currency system or PBaaS chain to another external system\n", __func__);
-                return false;
+                CCurrencyDefinition sourceSystem = ConnectedChains.GetCachedCurrency(sourceSystemID);
+                if (!sourceSystem.IsValid())
+                {
+                    printf("%s: Invalid source system. Index may be corrupt.\n", __func__);
+                    LogPrintf("%s: Invalid source system. Index may be corrupt.\n", __func__);
+                    return false;
+                }
+
+                // if sending from source system to its launch parent,
+                // consider the destination the controller, so burn
+                if (sourceSystem.launchSystemID == destSystemID)
+                {
+                    exportBurn.valueMap[oneCur.first] += oneCur.second;
+                }
+                else
+                {
+                    newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
+                }
             }
         }
     }

@@ -184,6 +184,20 @@ uint160 GetConditionID(uint160 cid, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
+uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const
+{
+    uint160 retVal;
+    if (TypeNoFlags() == DEST_REGISTERCURRENCY)
+    {
+        CCurrencyDefinition curDef(destination);
+        if (curDef.IsValid())
+        {
+            retVal = CCrossChainRPCData::GetConditionID(CCrossChainRPCData::GetConditionID(UnboundCurrencyExportKey(), curDef.GetID()), exportToSystemID);
+        }
+    }
+    return retVal;
+}
+
 CTxDestination TransferDestinationToDestination(const CTransferDestination &transferDest)
 {
     CTxDestination retDest;
@@ -1167,6 +1181,17 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (rt = CReserveTransfer(vData[0])).IsValid())
             {
                 destinations.insert(CIndexID(rt.ReserveTransferKey()));
+            }
+
+            // if this is a currency export, we return a currency export key to mark that this currency is
+            // now committed to be exported when this block of transfers is exported to the target chain
+            if (rt.IsCurrencyExport() &&  rt.flags & rt.CROSS_SYSTEM && rt.destination.TypeNoFlags() == rt.destination.DEST_REGISTERCURRENCY)
+            {
+                uint160 exportKey = rt.destination.GetBoundCurrencyExportKey(rt.destSystemID);
+                if (!exportKey.IsNull())
+                {
+                    destinations.insert(exportKey);
+                }
             }
             break;
         }

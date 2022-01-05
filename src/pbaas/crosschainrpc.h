@@ -271,6 +271,20 @@ public:
         return "0x" + ethDestID.GetHex();
     }
 
+    static std::string CurrencyExportKeyName()
+    {
+        return "vrsc::system.currency.export";
+    }
+
+    static uint160 UnboundCurrencyExportKey()
+    {
+        static uint160 nameSpace;
+        static uint160 exportKey = CVDXF::GetDataKey(CurrencyExportKeyName(), nameSpace);
+        return exportKey;
+    }
+
+    uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const;
+
     UniValue ToUniValue() const;
 };
 
@@ -717,6 +731,11 @@ public:
         }
     }
 
+    int64_t GetCurrencyImportFee() const
+    {
+        return currencyImportFee;
+    }
+
     // fee amount released at definition
     int64_t LaunchFeeExportShare(uint32_t currencyOptions) const
     {
@@ -801,18 +820,6 @@ public:
     {
         static uint160 nameSpace;
         static uint160 signatureKey = CVDXF::GetDataKey(ExternalCurrencyKeyName(), nameSpace);
-        return signatureKey;
-    }
-
-    static std::string ExportedCurrencyKeyName()
-    {
-        return "vrsc::system.currency.exported";
-    }
-
-    static uint160 ExportedCurrencyKey()
-    {
-        static uint160 nameSpace;
-        static uint160 signatureKey = CVDXF::GetDataKey(ExportedCurrencyKeyName(), nameSpace);
         return signatureKey;
     }
 
@@ -951,6 +958,11 @@ public:
         {
             return idRegistrationFees / (idReferralLevels + 2);
         }
+    }
+
+    int64_t IDImportFee() const
+    {
+        return idImportFees;
     }
 
     static int64_t CalculateRatioOfValue(int64_t value, int64_t ratio);

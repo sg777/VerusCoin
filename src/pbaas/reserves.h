@@ -142,6 +142,8 @@ public:
     }
 };
 
+class CCoinbaseCurrencyState;
+
 class CReserveTransfer : public CTokenOutput
 {
 public:
@@ -160,6 +162,7 @@ public:
         RESERVE_TO_RESERVE = 0x400,         // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
         REFUND = 0x800,                     // this transfer should be refunded, individual property when conversions exceed limits
         IDENTITY_EXPORT = 0x1000,           // this exports a full identity when the next cross-chain leg is processed
+        CURRENCY_EXPORT = 0x2000,           // this exports a currency definition
     };
 
     enum EConstants
@@ -374,6 +377,11 @@ public:
         return flags & IDENTITY_EXPORT;
     }
 
+    bool IsCurrencyExport() const
+    {
+        return flags & CURRENCY_EXPORT;
+    }
+
     CReserveTransfer GetRefundTransfer(bool clearCrossSystem=true) const;
 
     static std::string ReserveTransferKeyName()
@@ -407,7 +415,15 @@ public:
     // the next leg output can enable chaining of conversions and system transfers
     // typically, the txOutputs vector will not get any additional entry unless there is a support
     // definition required, such as full ID or currency definition.
-    bool GetTxOut(const CCurrencyValueMap &reserves, int64_t nativeAmount, CTxOut &txOut, std::vector<CTxOut> &txOutputs, uint32_t height) const;
+    bool GetTxOut(const CCurrencyDefinition &sourceSystem,
+                  const CCurrencyDefinition &destSystem,
+                  const CCurrencyDefinition &destCurrency,
+                  const CCoinbaseCurrencyState &curState,
+                  const CCurrencyValueMap &reserves,
+                  int64_t nativeAmount,
+                  CTxOut &txOut,
+                  std::vector<CTxOut> &txOutputs,
+                  uint32_t height) const;
 };
 
 class CReserveDeposit : public CTokenOutput
