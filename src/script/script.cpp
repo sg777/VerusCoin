@@ -184,6 +184,16 @@ uint160 GetConditionID(uint160 cid, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
+uint160 CTransferDestination::CurrencyExportKeyToSystem(const uint160 &exportToSystemID)
+{
+    return CCrossChainRPCData::GetConditionID(UnboundCurrencyExportKey(), exportToSystemID);
+}
+
+uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID)
+{
+    return CCrossChainRPCData::GetConditionID(CurrencyExportKeyToSystem(exportToSystemID), curToExportID);;
+}
+
 uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const
 {
     uint160 retVal;
@@ -192,7 +202,7 @@ uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToS
         CCurrencyDefinition curDef(destination);
         if (curDef.IsValid())
         {
-            retVal = CCrossChainRPCData::GetConditionID(CCrossChainRPCData::GetConditionID(UnboundCurrencyExportKey(), curDef.GetID()), exportToSystemID);
+            retVal = CCrossChainRPCData::GetConditionID(CurrencyExportKeyToSystem(exportToSystemID), curDef.GetID());
         }
     }
     return retVal;
@@ -1185,13 +1195,13 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
 
             // if this is a currency export, we return a currency export key to mark that this currency is
             // now committed to be exported when this block of transfers is exported to the target chain
-            if (rt.IsCurrencyExport() &&  rt.flags & rt.CROSS_SYSTEM && rt.destination.TypeNoFlags() == rt.destination.DEST_REGISTERCURRENCY)
+            if (rt.IsCurrencyExport() && 
+                rt.flags & rt.CROSS_SYSTEM &&
+                !rt.destSystemID.IsNull() &&
+                rt.destination.TypeNoFlags() == rt.destination.DEST_REGISTERCURRENCY)
             {
-                uint160 exportKey = rt.destination.GetBoundCurrencyExportKey(rt.destSystemID);
-                if (!exportKey.IsNull())
-                {
-                    destinations.insert(exportKey);
-                }
+                destinations.insert(rt.destination.CurrencyExportKeyToSystem(rt.destSystemID));
+                destinations.insert(rt.destination.CurrencyExportKeyToSystem(rt.destination.GetBoundCurrencyExportKey(rt.destSystemID)));
             }
             break;
         }
@@ -1219,16 +1229,37 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
 
             if (vData.size() && (ccx = CCrossChainExport(vData[0])).IsValid())
             {
-                // when looking for a currency, not system, we don't need to record system thread exports
-                if (!ccx.IsSystemThreadExport())
+                if (ccx.sourceSystemID != ASSETCHAINS_CHAINID)
                 {
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destCurrencyID, ccx.CurrencyExportKey())));
+                    // if cross-chain supplemental, index any currency exports in the reserve transfers
+                    // as being available for export to the source system
+                    if (ccx.reserveTransfers.size())
+                    {
+                        for (auto &oneRT : ccx.reserveTransfers)
+                        {
+                            if (oneRT.IsCurrencyExport())
+                            {
+                                // store the unbound and bound currency export index
+                                // for each currency
+                                destinations.insert(CTransferDestination::GetBoundCurrencyExportKey(ccx.sourceSystemID, oneRT.FirstCurrency()));
+                                destinations.insert(CTransferDestination::CurrencyExportKeyToSystem(ccx.sourceSystemID));
+                            }
+                        }
+                    }
                 }
-                // we will find one of these either in its own exports to another system or after any export to a currency
-                // on that system. we record this for all system exports, whether system thread or not
-                if (ccx.destCurrencyID == ccx.destSystemID || ccx.IsSystemThreadExport())
+                else
                 {
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destSystemID, ccx.SystemExportKey())));
+                    // when looking for a currency, not system, we don't need to record system thread exports
+                    if (!ccx.IsSystemThreadExport())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destCurrencyID, ccx.CurrencyExportKey())));
+                    }
+                    // we will find one of these either in its own exports to another system or after any export to a currency
+                    // on that system. we record this for all system exports, whether system thread or not
+                    if (ccx.destCurrencyID == ccx.destSystemID || ccx.IsSystemThreadExport())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ccx.destSystemID, ccx.SystemExportKey())));
+                    }
                 }
             }
             break;

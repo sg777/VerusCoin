@@ -283,6 +283,8 @@ public:
         return exportKey;
     }
 
+    static uint160 CurrencyExportKeyToSystem(const uint160 &exportToSystemID);
+    static uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID);
     uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const;
 
     UniValue ToUniValue() const;
@@ -385,7 +387,7 @@ public:
         OPTION_ID_REFERRALS = 8,            // if set, this chain supports referrals
         OPTION_ID_REFERRALREQUIRED = 0x10,  // if set, this chain requires referrals
         OPTION_TOKEN = 0x20,                // if set, this is a token, not a native currency
-        OPTION_RESERVED = 0x40,
+        OPTION_SINGLECURRENCY = 0x40,       // for PBaaS chains or gateways to potentially restrict to single currency
         OPTION_GATEWAY = 0x80,              // if set, this routes external currencies
         OPTION_PBAAS = 0x100,               // this is a PBaaS chain definition
         OPTION_PBAAS_CONVERTER = 0x200,     // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
@@ -870,6 +872,11 @@ public:
     bool IsPBaaSChain() const
     {
         return ChainOptions() & OPTION_PBAAS;
+    }
+
+    bool IsMultiCurrency() const
+    {
+        return !(ChainOptions() & OPTION_SINGLECURRENCY);
     }
 
     bool IsPBaaSConverter() const

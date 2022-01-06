@@ -17,6 +17,7 @@
 #include "transaction_builder.h"
 
 CConnectedChains ConnectedChains;
+extern uint32_t KOMODO_STOPAT;
 
 bool IsVerusActive()
 {
@@ -1054,6 +1055,199 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
     return true;
 }
 
+// return currencies that are registered and may be exported to the specified system
+std::set<uint160> ValidExportCurrencies(const CCurrencyDefinition &systemDest, uint32_t height)
+{
+    std::set<uint160> retVal;
+    uint160 sysID = systemDest.GetID();
+    // if this gateway or PBaaS chain was launched from this system
+    if ((systemDest.IsPBaaSChain() || systemDest.IsGateway()) &&
+        sysID != ASSETCHAINS_CHAINID &&
+        (systemDest.launchSystemID == ASSETCHAINS_CHAINID || ConnectedChains.ThisChain().launchSystemID == sysID))
+    {
+        // we launched the system we are checking, or we were launched by the system we are checking
+        // both cases involve the same lookups for the baseline. all connected, multi-currency systems
+        // can accept this currency and the system's native currency
+        retVal.insert(sysID);
+        if (systemDest.IsMultiCurrency())
+        {
+            retVal.insert(ASSETCHAINS_CHAINID);
+            uint160 converterID = systemDest.GatewayConverterID();
+            if (!converterID.IsNull())
+            {
+                CCurrencyDefinition converter = ConnectedChains.GetCachedCurrency(converterID);
+                if (converter.IsValid() && converter.IsFractional())
+                {
+                    retVal.insert(converterID);
+                    for (auto &oneCurID : converter.currencies)
+                    {
+                        retVal.insert(oneCurID);
+                    }
+                }
+            }
+            // now look for exported currency definitions
+            std::vector<CAddressIndexDbEntry> addresses;
+            // this will always validate correctly, even if the index for this block is present, as we only look up to height - 1
+            if (GetAddressIndex(CTransferDestination::CurrencyExportKeyToSystem(sysID), CScript::P2IDX, addresses, 0, height - 1) &&
+                addresses.size())
+            {
+                for (auto &oneIdx : addresses)
+                {
+                    uint256 blkHash;
+                    CTransaction rtTx;
+
+                    if (!myGetTransaction(oneIdx.first.txhash, rtTx, blkHash) || rtTx.vout.size() <= oneIdx.first.index)
+                    {
+                        LogPrintf("%s: ERROR - ACTION REQUIRED: Invalid entry in transaction index, should not move forward as a node. Please bootstrap, sync from scratch, or reindex to continue\n", __func__);
+                        printf("%s: ERROR - ACTION REQUIRED: Invalid entry in transaction index, should not move forward as a node. Please bootstrap, sync from scratch, or reindex to continue\n", __func__);
+                        KOMODO_STOPAT = chainActive.Height();
+                        return std::set<uint160>();
+                    }
+                    COptCCParams p;
+                    CReserveTransfer rt;
+                    CCurrencyDefinition exportCur;
+                    CCrossChainExport ccx;
+                    if (rtTx.vout[oneIdx.first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_RESERVE_TRANSFER &&
+                        p.vData.size() &&
+                        (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                        rt.IsCurrencyExport() &&
+                        rt.IsCrossSystem() &&
+                        rt.destSystemID == sysID &&
+                        (exportCur = CCurrencyDefinition(rt.destination.destination)).IsValid())
+                    {
+                        retVal.insert(exportCur.GetID());
+                    }
+                    else if (p.IsValid() &&
+                             p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                             p.vData.size() &&
+                             (ccx = CCrossChainExport(p.vData[0])).IsValid() &&
+                             ccx.sourceSystemID != ASSETCHAINS_CHAINID &&
+                             ccx.reserveTransfers.size())
+                    {
+                        // look through reserve transfers for export imports
+                        for (auto &oneRT : ccx.reserveTransfers)
+                        {
+                            if (oneRT.IsCurrencyExport())
+                            {
+                                // store the unbound and bound currency export index
+                                // for each currency
+                                retVal.insert(oneRT.FirstCurrency());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return retVal;
+}
+
+// return currencies that are registered and may be exported to the specified system
+bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 &exportCurrencyID, uint32_t height)
+{
+    std::set<uint160> retVal;
+    uint160 sysID = systemDest.GetID();
+
+    // if this gateway or PBaaS chain was launched from this system
+    if ((systemDest.IsPBaaSChain() || systemDest.IsGateway()) &&
+        sysID != ASSETCHAINS_CHAINID &&
+        (systemDest.launchSystemID == ASSETCHAINS_CHAINID || ConnectedChains.ThisChain().launchSystemID == sysID))
+    {
+        if (exportCurrencyID == sysID)
+        {
+            return true;
+        }
+        if (!systemDest.IsMultiCurrency())
+        {
+            return false;
+        }
+        if (exportCurrencyID == ASSETCHAINS_CHAINID)
+        {
+            return true;
+        }
+
+        uint160 converterID = systemDest.GatewayConverterID();
+        if (converterID.IsNull())
+        {
+            return false;
+        }
+
+        CCurrencyDefinition converter = ConnectedChains.GetCachedCurrency(converterID);
+        if (converter.IsValid() && converter.IsFractional())
+        {
+            if (exportCurrencyID == converterID)
+            {
+                return true;
+            }
+
+            for (auto &oneCurID : converter.currencies)
+            {
+                if (exportCurrencyID == oneCurID)
+                {
+                    return true;
+                }
+            }
+        }
+
+        // now look for exported currency definitions
+        std::vector<CAddressIndexDbEntry> addresses;
+        // this will always validate correctly, even if the index for this block is present, as we only look up to height - 1
+        if (GetAddressIndex(CTransferDestination::GetBoundCurrencyExportKey(sysID, exportCurrencyID), CScript::P2IDX, addresses, 0, height - 1) &&
+            addresses.size())
+        {
+            for (auto &oneIdx : addresses)
+            {
+                uint256 blkHash;
+                CTransaction rtTx;
+
+                if (!myGetTransaction(oneIdx.first.txhash, rtTx, blkHash) || rtTx.vout.size() <= oneIdx.first.index)
+                {
+                    LogPrintf("%s: ERROR - ACTION REQUIRED: Invalid entry in transaction index, should not move forward as a node. Please bootstrap, sync from scratch, or reindex to continue\n", __func__);
+                    printf("%s: ERROR - ACTION REQUIRED: Invalid entry in transaction index, should not move forward as a node. Please bootstrap, sync from scratch, or reindex to continue\n", __func__);
+                    KOMODO_STOPAT = chainActive.Height();
+                    return false;
+                }
+                COptCCParams p;
+                CReserveTransfer rt;
+                CCurrencyDefinition exportCur;
+                CCrossChainExport ccx;
+                if (rtTx.vout[oneIdx.first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_RESERVE_TRANSFER &&
+                    p.vData.size() &&
+                    (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                    rt.IsCurrencyExport() &&
+                    rt.IsCrossSystem() &&
+                    rt.destSystemID == sysID &&
+                    (exportCur = CCurrencyDefinition(rt.destination.destination)).IsValid() &&
+                    exportCur.GetID() == exportCurrencyID)
+                {
+                    return true;
+                }
+                else if (p.IsValid() &&
+                         p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                         p.vData.size() &&
+                         (ccx = CCrossChainExport(p.vData[0])).IsValid() &&
+                         ccx.sourceSystemID != ASSETCHAINS_CHAINID &&
+                         ccx.reserveTransfers.size())
+                {
+                    // look through reserve transfers for export imports
+                    for (auto &oneRT : ccx.reserveTransfers)
+                    {
+                        if (oneRT.IsCurrencyExport() && oneRT.FirstCurrency() == exportCurrencyID)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
 bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     // do a basic sanity check that this reserve transfer's values are consistent
@@ -1170,9 +1364,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 LogPrintf("%s: Mismatched destination system in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Mismatched destination system in reserve transfer " + rt.ToUniValue().write(1,2));
             }
-            // TODO:HARDENING - ensure that the source currency can be sent to the destination system
-            // in order for that to be possible, the source currency must have inherent export capability or
-            // be previously exported
         }
 
         if (rt.IsCurrencyExport())
@@ -1195,8 +1386,25 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 LogPrintf("%s: Mismatched export and currency registration in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Mismatched export and currency registration in reserve transfer " + rt.ToUniValue().write(1,2));
             }
+
+            if (!systemDest.IsMultiCurrency() || IsValidExportCurrency(systemDest, rt.FirstCurrency(), height))
+            {
+                // if destination system is not multicurrency or currency is already a valid export currency, invalid
+                LogPrintf("%s: Unnecessary currency definition export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Unnecessary currency definition export in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
         }
-        else if (rt.IsIdentityExport())
+        else
+        {
+            if (!IsValidExportCurrency(systemDest, rt.FirstCurrency(), height))
+            {
+                // if destination system is not multicurrency or currency is already a valid export currency, invalid
+                LogPrintf("%s: Invalid currency export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Invalid currency export export in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+        }
+        
+        if (rt.IsIdentityExport())
         {
             CIdentity idToExport;
             // first currency must be valid and equal the exported currency
