@@ -4595,8 +4595,8 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             "   \"hextx\" : \"hex\"         (string) The hexadecimal, serialized transaction if (returntx) is true\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("takeoffer", "fromaddress '{\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\"}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}}' (returntx) (feeamount)")
-            + HelpExampleRpc("takeoffer", "fromaddress {\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\"}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}} (returntx) (feeamount)")
+            + HelpExampleCli("takeoffer", "fromaddress '{\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\":...}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}}' (returntx) (feeamount)")
+            + HelpExampleRpc("takeoffer", "fromaddress {\"txid\":\"txid\" | \"tx\":\"hextx\", \"deliver\":\"fullidnameoriaddresstodeliver\" | {\"currency\":\"currencynameorid\",\"amount\":...}, \"accept\":{\"address\":\"addressorid\",\"currency\":\"currencynameorid\",\"amount\"} | {identitydefinition}} (returntx) (feeamount)")
         );
     }
 
