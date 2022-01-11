@@ -251,7 +251,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     CAmount feeEquivalent = !oneTransfer.nFees ? 0 : CCurrencyState::NativeToReserveRaw(oneTransfer.nFees, conversionMap.valueMap[oneTransfer.feeCurrencyID]);
                     if (oneTransfer.IsConversion())
                     {
-                        feeEquivalent += CCurrencyState::NativeToReserveRaw(oneTransfer.ConversionFee()[oneTransfer.FirstCurrency()], 
+                        feeEquivalent += CCurrencyState::NativeToReserveRaw(oneTransfer.ConversionFee().valueMap[oneTransfer.FirstCurrency()], 
                                                                             conversionMap.valueMap[oneTransfer.FirstCurrency()]);
                     }
 
