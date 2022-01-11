@@ -755,6 +755,23 @@ public:
         return key;
     }
 
+    CCrossChainImport GetPriorImport(const CTransaction &tx,
+                                     int32_t outNum,
+                                     CValidationState &state,
+                                     uint32_t height,
+                                     CTransaction *priorTx=nullptr,
+                                     int32_t *priorOutNum=nullptr) const;
+
+    CCurrencyValueMap GetBestPriorConversions(const CTransaction &tx,
+                                              int32_t outNum,
+                                              const uint160 &converterCurrencyID,
+                                              const uint160 &targetCurrencyID,
+                                              const CCoinbaseCurrencyState &curConverterState,
+                                              CValidationState &state,
+                                              uint32_t height,
+                                              uint32_t minHeight,
+                                              uint32_t maxHeight) const;
+
     // returns false if the information is unavailable, indicating an invalid, out of context, or
     // incomplete import transaction
     bool GetImportInfo(const CTransaction &importTx,
@@ -1125,8 +1142,6 @@ public:
     int64_t initialSupply;                  // initial premine + pre-converted coins
     int64_t emitted;                        // emitted coins reduce the reserve ratio and are used to calculate current ratio
     CAmount supply;                         // current supply: total of initial, all emitted, and all purchased coins
-
-    //std::vector<CAmount> Reserves; // reserve currencies amounts controlled by this fractional chain - only present for reserve currencies, currency IDs are in chain definition
 
     CCurrencyState() : version(VERSION_INVALID), flags(0), initialSupply(0), emitted(0), supply(0) {}
 
@@ -1561,6 +1576,9 @@ public:
     {
         return CCrossChainRPCData::GetConditionID(currencyID, CurrencyConverterKey());
     }
+
+    int64_t TargetConversionPrice(const uint160 &sourceCurrencyID, const uint160 &targetCurrencyID) const;
+    CCurrencyValueMap TargetConversionPrices(const uint160 &targetCurrencyID) const;
 };
 
 class CReserveInOuts
