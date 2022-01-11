@@ -655,44 +655,132 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
     // get the prior import
     CCrossChainImport cci;
     CCurrencyValueMap retVal;
-    CTransaction curTx = tx;
     CPBaaSNotarization importNot;
+
+    CCrossChainImport priorImport, sysCCI;
+
+    CTransaction lastTx = tx;
+    int32_t lastOutNum = outNum;
+    int32_t sysCCIOut, importNotarizationOut, eOutStart = -1, eOutEnd;
+    CCrossChainExport ccx;
+    CCoinbaseCurrencyState curState = converterState;
+    std::vector<CReserveTransfer> reserveTransfers;
+
+    uint160 fromSystem = cci.sourceSystemID;
+
+    if (!GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
+    {
+        return retVal;
+    }
+
+    // if this is from another chain, we need to get the actual notarization used for proof, validate the proof root, and get
+    // prices from that, not the updated prices from the actual import
+    if (fromSystem != ASSETCHAINS_CHAINID)
+    {
+        CNotaryEvidence evidence;
+        CPBaaSNotarization altNot;
+        COptCCParams p, q;
+        CTransaction lastNotTx;
+        uint256 blockHash;
+        if (eOutStart > 0 &&
+            lastTx.vout[eOutStart].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.evalCode == EVAL_NOTARY_EVIDENCE &&
+            p.vData.size() &&
+            (evidence = CNotaryEvidence(p.vData[0])).IsValid() &&
+            evidence.IsPartialTxProof() &&
+            evidence.evidence.size() &&
+            evidence.output.IsValid() &&
+            !evidence.output.IsOnSameTransaction() &&
+            myGetTransaction(evidence.output.hash, lastNotTx, blockHash) &&
+            lastNotTx.vout.size() > evidence.output.n &&
+            lastNotTx.vout[evidence.output.n].scriptPubKey.IsPayToCryptoCondition(q) &&
+            q.IsValid() &&
+            (q.evalCode == EVAL_EARNEDNOTARIZATION || q.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+            (altNot = CPBaaSNotarization(q.vData[0])).IsValid())
+        {
+            if (altNot.currencyID == converterCurrencyID)
+            {
+                curState = altNot.currencyState;
+            }
+            else if (altNot.currencyStates.count(converterCurrencyID))
+            {
+                curState = altNot.currencyStates[converterCurrencyID];
+            }
+        }
+        else if (!cci.IsDefinitionImport() && height != 1)
+        {
+            return retVal;
+        }
+    }
+
+    // go back until we get past the min height and get the lowest price of all currencies from all imports
+    // the idea is that if the source system used a particular state as an import here, it would have had that one
+    // as at least available for its calculation and if there is a more recent, better one available, it could have
+    // that too
 
     // get best value according to the current converter
     if (converterState.IsPrelaunch() ||
         !converterState.IsValid() ||
         !converterState.IsFractional() ||
-        !(retVal = converterState.TargetConversionPrices(targetCurrencyID)).valueMap.size())
+        !(retVal = curState.TargetConversionPrices(targetCurrencyID)).valueMap.size())
     {
         return retVal;
     }
 
-    // now, go back until we get past the min height and get the lowest price of all currencies from all imports
-    // the idea is that if the source system used a particular state as an import here, it would have had that one
-    // as at least available for its calculation and if there is a more recent, better one available, it could have
-    // that too
-    CCrossChainImport priorImport, sysCCI;
-
-    CTransaction lastTx = tx;
-    int32_t lastOutNum = outNum;
-    int32_t sysCCIOut, importNotarizationOut, eOutStart, eOutEnd;
-    CCrossChainExport ccx;
-    CPBaaSNotarization curNot;
-    std::vector<CReserveTransfer> reserveTransfers;
-
     while ((priorImport = GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum)).IsValid() &&
-            priorImport.GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, curNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
+           priorImport.GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
     {
+        // if this is an import from another system, it doesn't matter unless we only care about this one
+        if (fromSystem != ASSETCHAINS_CHAINID)
+        {
+            CNotaryEvidence evidence;
+            CPBaaSNotarization altNot;
+            COptCCParams p, q;
+            CTransaction lastNotTx;
+            uint256 blockHash;
+            if (priorImport.sourceSystemID == fromSystem &&
+                eOutStart > 0 &&
+                lastTx.vout[eOutStart].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_NOTARY_EVIDENCE &&
+                p.vData.size() &&
+                (evidence = CNotaryEvidence(p.vData[0])).IsValid() &&
+                evidence.IsPartialTxProof() &&
+                evidence.evidence.size() &&
+                evidence.output.IsValid() &&
+                !evidence.output.IsOnSameTransaction() &&
+                myGetTransaction(evidence.output.hash, lastNotTx, blockHash) &&
+                lastNotTx.vout.size() > evidence.output.n &&
+                lastNotTx.vout[evidence.output.n].scriptPubKey.IsPayToCryptoCondition(q) &&
+                q.IsValid() &&
+                (q.evalCode == EVAL_EARNEDNOTARIZATION || q.evalCode == EVAL_ACCEPTEDNOTARIZATION))
+            {
+                importNot = CPBaaSNotarization(q.vData[0]);
+                if (!importNot.IsValid())
+                {
+                    break;
+                }
+            }
+        }
+
+        if (importNot.currencyID == converterCurrencyID)
+        {
+            curState = importNot.currencyState;
+        }
+        else if (importNot.currencyStates.count(converterCurrencyID))
+        {
+            curState = importNot.currencyStates[converterCurrencyID];
+        }
+
         // if the target currency is another system, we need to check the proof information as the height
-        uint32_t checkHeight = curNot.notarizationHeight;
+        uint32_t checkHeight = importNot.notarizationHeight;
         if (checkHeight <= maxHeight &&
             (importNot.currencyState.currencyID == converterCurrencyID ||
             importNot.currencyStates.count(converterCurrencyID)))
         {
             // get final prices
-            auto priorConversionMap = importNot.currencyState.currencyID == converterCurrencyID ?
-                                        importNot.currencyState.TargetConversionPrices(targetCurrencyID) :
-                                        importNot.currencyStates[converterCurrencyID].TargetConversionPrices(targetCurrencyID);
+            auto priorConversionMap = curState.TargetConversionPrices(targetCurrencyID);
             if (priorConversionMap.valueMap.size())
             {
                 // get best prices
