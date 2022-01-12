@@ -6961,35 +6961,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             "Cannot send to import system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") that is in a refunding state");
                     }
 
-                    validCurrencies.insert(ASSETCHAINS_CHAINID);
-                    validCurrencies.insert(offChainID);
-
-                    for (auto &oneValidCurrency : nonVerusChainDef.currencies)
-                    {
-                        validCurrencies.insert(oneValidCurrency);
-                    }
-                    if ((nonVerusChainDef.IsPBaaSChain() || nonVerusChainDef.IsGateway()) && !nonVerusChainDef.GatewayConverterID().IsNull())
-                    {
-                        CCurrencyDefinition gatewayDef = ConnectedChains.GetCachedCurrency(nonVerusChainDef.GatewayConverterID());
-                        if (!gatewayDef.IsValid())
-                        {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER,
-                                "Error retrieving gateway currency for " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ")");
-                        }
-                        validCurrencies.insert(nonVerusChainDef.GatewayConverterID());
-                        for (auto &oneValidCurrency : gatewayDef.currencies)
-                        {
-                            validCurrencies.insert(oneValidCurrency);
-                        }
-                    }
-                    for (auto &oneCurrencyState : cnd.vtx[cnd.lastConfirmed].second.currencyStates)
-                    {
-                        validCurrencies.insert(oneCurrencyState.second.GetID());
-                        for (auto &oneReserve : oneCurrencyState.second.currencies)
-                        {
-                            validCurrencies.insert(oneReserve);
-                        }
-                    }
+                    validCurrencies = ValidExportCurrencies(offChainDef, height + 1);
 
                     if (!validCurrencies.count(sourceCurrencyID))
                     {
@@ -7054,38 +7026,29 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     {
                         // if we have pricing for converting fees, we add all convertible currencies to valid fee currencies
                         CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
+                        CCurrencyValueMap feeConversionPrices;
                         if (lastConfirmedNotarization.currencyStates.count(convertToCurrencyID))
                         {
                             // get all currencies that may be converted through the converter to valid fees
                             validFeeCurrencies = BaseBridgeCurrencies(offChainDef, height + 1, true);
-
-                            CCoinbaseCurrencyState &pricingState = lastConfirmedNotarization.currencyStates[convertToCurrencyID];
-                            CCurrencyValueMap pricesInReserve = CCurrencyValueMap(pricingState.currencies, pricingState.PricesInReserve());
-
-                            // calculate the price of the fee currency in the source and destination currencies
-                            int64_t sourcePriceInFeeCur = CCurrencyState::ReserveToNativeRaw(SATOSHIDEN, pricesInReserve.valueMap[ASSETCHAINS_CHAINID]);
-                            int64_t destPriceInFeeCur = CCurrencyState::ReserveToNativeRaw(SATOSHIDEN, pricesInReserve.valueMap[offChainID]);
-
-                            if (feeCurrencyID != offChainID)
+                            CCoinbaseCurrencyState &priceState = lastConfirmedNotarization.currencyStates[convertToCurrencyID];
+                            feeConversionPrices = priceState.TargetConversionPricesReverse(offChainID);
+                            for (auto &oneCur : validFeeCurrencies)
                             {
-                                // calculate the price of the fee currency in the source and destination currencies
-                                // reciprocal of price is conversion of converter in fee currency
-                                int64_t sourcePriceInFeeCur = CCurrencyState::ReserveToNativeRaw(SATOSHIDEN, pricesInReserve.valueMap[ASSETCHAINS_CHAINID]);
-                                int64_t destPriceInFeeCur = CCurrencyState::ReserveToNativeRaw(SATOSHIDEN, pricesInReserve.valueMap[offChainID]);
-
-                                // if not converter, reverse our way to the price of needed fee currency in provided fee currency
-                                if (feeCurrencyID != convertToCurrencyID)
+                                // if we have a valid currency with no conversion, consider the conversion to be 1
+                                if (!feeConversionPrices.valueMap.count(oneCur))
                                 {
-                                    // reserve to reserve price calculation
-                                    sourcePriceInFeeCur = feeCurrencyID == ASSETCHAINS_CHAINID ?
-                                                            SATOSHIDEN :
-                                                            CCurrencyState::NativeToReserveRaw(sourcePriceInFeeCur, pricesInReserve.valueMap[feeCurrencyID]);
-                                    destPriceInFeeCur = feeCurrencyID == offChainID ?
-                                                            SATOSHIDEN :
-                                                            CCurrencyState::NativeToReserveRaw(destPriceInFeeCur, pricesInReserve.valueMap[feeCurrencyID]);
+                                    feeConversionPrices.valueMap[oneCur] = SATOSHIDEN;
                                 }
                             }
-                        }                        
+                        }        
+                        else
+                        {
+                            for (auto &oneCur : validFeeCurrencies)
+                            {
+                                feeConversionPrices.valueMap[oneCur] = SATOSHIDEN;
+                            }
+                        }                
 
                         if (!validFeeCurrencies.count(feeCurrencyID))
                         {
@@ -7094,6 +7057,14 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         // determine required fees
                         CAmount requiredFees;
+                        if (feeConversionPrices.valueMap.count(thisChainID))
+                        {
+                            sourcePriceInFeeCur = feeConversionPrices.valueMap[thisChainID];
+                        }
+                        if (feeConversionPrices.valueMap.count(offChainID))
+                        {
+                            destPriceInFeeCur = feeConversionPrices.valueMap[offChainID];
+                        }
                         if (exportCurrency)
                         {
                             // get source price for export and dest price for import to ensure we have enough fee currency
@@ -7108,7 +7079,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetTransactionImportFee(), destPriceInFeeCur);
                         }
-                        requiredFees = CCurrencyState::ReserveToNativeRaw(thisChain.GetTransactionExportFee(), sourcePriceInFeeCur);
 
                         if (convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID)
                         {
@@ -7162,7 +7132,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert fees " + EncodeDestination(CIdentityID(feeCurrencyID)) + " to " + destSystemDef.name + ". 3");
                         }
                         // converting from reserve to a fractional of that reserve
-                        auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
+                        auto fees = requiredFees + CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), destPriceInFeeCur);
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID, 
                                                                sourceAmount, 
@@ -7212,7 +7182,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         requiredFees = CCurrencyState::ReserveToNativeRaw(thisChain.GetTransactionExportFee(), sourcePriceInFeeCur);
 
                         flags |= CReserveTransfer::CROSS_SYSTEM;
-                        auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
+                        auto fees = requiredFees + CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), destPriceInFeeCur);
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID, 
                                                                sourceAmount, 

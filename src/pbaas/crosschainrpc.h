@@ -748,6 +748,11 @@ public:
         return transactionExportFee;
     }
 
+    int64_t GetTransactionTransferFee() const
+    {
+        return TRANSACTION_TRANSFER_FEE;
+    }
+
     // fee amount released at definition
     int64_t LaunchFeeExportShare(uint32_t currencyOptions) const
     {
