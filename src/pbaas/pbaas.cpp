@@ -1352,6 +1352,13 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
     std::set<uint160> retVal;
     uint160 sysID = systemDest.GetID();
 
+    // assume the currency to export will be validity checked elsewhere,
+    // if we are not exporting off chain, all valid currencies are OK
+    if (sysID == ASSETCHAINS_CHAINID)
+    {
+        return true;
+    }
+
     // if this gateway or PBaaS chain was launched from this system
     if ((systemDest.IsPBaaSChain() || systemDest.IsGateway()) &&
         sysID != ASSETCHAINS_CHAINID &&
