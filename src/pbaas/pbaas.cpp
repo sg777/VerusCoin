@@ -281,6 +281,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         }
                     }
                 }
+                return true;
             }
             else
             {
