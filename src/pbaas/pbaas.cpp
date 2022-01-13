@@ -280,8 +280,16 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             return state.Error("Insufficient fee for transaction in import: " + cci.ToUniValue().write(1,2));
                         }
                     }
+                    else
+                    {
+                        // import distributes both export and import fees
+                        if (feeEquivalent < ConnectedChains.ThisChain().GetTransactionTransferFee())
+                        {
+                            LogPrintf("%s: Insufficient fee for transaction transfer in import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
+                            return state.Error("Insufficient fee for transaction transfer in import: " + cci.ToUniValue().write(1,2));
+                        }
+                    }
                 }
-                return true;
             }
             else
             {
