@@ -405,8 +405,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
     pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
     currencyImportFee(CURRENCY_IMPORT_FEE),
-    transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
-    transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
+    transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1)
 {
     try
     {
@@ -857,8 +857,8 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
     currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
     pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
     currencyImportFee(CURRENCY_IMPORT_FEE),
-    transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
-    transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
+    transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1)
 {
     name = boost::to_upper_copy(CleanName(currencyName, parent));
     if (parent.IsNull())

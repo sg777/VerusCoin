@@ -364,7 +364,8 @@ public:
 
     enum ELimitsDefaults
     {
-        TRANSACTION_TRANSFER_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
+        TRANSACTION_CROSSCHAIN_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
+        TRANSACTION_TRANSFER_FEE = 20000,   // 0.0002 per same chain transfer total, chain's accept notary currency or have converter
         CURRENCY_REGISTRATION_FEE = 20000000000, // default 100 to register a currency
         PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000, // default 10000 to register and launch a PBaaS chain
         CURRENCY_IMPORT_FEE = 2000000000,   // default 100 to import a currency
@@ -509,8 +510,8 @@ public:
                             currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
                             pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
                             currencyImportFee(CURRENCY_IMPORT_FEE),
-                            transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
-                            transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
+                            transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+                            transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1)
     {}
 
     CCurrencyDefinition(const UniValue &obj);
@@ -534,7 +535,7 @@ public:
                         const std::vector<int64_t> &chainRewards, const std::vector<int64_t> &chainRewardsDecay,
                         const std::vector<int32_t> &chainHalving, const std::vector<int32_t> &chainEraEnd,
                         const std::string &LaunchGatewayName,
-                        int64_t TransactionTransferFee=TRANSACTION_TRANSFER_FEE, int64_t CurrencyRegistrationFee=CURRENCY_REGISTRATION_FEE,
+                        int64_t TransactionTransferFee=TRANSACTION_CROSSCHAIN_FEE, int64_t CurrencyRegistrationFee=CURRENCY_REGISTRATION_FEE,
                         int64_t PBaaSSystemRegistrationFee=PBAAS_SYSTEM_LAUNCH_FEE,
                         int64_t CurrencyImportFee=CURRENCY_IMPORT_FEE, int64_t IDRegistrationAmount=IDENTITY_REGISTRATION_FEE, 
                         int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE,
