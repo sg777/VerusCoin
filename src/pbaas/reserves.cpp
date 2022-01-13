@@ -704,7 +704,7 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
     CCoinbaseCurrencyState curState = converterState;
     std::vector<CReserveTransfer> reserveTransfers;
 
-    uint160 fromSystem = cci.sourceSystemID;
+    uint160 fromSystem = sourceSystemID;
 
     if (!GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
     {
