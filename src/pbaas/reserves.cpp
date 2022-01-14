@@ -3286,7 +3286,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     {
                         if (oneCur.first == systemDestID)
                         {
-                            nativeIn += explicitFees;
+                            nativeIn += oneCur.second;
                         }
                         else
                         {
@@ -3299,7 +3299,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     {
                         if (oneCur.first == systemDestID)
                         {
-                            nativeIn += explicitFees;
+                            nativeIn += oneCur.second;
                         }
                         else
                         {
@@ -3307,6 +3307,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             AddReserveInput(oneCur.first, oneCur.second);
                         }
                     }
+
+                    gatewayDepositsIn += newGatewayDeposits;
+                    importedCurrency += newDepositCurrencies;
 
                     // if this currency is under control of the gateway, it is minted on the way in, otherwise, it will be
                     // on the gateway's reserve deposits, which can be spent by imports from the gateway's converter
