@@ -273,7 +273,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             return state.Error("Insufficient fee for currency import: " + cci.ToUniValue().write(1,2));
                         }
                     }
-                    else if (!cci.IsSameChain())
+                    else if (!cci.IsSameChain() && !oneTransfer.IsPreConversion())
                     {
                         // import distributes both export and import fees
                         if (feeEquivalent < ConnectedChains.ThisChain().GetTransactionImportFee())
