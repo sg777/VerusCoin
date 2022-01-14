@@ -188,12 +188,14 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 conversionMap.valueMap[ASSETCHAINS_CHAINID] = SATOSHIDEN;
 
                 CCurrencyDefinition importingToDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID);
-                if (!importingToDef.IsValid() || importingToDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                if (!importingToDef.IsValid() || !((notarization.IsRefunding() && importingToDef.launchSystemID == ASSETCHAINS_CHAINID) ||
+                                                   importingToDef.SystemOrGatewayID() == ASSETCHAINS_CHAINID))
                 {
                     LogPrintf("%s: Unable to retrieve currency for import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
                     return state.Error("Unable to retrieve currency for import: " + cci.ToUniValue().write(1,2));
                 }
-                if (importingToDef.IsFractional() &&
+                if (!notarization.IsRefunding() &&
+                    importingToDef.IsFractional() &&
                     (notarization.currencyID == cci.importCurrencyID || notarization.currencyStates.count(cci.importCurrencyID)))
                 {
                     auto currencyMap = importingToDef.GetCurrenciesMap();
