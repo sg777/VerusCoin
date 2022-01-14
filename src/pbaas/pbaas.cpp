@@ -154,7 +154,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             cci = CCrossChainImport(tx.vout[outNum - 1].scriptPubKey);
             if (!cci.IsValid() ||
                 cci.sourceSystemID != sysCCI.sourceSystemID ||
-                cci.importCurrencyID != sysCCI.sourceSystemID)
+                sysCCI.importCurrencyID != sysCCI.sourceSystemID)
             {
                 LogPrintf("%s: Invalid base import from system import: %s\n", __func__, sysCCI.ToUniValue().write(1,2).c_str());
                 return state.Error("Invalid base import from system import: " + sysCCI.ToUniValue().write(1,2));
