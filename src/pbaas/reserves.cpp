@@ -470,7 +470,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             CTransaction exportTx;
             p = COptCCParams();
             if (!(!evidence.evidence[0].GetPartialTransaction(exportTx).IsNull() &&
-                evidence.evidence[0].TransactionHash() == exportTxId &&
+                evidence.evidence[0].TransactionHash() == pBaseImport->exportTxId &&
                 exportTx.vout.size() > pBaseImport->exportTxOutNum &&
                 exportTx.vout[pBaseImport->exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
