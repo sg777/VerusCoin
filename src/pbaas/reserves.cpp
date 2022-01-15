@@ -471,8 +471,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             p = COptCCParams();
             if (!(!evidence.evidence[0].GetPartialTransaction(exportTx).IsNull() &&
                 evidence.evidence[0].TransactionHash() == exportTxId &&
-                exportTx.vout.size() > exportTxOutNum &&
-                exportTx.vout[exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+                exportTx.vout.size() > pBaseImport->exportTxOutNum &&
+                exportTx.vout[pBaseImport->exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
                 p.vData.size() &&
@@ -645,7 +645,8 @@ CCrossChainImport CCrossChainImport::GetPriorImport(const CTransaction &tx,
                                                     CValidationState &state,
                                                     uint32_t height,
                                                     CTransaction *ppriorTx,
-                                                    int32_t *ppriorOutNum) const
+                                                    int32_t *ppriorOutNum,
+                                                    uint256 *ppriorTxBlockHash) const
 {
     // get the prior import
     CCrossChainImport cci;
@@ -653,14 +654,16 @@ CCrossChainImport CCrossChainImport::GetPriorImport(const CTransaction &tx,
     {
         CTransaction _priorTx;
         int32_t _priorOutNum;
+        uint256 _priorTxBlockHash;
         CTransaction &priorTx = ppriorTx ? *ppriorTx : _priorTx;
         int32_t &priorOutNum = ppriorOutNum ? *ppriorOutNum : _priorOutNum;
+        uint256 &priorTxBlockHash = ppriorTxBlockHash ? *ppriorTxBlockHash : _priorTxBlockHash;
 
-        uint256 priorTxHash, hashBlock;
+        uint256 priorTxHash;
         COptCCParams p;
         if (!IsDefinitionImport() &&
             !(IsInitialLaunchImport() && cci.sourceSystemID != ASSETCHAINS_CHAINID) &&
-            (myGetTransaction(oneIn.prevout.hash, _priorTx, hashBlock)))
+            (myGetTransaction(oneIn.prevout.hash, _priorTx, priorTxBlockHash)))
         {
             if (_priorTx.vout.size() > oneIn.prevout.n &&
                 _priorTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -766,7 +769,8 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
         return retVal;
     }
 
-    while ((priorImport = GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum)).IsValid() &&
+    priorImport = *this;
+    while ((priorImport = priorImport.GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum)).IsValid() &&
            priorImport.GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
     {
         // if this is an import from another system, it doesn't matter unless we only care about this one
@@ -843,6 +847,193 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
         }
     }
     return retVal;
+}
+
+// Checks back on imports from the current system to ensure that there are no conflicts of either imported names or currencies that
+// have not yet been confirmed, so are not yet on chain.
+// first set is conflicting identities, second is conflicting currencies.
+bool CCrossChainImport::UnconfirmedNameImports(const CTransaction &tx,
+                                               int32_t outNum,
+                                               CValidationState &state,
+                                               uint32_t height,
+                                               std::set<uint160> *pIDImports,
+                                               std::set<uint160> *pCurrencyImports) const
+{
+    std::set<uint160> currencyRegistrations, idRegistrations, _IDImports, _CurrencyImports;
+
+    std::set<uint160> &idImports = pIDImports ? *pIDImports : _IDImports;
+    std::set<uint160> &currencyImports = pCurrencyImports ? *pCurrencyImports : _CurrencyImports;
+
+    // get the prior import
+    CCrossChainImport cci;
+    CPBaaSNotarization importNot;
+
+    CCrossChainImport priorImport, sysCCI;
+
+    CTransaction lastTx = tx;
+    int32_t lastOutNum = outNum;
+    int32_t sysCCIOut, importNotarizationOut, eOutStart = -1, eOutEnd;
+    CCrossChainExport ccx;
+    std::vector<CReserveTransfer> reserveTransfers;
+
+    uint160 fromSystem = sourceSystemID;
+
+    if (!GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
+    {
+        return false;
+    }
+
+    uint256 priorTxBlockHash;
+    for (priorImport = *this; (priorImport = GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum, &priorTxBlockHash)).IsValid(); )
+    {
+        // if lastTx is not confirmed, check for conflicts, otherwise, we're done
+        if (!priorTxBlockHash.IsNull())
+        {
+            break;
+        }
+        if (!priorImport.GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
+        {
+            return state.Error(strprintf("%s: Cannot retrieve import details", __func__));
+        }
+        if (priorImport.sourceSystemID != ASSETCHAINS_CHAINID)
+        {
+            for (auto &oneTransfer : reserveTransfers)
+            {
+                if (oneTransfer.IsIdentityExport())
+                {
+                    idRegistrations.insert(GetDestinationID(TransferDestinationToDestination(oneTransfer.destination)));
+                }
+                else if (oneTransfer.IsCurrencyExport())
+                {
+                    CCurrencyDefinition curDef = CCurrencyDefinition(oneTransfer.destination.destination);
+                    if (!curDef.IsValid())
+                    {
+                        return state.Error(strprintf("%s: Invalid currency import", __func__));
+                    }
+                    currencyRegistrations.insert(curDef.GetID());
+                }
+            }
+        }
+        priorTxBlockHash.SetNull();
+    }
+    return true;
+}
+
+// Checks back on imports from the current system to ensure that there are no conflicts of either imported names or currencies that
+// have not yet been confirmed, so are not yet on chain.
+// first set is conflicting identities, second is conflicting currencies.
+bool CCrossChainImport::VerifyNameTransfers(const CTransaction &tx,
+                                            int32_t outNum,
+                                            CValidationState &state,
+                                            uint32_t height,
+                                            std::set<uint160> *pIDConflicts,
+                                            std::set<uint160> *pCurrencyConflicts) const
+{
+    std::set<uint160> idsPresent, currenciesPresent;
+    std::set<uint160> currencyRegistrations, idRegistrations;
+    std::set<uint160> _IDConflicts, _CurrencyConflicts;
+    std::set<uint160> &idConflicts = pIDConflicts ? *pIDConflicts : _IDConflicts;
+    std::set<uint160> &currencyConflicts = pCurrencyConflicts ? *pCurrencyConflicts : _CurrencyConflicts;
+
+    // get the prior import
+    CCrossChainImport cci;
+    CPBaaSNotarization importNot;
+
+    CCrossChainImport priorImport, sysCCI;
+
+    CTransaction lastTx = tx;
+    int32_t lastOutNum = outNum;
+    int32_t sysCCIOut, importNotarizationOut, eOutStart = -1, eOutEnd;
+    CCrossChainExport ccx;
+    std::vector<CReserveTransfer> reserveTransfers;
+
+    if (!GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
+    {
+        return false;
+    }
+
+    for (auto &oneTransfer : reserveTransfers)
+    {
+        if (oneTransfer.IsIdentityExport())
+        {
+            idsPresent.insert(GetDestinationID(TransferDestinationToDestination(oneTransfer.destination)));
+        }
+        else if (oneTransfer.IsCurrencyExport())
+        {
+            CCurrencyDefinition curDef = CCurrencyDefinition(oneTransfer.destination.destination);
+            if (!curDef.IsValid())
+            {
+                return state.Error(strprintf("%s: Invalid currency import", __func__));
+            }
+            currenciesPresent.insert(curDef.GetID());
+        }
+    }
+
+    uint256 priorTxBlockHash;
+    for (priorImport = *this; (priorImport = GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum, &priorTxBlockHash)).IsValid(); )
+    {
+        // if lastTx is not confirmed, check for conflicts, otherwise, we're done
+        if (!priorTxBlockHash.IsNull())
+        {
+            break;
+        }
+        if (!priorImport.GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
+        {
+            return state.Error(strprintf("%s: Cannot retrieve import details", __func__));
+        }
+        if (priorImport.sourceSystemID != ASSETCHAINS_CHAINID)
+        {
+            for (auto &oneTransfer : reserveTransfers)
+            {
+                if (oneTransfer.IsIdentityExport())
+                {
+                    idRegistrations.insert(GetDestinationID(TransferDestinationToDestination(oneTransfer.destination)));
+                }
+                else if (oneTransfer.IsCurrencyExport())
+                {
+                    CCurrencyDefinition curDef = CCurrencyDefinition(oneTransfer.destination.destination);
+                    if (!curDef.IsValid())
+                    {
+                        return state.Error(strprintf("%s: Invalid currency import", __func__));
+                    }
+                    currencyRegistrations.insert(curDef.GetID());
+                }
+            }
+        }
+        priorTxBlockHash.SetNull();
+    }
+
+    if (idsPresent.size() && idRegistrations.size())
+    {
+        auto &iterate = (idsPresent.size() < idRegistrations.size()) ? idsPresent : idRegistrations;
+        auto &check = (idsPresent.size() < idRegistrations.size()) ? idRegistrations : idsPresent;
+        for (auto &oneID : iterate)
+        {
+            if (check.count(oneID))
+            {
+                idConflicts.insert(oneID);
+            }
+        }
+    }
+    if (currenciesPresent.size() && currencyRegistrations.size())
+    {
+        auto &iterate = (currenciesPresent.size() < currencyRegistrations.size()) ? currenciesPresent : currencyRegistrations;
+        auto &check = (currenciesPresent.size() < currencyRegistrations.size()) ? currencyRegistrations : currenciesPresent;
+        for (auto &oneID : iterate)
+        {
+            if (check.count(oneID))
+            {
+                currencyConflicts.insert(oneID);
+            }
+        }
+    }
+
+    if (idConflicts.size() || currencyConflicts.size())
+    {
+        return state.Error(strprintf("%s: ID or currency registration conflict", __func__));
+    }
+
+    return true;
 }
 
 bool CCrossChainImport::GetImportInfo(const CTransaction &importTx, 

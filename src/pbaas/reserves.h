@@ -574,7 +574,7 @@ public:
         FLAG_DEFINITIONIMPORT = 1,
         FLAG_INITIALLAUNCHIMPORT = 2,
         FLAG_POSTLAUNCH = 4,
-        FLAG_SAMECHAIN = 8,                             // means proof/reerve transfers are from export on chain
+        FLAG_SAMECHAIN = 8,                             // means proof/reserve transfers are from export on chain
         FLAG_HASSUPPLEMENT = 0x10,                      // indicates that we have additional outputs containing the reservetransfers for this export
         FLAG_SUPPLEMENTAL = 0x20,                       // this flag indicates that this is a supplemental output to a prior output
         FLAG_SOURCESYSTEM = 0x40,                       // import flag used to indicate source system
@@ -760,7 +760,8 @@ public:
                                      CValidationState &state,
                                      uint32_t height,
                                      CTransaction *priorTx=nullptr,
-                                     int32_t *priorOutNum=nullptr) const;
+                                     int32_t *priorOutNum=nullptr,
+                                     uint256 *ppriorTxBlockHash=nullptr) const;
 
     CCurrencyValueMap GetBestPriorConversions(const CTransaction &tx,
                                               int32_t outNum,
@@ -771,6 +772,20 @@ public:
                                               uint32_t height,
                                               uint32_t minHeight,
                                               uint32_t maxHeight) const;
+
+    bool UnconfirmedNameImports(const CTransaction &tx,
+                                int32_t outNum,
+                                CValidationState &state,
+                                uint32_t height,
+                                std::set<uint160> *pIDImports=nullptr,
+                                std::set<uint160> *pCurrencyImports=nullptr) const;
+
+    bool VerifyNameTransfers(const CTransaction &tx,
+                             int32_t outNum,
+                             CValidationState &state,
+                             uint32_t height,
+                             std::set<uint160> *pIDConflicts=nullptr,
+                             std::set<uint160> *pCurrencyConflicts=nullptr) const;
 
     // returns false if the information is unavailable, indicating an invalid, out of context, or
     // incomplete import transaction
