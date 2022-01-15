@@ -1494,28 +1494,43 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             importCurrencyID = rt.destCurrencyID;
         }
 
-        importCurrencyDef = ConnectedChains.GetCachedCurrency(importCurrencyID);
+        // if we are an initial contribution for a currency definition, make sure we include the new currencies when checking
+        std::vector<CCurrencyDefinition> newCurrencies;
+        CCurrencyDefinition *pGatewayConverter = nullptr;
+        std::set<uint160> definedCurrencyIDs;
+        std::set<uint160> validExportIDs;
+        uint160 gatewayConverterID;
 
         CCoinbaseCurrencyState importState;
 
         if (!(importCurrencyDef.IsValid() && (importState = ConnectedChains.GetCurrencyState(importCurrencyID, height)).IsValid()))
         {
-            CPBaaSNotarization startingNotarization;
-            CChainNotarizationData cnd;
-
-            // the only case this is ok is if we are part of a currency definition and this is to a new currency
-            // if that is the case, importCurrencyDef will always be invalid
-            std::vector<CCurrencyDefinition> newCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
-            if (newCurrencies.size())
+            // only pre-conversion gets this benefit
+            if (rt.IsPreConversion())
             {
-                for (auto &oneCurrency : newCurrencies)
+                CPBaaSNotarization startingNotarization;
+                CChainNotarizationData cnd;
+
+                // the only case this is ok is if we are part of a currency definition and this is to a new currency
+                // if that is the case, importCurrencyDef will always be invalid
+                newCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
+                validExportIDs.insert(ASSETCHAINS_CHAINID);
+
+                for (auto &oneCur : newCurrencies)
                 {
-                    if (oneCurrency.GetID() == importCurrencyID)
+                    uint160 oneCurID = oneCur.GetID();
+                    definedCurrencyIDs.insert(oneCurID);
+                    validExportIDs.insert(oneCurID);
+
+                    if (oneCurID == importCurrencyID)
                     {
+                        importCurrencyDef = oneCur;
+
                         CPBaaSNotarization oneNotarization;
                         CCurrencyDefinition tempCurDef;
-                        importCurrencyDef = oneCurrency;
+                        importCurrencyDef = oneCur;
                         systemDestID = importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID;
+
                         // we need to get the first notarization and possibly systemDest currency here as well
                         for (auto &oneOut : tx.vout)
                         {
@@ -1537,14 +1552,19 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                                     systemDest = tempCurDef;
                                 }
                             }
-                            if (oneNotarization.IsValid() &&
-                                oneNotarization.currencyID == importCurrencyID &&
-                                systemDest.IsValid())
-                            {
-                                break;
-                            }
                         }
-                        break;
+                        if (gatewayConverterID.IsNull() && !(gatewayConverterID = oneCur.GatewayConverterID()).IsNull())
+                        {
+                            continue;
+                        }
+                    }
+                    else if (gatewayConverterID == oneCurID)
+                    {
+                        pGatewayConverter = &oneCur;
+                        for (auto &oneVEID : oneCur.currencies)
+                        {
+                            validExportIDs.insert(oneVEID);
+                        }
                     }
                 }
             }
@@ -1638,14 +1658,15 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
         else
         {
-            if (!IsValidExportCurrency(systemDest, rt.FirstCurrency(), height))
+            if ((validExportIDs.size() && !validExportIDs.count(rt.FirstCurrency())) ||
+                (!validExportIDs.size() && !IsValidExportCurrency(systemDest, rt.FirstCurrency(), height)))
             {
                 // if destination system is not multicurrency or currency is already a valid export currency, invalid
                 LogPrintf("%s: Invalid currency export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
-                return state.Error("Invalid currency export export in reserve transfer " + rt.ToUniValue().write(1,2));
+                return state.Error("Invalid currency export in reserve transfer " + rt.ToUniValue().write(1,2));
             }
         }
-        
+
         if (rt.IsIdentityExport())
         {
             CIdentity idToExport;
