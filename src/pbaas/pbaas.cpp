@@ -1494,6 +1494,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             importCurrencyID = rt.destCurrencyID;
         }
 
+        importCurrencyDef = ConnectedChains.GetCachedCurrency(importCurrencyID);
+
         // if we are an initial contribution for a currency definition, make sure we include the new currencies when checking
         std::vector<CCurrencyDefinition> newCurrencies;
         CCurrencyDefinition *pGatewayConverter = nullptr;
