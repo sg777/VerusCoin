@@ -1555,6 +1555,13 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                                 }
                             }
                         }
+                        if (oneCur.IsFractional())
+                        {
+                            for (auto &oneVEID : oneCur.currencies)
+                            {
+                                validExportIDs.insert(oneVEID);
+                            }
+                        }
                         if (gatewayConverterID.IsNull() && !(gatewayConverterID = oneCur.GatewayConverterID()).IsNull())
                         {
                             continue;
