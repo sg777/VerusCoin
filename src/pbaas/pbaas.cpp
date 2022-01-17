@@ -1273,7 +1273,9 @@ std::set<uint160> BaseBridgeCurrencies(const CCurrencyDefinition &systemDest, ui
             {
                 retVal.insert(ASSETCHAINS_CHAINID);
             }
-            uint160 converterID = systemDest.GatewayConverterID();
+            uint160 converterID = systemDest.launchSystemID == ASSETCHAINS_CHAINID ?
+                                    systemDest.GatewayConverterID() :
+                                    ConnectedChains.ThisChain().GatewayConverterID();
             if (!converterID.IsNull())
             {
                 CCurrencyDefinition converter = ConnectedChains.GetCachedCurrency(converterID);
