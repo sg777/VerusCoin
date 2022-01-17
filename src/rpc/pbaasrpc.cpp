@@ -6715,7 +6715,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
                 else if (convertToCurrencyID.IsNull())
                 {
-                    convertToCurrencyID = (exportToCurrencyDef.IsFractional() ? exportToCurrencyID : exportToCurrencyDef.GatewayConverterID());
+                    convertToCurrencyID = 
+                        exportToCurrencyDef.IsFractional() ?
+                        exportToCurrencyID :
+                        (exportToCurrencyDef.GatewayConverterID().IsNull() &&
+                         exportToCurrencyID == thisChain.launchSystemID && !thisChain.GatewayConverterID().IsNull() ?
+                            thisChain.GatewayConverterID() :
+                            uint160());
                     if (convertToCurrencyID.IsNull() && (convertToCurrencyID = ConnectedChains.ThisChain().GatewayConverterID()).IsNull())
                     {
                         convertToCurrencyID = exportToCurrencyID;
@@ -7127,10 +7133,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
 
                         auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
-                        if (!reserveMap.count(feeCurrencyID))
+                        if (feeCurrencyID != destSystemID &&
+                            !(convertToCurrencyDef.IsFractional() && (feeCurrencyID == convertToCurrencyID || reserveMap.count(feeCurrencyID))))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert fees " + EncodeDestination(CIdentityID(feeCurrencyID)) + " to " + destSystemDef.name + ". 3");
                         }
+
                         // converting from reserve to a fractional of that reserve
                         auto fees = requiredFees + CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), destPriceInFeeCur);
                         CReserveTransfer rt = CReserveTransfer(flags,

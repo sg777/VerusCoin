@@ -1471,7 +1471,8 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
 
 bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
-    // do a basic sanity check that this reserve transfer's values are consistent
+    // do a basic sanity check that this reserve transfer's values are consistent and that it includes the
+    // basic fees required to cover the transfer
     COptCCParams p;
     CReserveTransfer rt;
 
@@ -1500,7 +1501,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         std::vector<CCurrencyDefinition> newCurrencies;
         CCurrencyDefinition *pGatewayConverter = nullptr;
         std::set<uint160> definedCurrencyIDs;
-        std::set<uint160> validExportIDs;
+        std::set<uint160> validExportCurrencies;
         uint160 gatewayConverterID;
 
         CCoinbaseCurrencyState importState;
@@ -1516,13 +1517,13 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 // the only case this is ok is if we are part of a currency definition and this is to a new currency
                 // if that is the case, importCurrencyDef will always be invalid
                 newCurrencies = CCurrencyDefinition::GetCurrencyDefinitions(tx);
-                validExportIDs.insert(ASSETCHAINS_CHAINID);
+                validExportCurrencies.insert(ASSETCHAINS_CHAINID);
 
                 for (auto &oneCur : newCurrencies)
                 {
                     uint160 oneCurID = oneCur.GetID();
                     definedCurrencyIDs.insert(oneCurID);
-                    validExportIDs.insert(oneCurID);
+                    validExportCurrencies.insert(oneCurID);
 
                     if (oneCurID == importCurrencyID)
                     {
@@ -1559,7 +1560,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         {
                             for (auto &oneVEID : oneCur.currencies)
                             {
-                                validExportIDs.insert(oneVEID);
+                                validExportCurrencies.insert(oneVEID);
                             }
                         }
                         if (gatewayConverterID.IsNull() && !(gatewayConverterID = oneCur.GatewayConverterID()).IsNull())
@@ -1572,7 +1573,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         pGatewayConverter = &oneCur;
                         for (auto &oneVEID : oneCur.currencies)
                         {
-                            validExportIDs.insert(oneVEID);
+                            validExportCurrencies.insert(oneVEID);
                         }
                     }
                 }
@@ -1613,6 +1614,66 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             {
                 LogPrintf("%s: Mismatched destination system in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Mismatched destination system in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+        }
+
+        CAmount feeEquivalentInNative = rt.feeCurrencyID == systemDestID ? rt.nFees : 0;
+        if (importCurrencyDef.IsFractional())
+        {
+            auto reserveMap = importState.GetReserveMap();
+
+            // fee currency must be destination,
+            // if some fees may be coming from the conversion, calculate them
+            if (!rt.IsPreConversion())
+            {
+                if (rt.IsConversion() &&
+                    reserveMap.count(systemDestID) &&
+                    (rt.FirstCurrency() == importCurrencyID || reserveMap.count(rt.FirstCurrency())))
+                {
+                    if (rt.FirstCurrency() == importCurrencyID)
+                    {
+                        feeEquivalentInNative += 
+                            importState.NativeToReserve(CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue()), reserveMap[systemDestID]);
+                    }
+                    else if (rt.FirstCurrency() == systemDestID)
+                    {
+                        feeEquivalentInNative += CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue());
+                    }
+                    else
+                    {
+                        CAmount feeIntermediate = 
+                            importState.ReserveToNative(CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue()), reserveMap[rt.FirstCurrency()]);
+                        feeEquivalentInNative += 
+                            importState.NativeToReserveRaw(feeIntermediate, importState.viaConversionPrice[reserveMap[systemDestID]]);
+                    }
+                }
+                if (rt.feeCurrencyID != systemDestID)
+                {
+                    if (rt.feeCurrencyID == importCurrencyID)
+                    {
+                        feeEquivalentInNative += 
+                            importState.NativeToReserve(rt.nFees, reserveMap[systemDestID]);
+                    }
+                    else if (reserveMap.count(rt.feeCurrencyID))
+                    {
+                        CAmount feeIntermediate = 
+                            importState.ReserveToNative(rt.nFees, reserveMap[rt.feeCurrencyID]);
+                        feeEquivalentInNative += 
+                            importState.NativeToReserveRaw(feeIntermediate, importState.viaConversionPrice[reserveMap[systemDestID]]);
+                    }
+                }
+            }
+        }
+        else if (rt.feeCurrencyID != systemDestID)
+        {
+            if (systemDest.launchSystemID.IsNull() || rt.feeCurrencyID != systemDest.launchSystemID)
+            {
+                LogPrintf("%s: Invalid fee currency in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Invalid fee currency in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+            else
+            {
+                feeEquivalentInNative += rt.nFees;
             }
         }
 
@@ -1667,8 +1728,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
         else
         {
-            if ((validExportIDs.size() && !validExportIDs.count(rt.FirstCurrency())) ||
-                (!validExportIDs.size() && !IsValidExportCurrency(systemDest, rt.FirstCurrency(), height)))
+            if ((validExportCurrencies.size() && !validExportCurrencies.count(rt.FirstCurrency())) ||
+                (!validExportCurrencies.size() && !IsValidExportCurrency(systemDest, rt.FirstCurrency(), height)))
             {
                 // if destination system is not multicurrency or currency is already a valid export currency, invalid
                 LogPrintf("%s: Invalid currency export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
@@ -1687,10 +1748,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 LogPrintf("%s: Invalid identity export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Invalid identity export in reserve transfer " + rt.ToUniValue().write(1,2));
             }
+
             CIdentity registeredIdentity = CIdentity::LookupIdentity(idToExport.GetID(), height);
 
             // validate everything relating to name and control
-            if (registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
+            if (!registeredIdentity.IsValid() ||
+                registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
                 registeredIdentity.minSigs != idToExport.minSigs ||
                 registeredIdentity.revocationAuthority != idToExport.revocationAuthority ||
                 registeredIdentity.recoveryAuthority != idToExport.recoveryAuthority ||
