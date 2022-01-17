@@ -1664,6 +1664,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
             }
         }
+        else if (rt.IsConversion() && !rt.IsPreConversion())
+        {
+            LogPrintf("%s: Invalid conversion with non-fractional currency %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+            return state.Error("Invalid fee currency in reserve transfer " + rt.ToUniValue().write(1,2));
+        }
         else if (rt.feeCurrencyID != systemDestID)
         {
             if (systemDest.launchSystemID.IsNull() || rt.feeCurrencyID != systemDest.launchSystemID)
@@ -1725,6 +1730,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     return state.Error("Unnecessary currency definition export in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
             }
+
+            // ensure that we have enough fees for the currency definition import
         }
         else
         {
@@ -1735,34 +1742,43 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 LogPrintf("%s: Invalid currency export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Invalid currency export in reserve transfer " + rt.ToUniValue().write(1,2));
             }
-        }
 
-        if (rt.IsIdentityExport())
-        {
-            CIdentity idToExport;
-            // first currency must be valid and equal the exported currency
-            if (!(rt.flags & rt.CROSS_SYSTEM) ||
-                rt.destination.TypeNoFlags() != rt.destination.DEST_FULLID ||
-                !(idToExport = CIdentity(rt.destination.destination)).IsValid())
+            if (rt.IsIdentityExport())
             {
-                LogPrintf("%s: Invalid identity export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
-                return state.Error("Invalid identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+                CIdentity idToExport;
+                // first currency must be valid and equal the exported currency
+                if (!(rt.flags & rt.CROSS_SYSTEM) ||
+                    rt.destination.TypeNoFlags() != rt.destination.DEST_FULLID ||
+                    !(idToExport = CIdentity(rt.destination.destination)).IsValid())
+                {
+                    LogPrintf("%s: Invalid identity export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                    return state.Error("Invalid identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
+
+                CIdentity registeredIdentity = CIdentity::LookupIdentity(idToExport.GetID(), height);
+
+                // validate everything relating to name and control
+                if (!registeredIdentity.IsValid() ||
+                    registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
+                    registeredIdentity.minSigs != idToExport.minSigs ||
+                    registeredIdentity.revocationAuthority != idToExport.revocationAuthority ||
+                    registeredIdentity.recoveryAuthority != idToExport.recoveryAuthority ||
+                    registeredIdentity.privateAddresses != idToExport.privateAddresses ||
+                    registeredIdentity.parent != idToExport.parent ||
+                    boost::to_lower_copy(registeredIdentity.name) != boost::to_lower_copy(idToExport.name))
+                {
+                    LogPrintf("%s: Mismatched identity export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                    return state.Error("Mismatched identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
+
+
+                // ensure that we have enough fee for the ID import to succeed
             }
-
-            CIdentity registeredIdentity = CIdentity::LookupIdentity(idToExport.GetID(), height);
-
-            // validate everything relating to name and control
-            if (!registeredIdentity.IsValid() ||
-                registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
-                registeredIdentity.minSigs != idToExport.minSigs ||
-                registeredIdentity.revocationAuthority != idToExport.revocationAuthority ||
-                registeredIdentity.recoveryAuthority != idToExport.recoveryAuthority ||
-                registeredIdentity.privateAddresses != idToExport.privateAddresses ||
-                registeredIdentity.parent != idToExport.parent ||
-                boost::to_lower_copy(registeredIdentity.name) != boost::to_lower_copy(idToExport.name))
+            else
             {
-                LogPrintf("%s: Mismatched identity export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
-                return state.Error("Mismatched identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+                // ensure that we have enough transfer fee for a normal transfer
+
+
             }
         }
 
