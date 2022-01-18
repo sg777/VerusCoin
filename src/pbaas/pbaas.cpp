@@ -250,7 +250,14 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                     // if we get our fees from conversion, consider the conversion + fees
                     // still ensure that they are enough
-                    CAmount feeEquivalent = !oneTransfer.nFees ? 0 : CCurrencyState::ReserveToNativeRaw(oneTransfer.nFees, conversionMap.valueMap[oneTransfer.feeCurrencyID]);
+                    CAmount feeEquivalent = !oneTransfer.nFees ? 0 : 
+                        oneTransfer.IsPreConversion() ? oneTransfer.nFees : CCurrencyState::ReserveToNativeRaw(oneTransfer.nFees, conversionMap.valueMap[oneTransfer.feeCurrencyID]);
+                    if (oneTransfer.IsPreConversion() && oneTransfer.feeCurrencyID != importingToDef.launchSystemID)
+                    {
+                        LogPrintf("%s: Fees for currency launch preconversions must include launch currency: %s\n", __func__, oneTransfer.ToUniValue().write(1,2).c_str());
+                        return state.Error("Fees for currency launch preconversions must include launch currency: " + oneTransfer.ToUniValue().write(1,2));
+                    }
+
                     if (oneTransfer.IsConversion())
                     {
                         uint160 sourceCurID = oneTransfer.FirstCurrency();
