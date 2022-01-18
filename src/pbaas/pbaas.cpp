@@ -1738,6 +1738,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
 
             // ensure that we have enough fees for the currency definition import
+            if (feeEquivalentInNative < systemDest.GetCurrencyImportFee())
+            {
+                LogPrintf("%s: Not enough fee for currency import in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                return state.Error("Not enough fee for currency import in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
         }
         else
         {
@@ -1777,14 +1782,29 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     return state.Error("Mismatched identity export in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
 
-
-                // ensure that we have enough fee for the ID import to succeed
+                // ensure that we have enough fees for the identity import
+                if (feeEquivalentInNative < systemDest.IDImportFee())
+                {
+                    LogPrintf("%s: Not enough fee for identity import in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                    return state.Error("Not enough fee for identity import in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
             }
             else
             {
-                // ensure that we have enough transfer fee for a normal transfer
-
-
+                // ensure that we have enough fees for transfer
+                if (systemDestID != ASSETCHAINS_CHAINID)
+                {
+                    if (feeEquivalentInNative < systemDest.GetTransactionImportFee())
+                    {
+                        LogPrintf("%s: Not enough fee for cross chain currency operation in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                        return state.Error("Not enough fee for cross chain currency operation in reserve transfer " + rt.ToUniValue().write(1,2));
+                    }
+                }
+                else if (feeEquivalentInNative < systemDest.GetTransactionTransferFee())
+                {
+                    LogPrintf("%s: Not enough fee for same chain currency operation in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                    return state.Error("Not enough fee for same chain currency operation in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
             }
         }
 
