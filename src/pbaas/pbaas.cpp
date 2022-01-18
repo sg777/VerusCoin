@@ -250,11 +250,15 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                     // if we get our fees from conversion, consider the conversion + fees
                     // still ensure that they are enough
-                    CAmount feeEquivalent = !oneTransfer.nFees ? 0 : CCurrencyState::NativeToReserveRaw(oneTransfer.nFees, conversionMap.valueMap[oneTransfer.feeCurrencyID]);
+                    CAmount feeEquivalent = !oneTransfer.nFees ? 0 : CCurrencyState::ReserveToNativeRaw(oneTransfer.nFees, conversionMap.valueMap[oneTransfer.feeCurrencyID]);
                     if (oneTransfer.IsConversion())
                     {
-                        feeEquivalent += CCurrencyState::NativeToReserveRaw(oneTransfer.ConversionFee().valueMap[oneTransfer.FirstCurrency()], 
-                                                                            conversionMap.valueMap[oneTransfer.FirstCurrency()]);
+                        uint160 sourceCurID = oneTransfer.FirstCurrency();
+                        CAmount conversionFee = oneTransfer.IsReserveToReserve() ?
+                                    CReserveTransactionDescriptor::CalculateConversionFee(oneTransfer.FirstValue()) << 1 :
+                                    CReserveTransactionDescriptor::CalculateConversionFee(oneTransfer.FirstValue());
+                        feeEquivalent += 
+                            CCurrencyState::ReserveToNativeRaw(conversionFee, conversionMap.valueMap[oneTransfer.FirstCurrency()]);
                     }
 
                     if (oneTransfer.IsIdentityExport())
@@ -1644,7 +1648,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     else
                     {
                         CAmount feeIntermediate = 
-                            importState.ReserveToNative(CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue()), reserveMap[rt.FirstCurrency()]);
+                            importState.ReserveToNative(CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue()) << 1, reserveMap[rt.FirstCurrency()]);
                         feeEquivalentInNative += 
                             importState.NativeToReserveRaw(feeIntermediate, importState.viaConversionPrice[reserveMap[systemDestID]]);
                     }
