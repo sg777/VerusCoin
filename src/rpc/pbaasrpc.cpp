@@ -6897,6 +6897,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             !exportToCurrencyID.IsNull() ||
                             isConversion ||
                             preConvert ||
+                            exportId ||
                             sourceCurrencyID == ASSETCHAINS_CHAINID)
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot mint or convert currency when exporting a currency definition cross-chain");
