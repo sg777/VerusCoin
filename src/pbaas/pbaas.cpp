@@ -1630,7 +1630,20 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
             // fee currency must be destination,
             // if some fees may be coming from the conversion, calculate them
-            if (!rt.IsPreConversion())
+            if (rt.IsPreConversion())
+            {
+                // preconversion must have standard fees included
+                if (rt.feeCurrencyID == systemDestID || rt.feeCurrencyID == systemDest.launchSystemID)
+                {
+                    feeEquivalentInNative += rt.nFees;
+                }
+                else
+                {
+                    LogPrintf("%s: Invalid fee currency in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
+                    return state.Error("Invalid fee currency in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
+            }
+            else
             {
                 if (rt.IsConversion() &&
                     reserveMap.count(systemDestID) &&
@@ -1792,7 +1805,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             else
             {
                 // ensure that we have enough fees for transfer
-                if (systemDestID != ASSETCHAINS_CHAINID)
+                if (systemDestID != ASSETCHAINS_CHAINID && !rt.IsPreConversion())
                 {
                     if (feeEquivalentInNative < systemDest.GetTransactionImportFee())
                     {
