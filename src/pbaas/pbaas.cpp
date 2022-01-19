@@ -126,7 +126,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
     // importers, and notaries.
     if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_PBAAS)
     {
-        return false;
+        return state.Error("Multi-currency operation before PBaaS activation");
     }
 
     COptCCParams p;
@@ -148,7 +148,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
         {
             if (sysOutNum != outNum || outNum <= 0 || !sysCCI.IsValid())
             {
-                LogPrintf("%s: Invalid currency import transaction with import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
                 return state.Error("Invalid currency import transaction with import: " + cci.ToUniValue().write(1,2));
             }
             cci = CCrossChainImport(tx.vout[outNum - 1].scriptPubKey);
@@ -156,7 +155,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 cci.sourceSystemID != sysCCI.sourceSystemID ||
                 sysCCI.importCurrencyID != sysCCI.sourceSystemID)
             {
-                LogPrintf("%s: Invalid base import from system import: %s\n", __func__, sysCCI.ToUniValue().write(1,2).c_str());
                 return state.Error("Invalid base import from system import: " + sysCCI.ToUniValue().write(1,2));
             }
             return true;
@@ -173,7 +171,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
         }
         if (ccx.destSystemID != ASSETCHAINS_CHAINID)
         {
-            LogPrintf("%s: Invalid import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
             return state.Error("Invalid import: " + cci.ToUniValue().write(1,2));
         }
         else if (notarization.IsValid())
@@ -191,7 +188,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 if (!importingToDef.IsValid() || !((notarization.IsRefunding() && importingToDef.launchSystemID == ASSETCHAINS_CHAINID) ||
                                                    importingToDef.SystemOrGatewayID() == ASSETCHAINS_CHAINID))
                 {
-                    LogPrintf("%s: Unable to retrieve currency for import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
                     return state.Error("Unable to retrieve currency for import: " + cci.ToUniValue().write(1,2));
                 }
                 if (!notarization.IsRefunding() &&
@@ -244,7 +240,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     if (!conversionMap.valueMap.count(oneTransfer.feeCurrencyID))
                     {
                         // invalid fee currency from system
-                        LogPrintf("%s: Invalid fee currency for transfer 1: %s\n", __func__, oneTransfer.ToUniValue().write(1,2).c_str());
                         return state.Error("Invalid fee currency for transfer 1: " + oneTransfer.ToUniValue().write(1,2));
                     }
 
@@ -254,7 +249,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         oneTransfer.IsPreConversion() ? oneTransfer.nFees : CCurrencyState::ReserveToNativeRaw(oneTransfer.nFees, conversionMap.valueMap[oneTransfer.feeCurrencyID]);
                     if (oneTransfer.IsPreConversion() && oneTransfer.feeCurrencyID != importingToDef.launchSystemID)
                     {
-                        LogPrintf("%s: Fees for currency launch preconversions must include launch currency: %s\n", __func__, oneTransfer.ToUniValue().write(1,2).c_str());
                         return state.Error("Fees for currency launch preconversions must include launch currency: " + oneTransfer.ToUniValue().write(1,2));
                     }
 
@@ -272,7 +266,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     {
                         if (feeEquivalent < ConnectedChains.ThisChain().IDImportFee())
                         {
-                            LogPrintf("%s: Insufficient fee for identity import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
                             return state.Error("Insufficient fee for identity import: " + cci.ToUniValue().write(1,2));
                         }
                     }
@@ -280,7 +273,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     {
                         if (feeEquivalent < ConnectedChains.ThisChain().GetCurrencyImportFee())
                         {
-                            LogPrintf("%s: Insufficient fee for currency import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
                             return state.Error("Insufficient fee for currency import: " + cci.ToUniValue().write(1,2));
                         }
                     }
@@ -289,7 +281,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         // import distributes both export and import fees
                         if (feeEquivalent < ConnectedChains.ThisChain().GetTransactionImportFee())
                         {
-                            LogPrintf("%s: Insufficient fee for transaction in import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
                             return state.Error("Insufficient fee for transaction in import: " + cci.ToUniValue().write(1,2));
                         }
                     }
@@ -298,7 +289,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         // import distributes both export and import fees
                         if (feeEquivalent < ConnectedChains.ThisChain().GetTransactionTransferFee())
                         {
-                            LogPrintf("%s: Insufficient fee for transaction transfer in import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
                             return state.Error("Insufficient fee for transaction transfer in import: " + cci.ToUniValue().write(1,2));
                         }
                     }
@@ -752,9 +742,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             if (totalDeposits != (gatewayCurrencyUsed + reserveDepositChange))
             {
                 LogPrintf("%s: invalid use of gateway reserve deposits for currency: %s\n", __func__, EncodeDestination(CIdentityID(destCurDef.GetID())).c_str());
-                // TODO: HARDENING - uncomment the following line and return false, when it is confirmed that
-                // this passes in all intended cases.
-                //return false;
+                return eval->Error(std::string(__func__) + ": invalid use of gateway reserve deposits for currency: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
             }
         }
         else
@@ -769,9 +757,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut)) // TODO: HARDENING account for fees to balance
             {
                 LogPrintf("%s: invalid use of reserve deposits for currency: %s\n", __func__, EncodeDestination(CIdentityID(destCurDef.GetID())).c_str());
-                // TODO: HARDENING - uncomment the following line and return false, when it is confirmed that
-                // this passes in all intended cases.
-                //return false;
+                return eval->Error(std::string(__func__) + ": invalid use of reserve deposits for currency: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
             }
         }
 
@@ -1599,12 +1585,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             // if that is the case, importCurrencyDef will always be invalid
             if (!importCurrencyDef.IsValid())
             {
-                LogPrintf("%s: Invalid currency in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Invalid currency in reserve transfer " + rt.ToUniValue().write(1,2));
             }
             else
             {
-                LogPrintf("%s: Valid currency state required and not found for import currency of reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Valid currency state required and not found for import currency of reserve transfer " + rt.ToUniValue().write(1,2));
             }
         }
@@ -1617,7 +1601,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (!systemDest.IsValid())
         {
-            LogPrintf("%s: Invalid currency system in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
             return state.Error("Invalid currency system in reserve transfer " + rt.ToUniValue().write(1,2));
         }
 
@@ -1625,7 +1608,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         {
             if (systemDestID != rt.destSystemID)
             {
-                LogPrintf("%s: Mismatched destination system in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Mismatched destination system in reserve transfer " + rt.ToUniValue().write(1,2));
             }
         }
@@ -1646,7 +1628,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
                 else
                 {
-                    LogPrintf("%s: Invalid fee currency in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                     return state.Error("Invalid fee currency in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
             }
@@ -1692,14 +1673,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
         else if (rt.IsConversion() && !rt.IsPreConversion())
         {
-            LogPrintf("%s: Invalid conversion with non-fractional currency %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
             return state.Error("Invalid fee currency in reserve transfer " + rt.ToUniValue().write(1,2));
         }
         else if (rt.feeCurrencyID != systemDestID)
         {
             if (systemDest.launchSystemID.IsNull() || rt.feeCurrencyID != systemDest.launchSystemID)
             {
-                LogPrintf("%s: Invalid fee currency in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Invalid fee currency in reserve transfer " + rt.ToUniValue().write(1,2));
             }
             else
@@ -1727,7 +1706,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     nextLegCur.SystemOrGatewayID() == ASSETCHAINS_CHAINID ||
                     IsValidExportCurrency(nextLegCur, rt.FirstCurrency(), height))
                 {
-                    LogPrintf("%s: Invalid currency export for next leg in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                     return state.Error("Invalid currency export for next leg in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
             }
@@ -1736,7 +1714,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                      !(curToExport = CCurrencyDefinition(rt.destination.destination)).IsValid() ||
                      curToExport.GetID() != rt.FirstCurrency())
             {
-                LogPrintf("%s: Invalid currency export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Invalid currency export in reserve transfer " + rt.ToUniValue().write(1,2));
             }
             else
@@ -1745,14 +1722,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
                 if (::AsVector(registeredCurrency) != rt.destination.destination)
                 {
-                    LogPrintf("%s: Mismatched export and currency registration in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                     return state.Error("Mismatched export and currency registration in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
 
                 if (!systemDest.IsMultiCurrency() || IsValidExportCurrency(systemDest, rt.FirstCurrency(), height))
                 {
                     // if destination system is not multicurrency or currency is already a valid export currency, invalid
-                    LogPrintf("%s: Unnecessary currency definition export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                     return state.Error("Unnecessary currency definition export in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
             }
@@ -1760,7 +1735,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             // ensure that we have enough fees for the currency definition import
             if (feeEquivalentInNative < systemDest.GetCurrencyImportFee())
             {
-                LogPrintf("%s: Not enough fee for currency import in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Not enough fee for currency import in reserve transfer " + rt.ToUniValue().write(1,2));
             }
         }
@@ -1770,7 +1744,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 (!validExportCurrencies.size() && !IsValidExportCurrency(systemDest, rt.FirstCurrency(), height)))
             {
                 // if destination system is not multicurrency or currency is already a valid export currency, invalid
-                LogPrintf("%s: Invalid currency export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                 return state.Error("Invalid currency export in reserve transfer " + rt.ToUniValue().write(1,2));
             }
 
@@ -1782,7 +1755,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     rt.destination.TypeNoFlags() != rt.destination.DEST_FULLID ||
                     !(idToExport = CIdentity(rt.destination.destination)).IsValid())
                 {
-                    LogPrintf("%s: Invalid identity export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                     return state.Error("Invalid identity export in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
 
@@ -1798,14 +1770,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     registeredIdentity.parent != idToExport.parent ||
                     boost::to_lower_copy(registeredIdentity.name) != boost::to_lower_copy(idToExport.name))
                 {
-                    LogPrintf("%s: Mismatched identity export in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                     return state.Error("Mismatched identity export in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
 
                 // ensure that we have enough fees for the identity import
                 if (feeEquivalentInNative < systemDest.IDImportFee())
                 {
-                    LogPrintf("%s: Not enough fee for identity import in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                     return state.Error("Not enough fee for identity import in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
             }
@@ -1816,13 +1786,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 {
                     if (feeEquivalentInNative < systemDest.GetTransactionImportFee())
                     {
-                        LogPrintf("%s: Not enough fee for cross chain currency operation in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                         return state.Error("Not enough fee for cross chain currency operation in reserve transfer " + rt.ToUniValue().write(1,2));
                     }
                 }
                 else if (feeEquivalentInNative < systemDest.GetTransactionTransferFee())
                 {
-                    LogPrintf("%s: Not enough fee for same chain currency operation in reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
                     return state.Error("Not enough fee for same chain currency operation in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
             }
@@ -1868,7 +1836,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             return true;
         }
     }
-    LogPrintf("%s: Invalid reserve transfer %s\n", __func__, rt.ToUniValue().write(1,2).c_str());
     return state.Error("Invalid reserve transfer " + rt.ToUniValue().write(1,2));
 }
 
