@@ -6477,6 +6477,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     convertToCurrencyDef = secondCurrencyDef;
                     convertToCurrencyID = convertToCurrencyDef.GetID();
                     secondCurrencyDef = CCurrencyDefinition();
+                    secondCurrencyID = uint160();
                 }
                 else
                 {
@@ -6569,9 +6570,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 destSystemDef = ConnectedChains.GetCachedCurrency(destSystemID);
             }
 
-            uint160 converterID = secondCurrencyID.IsNull() ? convertToCurrencyID : secondCurrencyID;
-            CCurrencyDefinition &converterDef = secondCurrencyID.IsNull() ? convertToCurrencyDef : secondCurrencyDef;
-
             // see if we should send this currency off-chain. if our target is a fractional currency and can convert but lives on another system, 
             // we will not implicitly send it off chain for conversion, even if via is specified. "exportto" requests an explicit system
             // export/import before the operation.
@@ -6585,10 +6583,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
                 // if we have a converter currency on the same chain as the explicit export, the converter is
                 // our actual export currency
-                if (converterDef.systemID == exportToCurrencyDef.SystemOrGatewayID())
+                if (convertToCurrencyDef.systemID == exportToCurrencyDef.SystemOrGatewayID())
                 {
-                    exportToCurrencyDef = converterDef;
-                    exportToCurrencyID = converterID;
+                    exportToCurrencyDef = convertToCurrencyDef;
+                    exportToCurrencyID = convertToCurrencyID;
                 }
                 else
                 {
@@ -6624,7 +6622,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // if we have no explicit destination system and non-null export, make export
             // our destination system
             if (destSystemID == ASSETCHAINS_CHAINID &&
-                !(converterDef.IsValid() && converterDef.systemID == ASSETCHAINS_CHAINID) &&
+                !(convertToCurrencyDef.IsValid() && convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID) &&
                 !exportToCurrencyID.IsNull())
             {
                 destSystemID = exportSystemDef.GetID();
@@ -6681,12 +6679,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
 
                 if (isConversion &&
-                    !((converterDef.systemID == ASSETCHAINS_CHAINID &&
-                       converterID != exportToCurrencyID &&
-                       exportToCurrencyDef.IsGateway() || exportToCurrencyDef.IsPBaaSChain() &&
-                       converterDef.IsFractional() &&
-                       converterDef.GetCurrenciesMap().count(exportToCurrencyDef.systemID)) ||
-                      (converterID == exportToCurrencyID &&
+                    !((convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID &&
+                       convertToCurrencyID != exportToCurrencyID &&
+                       (exportToCurrencyDef.IsGateway() || exportToCurrencyDef.IsPBaaSChain()) &&
+                       convertToCurrencyDef.IsFractional() &&
+                       convertToCurrencyDef.GetCurrenciesMap().count(exportToCurrencyDef.systemID)) ||
+                      (convertToCurrencyID == exportToCurrencyID &&
                        exportToCurrencyDef.systemID == destSystemID)))
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid export syntax. Fractional converter must be from current chain before \"exportto\" a system currency or on the alternate system and the same destination as \"exportto\".");
@@ -6894,7 +6892,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     {
                         // validate no conflicts with currency export and create a destination of the currency
                         if (mintNew ||
-                            !exportToCurrencyID.IsNull() ||
                             isConversion ||
                             preConvert ||
                             exportId ||
@@ -6970,7 +6967,29 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                     validCurrencies = ValidExportCurrencies(offChainDef, height + 1);
 
-                    if (!validCurrencies.count(sourceCurrencyID))
+                    if (exportCurrency)
+                    {
+                        CCurrencyValueMap canExport, cannotExport;
+                        if (ConnectedChains.CurrencyExportStatus(
+                                CCurrencyValueMap(std::vector<uint160>({sourceCurrencyID}), std::vector<int64_t>({1})),
+                                ASSETCHAINS_CHAINID,
+                                offChainID,
+                                canExport,
+                                cannotExport) &&
+                                canExport.valueMap.size() &&
+                                !cannotExport.valueMap.size())
+                        {
+                            if (validCurrencies.count(sourceCurrencyID))
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Unnecessary to export currency to system. Currency is already exported to destination network.");
+                            }
+                        }
+                        else
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot export currency to import system");
+                        }
+                    }
+                    else if (!validCurrencies.count(sourceCurrencyID))
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + sourceCurrencyDef.name + " (" + EncodeDestination(CIdentityID(sourceCurrencyID)) + ") cannot be sent to specified system");
                     }
