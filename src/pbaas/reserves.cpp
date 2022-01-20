@@ -2718,8 +2718,8 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 curHeight < height)
             {
                 std::string qualifiedName = ConnectedChains.GetFriendlyCurrencyName(FirstCurrency());
-                printf("%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
-                LogPrintf("%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
+
+                LogPrint("crosschain", "%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
 
                 CCcontract_info CC;
                 CCcontract_info *cp;
