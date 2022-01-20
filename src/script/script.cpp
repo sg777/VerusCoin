@@ -1458,10 +1458,7 @@ CCurrencyValueMap::CCurrencyValueMap(const std::vector<uint160> &currencyIDs, co
     int commonNum = currencyIDs.size() >= amounts.size() ? amounts.size() : currencyIDs.size();
     for (int i = 0; i < commonNum; i++)
     {
-        if (amounts[i])
-        {
-            valueMap[currencyIDs[i]] = amounts[i];
-        }
+        valueMap[currencyIDs[i]] = amounts[i];
     }
 }
 

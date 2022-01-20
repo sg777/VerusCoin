@@ -7207,7 +7207,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetTransactionImportFee(), destPriceInFeeCur);
                         }
-                        requiredFees = CCurrencyState::ReserveToNativeRaw(thisChain.GetTransactionExportFee(), sourcePriceInFeeCur);
+                        requiredFees += CCurrencyState::ReserveToNativeRaw(thisChain.GetTransactionExportFee(), sourcePriceInFeeCur);
 
                         flags |= CReserveTransfer::CROSS_SYSTEM;
                         auto fees = requiredFees + CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), destPriceInFeeCur);
