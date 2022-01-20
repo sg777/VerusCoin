@@ -1690,6 +1690,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         if (rt.IsCurrencyExport())
         {
             CCurrencyDefinition curToExport;
+            if (rt.reserveValues > CCurrencyValueMap())
+            {
+                return state.Error("Currency exports should not include explicit funds beyond required fees " + rt.ToUniValue().write(1,2));
+            }
 
             // if this is a cross chain export, the first currency must be valid and equal the exported currency
             // otherwise, we only need to ensure that the exported currency can be sent to the target destination
