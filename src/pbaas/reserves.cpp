@@ -2710,7 +2710,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 return false;
             }
 
-            // TODO: HARDENING - don't import if currency is already registered
+            // TODO: HARDENING - don't define if currency is already registered
             CCurrencyDefinition preExistingCur;
             int32_t curHeight;
 
@@ -2746,7 +2746,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
 
             // lookup ID and if not present, make an ID output
 
-            // TODO: HARDENING - ensure that we can only mint IDs from systems that are able to mint them
+            // TODO: HARDENING - confirm/audit that we can only mint IDs from systems that are able to mint them
             CIdentity preexistingID = CIdentity::LookupIdentity(GetDestinationID(dest));
 
             // if we have a collision present, sound an alarm and fail
@@ -3449,7 +3449,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // because of this, the parent of any currency being exported or imported
                     // is what represents the import or export
 
-                    allCurrenciesAndIDs.valueMap[curTransfer.FirstCurrency()] += curTransfer.FirstValue();
+                    if (!curTransfer.IsCurrencyExport())
+                    {
+                        allCurrenciesAndIDs.valueMap[curTransfer.FirstCurrency()] += curTransfer.FirstValue();
+                    }
 
                     CCurrencyValueMap newDepositCurrencies, newGatewayDeposits;
                     if (!ConnectedChains.CurrencyExportStatus(allCurrenciesAndIDs, systemSourceID, systemDestID, newDepositCurrencies, newGatewayDeposits))
