@@ -421,7 +421,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             return false;
         }
 
-        // TODO: HARDENING - review
+        // TODO: HARDENING - review.
         if (!isPBaaSDefinitionOrLaunch ||
             pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
             (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID()))
@@ -2701,7 +2701,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 FirstCurrency() != registeredCurrency.GetID() ||
                 FirstValue() != 0 ||
                 IsConversion() ||
-                FeeCurrencyID() != ASSETCHAINS_CHAINID ||
+                (FeeCurrencyID() != ASSETCHAINS_CHAINID && FeeCurrencyID() != ConnectedChains.ThisChain().launchSystemID) ||
                 nFees < ConnectedChains.ThisChain().GetCurrencyImportFee())
             {
                 std::string qualifiedName = ConnectedChains.GetFriendlyCurrencyName(FirstCurrency());

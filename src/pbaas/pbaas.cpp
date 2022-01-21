@@ -5250,7 +5250,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 }
 
                 bool havePrimaryExports = ConnectedChains.GetUnspentCurrencyExports(view, lastChain, exportOutputs) && exportOutputs.size();
-                if ((!isSameChain && (ConnectedChains.GetUnspentSystemExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size())) ||
+                if ((!isSameChain &&
+                     (lastChain == destDef.SystemOrGatewayID() ||
+                      (ConnectedChains.GetUnspentSystemExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size()) ||
+                      (ConnectedChains.GetUnspentCurrencyExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size()))) ||
                     newSystem ||
                     havePrimaryExports)
                 {
@@ -5264,8 +5267,15 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     std::pair<int, CInputDescriptor> lastSysExport = std::make_pair(-1, CInputDescriptor());
                     if (!isSameChain)
                     {
-                        lastSysExport = sysExportOutputs[0];
-                        allExportOutputs.push_back(lastSysExport.second);
+                        if (lastChain == destDef.SystemOrGatewayID())
+                        {
+                            lastSysExport = exportOutputs[0];
+                        }
+                        else
+                        {
+                            lastSysExport = sysExportOutputs[0];
+                            allExportOutputs.push_back(lastSysExport.second);
+                        }
                     }
 
                     COptCCParams p;
@@ -5295,8 +5305,6 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     {
                         ccx.SetSystemThreadExport(false);
                         mergedSysExport = true;
-                        // remove the system output
-                        allExportOutputs.pop_back();
                     }
 
                     // now, we have the previous export to this currency/system, which we should spend to
