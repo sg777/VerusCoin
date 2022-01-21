@@ -5249,9 +5249,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                     newSystem = true;
                 }
 
-                if ((ConnectedChains.GetUnspentCurrencyExports(view, lastChain, exportOutputs) && exportOutputs.size()) ||
+                bool havePrimaryExports = ConnectedChains.GetUnspentCurrencyExports(view, lastChain, exportOutputs) && exportOutputs.size();
+                if ((!isSameChain && (ConnectedChains.GetUnspentSystemExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size())) ||
                     newSystem ||
-                    (!isSameChain && (ConnectedChains.GetUnspentSystemExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size())))
+                    havePrimaryExports)
                 {
                     if (!exportOutputs.size())
                     {
