@@ -511,6 +511,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     {
         CReserveTransfer reserveTransfer = exportTransfers[i];
 
+        //auto transferVec = ::AsVector(reserveTransfer);
+        //printf("%s: ReserveTransfer:\n%s\nSerialized:\n%s\n", __func__, reserveTransfer.ToUniValue().write(1,2).c_str(), HexBytes(&(transferVec[0]), transferVec.size()).c_str());
+
         // add the pre-mutation reserve transfer to the hash
         hw << reserveTransfer;
 

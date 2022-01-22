@@ -1723,7 +1723,26 @@ UniValue getexports(const UniValue& params, bool fHelp)
         UniValue transferArr(UniValue::VARR);
         for (auto &oneTransfer : oneExport.second)
         {
-            //printf("%s: onetransfer: %s\n", __func__, oneTransfer.ToUniValue().write(1,2).c_str());
+            /* // check serialization discrepancies
+            if (oneTransfer.IsCurrencyExport() && oneTransfer.destination.TypeNoFlags() == oneTransfer.destination.DEST_REGISTERCURRENCY)
+            {
+                CCurrencyDefinition exportDef = CCurrencyDefinition(oneTransfer.destination.destination);
+                CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(exportDef.GetID());
+                auto exportDefVec = ::AsVector(exportDef);
+                auto onChainDefVec = ::AsVector(curDef);
+                auto translatedDefVec = ::AsVector(CCurrencyDefinition(exportDef.ToUniValue()));
+                if (exportDefVec != onChainDefVec || onChainDefVec != translatedDefVec)
+                {
+                    printf("Exported currency:\n%s\nOn-chain currency:\n%s\nSerialized export:\n%s\nSerialized on-chain:\n%s\nSerialized translated:\n%s\n", 
+                        exportDef.ToUniValue().write(1,2).c_str(),
+                        curDef.ToUniValue().write(1,2).c_str(),
+                        HexBytes(&(exportDefVec[0]), exportDefVec.size()).c_str(),
+                        HexBytes(&(onChainDefVec[0]), onChainDefVec.size()).c_str(),
+                        HexBytes(&(translatedDefVec[0]), translatedDefVec.size()).c_str());
+                }
+                auto transferVec = ::AsVector(oneTransfer);
+                printf("ReserveTransfer:\n%s\nSerialized:\n%s\n", oneTransfer.ToUniValue().write(1,2).c_str(), HexBytes(&(transferVec[0]), transferVec.size()).c_str());
+            } //*/
             transferArr.push_back(oneTransfer.ToUniValue());
         }
         oneObj.push_back(Pair("transfers", transferArr));

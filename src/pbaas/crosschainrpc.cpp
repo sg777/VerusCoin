@@ -476,9 +476,10 @@ uint160 DecodeCurrencyName(std::string currencyStr)
 }
 
 CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
-    preLaunchDiscount(0),
     initialFractionalSupply(0),
     gatewayConverterIssuance(0),
+    preLaunchDiscount(0),
+    preLaunchCarveOut(0),
     minNotariesConfirm(0),
     idRegistrationFees(IDENTITY_REGISTRATION_FEE),
     idReferralLevels(DEFAULT_ID_REFERRAL_LEVELS),
