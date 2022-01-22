@@ -632,7 +632,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.SetPrelaunch();
         }
 
-        // HARDENING - ensure that destcurrency systemID is correct here, since this should only be prelaunch, otherwise
+        // TODO: HARDENING - confirm that destcurrency systemID is correct here, since this should only be prelaunch, otherwise
         // we need SystemOrGatewayID()
         CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) : 
                                                                          ConnectedChains.GetCachedCurrency(destCurrency.systemID);
