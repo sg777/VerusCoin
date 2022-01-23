@@ -3380,7 +3380,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 // if it's from a gateway, we need to be sure that the currency it is importing is valid for the current chain
                 // all pre-conversions
-                if (isCrossSystemImport)
+                if (isCrossSystemImport || (importCurrencyDef.SystemOrGatewayID() != systemDestID && importCurrencyState.IsRefunding()))
                 {
                     // We may import:
                     //  fee currency
@@ -3455,7 +3455,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
 
                     CCurrencyValueMap newDepositCurrencies, newGatewayDeposits;
-                    if (!ConnectedChains.CurrencyExportStatus(allCurrenciesAndIDs, systemSourceID, systemDestID, newDepositCurrencies, newGatewayDeposits))
+                    if (!ConnectedChains.CurrencyExportStatus(allCurrenciesAndIDs,
+                                                              importCurrencyState.IsRefunding() ? importCurrencyDef.systemID : systemSourceID,
+                                                              systemDestID,
+                                                              newDepositCurrencies,
+                                                              newGatewayDeposits))
                     {
                         printf("%s: invalid exports from system: %s\n", __func__, systemSource.name.c_str());
                         LogPrintf("%s: invalid exports from system: %s\n", __func__, systemSource.name.c_str());

@@ -169,7 +169,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             // TODO: HARDENING - validate this is correct as the initial launch import
             return true;
         }
-        if (ccx.destSystemID != ASSETCHAINS_CHAINID)
+        if (ccx.destSystemID != ASSETCHAINS_CHAINID && notarization.IsValid() && !notarization.IsRefunding())
         {
             return state.Error("Invalid import: " + cci.ToUniValue().write(1,2));
         }
@@ -185,6 +185,12 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 conversionMap.valueMap[ASSETCHAINS_CHAINID] = SATOSHIDEN;
 
                 CCurrencyDefinition importingToDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID);
+                if (notarization.IsRefunding() &&
+                    ccx.destSystemID != ASSETCHAINS_CHAINID &&
+                    (importingToDef.systemID != ccx.destSystemID || importingToDef.launchSystemID != ASSETCHAINS_CHAINID))
+                {
+                    return state.Error("Invalid import to incorrect system: " + cci.ToUniValue().write(1,2));
+                }
                 if (!importingToDef.IsValid() || !((notarization.IsRefunding() && importingToDef.launchSystemID == ASSETCHAINS_CHAINID) ||
                                                    importingToDef.SystemOrGatewayID() == ASSETCHAINS_CHAINID))
                 {
@@ -3205,7 +3211,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         {
             // if this is a refund from an alternate chain, we accept it to this chain if we are the launch chain
             if (priorChainNotarization.currencyState.IsRefunding() &&
-                GetCurrencyDefinition(ccx.destCurrencyID, refundingPBaaSChain) &&
+                (refundingPBaaSChain = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID)).IsValid() &&
                 refundingPBaaSChain.launchSystemID == ASSETCHAINS_CHAINID &&
                 refundingPBaaSChain.systemID != ASSETCHAINS_CHAINID)
             {
@@ -5250,12 +5256,17 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                 }
 
                 bool havePrimaryExports = ConnectedChains.GetUnspentCurrencyExports(view, lastChain, exportOutputs) && exportOutputs.size();
-                if ((!isSameChain &&
-                     ((lastChain == destDef.SystemOrGatewayID() && exportOutputs.size()) ||
-                      (ConnectedChains.GetUnspentSystemExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size()) ||
-                      (lastChain != destDef.SystemOrGatewayID() && ConnectedChains.GetUnspentCurrencyExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size()))) ||
-                    newSystem ||
-                    havePrimaryExports)
+                if (!havePrimaryExports && !exportOutputs.size() && destDef.SystemOrGatewayID() == lastChain)
+                {
+                    havePrimaryExports = ConnectedChains.GetUnspentSystemExports(view, destDef.SystemOrGatewayID(), exportOutputs) && exportOutputs.size();
+                }
+
+                if ((isSameChain && havePrimaryExports) ||
+                    (!isSameChain &&
+                     (lastChain == destDef.SystemOrGatewayID() && havePrimaryExports) ||
+                     (lastChain != destDef.SystemOrGatewayID() &&
+                      (ConnectedChains.GetUnspentSystemExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size() ||
+                       ConnectedChains.GetUnspentCurrencyExports(view, destDef.SystemOrGatewayID(), sysExportOutputs) && sysExportOutputs.size()))))
                 {
                     if (!exportOutputs.size())
                     {
@@ -5307,15 +5318,10 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         mergedSysExport = true;
                     }
 
-                    // now, we have the previous export to this currency/system, which we should spend to
-                    // enable this new export. if we find no export, we're done
-                    int32_t numInputsUsed;
-                    std::vector<CTxOut> exportTxOuts;
-                    std::vector<CReserveTransfer> exportTransfers;
                     CChainNotarizationData cnd;
                     std::vector<std::pair<CTransaction, uint256>> notarizationTxes;
-                    
-                    // get notarization for the actual currency we are exporting
+
+                    // get notarization for the actual currency destination
                     if (!GetNotarizationData(lastChain, cnd, &notarizationTxes) || cnd.lastConfirmed == -1)
                     {
                         printf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
@@ -5339,6 +5345,12 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         assert(lastNotarization.currencyState.IsValid() && lastNotarization.currencyState.GetID() == lastChain);
                         lastNotarization.currencyState.conversionPrice = pricesState.PricesInReserve();
                     }
+
+                    // now, we have the previous export to this currency/system, which we should spend to
+                    // enable this new export. if we find no export, we're done
+                    int32_t numInputsUsed;
+                    std::vector<CTxOut> exportTxOuts;
+                    std::vector<CReserveTransfer> exportTransfers;
 
                     while (txInputs.size() || launchCurrencies.count(lastChain))
                     {

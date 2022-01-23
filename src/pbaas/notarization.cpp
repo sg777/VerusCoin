@@ -649,8 +649,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
 
         std::vector<CTxOut> tempOutputs;
-        bool retVal = rtxd.AddReserveTransferImportOutputs(sourceSystem,
-                                                           destSystem,
+        bool retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
+                                                           newNotarization.IsRefunding() ? sourceSystem : destSystem,
                                                            destCurrency, 
                                                            newNotarization.currencyState, 
                                                            exportTransfers, 
@@ -670,17 +670,17 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.conversionPrice = tempState.conversionPrice;
             newNotarization.currencyState.viaConversionPrice = tempState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
-            retVal = rtxd.AddReserveTransferImportOutputs(sourceSystem,
-                                                           destSystem,
-                                                           destCurrency, 
-                                                           newNotarization.currencyState, 
-                                                           exportTransfers,
-                                                           currentHeight,
-                                                           importOutputs, 
-                                                           importedCurrency,
-                                                           gatewayDepositsUsed, 
-                                                           spentCurrencyOut,
-                                                           &tempState);
+            retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
+                                                          newNotarization.IsRefunding() ? sourceSystem : destSystem,
+                                                          destCurrency, 
+                                                          newNotarization.currencyState, 
+                                                          exportTransfers,
+                                                          currentHeight,
+                                                          importOutputs, 
+                                                          importedCurrency,
+                                                          gatewayDepositsUsed, 
+                                                          spentCurrencyOut,
+                                                          &tempState);
         }
         else
         {
@@ -723,8 +723,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         // normal conversions in addition to pre-conversions. add any conversions that may 
         // be present into the new currency state
         CCoinbaseCurrencyState intermediateState = newNotarization.currencyState;
-        bool isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem, 
-                                                                  externalSystemDef,
+        bool isValidExport = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? externalSystemDef : sourceSystem,
+                                                                  newNotarization.IsRefunding() ? sourceSystem : externalSystemDef,
                                                                   destCurrency, 
                                                                   intermediateState, 
                                                                   exportTransfers, 
@@ -746,8 +746,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             tempCurState.conversionPrice = newNotarization.currencyState.conversionPrice;
             tempCurState.viaConversionPrice = newNotarization.currencyState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
-            isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem, 
-                                                                 externalSystemDef,
+            isValidExport = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? externalSystemDef : sourceSystem,
+                                                                 newNotarization.IsRefunding() ? sourceSystem : externalSystemDef,
                                                                  destCurrency, 
                                                                  tempCurState, 
                                                                  exportTransfers, 
