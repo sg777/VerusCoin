@@ -421,7 +421,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             return false;
         }
 
-        // TODO: HARDENING - review.
+        // TODO: HARDENING - review to ensure that if this is skipped an error is thrown when appropriate
         if (!isPBaaSDefinitionOrLaunch ||
             pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
             (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID()))
