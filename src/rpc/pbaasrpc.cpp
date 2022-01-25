@@ -3153,7 +3153,7 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
                                   0, 
                                   0, 
                                   0,
-                                  chainDef.preconverted, 
+                                  std::vector<int64_t>(chainDef.currencies.size()), 
                                   std::vector<int64_t>(chainDef.currencies.size()), 
                                   std::vector<int64_t>(chainDef.currencies.size()), 
                                   conversions,

@@ -4344,16 +4344,17 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             extraPreconverted = newCurrencyState.preConvertedOut;
             // if this is our launch currency issue any necessary pre-converted supply and add it to reserve deposits
             if (importCurrencyID == ASSETCHAINS_CHAINID &&
-                importCurrencyDef.IsPBaaSChain() &&
-                importCurrencyState.reserveIn.size() == 1 && 
-                importCurrencyState.reserveIn[0])
+                importCurrencyState.reserveIn.size())
             {
-                // add new native currency to reserve deposits for imports
-                // total converted in this import should be added to the total from before
-                CAmount oldReservesIn = newCurrencyState.reserveIn[0] - importCurrencyState.reserveIn[0];
-                extraPreconverted += newCurrencyState.ReserveToNativeRaw(oldReservesIn, newCurrencyState.conversionPrice[0]);
+                for (int i = 0; i < importCurrencyState.reserveIn.size(); i++)
+                {
+                    // add new native currency to reserve deposits for imports
+                    // total converted in this import should be added to the total from before
+                    CAmount oldReservesIn = importCurrencyState.reserveIn[i] - newCurrencyState.reserveIn[i];
+                    extraPreconverted += newCurrencyState.ReserveToNativeRaw(oldReservesIn, newCurrencyState.conversionPrice[i]);
+                }
+                newCurrencyState.preConvertedOut = extraPreconverted;
             }
-            newCurrencyState.preConvertedOut = extraPreconverted;
         }
         else
         {
