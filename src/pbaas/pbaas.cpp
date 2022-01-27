@@ -1191,7 +1191,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
         {
             const CTxOut &oneOut = spendingTx.vout[i];
             COptCCParams p;
-            if (i != outNum &&
+            if (i < outNum &&
                 oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
@@ -1200,8 +1200,8 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             {
                 if (cci.sourceSystemID != ASSETCHAINS_CHAINID &&
                     cci.GetImportInfo(spendingTx, height, i, ccx, sysCCI, sysCCIOut, pbn, notarizationOut, eOutStart, eOutEnd, transfers) &&
-                    outNum <= eOutEnd && 
-                    outNum >= (eOutEnd + cci.numOutputs))
+                    outNum > eOutEnd && 
+                    outNum <= (eOutEnd + cci.numOutputs))
                 {
                     // TODO: HARDENING ensure that this currency is valid as an import from the source 
                     // system to this chain.
