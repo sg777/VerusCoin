@@ -538,7 +538,7 @@ int64_t CCoinbaseCurrencyState::TargetConversionPrice(const uint160 &sourceCurre
     {
         return 0;
     }
-    CCurrencyValueMap currencyMap(currencies, conversionPrice);
+    CCurrencyValueMap currencyMap(currencies, PricesInReserve());
 
     if ((sourceCurrencyID != GetID() && !currencyMap.valueMap.count(sourceCurrencyID)) ||
         (targetCurrencyID != GetID() && !currencyMap.valueMap.count(targetCurrencyID)))
@@ -560,8 +560,7 @@ int64_t CCoinbaseCurrencyState::TargetConversionPrice(const uint160 &sourceCurre
     else
     {
         // reserve to reserve in reverse
-        CCurrencyValueMap viaCurrencyMap(currencies, viaConversionPrice);
-        return NativeToReserveRaw(ReserveToNativeRaw(SATOSHIDEN, viaCurrencyMap.valueMap[targetCurrencyID]), currencyMap.valueMap[sourceCurrencyID]);
+        return NativeToReserveRaw(ReserveToNativeRaw(SATOSHIDEN, currencyMap.valueMap[targetCurrencyID]), currencyMap.valueMap[sourceCurrencyID]);
     }
 }
 
@@ -572,7 +571,7 @@ CCurrencyValueMap CCoinbaseCurrencyState::TargetConversionPrices(const uint160 &
     {
         return retVal;
     }
-    CCurrencyValueMap currencyMap(currencies, conversionPrice);
+    CCurrencyValueMap currencyMap(currencies, PricesInReserve());
 
     if (targetCurrencyID != GetID() && !currencyMap.valueMap.count(targetCurrencyID))
     {
@@ -586,54 +585,67 @@ CCurrencyValueMap CCoinbaseCurrencyState::TargetConversionPrices(const uint160 &
     }
     else
     {
-        retVal.valueMap[GetID()] = ReserveToNativeRaw(SATOSHIDEN, currencyMap.valueMap[targetCurrencyID]);
-
-        CCurrencyValueMap viaCurrencyMap(currencies, viaConversionPrice);
+        retVal.valueMap[GetID()] = NativeToReserveRaw(SATOSHIDEN, currencyMap.valueMap[targetCurrencyID]);
 
         for (auto &oneCur : currencies)
         {
             // reserve to reserve in reverse
             retVal.valueMap[oneCur] = oneCur == targetCurrencyID ?
                 SATOSHIDEN :
-                NativeToReserveRaw(ReserveToNativeRaw(SATOSHIDEN, viaCurrencyMap.valueMap[targetCurrencyID]), currencyMap.valueMap[oneCur]);
+                NativeToReserveRaw(ReserveToNativeRaw(SATOSHIDEN, currencyMap.valueMap[targetCurrencyID]), currencyMap.valueMap[oneCur]);
         }
     }
     return retVal;
 }
 
-CCurrencyValueMap CCoinbaseCurrencyState::TargetConversionPricesReverse(const uint160 &targetCurrencyID) const
+CCurrencyValueMap CCoinbaseCurrencyState::TargetConversionPricesReverse(const uint160 &targetCurrencyID, bool addFeePct) const
 {
-    CCurrencyValueMap retVal(std::vector<uint160>({targetCurrencyID}), std::vector<int64_t>({SATOSHIDEN}));
-    if (!IsFractional())
+    CAmount extraFeeAmount = addFeePct ? CReserveTransactionDescriptor::CalculateConversionFeeNoMin(SATOSHIDEN) : 0;
+
+    CCurrencyValueMap retVal(std::vector<uint160>({targetCurrencyID}), std::vector<int64_t>({(int64_t)SATOSHIDEN - extraFeeAmount}));
+    CCurrencyValueMap currencyMap(currencies, PricesInReserve(true));
+    bool targetIsPrimary = targetCurrencyID == GetID();
+    if (!IsFractional() || (!targetIsPrimary && !currencyMap.valueMap.count(targetCurrencyID)))
     {
         return retVal;
     }
-    CCurrencyValueMap currencyMap(currencies, conversionPrice);
-
-    if (targetCurrencyID != GetID() && !currencyMap.valueMap.count(targetCurrencyID))
+    if (!targetIsPrimary)
     {
-        return retVal;
-    }
-
-    if (targetCurrencyID == GetID())
-    {
-        retVal = currencyMap;
-        retVal.valueMap[GetID()] = SATOSHIDEN;
-        for (auto &onePrice : retVal.valueMap)
+        if (!currencyMap.valueMap.count(targetCurrencyID))
         {
-            onePrice.second = ReserveToNativeRaw(SATOSHIDEN, currencyMap.valueMap[onePrice.first]);
+            return retVal;
+        }
+    }
+
+    if (targetIsPrimary)
+    {
+        for (auto &onePrice : currencyMap.valueMap)
+        {
+            retVal.valueMap[onePrice.first] = ReserveToNativeRaw(SATOSHIDEN - extraFeeAmount, onePrice.second);
         }
     }
     else
     {
-        CCurrencyValueMap viaCurrencyMap(currencies, viaConversionPrice);
+        retVal.valueMap[GetID()] = NativeToReserveRaw(SATOSHIDEN - extraFeeAmount, currencyMap.valueMap[targetCurrencyID]);
+        extraFeeAmount <<= 1;
 
         for (auto &oneCur : currencies)
         {
             // reserve to reserve in reverse
-            retVal.valueMap[oneCur] = oneCur == targetCurrencyID ?
-                SATOSHIDEN :
-                NativeToReserveRaw(ReserveToNativeRaw(SATOSHIDEN, viaCurrencyMap.valueMap[oneCur]), currencyMap.valueMap[targetCurrencyID]);
+            if (oneCur == targetCurrencyID)
+            {
+                retVal.valueMap[oneCur] = SATOSHIDEN - extraFeeAmount;
+            }
+            else
+            {
+                CAmount firstVal = NativeToReserveRaw(SATOSHIDEN - extraFeeAmount, currencyMap.valueMap[targetCurrencyID]);
+                printf("%ld\n", firstVal);
+                printf("%ld\n\n", ReserveToNativeRaw(firstVal, currencyMap.valueMap[oneCur]));
+
+                retVal.valueMap[oneCur] = ReserveToNativeRaw(
+                    NativeToReserveRaw(SATOSHIDEN - extraFeeAmount, currencyMap.valueMap[targetCurrencyID]),
+                    currencyMap.valueMap[oneCur]);
+            }
         }
     }
     return retVal;
@@ -829,7 +841,7 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
                 for (auto &onePrice : priorConversionMap.valueMap)
                 {
                     int64_t curVal = retVal.valueMap[onePrice.first];
-                    if ((!curVal || curVal > onePrice.second) && onePrice.second)
+                    if ((!curVal || curVal < onePrice.second) && onePrice.second)
                     {
                         retVal.valueMap[onePrice.first] = onePrice.second;
                     }

@@ -1594,7 +1594,7 @@ public:
 
     int64_t TargetConversionPrice(const uint160 &sourceCurrencyID, const uint160 &targetCurrencyID) const;
     CCurrencyValueMap TargetConversionPrices(const uint160 &targetCurrencyID) const;
-    CCurrencyValueMap TargetConversionPricesReverse(const uint160 &targetCurrencyID) const;
+    CCurrencyValueMap TargetConversionPricesReverse(const uint160 &targetCurrencyID, bool addFeePct=false) const;
 };
 
 class CReserveInOuts

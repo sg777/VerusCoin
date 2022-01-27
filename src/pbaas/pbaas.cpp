@@ -1618,14 +1618,38 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
         }
 
+        CReserveTransactionDescriptor rtxd;
+        CCoinbaseCurrencyState dummyState = importState;
+        std::vector<CTxOut> vOutputs;
+        CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
+        CCurrencyValueMap newPreConversionReservesIn = rt.TotalCurrencyOut();
+        CCurrencyValueMap feeConversionPrices;
+
+        if (importCurrencyDef.IsFractional() && importState.IsLaunchConfirmed())
+        {
+            feeConversionPrices = importState.TargetConversionPrices(systemDestID);
+        }
+        if (importCurrencyDef.IsFractional() && !(importState.IsLaunchConfirmed() && !importState.IsLaunchCompleteMarker()))
+        {
+            // normalize prices on the way in to prevent overflows on first pass
+            std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(importState.currencies);
+            dummyState.reserves = dummyState.AddVectors(dummyState.reserves, newReservesVector);
+            importState.conversionPrice = dummyState.PricesInReserve();
+        }
+        if (importState.currencies.size() != importState.conversionPrice.size())
+        {
+            importState.conversionPrice = dummyState.PricesInReserve();
+        }
+
         CAmount feeEquivalentInNative = rt.feeCurrencyID == systemDestID ? rt.nFees : 0;
+
         if (importCurrencyDef.IsFractional())
         {
             auto reserveMap = importState.GetReserveMap();
 
             // fee currency must be destination,
             // if some fees may be coming from the conversion, calculate them
-            if (rt.IsPreConversion())
+            if (rt.IsPreConversion() || !feeConversionPrices.valueMap.count(systemDestID) || !feeConversionPrices.valueMap.count(rt.feeCurrencyID))
             {
                 // preconversion must have standard fees included
                 if (rt.feeCurrencyID == systemDestID || rt.feeCurrencyID == systemDest.launchSystemID)
@@ -1634,58 +1658,57 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
                 else
                 {
-                    return state.Error("Invalid fee currency in reserve transfer " + rt.ToUniValue().write(1,2));
+                    return state.Error("Invalid fee currency in reserve transfer 1: " + rt.ToUniValue().write(1,2));
                 }
             }
             else
             {
-                if (rt.IsConversion() &&
-                    reserveMap.count(systemDestID) &&
-                    (rt.FirstCurrency() == importCurrencyID || reserveMap.count(rt.FirstCurrency())))
+                // figure out all appropriate fees at current prices
+                // first non-conversion fees
+                if (!feeEquivalentInNative && rt.feeCurrencyID != systemDestID)
                 {
-                    if (rt.FirstCurrency() == importCurrencyID)
+                    if (!feeConversionPrices.valueMap.count(rt.feeCurrencyID))
                     {
-                        feeEquivalentInNative += 
-                            importState.NativeToReserve(CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue()), reserveMap[systemDestID]);
+                        return state.Error("Invalid fee currency in reserve transfer 2: " + rt.ToUniValue().write(1,2));
                     }
-                    else if (rt.FirstCurrency() == systemDestID)
+                    feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.nFees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+                }
+
+                // all we have to do now is determine fees for conversion and add them to the explicit fees
+                if (rt.IsConversion())
+                {
+                    CAmount conversionFeeInCur = CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue());
+                    // double conversion for reserve to reserve
+                    if (rt.FirstCurrency() != importCurrencyID)
                     {
-                        feeEquivalentInNative += CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue());
+                        if (!rt.IsReserveToReserve())
+                        {
+                            return state.Error("Conversion is reserve to reserve but not specified " + rt.ToUniValue().write(1,2));
+                        }
+                        conversionFeeInCur <<= 1;
                     }
                     else
                     {
-                        CAmount feeIntermediate = 
-                            importState.ReserveToNative(CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue()) << 1, reserveMap[rt.FirstCurrency()]);
-                        feeEquivalentInNative += 
-                            importState.NativeToReserveRaw(feeIntermediate, importState.viaConversionPrice[reserveMap[systemDestID]]);
+                        if (rt.IsReserveToReserve())
+                        {
+                            return state.Error("Invalid reserve to reserve conversion " + rt.ToUniValue().write(1,2));
+                        }
                     }
-                }
-                if (rt.feeCurrencyID != systemDestID)
-                {
-                    if (rt.feeCurrencyID == importCurrencyID)
-                    {
-                        feeEquivalentInNative += 
-                            importState.NativeToReserve(rt.nFees, reserveMap[systemDestID]);
-                    }
-                    else if (reserveMap.count(rt.feeCurrencyID))
-                    {
-                        CAmount feeIntermediate = 
-                            importState.ReserveToNative(rt.nFees, reserveMap[rt.feeCurrencyID]);
-                        feeEquivalentInNative += 
-                            importState.NativeToReserveRaw(feeIntermediate, importState.viaConversionPrice[reserveMap[systemDestID]]);
-                    }
+                    
+                    feeEquivalentInNative += CCurrencyState::ReserveToNativeRaw(conversionFeeInCur,
+                                                                                feeConversionPrices.valueMap[rt.FirstCurrency()]);
                 }
             }
         }
         else if (rt.IsConversion() && !rt.IsPreConversion())
         {
-            return state.Error("Invalid fee currency in reserve transfer " + rt.ToUniValue().write(1,2));
+            return state.Error("Invalid conversion requested through non-fractional currency " + rt.ToUniValue().write(1,2));
         }
         else if (rt.feeCurrencyID != systemDestID)
         {
             if (systemDest.launchSystemID.IsNull() || rt.feeCurrencyID != systemDest.launchSystemID)
             {
-                return state.Error("Invalid fee currency in reserve transfer " + rt.ToUniValue().write(1,2));
+                return state.Error("Invalid fee currency in reserve transfer 3: " + rt.ToUniValue().write(1,2));
             }
             else
             {
@@ -1717,6 +1740,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     IsValidExportCurrency(nextLegCur, rt.FirstCurrency(), height))
                 {
                     return state.Error("Invalid currency export for next leg in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
+                if (!nextLegCur.IsValidTransferDestinationType(rt.destination.TypeNoFlags()))
+                {
+                    return state.Error("Invalid reserve transfer destination for target system" + rt.ToUniValue().write(1,2));
                 }
             }
             else if (!(rt.flags & rt.CROSS_SYSTEM) ||
@@ -1806,30 +1833,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
         }
 
-        CReserveTransactionDescriptor rtxd;
-        CCoinbaseCurrencyState dummyState = importState;
-        std::vector<CTxOut> vOutputs;
-        CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
-        CCurrencyValueMap newPreConversionReservesIn = rt.TotalCurrencyOut();
-
-        if (importCurrencyDef.IsFractional() && !(importState.IsLaunchConfirmed() && !importState.IsLaunchCompleteMarker()))
-        {
-            // normalize prices on the way in to prevent overflows on first pass
-            std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(importState.currencies);
-            dummyState.reserves = dummyState.AddVectors(dummyState.reserves, newReservesVector);
-            importState.conversionPrice = dummyState.PricesInReserve();
-        }
-        if (importState.currencies.size() != importState.conversionPrice.size())
-        {
-            importState.conversionPrice = dummyState.PricesInReserve();
-        }
-
-        // TODO: HARDENING TESTNET - enable this check on next testnet reset, ensure that consider bounce back or through
-        /*if (!systemDest.IsValidTransferDestinationType(rt.destination.TypeNoFlags()))
+        if (!rt.HasNextLeg() && !systemDest.IsValidTransferDestinationType(rt.destination.TypeNoFlags()))
         {
             return state.Error("Invalid reserve transfer destination for target system" + rt.ToUniValue().write(1,2));
         }
-        //*/
 
         if (rtxd.AddReserveTransferImportOutputs(ConnectedChains.ThisChain(), 
                                                  systemDest, 
