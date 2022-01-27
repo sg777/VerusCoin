@@ -639,8 +639,6 @@ CCurrencyValueMap CCoinbaseCurrencyState::TargetConversionPricesReverse(const ui
             else
             {
                 CAmount firstVal = NativeToReserveRaw(SATOSHIDEN - extraFeeAmount, currencyMap.valueMap[targetCurrencyID]);
-                printf("%ld\n", firstVal);
-                printf("%ld\n\n", ReserveToNativeRaw(firstVal, currencyMap.valueMap[oneCur]));
 
                 retVal.valueMap[oneCur] = ReserveToNativeRaw(
                     NativeToReserveRaw(SATOSHIDEN - extraFeeAmount, currencyMap.valueMap[targetCurrencyID]),
