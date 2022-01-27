@@ -2711,8 +2711,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 FirstCurrency() != registeredCurrency.GetID() ||
                 FirstValue() != 0 ||
                 IsConversion() ||
-                (FeeCurrencyID() != ASSETCHAINS_CHAINID && FeeCurrencyID() != ConnectedChains.ThisChain().launchSystemID) ||
-                nFees < ConnectedChains.ThisChain().GetCurrencyImportFee())
+                (FeeCurrencyID() != ASSETCHAINS_CHAINID && FeeCurrencyID() != ConnectedChains.ThisChain().launchSystemID))
             {
                 std::string qualifiedName = ConnectedChains.GetFriendlyCurrencyName(FirstCurrency());
                 printf("%s: Invalid currency export from %s (%s)\n", __func__, sourceSystem.name.c_str(), FirstCurrency().GetHex().c_str());
@@ -2724,12 +2723,21 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             CCurrencyDefinition preExistingCur;
             int32_t curHeight;
 
-            if (GetCurrencyDefinition(FirstCurrency(), preExistingCur, &curHeight, false) &&
-                curHeight < height)
+            // if not enough fees or currency is already registered, don't define
+            if (nFees < ConnectedChains.ThisChain().GetCurrencyImportFee() ||
+                (GetCurrencyDefinition(FirstCurrency(), preExistingCur, &curHeight, false) &&
+                curHeight < height))
             {
                 std::string qualifiedName = ConnectedChains.GetFriendlyCurrencyName(FirstCurrency());
 
-                LogPrint("crosschain", "%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
+                if (nFees < ConnectedChains.ThisChain().GetCurrencyImportFee())
+                {
+                    LogPrintf("%s: Not enough fee to import currency %s\n", __func__, qualifiedName.c_str());
+                }
+                else
+                {
+                    LogPrint("crosschain", "%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
+                }
 
                 CCcontract_info CC;
                 CCcontract_info *cp;
@@ -2757,9 +2765,9 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             // lookup ID and if not present, make an ID output
 
             // TODO: HARDENING - confirm/audit that we can only mint IDs from systems that are able to mint them
-            CIdentity preexistingID = CIdentity::LookupIdentity(GetDestinationID(dest));
+            CIdentity preexistingID = CIdentity::LookupIdentity(importedID.GetID());
 
-            // if we have a collision present, sound an alarm and fail
+            // if we have a collision present, sound an alarm and make no output
             if (preexistingID.IsValid() &&
                 (boost::to_lower_copy(importedID.name) != boost::to_lower_copy(preexistingID.name) ||
                  importedID.parent != preexistingID.parent))
@@ -2814,7 +2822,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                 "Full identity outputs:\n%s\n%s\n",
                                 importedID.name.c_str(), preexistingID.name.c_str(),
                                 importedID.ToUniValue().write(1,2).c_str(), preexistingID.ToUniValue().write(1,2).c_str());
-                            return false;
+                            dest = importedID.GetID();
                         }
                     }
                 }
@@ -2822,6 +2830,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 if (!memIndex.size())
                 {
                     txOutputs.push_back(CTxOut(0, importedID.IdentityUpdateOutputScript(height)));
+                    dest = importedID.GetID();
                 }
             }
 
