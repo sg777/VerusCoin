@@ -419,7 +419,7 @@ public:
                   const CCurrencyDefinition &destSystem,
                   const CCurrencyDefinition &destCurrency,
                   const CCoinbaseCurrencyState &curState,
-                  const CCurrencyValueMap &reserves,
+                  CCurrencyValueMap reserves,
                   int64_t nativeAmount,
                   CTxOut &txOut,
                   std::vector<CTxOut> &txOutputs,

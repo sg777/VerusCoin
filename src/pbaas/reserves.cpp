@@ -2590,13 +2590,14 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                 const CCurrencyDefinition &destSystem,
                                 const CCurrencyDefinition &destCurrency,
                                 const CCoinbaseCurrencyState &curState,
-                                const CCurrencyValueMap &reserves,
+                                CCurrencyValueMap reserves,
                                 int64_t nativeAmount,
                                 CTxOut &txOut,
                                 std::vector<CTxOut> &txOutputs,
                                 uint32_t height) const
 {
     bool makeNormalOutput = true;
+    CTxDestination dest = TransferDestinationToDestination(destination);
     if (HasNextLeg())
     {
         makeNormalOutput = false;
@@ -2629,10 +2630,13 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
 
             uint32_t newFlags = CReserveTransfer::VALID;
 
+            CCurrencyDefinition nextDest = destination.gatewayID == ASSETCHAINS_CHAINID ?
+                ConnectedChains.ThisChain() :
+                ConnectedChains.GetCachedCurrency(destination.gatewayID);
+
             // if this is a currency export, make the export
             if (IsCurrencyExport())
             {
-                CCurrencyDefinition nextDest = ConnectedChains.GetCachedCurrency(destination.gatewayID);
                 if (nextDest.IsMultiCurrency() &&
                     destination.gatewayID != ASSETCHAINS_CHAINID &&
                     !IsValidExportCurrency(nextDest, FirstCurrency(), height))
@@ -2676,10 +2680,45 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                                    lastLegDest,
                                                    uint160(),
                                                    destination.gatewayID);
+
+                // make sure we have enough fee to make a valid cross chain transfer
+                // or refund before we make it
+                //
+                // if headed to a system with incompatible addresses, we need to get the source address
+                // for refund
+
+                // TODO: HARDENING - for now, insufficient fee is only refunded when there is a compatible
+                // output address for refund
+                if ((nextLegTransfer.IsCurrencyExport() && destination.fees < nextDest.GetCurrencyImportFee()) ||
+                    (nextLegTransfer.IsIdentityExport() && destination.fees < nextDest.IDImportFee()) ||
+                    (!(nextLegTransfer.IsCurrencyExport() || nextLegTransfer.IsIdentityExport()) && destination.fees < nextDest.GetTransactionImportFee()))
+                {
+                    // for now, we refund only if we have a valid output for this chain, otherwise
+                    // put output in fees
+                    nextLegTransfer = CReserveTransfer();
+                    makeNormalOutput = true;
+                    reserves += CCurrencyValueMap(std::vector<uint160>({feeCurrencyID}), std::vector<int64_t>({nFees}));
+                    if (!(dest.which() == COptCCParams::ADDRTYPE_ID || 
+                         dest.which() == COptCCParams::ADDRTYPE_PK ||
+                         dest.which() == COptCCParams::ADDRTYPE_PKH ||
+                         dest.which() == COptCCParams::ADDRTYPE_SH))
+                    {
+                        // TODO: HARDENING - here, if we have too little fee and no
+                        // compatible destination address, we are eating the value and making it
+                        // available to the first spender. Instead, we should look back and have
+                        // a refund address
+                        CCcontract_info CC;
+                        CCcontract_info *cp;
+                        cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
+                        dest = CPubKey(ParseHex(CC.CChexstr));
+                    }
+                }
             }
             else
             {
                 // if our destination is here, add unused fees to native output and drop through to make normal output
+                // TODO: right now, a next leg that is local is a normal output. we should support local next legs
+                // that have function.
                 nativeAmount += destination.fees;
                 makeNormalOutput = true;
             }
@@ -2700,8 +2739,6 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
     }
     if (makeNormalOutput)
     {
-        CTxDestination dest = TransferDestinationToDestination(destination);
-
         // if this is a currency registration, make the currency output
         if (destination.TypeNoFlags() == destination.DEST_REGISTERCURRENCY)
         {
@@ -2724,15 +2761,14 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             int32_t curHeight;
 
             // if not enough fees or currency is already registered, don't define
-            if (nFees < ConnectedChains.ThisChain().GetCurrencyImportFee() ||
-                (GetCurrencyDefinition(FirstCurrency(), preExistingCur, &curHeight, false) &&
+            if ((GetCurrencyDefinition(FirstCurrency(), preExistingCur, &curHeight, false) &&
                 curHeight < height))
             {
                 std::string qualifiedName = ConnectedChains.GetFriendlyCurrencyName(FirstCurrency());
 
                 if (nFees < ConnectedChains.ThisChain().GetCurrencyImportFee())
                 {
-                    LogPrintf("%s: Not enough fee to import currency %s\n", __func__, qualifiedName.c_str());
+                    LogPrintf("%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
                 }
                 else
                 {
@@ -2784,16 +2820,16 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                         "Full identity outputs:\n%s\n%s\n",
                         importedID.name.c_str(), preexistingID.name.c_str(),
                         importedID.ToUniValue().write(1,2).c_str(), preexistingID.ToUniValue().write(1,2).c_str());
-                return false;
+
+                // TODO: HARDENING
+                // the current best option for this case is to make an output to
+                // the first primary address controlling the ID
+                // consider any others before removing this TODO
+                // check below for one more of this same issue
+                dest = importedID.primaryAddresses[0];
             }
             else if (!preexistingID.IsValid())
             {
-                // TODO: HARDENING ensure that the fee equals the correct amount whether converted or not
-                // of the current native currency
-                if (nFees < ConnectedChains.ThisChain().IDImportFee())
-                {
-                    return false;
-                }
                 LOCK(mempool.cs);
                 // check mempool for collision, and if none, make the ID output
                 uint160 identityKeyID(CCrossChainRPCData::GetConditionID(importedID.GetID(), EVAL_IDENTITY_PRIMARY));
@@ -2822,7 +2858,8 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                 "Full identity outputs:\n%s\n%s\n",
                                 importedID.name.c_str(), preexistingID.name.c_str(),
                                 importedID.ToUniValue().write(1,2).c_str(), preexistingID.ToUniValue().write(1,2).c_str());
-                            dest = importedID.GetID();
+
+                            dest = importedID.primaryAddresses[0];
                         }
                     }
                 }
@@ -2830,7 +2867,6 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 if (!memIndex.size())
                 {
                     txOutputs.push_back(CTxOut(0, importedID.IdentityUpdateOutputScript(height)));
-                    dest = importedID.GetID();
                 }
             }
 
@@ -2869,7 +2905,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 dest.which() == COptCCParams::ADDRTYPE_PK ||
                 dest.which() == COptCCParams::ADDRTYPE_PKH)
             {
-                std::vector<CTxDestination> dests = std::vector<CTxDestination>({TransferDestinationToDestination(destination)});
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({dest});
                 CTokenOutput ro = CTokenOutput(reserves);
                 txOut = CTxOut(nativeAmount, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
                 return true;
@@ -3597,7 +3633,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         feeEquivalent = importCurrencyState.NativeToReserveRaw(feeEquivalent, importCurrencyState.viaConversionPrice[systemDestIdx]);
                     }
 
-                    if (!systemDest.IsGateway() && feeEquivalent < curTransfer.CalculateTransferFee())
+                    /* if (!systemDest.IsGateway() && feeEquivalent < curTransfer.CalculateTransferFee())
                     {
                         // TODO: HARDENING - this refund check is only here because there was an issue in preconversions being sent without
                         // having a base transfer fee, both on the same chain and cross chain
@@ -3607,7 +3643,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             LogPrintf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                             return false;
                         }
-                    }
+                    } // */
 
                     if (curTransfer.FirstCurrency() == systemDestID && !curTransfer.IsMint())
                     {
