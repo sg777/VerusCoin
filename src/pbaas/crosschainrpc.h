@@ -422,9 +422,10 @@ public:
         QUERY_LAUNCHSTATE_CONFIRM = 3,
         QUERY_LAUNCHSTATE_COMPLETE = 4,
         QUERY_SYSTEMTYPE_LOCAL = 5,
-        QUERY_SYSTEMTYPE_GATEWAY = 6,
-        QUERY_SYSTEMTYPE_PBAAS = 7,
-        QUERY_ISCONVERTER = 8
+        QUERY_SYSTEMTYPE_IMPORTED = 6,
+        QUERY_SYSTEMTYPE_GATEWAY = 7,
+        QUERY_SYSTEMTYPE_PBAAS = 8,
+        QUERY_ISCONVERTER = 9
     };
 
     uint32_t nVersion;                      // version of this chain definition data structure to allow for extensions (not daemon version)

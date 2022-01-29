@@ -2962,7 +2962,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap newConvertedReservePool;
 
-    std::map<uint160,int32_t> currencyIndexMap = importCurrencyDef.GetCurrenciesMap();
+    std::map<uint160, int32_t> currencyIndexMap = importCurrencyDef.GetCurrenciesMap();
 
     uint160 systemSourceID = systemSource.GetID();
     uint160 systemDestID = importCurrencyDef.IsGateway() && systemSourceID != importCurrencyDef.GetID() ? 
