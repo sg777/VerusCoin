@@ -1785,6 +1785,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
         else
         {
+            if (systemDestID != ASSETCHAINS_CHAINID && !rt.IsPreConversion())
+            {
+                validExportCurrencies = ValidExportCurrencies(systemDest, height);
+            }
+
             if ((validExportCurrencies.size() && !validExportCurrencies.count(rt.FirstCurrency())) ||
                 (!validExportCurrencies.size() && !IsValidExportCurrency(systemDest, rt.FirstCurrency(), height)))
             {
