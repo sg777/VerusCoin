@@ -21,7 +21,7 @@
 // calculate fees required in one currency to pay in another
 CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination, uint32_t flags)
 {
-    if ((flags & FEE_OUTPUT) || (!(flags & PRECONVERT) && (flags & CONVERT)))
+    if (flags & FEE_OUTPUT)
     {
         return 0;
     }

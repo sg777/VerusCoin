@@ -7162,7 +7162,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         else
                         {
-                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetTransactionImportFee(), reversePriceInFeeCur);
+                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetTransactionImportFee() << 1, reversePriceInFeeCur);
                         }
 
                         if (sameChainConversion)
