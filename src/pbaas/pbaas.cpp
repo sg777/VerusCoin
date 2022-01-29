@@ -1678,20 +1678,28 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 if (rt.IsConversion())
                 {
                     CAmount conversionFeeInCur = CReserveTransactionDescriptor::CalculateConversionFee(rt.FirstValue());
+
+                    uint160 expectedImportID = rt.IsImportToSource() ? rt.FirstCurrency() : rt.destCurrencyID;
+
                     // double conversion for reserve to reserve
-                    if (rt.FirstCurrency() != importCurrencyID)
+                    if (expectedImportID != importCurrencyID)
                     {
-                        if (!rt.IsReserveToReserve())
-                        {
-                            return state.Error("Conversion is reserve to reserve but not specified " + rt.ToUniValue().write(1,2));
-                        }
-                        conversionFeeInCur <<= 1;
+                        return state.Error("Invalid import currency specified " + rt.ToUniValue().write(1,2));
                     }
                     else
                     {
+                        if (rt.secondReserveID.IsNull() && rt.IsReserveToReserve() || !rt.secondReserveID.IsNull() && !rt.IsReserveToReserve())
+                        {
+                            return state.Error("Conversion is reserve to reserve but not specified or vice versa " + rt.ToUniValue().write(1,2));
+                        }
+
                         if (rt.IsReserveToReserve())
                         {
-                            return state.Error("Invalid reserve to reserve conversion " + rt.ToUniValue().write(1,2));
+                            if (!importCurrencyDef.GetCurrenciesMap().count(rt.secondReserveID))
+                            {
+                                return state.Error("Invalid reserve to reserve conversion " + rt.ToUniValue().write(1,2));
+                            }
+                            conversionFeeInCur <<= 1;
                         }
                     }
                     
