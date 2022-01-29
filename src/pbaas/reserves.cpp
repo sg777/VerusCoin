@@ -3382,8 +3382,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     if (curTransfer.feeCurrencyID != nextDestSysID)
                     {
                         if (!isFractional ||
-                            !currencyIndexMap.count(nextDestSysID) ||
-                            !currencyIndexMap.count(curTransfer.feeCurrencyID))
+                            (!currencyIndexMap.count(nextDestSysID) &&
+                             !currencyIndexMap.count(curTransfer.feeCurrencyID) &&
+                             curTransfer.feeCurrencyID != importCurrencyID))
                         {
                             printf("%s: next leg fee currency %s unavailable for conversion using %s\n", __func__, curNextDest.name.c_str(), importCurrencyDef.name.c_str());
                             LogPrintf("%s: next leg fee currency %s unavailable for conversion using %s\n", __func__, curNextDest.name.c_str(), importCurrencyDef.name.c_str());
