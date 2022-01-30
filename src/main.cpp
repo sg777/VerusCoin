@@ -4066,7 +4066,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                                            importOutputs,
                                                                            importedCurrency,
                                                                            gatewayDepositsUsed,
-                                                                           spentCurrencyOut))
+                                                                           spentCurrencyOut,
+                                                                           ccx.exporter))
                             {
                                 return state.DoS(10, 
                                                  error("%s: invalid coinbase import for currency %s on system %s\n",

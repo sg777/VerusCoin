@@ -810,6 +810,22 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             CPBaaSNotarization tempLastNotarization = lastNotarization;
             tempLastNotarization.currencyState.SetLaunchCompleteMarker(false);
 
+            // get the first export for launch from the notary chain
+            CTransaction firstExportTx;
+            if (!pFirstExport || !(pFirstExport->second.IsValid() && !pFirstExport->second.GetPartialTransaction(firstExportTx).IsNull()))
+            {
+                LogPrintf("%s: invalid first export for PBaaS or converter launch\n");
+                return false;
+            }
+
+            // get the export for this import
+            CCrossChainExport ccx(firstExportTx.vout[pFirstExport->first.n].scriptPubKey);
+            if (!ccx.IsValid())
+            {
+                LogPrintf("%s: invalid export output for PBaaS or converter launch\n");
+                return false;
+            }
+
             std::vector<CReserveTransfer> exportTransfers(_exportTransfers);
             if (!tempLastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
                                                            newCurrency,
@@ -821,7 +837,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                            importOutputs,
                                                            importedCurrency,
                                                            gatewayDepositsUsed,
-                                                           spentCurrencyOut))
+                                                           spentCurrencyOut,
+                                                           ccx.exporter))
             {
                 LogPrintf("%s: invalid import for currency %s on system %s\n", __func__,
                                                                             newCurrency.name.c_str(), 
@@ -862,22 +879,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
             newNotarization.prevNotarization = CUTXORef();
             newNotarization.prevHeight = 0;
-
-            // get the first export for launch from the notary chain
-            CTransaction firstExportTx;
-            if (!pFirstExport || !(pFirstExport->second.IsValid() && !pFirstExport->second.GetPartialTransaction(firstExportTx).IsNull()))
-            {
-                LogPrintf("%s: invalid first export for PBaaS or converter launch\n");
-                return false;
-            }
-
-            // get the export for this import
-            CCrossChainExport ccx(firstExportTx.vout[pFirstExport->first.n].scriptPubKey);
-            if (!ccx.IsValid())
-            {
-                LogPrintf("%s: invalid export output for PBaaS or converter launch\n");
-                return false;
-            }
 
             // create an import based on launch conditions that covers all pre-allocations and uses the initial notarization.
             // generate outputs, then fill in numOutputs
