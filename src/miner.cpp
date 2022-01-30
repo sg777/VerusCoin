@@ -1626,7 +1626,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             nBlockSize += nStakeTxSize;
         }
 
-        ConnectedChains.AggregateChainTransfers(firstDestination, nHeight);
+        ConnectedChains.AggregateChainTransfers(DestinationToTransferDestination(firstDestination), nHeight);
 
         // Now the coinbase -
         // A PBaaS coinbase must have some additional outputs to enable certain chain state and functions to be properly

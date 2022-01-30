@@ -2337,7 +2337,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                                   importedCurrency,
                                                                   gatewayDeposits,
                                                                   spentCurrencyOut,
-                                                                  &newState))
+                                                                  &newState,
+                                                                  ccx.exporter))
                         {
                             flags &= ~IS_VALID;
                             flags |= IS_REJECT;
@@ -2938,7 +2939,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                                                     CCurrencyValueMap &importedCurrency,
                                                                     CCurrencyValueMap &gatewayDepositsIn,
                                                                     CCurrencyValueMap &spentCurrencyOut,
-                                                                    CCoinbaseCurrencyState *pNewCurrencyState)
+                                                                    CCoinbaseCurrencyState *pNewCurrencyState,
+                                                                    CTransferDestination feeRecipient)
 {
     // easy way to refer to return currency state or a dummy without conditionals
     CCoinbaseCurrencyState _newCurrencyState;
@@ -3330,8 +3332,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     convertedFees = transferFees;
                 }
 
-                // export fee is sent to the export pool of the sending
-                // system, exporter reward directly to the exporter
+                // export fee is added to the fee pool of the receiving
+                // system, exporter reward goes directly to the exporter
                 CAmount exportFee = CCrossChainExport::CalculateExportFeeRaw(totalNativeFee, numTransfers);
                 exporterReward = CCrossChainExport::ExportReward(exportFee);
 
@@ -3352,7 +3354,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     break;
                 }
                 curTransfer = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::FEE_OUTPUT,
-                                               systemDestID, exporterReward, systemDestID, 0, systemDestID, curTransfer.destination);
+                                               systemDestID, exporterReward, systemDestID, 0, systemDestID, feeRecipient);
             }
             else
             {
@@ -3395,32 +3397,52 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         // while we won't change the fee currency ID in the curTransfer, all pass through fees are assumed to be in
                         // the next leg's system currency by the time it is ready to produce an output
 
-                        CAmount oneFeeValue = 0;
                         int feeCurIdx = currencyIndexMap[curTransfer.feeCurrencyID];
                         int nextDestIdx = currencyIndexMap[nextDestSysID];
 
-                        // all pass-through conversions pay a reserve-to-reserve fee for the conversion
-                        CAmount passThroughFee = CalculateConversionFeeNoMin(curTransfer.destination.fees) << 1;
+                        // either fractional to reserve or reserve-to-reserve fee for the conversion
+                        CAmount passThroughFee = CalculateConversionFeeNoMin(curTransfer.destination.fees);
+                        if (curTransfer.feeCurrencyID != importCurrencyID)
+                        {
+                            passThroughFee <<= 1;
+                        }
                         curTransfer.destination.fees -= passThroughFee;
 
                         AddReserveConversionFees(curTransfer.feeCurrencyID, passThroughFee);
-
                         transferFees.valueMap[curTransfer.feeCurrencyID] += passThroughFee;
 
-                        reserveConverted.valueMap[curTransfer.feeCurrencyID] += curTransfer.destination.fees;
-                        crossConversions[feeCurIdx][nextDestIdx] += curTransfer.destination.fees;
-                        oneFeeValue = importCurrencyState.ReserveToNativeRaw(curTransfer.destination.fees,
-                                                                             importCurrencyState.IsLaunchCompleteMarker() ?
-                                                                              importCurrencyState.conversionPrice[feeCurIdx] :
-                                                                              importCurrencyState.viaConversionPrice[feeCurIdx]);
-
                         // one more conversion to destination native
-                        CAmount reserveFromFrac = CCurrencyState::NativeToReserveRaw(oneFeeValue, importCurrencyState.viaConversionPrice[nextDestIdx]);
-                        curTransfer.destination.fees = reserveFromFrac;
-                        newConvertedReservePool.valueMap[nextDestSysID] += reserveFromFrac;
+                        CAmount finalReserveAmount = 0;
 
-                        AddReserveOutput(nextDestSysID, reserveFromFrac);
-                        AddReserveOutConverted(nextDestSysID, reserveFromFrac);
+                        if (curTransfer.feeCurrencyID == importCurrencyID)
+                        {
+                            // convert from fractional to system ID in the first, non-via stage, since this was
+                            // already fractional to begin with
+                            fractionalConverted.valueMap[nextDestSysID] += curTransfer.destination.fees;
+                            AddNativeOutConverted(importCurrencyID, -curTransfer.destination.fees);
+
+                            finalReserveAmount = 
+                                CCurrencyState::NativeToReserveRaw(curTransfer.destination.fees, importCurrencyState.conversionPrice[currencyIndexMap[nextDestSysID]]);
+                        }
+                        else
+                        {
+                            CAmount oneFeeValue = 0;
+
+                            reserveConverted.valueMap[curTransfer.feeCurrencyID] += curTransfer.destination.fees;
+                            crossConversions[feeCurIdx][nextDestIdx] += curTransfer.destination.fees;
+                            oneFeeValue = importCurrencyState.ReserveToNativeRaw(curTransfer.destination.fees,
+                                                                                importCurrencyState.IsLaunchCompleteMarker() ?
+                                                                                importCurrencyState.conversionPrice[feeCurIdx] :
+                                                                                importCurrencyState.viaConversionPrice[feeCurIdx]);
+                            // one more conversion to destination native
+                            finalReserveAmount = CCurrencyState::NativeToReserveRaw(oneFeeValue, importCurrencyState.viaConversionPrice[nextDestIdx]);
+                        }
+
+                        curTransfer.destination.fees = finalReserveAmount;
+                        newConvertedReservePool.valueMap[nextDestSysID] += finalReserveAmount;
+
+                        AddReserveOutput(nextDestSysID, finalReserveAmount);
+                        AddReserveOutConverted(nextDestSysID, finalReserveAmount);
                     } else
                     {
                         if (curTransfer.feeCurrencyID == systemDestID)

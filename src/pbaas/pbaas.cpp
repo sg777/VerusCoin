@@ -721,7 +721,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                                   importedCurrency,
                                                   gatewayCurrencyUsed,
                                                   spentCurrencyOut,
-                                                  &newCurState))
+                                                  &newCurState,
+                                                  ccxSource.exporter))
         {
             return eval->Error(std::string(__func__) + ": invalid import transaction");
         }
@@ -3524,7 +3525,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                    newOutputs,
                                                    importedCurrency,
                                                    gatewayDepositsUsed,
-                                                   spentCurrencyOut))
+                                                   spentCurrencyOut,
+                                                   ccx.exporter))
         {
             LogPrintf("%s: invalid export for currency %s on system %s\n", __func__, destCur.name.c_str(), EncodeDestination(CIdentityID(destCur.systemID)).c_str());
             return false;
@@ -4604,7 +4606,7 @@ bool CConnectedChains::CurrencyImportStatus(const CCurrencyValueMap &totalImport
 bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                         const std::vector<ChainTransferData> &_txInputs,
                                         const std::vector<CInputDescriptor> &priorExports,
-                                        const CTxDestination &feeOutput,
+                                        const CTransferDestination &feeRecipient,
                                         uint32_t sinceHeight,
                                         uint32_t curHeight, // the height of the next block
                                         int32_t inputStartNum,
@@ -4875,6 +4877,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                                         importedCurrency,
                                                         gatewayDepositsUsed,
                                                         spentCurrencyOut,
+                                                        feeRecipient,
                                                         forcedRefunding))
     {
         printf("%s: cannot create notarization\n", __func__);
@@ -4975,7 +4978,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                           transferHash,
                           exportBurn,
                           inputStartNum,
-                          DestinationToTransferDestination(feeOutput));
+                          feeRecipient);
 
     ccx.SetPreLaunch(isPreLaunch);
     ccx.SetPostLaunch(isPostLaunch);
@@ -5013,7 +5016,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                    transferHash,
                                    CCurrencyValueMap(),
                                    inputStartNum,
-                                   DestinationToTransferDestination(feeOutput),
+                                   feeRecipient,
                                    std::vector<CReserveTransfer>(),
                                    sysCCX.flags);
         sysCCX.SetSystemThreadExport();
@@ -5084,7 +5087,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     return true;
 }
 
-void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight)
+void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRecipient, uint32_t nHeight)
 {
     // all chains aggregate reserve transfer transactions, so aggregate and add all necessary export transactions to the mem pool
     {
@@ -5382,7 +5385,7 @@ void CConnectedChains::AggregateChainTransfers(const CTxDestination &feeOutput, 
                         if (!CConnectedChains::CreateNextExport(destDef,
                                                                 txInputs,
                                                                 allExportOutputs,
-                                                                feeOutput,
+                                                                feeRecipient,
                                                                 ccx.sourceHeightEnd,
                                                                 nHeight + 1,
                                                                 (!isSameChain && !mergedSysExport) ? 2 : 1, // reserve transfers start at input 1 on same chain or after sys

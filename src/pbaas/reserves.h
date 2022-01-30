@@ -1729,7 +1729,8 @@ public:
                                          CCurrencyValueMap &importedCurrency,
                                          CCurrencyValueMap &gatewayDepositsIn,
                                          CCurrencyValueMap &spentCurrencyOut,
-                                         CCoinbaseCurrencyState *pNewCurrencyState=nullptr);
+                                         CCoinbaseCurrencyState *pNewCurrencyState=nullptr,
+                                         CTransferDestination feeRecipient=CTransferDestination());
 };
 
 struct CCcontract_info;

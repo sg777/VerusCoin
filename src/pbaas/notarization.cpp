@@ -447,6 +447,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                               CCurrencyValueMap &importedCurrency,
                                               CCurrencyValueMap &gatewayDepositsUsed,
                                               CCurrencyValueMap &spentCurrencyOut,
+                                              CTransferDestination feeRecipient,
                                               bool forcedRefund) const
 {
     uint160 sourceSystemID = sourceSystem.GetID();
@@ -659,7 +660,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            importedCurrency,
                                                            gatewayDepositsUsed, 
                                                            spentCurrencyOut,
-                                                           &tempState);
+                                                           &tempState,
+                                                           feeRecipient);
 
         if (retVal)
         {
@@ -680,7 +682,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                           importedCurrency,
                                                           gatewayDepositsUsed, 
                                                           spentCurrencyOut,
-                                                          &tempState);
+                                                          &tempState,
+                                                          feeRecipient);
         }
         else
         {
@@ -736,7 +739,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                   importedCurrency,
                                                                   gatewayDepositsUsed, 
                                                                   spentCurrencyOut,
-                                                                  &newNotarization.currencyState);
+                                                                  &newNotarization.currencyState,
+                                                                  feeRecipient);
         if (!newNotarization.currencyState.IsPrelaunch() &&
             isValidExport &&
             destCurrency.IsFractional())
@@ -759,7 +763,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                  importedCurrency,
                                                                  gatewayDepositsUsed, 
                                                                  spentCurrencyOut,
-                                                                 &newNotarization.currencyState);
+                                                                 &newNotarization.currencyState,
+                                                                 feeRecipient);
             if (isValidExport)
             {
                 newNotarization.currencyState.conversionPrice = tempCurState.conversionPrice;
