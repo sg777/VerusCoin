@@ -3346,6 +3346,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     exporterReserves.valueMap[systemDest.launchSystemID] = CCurrencyDefinition::CalculateRatioOfValue(totalVerusFee, rewardRatio);
                 }
 
+                CTxDestination exporterDest = TransferDestinationToDestination(curTransfer.destination);
+
                 if (notaryReward)
                 {
                     CCurrencyValueMap notaryReserves;
@@ -3356,7 +3358,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
 
                     CTxDestination blockNotarizerDest = TransferDestinationToDestination(blockNotarizer);
-                    CTxDestination notaryPayeeDest = TransferDestinationToDestination(notaryPayee);
                     if (blockNotarizerDest.which() == COptCCParams::ADDRTYPE_PK ||
                         blockNotarizerDest.which() == COptCCParams::ADDRTYPE_PKH ||
                         blockNotarizerDest.which() == COptCCParams::ADDRTYPE_ID)
@@ -3374,6 +3375,37 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         
                         vOutputs.push_back(CTxOut(notaryReward, outScript));
                     }
+                    CTxDestination notaryPayeeDest = TransferDestinationToDestination(notaryPayee);
+                    if (notaryPayeeDest.which() != COptCCParams::ADDRTYPE_PK &&
+                        notaryPayeeDest.which() != COptCCParams::ADDRTYPE_PKH &&
+                        notaryPayeeDest.which() != COptCCParams::ADDRTYPE_ID)
+                    {
+                        // no valid payee, so select from the chain notaries based on a hash of the
+                        // notarization proposer and export fee recipient
+                        const std::vector<uint160> *pNotaries = nullptr;
+
+                        if (systemDest.parent == systemSourceID)
+                        {
+                            pNotaries = &systemDest.notaries;
+                        }
+                        else if (systemSource.parent == systemDestID)
+                        {
+                            pNotaries = &systemSource.notaries;
+                        }
+                        else
+                        {
+                            LogPrintf("%s: Invalid import/export relationship between source and destination %s : %s\n", __func__, EncodeDestination(CIdentityID(systemSourceID)).c_str(), EncodeDestination(CIdentityID(systemDestID)).c_str());
+                            return false;
+                        }
+                        
+                        if (pNotaries->size())
+                        {
+                            uint64_t intermediate = (UintToArith256(uint256S(GetDestinationID(exporterDest).GetHex())) ^
+                                                         UintToArith256(uint256S(GetDestinationID(blockNotarizerDest).GetHex()))).GetLow64();
+                            notaryPayeeDest = CIdentityID((*pNotaries)[(intermediate % pNotaries->size())]);
+                        }
+                    }
+
                     if (notaryPayeeDest.which() == COptCCParams::ADDRTYPE_PK ||
                         notaryPayeeDest.which() == COptCCParams::ADDRTYPE_PKH ||
                         notaryPayeeDest.which() == COptCCParams::ADDRTYPE_ID)
@@ -3393,7 +3425,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                 }
 
-                CTxDestination exporterDest = TransferDestinationToDestination(curTransfer.destination);
                 if (exporterDest.which() == COptCCParams::ADDRTYPE_PK ||
                     exporterDest.which() == COptCCParams::ADDRTYPE_PKH ||
                     exporterDest.which() == COptCCParams::ADDRTYPE_ID)
