@@ -722,7 +722,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                                   gatewayCurrencyUsed,
                                                   spentCurrencyOut,
                                                   &newCurState,
-                                                  ccxSource.exporter))
+                                                  ccxSource.exporter,
+                                                  importNotarization.proposer))
         {
             return eval->Error(std::string(__func__) + ": invalid import transaction");
         }
@@ -1900,12 +1901,17 @@ CAmount CCrossChainExport::CalculateExportFeeRaw(CAmount fee, int numIn)
     return (((arith_uint256(fee) * ratio)) / satoshis).GetLow64();
 }
 
-CAmount CCrossChainExport::ExportReward(int64_t exportFee)
+CAmount CCrossChainExport::ExportReward(const CCurrencyDefinition &destSystem, int64_t exportFee)
 {
+    // by default, the individual exporter gets 1/10 of the export fee, which is sent directly to the exporter
+    // on the importing system
     int64_t individualExportFee = ((arith_uint256(exportFee) * 10000000) / SATOSHIDEN).GetLow64();
-    if (individualExportFee < MIN_FEES_BEFORE_FEEPOOL)
+    // if 1/10th of the transfer fee is less than 2x a standard transfer fee, ensure that the exporter
+    // gets a standard transfer fee or whatever is available
+    CAmount minFee = destSystem.GetTransactionTransferFee() << 1;
+    if (individualExportFee < minFee)
     {
-        individualExportFee = exportFee > MIN_FEES_BEFORE_FEEPOOL ? MIN_FEES_BEFORE_FEEPOOL : exportFee;
+        individualExportFee = exportFee > minFee ? minFee : exportFee;
     }
     return individualExportFee;
 }

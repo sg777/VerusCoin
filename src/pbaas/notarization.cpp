@@ -495,6 +495,34 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
     }
 
+    CTransferDestination notaryPayee;
+    /* if (externalSystemID != ASSETCHAINS_CHAINID)
+    {
+        // to make a connection from one chain or system to another, one system must be a parent of another
+        // the child is the one that determines the notaries to choose from
+        CCurrencyDefinition destCurDef = ConnectedChains.GetCachedCurrency(destSystemID);
+        const std::vector<uint160> *pNotaries = nullptr;
+
+        if (destCurDef.parent == sourceSystemID)
+        {
+            pNotaries = &destCurDef.notaries;
+        }
+        else if (sourceSystem.parent == destSystemID)
+        {
+            pNotaries = &sourceSystem.notaries;
+        }
+        else
+        {
+            LogPrintf("%s: Invalid import/export notarization %s\n", __func__, this->ToUniValue().write(1,2).c_str());
+            return false;
+        }
+        
+        if (pNotaries->size())
+        {
+            notaryPayee = DestinationToTransferDestination(CIdentityID((*pNotaries)[(notaHeight % pNotaries->size())]));
+        }
+    } // */
+
     if (!externalSystemID.IsNull())
     {
         hashType = (CCurrencyDefinition::EProofProtocol)externalSystemDef.proofProtocol;
@@ -661,7 +689,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            gatewayDepositsUsed, 
                                                            spentCurrencyOut,
                                                            &tempState,
-                                                           feeRecipient);
+                                                           feeRecipient,
+                                                           proposer,
+                                                           notaryPayee);
 
         if (retVal)
         {
@@ -683,7 +713,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                           gatewayDepositsUsed, 
                                                           spentCurrencyOut,
                                                           &tempState,
-                                                          feeRecipient);
+                                                          feeRecipient,
+                                                          proposer,
+                                                          notaryPayee);
         }
         else
         {
@@ -740,7 +772,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                   gatewayDepositsUsed, 
                                                                   spentCurrencyOut,
                                                                   &newNotarization.currencyState,
-                                                                  feeRecipient);
+                                                                  feeRecipient,
+                                                                  proposer,
+                                                                  notaryPayee);
         if (!newNotarization.currencyState.IsPrelaunch() &&
             isValidExport &&
             destCurrency.IsFractional())
@@ -764,7 +798,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                  gatewayDepositsUsed, 
                                                                  spentCurrencyOut,
                                                                  &newNotarization.currencyState,
-                                                                 feeRecipient);
+                                                                 feeRecipient,
+                                                                 proposer,
+                                                                 notaryPayee);
             if (isValidExport)
             {
                 newNotarization.currencyState.conversionPrice = tempCurState.conversionPrice;

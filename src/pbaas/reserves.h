@@ -982,7 +982,7 @@ public:
     static CAmount CalculateExportFeeRaw(CAmount fee, int numIn);
     CCurrencyValueMap CalculateExportFee() const;
     CCurrencyValueMap CalculateImportFee() const;
-    static CAmount ExportReward(int64_t exportFee);
+    static CAmount ExportReward(const CCurrencyDefinition &destSystem, int64_t exportFee);
 
     UniValue ToUniValue() const;
 
@@ -1730,7 +1730,9 @@ public:
                                          CCurrencyValueMap &gatewayDepositsIn,
                                          CCurrencyValueMap &spentCurrencyOut,
                                          CCoinbaseCurrencyState *pNewCurrencyState=nullptr,
-                                         CTransferDestination feeRecipient=CTransferDestination());
+                                         const CTransferDestination &feeRecipient=CTransferDestination(),
+                                         const CTransferDestination &blockNotarizer=CTransferDestination(),
+                                         const CTransferDestination &notaryPayee=CTransferDestination());
 };
 
 struct CCcontract_info;
