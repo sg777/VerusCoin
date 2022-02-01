@@ -570,6 +570,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
 
+    uint256 weakEntropy = proofRoots.count(sourceSystemID) ? proofRoots.find(sourceSystemID)->second.stateRoot : uint256();
+
     // TODO: HARDENING ensure that the latest proof root of this chain is in on gateway
 
     if (destCurrency.launchSystemID == sourceSystemID &&
@@ -665,7 +667,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            &tempState,
                                                            feeRecipient,
                                                            proposer,
-                                                           notaryPayee);
+                                                           weakEntropy);
 
         if (retVal)
         {
@@ -689,7 +691,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                           &tempState,
                                                           feeRecipient,
                                                           proposer,
-                                                          notaryPayee);
+                                                          weakEntropy);
         }
         else
         {
@@ -748,7 +750,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                   &newNotarization.currencyState,
                                                                   feeRecipient,
                                                                   proposer,
-                                                                  notaryPayee);
+                                                                  weakEntropy);
         if (!newNotarization.currencyState.IsPrelaunch() &&
             isValidExport &&
             destCurrency.IsFractional())
@@ -774,7 +776,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                  &newNotarization.currencyState,
                                                                  feeRecipient,
                                                                  proposer,
-                                                                 notaryPayee);
+                                                                 weakEntropy);
             if (isValidExport)
             {
                 newNotarization.currencyState.conversionPrice = tempCurState.conversionPrice;

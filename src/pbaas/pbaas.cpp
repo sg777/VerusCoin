@@ -723,7 +723,10 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                                   spentCurrencyOut,
                                                   &newCurState,
                                                   ccxSource.exporter,
-                                                  importNotarization.proposer))
+                                                  importNotarization.proposer,
+                                                  importNotarization.proofRoots.count(ccxSource.sourceSystemID) ?
+                                                    importNotarization.proofRoots.find(ccxSource.sourceSystemID)->second.stateRoot :
+                                                    uint256()))
         {
             return eval->Error(std::string(__func__) + ": invalid import transaction");
         }

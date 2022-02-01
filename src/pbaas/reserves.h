@@ -1732,7 +1732,7 @@ public:
                                          CCoinbaseCurrencyState *pNewCurrencyState=nullptr,
                                          const CTransferDestination &feeRecipient=CTransferDestination(),
                                          const CTransferDestination &blockNotarizer=CTransferDestination(),
-                                         const CTransferDestination &notaryPayee=CTransferDestination());
+                                         const uint256 &entropy=uint256());
 };
 
 struct CCcontract_info;
