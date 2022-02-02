@@ -6845,7 +6845,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         // if we expect an ETH address, only accept that
                         if (exportSystemDef.proofProtocol == exportSystemDef.PROOF_ETHNOTARIZATION)
                         {
-                            dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(dest.DecodeEthDestination(destStr)));
+                            uint160 ethDestination = dest.DecodeEthDestination(destStr);
+                            if (ethDestination.IsNull())
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid Ethereum destination (null)");
+                            }
+                            dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(ethDestination));
                         }
                         else
                         {
@@ -6867,7 +6872,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     }
                     else if (exportSystemDef.IsValid() && exportSystemDef.proofProtocol == exportSystemDef.PROOF_ETHNOTARIZATION)
                     {
-                        dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(dest.DecodeEthDestination(destStr)));
+                        uint160 ethDestination = dest.DecodeEthDestination(destStr);
+                        if (ethDestination.IsNull())
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid Ethereum destination (null)");
+                        }
+                        dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(ethDestination));
                         dest.type |= dest.FLAG_DEST_GATEWAY;
                         dest.gatewayID = exportSystemDef.GetID();
                     }

@@ -758,27 +758,15 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         }
         else
         {
-            CCurrencyValueMap currenciesIn(importedCurrency);
+            CCurrencyValueMap currenciesIn(importedCurrency + gatewayCurrencyUsed);
 
             if (newCurState.primaryCurrencyOut)
             {
                 currenciesIn.valueMap[newCurState.GetID()] += newCurState.primaryCurrencyOut;
             }
 
-            std::map<uint160, int> curIdxMap;
-            if ((curIdxMap = newCurState.GetReserveMap()).count(ASSETCHAINS_CHAINID))
-            {
-                auto nativeCurIdx = curIdxMap[ASSETCHAINS_CHAINID];
-                if (newCurState.fees[nativeCurIdx])
-                {
-                    currenciesIn.valueMap[ASSETCHAINS_CHAINID] += newCurState.fees[nativeCurIdx];
-                }
-            }
-            
             if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut)) // TODO: HARDENING account for fees to balance
             {
-                printf("%s: Invalid use of reserve deposits -- (totalDeposits + currenciesIn):\n%s\n(reserveDepositChange + spentCurrencyOut):\n%s\n",
-                       __func__, (totalDeposits + currenciesIn).ToUniValue().write().c_str(), (reserveDepositChange + spentCurrencyOut).ToUniValue().write().c_str());
                 LogPrintf("%s: Invalid use of reserve deposits -- (totalDeposits + currenciesIn):\n%s\n(reserveDepositChange + spentCurrencyOut):\n%s\n",
                        __func__, (totalDeposits + currenciesIn).ToUniValue().write().c_str(), (reserveDepositChange + spentCurrencyOut).ToUniValue().write().c_str());
                 return eval->Error(std::string(__func__) + ": invalid use of reserve deposits for currency: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
@@ -1498,6 +1486,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
     // basic fees required to cover the transfer
     COptCCParams p;
     CReserveTransfer rt;
+
+    // TODO: HARDENING - ensure that destinations and nested destinations are valid for the target system
 
     if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
