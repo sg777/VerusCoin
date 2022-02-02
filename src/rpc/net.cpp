@@ -14,14 +14,12 @@
 #include "util.h"
 #include "version.h"
 #include "deprecation.h"
-#include "tls/utiltls.h"
 
 #include <boost/foreach.hpp>
 
 #include <univalue.h>
 
 using namespace std;
-using namespace tls;
 
 UniValue getconnectioncount(const UniValue& params, bool fHelp)
 {
@@ -90,7 +88,6 @@ UniValue getpeerinfo(const UniValue& params, bool fHelp)
             "    \"addr\":\"host:port\",      (string) The ip address and port of the peer\n"
             "    \"addrlocal\":\"ip:port\",   (string) local address\n"
             "    \"services\":\"xxxxxxxxxxxxxxxx\",   (string) The services offered\n"
-            "    \"tls_established\": true:false,     (boolean) Status of TLS connection\n"
             "    \"lastsend\": ttt,           (numeric) The time in seconds since epoch (Jan 1 1970 GMT) of the last send\n"
             "    \"lastrecv\": ttt,           (numeric) The time in seconds since epoch (Jan 1 1970 GMT) of the last receive\n"
             "    \"bytessent\": n,            (numeric) The total bytes sent\n"
@@ -134,7 +131,6 @@ UniValue getpeerinfo(const UniValue& params, bool fHelp)
         if (!(stats.addrLocal.empty()))
             obj.push_back(Pair("addrlocal", stats.addrLocal));
         obj.push_back(Pair("services", strprintf("%016x", stats.nServices)));
-        obj.push_back(Pair("tls_established", stats.fTLSEstablished));
         obj.push_back(Pair("lastsend", stats.nLastSend));
         obj.push_back(Pair("lastrecv", stats.nLastRecv));
         obj.push_back(Pair("bytessent", stats.nSendBytes));
@@ -314,6 +310,7 @@ UniValue getaddednodeinfo(const UniValue& params, bool fHelp)
             + HelpExampleCli("getaddednodeinfo", "true \"192.168.0.201\"")
             + HelpExampleRpc("getaddednodeinfo", "true, \"192.168.0.201\"")
         );
+
     bool fDns = params[0].get_bool();
 
     list<string> laddedNodes(0);
@@ -484,7 +481,6 @@ UniValue getnetworkinfo(const UniValue& params, bool fHelp)
             "  \"localservices\": \"xxxxxxxxxxxxxxxx\", (string) the services we offer to the network\n"
             "  \"timeoffset\": xxxxx,                   (numeric) the time offset\n"
             "  \"connections\": xxxxx,                  (numeric) the number of connections\n"
-            "  \"tls_connections\": xxxxx,              (numeric) the number of TLS connections\n"
             "  \"networks\": [                          (array) information per network\n"
             "  {\n"
             "    \"name\": \"xxx\",                     (string) network (ipv4, ipv6 or onion)\n"
@@ -519,7 +515,6 @@ UniValue getnetworkinfo(const UniValue& params, bool fHelp)
     obj.push_back(Pair("localservices",       strprintf("%016x", nLocalServices)));
     obj.push_back(Pair("timeoffset",    GetTimeOffset()));
     obj.push_back(Pair("connections",   (int)vNodes.size()));
-    obj.push_back(Pair("tls_connections", (int64_t)(std::count_if(vNodes.begin(), vNodes.end(), [](CNode* n) {return n->ssl != NULL;}))));
     obj.push_back(Pair("networks",      GetNetworksInfo()));
     obj.push_back(Pair("relayfee",      ValueFromAmount(::minRelayTxFee.GetFeePerK())));
     UniValue localAddresses(UniValue::VARR);
