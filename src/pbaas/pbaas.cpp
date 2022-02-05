@@ -803,7 +803,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             // so add gateway currency
             if (ccxSource.sourceSystemID != ccxSource.destSystemID && ccxSource.sourceSystemID != ccxSource.destCurrencyID)
             {
-                if (authorizingImport.importCurrencyID != ccxSource.sourceSystemID)
+                if (!(checkState.IsRefunding() && destCurDef.launchSystemID == ASSETCHAINS_CHAINID) &&
+                    authorizingImport.importCurrencyID != ccxSource.sourceSystemID)
                 {
                     return eval->Error(std::string(__func__) + ": invalid currency system import thread for import to: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
                 }
@@ -815,7 +816,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                 currenciesIn.valueMap[newCurState.GetID()] += newCurState.primaryCurrencyOut;
             }
 
-            if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut)) // TODO: HARDENING account for fees to balance
+            if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut))
             {
                 LogPrintf("%s: Invalid use of reserve deposits -- (totalDeposits + currenciesIn):\n%s\n(reserveDepositChange + spentCurrencyOut):\n%s\n",
                        __func__, (totalDeposits + currenciesIn).ToUniValue().write().c_str(), (reserveDepositChange + spentCurrencyOut).ToUniValue().write().c_str());
