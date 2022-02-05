@@ -253,9 +253,22 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     // still ensure that they are enough
                     CAmount feeEquivalent = !oneTransfer.nFees ? 0 : 
                         oneTransfer.IsPreConversion() ? oneTransfer.nFees : CCurrencyState::ReserveToNativeRaw(oneTransfer.nFees, conversionMap.valueMap[oneTransfer.feeCurrencyID]);
-                    if (oneTransfer.IsPreConversion() && oneTransfer.feeCurrencyID != importingToDef.launchSystemID)
+
+                    if (oneTransfer.IsPreConversion())
                     {
-                        return state.Error("Fees for currency launch preconversions must include launch currency: " + oneTransfer.ToUniValue().write(1,2));
+                        if (oneTransfer.feeCurrencyID != importingToDef.launchSystemID)
+                        {
+                            return state.Error("Fees for currency launch preconversions must include launch currency: " + oneTransfer.ToUniValue().write(1,2));
+                        }
+                        if (!importingToDef.GetCurrenciesMap().count(oneTransfer.FirstCurrency()))
+                        {
+                            return state.Error("Invalid source currency for preconversion: " + oneTransfer.ToUniValue().write(1,2));
+                        }
+                        // TODO: HARDENING - should move valid combination checks to IsValid()
+                        if (oneTransfer.IsBurn() || oneTransfer.IsMint() || oneTransfer.IsReserveToReserve() || oneTransfer.IsFeeOutput())
+                        {
+                            return state.Error("Invalid reserve transfer flags: " + oneTransfer.ToUniValue().write(1,2));
+                        }
                     }
 
                     if (oneTransfer.IsConversion())
@@ -266,6 +279,11 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                     CReserveTransactionDescriptor::CalculateConversionFee(oneTransfer.FirstValue());
                         feeEquivalent += 
                             CCurrencyState::ReserveToNativeRaw(conversionFee, conversionMap.valueMap[oneTransfer.FirstCurrency()]);
+
+                        if (!oneTransfer.IsPreConversion())
+                        {
+                            // ensure we can convert
+                        }
                     }
 
                     if (oneTransfer.IsIdentityExport())
@@ -314,6 +332,23 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
     }
 
     return false;
+}
+
+// ensure that the cross chain export is valid to be posted on the block chain
+bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    // ensure that all reserve transfers spent are properly accounted for
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_PBAAS)
+    {
+        return state.Error("Multi-currency operation before PBaaS activation");
+    }
+
+    // TODO: HARDENING
+    // ensure that all reserve transfers are hashed, matched to this export, and no others are present
+    // make sure that every export that should be included in this export (all mined in relevant blocks) is included, no exceptions
+    // verify all currency totals
+
+    return true;
 }
 
 bool IsCrossChainImportInput(const CScript &scriptSig)
@@ -465,10 +500,14 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
             }
             return eval->Error("Unauthorized reserve transfer spend without valid export");
         }
+
+        // TODO: HARDENING - ensure the only valid reason to approve at this point requires verification that the
+        // spending transaction is signed by the refunding address.
         return true;
     }
     return eval->Error("Attempt to spend invalid reserve transfer");
 }
+
 bool IsReserveTransferInput(const CScript &scriptSig)
 {
     return true;
@@ -758,7 +797,18 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         }
         else
         {
-            CCurrencyValueMap currenciesIn(importedCurrency + gatewayCurrencyUsed);
+            CCurrencyValueMap currenciesIn(importedCurrency);
+
+            // if we are not coming directly into the source system, there must be a separate source export as well,
+            // so add gateway currency
+            if (ccxSource.sourceSystemID != ccxSource.destSystemID && ccxSource.sourceSystemID != ccxSource.destCurrencyID)
+            {
+                if (authorizingImport.importCurrencyID != ccxSource.sourceSystemID)
+                {
+                    return eval->Error(std::string(__func__) + ": invalid currency system import thread for import to: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
+                }
+                currenciesIn += gatewayCurrencyUsed;
+            }
 
             if (newCurState.primaryCurrencyOut)
             {

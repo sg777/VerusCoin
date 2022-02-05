@@ -1674,6 +1674,7 @@ std::set<uint160> ValidExportCurrencies(const CCurrencyDefinition &systemDest, u
 // used to export coins from one chain to another, if they are not native, they are represented on the other
 // chain as tokens
 bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool IsCrossChainExportInput(const CScript &scriptSig);
 
 // used to validate import of coins from one chain to another. if they are not native and are supported,

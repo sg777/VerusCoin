@@ -465,7 +465,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(CrossChainExportWIF).begin(),32);
             cp->validate = ValidateCrossChainExport;
             cp->ismyvin = IsCrossChainExportInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PrecheckCrossChainExport;
             break;
 
         case EVAL_CURRENCYSTATE:
