@@ -6468,7 +6468,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                       secondCurrencyID == convertToCurrencyID ||
                       sourceCurrencyID == convertToCurrencyID ||
                       !viaIdxMap.count(convertToCurrencyID))) ||
-                    !viaIdxMap.count(sourceCurrencyID))
+                    !(viaIdxMap.count(sourceCurrencyID) ||
+                      sourceCurrencyID == secondCurrencyID ||
+                      convertToStr.empty()))
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "To specify a fractional currency converter, \"currency\" and \"convertto\" must both be reserves of \"via\"");
                 }
@@ -6757,7 +6759,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         (exportToCurrencyDef.GatewayConverterID().IsNull() &&
                          exportToCurrencyID == thisChain.launchSystemID && !thisChain.GatewayConverterID().IsNull() ?
                             thisChain.GatewayConverterID() :
-                            uint160());
+                            (exportToCurrencyDef.GatewayConverterID().IsNull() ? uint160() : exportToCurrencyDef.GatewayConverterID()));
                     if (convertToCurrencyID.IsNull() && (convertToCurrencyID = ConnectedChains.ThisChain().GatewayConverterID()).IsNull())
                     {
                         convertToCurrencyID = exportToCurrencyID;
