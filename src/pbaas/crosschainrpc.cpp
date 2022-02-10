@@ -488,7 +488,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
     currencyImportFee(CURRENCY_IMPORT_FEE),
     transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
-    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1)
+    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    initialBits(DEFAULT_START_TARGET)
 {
     try
     {
@@ -917,6 +918,20 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (vEras.size())
         {
+            try
+            {
+                uint32_t newInitialBits = UintToArith256(uint256S(uni_get_str(find_value(obj, "initialtarget")))).GetCompact();
+                if (newInitialBits)
+                {
+                    initialBits = newInitialBits;
+                }
+            }
+            catch(const std::exception& e)
+            {
+                LogPrintf("%s: Invalid initial target, must be 256 bit hex target\n", __func__);
+                throw e;
+            }
+            
             for (auto era : vEras)
             {
                 rewards.push_back(uni_get_int64(find_value(era, "reward")));
@@ -952,7 +967,8 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
     pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
     currencyImportFee(CURRENCY_IMPORT_FEE),
     transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
-    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1)
+    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    initialBits(DEFAULT_START_TARGET)
 {
     name = boost::to_upper_copy(CleanName(currencyName, parent));
     if (parent.IsNull())

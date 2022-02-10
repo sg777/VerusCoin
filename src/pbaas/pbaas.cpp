@@ -343,11 +343,74 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Multi-currency operation before PBaaS activation");
     }
 
-    // TODO: HARDENING
-    // ensure that all reserve transfers are hashed, matched to this export, and no others are present
-    // make sure that every export that should be included in this export (all mined in relevant blocks) is included, no exceptions
-    // verify all currency totals
+    // TODO: HARDENING - ensure that we have confirmed all totals and fees are correct
 
+    // check that all reserve transfers are matched to this export, and no others are mined in to the block that should be included
+    COptCCParams p;
+    CCrossChainExport ccx;
+    int primaryExportOut = -1, nextOutput;
+    CPBaaSNotarization notarization;
+    std::vector<CReserveTransfer> reserveTransfers;
+
+    if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+          p.IsValid() &&
+          p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+          p.vData.size() &&
+          (ccx = CCrossChainExport(p.vData[0])).IsValid() &&
+          (ccx.IsSupplemental() ||
+           (ccx.GetExportInfo(tx, outNum, primaryExportOut, nextOutput, notarization, reserveTransfers, state) &&
+            ccx.sourceSystemID == ASSETCHAINS_CHAINID))))
+    {
+        return state.Error("Invalid cross chain export");
+    }
+
+    // if we are not the primary export out or we are supplemental, no need to check further
+    if (ccx.IsSupplemental() || outNum != primaryExportOut)
+    {
+        return true;
+    }
+
+    // make sure that every reserve transfer that SHOULD BE included (all mined in relevant blocks) IS included, no exceptions
+    // verify all currency totals
+    multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
+    if (!GetChainTransfers(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd))
+    {
+        return state.Error("Error retrieving cross chain transfers");
+    }
+
+    std::set<std::pair<uint256, int>> utxos;
+    if (ccx.numInputs)
+    {
+        if (ccx.firstInput < 0)
+        {
+            return state.Error("First export index invalid");
+        }
+        for (int i = ccx.firstInput; i < (ccx.firstInput + ccx.numInputs); i++)
+        {
+            if (i < tx.vin.size())
+            {
+                return state.Error("Input index out of range");
+            }
+            utxos.insert(std::make_pair(tx.vin[i].prevout.hash, tx.vin[i].prevout.n));
+        }
+    }
+
+    // all of the input descriptors and no others should be in the export's reserve transfers
+    CCurrencyValueMap calcFees;
+    CCurrencyValueMap calcExportedValue;
+    for (auto &oneTransfer : inputDescriptors)
+    {
+        std::pair<uint256, int> transferOutput = make_pair(oneTransfer.second.first.txIn.prevout.hash, oneTransfer.second.first.txIn.prevout.n);
+        if (!utxos.count(transferOutput))
+        {
+            return state.Error("Export excludes valid reserve transfer from source block");
+        }
+        utxos.erase(transferOutput);
+    }
+    if (utxos.size())
+    {
+        return state.Error("Invalid export input that was not mined in as valid reserve transfer");
+    }
     return true;
 }
 

@@ -366,6 +366,9 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
         if (IsPBaaSChain())
         {
+            arith_uint256 target;
+            target.SetCompact(initialBits);
+            obj.push_back(Pair("initialtarget", ArithToUint256(target).GetHex()));
             UniValue eraArr(UniValue::VARR);
             for (int i = 0; i < rewards.size(); i++)
             {
