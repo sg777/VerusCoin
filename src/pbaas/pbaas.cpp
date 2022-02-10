@@ -387,7 +387,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
         for (int i = ccx.firstInput; i < (ccx.firstInput + ccx.numInputs); i++)
         {
-            if (i >= tx.vin.size())
+            if (i < 0 || i >= tx.vin.size())
             {
                 return state.Error("Input index out of range");
             }
