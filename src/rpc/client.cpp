@@ -500,7 +500,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             return;
         }
 
-        nativeCurrencyID = CTransferDestination(find_value(obj, "nativecurrencyid"));
+        nativeCurrencyID = CTransferDestination();
 
         std::string launchIDStr = uni_get_str(find_value(obj, "launchsystemid"));
         if (launchIDStr != "")
@@ -978,7 +978,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
     if (nativeCurrencyID.IsValid())
     {
-        obj.push_back(Pair("nativecurrencyid", nativeCurrencyID.ToUniValue()));
+        //obj.push_back(Pair("nativecurrencyid", nativeCurrencyID.ToUniValue()));
     }
 
     if (!launchSystemID.IsNull())
