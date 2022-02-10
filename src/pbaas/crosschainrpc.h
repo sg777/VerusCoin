@@ -867,7 +867,7 @@ public:
                 std::max({rewards.size(), rewardsDecay.size(), halving.size(), eraEnd.size()}) <= ASSETCHAINS_MAX_ERAS;
     }
 
-    int32_t ChainOptions() const
+    uint32_t ChainOptions() const
     {
         return options;
     }
