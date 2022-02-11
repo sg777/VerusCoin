@@ -230,7 +230,10 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
 
     if (IsSameChain() && !IsChainDefinition())
     {
-        if (IsClearLaunch() || !IsPrelaunch())
+        // checking sourceHeightEnd being creater than 1 ensures that we can legitimately
+        // expect an export finalization to follow
+        // TODO: HARDENING - confirm that we leave no issue with an adversarially constructed export with sourceHeightEnd of 1
+        if (IsClearLaunch() || (!IsPrelaunch() && sourceHeightEnd > 1))
         {
             numOutput++;
             COptCCParams p;
