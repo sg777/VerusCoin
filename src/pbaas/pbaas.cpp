@@ -410,8 +410,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
         fees.valueMap[oneTransfer.second.second.feeCurrencyID] += oneTransfer.second.second.nFees;
         fees += oneTransfer.second.second.ConversionFee();
-        totalCurrencyExported.valueMap[oneTransfer.second.second.feeCurrencyID] += oneTransfer.second.second.nFees;
-        totalCurrencyExported.valueMap[oneTransfer.second.second.FirstCurrency()] += oneTransfer.second.second.FirstValue();
+        totalCurrencyExported += oneTransfer.second.second.TotalCurrencyOut();
         utxos.erase(transferOutput);
     }
     if (ccx.IsClearLaunch() || ccx.IsChainDefinition())
@@ -445,7 +444,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                  (!parentDef.IsValid() ||
                   thisDef.launchSystemID != parentDef.GetID()))
             {
-                LogPrintf("%s: Invalid launch currency\n");
+                LogPrintf("%s: Invalid launch currency\n", __func__);
             }
         }
         else
@@ -457,7 +456,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 thisDef.launchSystemID != parentDef.GetID() ||
                 ccx.sourceSystemID != thisDef.launchSystemID)
             {
-                LogPrintf("%s: Invalid source or launch currency\n");
+                LogPrintf("%s: Invalid source or launch currency\n", __func__);
             }
         }
         fees.valueMap[parentDef.GetID()] += parentDef.LaunchFeeImportShare(thisDef.ChainOptions());
@@ -469,14 +468,19 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
 
     if (ccx.totalFees != fees)
     {
-        LogPrintf("%s: fee totals don't match actual fees\n");
+        LogPrintf("%s: fee totals don't match actual fees\n", __func__);
     }
-    if ((ccx.totalAmounts + ccx.totalBurned) != totalCurrencyExported)
+    if (ccx.totalAmounts != totalCurrencyExported)
     {
-        LogPrintf("%s: exported currency totals don't match actual currencies\n");
+        LogPrintf("%s: exported currency totals don't match actual currencies\n", __func__);
     }
     if (utxos.size())
     {
+        for (auto &oneUtxo : utxos)
+        {
+            LogPrintf("txid: %s, output #: %d\n", oneUtxo.first.GetHex().c_str(), oneUtxo.second);
+        }
+        LogPrintf("%s: exported currency totals don't match actual currencies\n", __func__);
         return state.Error("Invalid export input that was not mined in as valid reserve transfer");
     }
     return true;
@@ -5161,7 +5165,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     CCurrencyValueMap estimatedFees = CCurrencyValueMap(newNotarization.currencyState.currencies, newNotarization.currencyState.fees).CanonicalMap();
 
     uint32_t fromBlock = sinceHeight + 1;
-    uint32_t toBlock = (addHeight != curHeight && addHeight == (_curDef.startBlock - 1)) ? addHeight : std::min(addHeight - 1, (uint32_t)1);
+    uint32_t toBlock = addHeight < curHeight ? addHeight : addHeight - 1;
 
     //printf("%s: total export amounts:\n%s\n", __func__, totalAmounts.ToUniValue().write().c_str());
     CCrossChainExport ccx(ASSETCHAINS_CHAINID,

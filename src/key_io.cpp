@@ -347,6 +347,15 @@ CKey DecodeSecret(const std::string& str)
             key.Set(data.begin() + privkey_prefix.size(), data.begin() + privkey_prefix.size() + 32, compressed);
         }
     }
+    else
+    {
+        // if it's hex and 32 bytes of data, use it as the raw secret
+        if (IsHex(str) && str.length() == 64)
+        {
+            data = ParseHex(str);
+            key.Set(data.begin(), data.begin() + 32, true);
+        }
+    }
     memory_cleanse(data.data(), data.size());
     return key;
 }
