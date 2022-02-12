@@ -842,7 +842,7 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
                 for (auto &onePrice : priorConversionMap.valueMap)
                 {
                     int64_t curVal = retVal.valueMap[onePrice.first];
-                    if ((!curVal || curVal < onePrice.second) && onePrice.second)
+                    if ((!curVal || curVal > onePrice.second) && onePrice.second)
                     {
                         retVal.valueMap[onePrice.first] = onePrice.second;
                     }
