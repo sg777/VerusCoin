@@ -343,7 +343,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Multi-currency operation before PBaaS activation");
     }
 
-    // TODO: HARDENING - ensure that we have confirmed all totals and fees are correct
+    // TODO: HARDENING - ensure that we have confirmed all totals and fees are correct, then convert all warnings to errors
 
     // check that all reserve transfers are matched to this export, and no others are mined in to the block that should be included
     COptCCParams p;
@@ -458,8 +458,59 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             totalCurrencyExported.valueMap[parentDef.GetID()] += parentDef.LaunchFeeImportShare(thisDef.ChainOptions());
         }
     }
-    else if (notarization.IsValid())
+    if (!(height == 1 || ccx.IsChainDefinition()) && notarization.IsValid())
     {
+        if (!notarization.IsPreLaunch())
+        {
+            LogPrintf("%s: only prelaunch exports should have valid notarizations\n", __func__);
+        }
+        CTransaction prevNotTx;
+        uint256 blkHash;
+        CPBaaSNotarization pbn;
+        COptCCParams prevP;
+        if (notarization.prevNotarization.hash.IsNull() ||
+            !myGetTransaction(notarization.prevNotarization.hash, prevNotTx, blkHash) ||
+            notarization.prevNotarization.n < 0 ||
+            notarization.prevNotarization.n >= prevNotTx.vout.size() ||
+            !prevNotTx.vout[notarization.prevNotarization.n].scriptPubKey.IsPayToCryptoCondition(prevP) ||
+            !prevP.IsValid() ||
+            prevP.evalCode != EVAL_ACCEPTEDNOTARIZATION ||
+            !prevP.vData.size() ||
+            !(pbn = CPBaaSNotarization(prevP.vData[0])).IsValid() ||
+            pbn.currencyID != notarization.currencyID)
+        {
+            LogPrintf("%s: non-definition exports with valid notarizations must have prior notarizations\n", __func__);
+        }
+        CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID);
+
+        if (ccx.sourceSystemID != ASSETCHAINS_CHAINID || !destCurrency.IsValid())
+        {
+            LogPrintf("%s: Invalid export source system or destination currency\n", __func__);
+        }
+
+        uint256 transferHash;
+        CPBaaSNotarization checkNotarization;
+        std::vector<CTxOut> outputs;
+        CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
+        if (!pbn.NextNotarizationInfo(ConnectedChains.ThisChain(),
+                                      destCurrency,
+                                      ccx.sourceHeightStart - 1,
+                                      notarization.notarizationHeight,
+                                      reserveTransfers,
+                                      transferHash,
+                                      checkNotarization,
+                                      outputs,
+                                      importedCurrency,
+                                      gatewayDepositsIn,
+                                      spentCurrencyOut,
+                                      ccx.exporter) ||
+            !checkNotarization.IsValid() ||
+            (checkNotarization.IsRefunding() != notarization.IsRefunding()) ||
+            ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
+        {
+            LogPrintf("%s: Invalid notarization mutation\n", __func__);
+        }
+
         if (ccx.totalFees != CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.fees))
         {
             LogPrintf("%s: export fee estimate doesn't match notarization\n", __func__);
