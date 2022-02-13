@@ -395,11 +395,10 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
     }
 
-    // all of the input descriptors and no others should be in the export's reserve transfers
-    CCurrencyValueMap calcFees;
-    CCurrencyValueMap calcExportedValue;
+    // TODO: HARDENING - confirm fee estimates
 
-    CCurrencyValueMap fees, totalCurrencyExported;
+    // all of the input descriptors and no others should be in the export's reserve transfers
+    CCurrencyValueMap totalCurrencyExported;
 
     for (auto &oneTransfer : inputDescriptors)
     {
@@ -408,8 +407,6 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         {
             return state.Error("Export excludes valid reserve transfer from source block");
         }
-        fees.valueMap[oneTransfer.second.second.feeCurrencyID] += oneTransfer.second.second.nFees;
-        fees += oneTransfer.second.second.ConversionFee();
         totalCurrencyExported += oneTransfer.second.second.TotalCurrencyOut();
         utxos.erase(transferOutput);
     }
@@ -459,17 +456,12 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 LogPrintf("%s: Invalid source or launch currency\n", __func__);
             }
         }
-        fees.valueMap[parentDef.GetID()] += parentDef.LaunchFeeImportShare(thisDef.ChainOptions());
         if (ccx.IsChainDefinition())
         {
             totalCurrencyExported.valueMap[parentDef.GetID()] += parentDef.LaunchFeeImportShare(thisDef.ChainOptions());
         }
     }
 
-    if (ccx.totalFees != fees)
-    {
-        LogPrintf("%s: fee totals don't match actual fees\n", __func__);
-    }
     if (ccx.totalAmounts != totalCurrencyExported)
     {
         LogPrintf("%s: exported currency totals don't match actual currencies\n", __func__);
