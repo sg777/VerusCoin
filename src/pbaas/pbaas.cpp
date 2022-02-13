@@ -395,8 +395,6 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
     }
 
-    // TODO: HARDENING - confirm fee estimates
-
     // all of the input descriptors and no others should be in the export's reserve transfers
     CCurrencyValueMap totalCurrencyExported;
 
@@ -410,10 +408,9 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         totalCurrencyExported += oneTransfer.second.second.TotalCurrencyOut();
         utxos.erase(transferOutput);
     }
+
     if (ccx.IsClearLaunch() || ccx.IsChainDefinition())
     {
-        // TODO: HARDENING - get more crisp on launch fees presence or absence in export wrt currency state
-
         // if this is a PBaaS launch, this should be the coinbase, and we need to get the parent chain definition,
         // including currency launch prices from the current transaction
         CCurrencyDefinition thisDef, parentDef;
@@ -459,6 +456,13 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         if (ccx.IsChainDefinition())
         {
             totalCurrencyExported.valueMap[parentDef.GetID()] += parentDef.LaunchFeeImportShare(thisDef.ChainOptions());
+        }
+    }
+    else if (notarization.IsValid())
+    {
+        if (ccx.totalFees != CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.fees))
+        {
+            LogPrintf("%s: export fee estimate doesn't match notarization\n", __func__);
         }
     }
 
