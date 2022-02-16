@@ -3092,7 +3092,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
         if (!currencyDest.IsValid())
         {
-            printf("%s: invalid currency or currency not found %s\n", __func__, EncodeDestination(CIdentityID(curTransfer.destCurrencyID)).c_str());
+            printf("%s: invalid currency or currency not found %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
             LogPrintf("%s: invalid currency or currency not found %s\n", __func__, EncodeDestination(CIdentityID(curTransfer.destCurrencyID)).c_str());
             return false;
         }

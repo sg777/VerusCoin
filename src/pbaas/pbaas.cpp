@@ -180,7 +180,7 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
             // there must be an output with a valid import to the same destination
             if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() && 
-                p.evalCode == EVAL_CROSSCHAIN_IMPORT && 
+                p.evalCode == EVAL_CROSSCHAIN_EXPORT && 
                 p.version >= COptCCParams::VERSION_V3 &&
                 p.vData.size() &&
                 (matchedExport = CCrossChainExport(p.vData[0])).IsValid() &&
@@ -191,7 +191,7 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
             }
         }
     }
-    return false;
+    return eval->Error("Invalid cross chain export");
 }
 
 bool IsCrossChainExportInput(const CScript &scriptSig)
@@ -236,7 +236,7 @@ bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTra
             }
         }
     }
-    return false;
+    return eval->Error("Invalid cross chain import");
 }
 
 // ensure that the cross chain import is valid to be posted on the block chain
