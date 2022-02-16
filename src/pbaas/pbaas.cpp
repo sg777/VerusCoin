@@ -96,11 +96,102 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
     return uint256();
 }
 
+CCrossChainExport GetExportToSpend(const CTransaction &spendingTx, uint32_t nIn, CTransaction &sourceTx, uint32_t &height, COptCCParams &p)
+{
+    // if not fulfilled, ensure that no part of the primary identity is modified
+    CCrossChainExport oldExport;
+    uint256 blkHash;
+    if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
+    {
+        auto bIt = blkHash.IsNull() ? mapBlockIndex.end() : mapBlockIndex.find(blkHash);
+        if (bIt == mapBlockIndex.end() || !bIt->second)
+        {
+            height = chainActive.Height();
+        }
+        else
+        {
+            height = bIt->second->GetHeight();
+        }
+
+        if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() && 
+            p.evalCode == EVAL_CROSSCHAIN_EXPORT && 
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
+        {
+            oldExport = CCrossChainExport(p.vData[0]);
+        }
+    }
+    return oldExport;
+}
+
+CCrossChainImport GetImportToSpend(const CTransaction &spendingTx, uint32_t nIn, CTransaction &sourceTx, uint32_t &height, COptCCParams &p)
+{
+    // if not fulfilled, ensure that no part of the primary identity is modified
+    CCrossChainImport oldImport;
+    uint256 blkHash;
+    if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, sourceTx, blkHash))
+    {
+        auto bIt = blkHash.IsNull() ? mapBlockIndex.end() : mapBlockIndex.find(blkHash);
+        if (bIt == mapBlockIndex.end() || !bIt->second)
+        {
+            height = chainActive.Height();
+        }
+        else
+        {
+            height = bIt->second->GetHeight();
+        }
+
+        if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() && 
+            p.evalCode == EVAL_CROSSCHAIN_IMPORT && 
+            p.version >= COptCCParams::VERSION_V3 &&
+            p.vData.size() > 1)
+        {
+            oldImport = CCrossChainImport(p.vData[0]);
+        }
+    }
+    return oldImport;
+}
+
 // used to export coins from one chain to another, if they are not native, they are represented on the other
 // chain as tokens
 bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    return true;
+    uint32_t outNum;
+    uint32_t spendingFromHeight;
+    CTransaction txToSpend;
+    COptCCParams p;
+
+    // get reserve transfer to spend
+    CCrossChainExport thisExport = GetExportToSpend(tx, nIn, txToSpend, spendingFromHeight, p);
+
+    if (thisExport.IsValid())
+    {
+        if (CConstVerusSolutionVector::GetVersionByHeight(spendingFromHeight) < CActivationHeight::ACTIVATE_PBAAS)
+        {
+            return eval->Error("Multi-currency operation before PBaaS activation");
+        }
+
+        CCrossChainExport matchedExport;
+
+        for (auto &oneOut : tx.vout)
+        {
+            // there must be an output with a valid import to the same destination
+            if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() && 
+                p.evalCode == EVAL_CROSSCHAIN_IMPORT && 
+                p.version >= COptCCParams::VERSION_V3 &&
+                p.vData.size() &&
+                (matchedExport = CCrossChainExport(p.vData[0])).IsValid() &&
+                matchedExport.destCurrencyID == thisExport.destCurrencyID)
+            {
+                // TODO: HARDENING - confirm that this spending check plus precheck covers all that is required
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 bool IsCrossChainExportInput(const CScript &scriptSig)
@@ -112,7 +203,40 @@ bool IsCrossChainExportInput(const CScript &scriptSig)
 // they are represented o the chain as tokens
 bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    return true;
+    uint32_t outNum;
+    uint32_t spendingFromHeight;
+    CTransaction txToSpend;
+    COptCCParams p;
+
+    // get reserve transfer to spend
+    CCrossChainImport thisImport = GetImportToSpend(tx, nIn, txToSpend, spendingFromHeight, p);
+
+    if (thisImport.IsValid())
+    {
+        if (CConstVerusSolutionVector::GetVersionByHeight(spendingFromHeight) < CActivationHeight::ACTIVATE_PBAAS)
+        {
+            return eval->Error("Multi-currency operation before PBaaS activation");
+        }
+
+        CCrossChainImport matchedImport;
+
+        for (auto &oneOut : tx.vout)
+        {
+            // there must be an output with a valid import to the same destination
+            if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() && 
+                p.evalCode == EVAL_CROSSCHAIN_IMPORT && 
+                p.version >= COptCCParams::VERSION_V3 &&
+                p.vData.size() &&
+                (matchedImport = CCrossChainImport(p.vData[0])).IsValid() &&
+                matchedImport.importCurrencyID == thisImport.importCurrencyID)
+            {
+                // TODO: HARDENING - confirm that this spending check plus precheck covers all that is required
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // ensure that the cross chain import is valid to be posted on the block chain
@@ -344,6 +468,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     }
 
     // TODO: HARDENING - ensure that we have confirmed all totals and fees are correct, then convert all warnings to errors
+    // ensure that this transaction has the appropriate finalization outputs, as required
 
     // check that all reserve transfers are matched to this export, and no others are mined in to the block that should be included
     COptCCParams p;
@@ -538,12 +663,30 @@ bool IsCrossChainImportInput(const CScript &scriptSig)
     return true;
 }
 
+bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
+{
+    // TODO: HARDENING - must be spent by either the next export, if this is for an export offchain
+    // or a matching import if same chain
+    return true;
+}
+
+bool IsFinalizeExportInput(const CScript &scriptSig)
+{
+    return false;
+}
+
+bool FinalizeExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    // TODO: HARDENING - ensure that this finalization represents an export that is either the clear launch beacon of
+    // the currency or a same-chain export to be spent by the matching import
+    return true;
+}
+
 // Validate notary evidence
 bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     return true;
 }
-
 bool IsNotaryEvidenceInput(const CScript &scriptSig)
 {
     return true;
@@ -1381,6 +1524,8 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             return false;
         }
     }
+
+    // TODO: HARDENING - handle all gateway and PBaaS converter and reserve definition verifications
 
     // ensure that the currency definition follows all rules of currency definition, meaning:
     // 1) it is defined by an identity that controls the currency for the first time
@@ -4758,9 +4903,10 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
                 return false;
             }
 
-            uint160 currencySystemID = (oneCurDef.IsGateway() || oneCurDef.gatewayID == oneCurDef.parent) ?
-                                        oneCurDef.gatewayID :
-                                        oneCurDef.systemID;
+            // TODO: HARDENING - confirm that this is correct and handles all cases, including the case
+            // where a bridge converter for a gateway may want to sell IDs on the host chain
+
+            uint160 currencySystemID = oneCurDef.IsGateway() ? oneCurDef.gatewayID : oneCurDef.systemID;
 
             if (currencySystemID == sourceSystemID)
             {

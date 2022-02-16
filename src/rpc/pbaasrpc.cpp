@@ -8401,12 +8401,12 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                     // for each name, we will create a definition that has a systemID of the current system and parent of the gateway
                     std::map<std::string, UniValue> oneCurEntry;
                     oneCurEntry["name"] = oneCurrencyName.second;
-                    oneCurEntry["parent"] = EncodeDestination(CIdentityID(newChain.GetID()));
-                    oneCurEntry["systemid"] = EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID));
-                    oneCurEntry["launchsystemid"] = EncodeDestination(CIdentityID(newChain.GetID()));
+                    oneCurEntry["parent"] = EncodeDestination(CIdentityID(newChainID));
+                    oneCurEntry["systemid"] = EncodeDestination(CIdentityID(newChainID));
+                    oneCurEntry["launchsystemid"] = EncodeDestination(CIdentityID(newChainID));
                     oneCurEntry["nativecurrencyid"] = DestinationToTransferDestination(CIdentityID(oneCurrencyName.first)).ToUniValue();
                     oneCurEntry["options"] = CCurrencyDefinition::OPTION_TOKEN;
-                    oneCurEntry["proofprotocol"] = CCurrencyDefinition::PROOF_PBAASMMR;
+                    oneCurEntry["proofprotocol"] = newChain.proofProtocol;
                     oneCurEntry["notarizationprotocol"] = CCurrencyDefinition::NOTARIZATION_AUTO;
                     
                     newReserveDefinitions[oneCurrencyName.first] = oneCurEntry;
@@ -8449,13 +8449,13 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                     if (!(newReserveDef.IsValid() &&
                           newReserveDef.IsToken() &&
                           !newReserveDef.IsFractional() &&
-                          newReserveDef.systemID == ASSETCHAINS_CHAINID &&
+                          newReserveDef.systemID == newChainID &&
                           newReserveDef.parent == newChainID &&
                           newReserveDef.nativeCurrencyID.IsValid() &&
                           newReserveDef.launchSystemID == newChainID &&
                           newReserveDef.startBlock == 0 &&
                           newReserveDef.endBlock == 0 &&
-                          newReserveDef.proofProtocol != CCurrencyDefinition::PROOF_CHAINID))
+                          newReserveDef.proofProtocol == newChain.proofProtocol))
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid auto-reserve currency definition");
                     }

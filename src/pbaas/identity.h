@@ -891,8 +891,5 @@ bool IsIdentityInput(const CScript &scriptSig);
 bool ValidateQuantumKeyOut(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled);
 bool IsQuantumKeyOutInput(const CScript &scriptSig);
 bool PrecheckQuantumKeyOut(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
-bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
-bool IsFinalizeExportInput(const CScript &scriptSig);
-bool FinalizeExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 
 #endif // IDENTITY_H
