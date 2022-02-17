@@ -7195,7 +7195,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                             if (dest.TypeNoFlags() == dest.DEST_REGISTERCURRENCY)
                             {
-                                dest = DestinationToTransferDestination(destination);                    
+                                dest = destination.which() == COptCCParams::ADDRTYPE_INVALID ?
+                                    DestinationToTransferDestination(CIdentityID(CCurrencyDefinition(dest.destination).GetID())) :
+                                    DestinationToTransferDestination(destination);                    
                             }
 
                             dest.type |= dest.FLAG_DEST_GATEWAY;
