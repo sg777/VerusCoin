@@ -2214,6 +2214,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
+                    flags |= IS_RESERVETRANSFER;
                     AddReserveTransfer(rt);
                 }
                 break;

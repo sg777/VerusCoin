@@ -6842,7 +6842,6 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                     if (!p.IsValid() || 
                         p.evalCode == EVAL_RESERVE_OUTPUT || 
                         p.evalCode == EVAL_RESERVE_DEPOSIT || 
-                        p.evalCode == EVAL_RESERVE_EXCHANGE || 
                         p.evalCode == EVAL_NONE)
                     {
                         // add all values to a native equivalent

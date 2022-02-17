@@ -173,11 +173,17 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
             return eval->Error("Multi-currency operation before PBaaS activation");
         }
 
+        if (thisExport.IsSupplemental())
+        {
+            // TODO: HARDENING - determine if there is any reason to protect this output
+            return true;
+        }
+
         CCrossChainExport matchedExport;
 
         for (auto &oneOut : tx.vout)
         {
-            // there must be an output with a valid import to the same destination
+            // there must be an output with a valid export to the same destination
             if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() && 
                 p.evalCode == EVAL_CROSSCHAIN_EXPORT && 
@@ -406,7 +412,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                         if (!oneTransfer.IsPreConversion())
                         {
-                            // ensure we can convert
+                            // TODO: HARDENING - confirm that we need to do nothing else to ensure we can convert
                         }
                     }
 
@@ -4433,6 +4439,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
 
         {
+            /* // DEBUG output only
             std::set<uint256> txesToShow;
             for (auto &oneIn : newImportTx.vin)
             {
@@ -4446,7 +4453,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 }
             }
 
-            /*// DEBUG output only
             for (auto &oneTxId : txesToShow)
             {
                 CTransaction inputTx;

@@ -1622,7 +1622,7 @@ public:
         IS_VALID=1,                             // known to be valid
         IS_REJECT=2,                            // if set, tx is known to be invalid
         IS_RESERVE=4,                           // if set, this transaction affects reserves and/or price if mined
-        IS_RESERVEEXCHANGE=8,                   // is this a reserve/exchange transaction?
+        IS_RESERVETRANSFER=8,                   // is this a reserve/exchange transaction?
         IS_LIMIT=0x10,                          // if reserve exchange, is it a limit order?
         IS_FILLORKILL=0x20,                     // If set, this can expire
         IS_FILLORKILLFAIL=0x40,                 // If set, this is an expired fill or kill in a valid tx
@@ -1664,10 +1664,9 @@ public:
     bool IsReject() const { return flags & IS_REJECT; }
     bool IsValid() const { return flags & IS_VALID && !IsReject(); }
     bool IsReserve() const { return IsValid() && flags & IS_RESERVE; }
-    bool IsReserveExchange() const { return flags & IS_RESERVEEXCHANGE; }
+    bool IsReserveTransfer() const { return flags & IS_RESERVETRANSFER; }
     bool IsLimit() const { return flags & IS_LIMIT; }
     bool IsFillOrKill() const { return flags & IS_FILLORKILL; }
-    bool IsMarket() const { return IsReserveExchange() && !IsLimit(); }
     bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
     bool IsIdentity() const { return flags & IS_IDENTITY; }
     bool IsIdentityDefinition() const { return flags & IS_IDENTITY_DEFINITION; }

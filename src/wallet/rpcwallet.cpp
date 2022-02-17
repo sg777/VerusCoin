@@ -2158,19 +2158,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     if (bIsReserve && (rtxd = CReserveTransactionDescriptor(wtx, view, nHeight)).IsReserve())
     {
         ret.push_back(Pair("isreserve", true));
-        bool isReserveExchange = rtxd.IsReserveExchange();
-        ret.push_back(Pair("isreserveexchange", isReserveExchange));
-        if (isReserveExchange)
-        {
-            if (rtxd.IsMarket())
-            {
-                ret.push_back(Pair("exchangetype", "market"));
-            }
-            else if (rtxd.IsLimit())
-            {
-                ret.push_back(Pair("exchangetype", "limit"));
-            }
-        }
+        ret.push_back(Pair("isreservetransfer", rtxd.IsReserveTransfer()));
         ret.push_back(Pair("nativefees", rtxd.NativeFees()));
         ret.push_back(Pair("reservefees", rtxd.ReserveFees().ToUniValue()));
         if (rtxd.nativeConversionFees || (rtxd.ReserveConversionFeesMap() > CCurrencyValueMap()))

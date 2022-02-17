@@ -84,7 +84,6 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn, 
         case EVAL_ACCEPTEDNOTARIZATION:
         case EVAL_FINALIZE_NOTARIZATION:
         case EVAL_RESERVE_OUTPUT:
-        case EVAL_RESERVE_EXCHANGE:
         case EVAL_RESERVE_TRANSFER:
         case EVAL_RESERVE_DEPOSIT:
         case EVAL_CROSSCHAIN_EXPORT:
