@@ -2150,7 +2150,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 {
                     return state.Error("Invalid currency export for next leg in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
-                if (!nextLegCur.IsValidTransferDestinationType(rt.destination.TypeNoFlags()))
+                if (!systemDest.IsValidTransferDestinationType(rt.destination.TypeNoFlags()))
                 {
                     return state.Error("Invalid reserve transfer destination for target system" + rt.ToUniValue().write(1,2));
                 }
