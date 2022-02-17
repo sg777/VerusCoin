@@ -503,6 +503,16 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Error retrieving cross chain transfers");
     }
 
+    if (inputDescriptors.size() != ccx.numInputs)
+    {
+        /* UniValue jsonTx(UniValue::VOBJ);
+        uint256 hashBlock;
+        TxToUniv(tx, hashBlock, jsonTx);
+        printf("%s: candidate tx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+        GetChainTransfers(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd); // */
+        return state.Error("Discrepancy in number of eligible reserve transfers mined during export period and included - may only be cause by async loading, if so it will resolve");
+    }
+
     std::set<std::pair<uint256, int>> utxos;
     if (ccx.numInputs)
     {
@@ -638,21 +648,20 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
 
         if (ccx.totalFees != CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.fees))
         {
-            LogPrintf("%s: export fee estimate doesn't match notarization\n", __func__);
+            LogPrintf("%s: export fee estimate doesn't match notarization - may only be result of async loading and not error\n", __func__);
         }
     }
 
     if (ccx.totalAmounts != totalCurrencyExported)
     {
-        LogPrintf("%s: exported currency totals don't match actual currencies\n", __func__);
+        LogPrintf("%s: exported currency totals warning - may only be result of async loading and not error\n", __func__);
     }
     if (utxos.size())
     {
-        for (auto &oneUtxo : utxos)
+        /* for (auto &oneUtxo : utxos)
         {
             LogPrintf("txid: %s, output #: %d\n", oneUtxo.first.GetHex().c_str(), oneUtxo.second);
-        }
-        LogPrintf("%s: exported currency totals don't match actual currencies\n", __func__);
+        }// */
         return state.Error("Invalid export input that was not mined in as valid reserve transfer");
     }
     return true;

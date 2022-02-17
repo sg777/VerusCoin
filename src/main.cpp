@@ -5886,12 +5886,6 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
             }
         }
     }
-
-    if (!success)
-    {
-        // remove coinbase and anything that depended on it sooner, rather than later
-        RemoveCoinbaseFromMemPool(block);
-    }
     return success;
 }
 
