@@ -489,7 +489,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             externalSystemDef = ConnectedChains.GetCachedCurrency(externalSystemID);
             if (!externalSystemDef.IsValid())
             {
-                LogPrintf("%s: cannot retrieve system definitoin for %s\n", __func__, EncodeDestination(CIdentityID(externalSystemID)));
+                LogPrintf("%s: cannot retrieve system definition for %s\n", __func__, EncodeDestination(CIdentityID(externalSystemID)));
                 return false;
             }
         }
@@ -596,6 +596,49 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             {
                 newNotarization.SetLaunchCleared();
                 newNotarization.currencyState.SetLaunchClear();
+
+                // if we are connected to another currency, make sure it will also start before we confirm that we can
+                CCurrencyDefinition coLaunchCurrency;
+                CCoinbaseCurrencyState coLaunchState;
+                bool coLaunching = false;
+                if (destCurrency.IsPBaaSConverter())
+                {
+                    // PBaaS or gateway converters have a parent which is the PBaaS chain or gateway
+                    coLaunching = true;
+                    coLaunchCurrency = ConnectedChains.GetCachedCurrency(destCurrency.parent);
+                }
+                else if (destCurrency.IsPBaaSChain() && !destCurrency.GatewayConverterID().IsNull())
+                {
+                    coLaunching = true;
+                    coLaunchCurrency = ConnectedChains.GetCachedCurrency(destCurrency.GatewayConverterID());
+                }
+
+                if (coLaunching)
+                {
+                    if (!coLaunchCurrency.IsValid())
+                    {
+                        printf("%s: Invalid co-launch currency - likely corruption\n", __func__);
+                        LogPrintf("%s: Invalid co-launch currency - likely corruption\n", __func__);
+                        return false;
+                    }
+                    coLaunchState = ConnectedChains.GetCurrencyState(coLaunchCurrency, notaHeight);
+
+                    if (!coLaunchState.IsValid())
+                    {
+                        printf("%s: Invalid co-launch currency state - likely corruption\n", __func__);
+                        LogPrintf("%s: Invalid co-launch currency state - likely corruption\n", __func__);
+                        return false;
+                    }
+
+                    // check our currency and any co-launch currency to determine our eligibility, as ALL
+                    // co-launch currencies must launch for one to launch
+                    if (coLaunchCurrency.IsValid() &&
+                        CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < 
+                            CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert))
+                    {
+                        forcedRefund = true;
+                    }
+                }
 
                 // first time through is export, second is import, then we finish clearing the launch
                 // check if the chain is qualified to launch or should refund

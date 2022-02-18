@@ -650,8 +650,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             (checkNotarization.IsRefunding() != notarization.IsRefunding()) ||
             ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
         {
-            // TODO: HARDENING - find out why this gets hit
-            LogPrintf("%s: Invalid notarization mutation\n", __func__);
+            return state.Error("Invalid notarization mutation\n");
         }
 
         if (ccx.totalFees != CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.fees))
@@ -5187,67 +5186,29 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     bool forcedRefunding = false;
 
+    // TODO: HARDENING - after v0.9.1 release, we should see if we can remove this block, as its function
+    // has been moved to NextNotarizationInfo
     // now, if we are clearing launch, determine if we should refund or launch and set notarization appropriately
     if (isClearLaunchExport)
     {
-        // if we are connected to another currency, make sure it will also start before we fonfirm that we can
+        // if we are connected to another currency, make sure it will also start before we confirm that we can
         CCurrencyDefinition coLaunchCurrency;
         CCoinbaseCurrencyState coLaunchState;
+        bool coLaunching = false;
         if (_curDef.IsPBaaSConverter())
         {
             // PBaaS or gateway converters have a parent which is the PBaaS chain or gateway
-            coLaunchCurrency = _curDef.parent == _curDef.systemID ? destSystem : ConnectedChains.GetCachedCurrency(_curDef.parent);
-            if (coLaunchCurrency.IsValid() && coLaunchCurrency.IsGateway())
-            {
-                // if we are launching a converter for a gateway to an external system,
-                // we can accept pre-launch participation from that system in currencies that it controls.
-                // all accounting for such participation on a new gateway launch will be done on the external
-                // system and included in cross-chain notarizations. the last cross-chain notarization to be confirmed
-                // by the start block is the one that is considered final for accounting. all reservesin from
-                // that notarization are considered in the actual reserves. all notarizations not finalized at that time
-                // are not included and will be refunded, less the network fees.
-                CChainNotarizationData cnd;
-                if (GetNotarizationData(coLaunchCurrency.GetID(), cnd) &&
-                    cnd.IsValid() &&
-                    cnd.IsConfirmed() &&
-                    cnd.vtx[cnd.lastConfirmed].second.currencyStates.count(currencyID))
-                {
-                    // only currencies defined by the gateway system can come from the gateway
-                    // system for pre-launch
-                    CCoinbaseCurrencyState &gatewayState = cnd.vtx[cnd.lastConfirmed].second.currencyStates[currencyID];
-                    std::map<uint160, int32_t> curIdxMap = intermediateNotarization.currencyState.GetReserveMap();
-
-                    // combine gateway currencies that come from the gateway with currencies from this chain
-                    for (int i = 0; i < gatewayState.currencies.size(); i++)
-                    {
-                        auto &oneCurID = gatewayState.currencies[i];
-                        if (oneCurID == ASSETCHAINS_CHAINID)
-                        {
-                            continue;
-                        }
-                        CCurrencyDefinition oneReserve = ConnectedChains.GetCachedCurrency(oneCurID);
-                        if (!oneReserve.IsValid())
-                        {
-                            printf("%s: Unable to retrieve reserve currency definition for %s - likely corruption\n", __func__, EncodeDestination(CIdentityID(oneCurID)).c_str());
-                            LogPrintf("%s: Unable to retrieve reserve currency definition for %s - likely corruption\n", __func__, EncodeDestination(CIdentityID(oneCurID)).c_str());
-                            return false;
-                        }
-                        if (oneReserve.parent == currencyID)
-                        {
-                            intermediateNotarization.currencyState.reserveIn[i] = gatewayState.reserveIn.size() > i ? gatewayState.reserveIn[i] : 0;
-                            intermediateNotarization.currencyState.reserves[i] = gatewayState.reserves.size() > i ? gatewayState.reserves[i] : 0;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                coLaunchState = GetCurrencyState(coLaunchCurrency, addHeight);
-            }
+            coLaunching = true;
+            coLaunchCurrency = ConnectedChains.GetCachedCurrency(_curDef.parent);
         }
         else if (_curDef.IsPBaaSChain() && !_curDef.GatewayConverterID().IsNull())
         {
+            coLaunching = true;
             coLaunchCurrency = GetCachedCurrency(_curDef.GatewayConverterID());
+        }
+
+        if (coLaunching)
+        {
             if (!coLaunchCurrency.IsValid())
             {
                 printf("%s: Invalid co-launch currency - likely corruption\n", __func__);
@@ -5255,15 +5216,22 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                 return false;
             }
             coLaunchState = GetCurrencyState(coLaunchCurrency, addHeight);
-        }
 
-        // check our currency and any co-launch currency to determine our eligibility, as ALL
-        // co-launch currencies must launch for one to launch
-        if (coLaunchCurrency.IsValid() &&
-             CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < 
-                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert))
-        {
-            forcedRefunding = true;
+            if (!coLaunchState.IsValid())
+            {
+                printf("%s: Invalid co-launch currency state - likely corruption\n", __func__);
+                LogPrintf("%s: Invalid co-launch currency state - likely corruption\n", __func__);
+                return false;
+            }
+
+            // check our currency and any co-launch currency to determine our eligibility, as ALL
+            // co-launch currencies must launch for one to launch
+            if (coLaunchCurrency.IsValid() &&
+                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < 
+                    CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert))
+            {
+                forcedRefunding = true;
+            }
         }
     }
 
