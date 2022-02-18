@@ -662,7 +662,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
 
     if (ccx.totalAmounts != totalCurrencyExported)
     {
-        return state.Error("Exported currency totals warning - may only be result of async loading and not error\n", __func__);
+        return state.Error("Exported currency totals warning - may only be result of async loading and not error");
     }
     if (utxos.size())
     {
