@@ -580,7 +580,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                  (!parentDef.IsValid() ||
                   thisDef.launchSystemID != parentDef.GetID()))
             {
-                LogPrintf("%s: Invalid launch currency\n", __func__);
+                return state.Error("Invalid launch currency");
             }
         }
         else
@@ -589,10 +589,10 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             parentDef = ConnectedChains.ThisChain();
             if (!thisDef.IsValid() ||
                 !parentDef.IsValid() ||
-                thisDef.launchSystemID != parentDef.GetID() ||
+                (thisDef.launchSystemID != parentDef.GetID() && !(parentDef.IsGateway() && thisDef.launchSystemID == thisDef.systemID)) ||
                 ccx.sourceSystemID != thisDef.launchSystemID)
             {
-                LogPrintf("%s: Invalid source or launch currency\n", __func__);
+                return state.Error("Invalid source or launch currency");
             }
         }
         if (ccx.IsChainDefinition())
@@ -604,7 +604,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     {
         if (!notarization.IsPreLaunch())
         {
-            LogPrintf("%s: only prelaunch exports should have valid notarizations\n", __func__);
+            return state.Error("Only prelaunch exports should have valid notarizations");
         }
         CTransaction prevNotTx;
         uint256 blkHash;
@@ -621,13 +621,13 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             !(pbn = CPBaaSNotarization(prevP.vData[0])).IsValid() ||
             pbn.currencyID != notarization.currencyID)
         {
-            LogPrintf("%s: non-definition exports with valid notarizations must have prior notarizations\n", __func__);
+            return state.Error("Non-definition exports with valid notarizations must have prior notarizations");
         }
         CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID);
 
         if (ccx.sourceSystemID != ASSETCHAINS_CHAINID || !destCurrency.IsValid())
         {
-            LogPrintf("%s: Invalid export source system or destination currency\n", __func__);
+            return state.Error("Invalid export source system or destination currency");
         }
 
         uint256 transferHash;
@@ -650,18 +650,19 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             (checkNotarization.IsRefunding() != notarization.IsRefunding()) ||
             ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
         {
+            // TODO: HARDENING - find out why this gets hit
             LogPrintf("%s: Invalid notarization mutation\n", __func__);
         }
 
         if (ccx.totalFees != CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.fees))
         {
-            LogPrintf("%s: export fee estimate doesn't match notarization - may only be result of async loading and not error\n", __func__);
+            return state.Error("Export fee estimate doesn't match notarization - may only be result of async loading and not error");
         }
     }
 
     if (ccx.totalAmounts != totalCurrencyExported)
     {
-        LogPrintf("%s: exported currency totals warning - may only be result of async loading and not error\n", __func__);
+        return state.Error("Exported currency totals warning - may only be result of async loading and not error\n", __func__);
     }
     if (utxos.size())
     {
