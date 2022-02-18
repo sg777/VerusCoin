@@ -1685,7 +1685,7 @@ bool IsCrossChainImportInput(const CScript &scriptSig);
 
 bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsFinalizeExportInput(const CScript &scriptSig);
-bool FinalizeExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
+bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 
 bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);

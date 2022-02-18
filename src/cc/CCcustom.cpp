@@ -535,7 +535,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(FinalizeExportWIF).begin(),32);
             cp->validate = ValidateFinalizeExport;
             cp->ismyvin = IsFinalizeExportInput;  // TODO: these input functions are not useful for new CCs
-            cp->contextualprecheck = FinalizeExportContextualPreCheck;
+            cp->contextualprecheck = PreCheckFinalizeExport;
             break;
 
         case EVAL_FEE_POOL:

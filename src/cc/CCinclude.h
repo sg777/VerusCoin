@@ -186,8 +186,6 @@ template <typename TOBJ>
 CScript MakeMofNCCScript(const CConditionObj<TOBJ> &conditionObj, const CTxDestination *indexDest=nullptr)
 {
     // indexDest is always added, but we need to index on all can-sign identities as well
-    // TODO: HARDENING - not quite hardening, but should be done. do not add the extra IDs here for indexing, they should be added
-    // naturally now when indexing
     std::vector<CTxDestination> indexIDs = indexDest ? std::vector<CTxDestination>({*indexDest}) : conditionObj.evalCode == EVAL_NONE ? std::vector<CTxDestination>() : std::vector<CTxDestination>({conditionObj.dests[0]});
     int idxSize = indexIDs.size();
 

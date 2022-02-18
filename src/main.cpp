@@ -6015,7 +6015,7 @@ bool ContextualCheckBlock(
     std::set<std::string> newIDs;
     for (uint32_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = block.vtx[i];
-        
+
         // this is the only place where a duplicate name definition of the same name is checked in a block
         // all other cases are covered via mempool and pre-registered check, doing this would require a malicious
         // client, so immediate ban score

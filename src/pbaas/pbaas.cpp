@@ -175,7 +175,8 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
 
         if (thisExport.IsSupplemental())
         {
-            // TODO: HARDENING - determine if there is any reason to protect this output
+            // TODO: HARDENING - determine if there is any reason to protect this output from being spent. if we don't, ensure
+            // that it is unspent when spending it via protocol
             return true;
         }
 
@@ -690,7 +691,7 @@ bool IsFinalizeExportInput(const CScript &scriptSig)
     return false;
 }
 
-bool FinalizeExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     // TODO: HARDENING - ensure that this finalization represents an export that is either the clear launch beacon of
     // the currency or a same-chain export to be spent by the matching import
@@ -3815,8 +3816,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             // verify that the current export from the source system spends the prior export from the source system
 
-            // TODO: HARDENING - if firstInput is -1, this will not check the in order,
-            // firstInput should be > 0 at all times
+            // TODO: HARDENING - ensure that we enforce in order export and in order import of exports
 
             if (useProofs &&
                 !(ccx.IsChainDefinition() ||
@@ -4054,27 +4054,21 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             int serSize = GetSerializeSize(ds, evidence);
             std::vector<CPartialTransactionProof> allPartialProofs;
 
-            // TODO: HARDENING - this is set to break apart using the old value, so the correct one is commented. enforcement is on the larger one
             // the value should be considered for reduction
-            //if (serSize > CScript::MAX_SCRIPT_ELEMENT_SIZE)
-            if (serSize > 5120)
+            if (serSize > CScript::MAX_SCRIPT_ELEMENT_SIZE)
             {
                 // remove existing proof and break it into chunks
                 evidence.evidence = allPartialProofs;
                 int minOverhead = GetSerializeSize(ds, evidence);
                 // need enough space to store proof
 
-                // TODO: HARDENING - this is set to break apart using the old value, so the correct one is commented
-                //if (minOverhead > CScript::MAX_SCRIPT_ELEMENT_SIZE - 128)
-                if (minOverhead > 5120 - 128)
+                if (minOverhead > CScript::MAX_SCRIPT_ELEMENT_SIZE - 128)
                 {
                     LogPrintf("%s: invalid evidence from system %s - evidence too large\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());
                     return false;
                 }
 
-                // TODO: HARDENING - this is set to break apart using the old value, so the correct one is commented
-                //std::vector<CPartialTransactionProof> allPartialProofs = oneIT.first.second.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - (minOverhead + 128));
-                std::vector<CPartialTransactionProof> allPartialProofs = oneIT.first.second.BreakApart(5120 - (minOverhead + 128));
+                std::vector<CPartialTransactionProof> allPartialProofs = oneIT.first.second.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - (minOverhead + 128));
                 if (!allPartialProofs.size())
                 {
                     LogPrintf("%s: failed to package evidence from system %s\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());

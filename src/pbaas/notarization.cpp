@@ -637,8 +637,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.SetPrelaunch();
         }
 
-        // TODO: HARDENING - confirm that destcurrency systemID is correct here, since this should only be prelaunch, otherwise
-        // we need SystemOrGatewayID()
+        // NOTE: destcurrency systemID is correct here, since this is only prelaunch or block 1, which doesn't apply for gateway's
         CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) : 
                                                                          ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
@@ -1344,7 +1343,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     UniValue currencyStatesUni = find_value(result, "currencystates");
 
-    // TODO: HARDENING - should gateways always be able to return a proper currency state beyond their native?
     if (!systemDef.IsGateway() && !(currencyStatesUni.isArray() && currencyStatesUni.size()))
     {
         return state.Error(errorPrefix + "invalid or missing currency state data from notary");
@@ -2423,15 +2421,10 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             return true;
         }
 
-        // TODO: HARDENING - make this a fail at next testnet reset 2021/06/17
         if (correctRoot != notarizationRoot)
         {
-            printf("%s: Incorrect proof root in notarization transaction - warning only will be fixed at next testnet reset, block %s, height: %u\n", __func__, tx.GetHash().GetHex().c_str(), height);
+            return state.Error("Incorrect proof root in notarization transaction");
         }
-        /*if (correctRoot != notarizationRoot)
-        {
-            return state.Error("Incorrect proof root in notarization transaction " + tx.GetHash().GetHex() + " for height " + std::to_string(height));
-        } */
     }
     return true;
 }
