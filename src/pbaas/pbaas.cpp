@@ -483,6 +483,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     int primaryExportOut = -1, nextOutput;
     CPBaaSNotarization notarization;
     std::vector<CReserveTransfer> reserveTransfers;
+    CCurrencyDefinition destSystem;
 
     if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
           p.IsValid() &&
@@ -490,7 +491,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
           p.vData.size() &&
           (ccx = CCrossChainExport(p.vData[0])).IsValid() &&
           (ccx.IsSupplemental() ||
-           (ccx.GetExportInfo(tx, outNum, primaryExportOut, nextOutput, notarization, reserveTransfers, state) &&
+           ((destSystem = ConnectedChains.GetCachedCurrency(ccx.destSystemID)).IsValid() &&
+            ccx.GetExportInfo(tx, outNum, primaryExportOut, nextOutput, notarization, reserveTransfers, state, (CCurrencyDefinition::EProofProtocol)destSystem.proofProtocol) &&
             ccx.sourceSystemID == ASSETCHAINS_CHAINID))))
     {
         return state.Error("Invalid cross chain export");
@@ -3948,14 +3950,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         CAmount newPrimaryCurrency = newNotarization.currencyState.primaryCurrencyOut;
         CCurrencyValueMap incomingCurrency = importedCurrency + gatewayDepositsUsed;
-        CCurrencyValueMap newLocalReserveDeposits;
-        CCurrencyValueMap newLocalDepositsRequired;
         if (newPrimaryCurrency > 0)
         {
             incomingCurrency.valueMap[destCurID] += newPrimaryCurrency;
         }
-        newLocalReserveDeposits = incomingCurrency.SubtractToZero(spentCurrencyOut);
-        newLocalDepositsRequired += (((incomingCurrency - spentCurrencyOut) - newLocalReserveDeposits).CanonicalMap() * -1);
+        CCurrencyValueMap newLocalReserveDeposits = incomingCurrency.SubtractToZero(spentCurrencyOut).CanonicalMap();
+        CCurrencyValueMap newLocalDepositsRequired = (((incomingCurrency - spentCurrencyOut) - newLocalReserveDeposits).CanonicalMap() * -1);
         if (newPrimaryCurrency < 0)
         {
             // we need to come up with this currency, as it will be burned
@@ -4204,7 +4204,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 }
             }
 
-            gatewayChange = totalDepositsInput - gatewayDepositsUsed;
+            gatewayChange = (totalDepositsInput - gatewayDepositsUsed).CanonicalMap();
 
             /*printf("%s: gatewayDepositsUsed: %s\n", __func__, gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
             printf("%s: gatewayChange: %s\n", __func__, gatewayChange.ToUniValue().write(1,2).c_str());
@@ -4369,38 +4369,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         if (reserveFees > CCurrencyValueMap())
         {
             tb.SetReserveFee(reserveFees);
-        }
-
-        // if we've got launch currency as the fee, it means we are mining block 1
-        // send it to our current miner or notary address
-        if (!ccx.IsSameChain() && ccx.IsClearLaunch())
-        {
-            CTxDestination addr;
-            extern std::string NOTARY_PUBKEY;
-            if (mapArgs.count("-mineraddress"))
-            {
-                addr = DecodeDestination(mapArgs["-mineraddress"]);
-            }
-            else if (!VERUS_NOTARYID.IsNull())
-            {
-                addr = VERUS_NOTARYID;
-            }
-            else if (!VERUS_DEFAULTID.IsNull())
-            {
-                addr = VERUS_DEFAULTID;
-            }
-            else if (!VERUS_NODEID.IsNull())
-            {
-                addr = CIdentityID(VERUS_NODEID);
-            }
-            else if (!NOTARY_PUBKEY.empty())
-            {
-                CPubKey pkey;
-                std::vector<unsigned char> hexKey = ParseHex(NOTARY_PUBKEY);
-                pkey.Set(hexKey.begin(), hexKey.end());
-                addr = pkey.GetID();
-            }
-            tb.SendChangeTo(addr);
         }
 
         /* UniValue jsonTx(UniValue::VOBJ);
