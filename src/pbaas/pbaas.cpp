@@ -491,9 +491,10 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
           p.vData.size() &&
           (ccx = CCrossChainExport(p.vData[0])).IsValid() &&
           (ccx.IsSupplemental() ||
-           ((destSystem = ConnectedChains.GetCachedCurrency(ccx.destSystemID)).IsValid() &&
-            ccx.GetExportInfo(tx, outNum, primaryExportOut, nextOutput, notarization, reserveTransfers, state, (CCurrencyDefinition::EProofProtocol)destSystem.proofProtocol) &&
-            ccx.sourceSystemID == ASSETCHAINS_CHAINID))))
+           (ccx.sourceSystemID == ASSETCHAINS_CHAINID &&
+            ((destSystem = ConnectedChains.GetCachedCurrency(ccx.destSystemID)).IsValid() || ccx.IsChainDefinition()) &&
+             ccx.GetExportInfo(tx, outNum, primaryExportOut, nextOutput, notarization, reserveTransfers, state, 
+                ccx.IsChainDefinition() ? CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR : (CCurrencyDefinition::EProofProtocol)destSystem.proofProtocol)))))
     {
         return state.Error("Invalid cross chain export");
     }
@@ -502,6 +503,25 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     if (ccx.IsSupplemental() || outNum != primaryExportOut)
     {
         return true;
+    }
+
+    // if this is the definition export, we need to get the actual currency
+    if (ccx.IsChainDefinition() && ccx.destSystemID != ASSETCHAINS_CHAINID)
+    {
+        bool found = false;
+        for (auto &oneOut : tx.vout)
+        {
+            destSystem = CCurrencyDefinition(oneOut.scriptPubKey);
+            if (destSystem.IsValid() && destSystem.GetID() == ccx.destSystemID)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            return state.Error("Invalid cross chain export - cannot find system definition for destination");
+        }
     }
 
     // make sure that every reserve transfer that SHOULD BE included (all mined in relevant blocks) IS included, no exceptions
