@@ -920,11 +920,13 @@ UniValue CTransferDestination::ToUniValue() const
 
         case CTransferDestination::DEST_FULLID:
             destVal.push_back(Pair("identity", CIdentity(destination).ToUniValue()));
+            destVal.push_back(Pair("serializeddata", HexBytes(&(destination[0]), destination.size())));
             break;
 
         case CTransferDestination::DEST_REGISTERCURRENCY:
         {
             destVal.push_back(Pair("currency", CCurrencyDefinition(destination).ToUniValue()));
+            destVal.push_back(Pair("serializeddata", HexBytes(&(destination[0]), destination.size())));
             break;
         }
 
