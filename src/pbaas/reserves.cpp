@@ -2694,9 +2694,12 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 // if headed to a system with incompatible addresses, we need to get the source address
                 // for refund
 
-                // TODO: HARDENING - for now, insufficient fee is only refunded when there is a compatible
-                // output address for refund
-                if ((nextLegTransfer.IsCurrencyExport() && destination.fees < nextDest.GetCurrencyImportFee()) ||
+                // TODO: HARDENING - for now, insufficient fee would only be refunded when there is a compatible
+                // output address for refund. we need to add a check on the second leg fee in reserve transfer
+                // or risk this blocking the bridge due to fee liquidity + slow processing
+                // commented check below
+
+                /* if ((nextLegTransfer.IsCurrencyExport() && destination.fees < nextDest.GetCurrencyImportFee()) ||
                     (nextLegTransfer.IsIdentityExport() && destination.fees < nextDest.IDImportFee()) ||
                     (!(nextLegTransfer.IsCurrencyExport() || nextLegTransfer.IsIdentityExport()) && destination.fees < nextDest.GetTransactionImportFee()))
                 {
@@ -2719,7 +2722,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                         cp = CCinit(&CC, EVAL_RESERVE_OUTPUT);
                         dest = CPubKey(ParseHex(CC.CChexstr));
                     }
-                }
+                } // */
             }
             else
             {
