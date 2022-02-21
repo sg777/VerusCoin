@@ -2230,27 +2230,44 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             if (rt.IsIdentityExport())
             {
                 CIdentity idToExport;
-                // first currency must be valid and equal the exported currency
-                if (!(rt.flags & rt.CROSS_SYSTEM) ||
-                    rt.destination.TypeNoFlags() != rt.destination.DEST_FULLID ||
-                    !(idToExport = CIdentity(rt.destination.destination)).IsValid())
+
+                if (!((rt.IsCrossSystem() &&
+                       rt.destination.TypeNoFlags() == rt.destination.DEST_FULLID &&
+                       (idToExport = CIdentity(rt.destination.destination)).IsValid()) ||
+                      (!rt.IsCrossSystem() && rt.destination.TypeNoFlags() == rt.destination.DEST_ID && rt.HasNextLeg())))
                 {
                     return state.Error("Invalid identity export in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
 
-                CIdentity registeredIdentity = CIdentity::LookupIdentity(idToExport.GetID(), height);
+                CIdentity registeredIdentity = CIdentity::LookupIdentity(GetDestinationID(TransferDestinationToDestination(rt.destination)), height);
 
-                // validate everything relating to name and control
-                if (!registeredIdentity.IsValid() ||
-                    registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
-                    registeredIdentity.minSigs != idToExport.minSigs ||
-                    registeredIdentity.revocationAuthority != idToExport.revocationAuthority ||
-                    registeredIdentity.recoveryAuthority != idToExport.recoveryAuthority ||
-                    registeredIdentity.privateAddresses != idToExport.privateAddresses ||
-                    registeredIdentity.parent != idToExport.parent ||
-                    boost::to_lower_copy(registeredIdentity.name) != boost::to_lower_copy(idToExport.name))
+                if (!registeredIdentity.IsValid())
                 {
-                    return state.Error("Mismatched identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+                    return state.Error("Invalid identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
+
+                if (rt.IsCrossSystem())
+                {
+                    // validate everything relating to name and control
+                    if (registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
+                        registeredIdentity.minSigs != idToExport.minSigs ||
+                        registeredIdentity.revocationAuthority != idToExport.revocationAuthority ||
+                        registeredIdentity.recoveryAuthority != idToExport.recoveryAuthority ||
+                        registeredIdentity.privateAddresses != idToExport.privateAddresses ||
+                        registeredIdentity.parent != idToExport.parent ||
+                        boost::to_lower_copy(registeredIdentity.name) != boost::to_lower_copy(idToExport.name))
+                    {
+                        return state.Error("Mismatched identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+                    }
+                }
+                else
+                {
+                    if (feeEquivalentInNative < systemDest.GetTransactionTransferFee())
+                    {
+                        return state.Error("Not enough fee for first step of currency import in reserve transfer " + rt.ToUniValue().write(1,2));
+                    }
+                    feeConversionPrices = importState.TargetConversionPrices(rt.destination.gatewayID);
+                    feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
                 }
 
                 // ensure that we have enough fees for the identity import
