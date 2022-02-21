@@ -2177,6 +2177,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 {
                     return state.Error("Invalid reserve transfer destination for target system" + rt.ToUniValue().write(1,2));
                 }
+                if (feeEquivalentInNative < systemDest.GetTransactionTransferFee())
+                {
+                    return state.Error("Not enough fee for first step of currency import in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
+                feeConversionPrices = importState.TargetConversionPrices(rt.destination.gatewayID);
+                feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
             }
             else if (!(rt.flags & rt.CROSS_SYSTEM) ||
                      rt.destination.TypeNoFlags() != rt.destination.DEST_REGISTERCURRENCY ||
