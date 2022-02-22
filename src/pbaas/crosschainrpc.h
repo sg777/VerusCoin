@@ -368,9 +368,9 @@ public:
         TRANSACTION_TRANSFER_FEE = 20000,   // 0.0002 per same chain transfer total, chain's accept notary currency or have converter
         CURRENCY_REGISTRATION_FEE = 20000000000, // default 100 to register a currency
         PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000, // default 10000 to register and launch a PBaaS chain
-        CURRENCY_IMPORT_FEE = 2000000000,   // default 100 to import a currency
+        CURRENCY_IMPORT_FEE = 10000000000,  // default 100 to import a currency
         IDENTITY_REGISTRATION_FEE = 10000000000, // 100 to register an identity
-        IDENTITY_IMPORT_FEE = 2000000000,   // 20 in native currency to import an identity
+        IDENTITY_IMPORT_FEE = 2000000,      // .20 in native currency to import an identity
         MIN_RESERVE_CONTRIBUTION = 1000000, // 0.01 minimum per reserve contribution minimum
         MIN_BILLING_PERIOD = 960,           // 16 hour minimum billing period for notarization, typically expect days/weeks/months
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
