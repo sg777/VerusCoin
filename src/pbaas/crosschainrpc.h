@@ -611,6 +611,11 @@ public:
         READWRITE(systemID);
         READWRITE(notarizationProtocol);
         READWRITE(proofProtocol);
+        READWRITE(nativeCurrencyID);
+        if (nativeCurrencyID.IsValid())
+        {
+            READWRITE(gatewayID);
+        }
         READWRITE(VARINT(startBlock));
         READWRITE(VARINT(endBlock));
         READWRITE(initialFractionalSupply);
@@ -630,11 +635,6 @@ public:
         READWRITE(VARINT(idRegistrationFees));
         READWRITE(VARINT(idReferralLevels));
         READWRITE(VARINT(idImportFees));
-        READWRITE(nativeCurrencyID);
-        if (nativeCurrencyID.IsValid())
-        {
-            READWRITE(gatewayID);
-        }
         if (IsGateway() || IsPBaaSChain())
         {
             READWRITE(VARINT(currencyRegistrationFee));
