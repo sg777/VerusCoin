@@ -7179,6 +7179,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         if (sameChainConversion)
                         {
+                            // if same chain first, we need to ensure that we have enough fees on the other side or it will get
+                            // refunded and fall short. add 20% buffer.
+                            requiredFees += CCurrencyDefinition::CalculateRatioOfValue(requiredFees, SATOSHIDEN / 5);
+
                             // if we're converting and then sending, we don't need an initial fee, so all
                             // fees go into the final destination
 
@@ -7187,6 +7191,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             if (dest.TypeNoFlags() == dest.DEST_FULLID)
                             {
                                 dest = CTransferDestination(CTransferDestination::DEST_ID, ::AsVector(CIdentityID(GetDestinationID(destination))));
+                                flags |= CReserveTransfer::IDENTITY_EXPORT;
+
                             }
                             else
                             {
@@ -7244,13 +7250,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                dest,
                                                                secondCurrencyID,
                                                                destSystemID);
-
-                        if (!(flags & CReserveTransfer::CROSS_SYSTEM) &&
-                            exportId)
-                        {
-                            // export the identity after conversion
-                            rt.SetIdentityExport(true);
-                        }
 
                         std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
                                                                           std::vector<CTxDestination>({pk.GetID()});
