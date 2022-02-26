@@ -327,20 +327,22 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 {
                     return state.Error("Unable to retrieve currency for import: " + cci.ToUniValue().write(1,2));
                 }
+                CCoinbaseCurrencyState startingState;
+                uint32_t minHeight = 0;
+                uint32_t maxHeight = 0;
+
                 if (!notarization.IsRefunding() &&
                     importingToDef.IsFractional() &&
                     (notarization.currencyID == cci.importCurrencyID || notarization.currencyStates.count(cci.importCurrencyID)))
                 {
                     auto currencyMap = importingToDef.GetCurrenciesMap();
-                    CCoinbaseCurrencyState startingState = notarization.currencyID == cci.importCurrencyID ?
-                                                           notarization.currencyState :
-                                                           notarization.currencyStates[cci.importCurrencyID];
+                    startingState = notarization.currencyID == cci.importCurrencyID ?
+                                        notarization.currencyState :
+                                        notarization.currencyStates[cci.importCurrencyID];
 
                     // we need to populate the conversion map fully once we know we need to, then stop checking
                     // first, determine the range of notarizations we can accept, which is the first
                     // notarization we can determine was available to the other system
-                    uint32_t minHeight;
-                    uint32_t maxHeight;
 
                     if (cci.IsSameChain())
                     {
@@ -364,7 +366,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     }
 
                     conversionMap = cci.GetBestPriorConversions(tx, outNum, importingToDef.GetID(), ASSETCHAINS_CHAINID, startingState, state, height, minHeight, maxHeight);
-
                 }
                 else if (!ConnectedChains.ThisChain().launchSystemID.IsNull() && ConnectedChains.ThisChain().IsMultiCurrency())
                 {
@@ -378,6 +379,20 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     {
                         // invalid fee currency from system
                         return state.Error("Invalid fee currency for transfer 1: " + oneTransfer.ToUniValue().write(1,2));
+                    }
+
+                    CAmount nextLegFeeEquiv = 0;
+                    CCurrencyValueMap nextLegConversionMap;
+                    CCurrencyDefinition nextLegCurrency;
+                    if (importingToDef.IsFractional() && oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID)
+                    {
+                        nextLegConversionMap = cci.GetBestPriorConversions(tx, outNum, importingToDef.GetID(), oneTransfer.destination.gatewayID, startingState, state, height, minHeight, maxHeight);
+                        nextLegFeeEquiv = CCurrencyState::ReserveToNativeRaw(oneTransfer.destination.fees, nextLegConversionMap.valueMap[oneTransfer.feeCurrencyID]);
+                        nextLegCurrency = ConnectedChains.GetCachedCurrency(oneTransfer.destination.gatewayID);
+                        if (!nextLegCurrency.IsValid() || !(nextLegCurrency.IsPBaaSChain() || nextLegCurrency.IsGateway()))
+                        {
+                            return state.Error("Invalid next leg for transfer: " + oneTransfer.ToUniValue().write(1,2));
+                        }
                     }
 
                     // if we get our fees from conversion, consider the conversion + fees
@@ -419,14 +434,14 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                     if (oneTransfer.IsIdentityExport())
                     {
-                        if (feeEquivalent < ConnectedChains.ThisChain().IDImportFee())
+                        if ((cci.IsSameChain() ? nextLegFeeEquiv : feeEquivalent) < ConnectedChains.ThisChain().IDImportFee())
                         {
                             return state.Error("Insufficient fee for identity import: " + cci.ToUniValue().write(1,2));
                         }
                     }
                     else if (oneTransfer.IsCurrencyExport())
                     {
-                        if (feeEquivalent < ConnectedChains.ThisChain().GetCurrencyImportFee())
+                        if ((cci.IsSameChain() ? nextLegFeeEquiv : feeEquivalent) < ConnectedChains.ThisChain().GetCurrencyImportFee())
                         {
                             return state.Error("Insufficient fee for currency import: " + cci.ToUniValue().write(1,2));
                         }
@@ -439,13 +454,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             return state.Error("Insufficient fee for transaction in import: " + cci.ToUniValue().write(1,2));
                         }
                     }
-                    else
+                    // import distributes both export and import fees
+                    if (cci.IsSameChain() && feeEquivalent < ConnectedChains.ThisChain().GetTransactionTransferFee())
                     {
-                        // import distributes both export and import fees
-                        if (feeEquivalent < ConnectedChains.ThisChain().GetTransactionTransferFee())
-                        {
-                            return state.Error("Insufficient fee for transaction transfer in import: " + cci.ToUniValue().write(1,2));
-                        }
+                        return state.Error("Insufficient fee for transaction transfer in import: " + cci.ToUniValue().write(1,2));
                     }
                 }
                 return true;

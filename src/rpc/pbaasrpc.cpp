@@ -7192,9 +7192,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             {
                                 dest = CTransferDestination(CTransferDestination::DEST_ID, ::AsVector(CIdentityID(GetDestinationID(destination))));
                                 flags |= CReserveTransfer::IDENTITY_EXPORT;
-
                             }
-                            else
+                            else if (dest.TypeNoFlags() != dest.DEST_ID)
                             {
                                 exportId = false;
                             }
