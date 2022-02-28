@@ -268,7 +268,7 @@ public:
     static std::string EncodeEthDestination(const uint160 &ethDestID)
     {
         // reverse bytes to match ETH encoding
-        return "0x" + ethDestID.GetHex();
+        return "0x" + HexBytes(ethDestID.begin(), ethDestID.size());
     }
 
     static std::string CurrencyExportKeyName()

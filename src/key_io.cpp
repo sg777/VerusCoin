@@ -771,7 +771,41 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
 
         case CTransferDestination::DEST_FULLID:
         {
-            CIdentity destID = CIdentity(find_value(obj, "identity"));
+            std::string serializedHex(uni_get_str(find_value(obj, "serializeddata")));
+            CIdentity destID;
+            if (serializedHex.size() && IsHex(serializedHex))
+            {
+                try
+                {
+                    ::FromVector(ParseHex(serializedHex), destID);
+                }
+                catch(...)
+                {
+                    destID = CIdentity();
+                }
+                // DEBUG ONLY
+                auto checkVec = ::AsVector(CIdentity(find_value(obj, "identity")));
+                std::string checkString(HexBytes(&(checkVec[0]), checkVec.size()));
+                if (checkString != serializedHex)
+                {
+                    CIdentity checkID;
+                    try
+                    {
+                        ::FromVector(ParseHex(checkString), checkID);
+                    }
+                    catch(...)
+                    {
+                        checkID = CIdentity();
+                    }
+                    printf("%s: mismatch check in serialized identity vs. JSON identity\nserializedHex: \"%s\"\nsourceID: \"%s\"\ncheckString: \"%s\"\ncheckID: \"%s\"\n",
+                           __func__, serializedHex.c_str(), destID.ToUniValue().write(1,2).c_str(), checkString.c_str(), checkID.ToUniValue().write(1,2).c_str());
+                }
+                // END DEBUG */
+            }
+            else
+            {
+                destID = CIdentity(find_value(obj, "identity"));
+            }
             if (destID.IsValid())
             {
                 destination = ::AsVector(destID);
@@ -785,7 +819,41 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
 
         case CTransferDestination::DEST_REGISTERCURRENCY:
         {
-            CCurrencyDefinition currencyToRegister(find_value(obj, "currency"));
+            std::string serializedHex(uni_get_str(find_value(obj, "serializeddata")));
+            CCurrencyDefinition currencyToRegister;
+            if (serializedHex.size() && IsHex(serializedHex))
+            {
+                try
+                {
+                    ::FromVector(ParseHex(serializedHex), currencyToRegister);
+                }
+                catch(...)
+                {
+                    currencyToRegister = CCurrencyDefinition();
+                }
+                // DEBUG ONLY
+                auto checkVec = ::AsVector(CCurrencyDefinition(find_value(obj, "currency")));
+                std::string checkString(HexBytes(&(checkVec[0]), checkVec.size()));
+                if (checkString != serializedHex)
+                {
+                    CCurrencyDefinition checkCur;
+                    try
+                    {
+                        ::FromVector(ParseHex(checkString), checkCur);
+                    }
+                    catch(...)
+                    {
+                        checkCur = CCurrencyDefinition();
+                    }
+                    printf("%s: mismatch check in serialized currency vs. JSON currency\nserializedHex: \"%s\"\nsourceID: \"%s\"\ncheckString: \"%s\"\nprocessedID: \"%s\"\n",
+                           __func__, serializedHex.c_str(), currencyToRegister.ToUniValue().write(1,2).c_str(), checkString.c_str(), checkCur.ToUniValue().write(1,2).c_str());
+                }
+                // END DEBUG */
+            }
+            else
+            {
+                currencyToRegister = CCurrencyDefinition(find_value(obj, "currency"));
+            }
             if (currencyToRegister.IsValid())
             {
                 destination = ::AsVector(currencyToRegister);
