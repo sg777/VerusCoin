@@ -2675,7 +2675,8 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             {
                 newFlags |= CReserveTransfer::CROSS_SYSTEM;
                 CCurrencyValueMap newReserves = reserves;
-                if (nativeAmount)
+                // if there is no value, we will add zero in source currency
+                if (nativeAmount || !newReserves.valueMap.size())
                 {
                     newReserves.valueMap[ASSETCHAINS_CHAINID] = nativeAmount;
                 }
@@ -2832,6 +2833,13 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 // consider any others before removing this TODO
                 // check below for one more of this same issue
                 dest = importedID.primaryAddresses[0];
+
+                // if we are sending no value, make an output that will not be added
+                if (reserves.CanonicalMap() == CCurrencyValueMap() && !nativeAmount)
+                {
+                    txOut = CTxOut(-1, GetScriptForDestination(dest));
+                    return true;
+                }
             }
             else if (!preexistingID.IsValid())
             {
@@ -2871,7 +2879,18 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 // if the ID is already in the mempool, we don't need to make an ID output, otherwise, we do
                 if (!memIndex.size())
                 {
+                    // if we are sending no value, make one output for the ID and return
+                    if (reserves.CanonicalMap() == CCurrencyValueMap() && !nativeAmount)
+                    {
+                        txOut = CTxOut(0, importedID.IdentityUpdateOutputScript(height));
+                        return true;
+                    }
                     txOutputs.push_back(CTxOut(0, importedID.IdentityUpdateOutputScript(height)));
+                }
+                else if (reserves.CanonicalMap() == CCurrencyValueMap() && !nativeAmount)
+                {
+                    txOut = CTxOut(-1, GetScriptForDestination(dest));
+                    return true;
                 }
             }
 
