@@ -455,7 +455,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(CrossChainImportWIF).begin(),32);
             cp->validate = ValidateCrossChainImport;
             cp->ismyvin = IsCrossChainImportInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PrecheckCrossChainImport;
             break;
 
         case EVAL_CROSSCHAIN_EXPORT:
@@ -465,7 +465,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(CrossChainExportWIF).begin(),32);
             cp->validate = ValidateCrossChainExport;
             cp->ismyvin = IsCrossChainExportInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PrecheckCrossChainExport;
             break;
 
         case EVAL_CURRENCYSTATE:
@@ -535,7 +535,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(FinalizeExportWIF).begin(),32);
             cp->validate = ValidateFinalizeExport;
             cp->ismyvin = IsFinalizeExportInput;  // TODO: these input functions are not useful for new CCs
-            cp->contextualprecheck = FinalizeExportContextualPreCheck;
+            cp->contextualprecheck = PreCheckFinalizeExport;
             break;
 
         case EVAL_FEE_POOL:

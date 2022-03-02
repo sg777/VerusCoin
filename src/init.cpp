@@ -25,6 +25,7 @@
 #include "metrics.h"
 #include "miner.h"
 #include "net.h"
+#include "params.h"
 #include "rpc/server.h"
 #include "rpc/pbaasrpc.h"
 #include "rpc/register.h"
@@ -714,7 +715,7 @@ bool InitSanityCheck(void)
 
 
 static void ZC_LoadParams(
-    const CChainParams& chainparams
+    const CChainParams& chainparams, bool verified
 )
 {
     struct timeval tv_start, tv_end;
@@ -1227,8 +1228,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV4, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 1);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5_1, 1);
-            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV6, 150);
-            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, 350);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV6, 50);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, 100);
         }
         else
         {
@@ -1342,7 +1343,20 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     libsnark::inhibit_profiling_counters = true;
 
     // Initialize Zcash circuit parameters
-    ZC_LoadParams(chainparams);
+    uiInterface.InitMessage(_("Verifying Params..."));
+    initalizeMapParam();
+    bool paramsVerified = checkParams();
+    if(!paramsVerified) {
+        downloadFiles("Network Params");
+    }
+    if (fRequestShutdown)
+    {
+        LogPrintf("Shutdown requested. Exiting.\n");
+        return false;
+    }
+
+    // Initialize Zcash circuit parameters
+    ZC_LoadParams(chainparams, paramsVerified);
 
     if (GetBoolArg("-savesproutr1cs", false)) {
         boost::filesystem::path r1cs_path = ZC_GetParamsDir() / "r1cs";
@@ -1533,6 +1547,36 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     // ********************************************************* Step 7: load block chain
 
     fReindex = GetBoolArg("-reindex", false);
+
+    bool useBootstrap = false;
+    bool newInstall = (!boost::filesystem::exists(GetDataDir() / "blocks") || !boost::filesystem::exists(GetDataDir() / "chainstate"));
+
+    //Prompt on new install
+    if (newInstall && GetBoolArg("-bootstrapinstall", false)) {
+        useBootstrap = true;
+    }
+
+    //Force Download- used for CLI
+    if (GetBoolArg("-bootstrap", false)) {
+        useBootstrap = true;
+    }
+
+    if (IsVerusMainnetActive() && useBootstrap) {
+        fReindex = false;
+        //wipe transactions from wallet to create a clean slate
+        OverrideSetArg("-zappwallettxes","2");
+        boost::filesystem::remove_all(GetDataDir() / "blocks");
+        boost::filesystem::remove_all(GetDataDir() / "chainstate");
+        boost::filesystem::remove_all(GetDataDir() / "notarisations");
+        boost::filesystem::remove(GetDataDir() / "peers.dat");
+        boost::filesystem::remove(GetDataDir() / "komodostate");
+        boost::filesystem::remove(GetDataDir() / "signedmasks");
+        boost::filesystem::remove(GetDataDir() / "komodostate.ind");
+        if (!getBootstrap() && !fRequestShutdown ) {
+            printf("\n\nBootstrap download failed!!! Shutting down. Try to bootstrap again or load and sync without the -bootstrap option\n");
+            fRequestShutdown = true;
+        }
+    }
 
     // Upgrading to 0.8; hard-link the old blknnnn.dat files into /blocks/
     boost::filesystem::path blocksDir = GetDataDir() / "blocks";
@@ -1796,11 +1840,35 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             pwalletMain = NULL;
         }
 
-        uiInterface.InitMessage(_("Loading wallet..."));
-
         nStart = GetTimeMillis();
         bool fFirstRun = true;
         pwalletMain = new CWallet(strWalletFile);
+
+        //Check for crypted flag and wait for the wallet password if crypted
+        DBErrors nInitalizeCryptedLoad = pwalletMain->InitalizeCryptedLoad();
+        if (nInitalizeCryptedLoad == DB_LOAD_CRYPTED) {
+            pwalletMain->SetDBCrypted();
+            uiInterface.InitMessage(_("Wallet waiting for passphrase..."));
+            SetRPCNeedsUnlocked(true);
+            DBErrors nLoadCryptedSeed = pwalletMain->LoadCryptedSeedFromDB();
+            if (nLoadCryptedSeed != DB_LOAD_OK) {
+                uiInterface.InitMessage(_("Error loading wallet.dat: Wallet crypted seed corrupted"));
+                return false;
+            }
+        }
+        while (pwalletMain->IsLocked()) {
+            //wait for response from GUI
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (fRequestShutdown)
+            {
+                LogPrintf("Shutdown requested. Exiting.\n");
+                return false;
+            }
+        }
+
+        uiInterface.InitMessage(_("Loading wallet..."));
+        SetRPCNeedsUnlocked(false);
+
         DBErrors nLoadWalletRet = pwalletMain->LoadWallet(fFirstRun);
         if (nLoadWalletRet != DB_LOAD_OK)
         {
@@ -1849,9 +1917,6 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                 pwalletMain->GenerateNewSeed();
             }
         }
-
-        // Set sapling migration status
-        pwalletMain->fSaplingMigrationEnabled = GetBoolArg("-migration", false);
 
         if (fFirstRun)
         {
@@ -2083,6 +2148,10 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 
     // SENDALERT
     threadGroup.create_thread(boost::bind(ThreadSendAlert));
+
+    if (pwalletMain->IsCrypted()) {
+        pwalletMain->Lock();
+    }
 
     return !fRequestShutdown;
 }

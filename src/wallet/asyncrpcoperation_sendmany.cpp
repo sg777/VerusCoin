@@ -1132,7 +1132,7 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
     }
     else
     {
-        pwalletMain->AvailableCoins(vecOutputs, false, NULL, false, true, fAcceptProtectedCoinbase);
+        pwalletMain->AvailableCoins(vecOutputs, false, NULL, false, true, fAcceptProtectedCoinbase, false, false);
     }
 
     for (COutput& out : vecOutputs) 

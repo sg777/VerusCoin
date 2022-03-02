@@ -142,6 +142,8 @@ public:
     }
 };
 
+class CCoinbaseCurrencyState;
+
 class CReserveTransfer : public CTokenOutput
 {
 public:
@@ -160,6 +162,7 @@ public:
         RESERVE_TO_RESERVE = 0x400,         // for arbitrage or transient conversion, 2 stage solving (2nd from new fractional to reserves)
         REFUND = 0x800,                     // this transfer should be refunded, individual property when conversions exceed limits
         IDENTITY_EXPORT = 0x1000,           // this exports a full identity when the next cross-chain leg is processed
+        CURRENCY_EXPORT = 0x2000,           // this exports a currency definition
     };
 
     enum EConstants
@@ -374,6 +377,11 @@ public:
         return flags & IDENTITY_EXPORT;
     }
 
+    bool IsCurrencyExport() const
+    {
+        return flags & CURRENCY_EXPORT;
+    }
+
     CReserveTransfer GetRefundTransfer(bool clearCrossSystem=true) const;
 
     static std::string ReserveTransferKeyName()
@@ -407,7 +415,15 @@ public:
     // the next leg output can enable chaining of conversions and system transfers
     // typically, the txOutputs vector will not get any additional entry unless there is a support
     // definition required, such as full ID or currency definition.
-    bool GetTxOut(const CCurrencyValueMap &reserves, int64_t nativeAmount, CTxOut &txOut, std::vector<CTxOut> &txOutputs, uint32_t height) const;
+    bool GetTxOut(const CCurrencyDefinition &sourceSystem,
+                  const CCurrencyDefinition &destSystem,
+                  const CCurrencyDefinition &destCurrency,
+                  const CCoinbaseCurrencyState &curState,
+                  CCurrencyValueMap reserves,
+                  int64_t nativeAmount,
+                  CTxOut &txOut,
+                  std::vector<CTxOut> &txOutputs,
+                  uint32_t height) const;
 };
 
 class CReserveDeposit : public CTokenOutput
@@ -558,7 +574,7 @@ public:
         FLAG_DEFINITIONIMPORT = 1,
         FLAG_INITIALLAUNCHIMPORT = 2,
         FLAG_POSTLAUNCH = 4,
-        FLAG_SAMECHAIN = 8,                             // means proof/reerve transfers are from export on chain
+        FLAG_SAMECHAIN = 8,                             // means proof/reserve transfers are from export on chain
         FLAG_HASSUPPLEMENT = 0x10,                      // indicates that we have additional outputs containing the reservetransfers for this export
         FLAG_SUPPLEMENTAL = 0x20,                       // this flag indicates that this is a supplemental output to a prior output
         FLAG_SOURCESYSTEM = 0x40,                       // import flag used to indicate source system
@@ -739,6 +755,38 @@ public:
         return key;
     }
 
+    CCrossChainImport GetPriorImport(const CTransaction &tx,
+                                     int32_t outNum,
+                                     CValidationState &state,
+                                     uint32_t height,
+                                     CTransaction *priorTx=nullptr,
+                                     int32_t *priorOutNum=nullptr,
+                                     uint256 *ppriorTxBlockHash=nullptr) const;
+
+    CCurrencyValueMap GetBestPriorConversions(const CTransaction &tx,
+                                              int32_t outNum,
+                                              const uint160 &converterCurrencyID,
+                                              const uint160 &targetCurrencyID,
+                                              const CCoinbaseCurrencyState &curConverterState,
+                                              CValidationState &state,
+                                              uint32_t height,
+                                              uint32_t minHeight,
+                                              uint32_t maxHeight) const;
+
+    bool UnconfirmedNameImports(const CTransaction &tx,
+                                int32_t outNum,
+                                CValidationState &state,
+                                uint32_t height,
+                                std::set<uint160> *pIDImports=nullptr,
+                                std::set<uint160> *pCurrencyImports=nullptr) const;
+
+    bool VerifyNameTransfers(const CTransaction &tx,
+                             int32_t outNum,
+                             CValidationState &state,
+                             uint32_t height,
+                             std::set<uint160> *pIDConflicts=nullptr,
+                             std::set<uint160> *pCurrencyConflicts=nullptr) const;
+
     // returns false if the information is unavailable, indicating an invalid, out of context, or
     // incomplete import transaction
     bool GetImportInfo(const CTransaction &importTx,
@@ -825,14 +873,14 @@ public:
     // these amounts are not serialized for supplemental export outputs, which identify themselves,
     // indicate their position in the relative group of outputs, and carry the additional reserve transfers.
     uint160 sourceSystemID;                     // imported from native system or gateway (notarization payout to this system)
-    uint32_t sourceHeightStart;                 // exporting all items to the destination from source system height...
-    uint32_t sourceHeightEnd;                   // to height, inclusive of end, last before start block from launch chain is needed to start a currency
+    uint256 hashReserveTransfers;               // hash of complete reserve transfer list in order of (txinputs, m=0, m=1, ..., m=(n-1))
     uint160 destSystemID;                       // exported to target blockchain or system
     uint160 destCurrencyID;                     // exported to target currency
+    uint32_t sourceHeightStart;                 // exporting all items to the destination from source system height...
+    uint32_t sourceHeightEnd;                   // to height, inclusive of end, last before start block from launch chain is needed to start a currency
     int32_t numInputs;                          // total number of inputs aggregated for validation
     CCurrencyValueMap totalAmounts;             // total amount exported of each currency, including fees
     CCurrencyValueMap totalFees;                // total fees in all currencies to split between this export and import
-    uint256 hashReserveTransfers;               // hash of complete reserve transfer list in order of (txinputs, m=0, m=1, ..., m=(n-1))
     CCurrencyValueMap totalBurned;              // if this is a cross chain export, some currencies will be burned, the rest held in deposits
     CTransferDestination exporter;              // typically the exporting miner or staker's address, to accept deferred payment for the export
 
@@ -863,17 +911,16 @@ public:
                       nVersion(Version), 
                       flags(Flags), 
                       sourceSystemID(SourceSystemID), 
-                      sourceHeightStart(SourceHeightStart), 
-                      sourceHeightEnd(SourceHeightEnd), 
+                      hashReserveTransfers(HashReserveTransfers),
                       destSystemID(DestSystemID), 
                       destCurrencyID(DestCurrencyID), 
+                      sourceHeightStart(SourceHeightStart), 
+                      sourceHeightEnd(SourceHeightEnd), 
                       numInputs(numin),
                       totalBurned(TotalBurned),
                       firstInput(firstin), 
                       totalAmounts(values), 
                       totalFees(transferFees), 
-                      hashReserveTransfers(HashReserveTransfers),
-
                       exporter(Exporter), 
                       reserveTransfers(ReserveTransfers)
     {}
@@ -891,14 +938,14 @@ public:
         READWRITE(sourceSystemID);
         if (!(flags & FLAG_SUPPLEMENTAL))
         {
-            READWRITE(VARINT(sourceHeightStart));
-            READWRITE(VARINT(sourceHeightEnd));
+            READWRITE(hashReserveTransfers);
             READWRITE(destSystemID);
             READWRITE(destCurrencyID);
+            READWRITE(VARINT(sourceHeightStart));
+            READWRITE(VARINT(sourceHeightEnd));
             READWRITE(numInputs);
             READWRITE(totalAmounts);
             READWRITE(totalFees);
-            READWRITE(hashReserveTransfers);
             READWRITE(totalBurned);
             READWRITE(exporter);
             READWRITE(firstInput);
@@ -935,7 +982,7 @@ public:
     static CAmount CalculateExportFeeRaw(CAmount fee, int numIn);
     CCurrencyValueMap CalculateExportFee() const;
     CCurrencyValueMap CalculateImportFee() const;
-    static CAmount ExportReward(int64_t exportFee);
+    static CAmount ExportReward(const CCurrencyDefinition &destSystem, int64_t exportFee);
 
     UniValue ToUniValue() const;
 
@@ -1110,8 +1157,6 @@ public:
     int64_t initialSupply;                  // initial premine + pre-converted coins
     int64_t emitted;                        // emitted coins reduce the reserve ratio and are used to calculate current ratio
     CAmount supply;                         // current supply: total of initial, all emitted, and all purchased coins
-
-    //std::vector<CAmount> Reserves; // reserve currencies amounts controlled by this fractional chain - only present for reserve currencies, currency IDs are in chain definition
 
     CCurrencyState() : version(VERSION_INVALID), flags(0), initialSupply(0), emitted(0), supply(0) {}
 
@@ -1546,6 +1591,10 @@ public:
     {
         return CCrossChainRPCData::GetConditionID(currencyID, CurrencyConverterKey());
     }
+
+    int64_t TargetConversionPrice(const uint160 &sourceCurrencyID, const uint160 &targetCurrencyID) const;
+    CCurrencyValueMap TargetConversionPrices(const uint160 &targetCurrencyID) const;
+    CCurrencyValueMap TargetConversionPricesReverse(const uint160 &targetCurrencyID, bool addFeePct=false) const;
 };
 
 class CReserveInOuts
@@ -1573,7 +1622,7 @@ public:
         IS_VALID=1,                             // known to be valid
         IS_REJECT=2,                            // if set, tx is known to be invalid
         IS_RESERVE=4,                           // if set, this transaction affects reserves and/or price if mined
-        IS_RESERVEEXCHANGE=8,                   // is this a reserve/exchange transaction?
+        IS_RESERVETRANSFER=8,                   // is this a reserve/exchange transaction?
         IS_LIMIT=0x10,                          // if reserve exchange, is it a limit order?
         IS_FILLORKILL=0x20,                     // If set, this can expire
         IS_FILLORKILLFAIL=0x40,                 // If set, this is an expired fill or kill in a valid tx
@@ -1615,10 +1664,9 @@ public:
     bool IsReject() const { return flags & IS_REJECT; }
     bool IsValid() const { return flags & IS_VALID && !IsReject(); }
     bool IsReserve() const { return IsValid() && flags & IS_RESERVE; }
-    bool IsReserveExchange() const { return flags & IS_RESERVEEXCHANGE; }
+    bool IsReserveTransfer() const { return flags & IS_RESERVETRANSFER; }
     bool IsLimit() const { return flags & IS_LIMIT; }
     bool IsFillOrKill() const { return flags & IS_FILLORKILL; }
-    bool IsMarket() const { return IsReserveExchange() && !IsLimit(); }
     bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
     bool IsIdentity() const { return flags & IS_IDENTITY; }
     bool IsIdentityDefinition() const { return flags & IS_IDENTITY_DEFINITION; }
@@ -1680,7 +1728,10 @@ public:
                                          CCurrencyValueMap &importedCurrency,
                                          CCurrencyValueMap &gatewayDepositsIn,
                                          CCurrencyValueMap &spentCurrencyOut,
-                                         CCoinbaseCurrencyState *pNewCurrencyState=nullptr);
+                                         CCoinbaseCurrencyState *pNewCurrencyState=nullptr,
+                                         const CTransferDestination &feeRecipient=CTransferDestination(),
+                                         const CTransferDestination &blockNotarizer=CTransferDestination(),
+                                         const uint256 &entropy=uint256());
 };
 
 struct CCcontract_info;

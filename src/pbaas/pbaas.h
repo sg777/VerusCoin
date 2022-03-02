@@ -780,7 +780,6 @@ public:
 class CPBaaSMergeMinedChainData : public CRPCChainData
 {
 public:
-    static const uint32_t MAX_MERGE_CHAINS = 15;
     CBlock          block;                  // full block to submit upon winning header
 
     CPBaaSMergeMinedChainData() {}
@@ -846,6 +845,7 @@ public:
         DEFAULT_NOTARIZATION_FEE = 10000,               // price of a notarization fee in native or launch system currency
         BLOCK_NOTARIZATION_MODULO = 10,                 // incentive to earn one valid notarization during this many blocks
         MIN_BLOCKS_BEFORE_NOTARY_FINALIZED = 15,        // 15 blocks must go by before notary signatures or confirming evidence can be provided
+        MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
     };
@@ -1081,6 +1081,7 @@ public:
                               CCurrencyValueMap &importedCurrency,
                               CCurrencyValueMap &gatewayDepositsUsed,
                               CCurrencyValueMap &spentCurrencyOut,
+                              CTransferDestination feeRecipient=CTransferDestination(),
                               bool forcedRefunding=false) const;
 
     static bool CreateEarnedNotarization(const CRPCChainData &externalSystem,
@@ -1322,6 +1323,8 @@ protected:
     CPBaaSMergeMinedChainData *GetChainInfo(uint160 chainID);
 
 public:
+    uint32_t lastBlockHeight;
+    CBlock lastBlock;
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
@@ -1355,7 +1358,7 @@ public:
     CCriticalSection cs_mergemining;
     CSemaphore sem_submitthread;
 
-    CConnectedChains() : readyToStart(0), sem_submitthread(0), earnedNotarizationHeight(0), dirty(0), lastSubmissionFailed(0) {}
+    CConnectedChains() : lastBlockHeight(0), readyToStart(0), sem_submitthread(0), earnedNotarizationHeight(0), dirty(0), lastSubmissionFailed(0) {}
 
     arith_uint256 LowestTarget()
     {
@@ -1380,6 +1383,9 @@ public:
     // send new imports from this chain to the specified chain, which generally will be the notary chain
     void ProcessLocalImports();
 
+    // return the last block if one is cached
+    bool GetLastBlock(CBlock &block, uint32_t height);
+    void SetLastBlock(CBlock &block, uint32_t height);
     bool AddMergedBlock(CPBaaSMergeMinedChainData &blkData);
     bool RemoveMergedBlock(uint160 chainID);
     bool GetChainInfo(uint160 chainID, CRPCChainData &rpcChainData);
@@ -1388,7 +1394,7 @@ public:
 
     // returns false if destinations are empty or first is not either pubkey or pubkeyhash
     bool SetLatestMiningOutputs(const std::vector<CTxOut> &minerOutputs);
-    void AggregateChainTransfers(const CTxDestination &feeOutput, uint32_t nHeight);
+    void AggregateChainTransfers(const CTransferDestination &feeRecipient, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
     std::string GetFriendlyCurrencyName(const uint160 &currencyID);
     CCurrencyDefinition UpdateCachedCurrency(const uint160 &currencyID, uint32_t height);
@@ -1457,7 +1463,7 @@ public:
     bool CreateNextExport(const CCurrencyDefinition &_curDef,
                           const std::vector<ChainTransferData> &txInputs,
                           const std::vector<CInputDescriptor> &priorExports,
-                          const CTxDestination &feeOutput,
+                          const CTransferDestination &feeRecipient,
                           uint32_t sinceHeight,
                           uint32_t curHeight,
                           int32_t inputStartNum,
@@ -1660,15 +1666,26 @@ CTxOut MakeCC1of2Vout(uint8_t evalcode, CAmount nValue, CPubKey pk1, CPubKey pk2
 bool IsVerusActive();
 bool IsVerusMainnetActive();
 
+bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 &exportCurrencyID, uint32_t height);
+std::set<uint160> BaseBridgeCurrencies(const CCurrencyDefinition &systemDest, uint32_t height, bool feeOnly=false);
+std::set<uint160> ValidExportCurrencies(const CCurrencyDefinition &systemDest, uint32_t height);
+
+
 // used to export coins from one chain to another, if they are not native, they are represented on the other
 // chain as tokens
 bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool IsCrossChainExportInput(const CScript &scriptSig);
 
 // used to validate import of coins from one chain to another. if they are not native and are supported,
 // they are represented o the chain as tokens
 bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool IsCrossChainImportInput(const CScript &scriptSig);
+
+bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool IsFinalizeExportInput(const CScript &scriptSig);
+bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 
 bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);

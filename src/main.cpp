@@ -2024,11 +2024,11 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // yet know if it does, but if the entry gets added to the mempool, then
         // it has passed ContextualCheckInputs and therefore this is correct.
         auto consensusBranchId = CurrentEpochBranchId(chainActive.Height() + 1, Params().GetConsensus());
-        
+
         CTxMemPoolEntry entry(tx, nFees, GetTime(), dPriority, chainActive.Height(), mempool.HasNoInputsOf(tx), fSpendsCoinbase, consensusBranchId, txDesc.IsValid() && txDesc.IsReserve() != 0);
 
         unsigned int nSize = entry.GetTxSize();
-        
+
         // Accept a tx if it contains joinsplits and has at least the default fee specified by z_sendmany.
         if (tx.vJoinSplit.size() > 0 && nFees >= ASYNC_RPC_OPERATION_DEFAULT_MINERS_FEE) {
             // In future we will we have more accurate and dynamic computation of fees for tx with joinsplits.
@@ -2041,7 +2041,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                 return state.DoS(0, error("AcceptToMemoryPool: not enough fees %s, %d < %d",hash.ToString(), nFees, txMinFee),REJECT_INSUFFICIENTFEE, "insufficient fee");
             }
         }
-        
+
         // Require that free transactions have sufficient priority to be mined in the next block.
         if (!iscoinbase && GetBoolArg("-relaypriority", false) && nFees < ::minRelayTxFee.GetFee(nSize) && !AllowFree(view.GetPriority(tx, chainActive.Height() + 1))) {
             fprintf(stderr,"accept failure.6\n");
@@ -4066,7 +4066,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                                            importOutputs,
                                                                            importedCurrency,
                                                                            gatewayDepositsUsed,
-                                                                           spentCurrencyOut))
+                                                                           spentCurrencyOut,
+                                                                           ccx.exporter))
                             {
                                 return state.DoS(10, 
                                                  error("%s: invalid coinbase import for currency %s on system %s\n",
@@ -5885,12 +5886,6 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
             }
         }
     }
-
-    if (!success)
-    {
-        // remove coinbase and anything that depended on it sooner, rather than later
-        RemoveCoinbaseFromMemPool(block);
-    }
     return success;
 }
 
@@ -5904,7 +5899,7 @@ bool ContextualCheckBlockHeader(
         return true;
     
     assert(pindexPrev);
-    
+
     int nHeight = pindexPrev->GetHeight()+1;
 
     // Check proof of work
@@ -5945,7 +5940,7 @@ bool ContextualCheckBlockHeader(
         }
         // Don't accept any forks from the main chain prior to last checkpoint
         CBlockIndex* pcheckpoint = Checkpoints::GetLastCheckpoint(chainParams.Checkpoints());
-        int32_t notarized_height;
+        int32_t notarized_height = 0;
         //if ( nHeight == 1 && chainActive.LastTip() != 0 && chainActive.LastTip()->GetHeight() > 1 )
         //{
         //   CBlockIndex *heightblock = chainActive[nHeight];
@@ -5957,14 +5952,14 @@ bool ContextualCheckBlockHeader(
         {
             if ( pcheckpoint != 0 && nHeight < pcheckpoint->GetHeight() )
                 return state.DoS(1, error("%s: forked chain older than last checkpoint (height %d) vs %d", __func__, nHeight,pcheckpoint->GetHeight()));
-            if ( komodo_checkpoint(&notarized_height,nHeight,hash) < 0 )
+            if ( chainActive.LastTip() && komodo_checkpoint(&notarized_height, nHeight, hash) < 0 )
             {
                 CBlockIndex *heightblock = chainActive[nHeight];
                 if ( heightblock != 0 && heightblock->GetBlockHash() == hash )
                 {
                     //fprintf(stderr,"got a pre notarization block that matches height.%d\n",(int32_t)nHeight);
                     return true;
-                } else return state.DoS(1, error("%s: forked chain %d older than last notarized (height %d) vs %d", __func__,nHeight, notarized_height));
+                } else return state.DoS(1, error("%s: forked chain %d older than last notarized (height %d) vs %d", __func__, nHeight, notarized_height));
             }
         }
     }
@@ -6020,10 +6015,12 @@ bool ContextualCheckBlock(
     std::set<std::string> newIDs;
     for (uint32_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = block.vtx[i];
-        
+
         // this is the only place where a duplicate name definition of the same name is checked in a block
         // all other cases are covered via mempool and pre-registered check, doing this would require a malicious
         // client, so immediate ban score
+        //
+        // TODO: HARDENING for PBaaS - add id/currency import/export verification
         CNameReservation nameRes(tx);
         if (nameRes.IsValid())
         {

@@ -22,7 +22,7 @@
 #include "primitives/transaction.h"
 #include "zcbenchmarks.h"
 #include "script/interpreter.h"
-#include "zcash/zip32.h"
+#include <zcash/address/zip32.h>
 
 #include "utiltime.h"
 #include "asyncrpcoperation.h"
@@ -2158,19 +2158,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     if (bIsReserve && (rtxd = CReserveTransactionDescriptor(wtx, view, nHeight)).IsReserve())
     {
         ret.push_back(Pair("isreserve", true));
-        bool isReserveExchange = rtxd.IsReserveExchange();
-        ret.push_back(Pair("isreserveexchange", isReserveExchange));
-        if (isReserveExchange)
-        {
-            if (rtxd.IsMarket())
-            {
-                ret.push_back(Pair("exchangetype", "market"));
-            }
-            else if (rtxd.IsLimit())
-            {
-                ret.push_back(Pair("exchangetype", "limit"));
-            }
-        }
+        ret.push_back(Pair("isreservetransfer", rtxd.IsReserveTransfer()));
         ret.push_back(Pair("nativefees", rtxd.NativeFees()));
         ret.push_back(Pair("reservefees", rtxd.ReserveFees().ToUniValue()));
         if (rtxd.nativeConversionFees || (rtxd.ReserveConversionFeesMap() > CCurrencyValueMap()))
@@ -2768,6 +2756,50 @@ static void LockWallet(CWallet* pWallet)
     pWallet->Lock();
 }
 
+UniValue openwallet(const UniValue& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return NullUniValue;
+
+    if (pwalletMain->IsCrypted() && (fHelp || params.size() != 1))
+        throw runtime_error(
+            "openwallet \"passphrase\"\n"
+            "\nStores the wallet decryption key in memory to load the wallet.\n"
+            "This is needed prior to the initial loading of the wallet" + strprintf("%s",komodo_chainname()) + "\n"
+            "\nArguments:\n"
+            "1. \"passphrase\"     (string, required) The wallet passphrase\n"
+            "\nNote:\n"
+            "\nExamples:\n"
+            + HelpExampleCli("openwallet", "\"my pass phrase\"")
+            + HelpExampleRpc("openwallet", "\"my pass phrase\"")
+        );
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    if (fHelp)
+        return true;
+    if (!pwalletMain->IsCrypted())
+        throw JSONRPCError(RPC_WALLET_WRONG_ENC_STATE, "Error: running with an unencrypted wallet, but alletpassphrase was called.");
+
+    // Note that the walletpassphrase is stored in params[0] which is not mlock()ed
+    SecureString strWalletPass;
+    strWalletPass.reserve(100);
+    // TODO: get rid of this .c_str() by implementing SecureString::operator=(std::string)
+    // Alternately, find a way to make params[0] mlock()'d to begin with.
+    strWalletPass = params[0].get_str().c_str();
+
+    if (strWalletPass.length() > 0)
+    {
+        if (!pwalletMain->Unlock(strWalletPass))
+            throw JSONRPCError(RPC_WALLET_PASSPHRASE_INCORRECT, "Error: The wallet passphrase entered was incorrect.");
+    }
+    else
+        throw runtime_error(
+            "openwallet <passphrase>\n");
+
+    return NullUniValue;
+}
+
 UniValue walletpassphrase(const UniValue& params, bool fHelp)
 {
     if (!EnsureWalletIsAvailable(fHelp))
@@ -2974,14 +3006,38 @@ UniValue encryptwallet(const UniValue& params, bool fHelp)
             "encryptwallet <passphrase>\n"
             "Encrypts the wallet with <passphrase>.");
 
-    if (!pwalletMain->EncryptWallet(strWalletPass))
-        throw JSONRPCError(RPC_WALLET_ENCRYPTION_FAILED, "Error: Failed to encrypt the wallet.");
+    auto nTime = GetTime();
+    std::string walletFile = pwalletMain->strWalletFile;
+    std::string fileBackup = "unencrypted_walletbackup" + std::to_string(nTime) + ".dat";
+    boost::filesystem::path pathBackup = GetDataDir() / fileBackup;
+    boost::filesystem::path pathWallet = GetDataDir() / walletFile;
 
-    // BDB seems to have a bad habit of writing old data into
-    // slack space in .dat files; that is bad if the old data is
-    // unencrypted private keys. So:
-    StartShutdown();
-    return "wallet encrypted; Verus server stopping, restart to run with encrypted wallet. The keypool has been flushed, you need to make a new backup.";
+    bitdb.Flush(false);
+    if (!BackupWallet(*pwalletMain, pathBackup.string()))
+        throw JSONRPCError(RPC_WALLET_ERROR, "Error: Wallet backup failed!");
+
+    if (!pwalletMain->EncryptWallet(strWalletPass)) {
+        bitdb.Flush(false);
+
+        // Flush log data to the dat file
+        bitdb.CloseDb(walletFile);
+        bitdb.CheckpointLSN(walletFile);
+        bitdb.mapFileUseCount.erase(walletFile);
+
+        //replace the file with the previous backup
+        boost::filesystem::remove(pathWallet);
+        copy_file(pathBackup, pathWallet, boost::filesystem::copy_option::overwrite_if_exists);
+        boost::filesystem::remove(pathBackup);
+
+        //shutdown
+        StartShutdown();
+        return "wallet encryption failed; Verus server stopping, restart to restore unencrypted wallet.";
+    } else {
+        // remove unneeded backup
+        boost::filesystem::remove(pathBackup);
+    }
+
+    return "wallet encrypted; The keypool has been flushed, you need to make a new backup.";
 }
 
 UniValue lockunspent(const UniValue& params, bool fHelp)
@@ -3611,10 +3667,10 @@ UniValue z_listunspent(const UniValue& params, bool fHelp)
             obj.push_back(Pair("outindex", (int)entry.op.n));
             obj.push_back(Pair("confirmations", entry.confirmations));
             libzcash::SaplingIncomingViewingKey ivk;
-            libzcash::SaplingFullViewingKey fvk;
+            libzcash::SaplingExtendedFullViewingKey extfvk;
             pwalletMain->GetSaplingIncomingViewingKey(boost::get<libzcash::SaplingPaymentAddress>(entry.address), ivk);
-            pwalletMain->GetSaplingFullViewingKey(ivk, fvk);
-            bool hasSaplingSpendingKey = pwalletMain->HaveSaplingSpendingKey(fvk);
+            pwalletMain->GetSaplingFullViewingKey(ivk, extfvk);
+            bool hasSaplingSpendingKey = pwalletMain->HaveSaplingSpendingKey(extfvk);
             obj.push_back(Pair("spendable", hasSaplingSpendingKey));
             obj.push_back(Pair("address", EncodePaymentAddress(entry.address)));
             obj.push_back(Pair("amount", ValueFromAmount(CAmount(entry.note.value())))); // note.value() is equivalent to plaintext.value()
@@ -4249,11 +4305,7 @@ UniValue z_listaddresses(const UniValue& params, bool fHelp)
         libzcash::SaplingIncomingViewingKey ivk;
         libzcash::SaplingFullViewingKey fvk;
         for (auto addr : addresses) {
-            if (fIncludeWatchonly || (
-                pwalletMain->GetSaplingIncomingViewingKey(addr, ivk) &&
-                pwalletMain->GetSaplingFullViewingKey(ivk, fvk) &&
-                pwalletMain->HaveSaplingSpendingKey(fvk)
-            )) {
+            if (fIncludeWatchonly || HaveSpendingKeyForPaymentAddress(pwalletMain)(addr)) {
                 ret.push_back(EncodePaymentAddress(addr));
             }
         }
@@ -4971,9 +5023,9 @@ UniValue z_viewtransaction(const UniValue& params, bool fHelp)
         auto pa = decrypted.second;
 
         // Store the OutgoingViewingKey for recovering outputs
-        libzcash::SaplingFullViewingKey fvk;
-        assert(pwalletMain->GetSaplingFullViewingKey(wtxPrev.mapSaplingNoteData.at(op).ivk, fvk));
-        ovks.insert(fvk.ovk);
+        libzcash::SaplingExtendedFullViewingKey extfvk;
+        assert(pwalletMain->GetSaplingFullViewingKey(wtxPrev.mapSaplingNoteData.at(op).ivk, extfvk));
+        ovks.insert(extfvk.fvk.ovk);
 
         UniValue entry(UniValue::VOBJ);
         entry.push_back(Pair("type", ADDR_TYPE_SAPLING));
@@ -5416,131 +5468,6 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
     return operationId;
 }
 
-UniValue z_setmigration(const UniValue& params, bool fHelp) {
-    if (!EnsureWalletIsAvailable(fHelp))
-        return NullUniValue;
-    if (fHelp || params.size() != 1)
-        throw runtime_error(
-            "z_setmigration enabled\n"
-            "When enabled the Sprout to Sapling migration will attempt to migrate all funds from this wallet’s\n"
-            "Sprout addresses to either the address for Sapling account 0 or the address specified by the parameter\n"
-            "'-migrationdestaddress'.\n"
-            "\n"
-            "This migration is designed to minimize information leakage. As a result for wallets with a significant\n"
-            "Sprout balance, this process may take several weeks. The migration works by sending, up to 5, as many\n"
-            "transactions as possible whenever the blockchain reaches a height equal to 499 modulo 500. The transaction\n"
-            "amounts are picked according to the random distribution specified in ZIP 308. The migration will end once\n"
-            "the wallet’s Sprout balance is below " + strprintf("%s %s", FormatMoney(CENT), CURRENCY_UNIT) + ".\n"
-            "\nArguments:\n"
-            "1. enabled  (boolean, required) 'true' or 'false' to enable or disable respectively.\n"
-        );
-    LOCK(pwalletMain->cs_wallet);
-    pwalletMain->fSaplingMigrationEnabled = params[0].get_bool();
-    return NullUniValue;
-}
-
-UniValue z_getmigrationstatus(const UniValue& params, bool fHelp) {
-    if (!EnsureWalletIsAvailable(fHelp))
-        return NullUniValue;
-    if (fHelp || params.size() != 0)
-        throw runtime_error(
-            "z_getmigrationstatus\n"
-            "Returns information about the status of the Sprout to Sapling migration.\n"
-            "Note: A transaction is defined as finalized if it has at least ten confirmations.\n"
-            "Also, it is possible that manually created transactions involving this wallet\n"
-            "will be included in the result.\n"
-            "\nResult:\n"
-            "{\n"
-            "  \"enabled\": true|false,                    (boolean) Whether or not migration is enabled\n"
-            "  \"destination_address\": \"zaddr\",           (string) The Sapling address that will receive Sprout funds\n"
-            "  \"unmigrated_amount\": nnn.n,               (numeric) The total amount of unmigrated " + CURRENCY_UNIT +" \n"
-            "  \"unfinalized_migrated_amount\": nnn.n,     (numeric) The total amount of unfinalized " + CURRENCY_UNIT + " \n"
-            "  \"finalized_migrated_amount\": nnn.n,       (numeric) The total amount of finalized " + CURRENCY_UNIT + " \n"
-            "  \"finalized_migration_transactions\": nnn,  (numeric) The number of migration transactions involving this wallet\n"
-            "  \"time_started\": ttt,                      (numeric, optional) The block time of the first migration transaction as a Unix timestamp\n"
-            "  \"migration_txids\": [txids]                (json array of strings) An array of all migration txids involving this wallet\n"
-            "}\n"
-        );
-    LOCK2(cs_main, pwalletMain->cs_wallet);
-    UniValue migrationStatus(UniValue::VOBJ);
-    migrationStatus.push_back(Pair("enabled", pwalletMain->fSaplingMigrationEnabled));
-    //  The "destination_address" field MAY be omitted if the "-migrationdestaddress"
-    // parameter is not set and no default address has yet been generated.
-    // Note: The following function may return the default address even if it has not been added to the wallet
-    auto destinationAddress = AsyncRPCOperation_saplingmigration::getMigrationDestAddress(pwalletMain->GetHDSeedForRPC());
-    migrationStatus.push_back(Pair("destination_address", EncodePaymentAddress(destinationAddress)));
-    //  The values of "unmigrated_amount" and "migrated_amount" MUST take into
-    // account failed transactions, that were not mined within their expiration
-    // height.
-    {
-        std::vector<SproutNoteEntry> sproutEntries;
-        std::vector<SaplingNoteEntry> saplingEntries;
-        std::set<PaymentAddress> noFilter;
-        // Here we are looking for any and all Sprout notes for which we have the spending key, including those
-        // which are locked and/or only exist in the mempool, as they should be included in the unmigrated amount.
-        pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, noFilter, 0, INT_MAX, true, true, false);
-        CAmount unmigratedAmount = 0;
-        for (const auto& sproutEntry : sproutEntries) {
-            unmigratedAmount += sproutEntry.note.value();
-        }
-        migrationStatus.push_back(Pair("unmigrated_amount", FormatMoney(unmigratedAmount)));
-    }
-    //  "migration_txids" is a list of strings representing transaction IDs of all
-    // known migration transactions involving this wallet, as lowercase hexadecimal
-    // in RPC byte order.
-    UniValue migrationTxids(UniValue::VARR);
-    CAmount unfinalizedMigratedAmount = 0;
-    CAmount finalizedMigratedAmount = 0;
-    int numFinalizedMigrationTxs = 0;
-    uint64_t timeStarted = 0;
-    for (const auto& txPair : pwalletMain->mapWallet) {
-        CWalletTx tx = txPair.second;
-        // A given transaction is defined as a migration transaction iff it has:
-        // * one or more Sprout JoinSplits with nonzero vpub_new field; and
-        // * no Sapling Spends, and;
-        // * one or more Sapling Outputs.
-        if (tx.vJoinSplit.size() > 0 && tx.vShieldedSpend.empty() && tx.vShieldedOutput.size() > 0) {
-            bool nonZeroVPubNew = false;
-            for (const auto& js : tx.vJoinSplit) {
-                if (js.vpub_new > 0) {
-                    nonZeroVPubNew = true;
-                    break;
-                }
-            }
-            if (!nonZeroVPubNew) {
-                continue;
-            }
-            migrationTxids.push_back(txPair.first.ToString());
-            //  A transaction is "finalized" iff it has at least 10 confirmations.
-            // TODO: subject to change, if the recommended number of confirmations changes.
-            if (tx.GetDepthInMainChain() >= 10) {
-                finalizedMigratedAmount -= tx.valueBalance;
-                ++numFinalizedMigrationTxs;
-            } else {
-                unfinalizedMigratedAmount -= tx.valueBalance;
-            }
-            // If the transaction is in the mempool it will not be associated with a block yet
-            if (tx.hashBlock.IsNull() || mapBlockIndex[tx.hashBlock] == nullptr) {
-                continue;
-            }
-            CBlockIndex* blockIndex = mapBlockIndex[tx.hashBlock];
-            //  The value of "time_started" is the earliest Unix timestamp of any known
-            // migration transaction involving this wallet; if there is no such transaction,
-            // then the field is absent.
-            if (timeStarted == 0 || timeStarted > blockIndex->GetBlockTime()) {
-                timeStarted = blockIndex->GetBlockTime();
-            }
-        }
-    }
-    migrationStatus.push_back(Pair("unfinalized_migrated_amount", FormatMoney(unfinalizedMigratedAmount)));
-    migrationStatus.push_back(Pair("finalized_migrated_amount", FormatMoney(finalizedMigratedAmount)));
-    migrationStatus.push_back(Pair("finalized_migration_transactions", numFinalizedMigrationTxs));
-    if (timeStarted > 0) {
-        migrationStatus.push_back(Pair("time_started", timeStarted));
-    }
-    migrationStatus.push_back(Pair("migration_txids", migrationTxids));
-    return migrationStatus;
-}
 
 /**
 When estimating the number of coinbase utxos we can shield in a single transaction:
@@ -8118,6 +8045,7 @@ UniValue getbalance64(const UniValue& params, bool fHelp)
 
 extern UniValue dumpprivkey(const UniValue& params, bool fHelp); // in rpcdump.cpp
 extern UniValue importprivkey(const UniValue& params, bool fHelp);
+extern UniValue rescanfromheight(const UniValue& params, bool fHelp);
 extern UniValue importaddress(const UniValue& params, bool fHelp);
 extern UniValue dumpwallet(const UniValue& params, bool fHelp);
 extern UniValue importwallet(const UniValue& params, bool fHelp);
@@ -8155,6 +8083,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "getwalletinfo",            &getwalletinfo,            false },
     { "wallet",             "convertpassphrase",        &convertpassphrase,        true  },
     { "wallet",             "importprivkey",            &importprivkey,            true  },
+    { "wallet",             "rescanfromheight",         &rescanfromheight,         true  },
     { "wallet",             "importwallet",             &importwallet,             true  },
     { "wallet",             "importaddress",            &importaddress,            true  },
     { "wallet",             "keypoolrefill",            &keypoolrefill,            true  },
@@ -8177,6 +8106,7 @@ static const CRPCCommand commands[] =
     { "identity",           "signfile",                 &signfile,                 true  },
     { "hidden",             "printapis",                &printapis,                true  },
     // { "hidden",             "signhash",                 &signhash,                 true  }, // disable due to risk of signing something that doesn't contain the content
+    { "wallet",             "openwallet",               &openwallet,               true  },
     { "wallet",             "walletlock",               &walletlock,               true  },
     { "wallet",             "walletpassphrasechange",   &walletpassphrasechange,   true  },
     { "wallet",             "walletpassphrase",         &walletpassphrase,         true  },
@@ -8191,8 +8121,6 @@ static const CRPCCommand commands[] =
     { "wallet",             "z_gettotalbalance",        &z_gettotalbalance,        false },
     { "wallet",             "z_mergetoaddress",         &z_mergetoaddress,         false },
     { "wallet",             "z_sendmany",               &z_sendmany,               false },
-    { "wallet",             "z_setmigration",           &z_setmigration,           false },
-    { "wallet",             "z_getmigrationstatus",     &z_getmigrationstatus,     false },
     { "wallet",             "z_shieldcoinbase",         &z_shieldcoinbase,         false },
     { "wallet",             "z_getoperationstatus",     &z_getoperationstatus,     true  },
     { "wallet",             "z_getoperationresult",     &z_getoperationresult,     true  },

@@ -33,7 +33,6 @@ extern pthread_mutex_t KOMODO_CC_mutex;
 bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fulfilled)
 {
     EvalRef eval;
-    // Verus commenting out Komodo lock since it is not used in Verus CCs, and other locks are
     pthread_mutex_lock(&KOMODO_CC_mutex);
     bool out = eval->Dispatch(cond, tx, nIn, fulfilled);
     pthread_mutex_unlock(&KOMODO_CC_mutex);
@@ -85,7 +84,6 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn, 
         case EVAL_ACCEPTEDNOTARIZATION:
         case EVAL_FINALIZE_NOTARIZATION:
         case EVAL_RESERVE_OUTPUT:
-        case EVAL_RESERVE_EXCHANGE:
         case EVAL_RESERVE_TRANSFER:
         case EVAL_RESERVE_DEPOSIT:
         case EVAL_CROSSCHAIN_EXPORT:

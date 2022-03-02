@@ -395,9 +395,10 @@ uint160 CCurrencyDefinition::GetID(const std::string &Name, uint160 &Parent)
 }
 
 CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
-    preLaunchDiscount(0),
     initialFractionalSupply(0),
     gatewayConverterIssuance(0),
+    preLaunchDiscount(0),
+    preLaunchCarveOut(0),
     minNotariesConfirm(0),
     idRegistrationFees(IDENTITY_REGISTRATION_FEE),
     idReferralLevels(DEFAULT_ID_REFERRAL_LEVELS),
@@ -405,8 +406,9 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
     pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
     currencyImportFee(CURRENCY_IMPORT_FEE),
-    transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
-    transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
+    transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    initialBits(DEFAULT_START_TARGET)
 {
     try
     {
@@ -487,6 +489,18 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             nVersion = PBAAS_VERSION_INVALID;
             return;
         }
+
+        // TODO: HARDENING - ensure that it makes sense for a chain to have PROOF_CHAINID still or disallow
+        // to enable it, we will need to ensure that all imports and notarizations are spendable to the chain ID and are
+        // considered valid by definition
+        if (proofProtocol == PROOF_CHAINID && IsPBaaSChain())
+        {
+            LogPrintf("%s: proofprotocol %d not yet implemented\n", __func__, (int)PROOF_CHAINID);
+            nVersion = PBAAS_VERSION_INVALID;
+            return;
+        }
+
+        nativeCurrencyID = CTransferDestination();
 
         std::string launchIDStr = uni_get_str(find_value(obj, "launchsystemid"));
         if (launchIDStr != "")
@@ -823,6 +837,20 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (vEras.size())
         {
+            try
+            {
+                uint32_t newInitialBits = UintToArith256(uint256S(uni_get_str(find_value(obj, "initialtarget")))).GetCompact();
+                if (newInitialBits)
+                {
+                    initialBits = newInitialBits;
+                }
+            }
+            catch(const std::exception& e)
+            {
+                LogPrintf("%s: Invalid initial target, must be 256 bit hex target\n", __func__);
+                throw e;
+            }
+            
             for (auto era : vEras)
             {
                 rewards.push_back(uni_get_int64(find_value(era, "reward")));
@@ -857,8 +885,9 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
     currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
     pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
     currencyImportFee(CURRENCY_IMPORT_FEE),
-    transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
-    transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
+    transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    initialBits(DEFAULT_START_TARGET)
 {
     name = boost::to_upper_copy(CleanName(currencyName, parent));
     if (parent.IsNull())
@@ -946,6 +975,11 @@ UniValue CCurrencyDefinition::ToUniValue() const
     obj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
     obj.push_back(Pair("notarizationprotocol", (int)notarizationProtocol));
     obj.push_back(Pair("proofprotocol", (int)proofProtocol));
+
+    if (nativeCurrencyID.IsValid())
+    {
+        //obj.push_back(Pair("nativecurrencyid", nativeCurrencyID.ToUniValue()));
+    }
 
     if (!launchSystemID.IsNull())
     {
@@ -1044,16 +1078,6 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("initialcontributions", initialContributionArr));
     }
 
-    if (preconverted.size())
-    {
-        UniValue preconversionArr(UniValue::VARR);
-        for (auto &onePreconversion : preconverted)
-        {
-            preconversionArr.push_back(ValueFromAmount(onePreconversion));
-        }
-        obj.push_back(Pair("preconversions", preconversionArr));
-    }
-
     if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
     {
         obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
@@ -1092,6 +1116,9 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
         if (IsPBaaSChain())
         {
+            arith_uint256 target;
+            target.SetCompact(initialBits);
+            obj.push_back(Pair("initialtarget", ArithToUint256(target).GetHex()));
             UniValue eraArr(UniValue::VARR);
             for (int i = 0; i < rewards.size(); i++)
             {

@@ -1770,18 +1770,3 @@ bool IsIdentityInput(const CScript &scriptSig)
     return false;
 }
 
-bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
-{
-    return true;
-}
-
-bool IsFinalizeExportInput(const CScript &scriptSig)
-{
-    return false;
-}
-
-bool FinalizeExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
-{
-    return true;
-}
-

@@ -33,6 +33,7 @@ using namespace std;
 
 static bool fRPCRunning = false;
 static bool fRPCInWarmup = true;
+static bool fRPCNeedUnlocked = false;
 static std::string rpcWarmupStatus("RPC server started");
 static CCriticalSection cs_rpcWarmup;
 /* Timer-creating functions */
@@ -615,6 +616,12 @@ bool IsRPCRunning()
     return fRPCRunning;
 }
 
+void SetRPCNeedsUnlocked(const bool& newStatus)
+{
+    LOCK(cs_rpcWarmup);
+    fRPCNeedUnlocked = newStatus;
+}
+
 void SetRPCWarmupStatus(const std::string& newStatus)
 {
     LOCK(cs_rpcWarmup);
@@ -705,7 +712,12 @@ UniValue CRPCTable::execute(const std::string &strMethod, const UniValue &params
     {
         LOCK(cs_rpcWarmup);
         if (fRPCInWarmup)
-            throw JSONRPCError(RPC_IN_WARMUP, rpcWarmupStatus);
+        {
+            if (!(fRPCNeedUnlocked && (strMethod == "openwallet" || strMethod == "stop")))
+            {
+                throw JSONRPCError(RPC_IN_WARMUP, rpcWarmupStatus);
+            }
+        }
     }
 
     //printf("RPC call: %s\n", strMethod.c_str());

@@ -447,6 +447,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                               CCurrencyValueMap &importedCurrency,
                                               CCurrencyValueMap &gatewayDepositsUsed,
                                               CCurrencyValueMap &spentCurrencyOut,
+                                              CTransferDestination feeRecipient,
                                               bool forcedRefund) const
 {
     uint160 sourceSystemID = sourceSystem.GetID();
@@ -488,11 +489,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             externalSystemDef = ConnectedChains.GetCachedCurrency(externalSystemID);
             if (!externalSystemDef.IsValid())
             {
-                LogPrintf("%s: cannot retrieve system definitoin for %s\n", __func__, EncodeDestination(CIdentityID(externalSystemID)));
+                LogPrintf("%s: cannot retrieve system definition for %s\n", __func__, EncodeDestination(CIdentityID(externalSystemID)));
                 return false;
             }
         }
     }
+
+    CTransferDestination notaryPayee;
 
     if (!externalSystemID.IsNull())
     {
@@ -510,6 +513,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     for (int i = 0; i < exportTransfers.size(); i++)
     {
         CReserveTransfer reserveTransfer = exportTransfers[i];
+
+        //auto transferVec = ::AsVector(reserveTransfer);
+        //printf("%s: ReserveTransfer:\n%s\nSerialized:\n%s\n", __func__, reserveTransfer.ToUniValue().write(1,2).c_str(), HexBytes(&(transferVec[0]), transferVec.size()).c_str());
 
         // add the pre-mutation reserve transfer to the hash
         hw << reserveTransfer;
@@ -564,6 +570,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
 
+    uint256 weakEntropy = proofRoots.count(sourceSystemID) ? proofRoots.find(sourceSystemID)->second.stateRoot : uint256();
+
     // TODO: HARDENING ensure that the latest proof root of this chain is in on gateway
 
     if (destCurrency.launchSystemID == sourceSystemID &&
@@ -588,6 +596,49 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             {
                 newNotarization.SetLaunchCleared();
                 newNotarization.currencyState.SetLaunchClear();
+
+                // if we are connected to another currency, make sure it will also start before we confirm that we can
+                CCurrencyDefinition coLaunchCurrency;
+                CCoinbaseCurrencyState coLaunchState;
+                bool coLaunching = false;
+                if (destCurrency.IsPBaaSConverter())
+                {
+                    // PBaaS or gateway converters have a parent which is the PBaaS chain or gateway
+                    coLaunching = true;
+                    coLaunchCurrency = ConnectedChains.GetCachedCurrency(destCurrency.parent);
+                }
+                else if (destCurrency.IsPBaaSChain() && !destCurrency.GatewayConverterID().IsNull())
+                {
+                    coLaunching = true;
+                    coLaunchCurrency = ConnectedChains.GetCachedCurrency(destCurrency.GatewayConverterID());
+                }
+
+                if (coLaunching)
+                {
+                    if (!coLaunchCurrency.IsValid())
+                    {
+                        printf("%s: Invalid co-launch currency - likely corruption\n", __func__);
+                        LogPrintf("%s: Invalid co-launch currency - likely corruption\n", __func__);
+                        return false;
+                    }
+                    coLaunchState = ConnectedChains.GetCurrencyState(coLaunchCurrency, notaHeight);
+
+                    if (!coLaunchState.IsValid())
+                    {
+                        printf("%s: Invalid co-launch currency state - likely corruption\n", __func__);
+                        LogPrintf("%s: Invalid co-launch currency state - likely corruption\n", __func__);
+                        return false;
+                    }
+
+                    // check our currency and any co-launch currency to determine our eligibility, as ALL
+                    // co-launch currencies must launch for one to launch
+                    if (coLaunchCurrency.IsValid() &&
+                        CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < 
+                            CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert))
+                    {
+                        forcedRefund = true;
+                    }
+                }
 
                 // first time through is export, second is import, then we finish clearing the launch
                 // check if the chain is qualified to launch or should refund
@@ -629,8 +680,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.SetPrelaunch();
         }
 
-        // HARDENING - ensure that destcurrency systemID is correct here, since this should only be prelaunch, otherwise
-        // we need SystemOrGatewayID()
+        // NOTE: destcurrency systemID is correct here, since this is only prelaunch or block 1, which doesn't apply for gateway's
         CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) : 
                                                                          ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
@@ -646,8 +696,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
 
         std::vector<CTxOut> tempOutputs;
-        bool retVal = rtxd.AddReserveTransferImportOutputs(sourceSystem,
-                                                           destSystem,
+        bool retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
+                                                           newNotarization.IsRefunding() ? sourceSystem : destSystem,
                                                            destCurrency, 
                                                            newNotarization.currencyState, 
                                                            exportTransfers, 
@@ -656,7 +706,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            importedCurrency,
                                                            gatewayDepositsUsed, 
                                                            spentCurrencyOut,
-                                                           &tempState);
+                                                           &tempState,
+                                                           feeRecipient,
+                                                           proposer,
+                                                           weakEntropy);
 
         if (retVal)
         {
@@ -667,17 +720,20 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.conversionPrice = tempState.conversionPrice;
             newNotarization.currencyState.viaConversionPrice = tempState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
-            retVal = rtxd.AddReserveTransferImportOutputs(sourceSystem,
-                                                           destSystem,
-                                                           destCurrency, 
-                                                           newNotarization.currencyState, 
-                                                           exportTransfers,
-                                                           currentHeight,
-                                                           importOutputs, 
-                                                           importedCurrency,
-                                                           gatewayDepositsUsed, 
-                                                           spentCurrencyOut,
-                                                           &tempState);
+            retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
+                                                          newNotarization.IsRefunding() ? sourceSystem : destSystem,
+                                                          destCurrency, 
+                                                          newNotarization.currencyState, 
+                                                          exportTransfers,
+                                                          currentHeight,
+                                                          importOutputs, 
+                                                          importedCurrency,
+                                                          gatewayDepositsUsed, 
+                                                          spentCurrencyOut,
+                                                          &tempState,
+                                                          feeRecipient,
+                                                          proposer,
+                                                          weakEntropy);
         }
         else
         {
@@ -696,9 +752,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         if (tempState.IsPrelaunch())
         {
             tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
-            if (this->currencyState.IsLaunchClear() && !(destCurrency.IsFractional() || this->IsDefinitionNotarization()))
+            if (!destCurrency.IsFractional() && !this->IsDefinitionNotarization())
             {
-                tempState.supply += this->currencyState.supply - this->currencyState.emitted;
+                if (this->currencyState.IsLaunchClear())
+                {
+                    tempState.supply += this->currencyState.supply - this->currencyState.emitted;
+                }
                 tempState.preConvertedOut += this->currencyState.preConvertedOut;
                 tempState.primaryCurrencyOut += this->currencyState.primaryCurrencyOut;
             }
@@ -720,8 +779,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         // normal conversions in addition to pre-conversions. add any conversions that may 
         // be present into the new currency state
         CCoinbaseCurrencyState intermediateState = newNotarization.currencyState;
-        bool isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem, 
-                                                                  externalSystemDef,
+        bool isValidExport = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? externalSystemDef : sourceSystem,
+                                                                  newNotarization.IsRefunding() ? sourceSystem : externalSystemDef,
                                                                   destCurrency, 
                                                                   intermediateState, 
                                                                   exportTransfers, 
@@ -730,7 +789,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                   importedCurrency,
                                                                   gatewayDepositsUsed, 
                                                                   spentCurrencyOut,
-                                                                  &newNotarization.currencyState);
+                                                                  &newNotarization.currencyState,
+                                                                  feeRecipient,
+                                                                  proposer,
+                                                                  weakEntropy);
         if (!newNotarization.currencyState.IsPrelaunch() &&
             isValidExport &&
             destCurrency.IsFractional())
@@ -743,8 +805,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             tempCurState.conversionPrice = newNotarization.currencyState.conversionPrice;
             tempCurState.viaConversionPrice = newNotarization.currencyState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
-            isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem, 
-                                                                 externalSystemDef,
+            isValidExport = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? externalSystemDef : sourceSystem,
+                                                                 newNotarization.IsRefunding() ? sourceSystem : externalSystemDef,
                                                                  destCurrency, 
                                                                  tempCurState, 
                                                                  exportTransfers, 
@@ -753,7 +815,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                  importedCurrency,
                                                                  gatewayDepositsUsed, 
                                                                  spentCurrencyOut,
-                                                                 &newNotarization.currencyState);
+                                                                 &newNotarization.currencyState,
+                                                                 feeRecipient,
+                                                                 proposer,
+                                                                 weakEntropy);
             if (isValidExport)
             {
                 newNotarization.currencyState.conversionPrice = tempCurState.conversionPrice;
@@ -1321,7 +1386,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     UniValue currencyStatesUni = find_value(result, "currencystates");
 
-    // TODO: HARDENING - should gateways always be able to return a proper currency state beyond their native?
     if (!systemDef.IsGateway() && !(currencyStatesUni.isArray() && currencyStatesUni.size()))
     {
         return state.Error(errorPrefix + "invalid or missing currency state data from notary");
@@ -2400,15 +2464,10 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             return true;
         }
 
-        // TODO: HARDENING - make this a fail at next testnet reset 2021/06/17
         if (correctRoot != notarizationRoot)
         {
-            printf("%s: Incorrect proof root in notarization transaction - warning only will be fixed at next testnet reset, block %s, height: %u\n", __func__, tx.GetHash().GetHex().c_str(), height);
+            return state.Error("Incorrect proof root in notarization transaction");
         }
-        /*if (correctRoot != notarizationRoot)
-        {
-            return state.Error("Incorrect proof root in notarization transaction " + tx.GetHash().GetHex() + " for height " + std::to_string(height));
-        } */
     }
     return true;
 }

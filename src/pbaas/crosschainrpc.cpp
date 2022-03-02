@@ -476,9 +476,10 @@ uint160 DecodeCurrencyName(std::string currencyStr)
 }
 
 CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
-    preLaunchDiscount(0),
     initialFractionalSupply(0),
     gatewayConverterIssuance(0),
+    preLaunchDiscount(0),
+    preLaunchCarveOut(0),
     minNotariesConfirm(0),
     idRegistrationFees(IDENTITY_REGISTRATION_FEE),
     idReferralLevels(DEFAULT_ID_REFERRAL_LEVELS),
@@ -486,8 +487,9 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
     pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
     currencyImportFee(CURRENCY_IMPORT_FEE),
-    transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
-    transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
+    transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    initialBits(DEFAULT_START_TARGET)
 {
     try
     {
@@ -916,6 +918,20 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (vEras.size())
         {
+            try
+            {
+                uint32_t newInitialBits = UintToArith256(uint256S(uni_get_str(find_value(obj, "initialtarget")))).GetCompact();
+                if (newInitialBits)
+                {
+                    initialBits = newInitialBits;
+                }
+            }
+            catch(const std::exception& e)
+            {
+                LogPrintf("%s: Invalid initial target, must be 256 bit hex target\n", __func__);
+                throw e;
+            }
+            
             for (auto era : vEras)
             {
                 rewards.push_back(uni_get_int64(find_value(era, "reward")));
@@ -950,8 +966,9 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
     currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
     pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
     currencyImportFee(CURRENCY_IMPORT_FEE),
-    transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
-    transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
+    transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+    initialBits(DEFAULT_START_TARGET)
 {
     name = boost::to_upper_copy(CleanName(currencyName, parent));
     if (parent.IsNull())
@@ -1007,7 +1024,7 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
             UniValue uniEra1(UniValue::VOBJ);
             uniEra1.pushKV("reward", 1200000000);
             uniEra1.pushKV("decay", 0);
-            uniEra1.pushKV("halving", 1174000);
+            uniEra1.pushKV("halving", 1044001);
             uniEra1.pushKV("eraend", 0);
             uniEras.push_back(uniEra1);
 

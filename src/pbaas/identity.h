@@ -171,6 +171,81 @@ public:
     }
 };
 
+class CAdvancedNameReservation
+{
+public:
+    static const CAmount DEFAULT_OUTPUT_AMOUNT = 0;
+    static const int MAX_NAME_SIZE = (KOMODO_ASSETCHAIN_MAXLEN - 1);
+
+    enum {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_CURRENT = 1,
+        VERSION_LAST = 1
+    };
+
+    uint32_t version;
+    std::string name;
+    uint160 parent;
+    CIdentityID referral;
+    uint256 salt;
+
+    CAdvancedNameReservation() : version(VERSION_CURRENT) {}
+    CAdvancedNameReservation(const std::string &Name, const uint160 &Parent, const CIdentityID &Referral, const uint256 &Salt, uint32_t Version=VERSION_CURRENT) :
+        version(Version), name(Name.size() > MAX_NAME_SIZE ? std::string(Name.begin(), Name.begin() + MAX_NAME_SIZE) : Name), parent(Parent), referral(Referral), salt(Salt) {}
+
+    CAdvancedNameReservation(const UniValue &uni, const uint160 &Parent=ASSETCHAINS_CHAINID)
+    {
+        uint160 dummy;
+        parent = DecodeCurrencyName(uni_get_str(find_value(uni, "parent"), EncodeDestination(CIdentityID(Parent))));
+        name = CleanName(uni_get_str(find_value(uni, "name")), parent);
+        salt = uint256S(uni_get_str(find_value(uni, "salt")));
+        CTxDestination dest = DecodeDestination(uni_get_str(find_value(uni, "referral")));
+        if (dest.which() == COptCCParams::ADDRTYPE_ID)
+        {
+            referral = CIdentityID(GetDestinationID(dest));
+        }
+        else if (dest.which() != COptCCParams::ADDRTYPE_INVALID)
+        {
+            salt.SetNull(); // either valid destination, no destination, or invalid reservation
+        }
+    }
+
+    CAdvancedNameReservation(const CTransaction &tx, int *pNumOut=nullptr);
+
+    CAdvancedNameReservation(const std::vector<unsigned char> &asVector)
+    {
+        ::FromVector(asVector, *this);
+        if (name.size() > MAX_NAME_SIZE)
+        {
+            name = std::string(name.begin(), name.begin() + MAX_NAME_SIZE);
+        }
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(version);
+        READWRITE(name);
+        READWRITE(parent);
+        READWRITE(referral);
+        READWRITE(salt);
+    }
+
+    UniValue ToUniValue() const;
+
+    CCommitmentHash GetCommitment()
+    {
+        return CCommitmentHash(GetHash(*this));
+    }
+
+    bool IsValid() const
+    {
+        return (name != "" && name.size() <= MAX_NAME_SIZE) && !salt.IsNull();
+    }
+};
+
 // this includes the necessary data for a principal to sign, but does not
 // include enough information to derive a persistent identity
 class CPrincipal
@@ -816,8 +891,5 @@ bool IsIdentityInput(const CScript &scriptSig);
 bool ValidateQuantumKeyOut(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled);
 bool IsQuantumKeyOutInput(const CScript &scriptSig);
 bool PrecheckQuantumKeyOut(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
-bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
-bool IsFinalizeExportInput(const CScript &scriptSig);
-bool FinalizeExportContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 
 #endif // IDENTITY_H

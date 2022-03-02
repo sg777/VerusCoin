@@ -268,8 +268,24 @@ public:
     static std::string EncodeEthDestination(const uint160 &ethDestID)
     {
         // reverse bytes to match ETH encoding
-        return "0x" + ethDestID.GetHex();
+        return "0x" + HexBytes(ethDestID.begin(), ethDestID.size());
     }
+
+    static std::string CurrencyExportKeyName()
+    {
+        return "vrsc::system.currency.export";
+    }
+
+    static uint160 UnboundCurrencyExportKey()
+    {
+        static uint160 nameSpace;
+        static uint160 exportKey = CVDXF::GetDataKey(CurrencyExportKeyName(), nameSpace);
+        return exportKey;
+    }
+
+    static uint160 CurrencyExportKeyToSystem(const uint160 &exportToSystemID);
+    static uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID);
+    uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const;
 
     UniValue ToUniValue() const;
 };
@@ -348,19 +364,21 @@ public:
 
     enum ELimitsDefaults
     {
-        TRANSACTION_TRANSFER_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
+        TRANSACTION_CROSSCHAIN_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
+        TRANSACTION_TRANSFER_FEE = 20000,   // 0.0002 per same chain transfer total, chain's accept notary currency or have converter
         CURRENCY_REGISTRATION_FEE = 20000000000, // default 100 to register a currency
         PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000, // default 10000 to register and launch a PBaaS chain
-        CURRENCY_IMPORT_FEE = 2000000000,   // default 100 to import a currency
+        CURRENCY_IMPORT_FEE = 10000000000,  // default 100 to import a currency
         IDENTITY_REGISTRATION_FEE = 10000000000, // 100 to register an identity
-        IDENTITY_IMPORT_FEE = 2000000000,   // 20 in native currency to import an identity
+        IDENTITY_IMPORT_FEE = 2000000,      // .20 in native currency to import an identity
         MIN_RESERVE_CONTRIBUTION = 1000000, // 0.01 minimum per reserve contribution minimum
         MIN_BILLING_PERIOD = 960,           // 16 hour minimum billing period for notarization, typically expect days/weeks/months
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
         DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
         DEFAULT_ID_REFERRAL_LEVELS = 3,
         MAX_NAME_LEN = 64,
-        MAX_STARTUP_NODES = 5
+        MAX_STARTUP_NODES = 5,
+        DEFAULT_START_TARGET = 0x1e01e1e1
     };
 
     enum ECurrencyOptions
@@ -371,7 +389,7 @@ public:
         OPTION_ID_REFERRALS = 8,            // if set, this chain supports referrals
         OPTION_ID_REFERRALREQUIRED = 0x10,  // if set, this chain requires referrals
         OPTION_TOKEN = 0x20,                // if set, this is a token, not a native currency
-        OPTION_RESERVED = 0x40,
+        OPTION_SINGLECURRENCY = 0x40,       // for PBaaS chains or gateways to potentially restrict to single currency
         OPTION_GATEWAY = 0x80,              // if set, this routes external currencies
         OPTION_PBAAS = 0x100,               // this is a PBaaS chain definition
         OPTION_PBAAS_CONVERTER = 0x200,     // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
@@ -405,9 +423,10 @@ public:
         QUERY_LAUNCHSTATE_CONFIRM = 3,
         QUERY_LAUNCHSTATE_COMPLETE = 4,
         QUERY_SYSTEMTYPE_LOCAL = 5,
-        QUERY_SYSTEMTYPE_GATEWAY = 6,
-        QUERY_SYSTEMTYPE_PBAAS = 7,
-        QUERY_ISCONVERTER = 8
+        QUERY_SYSTEMTYPE_IMPORTED = 6,
+        QUERY_SYSTEMTYPE_GATEWAY = 7,
+        QUERY_SYSTEMTYPE_PBAAS = 8,
+        QUERY_ISCONVERTER = 9
     };
 
     uint32_t nVersion;                      // version of this chain definition data structure to allow for extensions (not daemon version)
@@ -470,6 +489,7 @@ public:
     // if a currency definition is for a PBaaS chain, its gatewayConverter currency is the one that
     // people can participate in to have access to the currency itself. pre-mine to a NULL address
     // puts it into the initial gateway currency reserves.
+    uint32_t initialBits;                   // initial starting difficulty
     std::vector<int64_t> rewards;           // initial reward in each of native coin, if this is a reserve the number represents percentage of supply w/satoshis
     std::vector<int64_t> rewardsDecay;      // decay of rewards at halvings during the era
     std::vector<int32_t> halving;           // number of blocks between halvings
@@ -493,8 +513,9 @@ public:
                             currencyRegistrationFee(CURRENCY_REGISTRATION_FEE),
                             pbaasSystemLaunchFee(PBAAS_SYSTEM_LAUNCH_FEE),
                             currencyImportFee(CURRENCY_IMPORT_FEE),
-                            transactionImportFee(TRANSACTION_TRANSFER_FEE >> 1),
-                            transactionExportFee(TRANSACTION_TRANSFER_FEE >> 1)
+                            transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+                            transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
+                            initialBits(DEFAULT_START_TARGET)
     {}
 
     CCurrencyDefinition(const UniValue &obj);
@@ -518,10 +539,11 @@ public:
                         const std::vector<int64_t> &chainRewards, const std::vector<int64_t> &chainRewardsDecay,
                         const std::vector<int32_t> &chainHalving, const std::vector<int32_t> &chainEraEnd,
                         const std::string &LaunchGatewayName,
-                        int64_t TransactionTransferFee=TRANSACTION_TRANSFER_FEE, int64_t CurrencyRegistrationFee=CURRENCY_REGISTRATION_FEE,
+                        int64_t TransactionTransferFee=TRANSACTION_CROSSCHAIN_FEE, int64_t CurrencyRegistrationFee=CURRENCY_REGISTRATION_FEE,
                         int64_t PBaaSSystemRegistrationFee=PBAAS_SYSTEM_LAUNCH_FEE,
                         int64_t CurrencyImportFee=CURRENCY_IMPORT_FEE, int64_t IDRegistrationAmount=IDENTITY_REGISTRATION_FEE, 
                         int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE,
+                        uint32_t InitialBits=DEFAULT_START_TARGET,
                         uint32_t Version=VERSION_CURRENT) :
                         nVersion(Version),
                         options(Options),
@@ -557,6 +579,7 @@ public:
                         currencyImportFee(CurrencyImportFee),
                         transactionImportFee(TransactionTransferFee >> 1),
                         transactionExportFee(TransactionTransferFee >> 1),
+                        initialBits(InitialBits),
                         rewards(chainRewards),
                         rewardsDecay(chainRewardsDecay),
                         halving(chainHalving),
@@ -588,6 +611,11 @@ public:
         READWRITE(systemID);
         READWRITE(notarizationProtocol);
         READWRITE(proofProtocol);
+        READWRITE(nativeCurrencyID);
+        if (nativeCurrencyID.IsValid())
+        {
+            READWRITE(gatewayID);
+        }
         READWRITE(VARINT(startBlock));
         READWRITE(VARINT(endBlock));
         READWRITE(initialFractionalSupply);
@@ -607,11 +635,6 @@ public:
         READWRITE(VARINT(idRegistrationFees));
         READWRITE(VARINT(idReferralLevels));
         READWRITE(VARINT(idImportFees));
-        READWRITE(nativeCurrencyID);
-        if (nativeCurrencyID.IsValid())
-        {
-            READWRITE(gatewayID);
-        }
         if (IsGateway() || IsPBaaSChain())
         {
             READWRITE(VARINT(currencyRegistrationFee));
@@ -620,6 +643,14 @@ public:
             READWRITE(VARINT(transactionImportFee));
             READWRITE(VARINT(transactionExportFee));
             READWRITE(LIMITED_STRING(gatewayConverterName, MAX_NAME_LEN));
+            if (IsPBaaSChain())
+            {
+                READWRITE(initialBits);
+                READWRITE(rewards);
+                READWRITE(rewardsDecay);
+                READWRITE(halving);
+                READWRITE(eraEnd);
+            }
         }
         else
         {
@@ -637,14 +668,6 @@ public:
             READWRITE(VARINT(currencyImportFee));
             READWRITE(VARINT(transactionImportFee));
             READWRITE(VARINT(transactionExportFee));
-        }
-        
-        if (options & OPTION_PBAAS)
-        {
-            READWRITE(rewards);
-            READWRITE(rewardsDecay);
-            READWRITE(halving);
-            READWRITE(eraEnd);
         }
     }
 
@@ -715,6 +738,26 @@ public:
         {
             return currencyRegistrationFee;
         }
+    }
+
+    int64_t GetCurrencyImportFee() const
+    {
+        return currencyImportFee;
+    }
+
+    int64_t GetTransactionImportFee() const
+    {
+        return transactionImportFee;
+    }
+
+    int64_t GetTransactionExportFee() const
+    {
+        return transactionExportFee;
+    }
+
+    int64_t GetTransactionTransferFee() const
+    {
+        return TRANSACTION_TRANSFER_FEE;
     }
 
     // fee amount released at definition
@@ -804,18 +847,6 @@ public:
         return signatureKey;
     }
 
-    static std::string ExportedCurrencyKeyName()
-    {
-        return "vrsc::system.currency.exported";
-    }
-
-    static uint160 ExportedCurrencyKey()
-    {
-        static uint160 nameSpace;
-        static uint160 signatureKey = CVDXF::GetDataKey(ExportedCurrencyKeyName(), nameSpace);
-        return signatureKey;
-    }
-
     static std::string CurrencySystemKeyName()
     {
         return "vrsc::system.currency.systemdefinition";
@@ -836,7 +867,7 @@ public:
                 std::max({rewards.size(), rewardsDecay.size(), halving.size(), eraEnd.size()}) <= ASSETCHAINS_MAX_ERAS;
     }
 
-    int32_t ChainOptions() const
+    uint32_t ChainOptions() const
     {
         return options;
     }
@@ -863,6 +894,11 @@ public:
     bool IsPBaaSChain() const
     {
         return ChainOptions() & OPTION_PBAAS;
+    }
+
+    bool IsMultiCurrency() const
+    {
+        return !(ChainOptions() & OPTION_SINGLECURRENCY);
     }
 
     bool IsPBaaSConverter() const
@@ -951,6 +987,11 @@ public:
         {
             return idRegistrationFees / (idReferralLevels + 2);
         }
+    }
+
+    int64_t IDImportFee() const
+    {
+        return idImportFees;
     }
 
     static int64_t CalculateRatioOfValue(int64_t value, int64_t ratio);

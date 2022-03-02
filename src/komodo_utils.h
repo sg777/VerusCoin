@@ -1356,6 +1356,10 @@ uint16_t _komodo_userpass(char *username,char *password, FILE *fp)
     return(port);
 }
 
+// create a config file. if this is a PBaaS chain, we assume that the loaded CCurrencyDefinition is complete, which may not
+// be the case when loading without VRSC active.
+extern std::string CanonicalChainFileName(std::string chainName);
+
 void komodo_statefname(char *fname,char *symbol,char *str)
 {
     int32_t n,len;
@@ -1365,7 +1369,8 @@ void komodo_statefname(char *fname,char *symbol,char *str)
         checkName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
     }
 
-    const char *chkName = checkName.c_str();
+    std::string chkNameStr = CanonicalChainFileName(checkName);
+    const char *chkName = chkNameStr.c_str();
     sprintf(fname, "%s", GetDataDir(false).string().c_str());
     if ( (n = (int32_t)strlen(chkName)) != 0 )
     {
@@ -1374,7 +1379,7 @@ void komodo_statefname(char *fname,char *symbol,char *str)
             fname[len - n] = 0;
         else
         {
-            printf("unexpected fname.(%s) vs %s [%s] n.%d len.%d (%s)\n",fname,symbol,ASSETCHAINS_SYMBOL,n,len,&fname[len - n]);
+            printf("unexpected fname.(%s) vs %s [%s] n.%d len.%d (%s)\n",fname, chkName, ASSETCHAINS_SYMBOL, n, len, &fname[len - n]);
             return;
         }
     }
@@ -1388,7 +1393,7 @@ void komodo_statefname(char *fname,char *symbol,char *str)
     }
     if ( symbol != 0 && symbol[0] != 0 && strcmp("KMD",symbol) != 0 )
     {
-        strcat(fname, symbol);
+        strcat(fname, chkName);
         //printf("statefname.(%s) -> (%s)\n",symbol,fname);
 #ifdef _WIN32
         strcat(fname,"\\");
@@ -1400,16 +1405,11 @@ void komodo_statefname(char *fname,char *symbol,char *str)
     //printf("test.(%s) -> [%s] statename.(%s) %s\n",test,ASSETCHAINS_SYMBOL,symbol,fname);
 }
 
-// create a config file. if this is a PBaaS chain, we assume that the loaded CCurrencyDefinition is complete, which may not
-// be the case when loading without VRSC active.
 void komodo_configfile(char *symbol, uint16_t rpcport)
 {
-    std::string fileName(symbol);
-    if (fileName != "VRSC")
-    {
-        fileName = boost::to_lower_copy(fileName);
-    }
+    std::string fileName = CanonicalChainFileName(symbol);
     const char *_symbol = fileName.c_str();
+
     static char myusername[512], mypassword[7168];
     FILE *fp; uint16_t kmdport; uint8_t buf2[33]; char fname[512],buf[128],username[512],password[7168]; uint32_t crc,r,r2,i;
     if ( !fileName.empty() && rpcport != 0 )
@@ -1514,18 +1514,12 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
     } //else printf("couldnt open.(%s)\n",fname);
 }
 
+extern boost::filesystem::path GetConfigFile();
 uint16_t komodo_userpass(char *userpass, char *symbol)
 {
     FILE *fp; uint16_t port = 0; char fname[512],username[512],password[512],confname[KOMODO_ASSETCHAIN_MAXLEN + 5];
     userpass[0] = 0;
-    std::string fileName(symbol);
-    if (fileName != "VRSC")
-    {
-        fileName = boost::to_lower_copy(fileName);
-    }
-    sprintf(confname, "%s.conf", fileName.c_str());
-    komodo_statefname(fname, symbol, confname);
-    if ( (fp= fopen(fname,"rb")) != 0 )
+    if ( (fp = fopen(GetConfigFile().generic_string().c_str(),"rb")) != 0 )
     {
         port = _komodo_userpass(username,password,fp);
         sprintf(userpass,"%s:%s",username,password);

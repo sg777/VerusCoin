@@ -268,14 +268,17 @@ public:
         return ret;
     }
 
-    std::string operator()(const libzcash::SaplingIncomingViewingKey& vk) const
+    std::string operator()(const libzcash::SaplingExtendedFullViewingKey& extfvk) const
     {
         CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
-        ss << vk;
+        ss << extfvk;
+        // ConvertBits requires unsigned char, but CDataStream uses char
         std::vector<unsigned char> serkey(ss.begin(), ss.end());
         std::vector<unsigned char> data;
+        // See calculation comment below
+        data.reserve((serkey.size() * 8 + 4) / 5);
         ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, serkey.begin(), serkey.end());
-        std::string ret = bech32::Encode(m_params.Bech32HRP(CChainParams::SAPLING_INCOMING_VIEWING_KEY), data);
+        std::string ret = bech32::Encode(m_params.Bech32HRP(CChainParams::SAPLING_EXTENDED_FVK), data);
         memory_cleanse(serkey.data(), serkey.size());
         memory_cleanse(data.data(), data.size());
         return ret;
@@ -327,6 +330,7 @@ public:
 // regular serialized size in bytes, convert to bits, and then
 // perform ceiling division to get the number of 5-bit clusters.
 const size_t ConvertedSaplingPaymentAddressSize = ((32 + 11) * 8 + 4) / 5;
+const size_t ConvertedSaplingExtendedFullViewingKeySize = (ZIP32_XFVK_SIZE * 8 + 4) / 5;
 const size_t ConvertedSaplingExtendedSpendingKeySize = (ZIP32_XSK_SIZE * 8 + 4) / 5;
 const size_t ConvertedSaplingIncomingViewingKeySize = (32 * 8 + 4) / 5;
 } // namespace
@@ -341,6 +345,15 @@ CKey DecodeSecret(const std::string& str)
             std::equal(privkey_prefix.begin(), privkey_prefix.end(), data.begin())) {
             bool compressed = data.size() == 33 + privkey_prefix.size();
             key.Set(data.begin() + privkey_prefix.size(), data.begin() + privkey_prefix.size() + 32, compressed);
+        }
+    }
+    else
+    {
+        // if it's hex and 32 bytes of data, use it as the raw secret
+        if (IsHex(str) && str.length() == 64)
+        {
+            data = ParseHex(str);
+            key.Set(data.begin(), data.begin() + 32, true);
         }
     }
     memory_cleanse(data.data(), data.size());
@@ -498,14 +511,14 @@ libzcash::ViewingKey DecodeViewingKey(const std::string& str)
         }
     }
     data.clear();
-    auto bech = bech32::Decode(str);
-    if(bech.first == Params().Bech32HRP(CChainParams::SAPLING_INCOMING_VIEWING_KEY) &&
-       bech.second.size() == ConvertedSaplingIncomingViewingKeySize) {
+    auto bechFvk = bech32::Decode(str);
+    if(bechFvk.first == Params().Bech32HRP(CChainParams::SAPLING_EXTENDED_FVK) &&
+       bechFvk.second.size() == ConvertedSaplingExtendedFullViewingKeySize) {
         // Bech32 decoding
-        data.reserve((bech.second.size() * 5) / 8);
-        if (ConvertBits<5, 8, false>([&](unsigned char c) { data.push_back(c); }, bech.second.begin(), bech.second.end())) {
+        data.reserve((bechFvk.second.size() * 5) / 8);
+        if (ConvertBits<5, 8, false>([&](unsigned char c) { data.push_back(c); }, bechFvk.second.begin(), bechFvk.second.end())) {
             CDataStream ss(data, SER_NETWORK, PROTOCOL_VERSION);
-            libzcash::SaplingIncomingViewingKey ret;
+            libzcash::SaplingExtendedFullViewingKey ret;
             ss >> ret;
             memory_cleanse(data.data(), data.size());
             return ret;
@@ -758,7 +771,41 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
 
         case CTransferDestination::DEST_FULLID:
         {
-            CIdentity destID = CIdentity(find_value(obj, "identity"));
+            std::string serializedHex(uni_get_str(find_value(obj, "serializeddata")));
+            CIdentity destID;
+            if (serializedHex.size() && IsHex(serializedHex))
+            {
+                try
+                {
+                    ::FromVector(ParseHex(serializedHex), destID);
+                }
+                catch(...)
+                {
+                    destID = CIdentity();
+                }
+                // DEBUG ONLY
+                auto checkVec = ::AsVector(CIdentity(find_value(obj, "identity")));
+                std::string checkString(HexBytes(&(checkVec[0]), checkVec.size()));
+                if (checkString != serializedHex)
+                {
+                    CIdentity checkID;
+                    try
+                    {
+                        ::FromVector(ParseHex(checkString), checkID);
+                    }
+                    catch(...)
+                    {
+                        checkID = CIdentity();
+                    }
+                    printf("%s: mismatch check in serialized identity vs. JSON identity\nserializedHex: \"%s\"\nsourceID: \"%s\"\ncheckString: \"%s\"\ncheckID: \"%s\"\n",
+                           __func__, serializedHex.c_str(), destID.ToUniValue().write(1,2).c_str(), checkString.c_str(), checkID.ToUniValue().write(1,2).c_str());
+                }
+                // END DEBUG */
+            }
+            else
+            {
+                destID = CIdentity(find_value(obj, "identity"));
+            }
             if (destID.IsValid())
             {
                 destination = ::AsVector(destID);
@@ -772,7 +819,41 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
 
         case CTransferDestination::DEST_REGISTERCURRENCY:
         {
-            CCurrencyDefinition currencyToRegister(find_value(obj, "currency"));
+            std::string serializedHex(uni_get_str(find_value(obj, "serializeddata")));
+            CCurrencyDefinition currencyToRegister;
+            if (serializedHex.size() && IsHex(serializedHex))
+            {
+                try
+                {
+                    ::FromVector(ParseHex(serializedHex), currencyToRegister);
+                }
+                catch(...)
+                {
+                    currencyToRegister = CCurrencyDefinition();
+                }
+                // DEBUG ONLY
+                auto checkVec = ::AsVector(CCurrencyDefinition(find_value(obj, "currency")));
+                std::string checkString(HexBytes(&(checkVec[0]), checkVec.size()));
+                if (checkString != serializedHex)
+                {
+                    CCurrencyDefinition checkCur;
+                    try
+                    {
+                        ::FromVector(ParseHex(checkString), checkCur);
+                    }
+                    catch(...)
+                    {
+                        checkCur = CCurrencyDefinition();
+                    }
+                    printf("%s: mismatch check in serialized currency vs. JSON currency\nserializedHex: \"%s\"\nsourceID: \"%s\"\ncheckString: \"%s\"\nprocessedID: \"%s\"\n",
+                           __func__, serializedHex.c_str(), currencyToRegister.ToUniValue().write(1,2).c_str(), checkString.c_str(), checkCur.ToUniValue().write(1,2).c_str());
+                }
+                // END DEBUG */
+            }
+            else
+            {
+                currencyToRegister = CCurrencyDefinition(find_value(obj, "currency"));
+            }
             if (currencyToRegister.IsValid())
             {
                 destination = ::AsVector(currencyToRegister);

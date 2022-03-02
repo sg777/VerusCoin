@@ -406,20 +406,13 @@ CCurrencyValueMap CTransaction::GetReserveValueOut() const
 
         for (auto &oneCur : oneOut.valueMap)
         {
-            auto reserveIt = retVal.valueMap.find(oneCur.first);
-            if (reserveIt == retVal.valueMap.end())
+            if (oneCur.second &&
+                (retVal.valueMap[oneCur.first] += oneCur.second) < 0)
             {
-                retVal.valueMap[oneCur.first] = oneCur.second;
-            }
-            else
-            {
-                reserveIt->second += oneCur.second;
-                if (reserveIt->second < 0)
-                {
-                    printf("%s: currency value overflow total: %ld, adding: %ld\n", __func__, reserveIt->second, oneCur.second);
-                    LogPrintf("%s: currency value overflow total: %ld, adding: %ld\n", __func__, reserveIt->second, oneCur.second);
-                    return std::map<uint160, CAmount>();
-                }
+                // TODO: HARDENING - confirm this is correct overflow behavior
+                printf("%s: currency value overflow total: %ld, adding: %ld - pegging to max\n", __func__, retVal.valueMap[oneCur.first], oneCur.second);
+                LogPrintf("%s: currency value overflow total: %ld, adding: %ld - pegging to max\n", __func__, retVal.valueMap[oneCur.first], oneCur.second);
+                retVal.valueMap[oneCur.first] = INT64_MAX;
             }
         }
     }
