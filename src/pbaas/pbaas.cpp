@@ -2290,6 +2290,37 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
             else
             {
+                int destType = rt.destination.TypeNoFlags();
+                CTxDestination dest = TransferDestinationToDestination(rt.destination);
+                if (destType == rt.destination.DEST_ETH)
+                {
+                    uint160 ethDest;
+                    try
+                    {
+                        ::FromVector(rt.destination.destination, ethDest);
+                    }
+                    catch(...)
+                    {
+                        ethDest = uint160();
+                    }
+                    if (ethDest.IsNull())
+                    {
+                        return state.Error("Invalid Ethereum transfer destination");
+                    }
+                }
+                else if (dest.which() != COptCCParams::ADDRTYPE_ID && dest.which() != COptCCParams::ADDRTYPE_PKH && dest.which() != COptCCParams::ADDRTYPE_SH)
+                {
+                    if (rt.destination.TypeNoFlags() != rt.destination.DEST_RAW)
+                    {
+                        return state.Error("Invalid transfer destination");
+                    }
+                    // TODO: HARDENING - either disable raw support or add support for raw gateway
+                }
+                else if (GetDestinationID(dest).IsNull())
+                {
+                    return state.Error("NULL is an invalid transfer destination");
+                }
+
                 // ensure that we have enough fees for transfer
                 if (systemDestID != ASSETCHAINS_CHAINID && !rt.IsPreConversion())
                 {
