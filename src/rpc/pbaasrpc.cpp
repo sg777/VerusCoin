@@ -7899,6 +7899,7 @@ UniValue getsaplingtree(const UniValue& params, bool fHelp)
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
+// TODO: HARDENING - add this check to validation in PrecheckCurrencyDefinition
 CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj, uint32_t height, const uint160 systemID, std::map<uint160, std::string> &requiredDefinitions)
 {
     CCurrencyDefinition newCurrency(uniObj);
@@ -7948,8 +7949,36 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specify a mining and staking rewards schedule.");
         }
-        // if this is a token definition, set systemID
-        newCurrency.systemID = systemID;
+        if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
+            !newCurrency.IsGateway() &&
+            systemID == CCrossChainRPCData::GetID("veth@"))
+        {
+            if (newCurrency.IsFractional())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a mapped currency and fractional");
+            }
+            if (newCurrency.proofProtocol != newCurrency.PROOF_ETHNOTARIZATION)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Ethereum mapped currency must have \"proofprotocol\":%d", (int)newCurrency.proofProtocol));
+            }
+            bool nonZeroSupply = newCurrency.conversions.size() && !newCurrency.maxPreconvert.size();
+            for (auto oneVal : newCurrency.maxPreconvert)
+            {
+                if (oneVal)
+                {
+                    nonZeroSupply = true;
+                }
+            }
+            if (nonZeroSupply || newCurrency.GetTotalPreallocation())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Ethereum mapped currency requires zero initial supply and no possible conversions"));
+            }
+        }
+        else
+        {
+            // if this is a token or gateway definition, set systemID
+            newCurrency.systemID = systemID;
+        }
     }
     else
     {
