@@ -2061,6 +2061,18 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         CCurrencyValueMap newPreConversionReservesIn = rt.TotalCurrencyOut();
         CCurrencyValueMap feeConversionPrices;
 
+        if (importState.IsPrelaunch())
+        {
+            if (!(rt.IsPreConversion() && rt.IsConversion()))
+            {
+                return state.Error("Only preconversion transfers are valid during the prelaunch phase of a currency " + rt.ToUniValue().write(1,2));
+            }
+            if (rt.FeeCurrencyID() != systemDestID)
+            {
+                return state.Error("Preconversion transfers must use the native fee currency of the launching system " + rt.ToUniValue().write(1,2));
+            }
+        }
+
         if (importCurrencyDef.IsFractional() && importState.IsLaunchConfirmed())
         {
             feeConversionPrices = importState.TargetConversionPrices(systemDestID);
