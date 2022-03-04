@@ -2063,7 +2063,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (importState.IsPrelaunch())
         {
-            if (!(rt.IsPreConversion() && rt.IsConversion()))
+            if (!rt.IsPreConversion())
             {
                 return state.Error("Only preconversion transfers are valid during the prelaunch phase of a currency " + rt.ToUniValue().write(1,2));
             }
