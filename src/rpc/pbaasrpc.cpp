@@ -2576,7 +2576,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
 
     if (!notarizationData.vtx.size())
     {
-        LogPrintf("%s: failure to find confirmed notarization starting point\n", __func__);
+        LogPrintf("%s: failure to find confirmed notarization starting point for currency %s\n", __func__, chainDef.ToUniValue().write(1,2).c_str());
         return false;
     }
 
