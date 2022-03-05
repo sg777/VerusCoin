@@ -1747,6 +1747,10 @@ std::set<uint160> ValidExportCurrencies(const CCurrencyDefinition &systemDest, u
         {
             for (auto &oneIdx : addresses)
             {
+                if (oneIdx.first.spending)
+                {
+                    continue;
+                }
                 uint256 blkHash;
                 CTransaction rtTx;
 
@@ -1859,6 +1863,10 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
         {
             for (auto &oneIdx : addresses)
             {
+                if (oneIdx.first.spending)
+                {
+                    continue;
+                }
                 uint256 blkHash;
                 CTransaction rtTx;
 
