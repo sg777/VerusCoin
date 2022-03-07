@@ -4627,6 +4627,27 @@ UniValue z_listreceivedbyaddress(const UniValue& params, bool fHelp)
             UniValue obj(UniValue::VOBJ);
             obj.push_back(Pair("txid", entry.op.hash.ToString()));
             obj.push_back(Pair("amount", ValueFromAmount(CAmount(entry.note.value()))));
+            std::string memoMessage;
+            // this has data. if it is readable ASCII, display it as such.
+            int charPos;
+            for (charPos = 0; charPos < entry.memo.max_size(); charPos++)
+            {
+                uint8_t &curCh = entry.memo[charPos];
+                if (curCh == 0)
+                {
+                    break;
+                }
+                if (!isprint(curCh))
+                {
+                    charPos = 0;
+                    break;
+                }
+                memoMessage += curCh;
+            }
+            if (memoMessage.size())
+            {
+                obj.push_back(Pair("memostr", memoMessage));
+            }
             obj.push_back(Pair("memo", HexStr(entry.memo)));
             obj.push_back(Pair("outindex", (int)entry.op.n));
             obj.push_back(Pair("confirmations", entry.confirmations));
