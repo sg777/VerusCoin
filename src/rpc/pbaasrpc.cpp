@@ -8613,7 +8613,11 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                 0);
 
     pbn.SetSameChain();
-    pbn.SetPreLaunch();
+    // gateways have no pre-launch phase
+    if (!newChain.IsGateway())
+    {
+        pbn.SetPreLaunch();
+    }
     pbn.SetDefinitionNotarization();
     pbn.nodes = startupNodes;
 
