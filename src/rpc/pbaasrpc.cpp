@@ -8622,6 +8622,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         newCurrencyState.SetPrelaunch(false);
         newCurrencyState.SetLaunchConfirmed();
         newCurrencyState.SetLaunchCompleteMarker();
+        pbn.currencyState = newCurrencyState;
         pbn.SetPreLaunch(false);
         pbn.SetLaunchCleared();
         pbn.SetLaunchConfirmed();
