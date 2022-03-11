@@ -6599,7 +6599,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     exportToCurrencyID = explicitExportID;
                 }
 
-                if ((exportToCurrencyDef.IsGateway() ? exportToCurrencyDef.GetID() : exportToCurrencyDef.systemID) == ASSETCHAINS_CHAINID)
+                if (exportToCurrencyDef.SystemOrGatewayID() == ASSETCHAINS_CHAINID)
                 {
                     exportToStr = "";
                     exportToCurrencyID.SetNull();
@@ -6657,7 +6657,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     if (!preConvert)
                     {
                         validFeeCurrencies.valueMap[destSystemID] = 1;
-                        if (convertToCurrencyID.IsNull())
+                        if (feeCurrencyID != destSystemID && convertToCurrencyID.IsNull())
                         {
                             tmpConverterDef = 
                                 exportToCurrencyDef.IsFractional() ?
