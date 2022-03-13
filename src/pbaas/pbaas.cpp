@@ -5260,6 +5260,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     }
 
     uint32_t addHeight = sinceHeight;
+    uint32_t nextHeight = 0;
     int inputNum = 0;
 
     for (auto &oneInput : _txInputs)
@@ -5278,8 +5279,9 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
             }
             // if we have skipped to the next block, and we have enough to make an export, we cannot take any more
             // except the optional block to add
-            if (inputNum >= CCrossChainExport::MIN_INPUTS)
+            if ((isClearLaunchExport && inputNum >= CCrossChainExport::MAX_FEE_INPUTS) || (!isClearLaunchExport && inputNum >= CCrossChainExport::MIN_INPUTS))
             {
+                nextHeight = oneInput.first;
                 break;
             }
             addHeight = oneInput.first;
@@ -5295,7 +5297,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     }
 
     // if we have too many exports to clear launch yet, this is no longer clear launch
-    isClearLaunchExport = isClearLaunchExport && addHeight >= (_curDef.startBlock - 1);
+    isClearLaunchExport = isClearLaunchExport && !(nextHeight && nextHeight < _curDef.startBlock);
 
     // if we made an export before getting to the end, it doesn't clear launch
     // if we either early outed, due to height or landed right on the correct height, determine launch state
@@ -5687,7 +5689,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
         if (GetAddressIndex(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyLaunchKey()),
                             CScript::P2IDX, 
                             rawCurrenciesToLaunch,
-                            nHeight - 30 < 0 ? 0 : nHeight - 30,
+                            nHeight - 50 < 0 ? 0 : nHeight - 50,
                             nHeight) &&
             rawCurrenciesToLaunch.size())
         {
@@ -5806,7 +5808,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                     }
                     else
                     {
-                        systemDef = destDef;
+                        systemDef = thisChain;
                     }
                 }
                 else if (destDef.systemID == destID)
