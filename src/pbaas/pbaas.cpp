@@ -5232,10 +5232,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                        !lastNotarization.IsLaunchCleared();
     bool isClearLaunchExport = isPreLaunch && curHeight >= _curDef.startBlock && !lastNotarization.IsLaunchCleared();
 
-    if (!isClearLaunchExport && (!_txInputs.size() || _txInputs.end()->first <= sinceHeight) && !addInputTx)
+    if (!isClearLaunchExport && (!_txInputs.size() || _txInputs.rbegin()->first <= sinceHeight) && !addInputTx)
     {
         // no error, just nothing to do
-        return true;
+       return true;
     }
 
     // The aggregation rules require that:
