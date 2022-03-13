@@ -6362,7 +6362,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
-            bool burnCurrency = uni_get_bool(find_value(uniOutputs[i], "burn"));
+            bool burnCurrency = uni_get_bool(find_value(uniOutputs[i], "burn")) || uni_get_bool(find_value(uniOutputs[i], "burnweight"));
+            bool burnWeight = uni_get_bool(find_value(uniOutputs[i], "burnweight"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
 
             if (currencyStr.size() ||
@@ -6511,7 +6512,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
                 }
-                flags |= CReserveTransfer::BURN_CHANGE_PRICE;
+                flags |= burnWeight ? CReserveTransfer::BURN_CHANGE_WEIGHT : CReserveTransfer::BURN_CHANGE_PRICE;
                 convertToCurrencyID = sourceCurrencyID;
                 convertToCurrencyDef = sourceCurrencyDef;
             }

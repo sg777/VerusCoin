@@ -4110,7 +4110,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             else
             {
                 // if we are supposed to burn a currency, it must be the import currency, and it
-                // is removed from the supply, which would change all calculations for price
+                // is removed from the supply, which either changes calculations for price or weight, burnweight is only allowed
+                // as an operation by the currency controller
                 if (curTransfer.IsBurn())
                 {
                     // if the source is fractional currency, it is burned
