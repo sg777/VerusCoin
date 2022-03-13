@@ -3430,11 +3430,12 @@ bool CConnectedChains::GetUnspentSystemExports(const CCoinsViewCache &view,
         exportUTXOs.size())
     {
         std::map<COutPoint, CInputDescriptor> memPoolOuts;
+        std::set<COutPoint> spentMemPoolOuts;
         for (auto &oneExport : exportUTXOs)
         {
             if (oneExport.first.spending)
             {
-                memPoolOuts.erase(COutPoint(oneExport.first.txhash, oneExport.first.index));
+                spentMemPoolOuts.insert(COutPoint(oneExport.second.prevhash, oneExport.second.prevout));
             }
             else
             {
@@ -3447,7 +3448,10 @@ bool CConnectedChains::GetUnspentSystemExports(const CCoinsViewCache &view,
 
         for (auto &oneUTXO : memPoolOuts)
         {
-            exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+            if (!spentMemPoolOuts.count(oneUTXO.first))
+            {
+                exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+            }
         }
     }
     if (!exportOuts.size() &&
@@ -3486,11 +3490,12 @@ bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view,
     {
         // we need to remove those that are spent
         std::map<COutPoint, CInputDescriptor> memPoolOuts;
+        std::set<COutPoint> spentMemPoolOuts;
         for (auto &oneExport : exportUTXOs)
         {
             if (oneExport.first.spending)
             {
-                memPoolOuts.erase(COutPoint(oneExport.first.txhash, oneExport.first.index));
+                spentMemPoolOuts.insert(COutPoint(oneExport.second.prevhash, oneExport.second.prevout));
             }
             else
             {
@@ -3503,7 +3508,10 @@ bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view,
 
         for (auto &oneUTXO : memPoolOuts)
         {
-            exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+            if (!spentMemPoolOuts.count(oneUTXO.first))
+            {
+                exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+            }
         }
     }
     if (!exportOuts.size() &&
