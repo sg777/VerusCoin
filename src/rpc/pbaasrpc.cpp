@@ -6362,7 +6362,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
-            bool burnCurrency = uni_get_bool(find_value(uniOutputs[i], "burn"));
+            bool burnCurrency = uni_get_bool(find_value(uniOutputs[i], "burn")) || uni_get_bool(find_value(uniOutputs[i], "burnweight"));
+            bool burnWeight = uni_get_bool(find_value(uniOutputs[i], "burnweight"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
 
             if (currencyStr.size() ||
@@ -6511,7 +6512,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
                 }
-                flags |= CReserveTransfer::BURN_CHANGE_PRICE;
+                flags |= burnWeight ? CReserveTransfer::BURN_CHANGE_WEIGHT : CReserveTransfer::BURN_CHANGE_PRICE;
                 convertToCurrencyID = sourceCurrencyID;
                 convertToCurrencyDef = sourceCurrencyDef;
             }
@@ -6599,7 +6600,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     exportToCurrencyID = explicitExportID;
                 }
 
-                if ((exportToCurrencyDef.IsGateway() ? exportToCurrencyDef.GetID() : exportToCurrencyDef.systemID) == ASSETCHAINS_CHAINID)
+                if (exportToCurrencyDef.SystemOrGatewayID() == ASSETCHAINS_CHAINID)
                 {
                     exportToStr = "";
                     exportToCurrencyID.SetNull();
@@ -6657,7 +6658,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     if (!preConvert)
                     {
                         validFeeCurrencies.valueMap[destSystemID] = 1;
-                        if (convertToCurrencyID.IsNull())
+                        if (feeCurrencyID != destSystemID && convertToCurrencyID.IsNull())
                         {
                             tmpConverterDef = 
                                 exportToCurrencyDef.IsFractional() ?
@@ -8613,7 +8614,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                 0);
 
     pbn.SetSameChain();
-    pbn.SetPreLaunch();
     pbn.SetDefinitionNotarization();
     pbn.nodes = startupNodes;
 
@@ -8623,10 +8623,15 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         newCurrencyState.SetPrelaunch(false);
         newCurrencyState.SetLaunchConfirmed();
         newCurrencyState.SetLaunchCompleteMarker();
+        pbn.currencyState = newCurrencyState;
         pbn.SetPreLaunch(false);
         pbn.SetLaunchCleared();
         pbn.SetLaunchConfirmed();
         pbn.SetLaunchComplete();
+    }
+    else
+    {
+        pbn.SetPreLaunch();
     }
 
     // make the first chain notarization output

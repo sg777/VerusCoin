@@ -575,7 +575,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     // TODO: HARDENING ensure that the latest proof root of this chain is in on gateway
 
     if (destCurrency.launchSystemID == sourceSystemID &&
-        ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock ? (destCurrency.startBlock - 1) : 0)) ||
+        destCurrency.startBlock &&
+        ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock - 1)) ||
          (!thisIsLaunchSys &&
           destCurrency.systemID == ASSETCHAINS_CHAINID &&
           notaHeight == 1)))

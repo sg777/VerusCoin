@@ -2354,6 +2354,107 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     return state.Error("Not enough fee for same chain currency operation in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
             }
+
+            if (rt.IsMint() || rt.IsBurnChangeWeight())
+            {
+                if (importCurrencyDef.proofProtocol != importCurrencyDef.PROOF_CHAINID ||
+                    importCurrencyDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                {
+                    return state.Error("Minting and/or burning while changing reserve ratios is only allowed in centralized (\"proofprotocol\":2) currencies on their native chain " + rt.ToUniValue().write(1,2));
+                }
+                // spent by currency ID
+                bool authorizedController = false;
+
+                // TODO: HARDENING - remove this on next testnet reset
+                /* uint32_t blkTimeStamp;
+                if (chainActive.Height() < height)
+                {
+                    blkTimeStamp = chainActive.LastTip()->nTime;
+                }
+                else
+                {
+                    blkTimeStamp = chainActive[height]->nTime;
+                }
+                if (blkTimeStamp < 1647095696)
+                {
+                    authorizedController = true;
+                }
+                // */
+
+                CIdentity signingID = CIdentity::LookupIdentity(importCurrencyID, height);
+                std::set<uint160> signingKeys;
+                for (auto &oneDest : signingID.primaryAddresses)
+                {
+                    signingKeys.insert(GetDestinationID(oneDest));
+                }
+                if (!signingID.IsValid())
+                {
+                    return state.Error("Invalid identity or identity not found for currency mint or burn with weight change");
+                }
+
+                for (auto &oneIn : tx.vin)
+                {
+                    CTransaction inputTx;
+                    uint256 blockHash;
+
+                    // this is not an input check, but we will check if the input is available
+                    // the precheck's can be called sometimes before their antecedents are available, but
+                    // if they are available, which will be checked on the input check, they will also be
+                    // available here at least once in the verification of the tx
+                    if (myGetTransaction(oneIn.prevout.hash, inputTx, blockHash))
+                    {
+                        if (oneIn.prevout.n >= inputTx.vout.size())
+                        {
+                            return state.Error("Invalid input number for source transaction");
+                        }
+
+                        COptCCParams p;
+
+                        // make sure that no form of complex output could circumvent the test for controller
+                        // this should be encapsulated as a test that can handle complex cases, but until then
+                        // require them to be simple when validating
+                        if (!(inputTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                              p.IsValid() &&
+                              p.version >= p.VERSION_V3 &&
+                              inputTx.vout[oneIn.prevout.n].scriptPubKey.IsSpendableOutputType(p)))
+                        {
+                            continue;
+                        }
+
+                        CSmartTransactionSignatures smartSigs;
+                        std::vector<unsigned char> ffVec = GetFulfillmentVector(oneIn.scriptSig);
+                        if (!(ffVec.size() &&
+                              (smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()))).IsValid() &&
+                              smartSigs.sigHashType == SIGHASH_ALL))
+                        {
+                            continue;
+                        }
+
+                        int numIDSigs = 0;
+
+                        // ensure that the transaction is sent to the ID and signed by a valid ID signature
+                        for (auto &oneSig : smartSigs.signatures)
+                        {
+                            if (signingKeys.count(oneSig.first))
+                            {
+                                numIDSigs++;
+                            }
+                        }
+
+                        if (numIDSigs < signingID.minSigs)
+                        {
+                            continue;
+                        }
+                        authorizedController = true;
+                        break;
+                    }
+                }
+
+                if (!authorizedController)
+                {
+                    return state.Error("Minting and/or burning while changing reserve ratios is only allowed by the controller of a centralized currency " + rt.ToUniValue().write(1,2));
+                }
+            }
         }
 
         if (!rt.HasNextLeg() && !systemDest.IsValidTransferDestinationType(rt.destination.TypeNoFlags()))
@@ -3077,7 +3178,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
         currencyState.SetLaunchConfirmed();
     }
     // if this is a token on this chain, it will be simply notarized
-    else if (curDef.systemID == ASSETCHAINS_CHAINID || (curDef.launchSystemID == ASSETCHAINS_CHAINID && curDef.startBlock > height))
+    else if (curDef.SystemOrGatewayID() == ASSETCHAINS_CHAINID || (curDef.launchSystemID == ASSETCHAINS_CHAINID && curDef.startBlock > height))
     {
         // get the last notarization in the height range for this currency, which is valid by definition for a token
         CPBaaSNotarization notarization;
@@ -3329,24 +3430,31 @@ bool CConnectedChains::GetUnspentSystemExports(const CCoinsViewCache &view,
         exportUTXOs.size())
     {
         std::map<COutPoint, CInputDescriptor> memPoolOuts;
+        std::set<COutPoint> spentMemPoolOuts;
         for (auto &oneExport : exportUTXOs)
         {
             if (oneExport.first.spending)
             {
-                memPoolOuts.erase(COutPoint(oneExport.first.txhash, oneExport.first.index));
+                spentMemPoolOuts.insert(COutPoint(oneExport.second.prevhash, oneExport.second.prevout));
             }
             else
             {
-                const CTransaction oneTx = mempool.mapTx.find(oneExport.first.txhash)->GetTx();
-                memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
-                                                CInputDescriptor(oneTx.vout[oneExport.first.index].scriptPubKey, oneExport.second.amount, 
-                                                            CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
+                if (coin->IsAvailable(oneExport.first.index))
+                {
+                    memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
+                                                      CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount, 
+                                                                       CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                }
             }
         }
 
         for (auto &oneUTXO : memPoolOuts)
         {
-            exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+            if (!spentMemPoolOuts.count(oneUTXO.first))
+            {
+                exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+            }
         }
     }
     if (!exportOuts.size() &&
@@ -3385,24 +3493,31 @@ bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view,
     {
         // we need to remove those that are spent
         std::map<COutPoint, CInputDescriptor> memPoolOuts;
+        std::set<COutPoint> spentMemPoolOuts;
         for (auto &oneExport : exportUTXOs)
         {
             if (oneExport.first.spending)
             {
-                memPoolOuts.erase(COutPoint(oneExport.first.txhash, oneExport.first.index));
+                spentMemPoolOuts.insert(COutPoint(oneExport.second.prevhash, oneExport.second.prevout));
             }
             else
             {
-                const CTransaction oneTx = mempool.mapTx.find(oneExport.first.txhash)->GetTx();
-                memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
-                                                CInputDescriptor(oneTx.vout[oneExport.first.index].scriptPubKey, oneExport.second.amount, 
-                                                            CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
+                if (coin->IsAvailable(oneExport.first.index))
+                {
+                    memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
+                                                      CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount, 
+                                                                       CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                }
             }
         }
 
         for (auto &oneUTXO : memPoolOuts)
         {
-            exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+            if (!spentMemPoolOuts.count(oneUTXO.first))
+            {
+                exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+            }
         }
     }
     if (!exportOuts.size() &&
@@ -5078,7 +5193,7 @@ bool CConnectedChains::CurrencyImportStatus(const CCurrencyValueMap &totalImport
 }
 
 bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
-                                        const std::vector<ChainTransferData> &_txInputs,
+                                        const std::multimap<uint32_t, ChainTransferData> &_txInputs,
                                         const std::vector<CInputDescriptor> &priorExports,
                                         const CTransferDestination &feeRecipient,
                                         uint32_t sinceHeight,
@@ -5117,10 +5232,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                        !lastNotarization.IsLaunchCleared();
     bool isClearLaunchExport = isPreLaunch && curHeight >= _curDef.startBlock && !lastNotarization.IsLaunchCleared();
 
-    if (!isClearLaunchExport && !_txInputs.size() && !addInputTx)
+    if (!isClearLaunchExport && (!_txInputs.size() || _txInputs.rbegin()->first <= sinceHeight) && !addInputTx)
     {
         // no error, just nothing to do
-        return true;
+       return true;
     }
 
     // The aggregation rules require that:
@@ -5137,7 +5252,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // early out if createOnlyIfRequired is true
     std::vector<ChainTransferData> txInputs;
     if (!isClearLaunchExport &&
-        sinceHeight - curHeight < CCrossChainExport::MIN_BLOCKS && 
+        curHeight - sinceHeight < CCrossChainExport::MIN_BLOCKS && 
         _txInputs.size() < CCrossChainExport::MIN_INPUTS &&
         createOnlyIfRequired)
     {
@@ -5145,27 +5260,42 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     }
 
     uint32_t addHeight = sinceHeight;
-    for (int inputNum = 0; inputNum < _txInputs.size(); inputNum++)
+    int inputNum = 0;
+
+    for (auto &oneInput : _txInputs)
     {
-        uint32_t nextHeight = std::get<0>(_txInputs[inputNum]);
-        if (addHeight != nextHeight)
+        if (oneInput.first <= sinceHeight)
+        {
+            continue;
+        }
+        if (addHeight != oneInput.first)
         {
             // if this is a launch export, we create one at the boundary
-            if (isClearLaunchExport && nextHeight >= _curDef.startBlock)
+            if (isClearLaunchExport && oneInput.first >= _curDef.startBlock)
             {
                 addHeight = _curDef.startBlock - 1;
                 break;
             }
             // if we have skipped to the next block, and we have enough to make an export, we cannot take any more
-            // except the optional one to add
+            // except the optional block to add
             if (inputNum >= CCrossChainExport::MIN_INPUTS)
             {
                 break;
             }
-            addHeight = nextHeight;
+            addHeight = oneInput.first;
         }
-        txInputs.push_back(_txInputs[inputNum]);
+        txInputs.push_back(oneInput.second);
+        inputNum++;
     }
+
+    if (!isClearLaunchExport && !inputNum && !addInputTx)
+    {
+        // no error, just nothing to do
+        return true;
+    }
+
+    // if we have too many exports to clear launch yet, this is no longer clear launch
+    isClearLaunchExport = isClearLaunchExport && addHeight >= (_curDef.startBlock - 1);
 
     // if we made an export before getting to the end, it doesn't clear launch
     // if we either early outed, due to height or landed right on the correct height, determine launch state
@@ -5176,7 +5306,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     }
 
     // all we expect to add are in txInputs now
-    inputsConsumed = txInputs.size();
+    inputsConsumed = inputNum;
 
     // check to see if we need to add the optional input, not counted as "consumed"
     if (addInputTx)
@@ -5232,7 +5362,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         return false;
     }
 
-    for (int i = 0; i < txInputs.size(); i++)
+    for (int i = 0; i < inputsConsumed; i++)
     {
         exportTransfers.push_back(std::get<2>(txInputs[i]));
     }
@@ -5590,7 +5720,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                 return;
             }
 
-            std::vector<ChainTransferData> txInputs;
+            std::multimap<uint32_t, ChainTransferData> txInputs;
             uint160 lastChain = transferOutputs.size() ? transferOutputs.begin()->first : launchCurrencies.begin()->second.first.GetID();
 
             CCoins coins;
@@ -5613,7 +5743,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                     auto &output = *outputIt;
                     if (output.first == lastChain)
                     {
-                        txInputs.push_back(output.second);
+                        txInputs.insert(std::make_pair(std::get<0>(output.second), output.second));
                         outputIt++;
                         continue;
                     }
@@ -5828,6 +5958,8 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
 
                         // even if we have no txInputs, currencies that need to will launch
                         newNotarizationOutNum = -1;
+                        exportTxOuts.clear();
+                        exportTransfers.clear();
                         if (!CConnectedChains::CreateNextExport(destDef,
                                                                 txInputs,
                                                                 allExportOutputs,
@@ -5883,16 +6015,22 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                             tb.AddTransparentInput(lastSysExport.second.txIn.prevout, lastSysExport.second.scriptPubKey, lastSysExport.second.nValue);
                         }
 
-                        // now, all reserve transfers
-                        for (int i = 0; i < numInputsUsed; i++)
+                        // now, all reserve transfers used
+                        int numInputsAdded = 0;
+                        for (auto &oneInput : txInputs)
                         {
-                            CInputDescriptor inputDesc = std::get<1>(txInputs[i]);
+                            if (numInputsAdded >= numInputsUsed)
+                            {
+                                break;
+                            }
+                            CInputDescriptor inputDesc = std::get<1>(oneInput.second);
 
                             //scriptUniOut = UniValue(UniValue::VOBJ);
                             //ScriptPubKeyToUniv(inputDesc.scriptPubKey, scriptUniOut, false);
                             //printf("adding input %d with %ld nValue and script:\n%s\n", (int)tb.mtx.vin.size(), inputDesc.nValue, scriptUniOut.write(1,2).c_str());
 
                             tb.AddTransparentInput(inputDesc.txIn.prevout, inputDesc.scriptPubKey, inputDesc.nValue);
+                            numInputsAdded++;
                         }
 
                         // if we have an output notarization, spend the last one
@@ -5910,6 +6048,10 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                         // now, add all outputs to the transaction
                         auto thisExport = lastExport;
                         int outputNum = tb.mtx.vout.size();
+
+                        int exOutNum = -1;
+                        int sysExOutNum = -1;
+
                         for (auto &oneOut : exportTxOuts)
                         {
                             COptCCParams xp;
@@ -5917,13 +6059,21 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                             if (oneOut.scriptPubKey.IsPayToCryptoCondition(xp) &&
                                 xp.IsValid() && 
                                 xp.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                                (checkCCX = CCrossChainExport(xp.vData[0])).IsValid() &&
-                                !checkCCX.IsSystemThreadExport())
+                                (checkCCX = CCrossChainExport(xp.vData[0])).IsValid())
                             {
-                                thisExport.second.scriptPubKey = oneOut.scriptPubKey;
-                                thisExport.second.nValue = oneOut.nValue;
-                                thisExport.first = nHeight;
-                                thisExport.second.txIn.prevout.n = outputNum;
+                                if (checkCCX.IsSystemThreadExport())
+                                {
+                                    sysExOutNum = outputNum;
+                                }
+                                else
+                                {
+                                    thisExport.second.scriptPubKey = oneOut.scriptPubKey;
+                                    thisExport.second.nValue = oneOut.nValue;
+                                    thisExport.first = checkCCX.sourceHeightEnd;
+                                    thisExport.second.txIn.prevout.n = outputNum;
+                                    ccx = checkCCX;
+                                    exOutNum = outputNum;
+                                }
                             }
 
                             /* scriptUniOut = UniValue(UniValue::VOBJ);
@@ -5935,9 +6085,11 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                             outputNum++;
                         }
 
+                        allExportOutputs.clear();
+
                         /* UniValue uni(UniValue::VOBJ);
                         TxToUniv(tb.mtx, uint256(), uni);
-                        printf("%s: Ready to build tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
+                        printf("%s: Ready to build tx:\n%s\n", __func__, uni.write(1,2).c_str()); // */
 
                         TransactionBuilderResult buildResult(tb.Build());
 
@@ -5945,6 +6097,13 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                         {
                             // replace the last one only if we have a valid new one
                             CTransaction tx = buildResult.GetTxOrThrow();
+
+                            allExportOutputs.push_back(CInputDescriptor(tx.vout[exOutNum].scriptPubKey, tx.vout[exOutNum].nValue, CTxIn(tx.GetHash(), exOutNum)));
+
+                            if (sysExOutNum >= 0)
+                            {
+                                allExportOutputs.push_back(CInputDescriptor(tx.vout[sysExOutNum].scriptPubKey, tx.vout[sysExOutNum].nValue, CTxIn(tx.GetHash(), sysExOutNum)));
+                            }
 
                             if (newNotarizationOutNum >= 0)
                             {
@@ -5994,9 +6153,9 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                         }
 
                         // erase the inputs we've attempted to spend and loop for another export tx
-                        if (numInputsUsed)
+                        for (; numInputsAdded > 0; numInputsAdded--)
                         {
-                            txInputs.erase(txInputs.begin(), txInputs.begin() + numInputsUsed);
+                            txInputs.erase(txInputs.begin());
                         }
                     }
                 }
@@ -6006,7 +6165,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                 if (outputIt != transferOutputs.end())
                 {
                     lastChain = outputIt->first;
-                    txInputs.push_back(outputIt->second);
+                    txInputs.insert(std::make_pair(std::get<0>(outputIt->second), outputIt->second));
                     outputIt++;
                 }
             }

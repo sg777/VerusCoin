@@ -1410,12 +1410,6 @@ bool ContextualCheckTransaction(
             }
         }
     }
-    /* if (invalid)
-    {
-        UniValue jsonTx(UniValue::VOBJ);
-        TxToUniv(tx, uint256(), jsonTx);
-        printf("INVALID transaction:\n%s\n", jsonTx.write(1,2).c_str());
-    } */
     return true;
 }
 

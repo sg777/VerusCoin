@@ -5214,7 +5214,7 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                     // no zero valued outputs
                     if (pOnlyTheseCurrencies && 
                         !(pOnlyTheseCurrencies->Intersects(rOut) ||
-                         (fIncludeNative && pcoin->vout[i].nValue)))
+                          (fIncludeNative && pcoin->vout[i].nValue)))
                     {
                         continue;
                     }

@@ -1461,7 +1461,7 @@ public:
                                      CCurrencyValueMap &exportBurn);
 
     bool CreateNextExport(const CCurrencyDefinition &_curDef,
-                          const std::vector<ChainTransferData> &txInputs,
+                          const std::multimap<uint32_t, ChainTransferData> &txInputs,
                           const std::vector<CInputDescriptor> &priorExports,
                           const CTransferDestination &feeRecipient,
                           uint32_t sinceHeight,
