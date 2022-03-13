@@ -3439,10 +3439,13 @@ bool CConnectedChains::GetUnspentSystemExports(const CCoinsViewCache &view,
             }
             else
             {
-                const CTransaction oneTx = mempool.mapTx.find(oneExport.first.txhash)->GetTx();
-                memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
-                                                CInputDescriptor(oneTx.vout[oneExport.first.index].scriptPubKey, oneExport.second.amount, 
-                                                            CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
+                if (coin->IsAvailable(oneExport.first.index))
+                {
+                    memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
+                                                      CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount, 
+                                                                       CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                }
             }
         }
 
@@ -3499,10 +3502,13 @@ bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view,
             }
             else
             {
-                const CTransaction oneTx = mempool.mapTx.find(oneExport.first.txhash)->GetTx();
-                memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
-                                                CInputDescriptor(oneTx.vout[oneExport.first.index].scriptPubKey, oneExport.second.amount, 
-                                                            CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
+                if (coin->IsAvailable(oneExport.first.index))
+                {
+                    memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
+                                                      CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount, 
+                                                                       CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                }
             }
         }
 
@@ -5226,7 +5232,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                        !lastNotarization.IsLaunchCleared();
     bool isClearLaunchExport = isPreLaunch && curHeight >= _curDef.startBlock && !lastNotarization.IsLaunchCleared();
 
-    if (!isClearLaunchExport && !_txInputs.size() && !addInputTx)
+    if (!isClearLaunchExport && (!_txInputs.size() || _txInputs.end()->first <= sinceHeight) && !addInputTx)
     {
         // no error, just nothing to do
         return true;
@@ -5258,6 +5264,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     for (auto &oneInput : _txInputs)
     {
+        if (oneInput.first <= sinceHeight)
+        {
+            continue;
+        }
         if (addHeight != oneInput.first)
         {
             // if this is a launch export, we create one at the boundary
@@ -5276,6 +5286,12 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         }
         txInputs.push_back(oneInput.second);
         inputNum++;
+    }
+
+    if (!isClearLaunchExport && !inputNum && !addInputTx)
+    {
+        // no error, just nothing to do
+        return true;
     }
 
     // if we have too many exports to clear launch yet, this is no longer clear launch
