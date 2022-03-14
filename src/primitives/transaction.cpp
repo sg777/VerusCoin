@@ -149,7 +149,7 @@ uint256 JSDescription::h_sig(ZCJoinSplit& params, const uint256& joinSplitPubKey
 
 std::string COutPoint::ToString() const
 {
-    return strprintf("COutPoint(%s, %u)", hash.ToString().substr(0,10), n);
+    return strprintf("COutPoint(%s, %u)", hash.ToString(), n);
 }
 
 std::string SaplingOutPoint::ToString() const

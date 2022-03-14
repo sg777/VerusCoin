@@ -550,6 +550,10 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         uint256 hashBlock;
         TxToUniv(tx, hashBlock, jsonTx);
         printf("%s: candidate tx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+        for (auto &oneDescr : inputDescriptors)
+        {
+            printf("Input: %s\nReserve transfer: %s\n\n", oneDescr.second.first.txIn.ToString().c_str(), oneDescr.second.second.ToUniValue().write(1,2).c_str());
+        }
         GetChainTransfers(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd); // */
         return state.Error("Discrepancy in number of eligible reserve transfers mined during export period and included - may only be cause by async loading, if so it will resolve");
     }
@@ -5584,8 +5588,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
             return false;
         }
         sysCCX = CCrossChainExport(ASSETCHAINS_CHAINID,
-                                   fromBlock,
-                                   toBlock,
+                                   sysCCX.sourceHeightStart,
+                                   sysCCX.sourceHeightEnd,
                                    destSystemID, 
                                    destSystemID, 
                                    txInputs.size(), 
