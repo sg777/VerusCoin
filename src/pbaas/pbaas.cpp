@@ -1072,7 +1072,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             COptCCParams p;
 
             // if we can't find the output we are spending, we fail
-            if (pCoins->vout.size() <= tx.vin[i].prevout.n)
+            if (!pCoins || pCoins->vout.size() <= tx.vin[i].prevout.n)
             {
                 return eval->Error(std::string(__func__) + ": cannot get output being spent by input (" + tx.vin[i].ToString() + ") from current view");
             }
