@@ -2438,8 +2438,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
     CCurrencyDefinition chainDef = ConnectedChains.GetCachedCurrency(currencyID);
     if (!chainDef.IsValid())
     {
-        LogPrintf("Cannot retrieve currency %s, may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
-        printf("Cannot retrieve currency %s, may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
+        LogPrint("notarization", "Cannot retrieve currency %s, may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
         return false;
     }
 

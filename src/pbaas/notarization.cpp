@@ -2447,7 +2447,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
     }
     // ensure that we never accept an invalid proofroot for this chain in a notarization
     CPBaaSNotarization currentNotarization(tx.vout[outNum].scriptPubKey);
-    if (!currentNotarization.IsValid())
+    if (!currentNotarization.IsValid() || !currentNotarization.currencyState.IsValid())
     {
         return state.Error("Invalid notarization output");
     }
