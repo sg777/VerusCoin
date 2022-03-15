@@ -3200,7 +3200,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                 currencyState.SetPrelaunch();
             }
         }
-        if (currencyState.IsValid() && (curDef.launchSystemID == ASSETCHAINS_CHAINID && notarization.notarizationHeight < (curDef.startBlock - 1)))
+        if (currencyState.IsValid() && (curDef.launchSystemID == ASSETCHAINS_CHAINID && curDef.startBlock && notarization.notarizationHeight < (curDef.startBlock - 1)))
         {
             // pre-launch
             currencyState.SetPrelaunch(true);
@@ -3312,6 +3312,10 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                 std::pair<CUTXORef, CPBaaSNotarization> notPair = cnd.lastConfirmed != -1 ? cnd.vtx[cnd.lastConfirmed] : cnd.vtx[cnd.forks[cnd.bestChain][0]];
                 currencyState = notPair.second.currencyState;
             }
+        }
+        else
+        {
+            currencyState = GetInitialCurrencyState(curDef);
         }
     }
     return currencyState;
