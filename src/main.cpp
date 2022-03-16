@@ -1405,6 +1405,13 @@ bool ContextualCheckTransaction(
                 }
                 if (!CC.contextualprecheck(tx, i, state, nHeight))
                 {
+                    if (LogAcceptCategory("precheck"))
+                    {
+                        UniValue txJson(UniValue::VOBJ);
+                        uint256 dummyHash;
+                        TxToUniv(tx, dummyHash, txJson);
+                        LogPrintf("%s: precheck failed: output %d on tx: %s\n", __func__, i, txJson.write(1,2).c_str());
+                    }
                     return state.DoS(10, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
                 }
             }
@@ -3628,8 +3635,20 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     auto verifier = libzcash::ProofVerifier::Strict();
     auto disabledVerifier = libzcash::ProofVerifier::Disabled();
     int32_t futureblock;
+
+    // remove any potential conflicts for inputs in the mempool from auto-created transactions,
+    // such as imports or exports to prevent us from accepting the block
+    for (auto &oneTx : block.vtx)
+    {
+        std::list<CTransaction> removedTxes;
+        if (!oneTx.IsCoinBase())
+        {
+            mempool.removeConflicts(oneTx, removedTxes);
+        }
+    }
+
     // Check it again to verify JoinSplit proofs, and in case a previous version let a bad block in
-    if (!CheckBlock(&futureblock,pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck, !fJustCheck) || futureblock != 0 )
+    if (!CheckBlock(&futureblock, pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck, !fJustCheck) || futureblock != 0 )
     {
         if (futureblock)
         {
@@ -5816,8 +5835,10 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                     {
                         sTx = Tx;
                         ptx = &sTx;
-                    } else if (state.GetRejectReason() != "already have coins" && 
-                               !((missinginputs || state.GetRejectCode() == REJECT_DUPLICATE) && (!fCheckTxInputs || chainActive.Height() < height - 1)))
+                    } 
+                    else 
+                    if (state.GetRejectReason() != "already have coins" && 
+                          !((missinginputs || state.GetRejectCode() == REJECT_DUPLICATE) && (!fCheckTxInputs || chainActive.Height() < height - 1)))
                     {
                         if (LogAcceptCategory("checkblock"))
                         {
