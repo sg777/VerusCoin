@@ -20,6 +20,7 @@
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h"
 #endif
+#include "tls/utiltls.h"
 
 #include <stdint.h>
 
@@ -83,6 +84,8 @@ UniValue getinfo(const UniValue& params, bool fHelp)
             "  \"blocks\": xxxxxx,           (numeric) the current number of blocks processed in the server\n"
             "  \"timeoffset\": xxxxx,        (numeric) the time offset\n"
             "  \"connections\": xxxxx,       (numeric) the number of connections\n"
+            "  \"tls_established\": xxxxx,   (numeric) the number of TLS connections established\n"
+            "  \"tls_verified\": xxxxx,      (numeric) the number of TLS connection with validated certificates\n"
             "  \"proxy\": \"host:port\",     (string, optional) the proxy used by the server\n"
             "  \"difficulty\": xxxxxx,       (numeric) the current difficulty\n"
             "  \"testnet\": true|false,      (boolean) if the server is using testnet or not\n"
@@ -139,6 +142,22 @@ UniValue getinfo(const UniValue& params, bool fHelp)
     if ( chainActive.LastTip() != 0 )
         obj.push_back(Pair("tiptime", (int)chainActive.LastTip()->nTime));
     obj.push_back(Pair("connections",   (int)vNodes.size()));
+
+    //Add TLS stats to getinfo
+    vector<CNodeStats> vstats;
+    CopyNodeStats(vstats);
+    int tlsEstablished = 0;
+    int tlsVerified = 0;
+    BOOST_FOREACH(const CNodeStats& stats, vstats) {
+        if (stats.fTLSEstablished)
+          tlsEstablished++;
+
+        if (stats.fTLSVerified)
+          tlsVerified++;
+    }
+    obj.push_back(Pair("tls_established",   tlsEstablished));
+    obj.push_back(Pair("tls_verified",   tlsVerified));
+
     obj.push_back(Pair("proxy",         (proxy.IsValid() ? proxy.proxy.ToStringIPPort() : string())));
     obj.push_back(Pair("difficulty",    (double)GetDifficulty()));
     obj.push_back(Pair("testnet",       PBAAS_TESTMODE));
