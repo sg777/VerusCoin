@@ -47,6 +47,7 @@ using namespace std;
  * Or alternatively, create a specific query method for the information.
  **/
 
+extern void CopyNodeStats(std::vector<CNodeStats>& vstats);
 int32_t Jumblr_depositaddradd(char *depositaddr);
 int32_t Jumblr_secretaddradd(char *secretaddr);
 uint64_t komodo_interestsum();
