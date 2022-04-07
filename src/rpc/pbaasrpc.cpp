@@ -6331,6 +6331,22 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         minConfs = uni_get_int(params[2]);
     }
 
+    uint32_t height = chainActive.Height();
+
+    if (sourceDest.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(sourceDest).IsNull())
+    {
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+        if (!pwalletMain->GetIdentity(GetDestinationID(sourceDest), keyAndIdentity) ||
+            !keyAndIdentity.second.IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity or identity not in wallet");
+        }
+        if (keyAndIdentity.second.IsLocked(height + 1))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send currency from a locked identity");
+        }
+    }
+
     CAmount feeAmount = DEFAULT_TRANSACTION_FEE;
     if (params.size() > 3)
     {
@@ -6338,8 +6354,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     }
 
     const UniValue &uniOutputs = params[1];
-
-    uint32_t height = chainActive.Height();
 
     TransactionBuilder tb(Params().GetConsensus(), height + 1, pwalletMain);
     std::vector<SendManyRecipient> tOutputs;
