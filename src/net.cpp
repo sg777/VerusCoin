@@ -884,7 +884,7 @@ void SocketSendData(CNode *pnode)
         }
         else
         {
-            if (nBytes < 0)
+            if (nBytes <= 0)
             {
                 // error
                 //
