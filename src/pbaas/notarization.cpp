@@ -602,7 +602,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 CCurrencyDefinition coLaunchCurrency;
                 CCoinbaseCurrencyState coLaunchState;
                 bool coLaunching = false;
-                if (destCurrency.IsPBaaSConverter())
+                if (destCurrency.IsGatewayConverter())
                 {
                     // PBaaS or gateway converters have a parent which is the PBaaS chain or gateway
                     coLaunching = true;

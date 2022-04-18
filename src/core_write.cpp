@@ -328,7 +328,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("initialcontributions", initialContributionArr));
     }
 
-    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
+    if (IsGateway() || IsGatewayConverter() || IsPBaaSChain())
     {
         obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
     }
@@ -1207,6 +1207,64 @@ UniValue CMMRProof::ToUniValue() const
     return retObj;
 }
 
+UniValue CNameReservation::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("name", name));
+    ret.push_back(Pair("salt", salt.GetHex()));
+    ret.push_back(Pair("referral", referral.IsNull() ? "" : EncodeDestination(referral)));
+
+    if (_IsVerusActive())
+    {
+        if (boost::to_lower_copy(name) == VERUS_CHAINNAME)
+        {
+            ret.push_back(Pair("parent", ""));
+        }
+        else
+        {
+            ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
+        }
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "@"))));
+    }
+    else
+    {
+        ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "." + ConnectedChains.ThisChain().name + "@"))));
+    }
+
+    return ret;
+}
+
+UniValue CAdvancedNameReservation::ToUniValue() const
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.push_back(Pair("version", (uint64_t)version));
+    ret.push_back(Pair("name", name));
+    ret.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
+    ret.push_back(Pair("salt", salt.GetHex()));
+    ret.push_back(Pair("referral", referral.IsNull() ? "" : EncodeDestination(referral)));
+
+    if (_IsVerusActive())
+    {
+        if (boost::to_lower_copy(name) == VERUS_CHAINNAME)
+        {
+            ret.push_back(Pair("parent", ""));
+        }
+        else
+        {
+            ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
+        }
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "@"))));
+    }
+    else
+    {
+        ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
+        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "." + ConnectedChains.ThisChain().name + "@"))));
+    }
+
+    return ret;
+}
+
 void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fIncludeHex, bool fIncludeAsm)
 {
     txnouttype type;
@@ -1334,9 +1392,33 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 break;
             }
 
-            case EVAL_RESERVE_EXCHANGE:
+            case EVAL_IDENTITY_RESERVATION:
             {
-                out.push_back(Pair("invalidreserveexchangout", "invalid"));
+                CNameReservation ar;
+
+                if (p.vData.size() && (ar = CNameReservation(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("identityreservation", ar.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("identityreservation", "invalid"));
+                }
+                break;
+            }
+
+            case EVAL_IDENTITY_ADVANCEDRESERVATION:
+            {
+                CAdvancedNameReservation anr;
+
+                if (p.vData.size() && (anr = CAdvancedNameReservation(p.vData[0])).IsValid())
+                {
+                    out.push_back(Pair("identityreservation", anr.ToUniValue()));
+                }
+                else
+                {
+                    out.push_back(Pair("identityreservation", "invalid"));
+                }
                 break;
             }
 
@@ -1423,10 +1505,6 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
                 }
                 break;
             }
-
-            case EVAL_IDENTITY_RESERVATION:
-                out.push_back(Pair("identityreservation", ""));
-                break;
 
             case EVAL_STAKEGUARD:
                 out.push_back(Pair("stakeguard", ""));

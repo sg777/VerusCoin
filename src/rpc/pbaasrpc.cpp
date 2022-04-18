@@ -6519,15 +6519,34 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint32_t flags = CReserveTransfer::VALID;
             if (burnCurrency)
             {
-                if (mintNew ||
-                    !convertToCurrencyID.IsNull() ||
-                    !(sourceCurrencyDef.IsFractional() || sourceCurrencyDef.IsToken()))
+                if (convertToCurrencyDef.IsValid() && convertToCurrencyDef.IsFractional())
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
+                    if (mintNew || isConversion ||
+                        !(convertToCurrencyID == sourceCurrencyID || convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID)))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot mint and burn currency in a single operation.");
+                    }
+                    if (convertToCurrencyID != sourceCurrencyID)
+                    {
+                        if (burnWeight)
+                        {
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Change weight while burning reserves not implemented.");
+                        }
+                    }
+                    flags |= burnWeight ? CReserveTransfer::BURN_CHANGE_WEIGHT : CReserveTransfer::BURN_CHANGE_PRICE;
                 }
-                flags |= burnWeight ? CReserveTransfer::BURN_CHANGE_WEIGHT : CReserveTransfer::BURN_CHANGE_PRICE;
-                convertToCurrencyID = sourceCurrencyID;
-                convertToCurrencyDef = sourceCurrencyDef;
+                else
+                {
+                    if (mintNew || isConversion ||
+                        !convertToCurrencyID.IsNull() ||
+                        !(sourceCurrencyDef.IsFractional() || sourceCurrencyDef.IsToken()))
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert and burn currency in a single operation. First convert, then burn.");
+                    }
+                    flags |= burnWeight ? CReserveTransfer::BURN_CHANGE_WEIGHT : CReserveTransfer::BURN_CHANGE_PRICE;
+                    convertToCurrencyID = sourceCurrencyID;
+                    convertToCurrencyDef = sourceCurrencyDef;
+                }
             }
 
             std::string systemDestStr;
@@ -6741,7 +6760,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                       (convertToCurrencyID == exportToCurrencyID &&
                        exportToCurrencyDef.systemID == destSystemID)))
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid export syntax. Fractional converter must be from current chain before \"exportto\" a system currency or on the alternate system and the same destination as \"exportto\".");
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid export syntax. Fractional converter must be from current chain before \"exportto\" a system currency or if on the alternate system, then it must be the same destination as \"exportto\".");
                 }
 
                 // if fee currency is the export system destination
@@ -8071,12 +8090,12 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             }
             // if the new currency is a PBaaS or gateway converter, and this is the PBaaS chain or gateway,
             // it will be created in this tx as well
-            if (newCurrency.IsPBaaSConverter() && oneCurID == newCurrency.parent)
+            if (newCurrency.IsGatewayConverter() && oneCurID == newCurrency.parent)
             {
                 currencySet.insert(oneCurID);
                 continue;
             }
-            if (!(newCurrency.IsPBaaSConverter() && systemID == ASSETCHAINS_CHAINID && newCurrency.parent != ASSETCHAINS_CHAINID))
+            if (!(newCurrency.IsGatewayConverter() && systemID == ASSETCHAINS_CHAINID && newCurrency.parent != ASSETCHAINS_CHAINID))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency " + oneCurName + " in \"currencies\"");
             }
@@ -8361,7 +8380,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             std::map<std::string, UniValue> gatewayConverterMap;
             gatewayConverterMap.insert(std::make_pair("options", CCurrencyDefinition::OPTION_FRACTIONAL +
                                                                  CCurrencyDefinition::OPTION_TOKEN +
-                                                                 CCurrencyDefinition::OPTION_PBAAS_CONVERTER));
+                                                                 CCurrencyDefinition::OPTION_GATEWAY_CONVERTER));
             gatewayConverterMap.insert(std::make_pair("parent", EncodeDestination(CIdentityID(newChainID))));
             gatewayConverterMap.insert(std::make_pair("name", newChain.gatewayConverterName));
             gatewayConverterMap.insert(std::make_pair("launchsystemid", EncodeDestination(CIdentityID(thisChainID))));
@@ -8425,7 +8444,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             converterOptions &= ~(CCurrencyDefinition::OPTION_GATEWAY + CCurrencyDefinition::OPTION_PBAAS);
             converterOptions |= CCurrencyDefinition::OPTION_FRACTIONAL +
                                 CCurrencyDefinition::OPTION_TOKEN +
-                                CCurrencyDefinition::OPTION_PBAAS_CONVERTER;
+                                CCurrencyDefinition::OPTION_GATEWAY_CONVERTER;
             gatewayConverterMap["options"] = (int64_t)converterOptions;
 
             //printf("%s: gatewayConverter definition:\n%s\n", __func__, newCurUni.write(1,2).c_str());
@@ -9042,7 +9061,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     if (fHelp || (params.size() < 2 && params.size() > 3))
     {
         throw runtime_error(
-            "registernamecommitment \"name\" \"controladdress\" (\"referralidentity\")\n"
+            "registernamecommitment \"name\" \"controladdress\" (\"referralidentity\") (\"parentnameorid\")\n"
             "\nRegisters a name commitment, which is required as a source for the name to be used when registering an identity. The name commitment hides the name itself\n"
             "while ensuring that the miner who mines in the registration cannot front-run the name unless they have also registered a name commitment for the same name or\n"
             "are willing to forfeit the offer of payment for the chance that a commitment made now will allow them to register the name in the future.\n"
@@ -9052,6 +9071,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             "                                                       created for a name that exists, it may succeed, but will never be able to be used.\n"
             "\"controladdress\"                 (address, required) address that will control this commitment\n"
             "\"referralidentity\"               (identity, optional)friendly name or identity address that is provided as a referral mechanism and to lower network cost of the ID\n"
+            "\"parentnameorid-pbaasonly\"       (currency, optional)friendly name or currency i-address, which will be the parent of this ID and dictate issuance rules & pricing\n"
 
             "\nResult: obj\n"
             "{\n"
@@ -9061,8 +9081,8 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             "        \"name\"    : \"namestr\",     (string) the unique name in this commitment\n"
             "        \"salt\"    : \"hexstr\",      (hex)    salt used to hide the commitment\n"
             "        \"referral\": \"identityaddress\", (base58) address of the referring identity if there is one\n"
-            "        \"parent\"  : \"namestr\",   (string) name of the parent if not Verus or Verus test\n"
-            "        \"nameid\"  : \"address\",   (base58) identity address for this identity if it is created\n"
+            "        \"parent\"  : \"namestr\",     (string) name of the parent if not Verus or Verus test\n"
+            "        \"nameid\"  : \"address\",     (base58) identity address for this identity if it is created\n"
             "    }\n"
             "}\n"
 
@@ -9074,23 +9094,58 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     CheckIdentityAPIsValid();
 
-    uint160 parent;
-    std::string name = CleanName(uni_get_str(params[0]), parent, true, false);
+    // create the transaction with native coin as input
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    uint32_t height = chainActive.Height();
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
+
+    CCurrencyDefinition parentCurrency = ConnectedChains.ThisChain();
+    uint160 parentID = parentCurrency.GetID();
+
+    if (params.size() > 3 && !uni_get_str(params[3]).empty())
+    {
+        if (!isPBaaS)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot issue identities from specified parent currencies until after PBaaS activates");
+        }
+        parentID = ValidateCurrencyName(uni_get_str(params[3]), true, &parentCurrency);
+
+        if (!parentCurrency.IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency");
+        }
+    }
+
+    // if we are registering an identity through a gateway, we can and should redirect fee payment through its
+    // fee converter currency
+    CCurrencyDefinition issuingCurrency = parentCurrency;
+    uint160 issuerID = parentID;
+    if (!parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID && !parentCurrency.GatewayConverterID().IsNull())
+    {
+        issuingCurrency = ConnectedChains.GetCachedCurrency(parentCurrency.GatewayConverterID());
+        if (!issuingCurrency.IsValid() || issuingCurrency.systemID != ASSETCHAINS_CHAINID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid implied parent currency");
+        }
+    }
+
+    std::string name = CleanName(uni_get_str(params[0]), parentID, true, false);
+    if (parentID != parentCurrency.GetID())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid implied parent currency");
+    }
 
     uint160 idID = GetDestinationID(DecodeDestination(name + "@"));
-    if (idID == ASSETCHAINS_CHAINID &&
-        IsVerusActive())
+    if (idID == ASSETCHAINS_CHAINID && IsVerusActive())
     {
         name = VERUS_CHAINNAME;
-    }
-    else
-    {
-        parent = ASSETCHAINS_CHAINID;
+        parentID.SetNull();
     }
 
     // if either we have an invalid name or an implied parent, that is not valid
-    if (!(idID == VERUS_CHAINID && IsVerusActive() && parent.IsNull()) &&
-        (name == "" || parent != ASSETCHAINS_CHAINID || name != uni_get_str(params[0])))
+    if (!(idID == VERUS_CHAINID && IsVerusActive() && parentID.IsNull()) &&
+        (name == "" || parentID != parentCurrency.GetID() || name != uni_get_str(params[0])))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid name for commitment. Names must not have leading or trailing spaces and must not include any of the following characters between parentheses (\\/:*?\"<>|@)");
     }
@@ -9101,11 +9156,8 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid control address for commitment");
     }
 
-    // create the transaction with native coin as input
-    LOCK2(cs_main, pwalletMain->cs_wallet);
-
     CIdentityID referrer;
-    if (params.size() > 2)
+    if (params.size() > 2 && !uni_get_str(params[2]).empty())
     {
         CTxDestination referDest = DecodeDestination(uni_get_str(params[2]));
         if (referDest.which() != COptCCParams::ADDRTYPE_ID)
@@ -9118,20 +9170,31 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Referral identity for commitment must be a currently valid, unrevoked friendly name or i-address");
         }
-        if (referrerIdentity.parent != ASSETCHAINS_CHAINID)
+        if (referrerIdentity.parent != parentID)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Referrals cannot refer to the chain identity or an identity defined on another chain");
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Referrals must be from an identity of the same parent");
         }
     }
 
-    CNameReservation nameRes(name, referrer, GetRandHash());
-    CCommitmentHash commitment(nameRes.GetCommitment());
-    
+    CNameReservation nameRes;
+    CAdvancedNameReservation advNameRes;
+
+    if (!isPBaaS)
+    {
+        advNameRes = CAdvancedNameReservation(name, parentID, referrer, GetRandHash());
+    }
+    else
+    {
+        nameRes = CNameReservation(name, referrer, GetRandHash());
+    }
+
+    CCommitmentHash commitment(advNameRes.IsValid() ? advNameRes.GetCommitment() : nameRes.GetCommitment());
+
     CConditionObj<CCommitmentHash> condObj(EVAL_IDENTITY_COMMITMENT, std::vector<CTxDestination>({dest}), 1, &commitment);
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{MakeMofNCCScript(condObj, &dest), CCommitmentHash::DEFAULT_OUTPUT_AMOUNT, false}});
     CWalletTx wtx;
 
-    if (CIdentity::LookupIdentity(CIdentity::GetID(name, parent)).IsValid())
+    if (CIdentity::LookupIdentity(CIdentity::GetID(name, parentID)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity already exists.");
     }
@@ -9152,7 +9215,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     UniValue ret(UniValue::VOBJ);
     ret.push_back(Pair("txid", wtx.GetHash().GetHex()));
-    ret.push_back(Pair("namereservation", nameRes.ToUniValue()));
+    ret.push_back(Pair("namereservation", advNameRes.IsValid() ? advNameRes.ToUniValue() : nameRes.ToUniValue()));
     return ret;
 }
 
@@ -9197,11 +9260,29 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     uint160 parent = ConnectedChains.ThisChain().GetID();
 
     uint256 txid = uint256S(uni_get_str(find_value(params[0], "txid")));
-    CNameReservation reservation(find_value(params[0], "namereservation"));
+
+    UniValue nameResUni = find_value(params[0], "namereservation");
 
     // lookup commitment to be sure that we can register this identity
     LOCK2(cs_main, pwalletMain->cs_wallet);
+
     uint32_t height = chainActive.Height();
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_PBAAS;
+
+    CNameReservation reservation;
+    CAdvancedNameReservation advReservation;
+    if (!find_value(nameResUni, "version").isNull() && !find_value(nameResUni, "parent").isNull())
+    {
+        if (!isPBaaS)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Advanced identity reservations are only valid after PBaaS activates");
+        }
+        advReservation = CAdvancedNameReservation(nameResUni);
+    }
+    else
+    {
+        reservation = CNameReservation(nameResUni);
+    }
 
     UniValue rawID = find_value(params[0], "identity");
 
@@ -9217,6 +9298,16 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     {
         rawID.pushKV("minimumsignatures", (int32_t)1);
     }
+
+    CCurrencyDefinition parentCurrency = ConnectedChains.GetCachedCurrency(advReservation.IsValid() ? advReservation.parent : parent);
+    if (!parentCurrency.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency or currency not found");
+    }
+
+    CCurrencyDefinition issuingCurrency = parentCurrency;
+    parent = parentCurrency.GetID();
+    uint160 issuerID = issuingCurrency.GetID();
 
     CIdentity newID(rawID);
     if (!newID.IsValid(true))
@@ -9265,10 +9356,75 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     bool returnTx = params.size() > 1 ? uni_get_bool(params[1]) : false;
 
+    // get the primary currency to price in and apply any conversion rates
+    uint160 parentID = parentCurrency.GetID();
+    issuerID = issuingCurrency.GetID();
+    uint160 feePricingCurrency = issuerID;
+    int64_t idReferralFee = issuingCurrency.IDReferralAmount();
+    int64_t idFullRegistrationFee = issuingCurrency.IDFullRegistrationAmount();
+    int64_t idReferredRegistrationFee = issuingCurrency.IDReferredRegistrationAmount();
+    CCurrencyValueMap burnAmount;
+    CCoinbaseCurrencyState pricingState;
+
+    // set currency and price, as well as burn requirement
+    // determine if we may use a gateway converter to issue
+
+    if (isPBaaS)
+    {
+        if (!issuingCurrency.IsNameController() && !issuingCurrency.GatewayConverterID().IsNull())
+        {
+            issuingCurrency = ConnectedChains.GetCachedCurrency(issuingCurrency.GatewayConverterID());
+            if (!(issuingCurrency.IsValid() &&
+                 issuingCurrency.IsFractional() &&
+                 issuingCurrency.IsGatewayConverter() &&
+                 issuingCurrency.gatewayID == parentID))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid converter for gateway to register identity");
+            }
+            issuerID = issuingCurrency.GetID();
+        }
+        else if (issuingCurrency.IsGatewayConverter())
+        {
+            if (issuingCurrency.gatewayID.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid gateway converter for identity registration");
+            }
+            CCurrencyDefinition gatewayCurrency = ConnectedChains.GetCachedCurrency(issuingCurrency.gatewayID);
+            if (gatewayCurrency.GetID() != issuingCurrency.systemID)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid gateway converter system for identity registration");
+            }
+        }
+        if (issuingCurrency.IsValid() || issuingCurrency.systemID != ASSETCHAINS_CHAINID)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid issuing currency to register identity");
+        }
+
+        if (issuingCurrency.IsFractional())
+        {
+            feePricingCurrency = issuingCurrency.FeePricingCurrency();
+            if (!(pricingState = ConnectedChains.GetCurrencyState(issuerID, height)).IsValid() ||
+                !pricingState.IsLaunchConfirmed())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency state for gateway converter to register identity");
+            }
+            if (feePricingCurrency != issuerID)
+            {
+                int32_t reserveIndex = pricingState.GetReserveMap()[feePricingCurrency];
+                idReferralFee = pricingState.ReserveToNative(idReferralFee, reserveIndex);
+                idFullRegistrationFee = pricingState.ReserveToNative(idFullRegistrationFee, reserveIndex);
+                idReferredRegistrationFee = pricingState.ReserveToNative(idReferredRegistrationFee, reserveIndex);
+            }
+        }
+        // aside from fractional currencies, centralized or native currencies can issue IDs
+        else if (!(issuingCurrency.GetID() == ASSETCHAINS_CHAINID || issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency for identity registration on this chain");
+        }
+    }
+
     CAmount feeOffer;
-    CAmount minFeeOffer = reservation.referral.IsNull() ? 
-                          ConnectedChains.ThisChain().IDFullRegistrationAmount() : 
-                          ConnectedChains.ThisChain().IDReferredRegistrationAmount();
+    CAmount minFeeOffer = reservation.referral.IsNull() ? idFullRegistrationFee : idReferredRegistrationFee;
 
     if (params.size() > 2)
     {
@@ -9285,11 +9441,25 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
 
     uint160 impliedParent, resParent;
-    if (txid.IsNull() || 
-        CleanName(reservation.name, resParent) != CleanName(newID.name, impliedParent) || 
-        resParent != impliedParent)
+    if (advReservation.IsValid())
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched reservation.");
+        resParent = advReservation.parent;
+        impliedParent = newID.parent;
+        if (txid.IsNull() || 
+            CleanName(reservation.name, resParent) != CleanName(newID.name, impliedParent) || 
+            resParent != impliedParent)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched advanced reservation.");
+        }
+    }
+    else
+    {
+        if (txid.IsNull() || 
+            CleanName(reservation.name, resParent) != CleanName(newID.name, impliedParent) || 
+            resParent != impliedParent)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched reservation.");
+        }
     }
 
     uint256 hashBlk;
@@ -9348,12 +9518,12 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         }
     }
 
-    if (ch.hash != reservation.GetCommitment().hash)
+    if (ch.hash != (advReservation.IsValid() ? advReservation.GetCommitment().hash : reservation.GetCommitment().hash))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid commitment salt or referral ID");
     }
 
-    // when creating an ID, the parent is generally the current chains, and it is invalid to specify a parent
+    // until PBaaS, the parent is generally the current chains, and it is invalid to specify a parent
     if (newID.parent != parent)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid to specify alternate parent when creating an identity. Parent is determined by the current blockchain.");
@@ -9365,9 +9535,35 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_VERIFY_ALREADY_IN_CHAIN, "Identity already exists.");
     }
 
-    // create the identity definition transaction & reservation key output
-    CConditionObj<CNameReservation> condObj(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), 1, &reservation);
+    // create the identity definition transaction
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(height + 1), 0, false}});
+    int32_t registrationPaymentOut = -1;
+
+    CIdentityID referralID = advReservation.IsValid() ? advReservation.referral : reservation.referral;
+    int64_t expectedFee = referralID.IsNull() ? feeOffer : feeOffer - idReferralFee;
+
+    if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID && issuerID != ASSETCHAINS_CHAINID)
+    {
+        // make an output to the currency ID of the amount less referrers
+        CTokenOutput to(CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({expectedFee})));
+        registrationPaymentOut = outputs.size();
+        outputs.push_back({MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({CIdentityID(issuerID)}), 1, &to)), 0, false});
+    }
+    else if (issuingCurrency.IsFractional())
+    {
+        // make a burn output of this currency for the amount
+        CReserveTransfer rt(CReserveTransfer::VALID + CReserveTransfer::BURN_CHANGE_PRICE,
+                            CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({expectedFee})),
+                            ASSETCHAINS_CHAINID,
+                            ConnectedChains.ThisChain().IDImportFee(),
+                            issuerID,
+                            DestinationToTransferDestination(CIdentityID(issuerID)));
+        registrationPaymentOut = outputs.size();
+        outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, std::vector<CTxDestination>({CIdentityID(issuerID)}), 1, &rt)), 0, false});
+    }
+
+    // TODO: if we require a referral or permission signature, make an output to that identity
+    // and then add it to the transaction inputs
 
     // add referrals, Verus supports referrals
     if ((ConnectedChains.ThisChain().IDReferrals() || IsVerusActive()) && !reservation.referral.IsNull())
@@ -9376,7 +9572,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         CTxIn referralTxIn;
         CTransaction referralIdTx;
         auto referralIdentity =  newID.LookupIdentity(reservation.referral, commitmentHeight - 1);
-        if (referralIdentity.IsValidUnrevoked() && referralIdentity.parent == ASSETCHAINS_CHAINID)
+        if (referralIdentity.IsValidUnrevoked() && referralIdentity.parent == newID.parent)
         {
             if (!newID.LookupFirstIdentity(reservation.referral, &referralHeight, &referralTxIn, &referralIdTx).IsValid())
             {
@@ -9420,12 +9616,50 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         }
     }
 
-    CScript reservationOutScript = MakeMofNCCScript(condObj);
+    CScript reservationOutScript;
+    if (advReservation.IsValid())
+    {
+        reservationOutScript = MakeMofNCCScript(CConditionObj<CAdvancedNameReservation>(EVAL_IDENTITY_ADVANCEDRESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), 1, &advReservation));
+    }
+    else
+    {
+        reservationOutScript = MakeMofNCCScript(CConditionObj<CNameReservation>(EVAL_IDENTITY_RESERVATION, std::vector<CTxDestination>({CIdentityID(newID.GetID())}), 1, &reservation));
+    }
     outputs.push_back({reservationOutScript, CNameReservation::DEFAULT_OUTPUT_AMOUNT, false});
 
     // make one dummy output, which CreateTransaction will leave as last, and we will remove to add its output to the fee
     // this serves to keep the change output after our real reservation output
-    outputs.push_back({reservationOutScript, feeOffer, false});
+    if (registrationPaymentOut >= 0)
+    {
+        if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID)
+        {
+            // make an output to the currency ID of the amount less referrers
+            CTokenOutput to(CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({feeOffer})));
+            outputs[registrationPaymentOut].scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, 
+                                                                                                        std::vector<CTxDestination>({CIdentityID(issuerID)}),
+                                                                                                        1,
+                                                                                                        &to));
+        }
+        else
+        {
+            // make a burn output of this currency for the amount
+            CReserveTransfer rt(CReserveTransfer::VALID + CReserveTransfer::BURN_CHANGE_PRICE,
+                                CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({feeOffer})),
+                                ASSETCHAINS_CHAINID,
+                                ConnectedChains.ThisChain().IDImportFee(),
+                                issuerID,
+                                DestinationToTransferDestination(CIdentityID(issuerID)));
+            outputs[registrationPaymentOut].scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER,
+                                                                            std::vector<CTxDestination>({CIdentityID(issuerID)}),
+                                                                            1,
+                                                                            &rt));
+        }
+        outputs.push_back({reservationOutScript, ConnectedChains.ThisChain().IDImportFee(), false});
+    }
+    else
+    {
+        outputs.push_back({reservationOutScript, feeOffer, false});
+    }
 
     CWalletTx wtx;
 

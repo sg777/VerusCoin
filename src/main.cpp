@@ -4147,7 +4147,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                             if (cbCurDef.gatewayConverterIssuance)
                             {
-                                if (cbCurDef.IsPBaaSConverter())
+                                if (cbCurDef.IsGatewayConverter())
                                 {
                                     // this should be set to the correct value already
                                     if (cbCurDef.gatewayConverterIssuance != converterIssuance)

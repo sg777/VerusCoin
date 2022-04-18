@@ -1448,6 +1448,14 @@ public:
 
     static bool GetReserveDeposits(const uint160 &currencyID, const CCoinsViewCache &view, std::vector<CInputDescriptor> &reserveDeposits);
 
+    static bool IsValidCurrencyDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
+                                                const CCurrencyDefinition &destSystemDef,
+                                                const CCurrencyDefinition &importingCurrency);
+
+    static bool IsValidIdentityDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
+                                                const CCurrencyDefinition &destSystemDef,
+                                                const CIdentity &importingIdentity);
+
     static bool CurrencyExportStatus(const CCurrencyValueMap &totalExports,
                                      const uint160 &sourceSystemID,
                                      const uint160 &destSystemID,
