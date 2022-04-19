@@ -1641,6 +1641,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     bool validCrossChainImport = false;
 
     CNameReservation nameRes;
+    CAdvancedNameReservation advNameRes;
     CIdentity identity;
     CCrossChainImport cci;
 
@@ -1671,8 +1672,23 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                         return state.Error("Invalid identity reservation");
                     }
                     // twice through makes it invalid
-                    if (!(isPBaaS && isCoinbase && height == 1) &&
-                        validReservation)
+                    if (!(isPBaaS && isCoinbase && height == 1) && validReservation)
+                    {
+                        return state.Error("Invalid multiple identity reservations on one transaction");
+                    }
+                    validReservation = true;
+                }
+                break;
+
+                case EVAL_IDENTITY_ADVANCEDRESERVATION:
+                {
+                    advNameRes = CNameReservation(p.vData[0]);
+                    if (!advNameRes.IsValid())
+                    {
+                        return state.Error("Invalid identity reservation");
+                    }
+                    // twice through makes it invalid
+                    if (!(isPBaaS && isCoinbase && height == 1) && validReservation)
                     {
                         return state.Error("Invalid multiple identity reservations on one transaction");
                     }
@@ -1917,12 +1933,14 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     extern std::string VERUS_CHAINNAME;
 
     // compare commitment without regard to case or other textual transformations that are irrelevant to matching
-    uint160 parentChain = ConnectedChains.ThisChain().GetID();
+    uint160 parentID = advNameRes.IsValid() ? advNameRes.parent : ConnectedChains.ThisChain().GetID();
     if (isPBaaS && identity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive())
     {
-        parentChain.SetNull();
+        parentID.SetNull();
     }
-    if (validReservation && identity.GetID(nameRes.name, parentChain) == identity.GetID())
+    if (validReservation &&
+        ((advNameRes.IsValid() && identity.GetID(nameRes.name, parentID) == identity.GetID()) ||
+         (identity.GetID(nameRes.name, parentID) == identity.GetID())))
     {
         return true;
     }
