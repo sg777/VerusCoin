@@ -196,7 +196,7 @@ public:
 
     CAdvancedNameReservation(const UniValue &uni, const uint160 &Parent=ASSETCHAINS_CHAINID)
     {
-        uint160 dummy;
+        version = uni_get_int(find_value(uni, "version"), VERSION_CURRENT);
         parent = DecodeCurrencyName(uni_get_str(find_value(uni, "parent"), EncodeDestination(CIdentityID(Parent))));
         name = CleanName(uni_get_str(find_value(uni, "name")), parent);
         salt = uint256S(uni_get_str(find_value(uni, "salt")));
