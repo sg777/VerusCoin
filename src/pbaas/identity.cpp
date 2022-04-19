@@ -1682,7 +1682,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
 
                 case EVAL_IDENTITY_ADVANCEDRESERVATION:
                 {
-                    advNameRes = CNameReservation(p.vData[0]);
+                    advNameRes = CAdvancedNameReservation(p.vData[0]);
                     if (!advNameRes.IsValid())
                     {
                         return state.Error("Invalid identity reservation");
