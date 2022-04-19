@@ -9179,7 +9179,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CNameReservation nameRes;
     CAdvancedNameReservation advNameRes;
 
-    if (!isPBaaS)
+    if (isPBaaS)
     {
         advNameRes = CAdvancedNameReservation(name, parentID, referrer, GetRandHash());
     }
@@ -9224,7 +9224,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 1 || params.size() > 2)
     {
         throw runtime_error(
-            "registeridentity \"jsonidregistration\" (returntx) feeoffer\n"
+            "registeridentity \"jsonidregistration\" (returntx) feeoffer sourceoffunds\n"
             "\n\n"
 
             "\nArguments\n"
@@ -9243,7 +9243,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             "    }\n"
             "}\n"
             "returntx                           (bool, optional) default=false if true, return a transaction for additional signatures rather than committing it\n"
-            "feeoffer                           (amount, optional) amount to offer miner/staker for the registration fee, if missing, uses standard price\n\n"
+            "feeoffer                           (amount, optional) amount to offer miner/staker for the registration fee, if missing, uses standard price\n"
+            "sourceoffunds                      (addressorid, optional) optional address to use for source of funds. if not specified, transparent wildcard \"*\" is used\n\n"
 
             "\nResult:\n"
             "   transactionid                   (hexstr)\n"
@@ -9395,7 +9396,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid gateway converter system for identity registration");
             }
         }
-        if (issuingCurrency.IsValid() || issuingCurrency.systemID != ASSETCHAINS_CHAINID)
+        if (!issuingCurrency.IsValid() || issuingCurrency.systemID != ASSETCHAINS_CHAINID)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid issuing currency to register identity");
         }
@@ -9562,8 +9563,22 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, std::vector<CTxDestination>({CIdentityID(issuerID)}), 1, &rt)), 0, false});
     }
 
-    // TODO: if we require a referral or permission signature, make an output to that identity
-    // and then add it to the transaction inputs
+
+
+    // TODO: if we have a z-address as the registration source of funds or if we require a referral or permission signature,
+    // make a pre-transaction, and if referral required, an output on the new transaction to that identity, which we will use.
+    // then add it to the transaction inputs.
+
+    if (issuingCurrency.IDRequiresPermission())
+    {
+
+    }
+    else if (issuingCurrency.IDReferralRequired())
+    {
+
+    }
+
+
 
     // add referrals, Verus supports referrals
     if ((ConnectedChains.ThisChain().IDReferrals() || IsVerusActive()) && !reservation.referral.IsNull())

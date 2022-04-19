@@ -594,9 +594,9 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         {
             issuingCurrency = ConnectedChains.GetCachedCurrency(issuingCurrency.GatewayConverterID());
             if (!(issuingCurrency.IsValid() &&
-                 issuingCurrency.IsFractional() &&
-                 issuingCurrency.IsGatewayConverter() &&
-                 issuingCurrency.gatewayID == parentID))
+                  issuingCurrency.IsFractional() &&
+                  issuingCurrency.IsGatewayConverter() &&
+                  issuingCurrency.gatewayID == parentID))
             {
                 return state.Error("Invalid converter for gateway to register identity");
             }
@@ -614,7 +614,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                 return state.Error("Cannot register an identity directly from a gateway converter of a non-PBaaS gateway");
             }
         }
-        if (issuingCurrency.IsValid() || issuingCurrency.systemID != ASSETCHAINS_CHAINID)
+        if (!issuingCurrency.IsValid() || issuingCurrency.systemID != ASSETCHAINS_CHAINID)
         {
             return state.Error("Invalid issuing currency to register identity");
         }

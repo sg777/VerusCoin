@@ -2096,15 +2096,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
     bool reservationValid = false;
     bool advancedReservationValid = false;
-    union UNameReservation {
-        CNameReservation nr;
-        CAdvancedNameReservation anr;
-        UNameReservation() : anr(CAdvancedNameReservation::VERSION_INVALID)
-        {
-        }
-        ~UNameReservation() {}
-    };
-    UNameReservation nameReservation;
+    CNameReservation nr;
+    CAdvancedNameReservation anr;
     CIdentity identity;
 
     std::vector<CPBaaSNotarization> notarizations;
@@ -2125,8 +2118,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 {
                     // one name reservation per transaction
                     if (p.version < p.VERSION_V3 || !p.vData.size() || reservationValid || 
-                        !((p.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION && (nameReservation.anr = CAdvancedNameReservation(p.vData[0])).IsValid()) || 
-                          (p.evalCode == EVAL_IDENTITY_RESERVATION && (nameReservation.nr = CNameReservation(p.vData[0])).IsValid())))
+                        !((p.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION && (anr = CAdvancedNameReservation(p.vData[0])).IsValid()) || 
+                          (p.evalCode == EVAL_IDENTITY_RESERVATION && (nr = CNameReservation(p.vData[0])).IsValid())))
                     {
                         flags &= ~IS_VALID;
                         flags |= IS_REJECT;
@@ -2134,13 +2127,13 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     }
                     if (identity.IsValid())
                     {
-                        if (p.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION && identity.name == nameReservation.anr.name && identity.parent == nameReservation.anr.parent)
+                        if (p.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION && identity.name == anr.name && identity.parent == anr.parent)
                         {
                             // TDOD: HARDENING potentially finish validating the fees according to the currency
                             flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
                             reservationValid = advancedReservationValid = true;
                         }
-                        else if (p.evalCode == EVAL_IDENTITY_RESERVATION && identity.name == nameReservation.nr.name)
+                        else if (p.evalCode == EVAL_IDENTITY_RESERVATION && identity.name == nr.name)
                         {
                             flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
                             reservationValid = true;
@@ -2171,11 +2164,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     flags |= IS_IDENTITY;
                     if (reservationValid)
                     {
-                        if (advancedReservationValid && identity.name == nameReservation.anr.name)
+                        if (advancedReservationValid && identity.name == anr.name)
                         {
                             flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
                         }
-                        else if (identity.name == nameReservation.nr.name)
+                        else if (identity.name == nr.name)
                         {
                             flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
                         }
