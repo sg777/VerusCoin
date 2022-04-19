@@ -1939,7 +1939,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         parentID.SetNull();
     }
     if (validReservation &&
-        ((advNameRes.IsValid() && identity.GetID(nameRes.name, parentID) == identity.GetID()) ||
+        ((advNameRes.IsValid() && identity.GetID(advNameRes.name, parentID) == identity.GetID()) ||
          (identity.GetID(nameRes.name, parentID) == identity.GetID())))
     {
         return true;
