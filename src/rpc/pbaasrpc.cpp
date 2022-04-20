@@ -9146,7 +9146,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     // if either we have an invalid name or an implied parent, that is not valid
     if (!(idID == VERUS_CHAINID && IsVerusActive() && parentID.IsNull()) &&
-        (name == "" || parentID != parentCurrency.GetID() || name != uni_get_str(params[0])))
+         (name == "" || parentID != parentCurrency.GetID() || name != uni_get_str(params[0])))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid name for commitment. Names must not have leading or trailing spaces and must not include any of the following characters between parentheses (\\/:*?\"<>|@)");
     }
@@ -9180,7 +9180,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CNameReservation nameRes;
     CAdvancedNameReservation advNameRes;
 
-    if (isPBaaS)
+    if (isPBaaS && !parentID.IsNull())
     {
         advNameRes = CAdvancedNameReservation(name, parentID, referrer, GetRandHash());
     }
