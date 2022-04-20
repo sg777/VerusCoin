@@ -8295,11 +8295,26 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "currency definition has invalid or undefined currency references");
     }
 
+    CCurrencyDefinition parentCurrency;
+    
+    if (!newChain.parent.IsNull())
+    {
+        parentCurrency = ConnectedChains.GetCachedCurrency(newChain.parent);
+    }
+    else
+    {
+        parentCurrency = ConnectedChains.ThisChain();
+    }
+
+    if (parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID)
+
     if ((newChain.GetID() == ASSETCHAINS_CHAINID && ASSETCHAINS_CHAINID != VERUS_CHAINID) || 
-        (newChain.parent != thisChainID && !(newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull())))
+        (newChain.parent != thisChainID &&
+         !(newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull()) &&
+         !(parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID)))
     {
         // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to define a chain relative to a parent that is not the current chain.");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to define a currency relative to a parent that is not a valid gateway or the current chain.");
     }
 
     uint160 newChainID = newChain.GetID();
