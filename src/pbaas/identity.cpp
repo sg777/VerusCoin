@@ -461,6 +461,20 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                         continue;
                     }
 
+                    bool hasPermittingID = false;
+                    for (auto &oneKey : p.vKeys)
+                    {
+                        if (oneKey.which() == COptCCParams::ADDRTYPE_ID && GetDestinationID(oneKey) == issuerID)
+                        {
+                            hasPermittingID = true;
+                            break;
+                        }
+                    }
+                    if (!hasPermittingID)
+                    {
+                        continue;
+                    }
+
                     CSmartTransactionSignatures smartSigs;
                     std::vector<unsigned char> ffVec = GetFulfillmentVector(oneIn.scriptSig);
                     if (!(ffVec.size() &&
@@ -526,10 +540,10 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                     {
                         if (oneDest.which() == COptCCParams::ADDRTYPE_ID)
                         {
-                            CIdentity checkIdentity = CIdentity::LookupIdentity(parentID, height);
+                            CIdentity checkIdentity = CIdentity::LookupIdentity(GetDestinationID(oneDest), height);
 
                             // any valid, unrevoked ID from the same parent may be a referral by signing the transaction
-                            if (checkIdentity.IsValidUnrevoked() && checkIdentity.parent == parentID)
+                            if (checkIdentity.IsValidUnrevoked() && (checkIdentity.parent == parentID || GetDestinationID(oneDest) == parentID))
                             {
                                 checkIdentities.push_back(checkIdentity);
                             }

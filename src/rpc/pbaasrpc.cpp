@@ -9778,12 +9778,20 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
 
         // if only native currency, we can use a z-source
-        CTxDestination inputOutDest = issuingCurrency.IDRequiresPermission() ? CIdentityID(issuerID) : (sourceDest.which() != COptCCParams::ADDRTYPE_INVALID ? sourceDest : commitmentOutDest);
+        CTxDestination inputOutDest = sourceDest.which() != COptCCParams::ADDRTYPE_INVALID ? sourceDest : commitmentOutDest;
         if (reservesOut.valueMap.size() == 1 && reservesOut.valueMap.count(ASSETCHAINS_CHAINID))
         {
             CAmount nativeNeeded = reservesOut.valueMap.begin()->second;
 
             tb.AddTransparentOutput(GetScriptForDestination(inputOutDest), nativeNeeded);
+
+            // if ID requires permission, make an input to request permission with a minimal output value
+            if (issuingCurrency.IDRequiresPermission())
+            {
+                nativeNeeded += DEFAULT_TRANSACTION_FEE;
+                reservesOut.valueMap.begin()->second = nativeNeeded;
+                tb.AddTransparentOutput(GetScriptForDestination(CIdentityID(parentID)), DEFAULT_TRANSACTION_FEE);
+            }
 
             if (hasZSource)
             {
@@ -9820,9 +9828,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             CAmount nativeNeeded = reservesOut.valueMap.count(ASSETCHAINS_CHAINID) ? reservesOut.valueMap[ASSETCHAINS_CHAINID] : 0;
             reservesOut.valueMap.erase(ASSETCHAINS_CHAINID);
 
-
-
-
             CTokenOutput to(reservesOut);
             tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT,
                                                                                  std::vector<CTxDestination>({inputOutDest}),
@@ -9830,8 +9835,12 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                                                      &to)),
                                     nativeNeeded);
 
-
-
+            // if ID requires permission, make an input to request permission with a minimal output value
+            if (issuingCurrency.IDRequiresPermission())
+            {
+                nativeNeeded += DEFAULT_TRANSACTION_FEE;
+                tb.AddTransparentOutput(GetScriptForDestination(CIdentityID(parentID)), DEFAULT_TRANSACTION_FEE);
+            }
 
             success = find_utxos(from_taddress, vCoins);
             success = success && pwalletMain->SelectReserveCoinsMinConf(reservesOut,
@@ -9908,6 +9917,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             RelayTransaction(preTx);
         }
         coinControl.Select(COutPoint(preTx.GetHash(), 0));
+        // if we need permission, add the permission signature output
+        if (issuingCurrency.IDRequiresPermission())
+        {
+            coinControl.Select(COutPoint(preTx.GetHash(), 1));
+        }
     }
 
     CWalletTx wtx;
