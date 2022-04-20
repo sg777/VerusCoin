@@ -1704,29 +1704,32 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             {
                 return state.Error("Identity has not been set to defined currency status");
             }
-            CCurrencyDefinition parentCurrency = ConnectedChains.GetCachedCurrency(newIdentity.parent);
-            if (!parentCurrency.IsValid())
+            if (!(newIdentity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive()))
             {
-                return state.Error("Parent currency invalid to issue identities no this chain");
-            }
-            if (newIdentity.parent != ASSETCHAINS_CHAINID &&
-                !(parentCurrency.IsGateway() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID && !parentCurrency.IsNameController()))
-            {
-                return state.Error("Only gateway and PBaaS identities may create currencies");
-            }
-            if (newIdentity.parent != ASSETCHAINS_CHAINID)
-            {
-                if (!(parentCurrency.proofProtocol == parentCurrency.PROOF_ETHNOTARIZATION &&
-                      newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
-                      !newCurrency.IsFractional() &&
-                      !newCurrency.IsPBaaSChain() &&
-                      !newCurrency.IsGateway() &&
-                      newCurrency.IsToken() &&
-                      newCurrency.systemID == newIdentity.parent &&
-                      newCurrency.maxPreconvert.size() == 1 &&
-                      newCurrency.maxPreconvert[0] == 0))
+                CCurrencyDefinition parentCurrency = ConnectedChains.GetCachedCurrency(newIdentity.parent);
+                if (!parentCurrency.IsValid())
                 {
-                    return state.Error("Gateway currencies must me mapped currencies via the gateway");
+                    return state.Error("Parent currency invalid to issue identities on this chain");
+                }
+                if (newIdentity.parent != ASSETCHAINS_CHAINID &&
+                    !(parentCurrency.IsGateway() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID && !parentCurrency.IsNameController()))
+                {
+                    return state.Error("Only gateway and PBaaS identities may create currencies");
+                }
+                if (newIdentity.parent != ASSETCHAINS_CHAINID)
+                {
+                    if (!(parentCurrency.proofProtocol == parentCurrency.PROOF_ETHNOTARIZATION &&
+                        newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
+                        !newCurrency.IsFractional() &&
+                        !newCurrency.IsPBaaSChain() &&
+                        !newCurrency.IsGateway() &&
+                        newCurrency.IsToken() &&
+                        newCurrency.systemID == newIdentity.parent &&
+                        newCurrency.maxPreconvert.size() == 1 &&
+                        newCurrency.maxPreconvert[0] == 0))
+                    {
+                        return state.Error("Gateway currencies must me mapped currencies via the gateway");
+                    }
                 }
             }
         }

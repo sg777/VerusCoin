@@ -8314,7 +8314,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
          !(parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID)))
     {
         // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to define a currency relative to a parent that is not a valid gateway or the current chain.");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Attempting to define a currency relative to a parent that is not a valid gateway or the current chain.");
     }
 
     uint160 newChainID = newChain.GetID();
@@ -9077,7 +9077,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     if (fHelp || (params.size() < 2 && params.size() > 3))
     {
         throw runtime_error(
-            "registernamecommitment \"name\" \"controladdress\" (\"referralidentity\") (\"parentnameorid\")\n"
+            "registernamecommitment \"name\" \"controladdress\" (\"referralidentity\") (\"parentnameorid\") (\"sourceoffunds\")\n"
             "\nRegisters a name commitment, which is required as a source for the name to be used when registering an identity. The name commitment hides the name itself\n"
             "while ensuring that the miner who mines in the registration cannot front-run the name unless they have also registered a name commitment for the same name or\n"
             "are willing to forfeit the offer of payment for the chance that a commitment made now will allow them to register the name in the future.\n"
@@ -9088,6 +9088,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             "\"controladdress\"                 (address, required) address that will control this commitment\n"
             "\"referralidentity\"               (identity, optional)friendly name or identity address that is provided as a referral mechanism and to lower network cost of the ID\n"
             "\"parentnameorid-pbaasonly\"       (currency, optional)friendly name or currency i-address, which will be the parent of this ID and dictate issuance rules & pricing\n"
+            "\"sourceoffunds\"                  (addressorid, optional) optional address to use for source of funds. if not specified, transparent wildcard \"*\" is used\n\n"
 
             "\nResult: obj\n"
             "{\n"
@@ -9130,6 +9131,53 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         if (!parentCurrency.IsValid())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency");
+        }
+    }
+
+    std::string sourceAddress;
+    CTxDestination sourceDest;
+
+    bool wildCardTransparentAddress = false;
+    bool wildCardRAddress = false;
+    bool wildCardiAddress = false;
+    bool wildCardAddress = false;
+
+    libzcash::PaymentAddress zaddressSource;
+    libzcash::SaplingExpandedSpendingKey expsk;
+    uint256 sourceOvk;
+    bool hasZSource = false;
+
+    if (params.size() > 4)
+    {
+        sourceAddress = uni_get_str(params[4]);
+
+        wildCardTransparentAddress = sourceAddress == "*";
+        wildCardRAddress = sourceAddress == "R*";
+        wildCardiAddress = sourceAddress == "i*";
+        wildCardAddress = wildCardTransparentAddress || wildCardRAddress || wildCardiAddress;
+        hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(sourceAddress, zaddressSource);
+
+        // if we have a z-address as a source, re-encode it to a string, which is used
+        // by the async operation, to ensure that we don't need to lookup IDs in that operation
+        if (hasZSource)
+        {
+            sourceAddress = EncodePaymentAddress(zaddressSource);
+            // We don't need to lock on the wallet as spending key related methods are thread-safe
+            if (!boost::apply_visitor(HaveSpendingKeyForPaymentAddress(pwalletMain), zaddressSource)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, no spending key found for zaddr");
+            }
+
+            auto spendingkey_ = boost::apply_visitor(GetSpendingKeyForPaymentAddress(pwalletMain), zaddressSource).get();
+            auto sk = boost::get<libzcash::SaplingExtendedSpendingKey>(spendingkey_);
+            expsk = sk.expsk;
+            sourceOvk = expsk.full_viewing_key().ovk;
+        }
+
+        if (!(hasZSource ||
+            wildCardAddress ||
+            (sourceDest = DecodeDestination(sourceAddress)).which() != COptCCParams::ADDRTYPE_INVALID))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\", or \"i*\",. See help.");
         }
     }
 
@@ -9215,12 +9263,164 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity already exists.");
     }
 
+    CCoinControl coinControl;
+
+    if (params.size() > 4)
+    {
+        bool success = false;
+        std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+        std::vector<SaplingNoteEntry> saplingNotes;
+        CCurrencyValueMap reserveValueOut;
+        CAmount nativeValueOut;
+        std::vector<COutput> vCoins;
+
+        CTxDestination from_taddress;
+        if (wildCardTransparentAddress)
+        {
+            from_taddress = CTxDestination();
+        }
+        else if (wildCardRAddress)
+        {
+            from_taddress = CTxDestination(CKeyID(uint160()));
+        }
+        else if (wildCardiAddress)
+        {
+            from_taddress = CTxDestination(CIdentityID(uint160()));
+        }
+        else
+        {
+            from_taddress = sourceDest;
+        }
+
+        CCurrencyValueMap reservesOut;
+        for (int i = 0; i < outputs.size(); i++)
+        {
+            CRecipient &oneOut = outputs[i];
+
+            CCurrencyValueMap oneOutReserves;
+            oneOutReserves += oneOut.scriptPubKey.ReserveOutValue();
+            if (oneOut.nAmount)
+            {
+                oneOutReserves.valueMap[ASSETCHAINS_CHAINID] = oneOut.nAmount;
+            }
+            else
+            {
+                oneOutReserves.valueMap.erase(ASSETCHAINS_CHAINID);
+            }
+            reservesOut += oneOutReserves;
+        }
+
+        reservesOut = reservesOut.CanonicalMap();
+
+        // use the transaction builder to properly make change of native and reserves
+        TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
+
+        // if only native currency, we can use a z-source
+        CTxDestination inputOutDest = dest;
+
+        CAmount nativeNeeded = DEFAULT_TRANSACTION_FEE;
+
+        tb.AddTransparentOutput(GetScriptForDestination(inputOutDest), nativeNeeded);
+
+        if (hasZSource)
+        {
+            saplingNotes = find_unspent_notes(zaddressSource);
+            CAmount totalFound = 0;
+            int i;
+            for (i = 0; i < saplingNotes.size(); i++)
+            {
+                totalFound += saplingNotes[i].note.value();
+                if (totalFound >= nativeNeeded)
+                {
+                    break;
+                }
+            }
+            // remove all but the notes we'll use
+            if (i < saplingNotes.size())
+            {
+                saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
+                success = true;
+            }
+        }
+        else
+        {
+            success = find_utxos(from_taddress, vCoins) &&
+                    pwalletMain->SelectCoinsMinConf(nativeNeeded, 0, 0, vCoins, setCoinsRet, nativeValueOut);
+        }
+
+        if (!success)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Insufficient funds for identity registration");
+        }
+
+        // aggregate all inputs into one output with only the offer coins and offer indexes
+        if (saplingNotes.size())
+        {
+            std::vector<SaplingOutPoint> notes;
+            for (auto &oneNoteInfo : saplingNotes)
+            {
+                notes.push_back(oneNoteInfo.op);
+            }
+            // Fetch Sapling anchor and witnesses
+            uint256 anchor;
+            std::vector<boost::optional<SaplingWitness>> witnesses;
+            {
+                LOCK2(cs_main, pwalletMain->cs_wallet);
+                pwalletMain->GetSaplingNoteWitnesses(notes, witnesses, anchor);
+            }
+
+            // Add Sapling spends
+            for (size_t i = 0; i < saplingNotes.size(); i++)
+            {
+                tb.AddSaplingSpend(expsk, saplingNotes[i].note, anchor, witnesses[i].get());
+            }
+        }
+        else
+        {
+            for (auto &oneInput : setCoinsRet)
+            {
+                tb.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second),
+                                        oneInput.first->vout[oneInput.second].scriptPubKey,
+                                        oneInput.first->vout[oneInput.second].nValue);
+            }
+        }
+
+        if (hasZSource)
+        {
+            tb.SendChangeTo(*boost::get<libzcash::SaplingPaymentAddress>(&zaddressSource), sourceOvk);
+        }
+        else if (sourceDest.which() != COptCCParams::ADDRTYPE_INVALID && !GetDestinationID(sourceDest).IsNull())
+        {
+            tb.SendChangeTo(sourceDest);
+            coinControl.destChange = sourceDest;
+        }
+        else
+        {
+            tb.SendChangeTo(dest);
+        }
+
+        TransactionBuilderResult preResult = tb.Build();
+        CTransaction preTx = preResult.GetTxOrThrow();
+
+        // add to mem pool and relay
+        CValidationState state;
+        if (!myAddtomempool(preTx, &state))
+        {
+            throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx: " + state.GetRejectReason());
+        }
+        else
+        {
+            RelayTransaction(preTx);
+        }
+        coinControl.Select(COutPoint(preTx.GetHash(), 0));
+    }
+
     CReserveKey reserveKey(pwalletMain);
     CAmount fee;
     int nChangePos;
     string failReason;
 
-    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason))
+    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, coinControl.HasSelected() ? &coinControl : nullptr))
     {
         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to create commitment transaction: " + failReason);
     }
@@ -9793,7 +9993,9 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
 
         // if only native currency, we can use a z-source
-        CTxDestination inputOutDest = sourceDest.which() != COptCCParams::ADDRTYPE_INVALID ? sourceDest : commitmentOutDest;
+        CTxDestination inputOutDest = sourceDest.which() != COptCCParams::ADDRTYPE_INVALID && !GetDestinationID(sourceDest).IsNull() ?
+                                        sourceDest :
+                                        commitmentOutDest;
         if (reservesOut.valueMap.size() == 1 && reservesOut.valueMap.count(ASSETCHAINS_CHAINID))
         {
             CAmount nativeNeeded = reservesOut.valueMap.begin()->second;
@@ -9908,7 +10110,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         {
             tb.SendChangeTo(*boost::get<libzcash::SaplingPaymentAddress>(&zaddressSource), sourceOvk);
         }
-        else if (sourceDest.which() != COptCCParams::ADDRTYPE_INVALID)
+        else if (sourceDest.which() != COptCCParams::ADDRTYPE_INVALID && !GetDestinationID(sourceDest).IsNull())
         {
             tb.SendChangeTo(sourceDest);
             coinControl.destChange = sourceDest;
