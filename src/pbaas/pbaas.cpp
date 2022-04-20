@@ -1571,6 +1571,10 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             return false;
         }
     }
+    else if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_PBAAS)
+    {
+        return false;
+    }
 
     // TODO: HARDENING - handle all gateway and PBaaS converter and reserve definition verifications
 
@@ -1631,6 +1635,9 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             {
                 if (cci.sourceSystemID != ASSETCHAINS_CHAINID &&
                     cci.GetImportInfo(spendingTx, height, i, ccx, sysCCI, sysCCIOut, pbn, notarizationOut, eOutStart, eOutEnd, transfers) &&
+                    pbn.IsValid() &&
+                    pbn.IsLaunchConfirmed() &&
+                    pbn.IsLaunchComplete() &&
                     outNum > eOutEnd && 
                     outNum <= (eOutEnd + cci.numOutputs))
                 {
@@ -1664,6 +1671,10 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                     }
                 }
             }
+            if (!oldIdentity.IsValid())
+            {
+                return state.Error("No valid identity found for currency definition");
+            }
         }
     }
 
@@ -1671,10 +1682,6 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
 
     if (!(isBlockOneDefinition || isImportDefinition))
     {
-        if (!oldIdentity.IsValid())
-        {
-            return state.Error("No valid identity found for currency definition");
-        }
         
         if (oldIdentity.HasActiveCurrency())
         {

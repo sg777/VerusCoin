@@ -9936,7 +9936,15 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         coinControl.fAllowOtherInputs = true;
     }
 
-    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, &coinControl, false))
+    if (isPBaaS)
+    {
+        int numChangeOutputs = 0;
+        if (!pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, fee, nChangePos, numChangeOutputs, failReason, &coinControl))
+        {
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to create identity transaction: " + failReason);
+        }
+    }
+    else if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, &coinControl, false))
     {
         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to create identity transaction: " + failReason);
     }
