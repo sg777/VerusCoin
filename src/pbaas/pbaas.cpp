@@ -1666,7 +1666,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                         p.evalCode == EVAL_IDENTITY_PRIMARY &&
                         p.vData.size() > 1 &&
                         (oldIdentity = CIdentity(p.vData[0])).IsValid() &&
-                        oldIdentity.GetID() == newCurrency.GetID())
+                        (oldIdentity.GetID() == newCurrency.GetID() || oldIdentity.GetID() == newCurrency.parent))
                     {
                         break;
                     }
@@ -1690,7 +1690,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                     p.evalCode == EVAL_IDENTITY_PRIMARY &&
                     p.vData.size() > 1 &&
                     (newIdentity = CIdentity(p.vData[0])).IsValid() &&
-                    newIdentity.GetID() == newCurrency.GetID())
+                    (newIdentity.GetID() == newCurrency.GetID() || newIdentity.GetID() == newCurrency.parent))
                 {
                     break;
                 }
