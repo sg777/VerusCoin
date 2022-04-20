@@ -1665,30 +1665,72 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                         p.IsValid() &&
                         p.evalCode == EVAL_IDENTITY_PRIMARY &&
                         p.vData.size() > 1 &&
-                        (oldIdentity = CIdentity(p.vData[0])).IsValid())
+                        (oldIdentity = CIdentity(p.vData[0])).IsValid() &&
+                        oldIdentity.GetID() == newCurrency.GetID())
                     {
                         break;
                     }
+                    oldIdentity.nVersion = oldIdentity.VERSION_INVALID;
                 }
             }
             if (!oldIdentity.IsValid())
             {
                 return state.Error("No valid identity found for currency definition");
             }
+            if (oldIdentity.HasActiveCurrency())
+            {
+                return state.Error("Identity already has used its one-time ability to define a currency");
+            }
+            CIdentity newIdentity;
+            for (auto &oneOut : spendingTx.vout)
+            {
+                COptCCParams p;
+                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                    p.vData.size() > 1 &&
+                    (newIdentity = CIdentity(p.vData[0])).IsValid() &&
+                    newIdentity.GetID() == newCurrency.GetID())
+                {
+                    break;
+                }
+                newIdentity.nVersion = oldIdentity.VERSION_INVALID;
+            }
+            if (!newIdentity.IsValid())
+            {
+                return state.Error("Invalid identity found for currency definition");
+            }
+            if (!newIdentity.HasActiveCurrency())
+            {
+                return state.Error("Identity has not been set to defined currency status");
+            }
+            CCurrencyDefinition parentCurrency = ConnectedChains.GetCachedCurrency(newIdentity.parent);
+            if (!parentCurrency.IsValid())
+            {
+                return state.Error("Parent currency invalid to issue identities no this chain");
+            }
+            if (newIdentity.parent != ASSETCHAINS_CHAINID &&
+                !(parentCurrency.IsGateway() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID && !parentCurrency.IsNameController()))
+            {
+                return state.Error("Only gateway and PBaaS identities may create currencies");
+            }
+            if (newIdentity.parent != ASSETCHAINS_CHAINID)
+            {
+                if (!(parentCurrency.proofProtocol == parentCurrency.PROOF_ETHNOTARIZATION &&
+                      newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
+                      !newCurrency.IsFractional() &&
+                      !newCurrency.IsPBaaSChain() &&
+                      !newCurrency.IsGateway() &&
+                      newCurrency.IsToken() &&
+                      newCurrency.systemID == newIdentity.parent &&
+                      newCurrency.maxPreconvert.size() == 1 &&
+                      newCurrency.maxPreconvert[0] == 0))
+                {
+                    return state.Error("Gateway currencies must me mapped currencies via the gateway");
+                }
+            }
         }
     }
-
-    COptCCParams p;
-
-    if (!(isBlockOneDefinition || isImportDefinition))
-    {
-        
-        if (oldIdentity.HasActiveCurrency())
-        {
-            return state.Error("Identity already has used its one-time ability to define a currency");
-        }
-    }
-
     return true;
 }
 
