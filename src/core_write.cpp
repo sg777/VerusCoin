@@ -1243,25 +1243,6 @@ UniValue CAdvancedNameReservation::ToUniValue() const
     ret.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
     ret.push_back(Pair("salt", salt.GetHex()));
     ret.push_back(Pair("referral", referral.IsNull() ? "" : EncodeDestination(referral)));
-
-    if (_IsVerusActive())
-    {
-        if (boost::to_lower_copy(name) == VERUS_CHAINNAME)
-        {
-            ret.push_back(Pair("parent", ""));
-        }
-        else
-        {
-            ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
-        }
-        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "@"))));
-    }
-    else
-    {
-        ret.push_back(Pair("parent", EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID()))));
-        ret.push_back(Pair("nameid", EncodeDestination(DecodeDestination(name + "." + ConnectedChains.ThisChain().name + "@"))));
-    }
-
     return ret;
 }
 
