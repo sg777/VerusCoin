@@ -5119,15 +5119,15 @@ bool CCurrencyDefinition::IsValidDefinitionImport(const CCurrencyDefinition &sou
     uint160 sourceSystemID = sourceSystem.GetID();
     uint160 destSystemID = destSystem.GetID();
 
-    CCurrencyDefinition curSystem;
     uint160 currencyParentID = nameParent;
+    CCurrencyDefinition curSystem = ConnectedChains.GetCachedCurrency(currencyParentID);
 
     do
     {
         if (!curSystem.IsValid())
         {
-            printf("%s: Invalid currency in origin chain. Index may be corrupt.\n", __func__);
-            LogPrintf("%s: Invalid currency in origin chain. Index may be corrupt.\n", __func__);
+            printf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, currencyParentID.GetHex().c_str());
+            LogPrintf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, currencyParentID.GetHex().c_str());
             return false;
         }
 
