@@ -9190,11 +9190,11 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         issuingCurrency = ConnectedChains.GetCachedCurrency(parentCurrency.GatewayConverterID());
         if (!issuingCurrency.IsValid() || issuingCurrency.systemID != ASSETCHAINS_CHAINID)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid implied parent currency");
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid issuing currency for this network");
         }
     }
 
-    std::string name = CleanName(uni_get_str(params[0]), parentID, true, false);
+    std::string name = CleanName(uni_get_str(params[0]), parentID, true, true);
     if (parentID != parentCurrency.GetID())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid implied parent currency");
@@ -9318,7 +9318,8 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         // if only native currency, we can use a z-source
         CTxDestination inputOutDest = dest;
 
-        CAmount nativeNeeded = DEFAULT_TRANSACTION_FEE;
+        // make sure we have enough
+        CAmount nativeNeeded = DEFAULT_TRANSACTION_FEE << 2;
 
         tb.AddTransparentOutput(GetScriptForDestination(inputOutDest), nativeNeeded);
 
@@ -9996,8 +9997,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         CTxDestination inputOutDest = sourceDest.which() != COptCCParams::ADDRTYPE_INVALID && !GetDestinationID(sourceDest).IsNull() ?
                                         sourceDest :
                                         commitmentOutDest;
+
         if (reservesOut.valueMap.size() == 1 && reservesOut.valueMap.count(ASSETCHAINS_CHAINID))
         {
+            reservesOut.valueMap.begin()->second += DEFAULT_TRANSACTION_FEE << 2;
             CAmount nativeNeeded = reservesOut.valueMap.begin()->second;
 
             tb.AddTransparentOutput(GetScriptForDestination(inputOutDest), nativeNeeded);
@@ -10043,6 +10046,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         else
         {
             CAmount nativeNeeded = reservesOut.valueMap.count(ASSETCHAINS_CHAINID) ? reservesOut.valueMap[ASSETCHAINS_CHAINID] : 0;
+            nativeNeeded += DEFAULT_TRANSACTION_FEE << 2;
+
             reservesOut.valueMap.erase(ASSETCHAINS_CHAINID);
 
             CTokenOutput to(reservesOut);
