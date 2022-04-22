@@ -901,7 +901,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     }
 
     // are we spending a matching name commitment?
-    if ((advNewName.IsValid() && ch.hash != newName.GetCommitment().hash) ||
+    if ((advNewName.IsValid() && ch.hash != advNewName.GetCommitment().hash) ||
         (!advNewName.IsValid() && (!newName.IsValid() || ch.hash != newName.GetCommitment().hash)))
     {
         return state.Error("Mismatched identity commitment");
@@ -1171,7 +1171,8 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         {
             if (advNewName.parent != ASSETCHAINS_CHAINID)
             {
-                parentCurrency = ConnectedChains.GetCachedCurrency(advNewName.parent);
+                issuingCurrency = parentCurrency = ConnectedChains.GetCachedCurrency(advNewName.parent);
+                issuerID = parentID = advNewName.parent;
                 if (parentCurrency.IsGateway() && !parentCurrency.IsNameController() && !parentCurrency.GatewayConverterID().IsNull())
                 {
                     issuingCurrency = ConnectedChains.GetCachedCurrency(parentCurrency.GatewayConverterID());
@@ -1244,6 +1245,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                     break;
                 }
                 newIdentity = CIdentity(p.vData[0]);
+                valid = newIdentity.IsValid() && (advNewName.IsValid() ? newIdentity.parent == advNewName.parent : newIdentity.parent == ASSETCHAINS_CHAINID);
+                if (!valid)
+                {
+                    break;
+                }
             }
             else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
             {

@@ -9085,7 +9085,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
 UniValue registernamecommitment(const UniValue& params, bool fHelp)
 {
-    if (fHelp || (params.size() < 2 && params.size() > 3))
+    if (fHelp || (params.size() < 2 && params.size() > 5))
     {
         throw runtime_error(
             "registernamecommitment \"name\" \"controladdress\" (\"referralidentity\") (\"parentnameorid\") (\"sourceoffunds\")\n"
@@ -9451,7 +9451,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
 UniValue registeridentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 2)
+    if (fHelp || params.size() < 1 || params.size() > 4)
     {
         throw runtime_error(
             "registeridentity \"jsonidregistration\" (returntx) feeoffer sourceoffunds\n"
@@ -9654,14 +9654,14 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         }
     }
 
-    CAmount feeOffer;
+    CAmount feeOffer = 0;
     CAmount minFeeOffer = reservation.referral.IsNull() ? idFullRegistrationFee : idReferredRegistrationFee;
 
     if (params.size() > 2)
     {
         feeOffer = AmountFromValue(params[2]);
     }
-    else
+    if (feeOffer == 0)
     {
         feeOffer = minFeeOffer;
     }
@@ -9727,7 +9727,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             CleanName(advReservation.name, resParent) != CleanName(newID.name, impliedParent) || 
             resParent != impliedParent)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched advanced reservation.");
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched advanced reservation. Is " + CleanName(newID.name, impliedParent) + " should be " + CleanName(advReservation.name, resParent) + ".");
         }
     }
     else
@@ -9882,7 +9882,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                             issuerID,
                             DestinationToTransferDestination(CIdentityID(issuerID)));
         registrationPaymentOut = outputs.size();
-        outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, std::vector<CTxDestination>({CIdentityID(issuerID)}), 1, &rt)), 0, false});
+        outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, std::vector<CTxDestination>({CIdentityID(issuerID)}), 1, &rt)), ConnectedChains.ThisChain().IDImportFee(), false});
     }
 
     // add referrals, Verus supports referrals
