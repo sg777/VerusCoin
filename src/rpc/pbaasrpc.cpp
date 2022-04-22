@@ -7139,6 +7139,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CCoinbaseCurrencyState feePriceState = lastConfirmedNotarization.currencyStates[convertToCurrencyID];
 
                         bool sameChainConversion = convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID;
+
+                        uint160 converterID = convertToCurrencyID;
+                        CCurrencyDefinition converterDef = convertToCurrencyDef;
+
                         if (lastConfirmedNotarization.currencyStates.count(convertToCurrencyID))
                         {
                             if (sameChainConversion)
@@ -7146,9 +7150,16 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 // get the latest notarization for the converter on this chain
                                 CChainNotarizationData localCND;
 
-                                if (!GetNotarizationData(convertToCurrencyID, localCND))
+                                if (!isVia && sourceCurrencyDef.IsFractional() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID))
                                 {
-                                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid converter " + EncodeDestination(CIdentityID(convertToCurrencyID)));
+                                    flags |= CReserveTransfer::IMPORT_TO_SOURCE;
+                                    converterID = sourceCurrencyID;
+                                    converterDef = sourceCurrencyDef;
+                                }
+
+                                if (!GetNotarizationData(converterID, localCND))
+                                {
+                                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid converter " + EncodeDestination(CIdentityID(converterID)));
                                 }
                                 
                                 feePriceState = localCND.vtx[cnd.lastConfirmed].second.currencyState;
@@ -7187,7 +7198,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         if (!feeConversionPrices.valueMap.count(feeCurrencyID))
                         {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for cross-chain transaction 1" + ConnectedChains.GetFriendlyCurrencyName(feeCurrencyID));
+                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for cross-chain transaction 1 " + ConnectedChains.GetFriendlyCurrencyName(feeCurrencyID));
                         }
 
                         // determine required fees
@@ -7242,7 +7253,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             dest.type |= dest.FLAG_DEST_GATEWAY;
                             dest.gatewayID = exportSystemDef.GetID();
                             CChainNotarizationData cnd;
-                            if (!GetNotarizationData(convertToCurrencyID, cnd) ||
+                            if (!GetNotarizationData(converterID, cnd) ||
                                 !cnd.IsConfirmed())
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization/pricing information for " + exportToCurrencyDef.name);
@@ -7265,9 +7276,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             flags |= CReserveTransfer::CROSS_SYSTEM;
                         }
 
-                        auto reserveMap = convertToCurrencyDef.GetCurrenciesMap();
+                        auto reserveMap = converterDef.GetCurrenciesMap();
                         if (feeCurrencyID != destSystemID &&
-                            !(convertToCurrencyDef.IsFractional() && (feeCurrencyID == convertToCurrencyID || reserveMap.count(feeCurrencyID))))
+                            !(converterDef.IsFractional() && (feeCurrencyID == converterID || reserveMap.count(feeCurrencyID))))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert fees " + EncodeDestination(CIdentityID(feeCurrencyID)) + " to " + destSystemDef.name + ". 3");
                         }
@@ -9266,8 +9277,22 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     std::vector<CRecipient> newInputs;
     CTxDestination changeDest;
 
+    std::vector<CTxDestination> dests({dest});
+    int requiredSigs = 1;
+
+    if (parentCurrency.IDRequiresPermission())
+    {
+        dests.push_back(CIdentityID(parentID));
+        requiredSigs = 2;
+    }
+    else if (parentCurrency.IDReferralRequired())
+    {
+        dests.push_back(CIdentityID(referrer));
+        requiredSigs = 2;
+    }
+
     CCommitmentHash commitment(advNameRes.IsValid() ? advNameRes.GetCommitment() : nameRes.GetCommitment());
-    CConditionObj<CCommitmentHash> condObj(EVAL_IDENTITY_COMMITMENT, std::vector<CTxDestination>({dest}), 1, &commitment);
+    CConditionObj<CCommitmentHash> condObj(EVAL_IDENTITY_COMMITMENT, dests, requiredSigs, &commitment);
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{MakeMofNCCScript(condObj, &dest), CCommitmentHash::DEFAULT_OUTPUT_AMOUNT, false}});
 
     std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
@@ -9764,9 +9789,45 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             {
                 commitmentOutput = i;
                 ::FromVector(p.vData[0], ch);
-                if (p.vKeys.size())
+                std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+                for (auto &oneKey : p.vKeys)
                 {
-                    commitmentOutDest =  p.vKeys[0];
+                    if (oneKey.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        std::pair<CIdentityMapKey, CIdentityMapValue> checkKeyAndIdentity;
+                        if (pwalletMain->GetIdentity(GetDestinationID(oneKey), checkKeyAndIdentity))
+                        {
+                            if (checkKeyAndIdentity.first.CanSign())
+                            {
+                                keyAndIdentity = checkKeyAndIdentity;
+                                if (keyAndIdentity.first.CanSpend())
+                                {
+                                    commitmentOutDest = oneKey;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    else if (oneKey.which() == COptCCParams::ADDRTYPE_PKH || oneKey.which() == COptCCParams::ADDRTYPE_PK)
+                    {
+                        if (pwalletMain->HaveKey(GetDestinationID(oneKey)))
+                        {
+                            commitmentOutDest = oneKey;
+                            break;
+                        }
+                    }
+                    else if (oneKey.which() == COptCCParams::ADDRTYPE_SH)
+                    {
+                        if (pwalletMain->HaveCScript(GetDestinationID(oneKey)))
+                        {
+                            commitmentOutDest = oneKey;
+                            break;
+                        }
+                    }
+                }
+                if (commitmentOutDest.which() == COptCCParams::ADDRTYPE_INVALID && keyAndIdentity.second.IsValid() && keyAndIdentity.first.CanSign())
+                {
+                    commitmentOutDest = keyAndIdentity.first.idID;
                 }
                 break;
             }
@@ -9889,6 +9950,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // make one dummy output, which CreateTransaction will leave as last, and we will remove to add its output to the fee
     // this serves to keep the change output after our real reservation output
 
+    // use the transaction builder to properly make change of native and reserves
+    TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
+
+    CCurrencyValueMap reservesOut;
+
     // if we have registration payments, fixup the output amount based on referrals adjustment
     if (registrationPaymentOut >= 0)
     {
@@ -9916,297 +9982,202 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                                                                             &rt));
         }
 
-        // the fee for a non-native registration is the import fee
-        outputs.push_back({reservationOutScript, ConnectedChains.ThisChain().IDImportFee(), false});
+        // the fee for a non-native registration is the import fee, as the fee offer was paid to the issuing currency
+        tb.SetFee(ConnectedChains.ThisChain().IDImportFee());
+        reservesOut.valueMap[ASSETCHAINS_CHAINID] += ConnectedChains.ThisChain().IDImportFee();
     }
     else
     {
-        outputs.push_back({reservationOutScript, feeOffer, false});
+        tb.SetFee(feeOffer);
+        reservesOut.valueMap[ASSETCHAINS_CHAINID] += feeOffer;
     }
 
-    // TODO: if we have a z-address as the registration source of funds or if we require a referral or permission signature,
-    // make a pre-transaction, and if referral required, an output on the new transaction to that identity, which we will use.
-    // then add it to the transaction inputs.
-
-    CCoinControl coinControl;
-    coinControl.destChange = sourceDest.which() == COptCCParams::ADDRTYPE_INVALID ? commitmentOutDest : sourceDest;
-
-    if (params.size() > 3)
+    if (params.size() <= 3)
     {
-        bool success = false;
-        std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
-        std::vector<SaplingNoteEntry> saplingNotes;
-        CCurrencyValueMap reserveValueOut;
-        CAmount nativeValueOut;
-        std::vector<COutput> vCoins;
+        wildCardTransparentAddress = true;
+    }
 
-        CTxDestination from_taddress;
-        if (wildCardTransparentAddress)
+    bool success = false;
+    std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+    std::vector<SaplingNoteEntry> saplingNotes;
+    CCurrencyValueMap reserveValueOut;
+    CAmount nativeValueOut;
+    std::vector<COutput> vCoins;
+
+    CTxDestination from_taddress;
+    if (wildCardTransparentAddress)
+    {
+        from_taddress = CTxDestination();
+    }
+    else if (wildCardRAddress)
+    {
+        from_taddress = CTxDestination(CKeyID(uint160()));
+    }
+    else if (wildCardiAddress)
+    {
+        from_taddress = CTxDestination(CIdentityID(uint160()));
+    }
+    else
+    {
+        from_taddress = sourceDest;
+    }
+
+    for (int i = 0; i < outputs.size(); i++)
+    {
+        CRecipient &oneOut = outputs[i];
+        tb.AddTransparentOutput(oneOut.scriptPubKey, oneOut.nAmount);
+
+        CCurrencyValueMap oneOutReserves;
+        oneOutReserves += oneOut.scriptPubKey.ReserveOutValue();
+        if (oneOut.nAmount)
         {
-            from_taddress = CTxDestination();
-        }
-        else if (wildCardRAddress)
-        {
-            from_taddress = CTxDestination(CKeyID(uint160()));
-        }
-        else if (wildCardiAddress)
-        {
-            from_taddress = CTxDestination(CIdentityID(uint160()));
+            oneOutReserves.valueMap[ASSETCHAINS_CHAINID] = oneOut.nAmount;
         }
         else
         {
-            from_taddress = sourceDest;
+            oneOutReserves.valueMap.erase(ASSETCHAINS_CHAINID);
         }
+        reservesOut += oneOutReserves;
+    }
 
-        CCurrencyValueMap reservesOut;
-        for (int i = 0; i < outputs.size(); i++)
-        {
-            CRecipient &oneOut = outputs[i];
+    tb.AddTransparentInput(COutPoint(txid, commitmentOutput), txOut.vout[commitmentOutput].scriptPubKey, txOut.vout[commitmentOutput].nValue);
 
-            CCurrencyValueMap oneOutReserves;
-            oneOutReserves += oneOut.scriptPubKey.ReserveOutValue();
-            if (oneOut.nAmount)
-            {
-                oneOutReserves.valueMap[ASSETCHAINS_CHAINID] = oneOut.nAmount;
-            }
-            else
-            {
-                oneOutReserves.valueMap.erase(ASSETCHAINS_CHAINID);
-            }
-            reservesOut += oneOutReserves;
-        }
-
+    reservesOut -= txOut.vout[commitmentOutput].scriptPubKey.ReserveOutValue();
+    if (txOut.vout[commitmentOutput].nValue)
+    {
+        reservesOut = reservesOut.SubtractToZero(
+                            CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}),
+                                              std::vector<int64_t>({txOut.vout[commitmentOutput].nValue}))).CanonicalMap();
+    }
+    else
+    {
         reservesOut = reservesOut.CanonicalMap();
+    }
 
-        // use the transaction builder to properly make change of native and reserves
-        TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
+    reservesOut.valueMap[ASSETCHAINS_CHAINID] += DEFAULT_TRANSACTION_FEE;
 
-        // if only native currency, we can use a z-source
-        CTxDestination inputOutDest = sourceDest.which() != COptCCParams::ADDRTYPE_INVALID && !GetDestinationID(sourceDest).IsNull() ?
-                                        sourceDest :
-                                        commitmentOutDest;
-
-        if (reservesOut.valueMap.size() == 1 && reservesOut.valueMap.count(ASSETCHAINS_CHAINID))
-        {
-            reservesOut.valueMap.begin()->second += DEFAULT_TRANSACTION_FEE << 2;
-            CAmount nativeNeeded = reservesOut.valueMap.begin()->second;
-
-            tb.AddTransparentOutput(GetScriptForDestination(inputOutDest), nativeNeeded);
-
-            // if ID requires permission, make an input to request permission with a minimal output value
-            if (issuingCurrency.IDRequiresPermission())
-            {
-                nativeNeeded += DEFAULT_TRANSACTION_FEE;
-                reservesOut.valueMap.begin()->second = nativeNeeded;
-                tb.AddTransparentOutput(GetScriptForDestination(CIdentityID(parentID)), DEFAULT_TRANSACTION_FEE);
-            }
-
-            if (hasZSource)
-            {
-                saplingNotes = find_unspent_notes(zaddressSource);
-                CAmount totalFound = 0;
-                int i;
-                for (i = 0; i < saplingNotes.size(); i++)
-                {
-                    totalFound += saplingNotes[i].note.value();
-                    if (totalFound >= nativeNeeded)
-                    {
-                        break;
-                    }
-                }
-                // remove all but the notes we'll use
-                if (i < saplingNotes.size())
-                {
-                    saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
-                    success = true;
-                }
-            }
-            else
-            {
-                success = find_utxos(from_taddress, vCoins) &&
-                        pwalletMain->SelectCoinsMinConf(nativeNeeded, 0, 0, vCoins, setCoinsRet, nativeValueOut);
-            }
-        }
-        else if (hasZSource)
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot source non-native currencies from a private address");
-        }
-        else
-        {
-            CAmount nativeNeeded = reservesOut.valueMap.count(ASSETCHAINS_CHAINID) ? reservesOut.valueMap[ASSETCHAINS_CHAINID] : 0;
-            nativeNeeded += DEFAULT_TRANSACTION_FEE << 2;
-
-            reservesOut.valueMap.erase(ASSETCHAINS_CHAINID);
-
-            CTokenOutput to(reservesOut);
-            tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT,
-                                                                                 std::vector<CTxDestination>({inputOutDest}),
-                                                                                 1,
-                                                     &to)),
-                                    nativeNeeded);
-
-            // if ID requires permission, make an input to request permission with a minimal output value
-            if (issuingCurrency.IDRequiresPermission())
-            {
-                nativeNeeded += DEFAULT_TRANSACTION_FEE;
-                tb.AddTransparentOutput(GetScriptForDestination(CIdentityID(parentID)), DEFAULT_TRANSACTION_FEE);
-            }
-
-            success = find_utxos(from_taddress, vCoins);
-            success = success && pwalletMain->SelectReserveCoinsMinConf(reservesOut,
-                                                                        nativeNeeded,
-                                                                        0,
-                                                                        1,
-                                                                        vCoins,
-                                                                        setCoinsRet,
-                                                                        reserveValueOut,
-                                                                        nativeValueOut);
-        }
-        if (!success)
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Insufficient funds for identity registration");
-        }
-
-        // aggregate all inputs into one output with only the offer coins and offer indexes
-        if (saplingNotes.size())
-        {
-            std::vector<SaplingOutPoint> notes;
-            for (auto &oneNoteInfo : saplingNotes)
-            {
-                notes.push_back(oneNoteInfo.op);
-            }
-            // Fetch Sapling anchor and witnesses
-            uint256 anchor;
-            std::vector<boost::optional<SaplingWitness>> witnesses;
-            {
-                LOCK2(cs_main, pwalletMain->cs_wallet);
-                pwalletMain->GetSaplingNoteWitnesses(notes, witnesses, anchor);
-            }
-
-            // Add Sapling spends
-            for (size_t i = 0; i < saplingNotes.size(); i++)
-            {
-                tb.AddSaplingSpend(expsk, saplingNotes[i].note, anchor, witnesses[i].get());
-            }
-        }
-        else
-        {
-            for (auto &oneInput : setCoinsRet)
-            {
-                tb.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second),
-                                        oneInput.first->vout[oneInput.second].scriptPubKey,
-                                        oneInput.first->vout[oneInput.second].nValue);
-            }
-        }
+    if (reservesOut.valueMap.size() == 1 && reservesOut.valueMap.count(ASSETCHAINS_CHAINID))
+    {
+        CAmount nativeNeeded = reservesOut.valueMap.begin()->second;
 
         if (hasZSource)
         {
-            tb.SendChangeTo(*boost::get<libzcash::SaplingPaymentAddress>(&zaddressSource), sourceOvk);
-        }
-        else if (sourceDest.which() != COptCCParams::ADDRTYPE_INVALID && !GetDestinationID(sourceDest).IsNull())
-        {
-            tb.SendChangeTo(sourceDest);
-            coinControl.destChange = sourceDest;
-        }
-        else
-        {
-            tb.SendChangeTo(commitmentOutDest);
-        }
-
-        TransactionBuilderResult preResult = tb.Build();
-        CTransaction preTx = preResult.GetTxOrThrow();
-
-        // add to mem pool and relay
-        CValidationState state;
-        if (!myAddtomempool(preTx, &state))
-        {
-            throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx: " + state.GetRejectReason());
+            saplingNotes = find_unspent_notes(zaddressSource);
+            CAmount totalFound = 0;
+            int i;
+            for (i = 0; i < saplingNotes.size(); i++)
+            {
+                totalFound += saplingNotes[i].note.value();
+                if (totalFound >= nativeNeeded)
+                {
+                    break;
+                }
+            }
+            // remove all but the notes we'll use
+            if (i < saplingNotes.size())
+            {
+                saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
+                success = true;
+            }
         }
         else
         {
-            RelayTransaction(preTx);
-        }
-        coinControl.Select(COutPoint(preTx.GetHash(), 0));
-        // if we need permission, add the permission signature output
-        if (issuingCurrency.IDRequiresPermission())
-        {
-            coinControl.Select(COutPoint(preTx.GetHash(), 1));
+            success = find_utxos(from_taddress, vCoins) &&
+                    pwalletMain->SelectCoinsMinConf(nativeNeeded, 0, 0, vCoins, setCoinsRet, nativeValueOut);
         }
     }
-
-    CWalletTx wtx;
-
-    CReserveKey reserveKey(pwalletMain);
-    CAmount fee;
-    int nChangePos;
-    string failReason;
-
-    if (!coinControl.HasSelected())
+    else if (hasZSource)
     {
-        coinControl.fAllowOtherInputs = true;
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot source non-native currencies from a private address");
+    }
+    else
+    {
+        CAmount nativeNeeded = reservesOut.valueMap.count(ASSETCHAINS_CHAINID) ? reservesOut.valueMap[ASSETCHAINS_CHAINID] : 0;
+        reservesOut.valueMap.erase(ASSETCHAINS_CHAINID);
+
+        success = find_utxos(from_taddress, vCoins);
+        success = success && pwalletMain->SelectReserveCoinsMinConf(reservesOut,
+                                                                    nativeNeeded,
+                                                                    0,
+                                                                    1,
+                                                                    vCoins,
+                                                                    setCoinsRet,
+                                                                    reserveValueOut,
+                                                                    nativeValueOut);
+    }
+    if (!success)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Insufficient funds for identity registration");
     }
 
-    if (isPBaaS)
+    // aggregate all inputs into one output with only the offer coins and offer indexes
+    if (saplingNotes.size())
     {
-        int numChangeOutputs = 0;
-        if (!pwalletMain->CreateReserveTransaction(outputs, wtx, reserveKey, fee, nChangePos, numChangeOutputs, failReason, &coinControl))
+        std::vector<SaplingOutPoint> notes;
+        for (auto &oneNoteInfo : saplingNotes)
         {
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to create identity transaction: " + failReason);
+            notes.push_back(oneNoteInfo.op);
+        }
+        // Fetch Sapling anchor and witnesses
+        uint256 anchor;
+        std::vector<boost::optional<SaplingWitness>> witnesses;
+        {
+            LOCK2(cs_main, pwalletMain->cs_wallet);
+            pwalletMain->GetSaplingNoteWitnesses(notes, witnesses, anchor);
+        }
+
+        // Add Sapling spends
+        for (size_t i = 0; i < saplingNotes.size(); i++)
+        {
+            tb.AddSaplingSpend(expsk, saplingNotes[i].note, anchor, witnesses[i].get());
         }
     }
-    else if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, &coinControl, false))
+    else
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to create identity transaction: " + failReason);
-    }
-
-    // add commitment output
-    CMutableTransaction mtx(wtx);
-    mtx.vin.push_back(CTxIn(txid, commitmentOutput));
-
-    // remove the fee offer output
-    mtx.vout.pop_back();
-
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
-
-    // now sign
-    CCoinsViewCache view(pcoinsTip);
-    for (int i = 0; i < wtx.vin.size(); i++)
-    {
-        bool signSuccess;
-        SignatureData sigdata;
-
-        CCoins coins;
-        if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
+        for (auto &oneInput : setCoinsRet)
         {
-            break;
-        }
-
-        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
-
-        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
-
-        if (!signSuccess && !returnTx)
-        {
-            LogPrintf("%s: failure to sign identity registration tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign identity registration tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
-        } else if (sigdata.scriptSig.size()) {
-            UpdateTransaction(mtx, i, sigdata);
+            tb.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second),
+                                    oneInput.first->vout[oneInput.second].scriptPubKey,
+                                    oneInput.first->vout[oneInput.second].nValue);
         }
     }
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    if (hasZSource)
+    {
+        tb.SendChangeTo(*boost::get<libzcash::SaplingPaymentAddress>(&zaddressSource), sourceOvk);
+    }
+    else if (sourceDest.which() != COptCCParams::ADDRTYPE_INVALID && !GetDestinationID(sourceDest).IsNull())
+    {
+        tb.SendChangeTo(sourceDest);
+    }
+    else
+    {
+        tb.SendChangeTo(commitmentOutDest);
+    }
+
+    TransactionBuilderResult preResult = tb.Build();
+    CTransaction commitTx = preResult.GetTxOrThrow();
 
     if (returnTx)
     {
-        return EncodeHexTx(wtx);
+        return EncodeHexTx(commitTx);
     }
-    else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+    else
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+        // add to mem pool and relay
+        CValidationState state;
+        if (!myAddtomempool(commitTx, &state))
+        {
+            throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to commit identity registration transaction: " + state.GetRejectReason());
+        }
+        else
+        {
+            RelayTransaction(commitTx);
+        }
     }
 
     // including definitions and claims thread
-    return UniValue(wtx.GetHash().GetHex());
+    return UniValue(commitTx.GetHash().GetHex());
 }
 
 std::map<std::string, UniValue> UniObjectToMap(const UniValue &obj)
