@@ -787,6 +787,8 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
     while ((priorImport = priorImport.GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum)).IsValid() &&
            priorImport.GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
     {
+        reserveTransfers.clear();
+
         // if this is an import from another system, it doesn't matter unless we only care about this one
         if (fromSystem != ASSETCHAINS_CHAINID)
         {
@@ -831,7 +833,9 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
 
         // if the target currency is another system, we need to check the proof information as the height
         uint32_t checkHeight = importNot.notarizationHeight;
+        int checkedPrior = 0;
         if (checkHeight <= maxHeight &&
+            (checkHeight >= minHeight || !checkedPrior++) &&
             (importNot.currencyState.currencyID == converterCurrencyID ||
             importNot.currencyStates.count(converterCurrencyID)))
         {
@@ -849,13 +853,12 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
                     }
                 }
             }
-            break;
+            continue;
         }
-        else if (importNot.notarizationHeight < minHeight)
+        else if (checkHeight < minHeight)
         {
             break;
         }
-        reserveTransfers.clear();
     }
     return retVal;
 }

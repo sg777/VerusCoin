@@ -348,20 +348,16 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     {
                         // determine the minimum source height of the reserve transfer and add its
                         // pre-creation price to the conversion map
-                        maxHeight = ccx.sourceHeightStart > DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA ? 
-                                    ccx.sourceHeightStart - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA :
-                                    0;
-                        minHeight = ccx.sourceHeightStart > (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 50) ? 
-                                    ccx.sourceHeightStart - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 50) :
+                        maxHeight = ccx.sourceHeightEnd - 1;
+                        minHeight = ccx.sourceHeightStart > (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 1) ? 
+                                    ccx.sourceHeightStart - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 1) :
                                     0;
                     }
                     else
                     {
-                        maxHeight = ccx.sourceHeightStart > DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA ? 
-                                    ccx.sourceHeightStart - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA :
-                                    0;
-                        minHeight = ccx.sourceHeightStart > (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 1) ? 
-                                    ccx.sourceHeightStart - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 1) :
+                        maxHeight = ccx.sourceHeightEnd - 1;
+                        minHeight = ccx.sourceHeightStart > (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 20) ? 
+                                    ccx.sourceHeightStart - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 20) :
                                     0;
                     }
 
@@ -433,14 +429,18 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                     if (oneTransfer.IsIdentityExport())
                     {
-                        if ((cci.IsSameChain() ? nextLegFeeEquiv : feeEquivalent) < ConnectedChains.ThisChain().IDImportFee())
+                        if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
+                                nextLegFeeEquiv :
+                                feeEquivalent) < ConnectedChains.ThisChain().IDImportFee())
                         {
                             return state.Error("Insufficient fee for identity import: " + cci.ToUniValue().write(1,2));
                         }
                     }
                     else if (oneTransfer.IsCurrencyExport())
                     {
-                        if ((cci.IsSameChain() ? nextLegFeeEquiv : feeEquivalent) < ConnectedChains.ThisChain().GetCurrencyImportFee())
+                        if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
+                                nextLegFeeEquiv :
+                                feeEquivalent) < ConnectedChains.ThisChain().GetCurrencyImportFee())
                         {
                             return state.Error("Insufficient fee for currency import: " + cci.ToUniValue().write(1,2));
                         }

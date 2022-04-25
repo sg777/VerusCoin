@@ -6988,7 +6988,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency ( " + ConnectedChains.GetFriendlyCurrencyName(sourceCurrencyID) + ") already exported to destination system");
                         }
-                        if (!exportToCurrencyDef.IsMultiCurrency())
+                        if (destSystemID != ASSETCHAINS_CHAINID ? !destSystemDef.IsMultiCurrency() : !exportToCurrencyDef.IsMultiCurrency())
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot export currency to single currency system");
                         }
@@ -7042,6 +7042,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         throw JSONRPCError(RPC_INVALID_PARAMETER,
                             "Cannot send non-preconvert transfers to import system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") until after launch");
                     }
+
+                    // TODO: HARDENING - ensure this gets into enforcement/protocol - check the target currency, if not system, for prelaunch & launch confirmed
 
                     if (cnd.vtx[cnd.lastConfirmed].second.IsRefunding())
                     {
@@ -7136,33 +7138,45 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         // if we have pricing for converting fees, we add all convertible currencies to valid fee currencies
                         CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
                         CCurrencyValueMap feeConversionPrices;
-                        CCoinbaseCurrencyState feePriceState = lastConfirmedNotarization.currencyStates[convertToCurrencyID];
+                        CCoinbaseCurrencyState feePriceState;
 
                         bool sameChainConversion = convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID;
 
                         uint160 converterID = convertToCurrencyID;
                         CCurrencyDefinition converterDef = convertToCurrencyDef;
 
-                        if (lastConfirmedNotarization.currencyStates.count(convertToCurrencyID))
+                        if (!isVia && sourceCurrencyDef.IsFractional() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID))
+                        {
+                            flags |= CReserveTransfer::IMPORT_TO_SOURCE;
+                            converterID = sourceCurrencyID;
+                            converterDef = sourceCurrencyDef;
+                        }
+
+                        if (sameChainConversion)
+                        {
+                            // get the latest notarization for the converter on this chain
+                            CChainNotarizationData localCND;
+
+                            if (!GetNotarizationData(converterID, localCND) || !localCND.IsConfirmed())
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid converter or converter not ready " + EncodeDestination(CIdentityID(converterID)));
+                            }
+                            
+                            feePriceState = localCND.vtx[localCND.lastConfirmed].second.currencyState;
+                        }
+                        else if (lastConfirmedNotarization.currencyStates.count(converterID))
+                        {
+                            feePriceState = lastConfirmedNotarization.currencyStates[converterID];
+                            if (!feePriceState.IsValid())
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency state for currency " + EncodeDestination(CIdentityID(converterID)));
+                            }
+                        }
+
+                        if (feePriceState.IsValid())
                         {
                             if (sameChainConversion)
                             {
-                                // get the latest notarization for the converter on this chain
-                                CChainNotarizationData localCND;
-
-                                if (!isVia && sourceCurrencyDef.IsFractional() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID))
-                                {
-                                    flags |= CReserveTransfer::IMPORT_TO_SOURCE;
-                                    converterID = sourceCurrencyID;
-                                    converterDef = sourceCurrencyDef;
-                                }
-
-                                if (!GetNotarizationData(converterID, localCND))
-                                {
-                                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid converter " + EncodeDestination(CIdentityID(converterID)));
-                                }
-                                
-                                feePriceState = localCND.vtx[cnd.lastConfirmed].second.currencyState;
                                 feeConversionPrices = feePriceState.TargetConversionPricesReverse(offChainID, true);
 
                                 if (!feeConversionPrices.valueMap.count(offChainID))
@@ -7758,15 +7772,17 @@ UniValue getinitialcurrencystate(const UniValue& params, bool fHelp)
 
 UniValue getcurrencystate(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() > 1)
+    if (fHelp || params.size() < 1 || params.size() > 3)
     {
         throw runtime_error(
-            "getcurrencystate \"n\"\n"
-            "\nReturns the total amount of preconversions that have been confirmed on the blockchain for the specified chain.\n"
+            "getcurrencystate \"currencynameorid\" (\"n\") (\"connectedsystemid\")\n"
+            "\nReturns the currency state(s) on the blockchain for any specified currency, either with all changes on this chain or relative to another system.\n"
 
             "\nArguments\n"
+            "   \"currencynameorid\"                  (string)                  name or i-address of currency in question"
             "   \"n\" or \"m,n\" or \"m,n,o\"         (int or string, optional) height or inclusive range with optional step at which to get the currency state\n"
             "                                                                   If not specified, the latest currency state and height is returned\n"
+            "   (\"connectedchainid\")                (string)                  optional\n"
 
             "\nResult:\n"
             "   [\n"
@@ -7786,24 +7802,37 @@ UniValue getcurrencystate(const UniValue& params, bool fHelp)
             "   ]\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getcurrencystate", "name")
-            + HelpExampleRpc("getcurrencystate", "name")
+            + HelpExampleCli("getcurrencystate", "\"currencynameorid\" (\"n\") (\"connectedchainid\")")
+            + HelpExampleRpc("getcurrencystate", "\"currencynameorid\" (\"n\") (\"connectedchainid\")")
         );
     }
-    throw JSONRPCError(RPC_METHOD_NOT_FOUND, "This function not yet implemented, use getcurrency or listcurrency");
-
     CheckPBaaSAPIsValid();
+
+    CCurrencyDefinition currencyToCheck;
+
+    std::string currencyStr = uni_get_str(params[0]);
+    if (currencyStr.empty() || ValidateCurrencyName(currencyStr, true, &currencyToCheck).IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency specified");
+    }
+    uint160 currencyID = currencyToCheck.GetID();
+
+    LOCK(cs_main);
 
     uint64_t lStart;
     uint64_t startEnd[3] = {0};
 
     lStart = startEnd[1] = startEnd[0] = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 1;
 
-    if (params.size() == 1)
+    if (params.size() > 1)
     {
-        if (uni_get_int(params[0], -1) == -1 && params[0].isStr())
+        if (params[1].isStr())
         {
-            Split(params[0].get_str(), startEnd, startEnd[0], 3);
+            Split(params[1].get_str(), startEnd, startEnd[0], 3);
+        }
+        else if (uni_get_int(params[1], -1) != -1)
+        {
+            lStart = startEnd[1] = startEnd[0] = uni_get_int(params[0], lStart);
         }
     }
 
@@ -7839,7 +7868,7 @@ UniValue getcurrencystate(const UniValue& params, bool fHelp)
     for (int i = start; i <= end; i += step)
     {
         LOCK(cs_main);
-        CCoinbaseCurrencyState currencyState = ConnectedChains.GetCurrencyState(i);
+        CCoinbaseCurrencyState currencyState = ConnectedChains.GetCurrencyState(currencyID, i);
         UniValue entry(UniValue::VOBJ);
         entry.push_back(Pair("height", i));
         entry.push_back(Pair("blocktime", (uint64_t)chainActive.LastTip()->nTime));
