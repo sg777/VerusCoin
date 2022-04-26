@@ -1243,6 +1243,8 @@ UniValue CAdvancedNameReservation::ToUniValue() const
     ret.push_back(Pair("parent", EncodeDestination(CIdentityID(parent))));
     ret.push_back(Pair("salt", salt.GetHex()));
     ret.push_back(Pair("referral", referral.IsNull() ? "" : EncodeDestination(referral)));
+    uint160 ParentID = parent;
+    ret.push_back(Pair("nameid", EncodeDestination(CIdentity::GetID(name, ParentID))));
     return ret;
 }
 
