@@ -3328,12 +3328,9 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
             convertToCurrencyID.SetNull();
             convertToCurrencyDef = CCurrencyDefinition();
         }
-        else
+        else if (convertToCurrencyID.IsNull())
         {
-            if (convertToCurrencyID.IsNull())
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid \"convertto\" currency " + convertToStr + " specified");
-            }
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid \"convertto\" currency " + convertToStr + " specified");
         }
     }
 
@@ -7080,7 +7077,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + sourceCurrencyDef.name + " (" + EncodeDestination(CIdentityID(sourceCurrencyID)) + ") cannot be sent to specified system");
                     }
 
-                    if (!convertToCurrencyID.IsNull() && !validCurrencies.count(convertToCurrencyID))
+                    if (!convertToCurrencyID.IsNull() && !validCurrencies.count(convertToCurrencyID) && convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID)
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + sourceCurrencyDef.name + " (" + EncodeDestination(CIdentityID(sourceCurrencyID)) + ") cannot be currency destination on specified system");
                     }
