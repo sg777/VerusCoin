@@ -315,7 +315,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
     if (!gatewayID.IsNull())
     {
-        obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
+        obj.push_back(Pair("gateway", EncodeDestination(CIdentityID(gatewayID))));
     }
 
     if (contributions.size())
