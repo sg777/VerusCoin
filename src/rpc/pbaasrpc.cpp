@@ -10181,7 +10181,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         tb.SendChangeTo(commitmentOutDest);
     }
 
-    TransactionBuilderResult preResult = tb.Build();
+    TransactionBuilderResult preResult = tb.Build(true);
     CTransaction commitTx = preResult.GetTxOrThrow();
 
     if (returnTx)
