@@ -378,7 +378,13 @@ public:
         DEFAULT_ID_REFERRAL_LEVELS = 3,
         MAX_NAME_LEN = 64,
         MAX_STARTUP_NODES = 5,
-        DEFAULT_START_TARGET = 0x1e01e1e1
+        DEFAULT_START_TARGET = 0x1e01e1e1,
+        MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 20,
+        MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 20,
+        MAX_TRANSFER_EXPORTS_PER_BLOCK = 200,
+        MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 1,
+        MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 0,
+        MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50
     };
 
     enum ECurrencyOptions
@@ -711,6 +717,21 @@ public:
         {
             return currencies[idImportFees];
         }
+    }
+
+    int32_t MaxTransferExportCount() const
+    {
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK : MAX_TRANSFER_EXPORTS_PER_BLOCK;
+    }
+
+    int32_t MaxCurrencyDefinitionExportCount() const
+    {
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK : MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
+    }
+
+    int32_t MaxIdentityDefinitionExportCount() const
+    {
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK : MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK;
     }
 
     static bool IsValidDefinitionImport(const CCurrencyDefinition &sourceSystem, const CCurrencyDefinition &destSystem, const uint160 &nameParent);

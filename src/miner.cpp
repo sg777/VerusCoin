@@ -2137,6 +2137,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
         std::vector<int> reservePositions;
 
+
+        // store export counts to ensure we don't exceed any limits
+        std::set<uint160> newIDRegistrations;
+        std::map<uint160, int32_t> exportTransferCount;
+        std::map<uint160, int32_t> currencyExportTransferCount;
+        std::map<uint160, int32_t> identityExportTransferCount;
+
         // now loop and fill the block, leaving space for reserve exchange limit transactions
         while (!vecPriority.empty())
         {
@@ -2183,12 +2190,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 comparer = TxPriorityCompare(fSortedByFee);
                 std::make_heap(vecPriority.begin(), vecPriority.end(), comparer);
             }
-            
+
             if (!view.HaveInputs(tx))
             {
                 //fprintf(stderr,"dont have inputs\n");
                 continue;
             }
+
             CAmount nTxFees;
             CReserveTransactionDescriptor txDesc;
             bool isReserve = mempool.IsKnownReserveTransaction(hash, txDesc);
@@ -2211,6 +2219,90 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             {
                 //fprintf(stderr,"context failure\n");
                 continue;
+            }
+
+            // go through all outputs and record all currency and identity definitions, either import-based definitions or
+            // identity reservations to check for collision
+            for (auto &oneOut : tx.vout)
+            {
+                COptCCParams p;
+                uint160 oneIdID;
+                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid())
+                {
+                    if (p.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION)
+                    {
+                        CAdvancedNameReservation advNameRes;
+                        if (p.version >= p.VERSION_V3 &&
+                            p.vData.size() &&
+                            (advNameRes = CAdvancedNameReservation(p.vData[0])).IsValid() &&
+                            (oneIdID = advNameRes.parent, advNameRes.name == CleanName(advNameRes.name, oneIdID, true)) &&
+                            !(oneIdID = CIdentity::GetID(advNameRes.name, oneIdID)).IsNull() &&
+                            !newIDRegistrations.count(oneIdID))
+                        {
+                            newIDRegistrations.insert(oneIdID);
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+                    else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
+                    {
+                        CNameReservation nameRes;
+                        if (p.version >= p.VERSION_V3 &&
+                            p.vData.size() &&
+                            (nameRes = CNameReservation(p.vData[0])).IsValid() &&
+                            nameRes.name == CleanName(nameRes.name, oneIdID) &&
+                            !(oneIdID = CIdentity::GetID(nameRes.name, oneIdID)).IsNull() &&
+                            !newIDRegistrations.count(oneIdID))
+                        {
+                            newIDRegistrations.insert(oneIdID);
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+                    else if (p.evalCode == EVAL_RESERVE_TRANSFER)
+                    {
+                        CReserveTransfer rt;
+                        if (p.version >= p.VERSION_V3 &&
+                            p.vData.size() &&
+                            (rt = CReserveTransfer(p.vData[0])).IsValid())
+                        {
+                            uint160 destCurrencyID = rt.GetImportCurrency();
+                            CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(destCurrencyID);
+                            // ETH protocol has limits on number of valid reserve transfers of each type in a block
+
+                            if (exportTransferCount[destCurrencyID] >= destCurrency.MaxTransferExportCount())
+                            {
+                                continue;
+                            }
+                            exportTransferCount[destCurrencyID]++;
+                            if (rt.IsCurrencyExport())
+                            {
+                                if (currencyExportTransferCount[destCurrencyID] >= destCurrency.MaxCurrencyDefinitionExportCount())
+                                {
+                                    continue;
+                                }
+                                currencyExportTransferCount[destCurrencyID]++;
+                            }
+                            if (rt.IsIdentityExport())
+                            {
+                                if (identityExportTransferCount[destCurrencyID] >= destCurrency.MaxIdentityDefinitionExportCount())
+                                {
+                                    continue;
+                                }
+                                identityExportTransferCount[destCurrencyID]++;
+                            }
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+                }
             }
 
             UpdateCoins(tx, view, nHeight);
