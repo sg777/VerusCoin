@@ -5311,7 +5311,7 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
                 uint160 thirdCurSystemID = currencySystemID;
 
                 // get the system ID of the PBaaS chain with the gateway or parent PBaaS chain of the PBaaS chain
-                currencySystemID = thirdCurSystem.IsGateway() ? oneCurDef.systemID : oneCurDef.parent;
+                currencySystemID = thirdCurSystem.IsGateway() ? thirdCurSystem.systemID : thirdCurSystem.parent;
 
                 if (currencySystemID == sourceSystemID)
                 {
