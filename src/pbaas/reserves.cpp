@@ -3610,8 +3610,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                         if (!CCurrencyDefinition::IsValidDefinitionImport(systemSource, systemDest, curToExport.parent, height))
                         {
-                            printf("%s: invalid currency export from gateway: %s\n", __func__, systemSource.name.c_str());
-                            LogPrintf("%s: invalid currency export from gateway: %s\n", __func__, systemSource.name.c_str());
+                            printf("%s: invalid currency export from system: %s\n", __func__, systemSource.name.c_str());
+                            LogPrintf("%s: invalid currency export from system: %s\n", __func__, systemSource.name.c_str());
                             return false;
                         }
                     }
