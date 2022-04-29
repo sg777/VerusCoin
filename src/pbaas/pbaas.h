@@ -1450,11 +1450,13 @@ public:
 
     static bool IsValidCurrencyDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
                                                 const CCurrencyDefinition &destSystemDef,
-                                                const CCurrencyDefinition &importingCurrency);
+                                                const CCurrencyDefinition &importingCurrency,
+                                                uint32_t height);
 
     static bool IsValidIdentityDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
                                                 const CCurrencyDefinition &destSystemDef,
-                                                const CIdentity &importingIdentity);
+                                                const CIdentity &importingIdentity,
+                                                uint32_t height);
 
     static bool CurrencyExportStatus(const CCurrencyValueMap &totalExports,
                                      const uint160 &sourceSystemID,

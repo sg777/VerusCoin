@@ -2301,7 +2301,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
 
             // ensure that it makes sense for us to export this currency from this system to the other
-            if (!CConnectedChains::IsValidCurrencyDefinitionImport(ConnectedChains.ThisChain(), exportDestination, curToExport))
+            if (!CConnectedChains::IsValidCurrencyDefinitionImport(ConnectedChains.ThisChain(), exportDestination, curToExport, height))
             {
                 return state.Error("Invalid to export specified currency to destination system " + rt.ToUniValue().write(1,2));
             }
@@ -5113,7 +5113,7 @@ bool CConnectedChains::GetPendingSystemExports(const uint160 systemID,
     }
 }
 
-bool CCurrencyDefinition::IsValidDefinitionImport(const CCurrencyDefinition &sourceSystem, const CCurrencyDefinition &destSystem, const uint160 &nameParent)
+bool CCurrencyDefinition::IsValidDefinitionImport(const CCurrencyDefinition &sourceSystem, const CCurrencyDefinition &destSystem, const uint160 &nameParent, uint32_t height)
 {
     // the system from which the currency comes is not source or destination
     uint160 sourceSystemID = sourceSystem.GetID();
@@ -5121,13 +5121,24 @@ bool CCurrencyDefinition::IsValidDefinitionImport(const CCurrencyDefinition &sou
 
     uint160 currencyParentID = nameParent;
     CCurrencyDefinition curSystem = ConnectedChains.GetCachedCurrency(currencyParentID);
+    if (sourceSystemID == ASSETCHAINS_CHAINID)
+    {
+        // if we are sending from this chain, we must know that the parent has already been exported, or
+        // we would create an invalid import
+        if (!IsValidExportCurrency(destSystem, currencyParentID, height))
+        {
+            printf("%s: Currency parent %s is not exported to the destination system, which is required for export.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            LogPrintf("%s: Currency parent %s is not exported to the destination system, which is required for export.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            return false;
+        }
+    }
 
     do
     {
         if (!curSystem.IsValid())
         {
-            printf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, currencyParentID.GetHex().c_str());
-            LogPrintf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, currencyParentID.GetHex().c_str());
+            printf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            LogPrintf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
             return false;
         }
 
@@ -5207,28 +5218,30 @@ bool CCurrencyDefinition::IsValidDefinitionImport(const CCurrencyDefinition &sou
 //    on import and burned on export.
 bool CConnectedChains::IsValidCurrencyDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
                                                        const CCurrencyDefinition &destSystemDef,
-                                                       const CCurrencyDefinition &importingCurrency)
+                                                       const CCurrencyDefinition &importingCurrency,
+                                                       uint32_t height)
 {
     assert(sourceSystemDef.IsValid() && destSystemDef.IsValid());
     if (importingCurrency.parent.IsNull())
     {
         return destSystemDef.launchSystemID == sourceSystemDef.GetID() && importingCurrency.GetID() != destSystemDef.launchSystemID;
     }
-    return CCurrencyDefinition::IsValidDefinitionImport(sourceSystemDef, destSystemDef, importingCurrency.parent);
+    return CCurrencyDefinition::IsValidDefinitionImport(sourceSystemDef, destSystemDef, importingCurrency.parent, height);
 }
 
 // Checks to see if an identity can be imported from a particular system to the indicated system
 // The current system must be source or destination.
 bool CConnectedChains::IsValidIdentityDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
                                                        const CCurrencyDefinition &destSystemDef,
-                                                       const CIdentity &importingIdentity)
+                                                       const CIdentity &importingIdentity,
+                                                       uint32_t height)
 {
     assert(sourceSystemDef.IsValid() && destSystemDef.IsValid());
     if (importingIdentity.parent.IsNull())
     {
         return destSystemDef.launchSystemID == sourceSystemDef.GetID() && importingIdentity.GetID() != destSystemDef.launchSystemID;
     }
-    return CCurrencyDefinition::IsValidDefinitionImport(sourceSystemDef, destSystemDef, importingIdentity.parent);
+    return CCurrencyDefinition::IsValidDefinitionImport(sourceSystemDef, destSystemDef, importingIdentity.parent, height);
 }
 
 // Determines if the currency, when exported to the destination system from the current system should:

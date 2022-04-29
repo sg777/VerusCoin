@@ -3608,7 +3608,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         allCurrenciesAndIDs.valueMap[curToExport.parent.IsNull() ? curToExportID : curToExport.parent] += 0;
                         mustBeAsDeposit.insert(curToExport.parent.IsNull() ? curToExportID : curToExport.parent);
 
-                        if (!CCurrencyDefinition::IsValidDefinitionImport(systemSource, systemDest, curToExport.parent))
+                        if (!CCurrencyDefinition::IsValidDefinitionImport(systemSource, systemDest, curToExport.parent, height))
                         {
                             printf("%s: invalid currency export from gateway: %s\n", __func__, systemSource.name.c_str());
                             LogPrintf("%s: invalid currency export from gateway: %s\n", __func__, systemSource.name.c_str());
@@ -3633,7 +3633,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             return false;
                         }
 
-                        if (!CCurrencyDefinition::IsValidDefinitionImport(systemSource, systemDest, identityToExport.parent))
+                        if (!CCurrencyDefinition::IsValidDefinitionImport(systemSource, systemDest, identityToExport.parent, height))
                         {
                             printf("%s: invalid identity export from gateway: %s\n", __func__, systemSource.name.c_str());
                             LogPrintf("%s: invalid identity export from gateway: %s\n", __func__, systemSource.name.c_str());

@@ -734,7 +734,7 @@ public:
         return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK : MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK;
     }
 
-    static bool IsValidDefinitionImport(const CCurrencyDefinition &sourceSystem, const CCurrencyDefinition &destSystem, const uint160 &nameParent);
+    static bool IsValidDefinitionImport(const CCurrencyDefinition &sourceSystem, const CCurrencyDefinition &destSystem, const uint160 &nameParent, uint32_t height);
 
     bool IsValidTransferDestinationType(int destinationType) const
     {
