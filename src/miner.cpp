@@ -2273,16 +2273,28 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                         {
                             uint160 destCurrencyID = rt.GetImportCurrency();
                             CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(destCurrencyID);
-                            // ETH protocol has limits on number of valid reserve transfers of each type in a block
 
-                            if (exportTransferCount[destCurrencyID] >= destCurrency.MaxTransferExportCount())
+                            if (!destCurrency.IsValid())
+                            {
+                                continue;
+                            }
+
+                            CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
+
+                            if (!destSystem.IsValid())
+                            {
+                                continue;
+                            }
+
+                            // ETH protocol has limits on number of valid reserve transfers of each type in a block
+                            if (exportTransferCount[destCurrencyID] >= destSystem.MaxTransferExportCount())
                             {
                                 continue;
                             }
                             exportTransferCount[destCurrencyID]++;
                             if (rt.IsCurrencyExport())
                             {
-                                if (currencyExportTransferCount[destCurrencyID] >= destCurrency.MaxCurrencyDefinitionExportCount())
+                                if (currencyExportTransferCount[destCurrencyID] >= destSystem.MaxCurrencyDefinitionExportCount())
                                 {
                                     continue;
                                 }
@@ -2290,7 +2302,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                             }
                             if (rt.IsIdentityExport())
                             {
-                                if (identityExportTransferCount[destCurrencyID] >= destCurrency.MaxIdentityDefinitionExportCount())
+                                if (identityExportTransferCount[destCurrencyID] >= destSystem.MaxIdentityDefinitionExportCount())
                                 {
                                     continue;
                                 }

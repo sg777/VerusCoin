@@ -726,12 +726,12 @@ public:
 
     int32_t MaxCurrencyDefinitionExportCount() const
     {
-        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK : MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK : MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
     }
 
     int32_t MaxIdentityDefinitionExportCount() const
     {
-        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK : MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK;
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK : MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK;
     }
 
     static bool IsValidDefinitionImport(const CCurrencyDefinition &sourceSystem, const CCurrencyDefinition &destSystem, const uint160 &nameParent);

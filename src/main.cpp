@@ -6088,18 +6088,23 @@ bool ContextualCheckBlock(
                         uint160 destCurrencyID = rt.GetImportCurrency();
                         CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(destCurrencyID);
                         // ETH protocol has limits on number of valid reserve transfers of each type in a block
+                        CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
 
-                        if (++exportTransferCount[destCurrencyID] > destCurrency.MaxTransferExportCount())
+                        if (!destSystem.IsValid())
                         {
-                            return state.DoS(10, error("%s: attempt to submit block with too many transfers in export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
+                            return state.DoS(10, error("%s: unable to retrieve system destination for export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-invalid-system");
                         }
-                        if (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destCurrency.MaxCurrencyDefinitionExportCount())
+                        if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount())
                         {
-                            return state.DoS(10, error("%s: attempt to submit block with too many currency definition transfers in export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-currency-transfers");
+                            return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
                         }
-                        if (rt.IsIdentityExport() && ++identityExportTransferCount[destCurrencyID] > destCurrency.MaxIdentityDefinitionExportCount())
+                        if (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destSystem.MaxCurrencyDefinitionExportCount())
                         {
-                            return state.DoS(10, error("%s: attempt to submit block with too many identity definition transfers in export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-identity-transfers");
+                            return state.DoS(10, error("%s: attempt to submit block with too many currency definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-currency-transfers");
+                        }
+                        if (rt.IsIdentityExport() && ++identityExportTransferCount[destCurrencyID] > destSystem.MaxIdentityDefinitionExportCount())
+                        {
+                            return state.DoS(10, error("%s: attempt to submit block with too many identity definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-identity-transfers");
                         }
                     }
                     else
