@@ -1033,7 +1033,20 @@ SignatureData CombineSignatures(const CScript& scriptPubKey, const BaseSignature
         if (ffVec2.size())
         {
             smartSigs2 = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec2.begin(), ffVec2.end()));
+            if (!ffVec1.size())
+            {
+                smartSigs1.sigHashType = smartSigs2.sigHashType;
+            }
         }
+        else if (!ffVec1.size())
+        {
+            return SignatureData();
+        }
+        else
+        {
+            smartSigs2.sigHashType = smartSigs1.sigHashType;
+        }
+
         if (ffVec2.size())
         {
             if (smartSigs1.sigHashType == smartSigs2.sigHashType && smartSigs1.version == smartSigs2.version)
