@@ -470,7 +470,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             }
         }
 
-        if (IsPBaaSChain() || IsGateway() || IsPBaaSConverter())
+        if (IsPBaaSChain() || IsGateway() || IsGatewayConverter())
         {
             gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
         }
@@ -1065,7 +1065,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
 
     if (!gatewayID.IsNull())
     {
-        obj.push_back(Pair("gatewayid", gatewayID.GetHex()));
+        obj.push_back(Pair("gateway", EncodeDestination(CIdentityID(gatewayID))));
     }
 
     if (contributions.size())
@@ -1078,7 +1078,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         obj.push_back(Pair("initialcontributions", initialContributionArr));
     }
 
-    if (IsGateway() || IsPBaaSConverter() || IsPBaaSChain())
+    if (IsGateway() || IsGatewayConverter() || IsPBaaSChain())
     {
         obj.push_back(Pair("gatewayconverterissuance", ValueFromAmount(gatewayConverterIssuance)));
     }
