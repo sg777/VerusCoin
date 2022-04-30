@@ -348,20 +348,16 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     {
                         // determine the minimum source height of the reserve transfer and add its
                         // pre-creation price to the conversion map
-                        maxHeight = ccx.sourceHeightStart > DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA ? 
-                                    ccx.sourceHeightStart - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA :
-                                    0;
-                        minHeight = ccx.sourceHeightStart > (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 50) ? 
-                                    ccx.sourceHeightStart - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 50) :
+                        maxHeight = ccx.sourceHeightEnd - 1;
+                        minHeight = ccx.sourceHeightStart > (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 1) ? 
+                                    ccx.sourceHeightStart - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 1) :
                                     0;
                     }
                     else
                     {
-                        maxHeight = ccx.sourceHeightStart > DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA ? 
-                                    ccx.sourceHeightStart - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA :
-                                    0;
-                        minHeight = ccx.sourceHeightStart > (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 1) ? 
-                                    ccx.sourceHeightStart - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 1) :
+                        maxHeight = ccx.sourceHeightEnd - 1;
+                        minHeight = ccx.sourceHeightStart > (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 20) ? 
+                                    ccx.sourceHeightStart - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 20) :
                                     0;
                     }
 
@@ -375,6 +371,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                 for (auto &oneTransfer : reserveTransfers)
                 {
+                    if (!oneTransfer.IsValid())
+                    {
+                        return state.Error("Invalid reserve transfer: " + oneTransfer.ToUniValue().write(1,2));
+                    }
                     if (!conversionMap.valueMap.count(oneTransfer.feeCurrencyID))
                     {
                         // invalid fee currency from system
@@ -410,11 +410,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         {
                             return state.Error("Invalid source currency for preconversion: " + oneTransfer.ToUniValue().write(1,2));
                         }
-                        // TODO: HARDENING - should move valid combination checks to IsValid()
-                        if (oneTransfer.IsBurn() || oneTransfer.IsMint() || oneTransfer.IsReserveToReserve() || oneTransfer.IsFeeOutput())
-                        {
-                            return state.Error("Invalid reserve transfer flags: " + oneTransfer.ToUniValue().write(1,2));
-                        }
                     }
 
                     if (oneTransfer.IsConversion())
@@ -434,14 +429,18 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                     if (oneTransfer.IsIdentityExport())
                     {
-                        if ((cci.IsSameChain() ? nextLegFeeEquiv : feeEquivalent) < ConnectedChains.ThisChain().IDImportFee())
+                        if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
+                                nextLegFeeEquiv :
+                                feeEquivalent) < ConnectedChains.ThisChain().IDImportFee())
                         {
                             return state.Error("Insufficient fee for identity import: " + cci.ToUniValue().write(1,2));
                         }
                     }
                     else if (oneTransfer.IsCurrencyExport())
                     {
-                        if ((cci.IsSameChain() ? nextLegFeeEquiv : feeEquivalent) < ConnectedChains.ThisChain().GetCurrencyImportFee())
+                        if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
+                                nextLegFeeEquiv :
+                                feeEquivalent) < ConnectedChains.ThisChain().GetCurrencyImportFee())
                         {
                             return state.Error("Insufficient fee for currency import: " + cci.ToUniValue().write(1,2));
                         }
@@ -1222,16 +1221,10 @@ bool IsCurrencyStateInput(const CScript &scriptSig)
     return true;
 }
 
-// used to convert a fractional reserve currency into its reserve and back 
-bool ValidateReserveExchange(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
+bool IsAdvancedNameReservationInput(const CScript &scriptSig)
 {
     return true;
 }
-bool IsReserveExchangeInput(const CScript &scriptSig)
-{
-    return true;
-}
-
 
 /*
  * Verifies that the input objects match the hashes and returns the transaction.
@@ -1578,6 +1571,10 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             return false;
         }
     }
+    else if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_PBAAS)
+    {
+        return false;
+    }
 
     // TODO: HARDENING - handle all gateway and PBaaS converter and reserve definition verifications
 
@@ -1638,6 +1635,9 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             {
                 if (cci.sourceSystemID != ASSETCHAINS_CHAINID &&
                     cci.GetImportInfo(spendingTx, height, i, ccx, sysCCI, sysCCIOut, pbn, notarizationOut, eOutStart, eOutEnd, transfers) &&
+                    pbn.IsValid() &&
+                    pbn.IsLaunchConfirmed() &&
+                    pbn.IsLaunchComplete() &&
                     outNum > eOutEnd && 
                     outNum <= (eOutEnd + cci.numOutputs))
                 {
@@ -1665,30 +1665,75 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                         p.IsValid() &&
                         p.evalCode == EVAL_IDENTITY_PRIMARY &&
                         p.vData.size() > 1 &&
-                        (oldIdentity = CIdentity(p.vData[0])).IsValid())
+                        (oldIdentity = CIdentity(p.vData[0])).IsValid() &&
+                        (oldIdentity.GetID() == newCurrency.GetID() || oldIdentity.GetID() == newCurrency.parent))
                     {
                         break;
+                    }
+                    oldIdentity.nVersion = oldIdentity.VERSION_INVALID;
+                }
+            }
+            if (!oldIdentity.IsValid())
+            {
+                return state.Error("No valid identity found for currency definition");
+            }
+            if (oldIdentity.HasActiveCurrency())
+            {
+                return state.Error("Identity already has used its one-time ability to define a currency");
+            }
+            CIdentity newIdentity;
+            for (auto &oneOut : spendingTx.vout)
+            {
+                COptCCParams p;
+                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                    p.vData.size() > 1 &&
+                    (newIdentity = CIdentity(p.vData[0])).IsValid() &&
+                    (newIdentity.GetID() == newCurrency.GetID() || newIdentity.GetID() == newCurrency.parent))
+                {
+                    break;
+                }
+                newIdentity.nVersion = oldIdentity.VERSION_INVALID;
+            }
+            if (!newIdentity.IsValid())
+            {
+                return state.Error("Invalid identity found for currency definition");
+            }
+            if (!newIdentity.HasActiveCurrency())
+            {
+                return state.Error("Identity has not been set to defined currency status");
+            }
+            if (!(newIdentity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive()))
+            {
+                CCurrencyDefinition parentCurrency = ConnectedChains.GetCachedCurrency(newIdentity.parent);
+                if (!parentCurrency.IsValid())
+                {
+                    return state.Error("Parent currency invalid to issue identities on this chain");
+                }
+                if (newIdentity.parent != ASSETCHAINS_CHAINID &&
+                    !(parentCurrency.IsGateway() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID && !parentCurrency.IsNameController()))
+                {
+                    return state.Error("Only gateway and PBaaS identities may create currencies");
+                }
+                if (newIdentity.parent != ASSETCHAINS_CHAINID)
+                {
+                    if (!(parentCurrency.proofProtocol == parentCurrency.PROOF_ETHNOTARIZATION &&
+                        newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
+                        !newCurrency.IsFractional() &&
+                        !newCurrency.IsPBaaSChain() &&
+                        !newCurrency.IsGateway() &&
+                        newCurrency.IsToken() &&
+                        newCurrency.systemID == newIdentity.parent &&
+                        newCurrency.maxPreconvert.size() == 1 &&
+                        newCurrency.maxPreconvert[0] == 0))
+                    {
+                        return state.Error("Gateway currencies must me mapped currencies via the gateway");
                     }
                 }
             }
         }
     }
-
-    COptCCParams p;
-
-    if (!(isBlockOneDefinition || isImportDefinition))
-    {
-        if (!oldIdentity.IsValid())
-        {
-            return state.Error("No valid identity found for currency definition");
-        }
-        
-        if (oldIdentity.HasActiveCurrency())
-        {
-            return state.Error("Identity already has used its one-time ability to define a currency");
-        }
-    }
-
     return true;
 }
 
@@ -1985,7 +2030,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         CPBaaSNotarization oneNotarization;
                         CCurrencyDefinition tempCurDef;
                         importCurrencyDef = oneCur;
-                        systemDestID = importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID;
+                        systemDestID = importCurrencyDef.SystemOrGatewayID();
 
                         // we need to get the first notarization and possibly systemDest currency here as well
                         for (auto &oneOut : tx.vout)
@@ -2186,7 +2231,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (rt.IsCurrencyExport())
         {
-            CCurrencyDefinition curToExport;
+            CCurrencyDefinition curToExport, exportDestination;
             if (rt.reserveValues > CCurrencyValueMap())
             {
                 return state.Error("Currency exports should not include explicit funds beyond required fees " + rt.ToUniValue().write(1,2));
@@ -2200,12 +2245,16 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 rt.HasNextLeg() &&
                 rt.destination.gatewayID != ASSETCHAINS_CHAINID)
             {
-                CCurrencyDefinition nextLegCur = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
-                if (!nextLegCur.IsValid() ||
-                    !nextLegCur.IsMultiCurrency() ||
-                    nextLegCur.SystemOrGatewayID() != rt.destination.gatewayID ||
-                    nextLegCur.SystemOrGatewayID() == ASSETCHAINS_CHAINID ||
-                    IsValidExportCurrency(nextLegCur, rt.FirstCurrency(), height))
+                exportDestination = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
+                if (!(curToExport = ConnectedChains.GetCachedCurrency(rt.FirstCurrency())).IsValid())
+                {
+                    return state.Error("Invalid currency export in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
+                if (!exportDestination.IsValid() ||
+                    !exportDestination.IsMultiCurrency() ||
+                    exportDestination.SystemOrGatewayID() != rt.destination.gatewayID ||
+                    exportDestination.SystemOrGatewayID() == ASSETCHAINS_CHAINID ||
+                    IsValidExportCurrency(exportDestination, rt.FirstCurrency(), height))
                 {
                     return state.Error("Invalid currency export for next leg in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
@@ -2241,12 +2290,20 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     // if destination system is not multicurrency or currency is already a valid export currency, invalid
                     return state.Error("Unnecessary currency definition export in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
+                curToExport = registeredCurrency;
+                exportDestination = systemDest;
             }
 
             // ensure that we have enough fees for the currency definition import
             if (feeEquivalentInNative < systemDest.GetCurrencyImportFee())
             {
                 return state.Error("Not enough fee for currency import in reserve transfer " + rt.ToUniValue().write(1,2));
+            }
+
+            // ensure that it makes sense for us to export this currency from this system to the other
+            if (!CConnectedChains::IsValidCurrencyDefinitionImport(ConnectedChains.ThisChain(), exportDestination, curToExport, height))
+            {
+                return state.Error("Invalid to export specified currency to destination system " + rt.ToUniValue().write(1,2));
             }
         }
         else
@@ -2266,6 +2323,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             if (rt.IsIdentityExport())
             {
                 CIdentity idToExport;
+                CCurrencyDefinition exportDestination;
 
                 if (!((rt.IsCrossSystem() &&
                        rt.destination.TypeNoFlags() == rt.destination.DEST_FULLID &&
@@ -2293,7 +2351,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         registeredIdentity.parent != idToExport.parent ||
                         boost::to_lower_copy(registeredIdentity.name) != boost::to_lower_copy(idToExport.name))
                     {
-                        return state.Error("Mismatched identity export in reserve transfer " + rt.ToUniValue().write(1,2));
+                        return state.Error("Identity being exported in reserve transfer does not match blockchain identity control " + rt.ToUniValue().write(1,2));
+                    }
+
+                    if (!(exportDestination = ConnectedChains.GetCachedCurrency(rt.SystemDestination())).IsValid())
+                    {
+                        return state.Error("Invalid export destination in reserve transfer with identity export " + rt.ToUniValue().write(1,2));
                     }
                 }
                 else
@@ -2310,6 +2373,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 if (feeEquivalentInNative < systemDest.IDImportFee())
                 {
                     return state.Error("Not enough fee for identity import in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
+
+                if (!CConnectedChains::IsValidIdentityDefinitionImport(ConnectedChains.ThisChain(), systemDest, registeredIdentity, height))
+                {
+                    return state.Error("Invalid to export specified identity to destination system " + rt.ToUniValue().write(1,2));
                 }
             }
             else
@@ -2368,22 +2436,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
                 // spent by currency ID
                 bool authorizedController = false;
-
-                // TODO: HARDENING - remove this on next testnet reset
-                /* uint32_t blkTimeStamp;
-                if (chainActive.Height() < height)
-                {
-                    blkTimeStamp = chainActive.LastTip()->nTime;
-                }
-                else
-                {
-                    blkTimeStamp = chainActive[height]->nTime;
-                }
-                if (blkTimeStamp < 1647095696)
-                {
-                    authorizedController = true;
-                }
-                // */
 
                 CIdentity signingID = CIdentity::LookupIdentity(importCurrencyID, height);
                 std::set<uint160> signingKeys;
@@ -3112,7 +3164,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
             currencyState.supply = curDef.initialFractionalSupply;
             currencyState.reserves = std::vector<int64_t>(currencyState.reserves.size(), 0);
             currencyState.reserveIn = currencyState.reserves;
-            if (curDef.IsPBaaSConverter() && curDef.gatewayConverterIssuance)
+            if (curDef.IsGatewayConverter() && curDef.gatewayConverterIssuance)
             {
                 currencyState.reserves[curDef.GetCurrenciesMap()[curDef.systemID]] = curDef.gatewayConverterIssuance;
             }
@@ -5061,6 +5113,137 @@ bool CConnectedChains::GetPendingSystemExports(const uint160 systemID,
     }
 }
 
+bool CCurrencyDefinition::IsValidDefinitionImport(const CCurrencyDefinition &sourceSystem, const CCurrencyDefinition &destSystem, const uint160 &nameParent, uint32_t height)
+{
+    // the system from which the currency comes is not source or destination
+    uint160 sourceSystemID = sourceSystem.GetID();
+    uint160 destSystemID = destSystem.GetID();
+
+    uint160 currencyParentID = nameParent;
+    CCurrencyDefinition curSystem = ConnectedChains.GetCachedCurrency(currencyParentID);
+    if (sourceSystemID == ASSETCHAINS_CHAINID)
+    {
+        // if we are sending from this chain, we must know that the parent has already been exported, or
+        // we would create an invalid import
+        if (!IsValidExportCurrency(destSystem, currencyParentID, height))
+        {
+            printf("%s: Currency parent %s is not exported to the destination system, which is required for export.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            LogPrintf("%s: Currency parent %s is not exported to the destination system, which is required for export.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            return false;
+        }
+    }
+
+    do
+    {
+        if (!curSystem.IsValid())
+        {
+            printf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            LogPrintf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            return false;
+        }
+
+        // fractional currencies can support ID issuance and unless the currency is a gateway converter,
+        // cannot support importing a definition from another chain
+        if (curSystem.IsFractional())
+        {
+            // a gateway currency converter of a non-name controller
+            // gateway cannot issue IDs directly, as they must be imported
+            if (curSystem.IsGatewayConverter())
+            {
+                // if a gateway converter is the parent,
+                // the system to travel up for import name control is always the
+                // gateway, whether PBaaS or non-name controller. non-name controller
+                // converter currencies cannot issue names themselves on the launch chain.
+                curSystem = ConnectedChains.GetCachedCurrency(curSystem.gatewayID);
+                if (!curSystem.IsValid())
+                {
+                    printf("%s: Invalid gateway currency for converter. Index may be corrupt.\n", __func__);
+                    LogPrintf("%s: Invalid gateway currency for converter. Index may be corrupt.\n", __func__);
+                    return false;
+                }
+            }
+            else
+            {
+                curSystem = ConnectedChains.GetCachedCurrency(curSystem.systemID);
+            }
+        }
+        // if we encounter a gateway, our action depends on whether it is a name controller or not
+        else if (curSystem.IsGateway() || curSystem.IsPBaaSChain())
+        {
+            // a non-name controller cannot be the root system of a direct descendent
+            // instead, the launching chain provides name services to the non-name controller gateway
+            if (!curSystem.IsNameController() && curSystem.GetID() == nameParent)
+            {
+                // root system is the launch system
+                curSystem = ConnectedChains.GetCachedCurrency(curSystem.launchSystemID);
+            }
+        }
+
+        uint160 curSystemID = curSystem.GetID();
+
+        if (!curSystemID.IsNull() && (curSystemID == sourceSystemID || curSystemID == destSystemID))
+        {
+            return curSystemID == sourceSystemID;
+        }
+
+        currencyParentID = curSystem.parent;
+        if (!currencyParentID.IsNull())
+        {
+            curSystem = ConnectedChains.GetCachedCurrency(currencyParentID);
+        }
+    } while (!currencyParentID.IsNull());
+
+    // if we got to a null root without finding the source, the only way an import from source to destination is valid
+    // is if the source system is the launch chain of the destination system
+    return destSystem.launchSystemID == sourceSystemID;
+}
+
+// Checks to see if a currency can be imported from a particular system to the indicated system
+// The current system must be source or destination. Gateways that do not implement name or ID
+// technology can use the bridged PBaaS or Verus chain to provide identity and currency definition
+// services and attribute fees to the gateway currency converter. In order to do this, the
+// gateway must have the option set which indicates it is not a name controller. This means that
+// it cannot control or import names at the first level from the root name. All of these must be
+// defined on the Verus network. Currencies defined this way must be "mapped currencies", meaning
+// that they represent a currency on the other side of the gateway, and can only be acquired by having
+// been exported to the gateway and then had either that currency or subcurrency definitions returned (NFTs).
+// Protocol rules for a PBaaS chain or Gateway that is a name controller:
+//  - All names that have parentage from the root currency of the PBaaS chain derive from it
+// Protocol rules for a Gateway that is not a name controller:
+//  - First level names must all be allocated on the Gateway's host blockchain (for example Verus or a PBaaS chain)
+//  - "mapped currencies" and only mapped currencies may be defined from IDs, which are purchased from the bridge and
+//    carry the name of the gateway as a suffix.
+//  - When a mapped currency is exported to the Gateway, the gateway may return sub-currency definitions as well as
+//    currency. All currencies defined on the PBaaS chain or Verus are controlled by the gateway, and will be minted
+//    on import and burned on export.
+bool CConnectedChains::IsValidCurrencyDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
+                                                       const CCurrencyDefinition &destSystemDef,
+                                                       const CCurrencyDefinition &importingCurrency,
+                                                       uint32_t height)
+{
+    assert(sourceSystemDef.IsValid() && destSystemDef.IsValid());
+    if (importingCurrency.parent.IsNull())
+    {
+        return destSystemDef.launchSystemID == sourceSystemDef.GetID() && importingCurrency.GetID() != destSystemDef.launchSystemID;
+    }
+    return CCurrencyDefinition::IsValidDefinitionImport(sourceSystemDef, destSystemDef, importingCurrency.parent, height);
+}
+
+// Checks to see if an identity can be imported from a particular system to the indicated system
+// The current system must be source or destination.
+bool CConnectedChains::IsValidIdentityDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
+                                                       const CCurrencyDefinition &destSystemDef,
+                                                       const CIdentity &importingIdentity,
+                                                       uint32_t height)
+{
+    assert(sourceSystemDef.IsValid() && destSystemDef.IsValid());
+    if (importingIdentity.parent.IsNull())
+    {
+        return destSystemDef.launchSystemID == sourceSystemDef.GetID() && importingIdentity.GetID() != destSystemDef.launchSystemID;
+    }
+    return CCurrencyDefinition::IsValidDefinitionImport(sourceSystemDef, destSystemDef, importingIdentity.parent, height);
+}
+
 // Determines if the currency, when exported to the destination system from the current system should:
 // 1) have its accounting stored locally as reserve deposits controlled by the destination
 //    system, meaning the destination system considers this system the source and controller of
@@ -5141,7 +5324,7 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
                 uint160 thirdCurSystemID = currencySystemID;
 
                 // get the system ID of the PBaaS chain with the gateway or parent PBaaS chain of the PBaaS chain
-                currencySystemID = thirdCurSystem.IsGateway() ? oneCurDef.systemID : oneCurDef.parent;
+                currencySystemID = thirdCurSystem.IsGateway() ? thirdCurSystem.systemID : thirdCurSystem.parent;
 
                 if (currencySystemID == sourceSystemID)
                 {
@@ -5409,7 +5592,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         CCurrencyDefinition coLaunchCurrency;
         CCoinbaseCurrencyState coLaunchState;
         bool coLaunching = false;
-        if (_curDef.IsPBaaSConverter())
+        if (_curDef.IsGatewayConverter())
         {
             // PBaaS or gateway converters have a parent which is the PBaaS chain or gateway
             coLaunching = true;

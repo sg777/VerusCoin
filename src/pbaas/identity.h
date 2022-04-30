@@ -190,13 +190,13 @@ public:
     CIdentityID referral;
     uint256 salt;
 
-    CAdvancedNameReservation() : version(VERSION_CURRENT) {}
+    CAdvancedNameReservation(uint32_t Version=VERSION_CURRENT) : version(Version) {}
     CAdvancedNameReservation(const std::string &Name, const uint160 &Parent, const CIdentityID &Referral, const uint256 &Salt, uint32_t Version=VERSION_CURRENT) :
         version(Version), name(Name.size() > MAX_NAME_SIZE ? std::string(Name.begin(), Name.begin() + MAX_NAME_SIZE) : Name), parent(Parent), referral(Referral), salt(Salt) {}
 
     CAdvancedNameReservation(const UniValue &uni, const uint160 &Parent=ASSETCHAINS_CHAINID)
     {
-        uint160 dummy;
+        version = uni_get_int(find_value(uni, "version"), VERSION_CURRENT);
         parent = DecodeCurrencyName(uni_get_str(find_value(uni, "parent"), EncodeDestination(CIdentityID(Parent))));
         name = CleanName(uni_get_str(find_value(uni, "name")), parent);
         salt = uint256S(uni_get_str(find_value(uni, "salt")));
@@ -884,8 +884,8 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
 bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool ValidateIdentityReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
+bool ValidateAdvancedNameReservation(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled);
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
-bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, int referralLevels, int64_t referralAmount);
 bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool IsIdentityInput(const CScript &scriptSig);
 bool ValidateQuantumKeyOut(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled);

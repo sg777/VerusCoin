@@ -683,7 +683,7 @@ bool CScript::IsSpendableOutputType(const COptCCParams &p) const
     {
         case EVAL_CURRENCYSTATE:
         case EVAL_RESERVE_TRANSFER:
-        case EVAL_RESERVE_EXCHANGE:
+        case EVAL_IDENTITY_ADVANCEDRESERVATION:
         case EVAL_RESERVE_DEPOSIT:
         case EVAL_CROSSCHAIN_IMPORT:
         case EVAL_IDENTITY_COMMITMENT:
@@ -1206,9 +1206,15 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             break;
         }
 
-        case EVAL_RESERVE_EXCHANGE:
+        case EVAL_IDENTITY_ADVANCEDRESERVATION:
         {
-            assert(false);
+            CAdvancedNameReservation nameRes;
+            if (vData.size() && (nameRes = CAdvancedNameReservation(vData[0])).IsValid())
+            {
+                uint160 parent = nameRes.parent;
+                uint160 ourID = CIdentity::GetID(nameRes.name, parent);
+                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ourID, evalCode)));
+            }
             break;
         }
 

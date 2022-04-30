@@ -288,6 +288,12 @@ public:
 
     bool IsValid() const
     {
+        if ((IsPreConversion() && (IsBurn() || IsMint() || IsReserveToReserve() || IsFeeOutput() || IsIdentityExport() || IsCurrencyExport())) ||
+            (IsConversion() && (IsBurn() || IsMint() || IsFeeOutput() || IsCurrencyExport())))
+        {
+            return false;
+        }
+
         bool isCrossSystemIDNull = destSystemID.IsNull();
         return CTokenOutput::IsValid() &&
                 reserveValues.valueMap.size() == 1 && 

@@ -656,7 +656,15 @@ CPrincipal::CPrincipal(const UniValue &uni)
 CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 {
     UniValue parentUni = find_value(uni, "parent");
-    parent = uint160(GetDestinationID(DecodeDestination(uni_get_str(parentUni))));
+    std::string parentStr = uni_get_str(parentUni);
+    if (!parentStr.empty())
+    {
+        parent = GetDestinationID(DecodeDestination(parentStr));
+        if (parent.IsNull() && parentStr.back() != '@')
+        {
+            parent = GetDestinationID(DecodeDestination(parentStr + "@"));
+        }
+    }
     name = CleanName(uni_get_str(find_value(uni, "name")), parent);
 
     if (parent.IsNull())

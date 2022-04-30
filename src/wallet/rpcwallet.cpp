@@ -5379,6 +5379,21 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
     }
 
     int nextBlockHeight = chainActive.Height() + 1;
+
+    if (taddr.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(taddr).IsNull())
+    {
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+        if (!pwalletMain->GetIdentity(GetDestinationID(taddr), keyAndIdentity) ||
+            !keyAndIdentity.second.IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity or identity not in wallet");
+        }
+        if (keyAndIdentity.second.IsLocked(nextBlockHeight))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send currency from a locked identity");
+        }
+    }
+
     CMutableTransaction mtx;
     mtx.fOverwintered = true;
     mtx.nVersionGroupId = SAPLING_VERSION_GROUP_ID;

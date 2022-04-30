@@ -1516,7 +1516,7 @@ public:
     uint8_t sigHashType;
     std::map<uint160, CSmartTransactionSignature> signatures;
 
-    CSmartTransactionSignatures() : version(VERSION) {}
+    CSmartTransactionSignatures() : version(VERSION), sigHashType(1) {}
     CSmartTransactionSignatures(uint8_t hashType, const std::map<uint160, CSmartTransactionSignature> &signatureMap, uint8_t ver=VERSION) : version(ver), sigHashType(hashType), signatures(signatureMap) {}
     CSmartTransactionSignatures(const std::vector<unsigned char> &asVector)
     {

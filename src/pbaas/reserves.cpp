@@ -787,6 +787,8 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
     while ((priorImport = priorImport.GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum)).IsValid() &&
            priorImport.GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
     {
+        reserveTransfers.clear();
+
         // if this is an import from another system, it doesn't matter unless we only care about this one
         if (fromSystem != ASSETCHAINS_CHAINID)
         {
@@ -831,7 +833,9 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
 
         // if the target currency is another system, we need to check the proof information as the height
         uint32_t checkHeight = importNot.notarizationHeight;
+        int checkedPrior = 0;
         if (checkHeight <= maxHeight &&
+            (checkHeight >= minHeight || !checkedPrior++) &&
             (importNot.currencyState.currencyID == converterCurrencyID ||
             importNot.currencyStates.count(converterCurrencyID)))
         {
@@ -849,13 +853,12 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
                     }
                 }
             }
-            break;
+            continue;
         }
-        else if (importNot.notarizationHeight < minHeight)
+        else if (checkHeight < minHeight)
         {
             break;
         }
-        reserveTransfers.clear();
     }
     return retVal;
 }
@@ -2094,7 +2097,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
     bool isPBaaSActivation = CConstVerusSolutionVector::activationHeight.IsActivationHeight(CActivationHeight::ACTIVATE_PBAAS, nHeight);
     bool loadedCurrencies = false;
 
-    CNameReservation nameReservation;
+    bool reservationValid = false;
+    bool advancedReservationValid = false;
+    CNameReservation nr;
+    CAdvancedNameReservation anr;
     CIdentity identity;
 
     std::vector<CPBaaSNotarization> notarizations;
@@ -2111,9 +2117,12 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
             switch (p.evalCode)
             {
                 case EVAL_IDENTITY_RESERVATION:
+                case EVAL_IDENTITY_ADVANCEDRESERVATION:
                 {
                     // one name reservation per transaction
-                    if (p.version < p.VERSION_V3 || !p.vData.size() || nameReservation.IsValid() || !(nameReservation = CNameReservation(p.vData[0])).IsValid())
+                    if (p.version < p.VERSION_V3 || !p.vData.size() || reservationValid || 
+                        !((p.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION && (anr = CAdvancedNameReservation(p.vData[0])).IsValid()) || 
+                          (p.evalCode == EVAL_IDENTITY_RESERVATION && (nr = CNameReservation(p.vData[0])).IsValid())))
                     {
                         flags &= ~IS_VALID;
                         flags |= IS_REJECT;
@@ -2121,9 +2130,16 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     }
                     if (identity.IsValid())
                     {
-                        if (identity.name == nameReservation.name)
+                        if (p.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION && identity.name == anr.name && identity.parent == anr.parent)
+                        {
+                            // TDOD: HARDENING potentially finish validating the fees according to the currency
+                            flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
+                            reservationValid = advancedReservationValid = true;
+                        }
+                        else if (p.evalCode == EVAL_IDENTITY_RESERVATION && identity.name == nr.name)
                         {
                             flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
+                            reservationValid = true;
                         }
                         else
                         {
@@ -2149,9 +2165,13 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         return;
                     }
                     flags |= IS_IDENTITY;
-                    if (nameReservation.IsValid())
+                    if (reservationValid)
                     {
-                        if (identity.name == nameReservation.name)
+                        if (advancedReservationValid && identity.name == anr.name)
+                        {
+                            flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
+                        }
+                        else if (identity.name == nr.name)
                         {
                             flags |= IS_IDENTITY_DEFINITION + IS_HIGH_FEE;
                         }
@@ -2214,14 +2234,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                     }
                     flags |= IS_RESERVETRANSFER;
                     AddReserveTransfer(rt);
-                }
-                break;
-
-                case EVAL_RESERVE_EXCHANGE:
-                {
-                    flags &= ~IS_VALID;
-                    flags |= IS_REJECT;
-                    return;
                 }
                 break;
 
@@ -3596,9 +3608,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         allCurrenciesAndIDs.valueMap[curToExport.parent.IsNull() ? curToExportID : curToExport.parent] += 0;
                         mustBeAsDeposit.insert(curToExport.parent.IsNull() ? curToExportID : curToExport.parent);
 
-                        if (ASSETCHAINS_CHAINID == systemDestID)
+                        if (!CCurrencyDefinition::IsValidDefinitionImport(systemSource, systemDest, curToExport.parent, height))
                         {
-                            // TODO: HARDENING - ensure that currency has not already been imported to current chain
+                            printf("%s: invalid currency export from system: %s\n", __func__, systemSource.name.c_str());
+                            LogPrintf("%s: invalid currency export from system: %s\n", __func__, systemSource.name.c_str());
+                            return false;
                         }
                     }
                     else if (curTransfer.destination.TypeNoFlags() == curTransfer.destination.DEST_REGISTERCURRENCY || curTransfer.IsCurrencyExport())
@@ -3618,6 +3632,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             LogPrintf("%s: invalid identity export from system: %s\n", __func__, systemSource.name.c_str());
                             return false;
                         }
+
+                        if (!CCurrencyDefinition::IsValidDefinitionImport(systemSource, systemDest, identityToExport.parent, height))
+                        {
+                            printf("%s: invalid identity export from gateway: %s\n", __func__, systemSource.name.c_str());
+                            LogPrintf("%s: invalid identity export from gateway: %s\n", __func__, systemSource.name.c_str());
+                            return false;
+                        }
+
                         allCurrenciesAndIDs.valueMap[identityToExport.parent.IsNull() ? identityToExportID : identityToExport.parent] += 0;
                         mustBeAsDeposit.insert(identityToExport.parent.IsNull() ? identityToExportID : identityToExport.parent);
                     }
@@ -4114,8 +4136,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // as an operation by the currency controller
                 if (curTransfer.IsBurn())
                 {
-                    // if the source is fractional currency, it is burned
-                    if (curTransfer.FirstCurrency() != importCurrencyID || !(isFractional || importCurrencyDef.IsToken()))
+                    // if the source is fractional currency or one of its reserves and not burn change weight, it is burned or added to reserves
+                    if ((curTransfer.FirstCurrency() != importCurrencyID &&
+                         (!isFractional || curTransfer.IsBurnChangeWeight() || !importCurrencyDef.GetCurrenciesMap().count(curTransfer.FirstCurrency()))) ||
+                         !(isFractional || importCurrencyDef.IsToken()))
                     {
                         CCurrencyDefinition sourceCurrency = ConnectedChains.GetCachedCurrency(curTransfer.FirstCurrency());
                         printf("%s: Attempting to burn %s, which is either not a token or fractional currency or not the import currency %s\n", __func__, sourceCurrency.name.c_str(), importCurrencyDef.name.c_str());
@@ -4128,9 +4152,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         LogPrintf("%s: burning %s to change weight is not supported\n", __func__, importCurrencyDef.name.c_str());
                         return false;
                     }
-                    // burn the input fractional currency
-                    AddNativeOutConverted(curTransfer.FirstCurrency(), -curTransfer.FirstValue());
-                    burnedChangePrice += curTransfer.FirstValue();
+                    // if this is burning the import currency, reduce supply, otherwise, the currency has been entered, and we
+                    // simply leave it in the reserves
+                    if (curTransfer.FirstCurrency() == importCurrencyID)
+                    {
+                        AddNativeOutConverted(curTransfer.FirstCurrency(), -curTransfer.FirstValue());
+                        burnedChangePrice += curTransfer.FirstValue();
+                    }
                 }
                 else if (!curTransfer.IsMint() && systemDestID == curTransfer.FirstCurrency())
                 {

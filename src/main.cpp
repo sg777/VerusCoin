@@ -4147,7 +4147,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                             if (cbCurDef.gatewayConverterIssuance)
                             {
-                                if (cbCurDef.IsPBaaSConverter())
+                                if (cbCurDef.IsGatewayConverter())
                                 {
                                     // this should be set to the correct value already
                                     if (cbCurDef.gatewayConverterIssuance != converterIssuance)
@@ -6027,9 +6027,93 @@ bool ContextualCheckBlock(
 
     // Check that all transactions are finalized, reject stake transactions, and
     // ensure no reservation ID duplicates
+    std::set<uint160> newIDRegistrations;
+    std::map<uint160, int32_t> exportTransferCount;
+    std::map<uint160, int32_t> currencyExportTransferCount;
+    std::map<uint160, int32_t> identityExportTransferCount;
     std::set<std::string> newIDs;
     for (uint32_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = block.vtx[i];
+
+        // go through all outputs and record all currency and identity definitions, either import-based definitions or
+        // identity reservations to check for collision
+        for (auto &oneOut : tx.vout)
+        {
+            COptCCParams p;
+            uint160 oneIdID;
+            if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid())
+            {
+                if (p.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION)
+                {
+                    CAdvancedNameReservation advNameRes;
+                    if (p.version >= p.VERSION_V3 &&
+                        p.vData.size() &&
+                        (advNameRes = CAdvancedNameReservation(p.vData[0])).IsValid() &&
+                        (oneIdID = advNameRes.parent, advNameRes.name == CleanName(advNameRes.name, oneIdID, true)) &&
+                        !(oneIdID = CIdentity::GetID(advNameRes.name, oneIdID)).IsNull() &&
+                        !newIDRegistrations.count(oneIdID))
+                    {
+                        newIDRegistrations.insert(oneIdID);
+                    }
+                    else
+                    {
+                        return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate advanced identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                    }
+                }
+                else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
+                {
+                    CNameReservation nameRes;
+                    if (p.version >= p.VERSION_V3 &&
+                        p.vData.size() &&
+                        (nameRes = CNameReservation(p.vData[0])).IsValid() &&
+                        nameRes.name == CleanName(nameRes.name, oneIdID) &&
+                        !(oneIdID = CIdentity::GetID(nameRes.name, oneIdID)).IsNull() &&
+                        !newIDRegistrations.count(oneIdID))
+                    {
+                        newIDRegistrations.insert(oneIdID);
+                    }
+                    else
+                    {
+                        return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                    }
+                }
+                else if (p.evalCode == EVAL_RESERVE_TRANSFER)
+                {
+                    CReserveTransfer rt;
+                    if (p.version >= p.VERSION_V3 &&
+                        p.vData.size() &&
+                        (rt = CReserveTransfer(p.vData[0])).IsValid())
+                    {
+                        uint160 destCurrencyID = rt.GetImportCurrency();
+                        CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(destCurrencyID);
+                        // ETH protocol has limits on number of valid reserve transfers of each type in a block
+                        CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
+
+                        if (!destSystem.IsValid())
+                        {
+                            return state.DoS(10, error("%s: unable to retrieve system destination for export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-invalid-system");
+                        }
+                        if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount())
+                        {
+                            return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
+                        }
+                        if (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destSystem.MaxCurrencyDefinitionExportCount())
+                        {
+                            return state.DoS(10, error("%s: attempt to submit block with too many currency definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-currency-transfers");
+                        }
+                        if (rt.IsIdentityExport() && ++identityExportTransferCount[destCurrencyID] > destSystem.MaxIdentityDefinitionExportCount())
+                        {
+                            return state.DoS(10, error("%s: attempt to submit block with too many identity definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-identity-transfers");
+                        }
+                    }
+                    else
+                    {
+                        return state.DoS(10, error("%s: invalid reserve transfer", __func__), REJECT_INVALID, "bad-txns-reserve-transfer");
+                    }
+                }
+            }
+        }
 
         // this is the only place where a duplicate name definition of the same name is checked in a block
         // all other cases are covered via mempool and pre-registered check, doing this would require a malicious
