@@ -6119,7 +6119,7 @@ bool ContextualCheckBlock(
         // all other cases are covered via mempool and pre-registered check, doing this would require a malicious
         // client, so immediate ban score
         //
-        // TODO: HARDENING for PBaaS - add id/currency import/export verification
+        // TODO: HARDENING for PBaaS - we should be able to remove this section, as it should be properly handled just above
         CNameReservation nameRes(tx);
         if (nameRes.IsValid())
         {
