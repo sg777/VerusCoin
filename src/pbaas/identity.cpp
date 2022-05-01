@@ -910,7 +910,13 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     // CHECK #3d - check referrer validity, if there is one
     CIdentityID referralID = advNewName.IsValid() ? advNewName.referral : newName.referral;
 
-    if (!referralID.IsNull() && issuingCurrency.IDReferralLevels() && !(CIdentity::LookupIdentity(referralID, commitmentHeight).IsValid()))
+    uint32_t heightOut = 0;
+    CTransaction referralTx;
+
+    CIdentity firstReferralIdentity;
+
+    if (!referralID.IsNull() && issuingCurrency.IDReferralLevels() &&
+        !((firstReferralIdentity = CIdentity::LookupFirstIdentity(referralID, &heightOut, &idTxIn, &referralTx)).IsValid() && heightOut < commitmentHeight))
     {
         // invalid referral identity
         return state.Error("Invalid referral identity specified");
@@ -945,19 +951,12 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             return true;
         }
 
-        // CHECK #5 - ensure that the first referring output goes to the referring identity followed by up 
-        //            to two identities that come from the original definition transaction of the referring identity. account for all outputs between
-        //            identity out and reservation out and ensure that they are correct and pay 20% of the price of an identity
-        uint32_t heightOut = 0;
-        CTransaction referralTx;
-
-        CIdentity firstReferralIdentity = CIdentity::LookupFirstIdentity(referralID, &heightOut, &idTxIn, &referralTx);
-
+        // CHECK #5 - ensure that the first referring output goes to the referring identity followed by additional referrers
         // referrer must be mined in when this transaction is put into the mem pool
-        if (heightOut >= height || !firstReferralIdentity.IsValid() || firstReferralIdentity.parent != parentID)
+        if (firstReferralIdentity.parent != parentID && firstReferralIdentity.GetID() != parentID)
         {
             //printf("%s: cannot find first instance of: %s\n", __func__, EncodeDestination(CIdentityID(newName.referral)).c_str());
-            return state.Error("Invalid identity registration referral");
+            return state.Error("Invalid identity registration referral - different parent");
         }
 
         bool isReferral = false;
