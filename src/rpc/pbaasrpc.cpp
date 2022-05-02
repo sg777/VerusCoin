@@ -8794,7 +8794,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                 CPubKey pk(ParseHex(CC.CChexstr));
 
-                dests = std::vector<CTxDestination>({pk});
+                dests = std::vector<CTxDestination>({pk.GetID()});
 
                 tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), 
                                                      newChain.currencies[i] == thisChainID ? contribution + fee : fee);
@@ -8947,7 +8947,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                         cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                         CPubKey pk(ParseHex(CC.CChexstr));
 
-                        dests = std::vector<CTxDestination>({pk});
+                        dests = std::vector<CTxDestination>({pk.GetID()});
 
                         tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), 
                                                             newGatewayConverter.currencies[i] == thisChainID ? contribution + fee : fee);
@@ -9908,7 +9908,15 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                             issuerID,
                             DestinationToTransferDestination(CIdentityID(issuerID)));
         registrationPaymentOut = outputs.size();
-        outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, std::vector<CTxDestination>({CIdentityID(issuerID)}), 1, &rt)), ConnectedChains.ThisChain().IDImportFee(), false});
+
+        CCcontract_info CC;
+        CCcontract_info *cp;
+        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+        CPubKey pk(ParseHex(CC.CChexstr));
+
+        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
+
+        outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), ConnectedChains.ThisChain().IDImportFee(), false});
     }
 
     // add referrals, Verus supports referrals
@@ -9999,11 +10007,19 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             CReserveTransfer rt(CReserveTransfer::VALID + CReserveTransfer::BURN_CHANGE_PRICE,
                                 CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({feeOffer})),
                                 ASSETCHAINS_CHAINID,
-                                ConnectedChains.ThisChain().IDImportFee(),
+                                ConnectedChains.ThisChain().GetTransactionTransferFee(),
                                 issuerID,
                                 DestinationToTransferDestination(CIdentityID(issuerID)));
+
+            CCcontract_info CC;
+            CCcontract_info *cp;
+            cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+            CPubKey pk(ParseHex(CC.CChexstr));
+
+            std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
+
             outputs[registrationPaymentOut].scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER,
-                                                                            std::vector<CTxDestination>({CIdentityID(issuerID)}),
+                                                                            dests,
                                                                             1,
                                                                             &rt));
         }
