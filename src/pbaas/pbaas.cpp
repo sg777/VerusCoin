@@ -1907,7 +1907,9 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
         // now look for exported currency definitions
         std::vector<CAddressIndexDbEntry> addresses;
         // this will always validate correctly, even if the index for this block is present, as we only look up to height - 1
-        if (GetAddressIndex(CTransferDestination::GetBoundCurrencyExportKey(sysID, exportCurrencyID), CScript::P2IDX, addresses, 0, height - 1) &&
+        if (GetAddressIndex(CTransferDestination::GetBoundCurrencyExportKey(sysID, exportCurrencyID),
+                            CScript::P2IDX,
+                            addresses, 0, height - 1) &&
             addresses.size())
         {
             for (auto &oneIdx : addresses)
