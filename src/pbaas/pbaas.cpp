@@ -1981,6 +1981,35 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
         rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue)
     {
+        // reserve transfers must be spendable by the export public / private key
+        CCcontract_info CC;
+        CCcontract_info *cp;
+
+        // make a currency definition
+        cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+
+        bool haveRTKey = false;
+        
+        CTxDestination RTKey = DecodeDestination(cp->unspendableCCaddr);
+        for (auto oneKey : p.vKeys)
+        {
+            if (oneKey == RTKey)
+            {
+                haveRTKey = true;
+                break;
+            }
+        }
+        COptCCParams master;
+        if (!haveRTKey ||
+            p.version < p.VERSION_V3 ||
+            p.m != 1 ||
+            p.vData.size() < 2 ||
+            !(master = COptCCParams(p.vData.back())).IsValid() ||
+            master.m > 1)
+        {
+            return state.Error("Reserve transfer must be spendable solely by private key of reserve transfer smart transaction " + rt.ToUniValue().write(1,2));
+        }
+
         uint160 systemDestID, importCurrencyID;
         CCurrencyDefinition systemDest, importCurrencyDef;
 
