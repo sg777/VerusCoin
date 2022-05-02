@@ -1201,7 +1201,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 rt.destination.TypeNoFlags() == rt.destination.DEST_REGISTERCURRENCY)
             {
                 destinations.insert(rt.destination.CurrencyExportKeyToSystem(rt.destSystemID));
-                destinations.insert(rt.destination.CurrencyExportKeyToSystem(rt.destination.GetBoundCurrencyExportKey(rt.destSystemID)));
+                destinations.insert(rt.destination.GetBoundCurrencyExportKey(rt.destSystemID));
             }
             break;
         }
