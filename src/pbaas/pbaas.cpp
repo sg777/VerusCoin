@@ -1995,7 +1995,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         CTxDestination RTKey = DecodeDestination(cp->unspendableCCaddr);
         for (auto oneKey : p.vKeys)
         {
-            if (oneKey == RTKey)
+            if ((oneKey.which() == COptCCParams::ADDRTYPE_PK &&
+                 RTKey.which() == COptCCParams::ADDRTYPE_PKH &&
+                 GetDestinationID(oneKey) == GetDestinationID(RTKey)) ||
+                oneKey == RTKey)
             {
                 haveRTKey = true;
                 break;
