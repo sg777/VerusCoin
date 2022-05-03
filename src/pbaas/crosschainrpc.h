@@ -376,6 +376,7 @@ public:
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
         DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
         DEFAULT_ID_REFERRAL_LEVELS = 3,
+        MAX_ID_REFERRAL_LEVELS = 5,
         MAX_NAME_LEN = 64,
         MAX_STARTUP_NODES = 5,
         DEFAULT_START_TARGET = 0x1e01e1e1,
@@ -897,7 +898,8 @@ public:
 
     bool IsValid() const
     {
-        return (nVersion != PBAAS_VERSION_INVALID) && 
+        return (nVersion != PBAAS_VERSION_INVALID) &&
+                idReferralLevels <= MAX_ID_REFERRAL_LEVELS &&
                 name.size() > 0 && 
                 name.size() <= (KOMODO_ASSETCHAIN_MAXLEN - 1) &&
                 std::max({rewards.size(), rewardsDecay.size(), halving.size(), eraEnd.size()}) <= ASSETCHAINS_MAX_ERAS;
