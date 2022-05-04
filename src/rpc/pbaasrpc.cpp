@@ -9902,9 +9902,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     {
         // make a burn output of this currency for the amount
         CReserveTransfer rt(CReserveTransfer::VALID + CReserveTransfer::BURN_CHANGE_PRICE,
-                            CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({expectedFee})),
+                            CCurrencyValueMap(std::vector<uint160>({issuerID}),
+                            std::vector<int64_t>({expectedFee})),
                             ASSETCHAINS_CHAINID,
-                            ConnectedChains.ThisChain().IDImportFee(),
+                            ConnectedChains.ThisChain().GetTransactionTransferFee(),
                             issuerID,
                             DestinationToTransferDestination(CIdentityID(issuerID)));
         registrationPaymentOut = outputs.size();
@@ -9916,7 +9917,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
-        outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), ConnectedChains.ThisChain().IDImportFee(), false});
+        outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), ConnectedChains.ThisChain().GetTransactionTransferFee(), false});
     }
 
     // add referrals, Verus supports referrals
