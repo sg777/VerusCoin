@@ -3828,6 +3828,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     std::map<uint160, int32_t> exportTransferCount;
     std::map<uint160, int32_t> currencyExportTransferCount;
     std::map<uint160, int32_t> identityExportTransferCount;
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
 
     std::vector<PrecomputedTransactionData> txdata;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
@@ -3846,43 +3847,46 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             return false; // Failure reason has been set in validation state object
         }
 
-        for (auto &oneOut : tx.vout)
+        if (isPBaaS)
         {
-            COptCCParams p;
-            CReserveTransfer rt;
-            if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_RESERVE_TRANSFER)
+            for (auto &oneOut : tx.vout)
             {
-                if (p.version >= p.VERSION_V3 &&
-                    p.vData.size() &&
-                    (rt = CReserveTransfer(p.vData[0])).IsValid())
+                COptCCParams p;
+                CReserveTransfer rt;
+                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_RESERVE_TRANSFER)
                 {
-                    uint160 destCurrencyID = rt.GetImportCurrency();
-                    CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(destCurrencyID);
-                    // ETH protocol has limits on number of valid reserve transfers of each type in a block
-                    CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
+                    if (p.version >= p.VERSION_V3 &&
+                        p.vData.size() &&
+                        (rt = CReserveTransfer(p.vData[0])).IsValid())
+                    {
+                        uint160 destCurrencyID = rt.GetImportCurrency();
+                        CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(destCurrencyID);
+                        // ETH protocol has limits on number of valid reserve transfers of each type in a block
+                        CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
 
-                    if (!destSystem.IsValid())
-                    {
-                        return state.DoS(10, error("%s: unable to retrieve system destination for export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-invalid-system");
+                        if (!destSystem.IsValid())
+                        {
+                            return state.DoS(10, error("%s: unable to retrieve system destination for export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-invalid-system");
+                        }
+                        if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount())
+                        {
+                            return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
+                        }
+                        if (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destSystem.MaxCurrencyDefinitionExportCount())
+                        {
+                            return state.DoS(10, error("%s: attempt to submit block with too many currency definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-currency-transfers");
+                        }
+                        if (rt.IsIdentityExport() && ++identityExportTransferCount[destCurrencyID] > destSystem.MaxIdentityDefinitionExportCount())
+                        {
+                            return state.DoS(10, error("%s: attempt to submit block with too many identity definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-identity-transfers");
+                        }
                     }
-                    if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount())
+                    else
                     {
-                        return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
+                        return state.DoS(10, error("%s: invalid reserve transfer", __func__), REJECT_INVALID, "bad-txns-reserve-transfer");
                     }
-                    if (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destSystem.MaxCurrencyDefinitionExportCount())
-                    {
-                        return state.DoS(10, error("%s: attempt to submit block with too many currency definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-currency-transfers");
-                    }
-                    if (rt.IsIdentityExport() && ++identityExportTransferCount[destCurrencyID] > destSystem.MaxIdentityDefinitionExportCount())
-                    {
-                        return state.DoS(10, error("%s: attempt to submit block with too many identity definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-identity-transfers");
-                    }
-                }
-                else
-                {
-                    return state.DoS(10, error("%s: invalid reserve transfer", __func__), REJECT_INVALID, "bad-txns-reserve-transfer");
                 }
             }
         }
