@@ -5020,7 +5020,7 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmi
             CAmount forSome = updateExtra % currencies.size();
 
             // get deterministic seed for linear congruential pseudorandom number for shuffle
-            uint32_t seed = (uint32_t)((uint64_t)(supply + forAll + forSome) & 0xffffffff);
+            uint32_t seed = (uint32_t)seed64 & 0xffffffff;
             auto prandom = std::minstd_rand0(seed);
 
             for (int i = 0; i < extraWeight.size(); i++)
@@ -5032,6 +5032,7 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmi
                     forSome--;
                 }
             }
+
             // distribute the extra as evenly as possible
             std::shuffle(extraWeight.begin(), extraWeight.end(), prandom);
             for (int i = 0; i < weights.size(); i++)
@@ -5099,8 +5100,7 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::ApplyCarveouts(int32_t carveOut)
             CAmount forSome = updateExtra % currencies.size();
 
             // get deterministic seed for linear congruential pseudorandom number for shuffle
-            uint64_t seed64 = (uint64_t)(supply + forAll + forSome);
-            uint32_t seed = (uint32_t)(seed64 >> 32 | (seed64 & 0xffffffff));
+            uint32_t seed = (uint32_t)seed64 & 0xffffffff;
             auto prandom = std::minstd_rand0(seed);
 
             for (int i = 0; i < extraWeight.size(); i++)
