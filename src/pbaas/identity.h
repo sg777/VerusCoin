@@ -351,9 +351,9 @@ public:
                  minSigs <= 13));
     }
 
-    bool IsPrimaryMutation(const CPrincipal &newPrincipal) const
+    bool IsPrimaryMutation(const CPrincipal &newPrincipal, uint32_t currentVersion) const // post PBaaS, version is checked elsewhere
     {
-        if (nVersion != newPrincipal.nVersion ||
+        if ((currentVersion < VERSION_PBAAS && newPrincipal.nVersion != nVersion) ||
             minSigs != minSigs ||
             primaryAddresses.size() != newPrincipal.primaryAddresses.size())
         {
@@ -725,8 +725,9 @@ public:
     bool IsPrimaryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
-        bool isRevokedExempt = nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && newIdentity.IsRevoked();
-        if (CPrincipal::IsPrimaryMutation(newIdentity) ||
+        bool isPBaaS = nSolVersion >= CActivationHeight::ACTIVATE_PBAAS;
+        bool isRevokedExempt = isPBaaS || nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && newIdentity.IsRevoked();
+        if (CPrincipal::IsPrimaryMutation(newIdentity, isPBaaS ? VERSION_PBAAS : VERSION_VAULT) ||
             (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
             privateAddresses != newIdentity.privateAddresses ||
