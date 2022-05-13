@@ -459,8 +459,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                     // require them to be simple when validating
                     if (!(inputTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                             p.IsValid() &&
-                            p.version >= p.VERSION_V3 &&
-                            inputTx.vout[oneIn.prevout.n].scriptPubKey.IsSpendableOutputType(p)))
+                            p.version >= p.VERSION_V3))
                     {
                         continue;
                     }
@@ -533,8 +532,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                     // require them to be simple when validating
                     if (!(inputTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                             p.IsValid() &&
-                            p.version >= p.VERSION_V3 &&
-                            inputTx.vout[oneIn.prevout.n].scriptPubKey.IsSpendableOutputType(p)))
+                            p.version >= p.VERSION_V3))
                     {
                         continue;
                     }
@@ -926,7 +924,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     CReserveTransactionDescriptor rtxd(tx, view, height);
 
     // if we're issuing from the native chain directly, we skip the complexity
-    if (isPBaaS && issuingCurrency.IsFractional())
+    if (isPBaaS && issuerID != ASSETCHAINS_CHAINID)
     {
         // CHECK #3e
         // although IDs issued by fractional currencies are paid for by the currency or a reserve,
@@ -1007,17 +1005,23 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             }
         }
 
-        if (referrers.size() != checkReferrers.size())
+        // TODO: HARDENING - remove this condition before mainnet and ensure that PBaaS undergoes the same referral
+        // enforcement
+        // only validate referrers before PBaaS
+        if (!isPBaaS)
         {
-            return state.Error("Invalid identity registration - incorrect referral payments");
-        }
-
-        // make sure all paid referrers are correct
-        for (int i = 0; i < referrers.size(); i++)
-        {
-            if (referrers[i] != checkReferrers[i])
+            if (referrers.size() != checkReferrers.size())
             {
                 return state.Error("Invalid identity registration - incorrect referral payments");
+            }
+
+            // make sure all paid referrers are correct
+            for (int i = 0; i < referrers.size(); i++)
+            {
+                if (referrers[i] != checkReferrers[i])
+                {
+                    return state.Error("Invalid identity registration - incorrect referral payments");
+                }
             }
         }
 
@@ -1108,17 +1112,23 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             }
         }
 
-        if (referrers.size() != checkReferrers.size())
+        // TODO: HARDENING - remove this condition before mainnet and ensure that PBaaS undergoes the same referral
+        // enforcement
+        // only validate referrers before PBaaS
+        if (!isPBaaS)
         {
-            return state.Error("Invalid identity registration - incorrect referral payments");
-        }
-
-        // make sure all paid referrers are correct
-        for (int i = 0; i < referrers.size(); i++)
-        {
-            if (referrers[i] != checkReferrers[i])
+            if (referrers.size() != checkReferrers.size())
             {
                 return state.Error("Invalid identity registration - incorrect referral payments");
+            }
+
+            // make sure all paid referrers are correct
+            for (int i = 0; i < referrers.size(); i++)
+            {
+                if (referrers[i] != checkReferrers[i])
+                {
+                    return state.Error("Invalid identity registration - incorrect referral payments");
+                }
             }
         }
 
@@ -1135,7 +1145,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             else
             {
                 // TODO: HARDENING - ensure that we properly check payment for fractional or centralized IDs
-                // here or elsewhere
+                // here or elsewhere - this should only get here on centralized currencies and fix may be as easy as
+                // allowing it to run in the block above that is currently conditions on fractional
             }
         }
         else
@@ -2476,12 +2487,20 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
             {
                 issuingCurrency = ConnectedChains.ThisChain();
             }
-            return ValidateSpendingIdentityReservation(spendingTx, outputNum, eval->state, height, issuingCurrency);
+            bool success = ValidateSpendingIdentityReservation(spendingTx, outputNum, eval->state, height, issuingCurrency);
+            if (!success)
+            {
+                UniValue jsonTx;
+                TxToUniv(spendingTx, uint256(), jsonTx);
+                printf("%s: failed to validate identity reservation:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+            }
+            return success;
         }
     }
     else
     {
         printf("%s: error getting transaction %s to spend\n", __func__, spendingTx.vin[nIn].prevout.hash.GetHex().c_str());
+        return false;
     }
     
     return true;
