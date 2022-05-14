@@ -924,19 +924,22 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     CReserveTransactionDescriptor rtxd(tx, view, height);
 
     // if we're issuing from the native chain directly, we skip the complexity
-    if (isPBaaS && issuerID != ASSETCHAINS_CHAINID)
+    if (isPBaaS)
     {
         // CHECK #3e
         // although IDs issued by fractional currencies are paid for by the currency or a reserve,
         // an import fee must be paid in the native currency to register on the current chain
-        if (rtxd.NativeFees() < ConnectedChains.ThisChain().IDImportFee())
+        if (issuerID != ASSETCHAINS_CHAINID && rtxd.NativeFees() < ConnectedChains.ThisChain().IDImportFee())
         {
             return state.Error("Invalid identity registration - must include native currency import fee as well as registration fee.");
         }
 
-        int64_t feePaid = burnAmount.valueMap.begin()->first == issuerID ? 
-                    burnAmount.valueMap.begin()->second : 
-                    pricingState.ReserveToNative(burnAmount.valueMap.begin()->second, pricingState.GetReserveMap()[burnAmount.valueMap.begin()->first]);
+        int64_t feePaid = 
+                issuerID == ASSETCHAINS_CHAINID ?
+                    rtxd.NativeFees() :
+                    (burnAmount.valueMap.begin()->first == issuerID ? 
+                     burnAmount.valueMap.begin()->second : 
+                     pricingState.ReserveToNative(burnAmount.valueMap.begin()->second, pricingState.GetReserveMap()[burnAmount.valueMap.begin()->first]));
 
         // CHECK #4 - if blockchain referrals are not enabled or if there is no referring identity, make sure the fees of this transaction are full price for an identity, 
         // all further checks only if referrals are enabled and there is a referrer
@@ -975,6 +978,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                     }
                     else if (afterPrimary &&
                              !isReferral &&
+                             issuingParent.IDReferrals() &&
+                             issuingParent.IDReferralLevels() &&
                              ((issuingParent.proofProtocol != issuingParent.PROOF_CHAINID && p.evalCode == EVAL_RESERVE_TRANSFER) ||
                               (issuingParent.proofProtocol == issuingParent.PROOF_CHAINID && (p.evalCode == EVAL_RESERVE_OUTPUT || p.evalCode == EVAL_NONE))))
                     {
@@ -985,8 +990,13 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                     {
                         break;
                     }
-                    else if (isReferral)
+                    else if (isReferral || (afterPrimary &&
+                                            issuerID == ASSETCHAINS_CHAINID &&
+                                            issuingParent.proofProtocol != issuingParent.PROOF_CHAINID &&
+                                            issuingParent.IDReferrals() &&
+                                            issuingParent.IDReferralLevels()))
                     {
+                        isReferral = true;
                         if (p.vKeys.size() != 1 || p.vKeys[0].which() != COptCCParams::ADDRTYPE_ID)
                         {
                             // invalid referral
@@ -1005,25 +1015,22 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             }
         }
 
-        // TODO: HARDENING - remove this condition before mainnet and ensure that PBaaS undergoes the same referral
+        // TODO: HARDENING - enable this check before mainnet and ensure that PBaaS undergoes the same referral
         // enforcement
         // only validate referrers before PBaaS
-        if (!isPBaaS)
+        /* if (referrers.size() != checkReferrers.size())
         {
-            if (referrers.size() != checkReferrers.size())
+            return state.Error("Invalid identity registration - incorrect referral payments");
+        }
+
+        // make sure all paid referrers are correct
+        for (int i = 0; i < referrers.size(); i++)
+        {
+            if (referrers[i] != checkReferrers[i])
             {
                 return state.Error("Invalid identity registration - incorrect referral payments");
             }
-
-            // make sure all paid referrers are correct
-            for (int i = 0; i < referrers.size(); i++)
-            {
-                if (referrers[i] != checkReferrers[i])
-                {
-                    return state.Error("Invalid identity registration - incorrect referral payments");
-                }
-            }
-        }
+        } */
 
         // CHECK #6 - ensure that the transaction pays the correct mining and referral fees
         if (feePaid < (idReferredRegistrationFee - (referrers.size() * idReferralFee)))
@@ -1318,7 +1325,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             }
             else if (identityCount && !reservationCount)
             {
-                if (isPBaaS && issuerID != ASSETCHAINS_CHAINID)
+                if (isPBaaS)
                 {
                     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID)
                     {
@@ -1385,12 +1392,14 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
 
                     if (!issuingCurrency.IDReferralLevels() || 
                         p.vKeys.size() < 1 || 
-                        referrers.size() > (issuingCurrency.IDReferralLevels() - 1) || 
-                        p.evalCode != 0 || 
+                        referrers.size() > (issuingCurrency.IDReferralLevels() - 1) ||
+                        (issuerID == ASSETCHAINS_CHAINID && p.evalCode != EVAL_NONE) ||
+                        (issuerID != ASSETCHAINS_CHAINID && p.evalCode != EVAL_RESERVE_OUTPUT) ||
                         p.n > 1 || 
                         p.m != 1 ||
                         !txout.scriptPubKey.IsSpendableOutputType() ||
-                        txout.ReserveOutValue().valueMap[issuerID] < idReferralFee)
+                        (issuerID == ASSETCHAINS_CHAINID && txout.nValue < idReferralFee) ||
+                        (issuerID != ASSETCHAINS_CHAINID && txout.ReserveOutValue().valueMap[issuerID] < idReferralFee))
                     {
                         valid = false;
                         break;
@@ -1402,7 +1411,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                     if (!issuingCurrency.IDReferralLevels() || 
                         p.vKeys.size() < 1 || 
                         referrers.size() > (issuingCurrency.IDReferralLevels() - 1) || 
-                        p.evalCode != 0 || 
+                        p.evalCode != EVAL_NONE || 
                         p.n > 1 || 
                         p.m != 1 ||
                         (isPBaaS && !txout.scriptPubKey.IsSpendableOutputType()) ||
