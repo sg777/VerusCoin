@@ -9477,7 +9477,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
 UniValue registeridentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 4)
+    if (fHelp || params.size() < 1 || params.size() > 5)
     {
         throw runtime_error(
             "registeridentity \"jsonidregistration\" (returntx) feeoffer sourceoffunds\n"
@@ -9745,6 +9745,26 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         }
     }
 
+    // this is only used to actually create errors and is normally not
+    // a parameter used for anything except testing
+    enum {
+        ERRTEST_NONE = 0,
+        ERRTEST_UNDERPAYFEE = 1,
+        ERRTEST_UNDERPAYREFERRAL = 2,
+        ERRTEST_SKIPREFERRAL = 3,
+        ERRTEST_WRONGREFERRAL = 4,
+        ERRTEST_LAST = 4
+    };
+    int errorTest = ERRTEST_NONE;
+    if (params.size() > 4)
+    {
+        errorTest = uni_get_int(params[4]);
+        if (errorTest < ERRTEST_NONE || errorTest > ERRTEST_LAST)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Optional test parameter out of range");
+        }
+    }
+
     uint160 impliedParent, resParent;
     if (advReservation.IsValid())
     {
@@ -9929,8 +9949,17 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), ConnectedChains.ThisChain().GetTransactionTransferFee(), false});
     }
 
+    // wrong referral refers to the source identity instead of specified referral address
+    if (errorTest == ERRTEST_WRONGREFERRAL)
+    {
+        referralID = GetDestinationID(sourceDest);
+    }
+
     // add referrals if any
-    if (!newID.parent.IsNull() && (parentCurrency.IDReferrals() || (newID.parent == ASSETCHAINS_CHAINID && IsVerusActive())) && !referralID.IsNull())
+    if (errorTest != ERRTEST_SKIPREFERRAL &&
+        !newID.parent.IsNull() &&
+        (parentCurrency.IDReferrals() || (newID.parent == ASSETCHAINS_CHAINID && IsVerusActive())) &&
+        !referralID.IsNull())
     {
         uint32_t referralHeight;
         CTxIn referralTxIn;
@@ -9947,8 +9976,13 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_DATABASE_ERROR, "Database or blockchain data error, \"" + referralIdentity.name + "\" seems valid, but first instance is not found in index");
             }
 
+            if (errorTest == ERRTEST_UNDERPAYREFERRAL)
+            {
+                idReferralFee >>= 1;
+            }
+
             // create outputs for this referral and up to n identities back in the referral chain
-            if (issuingCurrency.GetID() == ASSETCHAINS_CHAINID)
+            if (issuerID == ASSETCHAINS_CHAINID)
             {
                 outputs.push_back({newID.TransparentOutput(referralIdentity.GetID()), idReferralFee, false});
             }
@@ -10002,6 +10036,11 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked referral identity at time of commitment");
         }
+    }
+
+    if (errorTest == ERRTEST_UNDERPAYFEE)
+    {
+        feeOffer >>= 1;
     }
 
     CScript reservationOutScript;
