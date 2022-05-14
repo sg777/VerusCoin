@@ -9891,12 +9891,21 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     int64_t expectedFee = referralID.IsNull() ? feeOffer : feeOffer - idReferralFee;
 
-    if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID && issuerID != ASSETCHAINS_CHAINID)
+    if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID)
     {
-        // make an output to the currency ID of the amount less referrers
-        CTokenOutput to(CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({expectedFee})));
-        registrationPaymentOut = outputs.size();
-        outputs.push_back({MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({CIdentityID(issuerID)}), 1, &to)), 0, false});
+        if (issuerID == ASSETCHAINS_CHAINID)
+        {
+            // make an output to the currency ID of the amount less referrers
+            registrationPaymentOut = outputs.size();
+            outputs.push_back({CIdentity::TransparentOutput(issuerID), expectedFee, false});
+        }
+        else
+        {
+            // make an output to the currency ID of the amount less referrers
+            CTokenOutput to(CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({expectedFee})));
+            registrationPaymentOut = outputs.size();
+            outputs.push_back({MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({CIdentityID(issuerID)}), 1, &to)), 0, false});
+        }
     }
     else if (issuingCurrency.IsFractional())
     {
@@ -9939,7 +9948,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             }
 
             // create outputs for this referral and up to n identities back in the referral chain
-            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), idReferralFee, false});
             if (issuingCurrency.GetID() == ASSETCHAINS_CHAINID)
             {
                 outputs.push_back({newID.TransparentOutput(referralIdentity.GetID()), idReferralFee, false});
@@ -10020,12 +10028,20 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     {
         if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID)
         {
-            // make an output to the currency ID of the amount less referrers
-            CTokenOutput to(CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({feeOffer})));
-            outputs[registrationPaymentOut].scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, 
-                                                                                                        std::vector<CTxDestination>({CIdentityID(issuerID)}),
-                                                                                                        1,
-                                                                                                        &to));
+            if (issuerID == ASSETCHAINS_CHAINID)
+            {
+                // make an output to the currency ID of the amount less referrers
+                outputs[registrationPaymentOut].nAmount = feeOffer;
+            }
+            else
+            {
+                // make an output to the currency ID of the amount less referrers
+                CTokenOutput to(CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({feeOffer})));
+                outputs[registrationPaymentOut].scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, 
+                                                                                                            std::vector<CTxDestination>({CIdentityID(issuerID)}),
+                                                                                                            1,
+                                                                                                            &to));
+            }
         }
         else
         {
