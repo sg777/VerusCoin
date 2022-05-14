@@ -1206,18 +1206,6 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             break;
         }
 
-        case EVAL_IDENTITY_ADVANCEDRESERVATION:
-        {
-            CAdvancedNameReservation nameRes;
-            if (vData.size() && (nameRes = CAdvancedNameReservation(vData[0])).IsValid())
-            {
-                uint160 parent = nameRes.parent;
-                uint160 ourID = CIdentity::GetID(nameRes.name, parent);
-                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ourID, evalCode)));
-            }
-            break;
-        }
-
         case EVAL_RESERVE_DEPOSIT:
         {
             CReserveDeposit rd;
@@ -1294,6 +1282,18 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (identity = CIdentity(vData[0])).IsValid())
             {
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode)));
+            }
+            break;
+        }
+
+        case EVAL_IDENTITY_ADVANCEDRESERVATION:
+        {
+            CAdvancedNameReservation nameRes;
+            if (vData.size() && (nameRes = CAdvancedNameReservation(vData[0])).IsValid())
+            {
+                uint160 parent = nameRes.parent;
+                uint160 ourID = CIdentity::GetID(nameRes.name, parent);
+                destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ourID, evalCode)));
             }
             break;
         }
