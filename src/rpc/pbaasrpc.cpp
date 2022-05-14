@@ -9681,7 +9681,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
 
     CAmount feeOffer = 0;
-    CAmount minFeeOffer = reservation.referral.IsNull() ? idFullRegistrationFee : idReferredRegistrationFee;
+    CIdentityID referralID = advReservation.IsValid() ? advReservation.referral : reservation.referral;
+    CAmount minFeeOffer = referralID.IsNull() ? idFullRegistrationFee : idReferredRegistrationFee;
 
     if (params.size() > 2)
     {
@@ -9888,7 +9889,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(height + 1), 0, false}});
     int32_t registrationPaymentOut = -1;
 
-    CIdentityID referralID = advReservation.IsValid() ? advReservation.referral : reservation.referral;
     int64_t expectedFee = referralID.IsNull() ? feeOffer : feeOffer - idReferralFee;
 
     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID && issuerID != ASSETCHAINS_CHAINID)
@@ -9920,34 +9920,50 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), ConnectedChains.ThisChain().GetTransactionTransferFee(), false});
     }
 
-    // add referrals, Verus supports referrals
-    if ((ConnectedChains.ThisChain().IDReferrals() || IsVerusActive()) && !reservation.referral.IsNull())
+    // add referrals if any
+    if (!newID.parent.IsNull() && (parentCurrency.IDReferrals() || (newID.parent == ASSETCHAINS_CHAINID && IsVerusActive())) && !referralID.IsNull())
     {
         uint32_t referralHeight;
         CTxIn referralTxIn;
         CTransaction referralIdTx;
-        auto referralIdentity =  newID.LookupIdentity(reservation.referral, commitmentHeight - 1);
-        if (referralIdentity.IsValidUnrevoked() && referralIdentity.parent == newID.parent)
+        auto referralIdentity = newID.LookupIdentity(referralID, commitmentHeight - 1);
+
+        if (referralIdentity.IsValidUnrevoked() &&
+            referralIdentity.systemID == ASSETCHAINS_CHAINID &&
+            newID.systemID == ASSETCHAINS_CHAINID &&
+            (referralIdentity.parent == newID.parent || ((referralID != ASSETCHAINS_CHAINID || !ConnectedChains.ThisChain().parent.IsNull()) && referralID == newID.parent)))
         {
-            if (!newID.LookupFirstIdentity(reservation.referral, &referralHeight, &referralTxIn, &referralIdTx).IsValid())
+            if (!newID.LookupFirstIdentity(referralID, &referralHeight, &referralTxIn, &referralIdTx).IsValid())
             {
                 throw JSONRPCError(RPC_DATABASE_ERROR, "Database or blockchain data error, \"" + referralIdentity.name + "\" seems valid, but first instance is not found in index");
             }
 
             // create outputs for this referral and up to n identities back in the referral chain
-            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), ConnectedChains.ThisChain().IDReferralAmount(), false});
-            feeOffer -= ConnectedChains.ThisChain().IDReferralAmount();
-            if (referralHeight != 1)
+            outputs.push_back({referralIdentity.TransparentOutput(referralIdentity.GetID()), idReferralFee, false});
+            if (issuingCurrency.GetID() == ASSETCHAINS_CHAINID)
             {
-                int afterId = referralTxIn.prevout.n + 1;
-                for (int i = afterId; i < referralIdTx.vout.size() && (i - afterId) < (ConnectedChains.ThisChain().idReferralLevels - 1); i++)
+                outputs.push_back({newID.TransparentOutput(referralIdentity.GetID()), idReferralFee, false});
+            }
+            else
+            {
+                // make an output to the currency ID of the amount less referrers
+                CTokenOutput to(CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({idReferralFee})));
+                outputs.push_back({MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({referralIdentity.GetID()}), 1, &to)), 0, false});
+            }
+            feeOffer -= idReferralFee;
+            if (referralHeight != 1 && referralID != newID.parent)
+            {
+                int afterId = referralTxIn.prevout.n + 
+                               ((parentCurrency.IsPBaaSChain() && parentCurrency.proofProtocol != parentCurrency.PROOF_CHAINID) ? 1 : 2);
+                for (int i = afterId; i < (referralIdTx.vout.size() - 1) && (i - afterId) < (parentCurrency.idReferralLevels - 1); i++)
                 {
                     CTxDestination nextID;
                     COptCCParams p, master;
 
                     if (referralIdTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && 
                         p.IsValid() && 
-                        p.evalCode == EVAL_NONE && 
+                        ((p.evalCode == EVAL_NONE && issuingCurrency.GetID() == ASSETCHAINS_CHAINID) ||
+                         (p.evalCode == EVAL_RESERVE_OUTPUT && issuingCurrency.GetID() != ASSETCHAINS_CHAINID)) && 
                         p.vKeys.size() == 1 && 
                         (p.vData.size() == 1 ||
                         (p.vData.size() == 2 && 
@@ -9955,8 +9971,17 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                         (master = COptCCParams(p.vData[1])).IsValid() &&
                         master.evalCode == EVAL_NONE)))
                     {
-                        outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), ConnectedChains.ThisChain().IDReferralAmount(), false});
-                        feeOffer -= ConnectedChains.ThisChain().IDReferralAmount();
+                        if (issuingCurrency.GetID() == ASSETCHAINS_CHAINID)
+                        {
+                            outputs.push_back({newID.TransparentOutput(CIdentityID(GetDestinationID(p.vKeys[0]))), idReferralFee, false});
+                        }
+                        else
+                        {
+                            // make an output to the currency ID of the amount less referrers
+                            CTokenOutput to(CCurrencyValueMap(std::vector<uint160>({issuerID}), std::vector<int64_t>({idReferralFee})));
+                            outputs.push_back({MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({CIdentityID(GetDestinationID(p.vKeys[0]))}), 1, &to)), 0, false});
+                        }
+                        feeOffer -= idReferralFee;
                     }
                     else
                     {
