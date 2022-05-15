@@ -9230,6 +9230,10 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid issuing currency for this network");
         }
     }
+    else if (parentCurrency.systemID != ASSETCHAINS_CHAINID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency for this network");
+    }
 
     std::string name = CleanName(uni_get_str(params[0]), parentID, true, true);
     if (parentID != parentCurrency.GetID())
