@@ -2860,9 +2860,11 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 uint160 identityKeyID(CCrossChainRPCData::GetConditionID(importedID.GetID(), EVAL_IDENTITY_PRIMARY));
                 std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> memIndex;
 
+                bool foundMemDup = false;
                 if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{identityKeyID, CScript::P2IDX}}), memIndex))
                 {
                     // if there is any conflicting entry, we have an issue, otherwise, we are fine
+                    foundMemDup = memIndex.size() > 0;
                     for (auto &oneIdxEntry : memIndex)
                     {
                         const CTransaction &identityTx = mempool.mapTx.find(oneIdxEntry.first.txhash)->GetTx();
@@ -2885,11 +2887,13 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                 importedID.ToUniValue().write(1,2).c_str(), preexistingID.ToUniValue().write(1,2).c_str());
 
                             dest = importedID.primaryAddresses[0];
+                            // this is not just a mem dup
+                            foundMemDup = false;
                         }
                     }
                 }
                 // if the ID is already in the mempool, we don't need to make an ID output, otherwise, we do
-                if (!memIndex.size())
+                if (!memIndex.size() || foundMemDup)
                 {
                     // if we are sending no value, make one output for the ID and return
                     if (reserves.CanonicalMap() == CCurrencyValueMap() && !nativeAmount)
@@ -4171,7 +4175,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                              curTransfer.FirstValue(),
                                              newOut,
                                              vOutputs,
-                                             height) || newOut.nValue == -1)
+                                             height))
                     {
                         printf("%s: invalid transfer %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
                         LogPrintf("%s: invalid transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
