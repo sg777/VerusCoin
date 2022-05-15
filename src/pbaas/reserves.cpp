@@ -2863,6 +2863,12 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 bool foundMemDup = false;
                 if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{identityKeyID, CScript::P2IDX}}), memIndex))
                 {
+                    // TODO: HARDENING - ensure that if we find an in-memory duplicate, that it is
+                    // from the same export as this one, otherwise we can't make an output
+                    // this may already be achieved by ensuring that all identity outputs are either unique
+                    // on-chain new, spend the prior, or are invalid, but before removing this comment,
+                    // it must be verified
+
                     // if there is any conflicting entry, we have an issue, otherwise, we are fine
                     foundMemDup = memIndex.size() > 0;
                     for (auto &oneIdxEntry : memIndex)
