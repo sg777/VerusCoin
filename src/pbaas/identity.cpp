@@ -1262,9 +1262,9 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
 
     // get the primary currency to price in and apply any conversion rates
     uint160 feePricingCurrency = issuingCurrency.FeePricingCurrency();
-    int64_t idReferralFee = issuingCurrency.IDReferralAmount();
-    int64_t idFullRegistrationFee = issuingCurrency.IDFullRegistrationAmount();
-    int64_t idReferredRegistrationFee = issuingCurrency.IDReferredRegistrationAmount();
+    int64_t idReferralFee = parentCurrency.IDReferralAmount();
+    int64_t idFullRegistrationFee = parentCurrency.IDFullRegistrationAmount();
+    int64_t idReferredRegistrationFee = parentCurrency.IDReferredRegistrationAmount();
     CCurrencyValueMap burnAmount;
     CCoinbaseCurrencyState pricingState;
 
