@@ -540,10 +540,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             {
                 gatewayID = GetID();
             }
-            uint160 parent = GetID();
-            std::string cleanGatewayName = CleanName(gatewayConverterName, parent, true);
-            uint160 converterID = GetID(cleanGatewayName, parent);
-            if (parent != GetID())
+            uint160 converterParent = GetID();
+            std::string cleanGatewayName = CleanName(gatewayConverterName, converterParent, true);
+            uint160 converterID = GetID(cleanGatewayName, converterParent);
+            if (converterParent != GetID())
             {
                 LogPrintf("%s: invalid name for gateway converter %s\n", __func__, cleanGatewayName.c_str());
                 nVersion = PBAAS_VERSION_INVALID;
@@ -554,6 +554,16 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         if (IsPBaaSChain() || IsGateway() || IsGatewayConverter())
         {
             gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
+            if (IsGatewayConverter)
+            {
+                gatewayID = DecodeCurrencyName(uni_get_str(find_value(obj, "gateway")));
+
+                if (gatewayID.IsNull() || gatewayID != parent)
+                {
+                    nVersion = PBAAS_VERSION_INVALID;
+                    return;
+                }
+            }
         }
 
         notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_AUTO);
