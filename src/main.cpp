@@ -3832,6 +3832,16 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     std::vector<PrecomputedTransactionData> txdata;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
+
+    // duplicate checks combining identity reservation and imports as well as ID and currency exports
+    // in addition to those done in ContextualCheckBlock, as we can expect valid prior block dependencies when we are here that will
+    // enable us to confirm the exports and imports effectively. Until PBaaS, these extra checks on exports and imports are not required, making the
+    // duplicate identity definition checks redundant as well, as they will remain in ContextualCheckBlock.
+    std::set<uint160> newIDRegistrations;
+    std::set<uint160> currencyImports;
+    std::set<std::pair<uint160, uint160>> idDestAndExport;
+    std::set<std::pair<uint160, uint160>> currencyDestAndExport;
+
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = block.vtx[i];
@@ -3847,58 +3857,207 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             return false; // Failure reason has been set in validation state object
         }
 
-        if (isPBaaS)
-        {
-            for (auto &oneOut : tx.vout)
-            {
-                COptCCParams p;
-                CReserveTransfer rt;
-                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
-                    p.IsValid() &&
-                    p.evalCode == EVAL_RESERVE_TRANSFER)
-                {
-                    if (p.version >= p.VERSION_V3 &&
-                        p.vData.size() &&
-                        (rt = CReserveTransfer(p.vData[0])).IsValid())
-                    {
-                        uint160 destCurrencyID = rt.GetImportCurrency();
-                        CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(destCurrencyID);
-                        // ETH protocol has limits on number of valid reserve transfers of each type in a block
-                        CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
-
-                        if (!destSystem.IsValid())
-                        {
-                            return state.DoS(10, error("%s: unable to retrieve system destination for export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-invalid-system");
-                        }
-                        if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount())
-                        {
-                            return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
-                        }
-                        if (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destSystem.MaxCurrencyDefinitionExportCount())
-                        {
-                            return state.DoS(10, error("%s: attempt to submit block with too many currency definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-currency-transfers");
-                        }
-                        if (rt.IsIdentityExport() && ++identityExportTransferCount[destCurrencyID] > destSystem.MaxIdentityDefinitionExportCount())
-                        {
-                            return state.DoS(10, error("%s: attempt to submit block with too many identity definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-identity-transfers");
-                        }
-                    }
-                    else
-                    {
-                        return state.DoS(10, error("%s: invalid reserve transfer", __func__), REJECT_INVALID, "bad-txns-reserve-transfer");
-                    }
-                }
-            }
-        }
-
         CReserveTransactionDescriptor rtxd(tx, view, nHeight);
         if (rtxd.IsReject())
         {
             return state.DoS(100, error(strprintf("%s: Invalid reserve transaction", __func__).c_str()), REJECT_INVALID, "bad-txns-invalid-reserve");
         }
 
-        //fprintf(stderr,"ht.%d vout0 t%u\n",pindex->GetHeight(),tx.nLockTime);
-        bool isBlockBoundTx = (IsBlockBoundTransaction(tx, block.vtx[0].GetHash()));
+        if (isPBaaS && (rtxd.flags & (rtxd.IS_IMPORT | rtxd.IS_RESERVETRANSFER | rtxd.IS_EXPORT | rtxd.IS_IDENTITY_DEFINITION)))
+        {
+            // go through all outputs and record all currency and identity definitions, either import-based definitions or
+            // identity reservations to check for collision, which is disallowed
+            for (int j = 0; j < tx.vout.size(); j++)
+            {
+                auto &oneOut = tx.vout[j];
+                COptCCParams p;
+                uint160 oneIdID;
+                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.version >= p.VERSION_V3 &&
+                    p.vData.size())
+                {
+                    switch (p.evalCode)
+                    {
+                        case EVAL_IDENTITY_ADVANCEDRESERVATION:
+                        {
+                            CAdvancedNameReservation advNameRes;
+                            if ((advNameRes = CAdvancedNameReservation(p.vData[0])).IsValid() &&
+                                (oneIdID = advNameRes.parent, advNameRes.name == CleanName(advNameRes.name, oneIdID, true)) &&
+                                !(oneIdID = CIdentity::GetID(advNameRes.name, oneIdID)).IsNull() &&
+                                !newIDRegistrations.count(oneIdID))
+                            {
+                                newIDRegistrations.insert(oneIdID);
+                            }
+                            else
+                            {
+                                return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate advanced identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                            }
+                            break;
+                        }
+
+                        case EVAL_IDENTITY_RESERVATION:
+                        {
+                            CNameReservation nameRes;
+                            if ((nameRes = CNameReservation(p.vData[0])).IsValid() &&
+                                nameRes.name == CleanName(nameRes.name, oneIdID) &&
+                                !(oneIdID = CIdentity::GetID(nameRes.name, oneIdID)).IsNull() &&
+                                !newIDRegistrations.count(oneIdID))
+                            {
+                                newIDRegistrations.insert(oneIdID);
+                            }
+                            else
+                            {
+                                return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                            }
+                            break;
+                        }
+
+                        case EVAL_CROSSCHAIN_EXPORT:
+                        {
+                            // make sure we don't export the same identity or currency to the same destination more than once in any block
+                            // we cover the single block case here, and the protocol for each must reject anything invalid on prior blocks
+                            CCrossChainExport ccx;
+                            int primaryExportOut;
+                            int32_t nextOutput;
+                            CPBaaSNotarization exportNotarization;
+                            CCurrencyDefinition destSystem;
+                            std::vector<CReserveTransfer> reserveTransfers;
+                            if ((ccx = CCrossChainExport(p.vData[0])).IsValid() &&
+                                (destSystem = ConnectedChains.GetCachedCurrency(ccx.destSystemID)).IsValid() &&
+                                (destSystem.IsGateway() || destSystem.IsPBaaSChain()) &&
+                                destSystem.SystemOrGatewayID() != ASSETCHAINS_CHAINID &&
+                                ccx.GetExportInfo(tx, j, primaryExportOut, nextOutput, exportNotarization, reserveTransfers, state,
+                                        (CCurrencyDefinition::EProofProtocol)(destSystem.IsGateway() ?
+                                            destSystem.proofProtocol :
+                                            ConnectedChains.ThisChain().proofProtocol)))
+                            {
+                                for (auto &oneTransfer : reserveTransfers)
+                                {
+                                    if (oneTransfer.IsCurrencyExport())
+                                    {
+                                        std::pair<uint160, uint160> checkKey({ccx.destSystemID, oneTransfer.FirstCurrency()});
+                                        if (currencyDestAndExport.count(checkKey))
+                                        {
+                                            // TODO: HARDENING - v0.9.2-2 - remove conditional after next testnet upgrade
+                                            if (block.nTime > 1652661000)
+                                            {
+                                                return state.DoS(10, error("%s: attempt to export same currency more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
+                                            }
+                                        }
+                                        currencyDestAndExport.insert(checkKey);
+                                    }
+                                    else if (oneTransfer.IsIdentityExport())
+                                    {
+                                        std::pair<uint160, uint160> checkKey({ccx.destSystemID, GetDestinationID(TransferDestinationToDestination(oneTransfer.destination))});
+                                        if (idDestAndExport.count(checkKey))
+                                        {
+                                            return state.DoS(10, error("%s: attempt to export same identity more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
+                                        }
+                                        idDestAndExport.insert(checkKey);
+                                    }
+                                }
+                            }
+                            break;
+                        }
+
+                        case EVAL_CROSSCHAIN_IMPORT:
+                        {
+                            CCrossChainImport cci, sysCCI;
+                            CCrossChainExport ccx;
+                            int sysCCIOut, importNotarizationOut, eOutS, eOutE;
+                            int32_t nextOutput;
+                            CPBaaSNotarization importNotarization;
+                            CCurrencyDefinition destSystem;
+                            std::vector<CReserveTransfer> reserveTransfers;
+                            if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                                cci.GetImportInfo(tx, nHeight, j, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutS, eOutE, reserveTransfers, state))
+                            {
+                                for (auto &oneTransfer : reserveTransfers)
+                                {
+                                    if (oneTransfer.IsCurrencyExport())
+                                    {
+                                        if (currencyImports.count(oneTransfer.FirstCurrency()))
+                                        {
+                                            // TODO: HARDENING - v0.9.2-2 - remove conditional after next testnet upgrade
+                                            if (block.nTime > 1652661000)
+                                            {
+                                                return state.DoS(10, error("%s: attempt to import same currency more than once in block", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
+                                            }
+                                        }
+                                        currencyImports.insert(oneTransfer.FirstCurrency());
+                                    }
+                                    else if (oneTransfer.IsIdentityExport())
+                                    {
+                                        uint160 checkKey = GetDestinationID(TransferDestinationToDestination(oneTransfer.destination));
+                                        if (newIDRegistrations.count(checkKey))
+                                        {
+                                            return state.DoS(10, error("%s: attempt to import same identity more than once in block", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
+                                        }
+                                        newIDRegistrations.insert(checkKey);
+                                    }
+                                }
+                            }
+                            break;
+                        }
+
+                        case EVAL_RESERVE_TRANSFER:
+                        {
+                            // make sure we don't export the same identity or currency to the same destination more than once in any block
+                            // we cover the single block case here, and the protocol for each must reject anything relating to prior blocks
+                            CReserveTransfer rt;
+                            CCurrencyDefinition destSystem;
+                            if ((rt = CReserveTransfer(p.vData[0])).IsValid())
+                            {
+                                uint160 destCurrencyID = rt.GetImportCurrency();
+                                CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(destCurrencyID);
+                                CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
+
+                                if (!destSystem.IsValid())
+                                {
+                                    return state.DoS(10, error("%s: unable to retrieve system destination for export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-invalid-system");
+                                }
+                                if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount())
+                                {
+                                    return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
+                                }
+                                if (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destSystem.MaxCurrencyDefinitionExportCount())
+                                {
+                                    return state.DoS(10, error("%s: attempt to submit block with too many currency definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-currency-transfers");
+                                }
+                                if (rt.IsIdentityExport() && ++identityExportTransferCount[destCurrencyID] > destSystem.MaxIdentityDefinitionExportCount())
+                                {
+                                    return state.DoS(10, error("%s: attempt to submit block with too many identity definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-identity-transfers");
+                                }
+
+                                if (destCurrency.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                                {
+                                    if (rt.IsCurrencyExport())
+                                    {
+                                        std::pair<uint160, uint160> checkKey({destCurrency.SystemOrGatewayID(), rt.FirstCurrency()});
+                                        if (currencyDestAndExport.count(checkKey))
+                                        {
+                                            return state.DoS(10, error("%s: attempt to transfer currency definition more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
+                                        }
+                                        currencyDestAndExport.insert(checkKey);
+                                    }
+                                    else if (rt.IsIdentityExport())
+                                    {
+                                        std::pair<uint160, uint160> checkKey({destCurrency.SystemOrGatewayID(), GetDestinationID(TransferDestinationToDestination(rt.destination))});
+                                        if (idDestAndExport.count(checkKey))
+                                        {
+                                            return state.DoS(10, error("%s: attempt to transfer identity definition more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
+                                        }
+                                        idDestAndExport.insert(checkKey);
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
         // coinbase transaction output is dependent on all other transactions in the block, figure those out first 
         if (!tx.IsCoinBase())
@@ -6075,9 +6234,12 @@ bool ContextualCheckBlock(
     }
 
     // Check that all transactions are finalized, reject stake transactions, and
-    // ensure no reservation ID duplicates
+    // ensure no reservation ID or imported ID or currency duplicates
     std::set<uint160> newIDRegistrations;
+
+    // the use of "newIDs" should be deprecated and removed by PBaaS on mainnet
     std::set<std::string> newIDs;
+
     for (uint32_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = block.vtx[i];
 
@@ -6090,38 +6252,43 @@ bool ContextualCheckBlock(
             if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid())
             {
-                if (p.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION)
+                switch (p.evalCode)
                 {
-                    CAdvancedNameReservation advNameRes;
-                    if (p.version >= p.VERSION_V3 &&
-                        p.vData.size() &&
-                        (advNameRes = CAdvancedNameReservation(p.vData[0])).IsValid() &&
-                        (oneIdID = advNameRes.parent, advNameRes.name == CleanName(advNameRes.name, oneIdID, true)) &&
-                        !(oneIdID = CIdentity::GetID(advNameRes.name, oneIdID)).IsNull() &&
-                        !newIDRegistrations.count(oneIdID))
+                    case EVAL_IDENTITY_ADVANCEDRESERVATION:
                     {
-                        newIDRegistrations.insert(oneIdID);
+                        CAdvancedNameReservation advNameRes;
+                        if (p.version >= p.VERSION_V3 &&
+                            p.vData.size() &&
+                            (advNameRes = CAdvancedNameReservation(p.vData[0])).IsValid() &&
+                            (oneIdID = advNameRes.parent, advNameRes.name == CleanName(advNameRes.name, oneIdID, true)) &&
+                            !(oneIdID = CIdentity::GetID(advNameRes.name, oneIdID)).IsNull() &&
+                            !newIDRegistrations.count(oneIdID))
+                        {
+                            newIDRegistrations.insert(oneIdID);
+                        }
+                        else
+                        {
+                            return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate advanced identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                        }
+                        break;
                     }
-                    else
+                    case EVAL_IDENTITY_RESERVATION:
                     {
-                        return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate advanced identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
-                    }
-                }
-                else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
-                {
-                    CNameReservation nameRes;
-                    if (p.version >= p.VERSION_V3 &&
-                        p.vData.size() &&
-                        (nameRes = CNameReservation(p.vData[0])).IsValid() &&
-                        nameRes.name == CleanName(nameRes.name, oneIdID) &&
-                        !(oneIdID = CIdentity::GetID(nameRes.name, oneIdID)).IsNull() &&
-                        !newIDRegistrations.count(oneIdID))
-                    {
-                        newIDRegistrations.insert(oneIdID);
-                    }
-                    else
-                    {
-                        return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                        CNameReservation nameRes;
+                        if (p.version >= p.VERSION_V3 &&
+                            p.vData.size() &&
+                            (nameRes = CNameReservation(p.vData[0])).IsValid() &&
+                            nameRes.name == CleanName(nameRes.name, oneIdID) &&
+                            !(oneIdID = CIdentity::GetID(nameRes.name, oneIdID)).IsNull() &&
+                            !newIDRegistrations.count(oneIdID))
+                        {
+                            newIDRegistrations.insert(oneIdID);
+                        }
+                        else
+                        {
+                            return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                        }
+                        break;
                     }
                 }
             }
