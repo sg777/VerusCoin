@@ -9220,6 +9220,9 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     // if we are registering an identity through a gateway, we can and should redirect fee payment through its
     // fee converter currency
+
+    // TODO: PBAAS - enable PBaaS chains to issue IDs through their gateway converter IDs as gateways can
+
     CCurrencyDefinition issuingCurrency = parentCurrency;
     uint160 issuerID = parentID;
     if (!parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID && !parentCurrency.GatewayConverterID().IsNull())
