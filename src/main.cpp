@@ -3924,6 +3924,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             CCurrencyDefinition destSystem;
                             std::vector<CReserveTransfer> reserveTransfers;
                             if ((ccx = CCrossChainExport(p.vData[0])).IsValid() &&
+                                !(ccx.IsSupplemental() || ccx.IsSystemThreadExport()) &&
                                 (destSystem = ConnectedChains.GetCachedCurrency(ccx.destSystemID)).IsValid() &&
                                 (destSystem.IsGateway() || destSystem.IsPBaaSChain()) &&
                                 destSystem.SystemOrGatewayID() != ASSETCHAINS_CHAINID &&
@@ -3939,11 +3940,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         std::pair<uint160, uint160> checkKey({ccx.destSystemID, oneTransfer.FirstCurrency()});
                                         if (currencyDestAndExport.count(checkKey))
                                         {
-                                            // TODO: HARDENING - v0.9.2-2 - remove conditional after next testnet upgrade
-                                            if (block.nTime > 1652661000)
-                                            {
-                                                return state.DoS(10, error("%s: attempt to export same currency more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
-                                            }
+                                            return state.DoS(10, error("%s: attempt to export same currency more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
                                         }
                                         currencyDestAndExport.insert(checkKey);
                                     }
@@ -3971,6 +3968,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             CCurrencyDefinition destSystem;
                             std::vector<CReserveTransfer> reserveTransfers;
                             if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                                !cci.IsSourceSystemImport() &&
                                 cci.GetImportInfo(tx, nHeight, j, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutS, eOutE, reserveTransfers, state))
                             {
                                 for (auto &oneTransfer : reserveTransfers)
@@ -3979,11 +3977,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                     {
                                         if (currencyImports.count(oneTransfer.FirstCurrency()))
                                         {
-                                            // TODO: HARDENING - v0.9.2-2 - remove conditional after next testnet upgrade
-                                            if (block.nTime > 1652661000)
-                                            {
-                                                return state.DoS(10, error("%s: attempt to import same currency more than once in block", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
-                                            }
+                                            return state.DoS(10, error("%s: attempt to import same currency more than once in block", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
                                         }
                                         currencyImports.insert(oneTransfer.FirstCurrency());
                                     }

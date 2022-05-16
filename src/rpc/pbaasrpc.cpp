@@ -8437,6 +8437,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             gatewayConverterMap.insert(std::make_pair("parent", EncodeDestination(CIdentityID(newChainID))));
             gatewayConverterMap.insert(std::make_pair("name", newChain.gatewayConverterName));
             gatewayConverterMap.insert(std::make_pair("launchsystemid", EncodeDestination(CIdentityID(thisChainID))));
+            gatewayConverterMap.insert(std::make_pair("gatewayid", EncodeDestination(CIdentityID(newChain.GetID()))));
 
             // if this is a gateway, the converter runs on the launching chain by default
             // if PBaaS chain, on the new system
