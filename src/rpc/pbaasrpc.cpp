@@ -8020,6 +8020,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specify a mining and staking rewards schedule.");
         }
+
         if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
             !newCurrency.IsGateway())
         {
@@ -8043,9 +8044,10 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Ethereum mapped currency requires zero initial supply and no possible conversions");
             }
-            CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(systemID);
+            CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
             if (!systemCurrency.IsValid() ||
                 !systemCurrency.IsGateway() ||
+                systemCurrency.launchSystemID != ASSETCHAINS_CHAINID ||
                 systemCurrency.proofProtocol != systemCurrency.PROOF_ETHNOTARIZATION)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Ethereum protocol networks are the only mapped currency type currently supported");
