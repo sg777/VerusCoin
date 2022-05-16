@@ -554,7 +554,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         if (IsPBaaSChain() || IsGateway() || IsGatewayConverter())
         {
             gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
-            if (IsGatewayConverter)
+            if (IsGatewayConverter())
             {
                 gatewayID = DecodeCurrencyName(uni_get_str(find_value(obj, "gateway")));
 
