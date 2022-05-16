@@ -556,12 +556,16 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
             if (IsGatewayConverter())
             {
-                gatewayID = DecodeCurrencyName(uni_get_str(find_value(obj, "gateway")));
-
-                if (gatewayID.IsNull() || gatewayID != parent)
+                std::string gatewayNameID = uni_get_str(find_value(obj, "gateway"));
+                if (!gatewayNameID.empty())
                 {
-                    nVersion = PBAAS_VERSION_INVALID;
-                    return;
+                    gatewayID = DecodeCurrencyName(gatewayNameID);
+
+                    if (gatewayID.IsNull() || gatewayID != parent)
+                    {
+                        nVersion = PBAAS_VERSION_INVALID;
+                        return;
+                    }
                 }
             }
         }
