@@ -2227,6 +2227,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
             // go through all outputs and record all currency and identity definitions, either import-based definitions or
             // identity reservations to check for collision, which is disallowed
+            bool disqualified = false;
             for (int j = 0; j < tx.vout.size(); j++)
             {
                 auto &oneOut = tx.vout[j];
@@ -2251,7 +2252,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                             }
                             else
                             {
-                                continue;
+                                disqualified = true;
                             }
                             break;
                         }
@@ -2268,7 +2269,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                             }
                             else
                             {
-                                continue;
+                                disqualified = true;
                             }
                             break;
                         }
@@ -2300,7 +2301,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                         if (currencyDestAndExport.count(checkKey))
                                         {
                                             // skip this in the block, but should we keep in mempool?
-                                            continue;
+                                            disqualified = true;
+                                            break;
                                         }
                                         currencyDestAndExport.insert(checkKey);
                                     }
@@ -2309,7 +2311,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                         std::pair<uint160, uint160> checkKey({ccx.destSystemID, GetDestinationID(TransferDestinationToDestination(oneTransfer.destination))});
                                         if (idDestAndExport.count(checkKey))
                                         {
-                                            continue;
+                                            disqualified = true;
+                                            break;
                                         }
                                         idDestAndExport.insert(checkKey);
                                     }
@@ -2336,7 +2339,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                     {
                                         if (currencyImports.count(oneTransfer.FirstCurrency()))
                                         {
-                                            continue;
+                                            disqualified = true;
+                                            break;
                                         }
                                         currencyImports.insert(oneTransfer.FirstCurrency());
                                     }
@@ -2345,7 +2349,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                         uint160 checkKey = GetDestinationID(TransferDestinationToDestination(oneTransfer.destination));
                                         if (newIDRegistrations.count(checkKey))
                                         {
-                                            continue;
+                                            disqualified = true;
+                                            break;
                                         }
                                         newIDRegistrations.insert(checkKey);
                                     }
@@ -2370,7 +2375,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                 {
                                     std::list<CTransaction> removed;
                                     mempool.remove(tx, removed, true);
-                                    continue;
+                                    disqualified = true;
+                                    break;
                                 }
 
                                 if (destCurrency.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
@@ -2380,7 +2386,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                         std::pair<uint160, uint160> checkKey({destCurrency.SystemOrGatewayID(), rt.FirstCurrency()});
                                         if (currencyDestAndExport.count(checkKey))
                                         {
-                                            continue;
+                                            disqualified = true;
+                                            break;
                                         }
                                         currencyDestAndExport.insert(checkKey);
                                     }
@@ -2389,29 +2396,32 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                         std::pair<uint160, uint160> checkKey({destCurrency.SystemOrGatewayID(), GetDestinationID(TransferDestinationToDestination(rt.destination))});
                                         if (idDestAndExport.count(checkKey))
                                         {
-                                            continue;
+                                            disqualified = true;
+                                            break;
                                         }
                                         idDestAndExport.insert(checkKey);
                                     }
                                 }
 
-                                if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount())
+                                if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount() ||
+                                    (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destSystem.MaxCurrencyDefinitionExportCount()) ||
+                                    (rt.IsIdentityExport() && ++identityExportTransferCount[destCurrencyID] > destSystem.MaxIdentityDefinitionExportCount()))
                                 {
-                                    continue;
-                                }
-                                if (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destSystem.MaxCurrencyDefinitionExportCount())
-                                {
-                                    continue;
-                                }
-                                if (rt.IsIdentityExport() && ++identityExportTransferCount[destCurrencyID] > destSystem.MaxIdentityDefinitionExportCount())
-                                {
-                                    continue;
+                                    disqualified = true;
                                 }
                             }
                             break;
                         }
                     }
+                    if (disqualified)
+                    {
+                        break;
+                    }
                 }
+            }
+            if (disqualified)
+            {
+                continue;
             }
 
             UpdateCoins(tx, view, nHeight);
