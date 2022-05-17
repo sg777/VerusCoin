@@ -624,6 +624,15 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         UniValue maxPreconvertArr = find_value(obj, "maxpreconversion");
         UniValue initialContributionArr = find_value(obj, "initialcontributions");
 
+        if ((options & (OPTION_FRACTIONAL | OPTION_GATEWAY | OPTION_PBAAS | OPTION_TOKEN)) == OPTION_TOKEN &&
+            !(currencyArr.isArray() && currencyArr.size()) &&
+            maxPreconvertArr.isArray() &&
+            maxPreconvertArr.size() == 1 &&
+            !uni_get_int(maxPreconvertArr[0]))
+        {
+            currencyArr.push_back(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+        }
+
         if (currencyArr.isArray() && currencyArr.size())
         {
             contributions = preconverted = std::vector<int64_t>(currencyArr.size());

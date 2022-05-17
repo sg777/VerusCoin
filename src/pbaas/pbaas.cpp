@@ -1719,14 +1719,14 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                 if (newIdentity.parent != ASSETCHAINS_CHAINID)
                 {
                     if (!(parentCurrency.proofProtocol == parentCurrency.PROOF_ETHNOTARIZATION &&
-                        newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
-                        !newCurrency.IsFractional() &&
-                        !newCurrency.IsPBaaSChain() &&
-                        !newCurrency.IsGateway() &&
-                        newCurrency.IsToken() &&
-                        newCurrency.systemID == newIdentity.parent &&
-                        newCurrency.maxPreconvert.size() == 1 &&
-                        newCurrency.maxPreconvert[0] == 0))
+                          newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
+                          !newCurrency.IsFractional() &&
+                          !newCurrency.IsPBaaSChain() &&
+                          !newCurrency.IsGateway() &&
+                          newCurrency.IsToken() &&
+                          newCurrency.systemID == newIdentity.parent &&
+                          newCurrency.maxPreconvert.size() == 1 &&
+                          newCurrency.maxPreconvert[0] == 0))
                     {
                         return state.Error("Gateway currencies must me mapped currencies via the gateway");
                     }
