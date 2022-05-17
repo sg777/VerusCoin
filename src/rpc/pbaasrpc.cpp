@@ -7950,13 +7950,15 @@ UniValue getsaplingtree(const UniValue& params, bool fHelp)
     CCoinsViewCache view(pcoinsTip);
     SaplingMerkleTree tree;
 
+    std::string networkIDName = EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID));
+
     for (int i = start; i <= end; i += step)
     {
         CBlockIndex &blkIndex = *(chainActive[i]);
         if (view.GetSaplingAnchorAt(blkIndex.hashFinalSaplingRoot, tree))
         {
             UniValue entry(UniValue::VOBJ);
-            entry.push_back(Pair("network", ConnectedChains.ThisChain().name));
+            entry.push_back(Pair("network", networkIDName));
             entry.push_back(Pair("height", blkIndex.GetHeight()));
             entry.push_back(Pair("hash", blkIndex.GetBlockHash().GetHex()));
             entry.push_back(Pair("time", (uint64_t)chainActive.LastTip()->nTime));
