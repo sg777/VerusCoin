@@ -630,6 +630,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             maxPreconvertArr.size() == 1 &&
             !uni_get_int(maxPreconvertArr[0]))
         {
+            currencyArr = UniValue(UniValue::VARR);
             currencyArr.push_back(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
         }
 
