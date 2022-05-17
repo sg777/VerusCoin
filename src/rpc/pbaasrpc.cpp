@@ -8667,7 +8667,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
     uint32_t lastImportHeight = newChain.IsPBaaSChain() || newChain.IsGateway() ? 1 : height;
 
-    CCrossChainImport cci = CCrossChainImport(newChain.IsGateway() ? newChain.gatewayID : newChain.systemID,
+    CCrossChainImport cci = CCrossChainImport(newChain.SystemOrGatewayID(),
                                               lastImportHeight,
                                               newChainID,
                                               CCurrencyValueMap(),
@@ -8749,7 +8749,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     CCrossChainExport ccx = CCrossChainExport(thisChainID,
                                               0,
                                               height,
-                                              newChain.IsGateway() ? newChain.gatewayID : newChain.systemID,
+                                              (newChain.IsPBaaSChain() || newChain.IsGateway() || newChain.IsGatewayConverter()) ?
+                                                newChain.SystemOrGatewayID() :
+                                                ASSETCHAINS_CHAINID,
                                               newChainID,
                                               0,
                                               mainImportFees,
