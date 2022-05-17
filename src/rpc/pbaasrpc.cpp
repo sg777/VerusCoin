@@ -8345,12 +8345,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         parentCurrency = ConnectedChains.ThisChain();
     }
 
-    if (parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID)
-
-    if ((newChain.GetID() == ASSETCHAINS_CHAINID && ASSETCHAINS_CHAINID != VERUS_CHAINID) || 
-        (newChain.parent != thisChainID &&
-         !(newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull()) &&
-         !(parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID)))
+    if (newChain.parent != thisChainID &&
+        !(isVerusActive && newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull()) &&
+        !(parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID))
     {
         // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Attempting to define a currency relative to a parent that is not a valid gateway or the current chain.");
@@ -8379,11 +8376,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     if (!(launchIdentity = CIdentity::LookupIdentity(newChainID, 0, &idHeight, &idTxIn)).IsValidUnrevoked() || launchIdentity.HasActiveCurrency())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID " + newChain.name + " not found, is revoked, or already has an active currency defined");
-    }
-
-    if (launchIdentity.parent != ASSETCHAINS_CHAINID && !(isVerusActive && newChain.GetID() == ASSETCHAINS_CHAINID))
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency can only be defined using an ID issued by " + VERUS_CHAINNAME);
     }
 
     CTransaction idTx;
