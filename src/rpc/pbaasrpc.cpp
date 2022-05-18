@@ -8679,14 +8679,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             newChain.proofProtocol == newChain.PROOF_ETHNOTARIZATION ||
             newChain.proofProtocol == newChain.PROOF_CHAINID)
         {
-            if ((newChain.IsPBaaSChain() || newChain.IsGateway()) && newChain.proofProtocol == newChain.PROOF_CHAINID)
-            {
-                dests = std::vector<CTxDestination>({newChain.GetID()});
-            }
-            else
-            {
-                dests = std::vector<CTxDestination>({pk.GetID()});
-            }
+            dests = std::vector<CTxDestination>({pk.GetID()});
         }
         else
         {
