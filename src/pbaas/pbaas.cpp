@@ -1974,6 +1974,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
     COptCCParams p;
     CReserveTransfer rt;
 
+    // TODO: HARDENING - go through all outputs of this transaction and do all reserve transfers at once, the
+    // first time for the first reserve transfer output, if this is not the first, we will have checked them all, so
+    // we are done
+    
+
     // TODO: HARDENING - ensure that destinations and nested destinations are valid for the target system
 
     if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
