@@ -8662,7 +8662,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     uint32_t lastImportHeight = newChain.IsPBaaSChain() || newChain.IsGateway() ? 1 : height;
 
     // if it's a mapped currency, we don't need to add anything but the definition with no launch period
-    bool isMappedCurrecy = newChain.IsToken() && !newChain.IsGateway() && !newChain.IsPBaaSChain() && !newChain.IsGatewayConverter() &&
+    bool isMappedCurrency = newChain.IsToken() && !newChain.IsGateway() && !newChain.IsPBaaSChain() && !newChain.IsGatewayConverter() &&
                            newChain.nativeCurrencyID.IsValid() && parentCurrency.IsGateway() && newChain.systemID != ASSETCHAINS_CHAINID;
 
     // create import and export outputs
