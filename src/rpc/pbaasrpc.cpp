@@ -8765,7 +8765,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                             mainImportFees,
                                             uint256());
     ccx.SetChainDefinition();
-    if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID || newChain.IsGateway() || isMappedCurrecy)
+    if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID || newChain.IsGateway() || isMappedCurrency)
     {
         ccx.SetPreLaunch(false);
         ccx.SetPostLaunch();
