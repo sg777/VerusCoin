@@ -3488,6 +3488,25 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 numTransfers++;
 
+                // enforce maximum if there is one
+                if (curTransfer.IsPreConversion() && importCurrencyDef.maxPreconvert.size())
+                {
+                    // check if it exceeds pre-conversion maximums, and refund if so
+                    CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}), 
+                                                                    std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
+                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserves) + newReserveIn + preConvertedReserves;
+
+                    // TODO: HARDENING - remove this conditional at the next testnet reset
+                    if (IsVerusActive() && height > 23000)
+                    {
+                        if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
+                        {
+                            LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
+                            curTransfer = curTransfer.GetRefundTransfer();
+                        }
+                    }
+                }
+
                 CAmount explicitFees = curTransfer.nFees;
                 transferFees.valueMap[curTransfer.feeCurrencyID] += explicitFees;
 
@@ -3598,7 +3617,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // NOT a descendant of the destination system and IS a descendent of the source system
                     //
                     std::set<uint160> mustBeAsDeposit;
-                    CCurrencyValueMap allCurrenciesAndIDs(std::vector<uint160>({curTransfer.feeCurrencyID}), std::vector<int64_t>({explicitFees}));
+                    CCurrencyValueMap importExportCurrencies(std::vector<uint160>({curTransfer.feeCurrencyID}), std::vector<int64_t>({explicitFees}));
                     if (curTransfer.IsCurrencyExport() &&
                         curTransfer.destination.TypeNoFlags() == curTransfer.destination.DEST_REGISTERCURRENCY &&
                         !curTransfer.IsImportToSource())
@@ -3615,8 +3634,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             LogPrintf("%s: invalid currency export from system: %s\n", __func__, systemSource.name.c_str());
                             return false;
                         }
-                        allCurrenciesAndIDs.valueMap[curToExport.parent.IsNull() ? curToExportID : curToExport.parent] += 0;
-                        mustBeAsDeposit.insert(curToExport.parent.IsNull() ? curToExportID : curToExport.parent);
 
                         if (!CCurrencyDefinition::IsValidDefinitionImport(systemSource, systemDest, curToExport.parent, height))
                         {
@@ -3649,9 +3666,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             LogPrintf("%s: invalid identity export from gateway: %s\n", __func__, systemSource.name.c_str());
                             return false;
                         }
-
-                        allCurrenciesAndIDs.valueMap[identityToExport.parent.IsNull() ? identityToExportID : identityToExport.parent] += 0;
-                        mustBeAsDeposit.insert(identityToExport.parent.IsNull() ? identityToExportID : identityToExport.parent);
                     }
 
                     if (curTransfer.IsMint())
@@ -3667,11 +3681,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (!curTransfer.IsCurrencyExport())
                     {
-                        allCurrenciesAndIDs.valueMap[curTransfer.FirstCurrency()] += curTransfer.FirstValue();
+                        importExportCurrencies.valueMap[curTransfer.FirstCurrency()] += curTransfer.FirstValue();
                     }
 
                     CCurrencyValueMap newDepositCurrencies, newGatewayDeposits;
-                    if (!ConnectedChains.CurrencyExportStatus(allCurrenciesAndIDs,
+                    if (!ConnectedChains.CurrencyExportStatus(importExportCurrencies,
                                                               importCurrencyState.IsRefunding() ? importCurrencyDef.systemID : systemSourceID,
                                                               systemDestID,
                                                               newDepositCurrencies,

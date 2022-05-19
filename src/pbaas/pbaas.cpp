@@ -592,7 +592,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     {
         // if this is a PBaaS launch, this should be the coinbase, and we need to get the parent chain definition,
         // including currency launch prices from the current transaction
-        CCurrencyDefinition thisDef, parentDef;
+        CCurrencyDefinition thisDef, sourceDef;
         if (height == 1 || ccx.IsChainDefinition())
         {
             std::vector<CCurrencyDefinition> currencyDefs = CCurrencyDefinition::GetCurrencyDefinitions(tx);
@@ -605,17 +605,17 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 }
                 else if (curID == ccx.sourceSystemID)
                 {
-                    parentDef = oneCur;
+                    sourceDef = oneCur;
                 }
             }
-            if (!parentDef.IsValid() && ccx.IsChainDefinition())
+            if (!sourceDef.IsValid() && ccx.IsChainDefinition())
             {
-                parentDef = ConnectedChains.ThisChain();
+                sourceDef = ConnectedChains.ThisChain();
             }
             if (!thisDef.IsValid() ||
-                (!thisDef.launchSystemID.IsNull()) &&
-                 (!parentDef.IsValid() ||
-                  thisDef.launchSystemID != parentDef.GetID()))
+                (!thisDef.launchSystemID.IsNull() &&
+                 (!sourceDef.IsValid() ||
+                  thisDef.launchSystemID != sourceDef.GetID())))
             {
                 return state.Error("Invalid launch currency");
             }
@@ -623,10 +623,10 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         else
         {
             thisDef = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID);
-            parentDef = ConnectedChains.ThisChain();
+            sourceDef = ConnectedChains.ThisChain();
             if (!thisDef.IsValid() ||
-                !parentDef.IsValid() ||
-                (thisDef.launchSystemID != parentDef.GetID() && !(parentDef.IsGateway() && thisDef.launchSystemID == thisDef.systemID)) ||
+                !sourceDef.IsValid() ||
+                (thisDef.launchSystemID != sourceDef.GetID() && !(sourceDef.IsGateway() && thisDef.launchSystemID == thisDef.systemID)) ||
                 ccx.sourceSystemID != thisDef.launchSystemID)
             {
                 return state.Error("Invalid source or launch currency");
@@ -634,7 +634,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
         if (ccx.IsChainDefinition())
         {
-            totalCurrencyExported.valueMap[parentDef.GetID()] += parentDef.LaunchFeeImportShare(thisDef.ChainOptions());
+            totalCurrencyExported.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeImportShare(thisDef.ChainOptions());
         }
     }
     if (!(height == 1 || ccx.IsChainDefinition()) && notarization.IsValid())
@@ -1719,14 +1719,14 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                 if (newIdentity.parent != ASSETCHAINS_CHAINID)
                 {
                     if (!(parentCurrency.proofProtocol == parentCurrency.PROOF_ETHNOTARIZATION &&
-                        newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
-                        !newCurrency.IsFractional() &&
-                        !newCurrency.IsPBaaSChain() &&
-                        !newCurrency.IsGateway() &&
-                        newCurrency.IsToken() &&
-                        newCurrency.systemID == newIdentity.parent &&
-                        newCurrency.maxPreconvert.size() == 1 &&
-                        newCurrency.maxPreconvert[0] == 0))
+                          newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
+                          !newCurrency.IsFractional() &&
+                          !newCurrency.IsPBaaSChain() &&
+                          !newCurrency.IsGateway() &&
+                          newCurrency.IsToken() &&
+                          newCurrency.systemID == newIdentity.parent &&
+                          newCurrency.maxPreconvert.size() == 1 &&
+                          newCurrency.maxPreconvert[0] == 0))
                     {
                         return state.Error("Gateway currencies must me mapped currencies via the gateway");
                     }
@@ -1973,6 +1973,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
     // basic fees required to cover the transfer
     COptCCParams p;
     CReserveTransfer rt;
+
+    // TODO: HARDENING - go through all outputs of this transaction and do all reserve transfers at once, the
+    // first time for the first reserve transfer output, if this is not the first, we will have checked them all, so
+    // we are done
+    
 
     // TODO: HARDENING - ensure that destinations and nested destinations are valid for the target system
 
@@ -3361,7 +3366,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                     else
                     {
                         // supply is determined by purchases * current conversion rate
-                        currencyState.supply = curDef.GetTotalPreallocation();
+                        currencyState.supply = curDef.GetTotalPreallocation() + curDef.gatewayConverterIssuance;
                     }
 
                     for (auto &transfer : unspentTransfers)
@@ -5326,11 +5331,9 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
                 return false;
             }
 
-            // TODO: HARDENING - confirm that this is correct and handles all cases, including the case
-            // where a bridge converter for a gateway may want to sell IDs on the host chain
-
+            // if this is a mapped currency to a gateway that isn't a name controller, for this determination,
+            // we are interested then in the launch system
             uint160 currencySystemID = oneCurDef.IsGateway() ? oneCurDef.gatewayID : oneCurDef.systemID;
-
             if (currencySystemID == sourceSystemID)
             {
                 newReserveDeposits.valueMap[oneCur.first] += oneCur.second;
@@ -5587,6 +5590,18 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         printf("%s: Invalid data for export system or corrupt chain state\n", __func__);
         LogPrintf("%s: Invalid data for export system or corrupt chain state\n", __func__);
         return false;
+    }
+
+    if (isClearLaunchExport && destSystem.IsGateway() && !destSystem.IsNameController() && !_curDef.launchSystemID.IsNull())
+    {
+        if (_curDef.launchSystemID != ASSETCHAINS_CHAINID)
+        {
+            printf("%s: Mapped currency clear launch export can only be made on launch chain\n", __func__);
+            LogPrintf("%s: Mapped currency clear launch export can only be made on launch chain\n", __func__);
+            return false;
+        }
+        destSystem = ConnectedChains.ThisChain();
+        destSystemID = ASSETCHAINS_CHAINID;
     }
 
     for (int i = 0; i < inputsConsumed; i++)

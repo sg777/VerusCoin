@@ -58,6 +58,7 @@ extern std::string NOTARY_PUBKEY;
 #define _ASSETCHAINS_TIMELOCKOFF 0xffffffffffffffff
 extern uint64_t ASSETCHAINS_TIMELOCKGTE, ASSETCHAINS_TIMEUNLOCKFROM, ASSETCHAINS_TIMEUNLOCKTO;
 extern int64_t ASSETCHAINS_SUPPLY;
+extern int64_t ASSETCHAINS_ISSUANCE;
 extern uint64_t ASSETCHAINS_REWARD[3], ASSETCHAINS_DECAY[3], ASSETCHAINS_HALVING[3], ASSETCHAINS_ENDSUBSIDY[3], ASSETCHAINS_ERAOPTIONS[3];
 extern int32_t PBAAS_STARTBLOCK, PBAAS_ENDBLOCK, ASSETCHAINS_LWMAPOS;
 extern uint32_t ASSETCHAINS_ALGO, ASSETCHAINS_VERUSHASH, ASSETCHAINS_LASTERA;
@@ -459,7 +460,8 @@ bool SetThisChain(const UniValue &chainDefinition)
         ConnectedChains.notarySystems[notaryChainDef.GetID()] = 
             CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CPBaaSNotarization());
         CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
-        ASSETCHAINS_SUPPLY = currencyState.supply;
+        ASSETCHAINS_SUPPLY = ConnectedChains.ThisChain().GetTotalPreallocation();
+        ASSETCHAINS_ISSUANCE = ConnectedChains.ThisChain().gatewayConverterIssuance;
     }
 
     auto numEras = ConnectedChains.ThisChain().rewards.size();
@@ -513,6 +515,7 @@ bool SetThisChain(const UniValue &chainDefinition)
     PBAAS_ENDBLOCK = ConnectedChains.ThisChain().endBlock;
     mapArgs["-endblock"] = to_string(PBAAS_ENDBLOCK);
     mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
+    mapArgs["-gatewayconverterissuance"] = to_string(ASSETCHAINS_ISSUANCE);
     return true;
 }
 
@@ -3116,7 +3119,6 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
                                 0,
                                 chainDef.initialFractionalSupply,
                                 CCurrencyState::FLAG_FRACTIONAL);
-        //cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
         conversions = cState.PricesInReserve();
     }
     else
@@ -3131,7 +3133,6 @@ CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainD
                                 0, 
                                 PreconvertedNative,
                                 PreconvertedNative);
-        //cState.UpdateWithEmission(chainDef.GetTotalPreallocation());
     }
 
     CCoinbaseCurrencyState retVal(cState, 
@@ -7950,13 +7951,15 @@ UniValue getsaplingtree(const UniValue& params, bool fHelp)
     CCoinsViewCache view(pcoinsTip);
     SaplingMerkleTree tree;
 
+    std::string networkIDName = EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID));
+
     for (int i = start; i <= end; i += step)
     {
         CBlockIndex &blkIndex = *(chainActive[i]);
         if (view.GetSaplingAnchorAt(blkIndex.hashFinalSaplingRoot, tree))
         {
             UniValue entry(UniValue::VOBJ);
-            entry.push_back(Pair("network", ConnectedChains.ThisChain().name));
+            entry.push_back(Pair("network", networkIDName));
             entry.push_back(Pair("height", blkIndex.GetHeight()));
             entry.push_back(Pair("hash", blkIndex.GetBlockHash().GetHex()));
             entry.push_back(Pair("time", (uint64_t)chainActive.LastTip()->nTime));
@@ -8042,7 +8045,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             }
             if (nonZeroSupply || newCurrency.GetTotalPreallocation())
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Ethereum mapped currency requires zero initial supply and no possible conversions");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Mapped currency definition requires zero initial supply and no possible conversions");
             }
             CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
             if (!systemCurrency.IsValid() ||
@@ -8345,12 +8348,9 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         parentCurrency = ConnectedChains.ThisChain();
     }
 
-    if (parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID)
-
-    if ((newChain.GetID() == ASSETCHAINS_CHAINID && ASSETCHAINS_CHAINID != VERUS_CHAINID) || 
-        (newChain.parent != thisChainID &&
-         !(newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull()) &&
-         !(parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID)))
+    if (newChain.parent != thisChainID &&
+        !(isVerusActive && newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull()) &&
+        !(parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID))
     {
         // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Attempting to define a currency relative to a parent that is not a valid gateway or the current chain.");
@@ -8379,11 +8379,6 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     if (!(launchIdentity = CIdentity::LookupIdentity(newChainID, 0, &idHeight, &idTxIn)).IsValidUnrevoked() || launchIdentity.HasActiveCurrency())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID " + newChain.name + " not found, is revoked, or already has an active currency defined");
-    }
-
-    if (launchIdentity.parent != ASSETCHAINS_CHAINID && !(isVerusActive && newChain.GetID() == ASSETCHAINS_CHAINID))
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency can only be defined using an ID issued by " + VERUS_CHAINNAME);
     }
 
     CTransaction idTx;
@@ -8658,6 +8653,19 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newChain)), 
                                          CCurrencyDefinition::DEFAULT_OUTPUT_VALUE);
 
+    CAmount mainImportFee = ConnectedChains.ThisChain().LaunchFeeImportShare(newChain.options);
+    CCurrencyValueMap mainImportFees(std::vector<uint160>({thisChainID}), std::vector<CAmount>({mainImportFee}));
+    CAmount converterImportFee = 0;
+    CAmount newReserveImportFees = 0;
+    CCurrencyValueMap converterImportFees;
+
+    CCoinbaseCurrencyState newCurrencyState;
+    uint32_t lastImportHeight = newChain.IsPBaaSChain() || newChain.IsGateway() ? 1 : height;
+
+    // if it's a mapped currency, we don't need to add anything but the definition with no launch period
+    bool isMappedCurrency = newChain.IsToken() && !newChain.IsGateway() && !newChain.IsPBaaSChain() && !newChain.IsGatewayConverter() &&
+                           newChain.nativeCurrencyID.IsValid() && parentCurrency.IsGateway() && newChain.systemID != ASSETCHAINS_CHAINID;
+
     // create import and export outputs
     cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
     pk = CPubKey(ParseHex(CC.CChexstr));
@@ -8673,13 +8681,11 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid notarization protocol specified");
     }
 
-    uint32_t lastImportHeight = newChain.IsPBaaSChain() || newChain.IsGateway() ? 1 : height;
-
-    CCrossChainImport cci = CCrossChainImport(newChain.IsGateway() ? newChain.gatewayID : newChain.systemID,
-                                              lastImportHeight,
-                                              newChainID,
-                                              CCurrencyValueMap(),
-                                              CCurrencyValueMap());
+    CCrossChainImport cci = CCrossChainImport(newChain.SystemOrGatewayID(),
+                                            lastImportHeight,
+                                            newChainID,
+                                            CCurrencyValueMap(),
+                                            CCurrencyValueMap());
     cci.SetSameChain(newChain.systemID == ASSETCHAINS_CHAINID);
     cci.SetDefinitionImport(true);
     if (newChainID == ASSETCHAINS_CHAINID || newChain.IsGateway())
@@ -8691,7 +8697,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)), 0);
 
     // get initial currency state at this height
-    CCoinbaseCurrencyState newCurrencyState = ConnectedChains.GetCurrencyState(newChain, chainActive.Height());
+    newCurrencyState = ConnectedChains.GetCurrencyState(newChain, chainActive.Height());
 
     newCurrencyState.SetPrelaunch();
 
@@ -8705,7 +8711,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     pbn.SetDefinitionNotarization();
     pbn.nodes = startupNodes;
 
-    if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID || newChain.IsGateway())
+    if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID || newChain.IsGateway() || isMappedCurrency)
     {
         newChain.startBlock = 1;
         newCurrencyState.SetPrelaunch(false);
@@ -8742,29 +8748,25 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     dests = std::vector<CTxDestination>({notarizationDest});
 
     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_ACCEPTEDNOTARIZATION, dests, 1, &pbn)), 
-                                         CPBaaSNotarization::MIN_NOTARIZATION_OUTPUT);
+                                        CPBaaSNotarization::MIN_NOTARIZATION_OUTPUT);
 
     // export thread
     cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
-    CAmount mainImportFee = ConnectedChains.ThisChain().LaunchFeeImportShare(newChain.options);
-    CCurrencyValueMap mainImportFees(std::vector<uint160>({thisChainID}), std::vector<CAmount>({mainImportFee}));
-    CAmount converterImportFee = 0;
-    CAmount newReserveImportFees = 0;
-    CCurrencyValueMap converterImportFees;
-
     CCrossChainExport ccx = CCrossChainExport(thisChainID,
-                                              0,
-                                              height,
-                                              newChain.IsGateway() ? newChain.gatewayID : newChain.systemID,
-                                              newChainID,
-                                              0,
-                                              mainImportFees,
-                                              mainImportFees,
-                                              uint256());
+                                            0,
+                                            height,
+                                            (newChain.IsPBaaSChain() || newChain.IsGateway() || newChain.IsGatewayConverter()) ?
+                                                newChain.SystemOrGatewayID() :
+                                                ASSETCHAINS_CHAINID,
+                                            newChainID,
+                                            0,
+                                            mainImportFees,
+                                            mainImportFees,
+                                            uint256());
     ccx.SetChainDefinition();
-    if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID || newChain.IsGateway())
+    if (newCurrencyState.GetID() == ASSETCHAINS_CHAINID || newChain.IsGateway() || isMappedCurrency)
     {
         ccx.SetPreLaunch(false);
         ccx.SetPostLaunch();
@@ -8787,12 +8789,12 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 CAmount fee = CReserveTransfer::DEFAULT_PER_STEP_FEE << 1;
 
                 CReserveTransfer rt = CReserveTransfer(CReserveTransfer::VALID + CReserveTransfer::PRECONVERT,
-                                                       newChain.currencies[i],
-                                                       contribution,
-                                                       ASSETCHAINS_CHAINID,
-                                                       fee,
-                                                       newChainID,
-                                                       DestinationToTransferDestination(CIdentityID(newChainID)));
+                                                    newChain.currencies[i],
+                                                    contribution,
+                                                    ASSETCHAINS_CHAINID,
+                                                    fee,
+                                                    newChainID,
+                                                    DestinationToTransferDestination(CIdentityID(newChainID)));
 
                 cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                 CPubKey pk(ParseHex(CC.CChexstr));
@@ -8800,7 +8802,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 dests = std::vector<CTxDestination>({pk.GetID()});
 
                 tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), 
-                                                     newChain.currencies[i] == thisChainID ? contribution + fee : fee);
+                                                    newChain.currencies[i] == thisChainID ? contribution + fee : fee);
             }
         }
     }
@@ -8968,7 +8970,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     totalLaunchFee += newReserveImportFees;
 
     CAmount totalLaunchExportFee = totalLaunchFee - (mainImportFee + converterImportFee);
-    if (newCurrencyState.GetID() != ASSETCHAINS_CHAINID)
+    if (newCurrencyState.IsValid() && newCurrencyState.GetID() != ASSETCHAINS_CHAINID && !isMappedCurrency)
     {
         cp = CCinit(&CC, EVAL_RESERVE_DEPOSIT);
         pk = CPubKey(ParseHex(CC.CChexstr));
