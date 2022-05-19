@@ -5334,12 +5334,6 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
             // if this is a mapped currency to a gateway that isn't a name controller, for this determination,
             // we are interested then in the launch system
             uint160 currencySystemID = oneCurDef.IsGateway() ? oneCurDef.gatewayID : oneCurDef.systemID;
-            CCurrencyDefinition currencySystem = ConnectedChains.GetCachedCurrency(currencySystemID);
-            if (currencySystem.IsGateway() && !currencySystem.IsNameController() && oneCurDef.IsToken() && oneCurDef.launchSystemID != oneCurDef.systemID)
-            {
-                currencySystemID = oneCurDef.launchSystemID;
-            }
-
             if (currencySystemID == sourceSystemID)
             {
                 newReserveDeposits.valueMap[oneCur.first] += oneCur.second;

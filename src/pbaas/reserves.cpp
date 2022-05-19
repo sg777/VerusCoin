@@ -3617,7 +3617,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // NOT a descendant of the destination system and IS a descendent of the source system
                     //
                     std::set<uint160> mustBeAsDeposit;
-                    CCurrencyValueMap allCurrenciesAndIDs(std::vector<uint160>({curTransfer.feeCurrencyID}), std::vector<int64_t>({explicitFees}));
+                    CCurrencyValueMap importExportCurrencies(std::vector<uint160>({curTransfer.feeCurrencyID}), std::vector<int64_t>({explicitFees}));
                     if (curTransfer.IsCurrencyExport() &&
                         curTransfer.destination.TypeNoFlags() == curTransfer.destination.DEST_REGISTERCURRENCY &&
                         !curTransfer.IsImportToSource())
@@ -3634,8 +3634,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             LogPrintf("%s: invalid currency export from system: %s\n", __func__, systemSource.name.c_str());
                             return false;
                         }
-                        allCurrenciesAndIDs.valueMap[curToExport.parent.IsNull() ? curToExportID : curToExport.parent] += 0;
-                        mustBeAsDeposit.insert(curToExport.parent.IsNull() ? curToExportID : curToExport.parent);
 
                         if (!CCurrencyDefinition::IsValidDefinitionImport(systemSource, systemDest, curToExport.parent, height))
                         {
@@ -3668,9 +3666,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             LogPrintf("%s: invalid identity export from gateway: %s\n", __func__, systemSource.name.c_str());
                             return false;
                         }
-
-                        allCurrenciesAndIDs.valueMap[identityToExport.parent.IsNull() ? identityToExportID : identityToExport.parent] += 0;
-                        mustBeAsDeposit.insert(identityToExport.parent.IsNull() ? identityToExportID : identityToExport.parent);
                     }
 
                     if (curTransfer.IsMint())
@@ -3686,11 +3681,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (!curTransfer.IsCurrencyExport())
                     {
-                        allCurrenciesAndIDs.valueMap[curTransfer.FirstCurrency()] += curTransfer.FirstValue();
+                        importExportCurrencies.valueMap[curTransfer.FirstCurrency()] += curTransfer.FirstValue();
                     }
 
                     CCurrencyValueMap newDepositCurrencies, newGatewayDeposits;
-                    if (!ConnectedChains.CurrencyExportStatus(allCurrenciesAndIDs,
+                    if (!ConnectedChains.CurrencyExportStatus(importExportCurrencies,
                                                               importCurrencyState.IsRefunding() ? importCurrencyDef.systemID : systemSourceID,
                                                               systemDestID,
                                                               newDepositCurrencies,
