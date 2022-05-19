@@ -650,9 +650,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
                     // check our currency and any co-launch currency to determine our eligibility, as ALL
                     // co-launch currencies must launch for one to launch
-                    if (coLaunchCurrency.IsValid() &&
-                        CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < 
-                            CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert))
+                    if (CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert) ||
+                        (coLaunchCurrency.IsFractional() &&
+                         CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn).CanonicalMap().valueMap.size() != coLaunchCurrency.currencies.size()))
                     {
                         forcedRefund = true;
                     }
