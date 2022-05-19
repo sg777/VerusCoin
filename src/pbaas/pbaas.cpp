@@ -3366,7 +3366,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                     else
                     {
                         // supply is determined by purchases * current conversion rate
-                        currencyState.supply = curDef.GetTotalPreallocation();
+                        currencyState.supply = curDef.GetTotalPreallocation() + curDef.gatewayConverterIssuance;
                     }
 
                     for (auto &transfer : unspentTransfers)
@@ -5331,10 +5331,14 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
                 return false;
             }
 
-            // TODO: HARDENING - confirm that this is correct and handles all cases, including the case
-            // where a bridge converter for a gateway may want to sell IDs on the host chain
-
+            // if this is a mapped currency to a gateway that isn't a name controller, for this determination,
+            // we are interested then in the launch system
             uint160 currencySystemID = oneCurDef.IsGateway() ? oneCurDef.gatewayID : oneCurDef.systemID;
+            CCurrencyDefinition currencySystem = ConnectedChains.GetCachedCurrency(currencySystemID);
+            if (currencySystem.IsGateway() && !currencySystem.IsNameController() && oneCurDef.IsToken() && oneCurDef.launchSystemID != oneCurDef.systemID)
+            {
+                currencySystemID = oneCurDef.launchSystemID;
+            }
 
             if (currencySystemID == sourceSystemID)
             {
