@@ -1453,6 +1453,7 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     fprintf(fp,"systemid=%s\n", EncodeDestination(CIdentityID(ConnectedChains.thisChain.systemID)).c_str());
                     fprintf(fp,"startblock=%d\n", ConnectedChains.thisChain.startBlock);
                     fprintf(fp,"endblock=%d\n", ConnectedChains.thisChain.endBlock);
+                    fprintf(fp,"gatewayconverterissuance=%s\n", (charPtr = mapArgs["-gatewayconverterissuance"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_supply=%s\n", (charPtr = mapArgs["-ac_supply"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_halving=%s\n", (charPtr = mapArgs["-ac_halving"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_decay=%s\n", (charPtr = mapArgs["-ac_decay"].c_str())[0] == 0 ? "0" : charPtr);
@@ -1878,7 +1879,9 @@ void komodo_args(char *argv0)
         mapArgs["-endblock"] = to_string(PBAAS_ENDBLOCK);
 
         ASSETCHAINS_SUPPLY = mainVerusCurrency.GetTotalPreallocation();
+        ASSETCHAINS_ISSUANCE = mainVerusCurrency.gatewayConverterIssuance;
         mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
+        mapArgs["-gatewayconverterissuance"] = to_string(ASSETCHAINS_ISSUANCE);
 
         if (name == "VRSC")
         {
@@ -2044,8 +2047,9 @@ void komodo_args(char *argv0)
             PBAAS_STARTBLOCK = GetArg("-startblock", 0);
             PBAAS_ENDBLOCK = GetArg("-endblock", 0);
 
-            // supply is the total of all pre-allocations
+            // supply is the total of all pre-allocations && issuance
             ASSETCHAINS_SUPPLY = GetArg("-ac_supply", 0);
+            ASSETCHAINS_ISSUANCE = GetArg("-gatewayconverterissuance", 0);
             ASSETCHAINS_RPCHOST = GetArg("-rpchost", "127.0.0.1");
         }
 
@@ -2197,6 +2201,7 @@ void komodo_args(char *argv0)
             {
                 // we need to set the chain definition for this chain based on globals set above
                 obj.push_back(Pair("premine", ASSETCHAINS_SUPPLY));
+                obj.push_back(Pair("gatewayconverterissuance", ASSETCHAINS_ISSUANCE));
                 obj.push_back(Pair("name", ASSETCHAINS_SYMBOL));
 
                 obj.push_back(Pair("startblock", PBAAS_STARTBLOCK));
