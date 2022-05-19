@@ -540,12 +540,29 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({reserveTransfer.FirstCurrency()}), 
                                                                    std::vector<int64_t>({reserveTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(reserveTransfer.FirstValue())}));
                 CCurrencyValueMap newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + newPreConversionReservesIn;
-                if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
+
+                // TODO: HARDENING - remove this conditional at the next testnet reset
+                if (IsVerusActive() && notaHeight > 23000)
                 {
-                    LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
-                    reserveTransfer = reserveTransfer.GetRefundTransfer();
+                    if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
+                    {
+                        LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
+                        reserveTransfer = reserveTransfer.GetRefundTransfer();
+                    }
+                    else
+                    {
+                        newPreConversionReservesIn += newReserveIn;
+                    }
                 }
-                newPreConversionReservesIn += newReserveIn;
+                else
+                {
+                    if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
+                    {
+                        LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
+                        reserveTransfer = reserveTransfer.GetRefundTransfer();
+                    }
+                    newPreConversionReservesIn += newReserveIn;
+                }
             }
         }
         else if (reserveTransfer.IsConversion())

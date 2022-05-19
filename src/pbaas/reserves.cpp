@@ -3488,6 +3488,25 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 numTransfers++;
 
+                // enforce maximum if there is one
+                if (curTransfer.IsPreConversion() && importCurrencyDef.maxPreconvert.size())
+                {
+                    // check if it exceeds pre-conversion maximums, and refund if so
+                    CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}), 
+                                                                    std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
+                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserves) + newReserveIn + preConvertedReserves;
+
+                    // TODO: HARDENING - remove this conditional at the next testnet reset
+                    if (IsVerusActive() && height > 23000)
+                    {
+                        if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
+                        {
+                            LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
+                            curTransfer = curTransfer.GetRefundTransfer();
+                        }
+                    }
+                }
+
                 CAmount explicitFees = curTransfer.nFees;
                 transferFees.valueMap[curTransfer.feeCurrencyID] += explicitFees;
 

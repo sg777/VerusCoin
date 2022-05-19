@@ -8044,7 +8044,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             }
             if (nonZeroSupply || newCurrency.GetTotalPreallocation())
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Ethereum mapped currency requires zero initial supply and no possible conversions");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Mapped currency definition requires zero initial supply and no possible conversions");
             }
             CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
             if (!systemCurrency.IsValid() ||

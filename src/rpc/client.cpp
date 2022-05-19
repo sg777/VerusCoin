@@ -1139,6 +1139,10 @@ UniValue CCurrencyDefinition::ToUniValue() const
 int64_t CCurrencyDefinition::GetTotalPreallocation() const
 {
     CAmount totalPreallocatedNative = 0;
+    if (IsPBaaSChain() || IsGateway())
+    {
+        totalPreallocatedNative += gatewayConverterIssuance;
+    }
     for (auto &onePreallocation : preAllocation)
     {
         totalPreallocatedNative += onePreallocation.second;

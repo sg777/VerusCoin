@@ -1070,6 +1070,10 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
 int64_t CCurrencyDefinition::GetTotalPreallocation() const
 {
     CAmount totalPreallocatedNative = 0;
+    if (IsPBaaSChain() || IsGateway())
+    {
+        totalPreallocatedNative += gatewayConverterIssuance;
+    }
     for (auto &onePreallocation : preAllocation)
     {
         totalPreallocatedNative += onePreallocation.second;
