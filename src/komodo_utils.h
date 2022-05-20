@@ -1686,11 +1686,18 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
     }
     if (nHeight == 1)
     {
-        if (_IsVerusActive() && !PBAAS_TESTMODE)
+        if (_IsVerusMainnetActive())
         {
             subsidy += ASSETCHAINS_SUPPLY + (ASSETCHAINS_MAGIC & 0xffffff);
         }
-        else
+        // TODO: HARDENING - supply has always been zero when this was called and it
+        // mattered in the past on PBaaS chains. verify this is correct to have this commented
+        // before mainnet release
+        /*else
+        {
+            subsidy += ASSETCHAINS_SUPPLY;
+        } */
+        else if (_IsVerusActive())
         {
             subsidy += ASSETCHAINS_SUPPLY;
         }
@@ -2141,7 +2148,10 @@ void komodo_args(char *argv0)
         MAX_MONEY = komodo_max_money();
 
         //printf("baseid.%d MAX_MONEY.%s %.8f\n",baseid,ASSETCHAINS_SYMBOL,(double)MAX_MONEY/SATOSHIDEN);
-        ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL,ASSETCHAINS_SUPPLY,&ASSETCHAINS_MAGIC,extraptr,extralen);
+        // TODO: HARDENING - replace the line with hardcoded zero as supply for non-Verus currencies with line that 
+        // uses actual supply for all currencies before next testnet reset
+        //ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL, ASSETCHAINS_SUPPLY + ASSETCHAINS_ISSUANCE, &ASSETCHAINS_MAGIC, extraptr, extralen);
+        ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL, _IsVerusActive() ? ASSETCHAINS_SUPPLY : 0,&ASSETCHAINS_MAGIC,extraptr,extralen);
 
         while ( (dirname= (char *)GetDataDir(false).string().c_str()) == 0 || dirname[0] == 0 )
         {
