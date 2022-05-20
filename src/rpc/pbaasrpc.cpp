@@ -7054,14 +7054,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     if (exportCurrency)
                     {
                         CCurrencyValueMap canExport, cannotExport;
+
                         if (ConnectedChains.CurrencyExportStatus(
-                                CCurrencyValueMap(std::vector<uint160>({sourceCurrencyID}), std::vector<int64_t>({1})),
-                                ASSETCHAINS_CHAINID,
-                                offChainID,
-                                canExport,
-                                cannotExport) &&
-                                canExport.valueMap.size() &&
-                                !cannotExport.valueMap.size())
+                            CCurrencyValueMap(std::vector<uint160>({sourceCurrencyID}), std::vector<int64_t>({1})),
+                            ASSETCHAINS_CHAINID,
+                            offChainID,
+                            canExport,
+                            cannotExport) &&
+                            canExport.valueMap.size() &&
+                            !cannotExport.valueMap.size())
                         {
                             if (validCurrencies.count(sourceCurrencyID))
                             {
@@ -7070,7 +7071,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         else
                         {
-                            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot export currency to import system");
+                            if (!CCurrencyDefinition::IsValidDefinitionImport(thisChain, offChainDef, sourceCurrencyDef.parent, height))
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot export currency to import system");
+                            }
                         }
                     }
                     else if (!validCurrencies.count(sourceCurrencyID))
