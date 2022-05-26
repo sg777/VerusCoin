@@ -2656,14 +2656,25 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             // if this is a currency export, make the export
             if (IsCurrencyExport())
             {
-                if (nextDest.IsMultiCurrency() &&
+                CCurrencyDefinition exportCurDef = ConnectedChains.GetCachedCurrency(FirstCurrency());
+                if (exportCurDef.IsValid() &&
+                    nextDest.IsMultiCurrency() &&
                     destination.gatewayID != ASSETCHAINS_CHAINID &&
-                    !IsValidExportCurrency(nextDest, FirstCurrency(), height))
+                    CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, exportCurDef.parent.IsNull() ? VERUS_CHAINID : exportCurDef.parent, height))
                 {
-                    CCurrencyDefinition exportCurDef = ConnectedChains.GetCachedCurrency(FirstCurrency());
-                    lastLegDest.type = lastLegDest.DEST_REGISTERCURRENCY;
-                    lastLegDest.destination = ::AsVector(exportCurDef);
-                    newFlags |= CURRENCY_EXPORT;
+                    if (!IsValidExportCurrency(nextDest, FirstCurrency(), height))
+                    {
+                        CCurrencyDefinition exportCurDef = ConnectedChains.GetCachedCurrency(FirstCurrency());
+                        lastLegDest.type = lastLegDest.DEST_REGISTERCURRENCY;
+                        lastLegDest.destination = ::AsVector(exportCurDef);
+                        newFlags |= CURRENCY_EXPORT;
+                    }
+                }
+                else
+                {
+                    printf("%s: Invalid currency export to system: %s\n", __func__, EncodeDestination(CIdentityID(nextDest.GetID())).c_str());
+                    LogPrintf("%s: Invalid currency export to system: %s\n", __func__, EncodeDestination(CIdentityID(nextDest.GetID())).c_str());
+                    return false;
                 }
             }
             // if we're supposed to export the destination identity, do so
@@ -2672,7 +2683,10 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             {
                 CTxDestination dest = TransferDestinationToDestination(destination);
                 CIdentity fullID;
-                if (dest.which() != COptCCParams::ADDRTYPE_ID || !(fullID = CIdentity::LookupIdentity(GetDestinationID(dest))).IsValid())
+                if (dest.which() != COptCCParams::ADDRTYPE_ID ||
+                    !(fullID = CIdentity::LookupIdentity(GetDestinationID(dest))).IsValid() ||
+                    destination.gatewayID == ASSETCHAINS_CHAINID ||
+                    !CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, fullID.parent.IsNull() ? VERUS_CHAINID : fullID.parent, height))
                 {
                     // TODO: HARDENING - ensure this cannot be exploited by a cross-chain transfer
                     printf("%s: Invalid export identity or identity not found for %s\n", __func__, EncodeDestination(dest).c_str());
@@ -2748,16 +2762,49 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
         }
         if (nextLegTransfer.IsValid())
         {
-            // emit a reserve transfer output
-            CCcontract_info CC;
-            CCcontract_info *cp;
-            cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
-            CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
+            // if we don't have enough for a transaction import fee to the next destination,
+            // we need to drop out here and send to the recipient, or if they have an incompatible
+            // destination address, to the last compatible one we have
+            CCurrencyDefinition nextSys = destination.gatewayID != ASSETCHAINS_CHAINID ?
+                                    ConnectedChains.GetCachedCurrency(destination.gatewayID) :
+                                    ConnectedChains.ThisChain();
+            if (!nextSys.IsValid() ||
+                (destination.gatewayID != ASSETCHAINS_CHAINID &&
+                 (nextLegTransfer.feeCurrencyID != destSystem.GetID() || nextLegTransfer.nFees < destSystem.GetTransactionImportFee())))
+            {
+                printf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
+                LogPrintf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
+                if (dest.which() == COptCCParams::ADDRTYPE_INVALID || dest.which() == COptCCParams::ADDRTYPE_INDEX)
+                {
+                    // TODO: HARDENING - change DEST_REGISTERCURRENCY && DEST_ETH or maybe any destination type to include a secondary destination of alternate system type
+                    // if the destination is invalid, send what would be a refund to vrsctest
+                    dest = DecodeDestination("vrsctest@");
+                }
+                if (!reserves.valueMap.size() && nativeAmount)
+                {
+                    txOut = CTxOut(nativeAmount, GetScriptForDestination(dest));
+                }
+                else
+                {
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({dest});
+                    CTokenOutput ro = CTokenOutput(reserves);
+                    txOut = CTxOut(nativeAmount, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
+                }
+                return true;
+            }
+            else
+            {
+                // emit a reserve transfer output
+                CCcontract_info CC;
+                CCcontract_info *cp;
+                cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
+                CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-            // transfer it back to the source chain and to our address
-            std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
-            txOut = CTxOut(nativeAmount, MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &nextLegTransfer)));
-            return true;
+                // transfer it back to the source chain and to our address
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
+                txOut = CTxOut(nativeAmount, MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &nextLegTransfer)));
+                return true;
+            }
         }
     }
     if (makeNormalOutput)
