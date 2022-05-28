@@ -175,13 +175,16 @@ public:
         DEST_ETH = 9,
         DEST_RAW = 10,
         LAST_VALID_TYPE_NO_FLAGS = 10,
+        FLAG_DEST_AUX = 64,
         FLAG_DEST_GATEWAY = 128,
+        FLAG_MASK = FLAG_DEST_AUX + FLAG_DEST_GATEWAY
     };
     uint8_t type;
     std::vector<unsigned char> destination;
     uint160 gatewayID;                      // gateway fee currency/systemID
     uint160 gatewayCode;                    // code for function to execute on the gateway
     int64_t fees;                           // amount for transfer fees this is holding
+    std::vector<std::vector<unsigned char>> auxDests;
 
     CTransferDestination() : type(DEST_INVALID), fees(0) {}
     CTransferDestination(const UniValue &uni);
@@ -218,12 +221,35 @@ public:
             READWRITE(gatewayCode);
             READWRITE(fees);
         }
+        if (type & FLAG_DEST_AUX)
+        {
+            READWRITE(auxDests);
+        }
     }
 
     bool HasGatewayLeg() const
     {
         return (type & FLAG_DEST_GATEWAY) && !gatewayID.IsNull();
     }
+
+    int AuxDestCount() const
+    {
+        if (type & FLAG_DEST_AUX)
+        {
+            return auxDests.size();
+        }
+        return 0;
+    }
+
+    void ClearAuxDests()
+    {
+        auxDests.clear();
+        type &= ~FLAG_DEST_AUX;
+    }
+
+    CTransferDestination GetAuxDest(int destNum) const;
+
+    void SetAuxDest(const CTransferDestination &auxDest, int destNum);
 
     void SetGatewayLeg(const uint160 &GatewayID=uint160(), int64_t Fees=0, const uint160 &vdxfCode=uint160())
     {
@@ -243,12 +269,26 @@ public:
 
     int TypeNoFlags() const
     {
-        return type & ~FLAG_DEST_GATEWAY;
+        return type & ~FLAG_MASK;
     }
 
     bool IsValid() const
     {
-        return TypeNoFlags() != DEST_INVALID &&
+        // verify aux dests
+        bool valid = (((type & FLAG_DEST_AUX) && auxDests.size()) || (!(type & FLAG_DEST_AUX) && !auxDests.size()));
+        if (valid && auxDests.size())
+        {
+            for (int i = 0; i < auxDests.size(); i++)
+            {
+                if (!GetAuxDest(i).IsValid())
+                {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+        return valid &&
+               TypeNoFlags() != DEST_INVALID &&
                TypeNoFlags() <= LAST_VALID_TYPE_NO_FLAGS &&
                ((!(type & FLAG_DEST_GATEWAY) && gatewayID.IsNull()) || !gatewayID.IsNull());
     }

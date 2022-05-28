@@ -886,7 +886,7 @@ UniValue CReserveDeposit::ToUniValue() const
 UniValue CTransferDestination::ToUniValue() const
 {
     UniValue destVal = UniValue(UniValue::VOBJ);
-    destVal.push_back(Pair("type", type));
+    uint8_t newType = type;
 
     switch (TypeNoFlags())
     {
@@ -942,6 +942,34 @@ UniValue CTransferDestination::ToUniValue() const
             destVal.push_back(Pair("nodestination", ""));
             break;
     }
+    if ((type & FLAG_DEST_AUX))
+    {
+        if (auxDests.size())
+        {
+            UniValue auxDestsUni(UniValue::VARR);
+            for (auto &oneVec : auxDests)
+            {
+                CTransferDestination oneDest;
+                bool success = true;
+                ::FromVector(oneVec, oneDest, &success);
+                // can't nest aux destinations
+                if (!success || (oneDest.type & FLAG_DEST_AUX))
+                {
+                    newType = DEST_INVALID;
+                    break;
+                }
+                auxDestsUni.push_back(oneDest.ToUniValue());
+            }
+            if (newType != DEST_INVALID)
+            {
+                destVal.push_back(Pair("auxdests", auxDestsUni));
+            }
+        }
+        else
+        {
+            newType &= ~FLAG_DEST_AUX;
+        }
+    }
     if (type & FLAG_DEST_GATEWAY)
     {
         if (destVal.isNull())
@@ -951,6 +979,7 @@ UniValue CTransferDestination::ToUniValue() const
         destVal.push_back(Pair("gateway", EncodeDestination(CIdentityID(gatewayID))));
         destVal.push_back(Pair("fees", ValueFromAmount(fees)));
     }
+    destVal.push_back(Pair("type", newType));
     return destVal;
 }
 

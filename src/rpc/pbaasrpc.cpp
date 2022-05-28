@@ -6871,6 +6871,17 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                 CTxDestination destination = ValidateDestination(destStr);
 
+                CTxDestination refundDestination = refundToStr.empty() ? CTxDestination() : DecodeDestination(refundToStr);
+
+                if (refundDestination.which() == COptCCParams::ADDRTYPE_ID &&
+                    GetDestinationID(refundDestination) != GetDestinationID(destination))
+                {
+                    if (!CIdentity::LookupIdentity(GetDestinationID(refundDestination)).IsValid())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "When refunding to an ID, the ID must be valid.");
+                    }
+                }
+
                 CTransferDestination dest;
                 if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
                 {
@@ -6885,6 +6896,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid Ethereum destination (null)");
                             }
                             dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(ethDestination));
+                            if (refundDestination.which() != COptCCParams::ADDRTYPE_INVALID)
+                            {
+                                dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
+                            }
                         }
                         else
                         {
@@ -6914,6 +6929,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(ethDestination));
                         dest.type |= dest.FLAG_DEST_GATEWAY;
                         dest.gatewayID = exportSystemDef.GetID();
+
+                        if (refundDestination.which() != COptCCParams::ADDRTYPE_INVALID)
+                        {
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
+                        }
                     }
                     else
                     {
@@ -6921,21 +6941,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     }
                 }
 
-                CTxDestination refundDestination = DecodeDestination(refundToStr);
-                if (refundDestination.which() == COptCCParams::ADDRTYPE_ID &&
-                    GetDestinationID(refundDestination) != GetDestinationID(destination))
-                {
-                    if (!CIdentity::LookupIdentity(GetDestinationID(refundDestination)).IsValid())
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "When refunding to an ID, the ID must be valid.");
-                    }
-                }
-                else if (refundDestination.which() == COptCCParams::ADDRTYPE_INVALID)
+                bool refundValid = refundDestination.which() != COptCCParams::ADDRTYPE_INVALID;
+                if (!refundValid)
                 {
                     refundDestination = destination;
                 }
-
-                bool refundValid = refundDestination.which() != COptCCParams::ADDRTYPE_INVALID;
 
                 // make one output
                 CRecipient oneOutput;

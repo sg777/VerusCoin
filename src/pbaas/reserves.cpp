@@ -2776,9 +2776,11 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 LogPrintf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
                 if (dest.which() == COptCCParams::ADDRTYPE_INVALID || dest.which() == COptCCParams::ADDRTYPE_INDEX)
                 {
-                    // TODO: HARDENING - change DEST_REGISTERCURRENCY && DEST_ETH or maybe any destination type to include a secondary destination of alternate system type
-                    // if the destination is invalid, send what would be a refund to vrsctest
-                    dest = DecodeDestination("vrsctest@");
+                    dest = GetCompatibleAuxDestination(destination, (CCurrencyDefinition::EProofProtocol)nextSys.proofProtocol);
+                    if (dest.which() == COptCCParams::ADDRTYPE_INVALID)
+                    {
+                        dest = DecodeDestination("vrsctest@");
+                    }
                 }
                 if (!reserves.valueMap.size() && nativeAmount)
                 {
@@ -2939,7 +2941,12 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                 importedID.name.c_str(), preexistingID.name.c_str(),
                                 importedID.ToUniValue().write(1,2).c_str(), preexistingID.ToUniValue().write(1,2).c_str());
 
-                            dest = importedID.primaryAddresses[0];
+                            dest = GetCompatibleAuxDestination(destination, (CCurrencyDefinition::EProofProtocol)destSystem.proofProtocol);
+                            if (dest.which() == COptCCParams::ADDRTYPE_INVALID)
+                            {
+                                dest = importedID.primaryAddresses[0];
+                            }
+
                             // this is not just a mem dup
                             foundMemDup = false;
                         }

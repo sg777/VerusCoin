@@ -439,6 +439,49 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
     }
 }
 
+CTransferDestination CTransferDestination::GetAuxDest(int destNum) const
+{
+    CTransferDestination retVal;
+    if (auxDests.size() < destNum)
+    {
+        ::FromVector(auxDests[destNum], retVal);
+        if (retVal.type & FLAG_DEST_AUX || retVal.auxDests.size())
+        {
+            retVal.type = DEST_INVALID;
+        }
+        // no gateways or flags, only simple destinations work
+        switch (retVal.type)
+        {
+            case DEST_ID:
+            case DEST_PK:
+            case DEST_PKH:
+            case DEST_ETH:
+            case DEST_SH:
+                break;
+            default:
+                retVal.type = DEST_INVALID;
+        }
+    }
+    return retVal;
+}
+
+void CTransferDestination::SetAuxDest(const CTransferDestination &auxDest, int destNum)
+{
+    if (auxDests.size() == destNum)
+    {
+        auxDests.push_back(::AsVector(auxDest));
+    }
+    else if (auxDests.size() > destNum)
+    {
+        auxDests[destNum] = ::AsVector(auxDest);
+    }
+    if (auxDests.size())
+    {
+        type |= FLAG_DEST_AUX;
+    }
+}
+
+
 uint160 DecodeCurrencyName(std::string currencyStr)
 {
     uint160 retVal;
