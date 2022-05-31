@@ -669,7 +669,16 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     minPreMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.minPreconvert).CanonicalMap();
                 }
 
-                if (forcedRefund || (minPreMap.valueMap.size() && preConvertedMap < minPreMap))
+                // TODO: HARDENING - remove this and it's dependent conditional clause below at next testnet reset after 0.9.2-3
+                int32_t testnetEnforcementTimeBoundary = 1654035692;
+
+                if (forcedRefund ||
+                    (minPreMap.valueMap.size() && preConvertedMap < minPreMap) ||
+
+                    ((chainActive.Height() < notaHeight || chainActive[notaHeight]->nTime > testnetEnforcementTimeBoundary) &&
+                     destCurrency.IsFractional() &&
+                     (CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserveIn) +
+                                        newPreConversionReservesIn).CanonicalMap().valueMap.size() != destCurrency.currencies.size()))
                 {
                     // we force the reserves and supply to zero
                     // in any case where there was less than minimum participation,
