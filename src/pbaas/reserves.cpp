@@ -2341,6 +2341,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         {
                             checkState.SetLaunchCompleteMarker(false);
                         }
+
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                   ConnectedChains.thisChain,
                                                                   importCurrencyDef,
@@ -3548,7 +3549,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // check if it exceeds pre-conversion maximums, and refund if so
                     CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}), 
                                                                     std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
-                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserves) + newReserveIn + preConvertedReserves;
+                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserveIn) + newReserveIn + preConvertedReserves;
 
                     // TODO: HARDENING - remove this conditional at the next testnet reset
                     if (IsVerusActive() && height > 23000)

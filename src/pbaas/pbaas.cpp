@@ -327,6 +327,31 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 {
                     return state.Error("Unable to retrieve currency for import: " + cci.ToUniValue().write(1,2));
                 }
+
+                CCurrencyDefinition systemSource = ConnectedChains.GetCachedCurrency(cci.sourceSystemID);
+                CCoinbaseCurrencyState importState = notarization.currencyState;
+                CCoinbaseCurrencyState dummyState;
+                importState.RevertReservesAndSupply();
+
+                std::vector<CTxOut> vOutputs;
+                CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
+
+                CReserveTransactionDescriptor rtxd;
+                if (!rtxd.AddReserveTransferImportOutputs(systemSource, 
+                                                            ConnectedChains.ThisChain(), 
+                                                            importingToDef, 
+                                                            importState,
+                                                            reserveTransfers, 
+                                                            height,
+                                                            vOutputs,
+                                                            importedCurrency, 
+                                                            gatewayDepositsIn, 
+                                                            spentCurrencyOut,
+                                                            &dummyState))
+                {
+                    printf("Errors processing\n");
+                }
+
                 CCoinbaseCurrencyState startingState;
                 uint32_t minHeight = 0;
                 uint32_t maxHeight = 0;
@@ -1194,7 +1219,11 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                 currenciesIn.valueMap[newCurState.GetID()] += newCurState.primaryCurrencyOut;
             }
 
-            if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut))
+            // TODO: HARDENING - remove this and it's dependent conditional clause below at next testnet reset after 0.9.2-3
+            int32_t testnetEnforcementTimeBoundary = 1654140580;
+
+            if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut) &&
+                chainActive.Height() >= nHeight && chainActive[nHeight]->nTime > testnetEnforcementTimeBoundary)
             {
                 LogPrintf("%s: Invalid use of reserve deposits -- (totalDeposits + currenciesIn):\n%s\n(reserveDepositChange + spentCurrencyOut):\n%s\n",
                        __func__, (totalDeposits + currenciesIn).ToUniValue().write().c_str(), (reserveDepositChange + spentCurrencyOut).ToUniValue().write().c_str());

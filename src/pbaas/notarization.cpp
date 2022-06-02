@@ -670,7 +670,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 }
 
                 // TODO: HARDENING - remove this and it's dependent conditional clause below at next testnet reset after 0.9.2-3
-                int32_t testnetEnforcementTimeBoundary = 1654035692;
+                int32_t testnetEnforcementTimeBoundary = 1654140580;
 
                 if (forcedRefund ||
                     (minPreMap.valueMap.size() && preConvertedMap < minPreMap) ||
@@ -747,6 +747,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.conversionPrice = tempState.conversionPrice;
             newNotarization.currencyState.viaConversionPrice = tempState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
+
             retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
                                                           newNotarization.IsRefunding() ? sourceSystem : destSystem,
                                                           destCurrency, 
@@ -788,6 +789,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 tempState.preConvertedOut += this->currencyState.preConvertedOut;
                 tempState.primaryCurrencyOut += this->currencyState.primaryCurrencyOut;
             }
+        }
+        else if (!newNotarization.IsLaunchComplete() && tempState.IsFractional() && !tempState.IsRefunding() && !this->currencyState.IsPrelaunch())
+        {
+            // accumulate reserves during pre-conversions import to enforce max pre-convert
+            tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
         }
 
         newNotarization.currencyState = tempState;
