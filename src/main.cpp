@@ -6615,20 +6615,6 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
     }
     //fprintf(stderr,"finished ProcessBlock %d\n",(int32_t)chainActive.LastTip()->GetHeight());
 
-    // submit notarization if there is one
-    if (!IsVerusActive() && pblock->vtx.size() > 1)
-    {
-        // if we made an earned notarization in the block,
-        // queue it to create an accepted notarization from it
-        // check coinbase and second tx
-        CPBaaSNotarization pbncb(pblock->vtx[0]);
-        CPBaaSNotarization pbn(pblock->vtx[1]);       // TODO:PBAAS - make better solution to checking for a notarization to queue in a block, index can be off
-        if (::GetHash(pbncb) == ::GetHash(pbn))
-        {
-            ConnectedChains.QueueEarnedNotarization(*pblock, 1, nHeight);
-        }
-    }
-
     // when we succeed here, we prune all cheat candidates in the cheat list to 250 blocks ago, as they should be used or not
     // useful by then
     if (nHeight > 250)

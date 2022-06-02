@@ -3552,7 +3552,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserveIn) + newReserveIn + preConvertedReserves;
 
                     // TODO: HARDENING - remove this conditional at the next testnet reset
-                    if (IsVerusActive() && height > 23000)
+                    int32_t testnetEnforcementTimeBoundary = 1654211981;
+                    int32_t curBlockTime = chainActive.Height() >= height ? chainActive[height]->nTime : chainActive.LastTip() ? chainActive.LastTip()->nTime : 0;
+                    if (IsVerusActive() && curBlockTime > testnetEnforcementTimeBoundary)
                     {
                         if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
                         {

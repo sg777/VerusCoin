@@ -542,7 +542,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 CCurrencyValueMap newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + newPreConversionReservesIn;
 
                 // TODO: HARDENING - remove this conditional at the next testnet reset
-                if (IsVerusActive() && notaHeight > 23000)
+                int32_t testnetEnforcementTimeBoundary = 1654211981;
+                int32_t curBlockTime = chainActive.Height() >= notaHeight ? chainActive[notaHeight]->nTime : chainActive.LastTip() ? chainActive.LastTip()->nTime : 0;
+                if (IsVerusActive() && curBlockTime > testnetEnforcementTimeBoundary)
                 {
                     if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
                     {
@@ -671,11 +673,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
                 // TODO: HARDENING - remove this and it's dependent conditional clause below at next testnet reset after 0.9.2-3
                 int32_t testnetEnforcementTimeBoundary = 1654140580;
+                int32_t curBlockTime = chainActive.Height() >= notaHeight ?
+                                            chainActive[notaHeight]->nTime :
+                                            chainActive.LastTip() ? chainActive.LastTip()->nTime : 0;
 
                 if (forcedRefund ||
                     (minPreMap.valueMap.size() && preConvertedMap < minPreMap) ||
-
-                    ((chainActive.Height() < notaHeight || chainActive[notaHeight]->nTime > testnetEnforcementTimeBoundary) &&
+                    (curBlockTime > testnetEnforcementTimeBoundary &&
                      destCurrency.IsFractional() &&
                      (CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserveIn) +
                                         newPreConversionReservesIn).CanonicalMap().valueMap.size() != destCurrency.currencies.size()))
@@ -988,6 +992,22 @@ UniValue CChainNotarizationData::ToUniValue() const
     obj.push_back(Pair("lastconfirmed", lastConfirmed));
     obj.push_back(Pair("bestchain", bestChain));
     return obj;
+}
+
+bool CPBaaSNotarization::IsNotarizationConfirmed(const CPBaaSNotarization &notarization,
+                                                 const CNotaryEvidence &notaryEvidence,
+                                                 CValidationState &state) const
+{
+    // TODO: HARDENING - remove or implement and use
+    return false;
+}
+
+bool CPBaaSNotarization::IsNotarizationRejected(const CPBaaSNotarization &notarization,
+                                                const CNotaryEvidence &notaryEvidence,
+                                                CValidationState &state) const
+{
+    // TODO: HARDENING - remove or implement and use
+    return false;
 }
 
 bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &externalSystem,
@@ -2940,7 +2960,7 @@ bool ValidateNotarizationEvidence(const CTransaction &tx, int32_t outNum, CValid
             // signature is relative only to the notarization, not the finalization
             // that way, the information we put into the vdxfCodes have some meaning beyond
             // the blockchain on which it was signed, and we do not have to carry the
-            // finalizatoin mechanism cross-chain.
+            // finalization mechanism cross-chain.
             std::vector<uint160> vdxfCodes = {CCrossChainRPCData::GetConditionID(notarySig.systemID, 
                                                                                  CNotaryEvidence::NotarySignatureKey(), 
                                                                                  notarizationTxId, 

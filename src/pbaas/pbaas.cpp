@@ -1221,9 +1221,10 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
             // TODO: HARDENING - remove this and it's dependent conditional clause below at next testnet reset after 0.9.2-3
             int32_t testnetEnforcementTimeBoundary = 1654140580;
+            int32_t curBlockTime = chainActive.Height() >= nHeight ? chainActive[nHeight]->nTime : chainActive.LastTip() ? chainActive.LastTip()->nTime : 0;
 
             if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut) &&
-                chainActive.Height() >= nHeight && chainActive[nHeight]->nTime > testnetEnforcementTimeBoundary)
+                curBlockTime > testnetEnforcementTimeBoundary)
             {
                 LogPrintf("%s: Invalid use of reserve deposits -- (totalDeposits + currenciesIn):\n%s\n(reserveDepositChange + spentCurrencyOut):\n%s\n",
                        __func__, (totalDeposits + currenciesIn).ToUniValue().write().c_str(), (reserveDepositChange + spentCurrencyOut).ToUniValue().write().c_str());
