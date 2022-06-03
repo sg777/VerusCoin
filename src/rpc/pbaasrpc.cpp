@@ -7511,7 +7511,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             */
 
                             CChainNotarizationData cnd;
-                            if (!GetNotarizationData(convertToCurrencyID, cnd) ||
+                            if (!GetNotarizationData(pFractionalCurrency->GetID(), cnd) ||
                                 !cnd.IsConfirmed())
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization/pricing information for " + exportToCurrencyDef.name);
