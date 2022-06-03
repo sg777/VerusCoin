@@ -2771,7 +2771,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                     ConnectedChains.ThisChain();
             if (!nextSys.IsValid() ||
                 (destination.gatewayID != ASSETCHAINS_CHAINID &&
-                 (nextLegTransfer.feeCurrencyID != destSystem.GetID() || nextLegTransfer.nFees < destSystem.GetTransactionImportFee())))
+                 (nextLegTransfer.feeCurrencyID != nextSys.GetID() || nextLegTransfer.nFees < nextSys.GetTransactionImportFee())))
             {
                 printf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
                 LogPrintf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
