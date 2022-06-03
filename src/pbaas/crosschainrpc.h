@@ -660,10 +660,7 @@ public:
         READWRITE(notarizationProtocol);
         READWRITE(proofProtocol);
         READWRITE(nativeCurrencyID);
-        if (nativeCurrencyID.IsValid()) // TODO: HARDENING - remove this conditional, can't change now for testnet and contract compat
-        {
-            READWRITE(gatewayID);
-        }
+        READWRITE(gatewayID);
         READWRITE(VARINT(startBlock));
         READWRITE(VARINT(endBlock));
         READWRITE(initialFractionalSupply);

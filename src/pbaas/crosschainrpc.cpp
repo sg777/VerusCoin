@@ -987,6 +987,18 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         {
             try
             {
+                if (name == "VRSC" && parent.IsNull())
+                {
+                    initialBits = UintToArith256(uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();
+                }
+                else if (boost::to_lower_copy(name) == "vrsctest" && parent.IsNull())
+                {
+                    initialBits = UintToArith256(uint256S("0000000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();
+                }
+                else
+                {
+                    initialBits = UintToArith256(uint256S("00000000ff0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();
+                }
                 uint32_t newInitialBits = UintToArith256(uint256S(uni_get_str(find_value(obj, "initialtarget")))).GetCompact();
                 if (newInitialBits)
                 {

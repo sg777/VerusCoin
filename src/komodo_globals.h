@@ -90,6 +90,7 @@ uint64_t ASSETCHAINS_NONCEMASK[] = {0xffff,0xfffffff};
 uint32_t ASSETCHAINS_NONCESHIFT[] = {32,16};
 uint32_t ASSETCHAINS_HASHESPERROUND[] = {1,0x10000};
 uint32_t ASSETCHAINS_ALGO = _ASSETCHAINS_EQUIHASH;
+uint32_t ASSETCHAINS_STARTING_DIFF = 0;
 
 // Verus proof of stake controls
 int32_t ASSETCHAINS_LWMAPOS = 0;        // percentage of blocks should be PoS

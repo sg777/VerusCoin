@@ -45,6 +45,7 @@ using namespace std;
 extern uint32_t ASSETCHAINS_ALGO;
 extern int32_t ASSETCHAINS_EQUIHASH, ASSETCHAINS_LWMAPOS;
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
+extern uint32_t ASSETCHAINS_STARTING_DIFF;
 extern uint64_t ASSETCHAINS_STAKED;
 extern int32_t KOMODO_MININGTHREADS;
 extern bool VERUS_MINTBLOCKS;
@@ -445,6 +446,8 @@ bool SetThisChain(const UniValue &chainDefinition)
     memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
     assert(ConnectedChains.ThisChain().name.size() < sizeof(ASSETCHAINS_SYMBOL));
     strcpy(ASSETCHAINS_SYMBOL, ConnectedChains.ThisChain().name.c_str());
+
+    ASSETCHAINS_STARTING_DIFF = ConnectedChains.ThisChain().initialBits;
 
     if (!IsVerusActive())
     {

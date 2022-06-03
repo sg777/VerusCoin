@@ -23,7 +23,7 @@
 uint32_t komodo_chainactive_timestamp();
 int64_t komodo_current_supply(uint32_t nHeight);
 
-extern uint32_t ASSETCHAINS_ALGO, ASSETCHAINS_EQUIHASH, ASSETCHAINS_VERUSHASH, ASSETCHAINS_STAKED, ASSETCHAINS_LWMAPOS;
+extern uint32_t ASSETCHAINS_ALGO, ASSETCHAINS_EQUIHASH, ASSETCHAINS_VERUSHASH, ASSETCHAINS_STAKED, ASSETCHAINS_LWMAPOS, ASSETCHAINS_STARTING_DIFF;
 extern char ASSETCHAINS_SYMBOL[65];
 extern int32_t VERUS_BLOCK_POSUNITS, VERUS_CONSECUTIVE_POS_THRESHOLD, VERUS_PBAAS_CONSECUTIVE_POS_THRESHOLD, VERUS_NOPOS_THRESHHOLD;
 unsigned int lwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params);
@@ -123,20 +123,32 @@ unsigned int lwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlock
 
 unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params)
 {
-    arith_uint256 nextTarget {0}, sumTarget {0}, bnTmp, bnLimit;
+    arith_uint256 nextTarget {0}, sumTarget {0}, bnTmp, bnLimit, bnDefault;
     if (_IsVerusMainnetActive() && pindexLast && pindexLast->GetHeight() <= 1568100 && pindexLast->GetHeight() >= 1567999)
     {
         arith_uint256 maxDiffAdjust = UintToArith256(uint256S("00000000000f0f0f000000000000000000000000000000000000000000000000"));
         return maxDiffAdjust.GetCompact();
     }
 
+    int32_t nHeight = pindexLast ? pindexLast->GetHeight() : 0;
+    bool isPBaaS = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS;
+
     if (ASSETCHAINS_ALGO == ASSETCHAINS_EQUIHASH)
     {
         bnLimit = UintToArith256(params.powLimit);
+        bnDefault = bnLimit;
     }
     else
     {
         bnLimit = UintToArith256(params.powAlternate);
+        if (isPBaaS)
+        {
+            bnDefault.SetCompact(ASSETCHAINS_STARTING_DIFF);
+        }
+        else
+        {
+            bnDefault = bnLimit;
+        }
     }
 
     // Find the first block in the averaging interval as we total the linearly weighted average
@@ -147,7 +159,8 @@ unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const 
     // if changing from VerusHash V1 to V2, shift the last blocks by the same shift as the limit
     int targetShift = 0;
     uint32_t height = pindexLast->GetHeight() + 1;
-    if (CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV2)
+
+    if (_IsVerusMainnetActive() && CConstVerusSolutionVector::activationHeight.ActiveVersion(height) >= CConstVerusSolutionVector::activationHeight.SOLUTION_VERUSV2)
     {
         targetShift = VERUSHASH2_SHIFT;
         bnLimit <<= targetShift;
@@ -178,12 +191,14 @@ unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const 
     // Check we have enough blocks
     if (!pindexFirst)
     {
-        if (!_IsVerusActive() && ASSETCHAINS_ALGO == ASSETCHAINS_VERUSHASH)
+        if (isPBaaS)
         {
-            // startup 16 times harder on PBaaS chains
-            bnLimit = bnLimit >> 4;
+            return bnDefault.GetCompact();
         }
-        return bnLimit.GetCompact();
+        else
+        {
+            return bnLimit.GetCompact();
+        }
     }
 
     // Keep t reasonable in case strange solvetimes occurred.
