@@ -749,6 +749,18 @@ public:
         return key;
     }
 
+    static std::string CurrencyImportFromSystemKeyName()
+    {
+        return "vrsc::system.currency.currencyimportfromsystem";
+    }
+
+    static uint160 CurrencyImportFromSystemKey(const uint160 &fromSystem, const uint160 &toCurrency)
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(CurrencyImportFromSystemKeyName(), nameSpace);
+        return CCrossChainRPCData::GetConditionID(key, CCrossChainRPCData::GetConditionID(fromSystem, toCurrency));
+    }
+
     static std::string CurrencySystemImportKeyName()
     {
         return "vrsc::system.currency.systemimport";

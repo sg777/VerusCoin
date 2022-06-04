@@ -1294,6 +1294,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.sourceSystemID, cci.CurrencySystemImportKey())));
                 }
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(cci.importCurrencyID, cci.CurrencyImportKey())));
+                destinations.insert(CIndexID(cci.CurrencyImportFromSystemKey(cci.sourceSystemID, cci.importCurrencyID)));
             }
             break;
         }

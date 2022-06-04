@@ -2471,6 +2471,23 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 }
                 break;
 
+                case EVAL_EARNEDNOTARIZATION:
+                case EVAL_ACCEPTEDNOTARIZATION:
+                {
+                    CPBaaSNotarization onePBN;
+                    if (!p.vData.size() ||
+                        !(onePBN = CPBaaSNotarization(p.vData[0])).IsValid())
+                    {
+                        flags &= ~IS_VALID;
+                        flags |= IS_REJECT;
+                        return;
+                    }
+
+                    // verify
+                    // if this is the notaries that can finalize this chain, store notarization
+                }
+                break;
+
                 default:
                 {
                     CCurrencyValueMap output = tx.vout[i].scriptPubKey.ReserveOutValue();
@@ -2771,29 +2788,14 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                     ConnectedChains.ThisChain();
             if (!nextSys.IsValid() ||
                 (destination.gatewayID != ASSETCHAINS_CHAINID &&
-                 (nextLegTransfer.feeCurrencyID != nextSys.GetID() || nextLegTransfer.nFees < nextSys.GetTransactionImportFee())))
+                 (nextLegTransfer.feeCurrencyID != nextSys.GetID())))
             {
                 printf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
                 LogPrintf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
-                if (dest.which() == COptCCParams::ADDRTYPE_INVALID || dest.which() == COptCCParams::ADDRTYPE_INDEX)
-                {
-                    dest = GetCompatibleAuxDestination(destination, (CCurrencyDefinition::EProofProtocol)nextSys.proofProtocol);
-                    if (dest.which() == COptCCParams::ADDRTYPE_INVALID)
-                    {
-                        dest = DecodeDestination("vrsctest@");
-                    }
-                }
-                if (!reserves.valueMap.size() && nativeAmount)
-                {
-                    txOut = CTxOut(nativeAmount, GetScriptForDestination(dest));
-                }
-                else
-                {
-                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({dest});
-                    CTokenOutput ro = CTokenOutput(reserves);
-                    txOut = CTxOut(nativeAmount, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
-                }
-                return true;
+            }
+            else if (nextLegTransfer.nFees < nextSys.GetTransactionImportFee())
+            {
+                LogPrintf("%s: Insufficient fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
             }
             else
             {
@@ -2808,6 +2810,39 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 txOut = CTxOut(nativeAmount, MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &nextLegTransfer)));
                 return true;
             }
+            if (dest.which() == COptCCParams::ADDRTYPE_INVALID || dest.which() == COptCCParams::ADDRTYPE_INDEX)
+            {
+                dest = GetCompatibleAuxDestination(destination, (CCurrencyDefinition::EProofProtocol)nextSys.proofProtocol);
+                if (dest.which() == COptCCParams::ADDRTYPE_INVALID)
+                {
+                    // TODO: HARDENING - provide a model for users to add funds to allow the send to resume
+                    // for example, send to an address controlled by an app that can accept payment to retry
+                    // or a type of output that parks, waiting for more fees that can be
+                    // contributed by anyone to continue, possibly a parked transaction similar to a market offer
+                    // that can be accepted by anyone to enable resumption.
+                    dest = DecodeDestination("vrsctest@");
+                    LogPrintf("Invalid or missing alternative destination. Value sent to %s on chain %s\n", "vrsctest@", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str());
+                }
+                else
+                {
+                    LogPrintf("Value refunded to alternatiive destination on chain %s\n", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str());
+                }
+            }
+            else
+            {
+                LogPrintf("Value emitted to recipient on chain %s\n", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)).c_str());
+            }
+            if (!reserves.valueMap.size() && nativeAmount)
+            {
+                txOut = CTxOut(nativeAmount, GetScriptForDestination(dest));
+            }
+            else
+            {
+                std::vector<CTxDestination> dests = std::vector<CTxDestination>({dest});
+                CTokenOutput ro = CTokenOutput(reserves);
+                txOut = CTxOut(nativeAmount, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &ro)));
+            }
+            return true;
         }
     }
     if (makeNormalOutput)

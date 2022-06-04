@@ -293,6 +293,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
         if (cci.IsDefinitionImport())
         {
             // TODO: HARDENING - validate this belongs on a definition and is correct
+            if (!cci.hashReserveTransfers.IsNull())
+            {
+                return state.Error("Definition import cannot contain transfers: " + cci.ToUniValue().write(1,2));
+            }
             return true;
         }
         else if (cci.IsInitialLaunchImport())
@@ -300,13 +304,79 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             // TODO: HARDENING - validate this is correct as the initial launch import
             return true;
         }
+
         if (ccx.destSystemID != ASSETCHAINS_CHAINID && notarization.IsValid() && !notarization.IsRefunding())
         {
             return state.Error("Invalid import: " + cci.ToUniValue().write(1,2));
         }
         else if (notarization.IsValid())
         {
-            if (reserveTransfers.size())
+            // if we have the chain behind us, verify that the prior import imports the prior export
+            if (!isPreSync && !cci.IsDefinitionImport())
+            {
+                CTransaction priorImportTx;
+                CCrossChainImport priorImport = cci.GetPriorImport(tx, outNum, state, height, &priorImportTx);
+                if (!priorImport.IsValid())
+                {
+                    return state.Error("Cannot retrieve prior import: " + cci.ToUniValue().write(1,2));
+                }
+
+                // TODO: HARDENING - ensure we are covering all systems
+                if (!priorImport.exportTxId.IsNull() && priorImport.sourceSystemID == cci.sourceSystemID)
+                {
+                    if (ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+                    {
+                        // same chain, we can get the export transaction
+                        CTransaction exportTx;
+                        uint256 blockHash;
+                        if (!myGetTransaction(cci.exportTxId, exportTx, blockHash))
+                        {
+                            return state.Error("Can't get export for import: " + cci.ToUniValue().write(1,2));
+                        }
+                        if (ccx.IsSystemThreadExport() || ccx.IsSupplemental())
+                        {
+                            return state.Error("Invalid prior import tx(" + priorImportTx.GetHash().GetHex() + "): " + cci.ToUniValue().write(1,2));
+                        }
+                        if (ccx.firstInput > 0)
+                        {
+                            // the prior input is 1 less than first transfer input
+                            if (exportTx.vin.size() <= ccx.firstInput)
+                            {
+                                return state.Error("Invalid export tx(" + exportTx.GetHash().GetHex() + ") for import: " + cci.ToUniValue().write(1,2));
+                            }
+                            if (priorImport.exportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash ||
+                                priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n)
+                            {
+                                return state.Error("Out of order export for import: " + cci.ToUniValue().write(1,2));
+                            }
+                        }
+                        else
+                        {
+                            bool inputFound = false;
+                            // search for a matching input
+                            for (auto &oneIn : exportTx.vin)
+                            {
+                                if (priorImport.exportTxId == oneIn.prevout.hash &&
+                                    priorImport.exportTxOutNum == oneIn.prevout.n)
+                                {
+                                    inputFound = true;
+                                    break;
+                                }
+                            }
+                            if (!inputFound)
+                            {
+                                return state.Error("Out of order export for import 1: " + cci.ToUniValue().write(1,2));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // TODO: HARDENING must have evidence to reconstruct a partial transaction proof with prior tx id
+                    }
+                }
+            }
+
+            if (!isPreSync && reserveTransfers.size())
             {
                 // if we are importing to fractional, determine the last notarization used prior to this one for 
                 // imports from the system from that, the most favorable conversion rates for fee compatible conversions 
