@@ -260,6 +260,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Multi-currency operation before PBaaS activation");
     }
 
+    bool isPreSync = chainActive.Height() < (height - 1);
+
     COptCCParams p;
     CCrossChainImport cci, sysCCI;
     CCrossChainExport ccx;
