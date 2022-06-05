@@ -316,6 +316,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             // if we have the chain behind us, verify that the prior import imports the prior export
             if (!isPreSync && !cci.IsDefinitionImport())
             {
+                // if from this system, we 
+
                 CTransaction priorImportTx;
                 CCrossChainImport priorImport = cci.GetPriorImport(tx, outNum, state, height, &priorImportTx);
                 if (!priorImport.IsValid())
@@ -323,7 +325,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     return state.Error("Cannot retrieve prior import: " + cci.ToUniValue().write(1,2));
                 }
 
-                // TODO: HARDENING - ensure we are covering all systems
                 if (!priorImport.exportTxId.IsNull() && priorImport.sourceSystemID == cci.sourceSystemID)
                 {
                     if (ccx.sourceSystemID == ASSETCHAINS_CHAINID)
@@ -349,6 +350,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             if (priorImport.exportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash ||
                                 priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n)
                             {
+                                //printf("%s: Out of order export tx(%s) from %s to %s for import %s\n", __func__, exportTx.GetHash().GetHex().c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.sourceSystemID).c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.importCurrencyID).c_str(), cci.ToUniValue().write(1,2).c_str());
                                 return state.Error("Out of order export for import: " + cci.ToUniValue().write(1,2));
                             }
                         }
@@ -6703,7 +6705,7 @@ void CConnectedChains::ProcessLocalImports()
                 (cci.IsPostLaunch() || cci.IsDefinitionImport() || cci.sourceSystemID == ASSETCHAINS_CHAINID))
             {
                 // if not post launch, we are launching from this chain and need to get exports after the last import's source height
-                if (!cci.IsPostLaunch())
+                if (cci.IsInitialLaunchImport())
                 {
                     std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> exportsFound;
                     if (GetCurrencyExports(ccx.destCurrencyID, exportsFound, cci.sourceSystemHeight, nHeight))

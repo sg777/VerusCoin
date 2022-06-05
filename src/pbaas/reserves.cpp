@@ -699,6 +699,56 @@ CCrossChainImport CCrossChainImport::GetPriorImport(const CTransaction &tx,
     return cci;
 }
 
+// returns the prior import from the same system as a given import. this enables export order checking to ensure
+// that all exports from any system are imported in order.
+CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction &tx,
+                                                              int32_t outNum,
+                                                              CValidationState &state,
+                                                              uint32_t height,
+                                                              CTransaction *ppriorTx,
+                                                              int32_t *ppriorOutNum,
+                                                              uint256 *ppriorTxBlockHash) const
+{
+    // TODO: HARDENING search using import from system key
+
+    // get the prior import
+    CCrossChainImport cci;
+    for (auto &oneIn : tx.vin)
+    {
+        CTransaction _priorTx;
+        int32_t _priorOutNum;
+        uint256 _priorTxBlockHash;
+        CTransaction &priorTx = ppriorTx ? *ppriorTx : _priorTx;
+        int32_t &priorOutNum = ppriorOutNum ? *ppriorOutNum : _priorOutNum;
+        uint256 &priorTxBlockHash = ppriorTxBlockHash ? *ppriorTxBlockHash : _priorTxBlockHash;
+
+        uint256 priorTxHash;
+        COptCCParams p;
+        if (!IsDefinitionImport() &&
+            !(IsInitialLaunchImport() && cci.sourceSystemID != ASSETCHAINS_CHAINID) &&
+            (myGetTransaction(oneIn.prevout.hash, _priorTx, priorTxBlockHash)))
+        {
+            if (_priorTx.vout.size() > oneIn.prevout.n &&
+                _priorTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                p.vData.size() &&
+                (cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                cci.importCurrencyID == importCurrencyID)
+            {
+                priorTx = _priorTx;
+                priorOutNum = oneIn.prevout.n;
+                break;
+            }
+            else
+            {
+                cci = CCrossChainImport();
+            }
+        }
+    }
+    return cci;
+}
+
 // returns the best conversion prices for all currencies in a currency converter over a period of time to go from any currency in
 // the converter to the fee currency.
 //
@@ -3584,7 +3634,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // check if it exceeds pre-conversion maximums, and refund if so
                     CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}), 
                                                                     std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
-                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserveIn) + newReserveIn + preConvertedReserves;
+                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn) + newReserveIn + preConvertedReserves;
 
                     // TODO: HARDENING - remove this conditional at the next testnet reset
                     int32_t testnetEnforcementTimeBoundary = 1654211981;
@@ -5398,10 +5448,40 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
             for (auto &oneCur : currencyMap)
             {
                 reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
-                supply += primaryCurrencyIn[oneCur.second];
+
+                if (IsLaunchCompleteMarker())
+                {
+                    supply += primaryCurrencyIn[oneCur.second];
+                }
+                else
+                {
+                    CCurrencyValueMap negativePreReserves(currencies, reserveIn);
+                    negativePreReserves = negativePreReserves * -1;
+
+                    if (!IsPrelaunch())
+                    {
+                        primaryCurrencyIn = AddVectors(primaryCurrencyIn, negativePreReserves.AsCurrencyVector(currencies));
+                        for (auto &oneVal : reserveIn)
+                        {
+                            oneVal = 0;
+                        }
+                    }
+                }
             }
         }
     }
+    // between prelaunch and launch complete phases, we have accumulation of reserves
+    else if (!IsLaunchCompleteMarker() && !IsPrelaunch())
+    {
+        CCurrencyValueMap negativePreReserves(currencies, reserveIn);
+        negativePreReserves = negativePreReserves * -1;
+        primaryCurrencyIn = AddVectors(primaryCurrencyIn, negativePreReserves.AsCurrencyVector(currencies));
+        for (auto &oneVal : reserveIn)
+        {
+            oneVal = 0;
+        }
+    }
+
     // if this is the last launch clear pre-launch, it will emit and create the correct supply starting
     // from the initial supply, which was more for display. reset to initial supply as a starting point
     if (IsPrelaunch())

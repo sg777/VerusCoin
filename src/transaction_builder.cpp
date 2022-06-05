@@ -289,16 +289,25 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
         view.SetBackend(viewMemPool);
 
         CReserveTransactionDescriptor rtxd(mtx, view, chainActive.Height() + 1);
-        if (!rtxd.IsValid())
+        reserveChange = ((rtxd.ReserveInputMap() - rtxd.ReserveOutputMap()) - reserveFee).CanonicalMap();
+
+        if (!rtxd.IsValid() || reserveChange.HasNegative())
         {
             CReserveTransactionDescriptor checkRtxd(mtx, view, chainActive.Height() + 1);
-            LogPrint("txbuilder", "Invalid reserve transaction descriptor\n", __func__);
-            return TransactionBuilderResult("Invalid reserve transaction descriptor");
+            if (rtxd.IsValid())
+            {
+                printf("%s: Reserve change is negative: %s\n", __func__, reserveChange.ToUniValue().write().c_str());
+                return TransactionBuilderResult("Reserve change is negative: " + reserveChange.ToUniValue().write());
+            }
+            else
+            {
+                LogPrint("txbuilder", "Invalid reserve transaction descriptor\n", __func__);
+                return TransactionBuilderResult("Invalid reserve transaction descriptor");
+            }
         }
-        reserveChange = (rtxd.ReserveInputMap() - rtxd.ReserveOutputMap()) - reserveFee;
 
         //printf("\n%s: reserve input:\n%s\noutput:\n%s\nchange:\n%s\n\n", __func__, rtxd.ReserveInputMap().ToUniValue().write(1,2).c_str(), rtxd.ReserveOutputMap().ToUniValue().write(1,2).c_str(), reserveChange.ToUniValue().write(1,2).c_str());
-        bool hasReserveChange = false;
+        bool hasReserveChange = reserveChange > CCurrencyValueMap();
 
         // Valid change
         CAmount change = mtx.valueBalance - fee;
@@ -311,15 +320,10 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
         for (auto tIn : tIns) {
             change += tIn.value;
         }
-        if (reserveChange.valueMap.size())
-        {
-            reserveChange = reserveChange.CanonicalMap();
-            hasReserveChange = reserveChange > CCurrencyValueMap();
-        }
         for (auto tOut : mtx.vout) {
             change -= tOut.nValue;
         }
-        if (change < 0 || reserveChange.HasNegative()) {
+        if (change < 0) {
             // it's possible this is an import transaction that is minting currency
             //UniValue jsonTx(UniValue::VOBJ);
             //TxToUniv(mtx, uint256(), jsonTx);

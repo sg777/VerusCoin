@@ -781,6 +781,14 @@ public:
                                      int32_t *priorOutNum=nullptr,
                                      uint256 *ppriorTxBlockHash=nullptr) const;
 
+    CCrossChainImport GetPriorImportFromSystem(const CTransaction &tx,
+                                               int32_t outNum,
+                                               CValidationState &state,
+                                               uint32_t height,
+                                               CTransaction *priorTx=nullptr,
+                                               int32_t *priorOutNum=nullptr,
+                                               uint256 *ppriorTxBlockHash=nullptr) const;
+
     CCurrencyValueMap GetBestPriorConversions(const CTransaction &tx,
                                               int32_t outNum,
                                               const uint160 &converterCurrencyID,

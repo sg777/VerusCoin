@@ -510,6 +510,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     CCurrencyValueMap newPreConversionReservesIn;
 
+    if (!IsPreLaunch() && !IsLaunchComplete())
+    {
+        newPreConversionReservesIn = CCurrencyValueMap(currencyState.currencies, currencyState.primaryCurrencyIn);
+    }
+
     for (int i = 0; i < exportTransfers.size(); i++)
     {
         CReserveTransfer reserveTransfer = exportTransfers[i];
@@ -539,12 +544,20 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 // check if it exceeds pre-conversion maximums, and refund if so
                 CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({reserveTransfer.FirstCurrency()}), 
                                                                    std::vector<int64_t>({reserveTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(reserveTransfer.FirstValue())}));
-                CCurrencyValueMap newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + newPreConversionReservesIn;
+                CCurrencyValueMap newTotalReserves;
+                if (IsPreLaunch())
+                {
+                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + newPreConversionReservesIn;
+                }
+                else
+                {
+                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.primaryCurrencyIn) + newReserveIn + newPreConversionReservesIn;
+                }
 
                 // TODO: HARDENING - remove this conditional at the next testnet reset
                 int32_t testnetEnforcementTimeBoundary = 1654211981;
                 int32_t curBlockTime = chainActive.Height() >= notaHeight ? chainActive[notaHeight]->nTime : chainActive.LastTip() ? chainActive.LastTip()->nTime : 0;
-                if (IsVerusActive() && curBlockTime > testnetEnforcementTimeBoundary)
+                if (!IsVerusActive() || curBlockTime > testnetEnforcementTimeBoundary)
                 {
                     if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
                     {
@@ -794,10 +807,31 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 tempState.primaryCurrencyOut += this->currencyState.primaryCurrencyOut;
             }
         }
-        else if (!newNotarization.IsLaunchComplete() && tempState.IsFractional() && !tempState.IsRefunding() && !this->currencyState.IsPrelaunch())
+        else if (!newNotarization.currencyState.IsLaunchCompleteMarker() && !tempState.IsRefunding() && !this->currencyState.IsPrelaunch())
         {
             // accumulate reserves during pre-conversions import to enforce max pre-convert
-            tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
+            CCurrencyValueMap tempReserves;
+            for (auto &oneCurrencyID : tempState.currencies)
+            {
+                if (rtxd.currencies.count(oneCurrencyID))
+                {
+                    int64_t reservesConverted = rtxd.currencies[oneCurrencyID].nativeOutConverted;
+                    if (reservesConverted)
+                    {
+                        tempReserves.valueMap[oneCurrencyID] = reservesConverted;
+                    }
+                }
+            }
+    
+            // use double entry to enable pass through of the accumulated reserve such that when
+            // reverting supply and reserves, we end up with what we started, after prelaunch and
+            // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
+            // reserves to enforce maxPreconvert
+            tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
+            tempState.reserveOut = 
+                    tempState.AddVectors(tempState.reserveOut,
+                                         (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));
+            tempState.reserveIn = tempReserves.AsCurrencyVector(tempState.currencies);
         }
 
         newNotarization.currencyState = tempState;
