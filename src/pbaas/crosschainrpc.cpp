@@ -991,10 +991,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 {
                     initialBits = UintToArith256(uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();
                 }
-                else if (boost::to_lower_copy(name) == "vrsctest" && parent.IsNull())
-                {
-                    initialBits = UintToArith256(uint256S("000000ff0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();
-                }
                 else
                 {
                     initialBits = UintToArith256(uint256S("000000ff0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();

@@ -144,6 +144,7 @@ unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const 
         if (isPBaaS)
         {
             bnDefault.SetCompact(ASSETCHAINS_STARTING_DIFF);
+            bnLimit = (bnDefault << 4);
         }
         else
         {

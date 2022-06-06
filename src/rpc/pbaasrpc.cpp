@@ -448,6 +448,7 @@ bool SetThisChain(const UniValue &chainDefinition)
     strcpy(ASSETCHAINS_SYMBOL, ConnectedChains.ThisChain().name.c_str());
 
     ASSETCHAINS_STARTING_DIFF = ConnectedChains.ThisChain().initialBits;
+    //printf("Starting PBaaS chain:\n%s\n", ConnectedChains.ThisChain().ToUniValue().write(1,2).c_str());
 
     if (!IsVerusActive())
     {
