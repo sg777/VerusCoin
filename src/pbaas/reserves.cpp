@@ -3636,16 +3636,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                                                     std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
                     CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn) + newReserveIn + preConvertedReserves;
 
-                    // TODO: HARDENING - remove this conditional at the next testnet reset
-                    int32_t testnetEnforcementTimeBoundary = 1654211981;
-                    int32_t curBlockTime = chainActive.Height() >= height ? chainActive[height]->nTime : chainActive.LastTip() ? chainActive.LastTip()->nTime : 0;
-                    if (IsVerusActive() && curBlockTime > testnetEnforcementTimeBoundary)
+                    if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
                     {
-                        if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
-                        {
-                            LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
-                            curTransfer = curTransfer.GetRefundTransfer();
-                        }
+                        LogPrint("defi", "%s: refunding pre-conversion over maximum\n", __func__);
+                        curTransfer = curTransfer.GetRefundTransfer();
                     }
                 }
 

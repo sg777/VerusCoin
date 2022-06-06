@@ -554,28 +554,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.primaryCurrencyIn) + newReserveIn + newPreConversionReservesIn;
                 }
 
-                // TODO: HARDENING - remove this conditional at the next testnet reset
-                int32_t testnetEnforcementTimeBoundary = 1654211981;
-                int32_t curBlockTime = chainActive.Height() >= notaHeight ? chainActive[notaHeight]->nTime : chainActive.LastTip() ? chainActive.LastTip()->nTime : 0;
-                if (!IsVerusActive() || curBlockTime > testnetEnforcementTimeBoundary)
+                if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
                 {
-                    if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
-                    {
-                        LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
-                        reserveTransfer = reserveTransfer.GetRefundTransfer();
-                    }
-                    else
-                    {
-                        newPreConversionReservesIn += newReserveIn;
-                    }
+                    LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
+                    reserveTransfer = reserveTransfer.GetRefundTransfer();
                 }
                 else
                 {
-                    if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
-                    {
-                        LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
-                        reserveTransfer = reserveTransfer.GetRefundTransfer();
-                    }
                     newPreConversionReservesIn += newReserveIn;
                 }
             }
@@ -684,16 +669,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     minPreMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.minPreconvert).CanonicalMap();
                 }
 
-                // TODO: HARDENING - remove this and it's dependent conditional clause below at next testnet reset after 0.9.2-3
-                int32_t testnetEnforcementTimeBoundary = 1654140580;
-                int32_t curBlockTime = chainActive.Height() >= notaHeight ?
-                                            chainActive[notaHeight]->nTime :
-                                            chainActive.LastTip() ? chainActive.LastTip()->nTime : 0;
-
                 if (forcedRefund ||
                     (minPreMap.valueMap.size() && preConvertedMap < minPreMap) ||
-                    (curBlockTime > testnetEnforcementTimeBoundary &&
-                     destCurrency.IsFractional() &&
+                    (destCurrency.IsFractional() &&
                      (CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserveIn) +
                                         newPreConversionReservesIn).CanonicalMap().valueMap.size() != destCurrency.currencies.size()))
                 {

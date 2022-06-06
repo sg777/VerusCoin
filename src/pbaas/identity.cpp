@@ -1119,23 +1119,17 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             }
         }
 
-        // TODO: HARDENING - remove this condition before mainnet and ensure that PBaaS undergoes the same referral
-        // enforcement
-        // only validate referrers before PBaaS
-        if (!isPBaaS)
+        if (referrers.size() != checkReferrers.size())
         {
-            if (referrers.size() != checkReferrers.size())
+            return state.Error("Invalid identity registration - incorrect referral payments");
+        }
+
+        // make sure all paid referrers are correct
+        for (int i = 0; i < referrers.size(); i++)
+        {
+            if (referrers[i] != checkReferrers[i])
             {
                 return state.Error("Invalid identity registration - incorrect referral payments");
-            }
-
-            // make sure all paid referrers are correct
-            for (int i = 0; i < referrers.size(); i++)
-            {
-                if (referrers[i] != checkReferrers[i])
-                {
-                    return state.Error("Invalid identity registration - incorrect referral payments");
-                }
             }
         }
 
