@@ -311,8 +311,36 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
         {
             return state.Error("Invalid import: " + cci.ToUniValue().write(1,2));
         }
+        // TODO: HARDENING - if notarization is invalid, we may need to reject
+        // also need to ensure that if our current height invalidates an import from the specified height that we
+        // reject this in all cases
         else if (notarization.IsValid())
         {
+            if (notarization.IsSameChain())
+            {
+                // a notarization for a later height is not valid
+                if (notarization.notarizationHeight > (height - 1))
+                {
+                    return state.Error("Notarization for import past height, likely due to reorg: " + notarization.ToUniValue().write(1,2));
+                }
+            }
+            else if (notarization.proofRoots.count(ASSETCHAINS_CHAINID))
+            {
+                uint32_t rootHeight;
+                auto mmv = chainActive.GetMMV();
+                if ((!notarization.IsMirror() &&
+                        notarization.IsSameChain() &&
+                        notarization.notarizationHeight >= height) ||
+                    (notarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                        ((rootHeight = notarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) > (height - 1) ||
+                        (mmv.resize(rootHeight + 1), rootHeight != (mmv.size() - 1)) ||
+                        notarization.proofRoots[ASSETCHAINS_CHAINID].blockHash != chainActive[rootHeight]->GetBlockHash() ||
+                        notarization.proofRoots[ASSETCHAINS_CHAINID].stateRoot != mmv.GetRoot())))
+                {
+                    return state.Error("Notarization for import past height or invalid: " + notarization.ToUniValue().write(1,2));
+                }
+            }
+
             // if we have the chain behind us, verify that the prior import imports the prior export
             if (!isPreSync && !cci.IsDefinitionImport())
             {
@@ -632,6 +660,11 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         {
             return state.Error("Invalid cross chain export - cannot find system definition for destination");
         }
+    }
+
+    if (ccx.sourceHeightEnd >= height)
+    {
+        return state.Error("Export source height is too high for current height");
     }
 
     // make sure that every reserve transfer that SHOULD BE included (all mined in relevant blocks) IS included, no exceptions
