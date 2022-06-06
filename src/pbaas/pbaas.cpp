@@ -342,6 +342,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             }
 
             // if we have the chain behind us, verify that the prior import imports the prior export
+            // TODO: HARDENING - this needs full coverage of all cases, including pre-conversion
             if (!isPreSync && !cci.IsDefinitionImport())
             {
                 // if from this system, we 
