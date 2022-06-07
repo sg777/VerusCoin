@@ -6788,7 +6788,7 @@ void CConnectedChains::ProcessLocalImports()
                 (cci.IsPostLaunch() || cci.IsDefinitionImport() || cci.sourceSystemID == ASSETCHAINS_CHAINID))
             {
                 // if not post launch, we are launching from this chain and need to get exports after the last import's source height
-                if (cci.IsInitialLaunchImport())
+                if (ccx.IsClearLaunch())
                 {
                     std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> exportsFound;
                     if (GetCurrencyExports(ccx.destCurrencyID, exportsFound, cci.sourceSystemHeight, nHeight))
