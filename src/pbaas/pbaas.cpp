@@ -355,8 +355,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     // we need to look deeper to ensure that there really is not one or that we use it
                     LogPrintf("Cannot retrieve prior import: %s\n", cci.ToUniValue().write(1,2).c_str());
                 }
-
-                if (priorImport.exportTxId.IsNull())
+                else if (priorImport.exportTxId.IsNull())
                 {
                     if (!ccx.IsChainDefinition())
                     {
