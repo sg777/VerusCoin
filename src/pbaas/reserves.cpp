@@ -2449,13 +2449,16 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                           idImportCheckP.evalCode == EVAL_IDENTITY_PRIMARY &&
                                           checkOutputs[loop] == tx.vout[loop + startingOutput + ++idCheckOffset]))
                                     {
-                                        LogPrint("crosschain", "%s: calculated outputs do not match outputs on import transaction\n", __func__);
-                                        UniValue scriptJson1(UniValue::VOBJ), scriptJson2(UniValue::VOBJ);
-                                        ScriptPubKeyToUniv(checkOutputs[loop].scriptPubKey, scriptJson1, false, false);
-                                        ScriptPubKeyToUniv(tx.vout[loop + startingOutput + ++idCheckOffset].scriptPubKey, scriptJson2, false, false);
-                                        printf("pre currency state: %s\n", checkState.ToUniValue().write(1,2).c_str());
-                                        printf("post currency state: %s\n", newState.ToUniValue().write(1,2).c_str());
-                                        printf("output 1:\n%s\nnativeout: %ld\nexpected:\n%s\nnativeout: %ld\n", scriptJson1.write(1,2).c_str(), checkOutputs[loop].nValue, scriptJson2.write(1,2).c_str(), tx.vout[loop + startingOutput + ++idCheckOffset].nValue);
+                                        if (LogAcceptCategory("crosschain") || LogAcceptCategory("defi"))
+                                        {
+                                            LogPrintf("%s: calculated outputs do not match outputs on import transaction\n", __func__);
+                                            UniValue scriptJson1(UniValue::VOBJ), scriptJson2(UniValue::VOBJ);
+                                            ScriptPubKeyToUniv(checkOutputs[loop].scriptPubKey, scriptJson1, false, false);
+                                            ScriptPubKeyToUniv(tx.vout[loop + startingOutput + ++idCheckOffset].scriptPubKey, scriptJson2, false, false);
+                                            LogPrintf("pre currency state: %s\n", checkState.ToUniValue().write(1,2).c_str());
+                                            LogPrintf("post currency state: %s\n", newState.ToUniValue().write(1,2).c_str());
+                                            LogPrintf("output 1:\n%s\nnativeout: %ld\nexpected:\n%s\nnativeout: %ld\n", scriptJson1.write(1,2).c_str(), checkOutputs[loop].nValue, scriptJson2.write(1,2).c_str(), tx.vout[loop + startingOutput + ++idCheckOffset].nValue);
+                                        }
                                         //LogPrint("importtransactions", "%s: calculated outputs do not match outputs on import transaction\n", __func__);
                                         //flags &= ~IS_VALID;
                                         //flags |= IS_REJECT;
