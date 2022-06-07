@@ -301,20 +301,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             }
             return true;
         }
-        else if (cci.IsInitialLaunchImport())
+        else if (cci.IsInitialLaunchImport() && height == 1)
         {
             // TODO: HARDENING - validate this is correct as the initial launch import
-            CCurrencyDefinition importingCur;
-            if (!isPreSync && height != 1)
-            {
-                CCurrencyDefinition importingCur = ConnectedChains.GetCachedCurrency(cci.importCurrencyID);
-            }
-            // TODO: HARDENING - use this for testing validation to ensure we fully check the first gateway import as well
-            // if (height == 1)
-            if (height == 1 || (importingCur.IsValid() && importingCur.IsGateway()))
-            {
-                return true;
-            }
+            return true;
         }
 
         if (ccx.destSystemID != ASSETCHAINS_CHAINID && notarization.IsValid() && !notarization.IsRefunding())
@@ -361,7 +351,9 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 CCrossChainImport priorImport = cci.GetPriorImport(tx, outNum, state, height, &priorImportTx);
                 if (!priorImport.IsValid())
                 {
-                    return state.Error("Cannot retrieve prior import: " + cci.ToUniValue().write(1,2));
+                    // TODO: HARDENING for now, we skip checks if we fail to get prior import, but
+                    // we need to look deeper to ensure that there really is not one or that we use it
+                    LogPrintf("Cannot retrieve prior import: %s\n", cci.ToUniValue().write(1,2).c_str());
                 }
 
                 if (priorImport.exportTxId.IsNull())

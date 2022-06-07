@@ -675,7 +675,6 @@ CCrossChainImport CCrossChainImport::GetPriorImport(const CTransaction &tx,
         uint256 priorTxHash;
         COptCCParams p;
         if (!IsDefinitionImport() &&
-            !(IsInitialLaunchImport() && sourceSystemID != ASSETCHAINS_CHAINID) &&
             (myGetTransaction(oneIn.prevout.hash, _priorTx, priorTxBlockHash)))
         {
             if (_priorTx.vout.size() > oneIn.prevout.n &&
