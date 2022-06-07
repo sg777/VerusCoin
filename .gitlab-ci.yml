@@ -30,7 +30,7 @@ variables:
 ####START####                                            LINUX                                             ####START####
 ########################################################################################################################
 build:linux:
-  image: asherd/verus-builders:verus-debian-9
+  image: asherd/verus-builders:verus-debian-10
   variables:
     DOCKER_DRIVER: overlay2
     CONFIGURE_FLAGS: --with-gcc-arch=x86-64
