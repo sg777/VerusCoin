@@ -301,10 +301,18 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             }
             return true;
         }
-        else if (height == 1 && cci.IsInitialLaunchImport())
+        else if (cci.IsInitialLaunchImport())
         {
             // TODO: HARDENING - validate this is correct as the initial launch import
-            return true;
+            CCurrencyDefinition importingCur;
+            if (!isPreSync && height != 1)
+            {
+                CCurrencyDefinition importingCur = ConnectedChains.GetCachedCurrency(cci.importCurrencyID);
+            }
+            if (height == 1 || (importingCur.IsValid() && importingCur.IsGateway()))
+            {
+                return true;
+            }
         }
 
         if (ccx.destSystemID != ASSETCHAINS_CHAINID && notarization.IsValid() && !notarization.IsRefunding())
