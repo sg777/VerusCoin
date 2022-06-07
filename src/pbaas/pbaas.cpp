@@ -309,7 +309,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             {
                 CCurrencyDefinition importingCur = ConnectedChains.GetCachedCurrency(cci.importCurrencyID);
             }
-            if (height == 1 || (importingCur.IsValid() && importingCur.IsGateway()))
+            //if (height == 1 || (importingCur.IsValid() && importingCur.IsGateway()))
+            if (height == 1)
             {
                 return true;
             }
