@@ -354,113 +354,69 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     return state.Error("Cannot retrieve prior import: " + cci.ToUniValue().write(1,2));
                 }
 
-                uint256 priorExportTxId = priorImport.exportTxId.IsNull() ? priorImportTx.GetHash() : priorImport.exportTxId;
-
-                if (priorImport.sourceSystemID == cci.sourceSystemID)
+                if (priorImport.exportTxId.IsNull())
                 {
-                    if (ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+                    if (!ccx.IsChainDefinition())
                     {
-                        // same chain, we can get the export transaction
-                        CTransaction exportTx;
-                        uint256 blockHash;
-                        if (!myGetTransaction(cci.exportTxId, exportTx, blockHash))
+                        return state.Error("Out of order export for import 1: " + cci.ToUniValue().write(1,2));
+                    }
+                }
+                else
+                {
+                    if (priorImport.sourceSystemID == cci.sourceSystemID)
+                    {
+                        if (ccx.sourceSystemID == ASSETCHAINS_CHAINID)
                         {
-                            return state.Error("Can't get export for import: " + cci.ToUniValue().write(1,2));
-                        }
-                        if (ccx.IsSystemThreadExport() || ccx.IsSupplemental())
-                        {
-                            return state.Error("Invalid prior import tx(" + priorImportTx.GetHash().GetHex() + "): " + cci.ToUniValue().write(1,2));
-                        }
-                        if (ccx.firstInput > 0)
-                        {
-                            // the prior input is 1 less than first transfer input
-                            if (exportTx.vin.size() <= ccx.firstInput)
+                            // same chain, we can get the export transaction
+                            CTransaction exportTx;
+                            uint256 blockHash;
+                            if (!myGetTransaction(cci.exportTxId, exportTx, blockHash))
                             {
-                                return state.Error("Invalid export tx(" + exportTx.GetHash().GetHex() + ") for import: " + cci.ToUniValue().write(1,2));
+                                return state.Error("Can't get export for import: " + cci.ToUniValue().write(1,2));
                             }
-                            if (priorExportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash)
+                            if (ccx.IsSystemThreadExport() || ccx.IsSupplemental())
                             {
-                                //printf("%s: Out of order export tx(%s) from %s to %s for import %s\n", __func__, exportTx.GetHash().GetHex().c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.sourceSystemID).c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.importCurrencyID).c_str(), cci.ToUniValue().write(1,2).c_str());
-                                return state.Error("Out of order export for import: " + cci.ToUniValue().write(1,2));
+                                return state.Error("Invalid prior import tx(" + priorImportTx.GetHash().GetHex() + "): " + cci.ToUniValue().write(1,2));
                             }
-                            if (priorImport.exportTxId.IsNull())
+
+                            if (ccx.firstInput > 0)
                             {
-                                // if we don't have a prior valid input number specified,
-                                // we must ensure that the output is a matching export
-                                CTransaction priorExportTx;
-                                uint256 priorBlockHash;
-                                if (!myGetTransaction(priorExportTxId, priorExportTx, priorBlockHash))
+                                // the prior input is 1 less than first transfer input
+                                if (exportTx.vin.size() <= priorImport.exportTxOutNum)
                                 {
-                                    return state.Error("Can't get export for import: " + priorImport.ToUniValue().write(1,2));
+                                    return state.Error("Invalid export tx(" + exportTx.GetHash().GetHex() + ") for import: " + cci.ToUniValue().write(1,2));
                                 }
-                                COptCCParams priorP;
-                                CCrossChainExport priorCCX;
-                                if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(priorP) &&
-                                     priorP.IsValid() &&
-                                     priorP.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                                     p.vData.size() > 1 &&
-                                     (priorCCX = CCrossChainExport(p.vData[0])).IsValid() &&
-                                     !priorCCX.IsSupplemental() &&
-                                     priorCCX.destCurrencyID == ccx.destCurrencyID))
+                                if (priorImport.exportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash ||
+                                    priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n)
                                 {
-                                    return state.Error("Mispatched prior export for import: " + priorImport.ToUniValue().write(1,2));
+                                    //printf("%s: Out of order export tx(%s) from %s to %s for import %s\n", __func__, exportTx.GetHash().GetHex().c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.sourceSystemID).c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.importCurrencyID).c_str(), cci.ToUniValue().write(1,2).c_str());
+                                    return state.Error("Out of order export for import 2: " + cci.ToUniValue().write(1,2));
                                 }
                             }
-                            else if (priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n)
+                            else
                             {
-                                return state.Error("Out of order or invalid export input for import: " + cci.ToUniValue().write(1,2));
-                            }
-                        }
-                        else
-                        {
-                            bool inputFound = false;
-                            // search for a matching input
-                            for (auto &oneIn : exportTx.vin)
-                            {
-                                if (priorExportTxId == oneIn.prevout.hash)
+                                bool inputFound = false;
+                                // search for a matching input
+                                for (auto &oneIn : exportTx.vin)
                                 {
-                                    if (priorImport.exportTxId.IsNull())
-                                    {
-                                        // if we don't have a prior valid input number specified,
-                                        // we must ensure that the output is a matching export
-                                        CTransaction priorExportTx;
-                                        uint256 priorBlockHash;
-                                        if (!myGetTransaction(priorExportTxId, priorExportTx, priorBlockHash))
-                                        {
-                                            continue;
-                                        }
-                                        COptCCParams priorP;
-                                        CCrossChainExport priorCCX;
-                                        if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(priorP) &&
-                                            priorP.IsValid() &&
-                                            priorP.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                                            p.vData.size() > 1 &&
-                                            (priorCCX = CCrossChainExport(p.vData[0])).IsValid() &&
-                                            !priorCCX.IsSupplemental() &&
-                                            priorCCX.destCurrencyID == ccx.destCurrencyID)
-                                        {
-                                            inputFound = true;
-                                            break;
-                                        }
-                                    }
-                                    else if (priorImport.exportTxOutNum == oneIn.prevout.n)
+                                    if (priorImport.exportTxId == oneIn.prevout.hash && priorImport.exportTxOutNum == oneIn.prevout.n)
                                     {
                                         inputFound = true;
                                         break;
                                     }
                                 }
-                            }
-                            if (!inputFound)
-                            {
-                                return state.Error("Out of order export for import 1: " + cci.ToUniValue().write(1,2));
+                                if (!inputFound)
+                                {
+                                    return state.Error("Out of order export for import 3: " + cci.ToUniValue().write(1,2));
+                                }
                             }
                         }
+                        else
+                        {
+                            // TODO: HARDENING must have evidence to reconstruct a partial transaction proof with prior tx id
+                        }
                     }
-                    else
-                    {
-                        // TODO: HARDENING must have evidence to reconstruct a partial transaction proof with prior tx id
-                    }
-                }
+                }   
             }
 
             if (!isPreSync && reserveTransfers.size())
