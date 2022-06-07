@@ -2449,7 +2449,13 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                           idImportCheckP.evalCode == EVAL_IDENTITY_PRIMARY &&
                                           checkOutputs[loop] == tx.vout[loop + startingOutput + ++idCheckOffset]))
                                     {
-                                        LogPrintf("%s: calculated outputs do not match outputs on import transaction\n", __func__);
+                                        LogPrint("crosschain", "%s: calculated outputs do not match outputs on import transaction\n", __func__);
+                                        UniValue scriptJson1(UniValue::VOBJ), scriptJson2(UniValue::VOBJ);
+                                        ScriptPubKeyToUniv(checkOutputs[loop].scriptPubKey, scriptJson1, false, false);
+                                        ScriptPubKeyToUniv(tx.vout[loop + startingOutput + ++idCheckOffset].scriptPubKey, scriptJson2, false, false);
+                                        printf("pre currency state: %s\n", checkState.ToUniValue().write(1,2).c_str());
+                                        printf("post currency state: %s\n", newState.ToUniValue().write(1,2).c_str());
+                                        printf("output 1:\n%s\nnativeout: %ld\nexpected:\n%s\nnativeout: %ld\n", scriptJson1.write(1,2).c_str(), checkOutputs[loop].nValue, scriptJson2.write(1,2).c_str(), tx.vout[loop + startingOutput + ++idCheckOffset].nValue);
                                         //LogPrint("importtransactions", "%s: calculated outputs do not match outputs on import transaction\n", __func__);
                                         //flags &= ~IS_VALID;
                                         //flags |= IS_REJECT;
@@ -5423,6 +5429,7 @@ CCurrencyValueMap CCoinbaseCurrencyState::CalculateConvertedFees(const std::vect
 
 void CCoinbaseCurrencyState::RevertReservesAndSupply()
 {
+    bool processingPreconverts = !IsLaunchCompleteMarker() && !IsPrelaunch();
     if (IsFractional())
     {
         // between prelaunch and postlaunch, we only revert fees since preConversions are accounted for differently
@@ -5441,7 +5448,14 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
             // revert changes in reserves and supply to pre conversion state, add reserve outs and subtract reserve ins
             for (auto &oneCur : currencyMap)
             {
-                reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
+                if (processingPreconverts)
+                {
+                    reserves[oneCur.second] += reserveOut[oneCur.second];
+                }
+                else
+                {
+                    reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
+                }
 
                 if (IsLaunchCompleteMarker())
                 {
@@ -5465,7 +5479,7 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
         }
     }
     // between prelaunch and launch complete phases, we have accumulation of reserves
-    else if (!IsLaunchCompleteMarker() && !IsPrelaunch())
+    else if (processingPreconverts)
     {
         CCurrencyValueMap negativePreReserves(currencies, reserveIn);
         negativePreReserves = negativePreReserves * -1;

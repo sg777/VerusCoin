@@ -939,7 +939,7 @@ UniValue CTransferDestination::ToUniValue() const
             break;
 
         default:
-            destVal.push_back(Pair("nodestination", ""));
+            destVal.push_back(Pair("undefined", ""));
             break;
     }
     if ((type & FLAG_DEST_AUX))
