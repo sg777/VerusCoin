@@ -9134,7 +9134,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
 UniValue registernamecommitment(const UniValue& params, bool fHelp)
 {
-    if (fHelp || (params.size() < 2 && params.size() > 5))
+    if (fHelp || (params.size() < 2 || params.size() > 5))
     {
         throw runtime_error(
             "registernamecommitment \"name\" \"controladdress\" (\"referralidentity\") (\"parentnameorid\") (\"sourceoffunds\")\n"
