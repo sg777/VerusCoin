@@ -381,7 +381,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                 return state.Error("Invalid prior import tx(" + priorImportTx.GetHash().GetHex() + "): " + cci.ToUniValue().write(1,2));
                             }
 
-                            if (ccx.firstInput > 0)
+                            if (ccx.firstInput > 0 && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
                             {
                                 // the prior input is 1 less than first transfer input
                                 if (priorImport.exportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash ||
