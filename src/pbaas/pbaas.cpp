@@ -357,7 +357,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 }
                 else if (priorImport.exportTxId.IsNull())
                 {
-                    if (!ccx.IsChainDefinition())
+                    if (!ccx.IsChainDefinition() && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
                     {
                         return state.Error("Out of order export for import 1: " + cci.ToUniValue().write(1,2));
                     }
