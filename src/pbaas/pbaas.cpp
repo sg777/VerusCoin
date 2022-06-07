@@ -383,8 +383,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             if (ccx.firstInput > 0 && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
                             {
                                 // the prior input is 1 less than first transfer input
-                                if (priorImport.exportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash ||
-                                    priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n)
+                                // TODO: HARDENING - need to deal with the refunding case of order
+                                if (!notarization.IsRefunding() &&
+                                    (priorImport.exportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash ||
+                                    priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n))
                                 {
                                     //printf("%s: Out of order export tx(%s) from %s to %s for import %s\n", __func__, exportTx.GetHash().GetHex().c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.sourceSystemID).c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.importCurrencyID).c_str(), cci.ToUniValue().write(1,2).c_str());
                                     return state.Error("Out of order export for import 2: " + cci.ToUniValue().write(1,2));
