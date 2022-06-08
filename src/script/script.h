@@ -431,12 +431,12 @@ public:
  */
 typedef boost::variant<CNoDestination, CPubKey, CKeyID, CScriptID, CIdentityID, CIndexID, CQuantumID> CTxDestination;
 
-CTxDestination TransferDestinationToDestination(const CTransferDestination &transferDest);
+CTxDestination TransferDestinationToDestination(const CTransferDestination &transferDest, CCurrencyDefinition::EProofProtocol addressProtocol=CCurrencyDefinition::EProofProtocol::PROOF_INVALID);
+CTxDestination GetCompatibleAuxDestination(const CTransferDestination &transferDest, CCurrencyDefinition::EProofProtocol addressProtocol);
 CTransferDestination DestinationToTransferDestination(const CTxDestination &dest);
 CTransferDestination IdentityToTransferDestination(const CIdentity &identity);
 CIdentity TransferDestinationToIdentity(const CTransferDestination &dest);
 CCurrencyDefinition TransferDestinationToCurrency(const CTransferDestination &dest);
-std::vector<CTxDestination> TransferDestinationsToDestinations(const std::vector<CTransferDestination> &transferDests);
 std::vector<CTransferDestination> DestinationsToTransferDestinations(const std::vector<CTxDestination> &dests);
 
 class COptCCParams

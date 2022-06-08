@@ -1106,6 +1106,14 @@ public:
                                              TransactionBuilder &txBuilder,
                                              bool &finalized);
 
+    bool IsNotarizationConfirmed(const CPBaaSNotarization &notarization,
+                                 const CNotaryEvidence &notaryEvidence,
+                                 CValidationState &state) const;
+
+    bool IsNotarizationRejected(const CPBaaSNotarization &notarization,
+                                const CNotaryEvidence &notaryEvidence,
+                                CValidationState &state) const;
+
     static std::vector<uint256> SubmitFinalizedNotarizations(const CRPCChainData &externalSystem,
                                                              CValidationState &state);
 
@@ -1330,22 +1338,16 @@ public:
 
     std::map<uint160, std::pair<CCurrencyDefinition, const CGateway *>> gateways;       // gateway currencies, which bridge to other blockchains/systems
 
-    // incoming export transactions from one currency & system and a UTXORef to a valid notarization each depends upon
-    // indexed by the target, destination currency
-    std::map<uint160, std::pair<uint32_t, std::pair<CUTXORef, CPartialTransactionProof>>> incomingBridgeTransfers;
-
     // currency definition cache, needs LRU
     std::map<uint160, CCurrencyDefinition> currencyDefCache;                            // protected by cs_main, which is used for lookup
 
-    // make earned notarizations on one or more notary chains
-    // On Verus, this can be set to ETH and Ethereum chain data will be pushed to us through Alan (Bridgekeeper) and the RPC API
+    // make earned notarizations for one or more notary chains
     std::map<uint160, CNotarySystemInfo> notarySystems;
 
     CCurrencyDefinition thisChain;
     bool readyToStart;
     std::vector<CNodeData> defaultPeerNodes;    // updated by notarizations
     std::vector<CTxOut> latestMiningOutputs;    // accessible from all merge miners - can be invalid
-    int64_t lastAggregation = 0;                // adjusted time of last aggregation
 
     int32_t earnedNotarizationHeight;           // zero or the height of one or more potential submissions
     CBlock earnedNotarizationBlock;

@@ -749,6 +749,18 @@ public:
         return key;
     }
 
+    static std::string CurrencyImportFromSystemKeyName()
+    {
+        return "vrsc::system.currency.currencyimportfromsystem";
+    }
+
+    static uint160 CurrencyImportFromSystemKey(const uint160 &fromSystem, const uint160 &toCurrency)
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(CurrencyImportFromSystemKeyName(), nameSpace);
+        return CCrossChainRPCData::GetConditionID(key, CCrossChainRPCData::GetConditionID(fromSystem, toCurrency));
+    }
+
     static std::string CurrencySystemImportKeyName()
     {
         return "vrsc::system.currency.systemimport";
@@ -768,6 +780,14 @@ public:
                                      CTransaction *priorTx=nullptr,
                                      int32_t *priorOutNum=nullptr,
                                      uint256 *ppriorTxBlockHash=nullptr) const;
+
+    CCrossChainImport GetPriorImportFromSystem(const CTransaction &tx,
+                                               int32_t outNum,
+                                               CValidationState &state,
+                                               uint32_t height,
+                                               CTransaction *priorTx=nullptr,
+                                               int32_t *priorOutNum=nullptr,
+                                               uint256 *ppriorTxBlockHash=nullptr) const;
 
     CCurrencyValueMap GetBestPriorConversions(const CTransaction &tx,
                                               int32_t outNum,

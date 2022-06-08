@@ -260,6 +260,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Multi-currency operation before PBaaS activation");
     }
 
+    bool isPreSync = chainActive.Height() < (height - 1);
+
     COptCCParams p;
     CCrossChainImport cci, sysCCI;
     CCrossChainExport ccx;
@@ -293,20 +295,130 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
         if (cci.IsDefinitionImport())
         {
             // TODO: HARDENING - validate this belongs on a definition and is correct
+            if (!cci.hashReserveTransfers.IsNull())
+            {
+                return state.Error("Definition import cannot contain transfers: " + cci.ToUniValue().write(1,2));
+            }
             return true;
         }
-        else if (cci.IsInitialLaunchImport())
+        else if (cci.IsInitialLaunchImport() && height == 1)
         {
             // TODO: HARDENING - validate this is correct as the initial launch import
             return true;
         }
+
         if (ccx.destSystemID != ASSETCHAINS_CHAINID && notarization.IsValid() && !notarization.IsRefunding())
         {
             return state.Error("Invalid import: " + cci.ToUniValue().write(1,2));
         }
+        // TODO: HARDENING - if notarization is invalid, we may need to reject
+        // also need to ensure that if our current height invalidates an import from the specified height that we
+        // reject this in all cases
         else if (notarization.IsValid())
         {
-            if (reserveTransfers.size())
+            if (notarization.IsSameChain())
+            {
+                // a notarization for a later height is not valid
+                if (notarization.notarizationHeight > (height - 1))
+                {
+                    return state.Error("Notarization for import past height, likely due to reorg: " + notarization.ToUniValue().write(1,2));
+                }
+            }
+            else if (notarization.proofRoots.count(ASSETCHAINS_CHAINID))
+            {
+                uint32_t rootHeight;
+                auto mmv = chainActive.GetMMV();
+                if ((!notarization.IsMirror() &&
+                        notarization.IsSameChain() &&
+                        notarization.notarizationHeight >= height) ||
+                    (notarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                        ((rootHeight = notarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) > (height - 1) ||
+                        (mmv.resize(rootHeight + 1), rootHeight != (mmv.size() - 1)) ||
+                        notarization.proofRoots[ASSETCHAINS_CHAINID].blockHash != chainActive[rootHeight]->GetBlockHash() ||
+                        notarization.proofRoots[ASSETCHAINS_CHAINID].stateRoot != mmv.GetRoot())))
+                {
+                    return state.Error("Notarization for import past height or invalid: " + notarization.ToUniValue().write(1,2));
+                }
+            }
+
+            // if we have the chain behind us, verify that the prior import imports the prior export
+            // TODO: HARDENING - this needs full coverage of all cases, including pre-conversion
+            if (!isPreSync && !cci.IsDefinitionImport())
+            {
+                // if from this system, we 
+
+                CTransaction priorImportTx;
+                CCrossChainImport priorImport = cci.GetPriorImport(tx, outNum, state, height, &priorImportTx);
+                if (!priorImport.IsValid())
+                {
+                    // TODO: HARDENING for now, we skip checks if we fail to get prior import, but
+                    // we need to look deeper to ensure that there really is not one or that we use it
+                    LogPrintf("Cannot retrieve prior import: %s\n", cci.ToUniValue().write(1,2).c_str());
+                }
+                else if (priorImport.exportTxId.IsNull())
+                {
+                    if (!ccx.IsChainDefinition() && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+                    {
+                        return state.Error("Out of order export for import 1: " + cci.ToUniValue().write(1,2));
+                    }
+                }
+                else
+                {
+                    if (priorImport.sourceSystemID == cci.sourceSystemID)
+                    {
+                        if (ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+                        {
+                            // same chain, we can get the export transaction
+                            CTransaction exportTx;
+                            uint256 blockHash;
+                            if (!myGetTransaction(cci.exportTxId, exportTx, blockHash))
+                            {
+                                return state.Error("Can't get export for import: " + cci.ToUniValue().write(1,2));
+                            }
+                            if (ccx.IsSystemThreadExport() || ccx.IsSupplemental())
+                            {
+                                return state.Error("Invalid prior import tx(" + priorImportTx.GetHash().GetHex() + "): " + cci.ToUniValue().write(1,2));
+                            }
+
+                            if (ccx.firstInput > 0 && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+                            {
+                                // the prior input is 1 less than first transfer input
+                                // TODO: HARDENING - need to deal with the refunding case of order
+                                if (!notarization.IsRefunding() &&
+                                    (priorImport.exportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash ||
+                                    priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n))
+                                {
+                                    //printf("%s: Out of order export tx(%s) from %s to %s for import %s\n", __func__, exportTx.GetHash().GetHex().c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.sourceSystemID).c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.importCurrencyID).c_str(), cci.ToUniValue().write(1,2).c_str());
+                                    return state.Error("Out of order export for import 2: " + cci.ToUniValue().write(1,2));
+                                }
+                            }
+                            else
+                            {
+                                bool inputFound = false;
+                                // search for a matching input
+                                for (auto &oneIn : exportTx.vin)
+                                {
+                                    if (priorImport.exportTxId == oneIn.prevout.hash && priorImport.exportTxOutNum == oneIn.prevout.n)
+                                    {
+                                        inputFound = true;
+                                        break;
+                                    }
+                                }
+                                if (!inputFound)
+                                {
+                                    return state.Error("Out of order export for import 3: " + cci.ToUniValue().write(1,2));
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // TODO: HARDENING must have evidence to reconstruct a partial transaction proof with prior tx id
+                        }
+                    }
+                }   
+            }
+
+            if (!isPreSync && reserveTransfers.size())
             {
                 // if we are importing to fractional, determine the last notarization used prior to this one for 
                 // imports from the system from that, the most favorable conversion rates for fee compatible conversions 
@@ -327,6 +439,31 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 {
                     return state.Error("Unable to retrieve currency for import: " + cci.ToUniValue().write(1,2));
                 }
+
+                CCurrencyDefinition systemSource = ConnectedChains.GetCachedCurrency(cci.sourceSystemID);
+                CCoinbaseCurrencyState importState = notarization.currencyState;
+                CCoinbaseCurrencyState dummyState;
+                importState.RevertReservesAndSupply();
+
+                std::vector<CTxOut> vOutputs;
+                CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
+
+                CReserveTransactionDescriptor rtxd;
+                if (!rtxd.AddReserveTransferImportOutputs(systemSource, 
+                                                            ConnectedChains.ThisChain(), 
+                                                            importingToDef, 
+                                                            importState,
+                                                            reserveTransfers, 
+                                                            height,
+                                                            vOutputs,
+                                                            importedCurrency, 
+                                                            gatewayDepositsIn, 
+                                                            spentCurrencyOut,
+                                                            &dummyState))
+                {
+                    printf("Errors processing\n");
+                }
+
                 CCoinbaseCurrencyState startingState;
                 uint32_t minHeight = 0;
                 uint32_t maxHeight = 0;
@@ -535,6 +672,11 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
     }
 
+    if (height > 1 && ccx.sourceHeightEnd >= height && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+    {
+        return state.Error("Export source height is too high for current height");
+    }
+
     // make sure that every reserve transfer that SHOULD BE included (all mined in relevant blocks) IS included, no exceptions
     // verify all currency totals
     multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
@@ -695,7 +837,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             return state.Error("Export fee estimate doesn't match notarization - may only be result of async loading and not error");
         }
     }
-
+    // TODO: HARDENING - when we know an error may be caused by sync loading, always check height against chainActive and filter errors
     if (ccx.totalAmounts != totalCurrencyExported)
     {
         return state.Error("Exported currency totals warning - may only be result of async loading and not error");
@@ -6601,7 +6743,7 @@ void CConnectedChains::ProcessLocalImports()
                 (cci.IsPostLaunch() || cci.IsDefinitionImport() || cci.sourceSystemID == ASSETCHAINS_CHAINID))
             {
                 // if not post launch, we are launching from this chain and need to get exports after the last import's source height
-                if (!cci.IsPostLaunch())
+                if (ccx.IsClearLaunch())
                 {
                     std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> exportsFound;
                     if (GetCurrencyExports(ccx.destCurrencyID, exportsFound, cci.sourceSystemHeight, nHeight))

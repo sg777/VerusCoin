@@ -887,6 +887,26 @@ CTransferDestination::CTransferDestination(const UniValue &obj) : fees(0)
             break;
         }
     }
+
+    UniValue auxDestArr = find_value(obj, "auxdests");
+    if ((type & FLAG_DEST_AUX) && auxDestArr.isArray() && auxDestArr.size())
+    {
+        for (int i = 0; i < auxDestArr.size(); i++)
+        {
+            CTransferDestination oneAuxDest(auxDestArr[i]);
+            if (!oneAuxDest.IsValid() || oneAuxDest.type & FLAG_DEST_AUX)
+            {
+                type = DEST_INVALID;
+                break;
+            }
+            auxDests.push_back(::AsVector(oneAuxDest));
+        }
+    }
+    else
+    {
+        type &= ~FLAG_DEST_AUX;
+    }
+
     if (type & FLAG_DEST_GATEWAY)
     {
         gatewayID = GetDestinationID(DecodeDestination(uni_get_str(find_value(obj, "gateway"))));

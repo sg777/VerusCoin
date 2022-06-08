@@ -439,6 +439,49 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
     }
 }
 
+CTransferDestination CTransferDestination::GetAuxDest(int destNum) const
+{
+    CTransferDestination retVal;
+    if (destNum < auxDests.size())
+    {
+        ::FromVector(auxDests[destNum], retVal);
+        if (retVal.type & FLAG_DEST_AUX || retVal.auxDests.size())
+        {
+            retVal.type = DEST_INVALID;
+        }
+        // no gateways or flags, only simple destinations work
+        switch (retVal.type)
+        {
+            case DEST_ID:
+            case DEST_PK:
+            case DEST_PKH:
+            case DEST_ETH:
+            case DEST_SH:
+                break;
+            default:
+                retVal.type = DEST_INVALID;
+        }
+    }
+    return retVal;
+}
+
+void CTransferDestination::SetAuxDest(const CTransferDestination &auxDest, int destNum)
+{
+    if (auxDests.size() == destNum)
+    {
+        auxDests.push_back(::AsVector(auxDest));
+    }
+    else if (auxDests.size() > destNum)
+    {
+        auxDests[destNum] = ::AsVector(auxDest);
+    }
+    if (auxDests.size())
+    {
+        type |= FLAG_DEST_AUX;
+    }
+}
+
+
 uint160 DecodeCurrencyName(std::string currencyStr)
 {
     uint160 retVal;
@@ -944,6 +987,14 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         {
             try
             {
+                if (name == "VRSC" && parent.IsNull())
+                {
+                    initialBits = UintToArith256(uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();
+                }
+                else
+                {
+                    initialBits = UintToArith256(uint256S("000000ff0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")).GetCompact();
+                }
                 uint32_t newInitialBits = UintToArith256(uint256S(uni_get_str(find_value(obj, "initialtarget")))).GetCompact();
                 if (newInitialBits)
                 {
@@ -1048,7 +1099,7 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
             UniValue uniEra1(UniValue::VOBJ);
             uniEra1.pushKV("reward", 1200000000);
             uniEra1.pushKV("decay", 0);
-            uniEra1.pushKV("halving", 1044022);
+            uniEra1.pushKV("halving", 1011011);
             uniEra1.pushKV("eraend", 0);
             uniEras.push_back(uniEra1);
 
