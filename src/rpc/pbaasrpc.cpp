@@ -45,6 +45,7 @@ using namespace std;
 extern uint32_t ASSETCHAINS_ALGO;
 extern int32_t ASSETCHAINS_EQUIHASH, ASSETCHAINS_LWMAPOS;
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
+extern uint32_t ASSETCHAINS_STARTING_DIFF;
 extern uint64_t ASSETCHAINS_STAKED;
 extern int32_t KOMODO_MININGTHREADS;
 extern bool VERUS_MINTBLOCKS;
@@ -445,6 +446,9 @@ bool SetThisChain(const UniValue &chainDefinition)
     memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
     assert(ConnectedChains.ThisChain().name.size() < sizeof(ASSETCHAINS_SYMBOL));
     strcpy(ASSETCHAINS_SYMBOL, ConnectedChains.ThisChain().name.c_str());
+
+    ASSETCHAINS_STARTING_DIFF = ConnectedChains.ThisChain().initialBits;
+    //printf("Starting PBaaS chain:\n%s\n", ConnectedChains.ThisChain().ToUniValue().write(1,2).c_str());
 
     if (!IsVerusActive())
     {
@@ -6871,6 +6875,17 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                 CTxDestination destination = ValidateDestination(destStr);
 
+                CTxDestination refundDestination = refundToStr.empty() ? CTxDestination() : DecodeDestination(refundToStr);
+
+                if (refundDestination.which() == COptCCParams::ADDRTYPE_ID &&
+                    GetDestinationID(refundDestination) != GetDestinationID(destination))
+                {
+                    if (!CIdentity::LookupIdentity(GetDestinationID(refundDestination)).IsValid())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, "When refunding to an ID, the ID must be valid.");
+                    }
+                }
+
                 CTransferDestination dest;
                 if (destination.which() == COptCCParams::ADDRTYPE_INVALID)
                 {
@@ -6885,6 +6900,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid Ethereum destination (null)");
                             }
                             dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(ethDestination));
+                            if (refundDestination.which() != COptCCParams::ADDRTYPE_INVALID)
+                            {
+                                dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
+                            }
                         }
                         else
                         {
@@ -6914,6 +6933,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         dest = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(ethDestination));
                         dest.type |= dest.FLAG_DEST_GATEWAY;
                         dest.gatewayID = exportSystemDef.GetID();
+
+                        if (refundDestination.which() != COptCCParams::ADDRTYPE_INVALID)
+                        {
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
+                        }
                     }
                     else
                     {
@@ -6921,21 +6945,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     }
                 }
 
-                CTxDestination refundDestination = DecodeDestination(refundToStr);
-                if (refundDestination.which() == COptCCParams::ADDRTYPE_ID &&
-                    GetDestinationID(refundDestination) != GetDestinationID(destination))
-                {
-                    if (!CIdentity::LookupIdentity(GetDestinationID(refundDestination)).IsValid())
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "When refunding to an ID, the ID must be valid.");
-                    }
-                }
-                else if (refundDestination.which() == COptCCParams::ADDRTYPE_INVALID)
+                bool refundValid = refundDestination.which() != COptCCParams::ADDRTYPE_INVALID;
+                if (!refundValid)
                 {
                     refundDestination = destination;
                 }
-
-                bool refundValid = refundDestination.which() != COptCCParams::ADDRTYPE_INVALID;
 
                 // make one output
                 CRecipient oneOutput;
@@ -7501,7 +7515,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             */
 
                             CChainNotarizationData cnd;
-                            if (!GetNotarizationData(convertToCurrencyID, cnd) ||
+                            if (!GetNotarizationData(pFractionalCurrency->GetID(), cnd) ||
                                 !cnd.IsConfirmed())
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization/pricing information for " + exportToCurrencyDef.name);
@@ -8037,7 +8051,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             }
             if (newCurrency.proofProtocol != newCurrency.PROOF_ETHNOTARIZATION)
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Ethereum mapped currency must have \"proofprotocol\":%d", (int)newCurrency.proofProtocol));
+                throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Ethereum mapped currency must have \"proofprotocol\":%d", (int)newCurrency.PROOF_ETHNOTARIZATION));
             }
             bool nonZeroSupply = newCurrency.conversions.size() && !newCurrency.maxPreconvert.size();
             for (auto oneVal : newCurrency.maxPreconvert)
@@ -9120,7 +9134,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
 
 UniValue registernamecommitment(const UniValue& params, bool fHelp)
 {
-    if (fHelp || (params.size() < 2 && params.size() > 5))
+    if (fHelp || (params.size() < 2 || params.size() > 5))
     {
         throw runtime_error(
             "registernamecommitment \"name\" \"controladdress\" (\"referralidentity\") (\"parentnameorid\") (\"sourceoffunds\")\n"

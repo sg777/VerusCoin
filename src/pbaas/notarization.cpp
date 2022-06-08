@@ -510,6 +510,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     CCurrencyValueMap newPreConversionReservesIn;
 
+    if (!IsPreLaunch() && !IsLaunchComplete())
+    {
+        newPreConversionReservesIn = CCurrencyValueMap(currencyState.currencies, currencyState.primaryCurrencyIn);
+    }
+
     for (int i = 0; i < exportTransfers.size(); i++)
     {
         CReserveTransfer reserveTransfer = exportTransfers[i];
@@ -539,28 +544,23 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 // check if it exceeds pre-conversion maximums, and refund if so
                 CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({reserveTransfer.FirstCurrency()}), 
                                                                    std::vector<int64_t>({reserveTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(reserveTransfer.FirstValue())}));
-                CCurrencyValueMap newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + newPreConversionReservesIn;
-
-                // TODO: HARDENING - remove this conditional at the next testnet reset
-                if (IsVerusActive() && notaHeight > 23000)
+                CCurrencyValueMap newTotalReserves;
+                if (IsPreLaunch())
                 {
-                    if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
-                    {
-                        LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
-                        reserveTransfer = reserveTransfer.GetRefundTransfer();
-                    }
-                    else
-                    {
-                        newPreConversionReservesIn += newReserveIn;
-                    }
+                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + newPreConversionReservesIn;
                 }
                 else
                 {
-                    if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
-                    {
-                        LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
-                        reserveTransfer = reserveTransfer.GetRefundTransfer();
-                    }
+                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.primaryCurrencyIn) + newReserveIn + newPreConversionReservesIn;
+                }
+
+                if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
+                {
+                    LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
+                    reserveTransfer = reserveTransfer.GetRefundTransfer();
+                }
+                else
+                {
                     newPreConversionReservesIn += newReserveIn;
                 }
             }
@@ -669,7 +669,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     minPreMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.minPreconvert).CanonicalMap();
                 }
 
-                if (forcedRefund || (minPreMap.valueMap.size() && preConvertedMap < minPreMap))
+                if (forcedRefund ||
+                    (minPreMap.valueMap.size() && preConvertedMap < minPreMap) ||
+                    (destCurrency.IsFractional() &&
+                     (CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserveIn) +
+                                        newPreConversionReservesIn).CanonicalMap().valueMap.size() != destCurrency.currencies.size()))
                 {
                     // we force the reserves and supply to zero
                     // in any case where there was less than minimum participation,
@@ -738,6 +742,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.conversionPrice = tempState.conversionPrice;
             newNotarization.currencyState.viaConversionPrice = tempState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
+
             retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
                                                           newNotarization.IsRefunding() ? sourceSystem : destSystem,
                                                           destCurrency, 
@@ -779,6 +784,32 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 tempState.preConvertedOut += this->currencyState.preConvertedOut;
                 tempState.primaryCurrencyOut += this->currencyState.primaryCurrencyOut;
             }
+        }
+        else if (!newNotarization.currencyState.IsLaunchCompleteMarker() && !tempState.IsRefunding() && !this->currencyState.IsPrelaunch())
+        {
+            // accumulate reserves during pre-conversions import to enforce max pre-convert
+            CCurrencyValueMap tempReserves;
+            for (auto &oneCurrencyID : tempState.currencies)
+            {
+                if (rtxd.currencies.count(oneCurrencyID))
+                {
+                    int64_t reservesConverted = rtxd.currencies[oneCurrencyID].nativeOutConverted;
+                    if (reservesConverted)
+                    {
+                        tempReserves.valueMap[oneCurrencyID] = reservesConverted;
+                    }
+                }
+            }
+    
+            // use double entry to enable pass through of the accumulated reserve such that when
+            // reverting supply and reserves, we end up with what we started, after prelaunch and
+            // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
+            // reserves to enforce maxPreconvert
+            tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
+            tempState.reserveOut = 
+                    tempState.AddVectors(tempState.reserveOut,
+                                         (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));
+            tempState.reserveIn = tempReserves.AsCurrencyVector(tempState.currencies);
         }
 
         newNotarization.currencyState = tempState;
@@ -973,6 +1004,22 @@ UniValue CChainNotarizationData::ToUniValue() const
     obj.push_back(Pair("lastconfirmed", lastConfirmed));
     obj.push_back(Pair("bestchain", bestChain));
     return obj;
+}
+
+bool CPBaaSNotarization::IsNotarizationConfirmed(const CPBaaSNotarization &notarization,
+                                                 const CNotaryEvidence &notaryEvidence,
+                                                 CValidationState &state) const
+{
+    // TODO: HARDENING - remove or implement and use
+    return false;
+}
+
+bool CPBaaSNotarization::IsNotarizationRejected(const CPBaaSNotarization &notarization,
+                                                const CNotaryEvidence &notaryEvidence,
+                                                CValidationState &state) const
+{
+    // TODO: HARDENING - remove or implement and use
+    return false;
 }
 
 bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &externalSystem,
@@ -2925,7 +2972,7 @@ bool ValidateNotarizationEvidence(const CTransaction &tx, int32_t outNum, CValid
             // signature is relative only to the notarization, not the finalization
             // that way, the information we put into the vdxfCodes have some meaning beyond
             // the blockchain on which it was signed, and we do not have to carry the
-            // finalizatoin mechanism cross-chain.
+            // finalization mechanism cross-chain.
             std::vector<uint160> vdxfCodes = {CCrossChainRPCData::GetConditionID(notarySig.systemID, 
                                                                                  CNotaryEvidence::NotarySignatureKey(), 
                                                                                  notarizationTxId, 
