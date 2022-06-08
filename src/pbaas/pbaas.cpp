@@ -672,7 +672,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
     }
 
-    if (ccx.sourceHeightEnd >= height && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+    if (height > 1 && ccx.sourceHeightEnd >= height && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
     {
         return state.Error("Export source height is too high for current height");
     }
