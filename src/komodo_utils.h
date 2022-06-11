@@ -2211,6 +2211,12 @@ void komodo_args(char *argv0)
             {
                 // we need to set the chain definition for this chain based on globals set above
                 obj.push_back(Pair("premine", ASSETCHAINS_SUPPLY));
+                UniValue preAllocUni(UniValue::VOBJ);
+                preAllocUni.pushKV("blockoneminer", ValueFromAmount((int64_t)5000000000000000));
+                UniValue preAllocArr(UniValue::VARR);
+                preAllocArr.push_back(preAllocUni);
+                obj.pushKV("preallocations", preAllocArr);
+
                 obj.push_back(Pair("gatewayconverterissuance", ASSETCHAINS_ISSUANCE));
                 obj.push_back(Pair("name", ASSETCHAINS_SYMBOL));
 
