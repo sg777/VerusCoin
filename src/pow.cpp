@@ -237,6 +237,7 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
     int64_t N = params.nPOSAveragingWindow;
 
     int32_t nHeight = pindexLast->GetHeight();
+
     int32_t maxConsecutivePos = VERUS_CONSECUTIVE_POS_THRESHOLD;
 
     bnLimit = UintToArith256(params.posLimit);
@@ -250,6 +251,7 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
         // neither will it be impossible to adapt if only 1/64th or even less is staking, though it will take longer to get to an equilibrium.
         arith_uint256 fiftyPercentPerSatoshi = UintToArith256(uint256S("7f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"));
         uint64_t supplyDivisor = nHeight ? komodo_current_supply(nHeight) : MAX_MONEY;
+        supplyDivisor = nHeight ? komodo_current_supply(nHeight) : MAX_MONEY;
         supplyDivisor = ((supplyDivisor >> 2) == 0) ? 1 : supplyDivisor >> 2;
         nProofOfStakeDefault = ((arith_uint256)(fiftyPercentPerSatoshi / supplyDivisor)).GetCompact();
 
