@@ -2148,10 +2148,7 @@ void komodo_args(char *argv0)
         MAX_MONEY = komodo_max_money();
 
         //printf("baseid.%d MAX_MONEY.%s %.8f\n",baseid,ASSETCHAINS_SYMBOL,(double)MAX_MONEY/SATOSHIDEN);
-        // TODO: HARDENING - replace the line with hardcoded zero as supply for non-Verus currencies with line that 
-        // uses actual supply for all currencies before next testnet reset
-        //ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL, ASSETCHAINS_SUPPLY + ASSETCHAINS_ISSUANCE, &ASSETCHAINS_MAGIC, extraptr, extralen);
-        ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL, _IsVerusActive() ? ASSETCHAINS_SUPPLY : 0,&ASSETCHAINS_MAGIC,extraptr,extralen);
+        ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL, ASSETCHAINS_SUPPLY + ASSETCHAINS_ISSUANCE, &ASSETCHAINS_MAGIC, extraptr, extralen);
 
         while ( (dirname= (char *)GetDataDir(false).string().c_str()) == 0 || dirname[0] == 0 )
         {
@@ -2162,6 +2159,7 @@ void komodo_args(char *argv0)
 						boost::this_thread::sleep(boost::posix_time::milliseconds(3000));
 						#endif
         }
+
         //fprintf(stderr,"Got datadir.(%s)\n",dirname);
         if ( ASSETCHAINS_SYMBOL[0] != 0 )
         {
@@ -2239,7 +2237,7 @@ void komodo_args(char *argv0)
                 {
                     UniValue preallocArr(UniValue::VARR);
                     UniValue preallocObj(UniValue::VOBJ);
-                    preallocObj.push_back(Pair("DestinationPending", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
+                    preallocObj.push_back(Pair("blockoneminer", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
                     preallocArr.push_back(preallocObj);
                     obj.push_back(Pair("preallocations", preallocArr));
                 }
