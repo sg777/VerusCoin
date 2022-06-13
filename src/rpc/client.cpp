@@ -27,7 +27,7 @@ UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeou
     return NullUniValue;
 }
 
-bool SetThisChain(const UniValue &chainDefinition) {
+bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef) {
     return true; // (?) pbaas/pbaas.h
 }
 

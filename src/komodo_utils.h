@@ -1708,7 +1708,7 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
 extern int64_t MAX_MONEY;
 extern int64_t MAX_SUPPLY;
 extern std::string VERUS_DEFAULT_ZADDR;
-bool SetThisChain(const UniValue &chainDefinition);
+bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef);
 
 void komodo_args(char *argv0)
 {
@@ -1938,14 +1938,19 @@ void komodo_args(char *argv0)
                 UniValue result;
                 try
                 {
+                    CCurrencyDefinition thisCurrency;
                     result = RPCCallRoot("getcurrency", params);
                     // set local parameters
                     result = find_value(result, "result");
-                    if (result.isNull() || !SetThisChain(result))
+                    if (result.isNull() || !SetThisChain(result, &thisCurrency))
                     {
                         throw error("Cannot find blockchain data");
                     }
                     name = string(ASSETCHAINS_SYMBOL);
+                    ASSETCHAINS_SUPPLY = thisCurrency.GetTotalPreallocation();
+                    ASSETCHAINS_ISSUANCE = thisCurrency.gatewayConverterIssuance;
+                    mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
+                    mapArgs["-gatewayconverterissuance"] = to_string(ASSETCHAINS_ISSUANCE);
                     paramsLoaded = true;
                 }
                 catch(const std::exception& e)
@@ -2148,10 +2153,7 @@ void komodo_args(char *argv0)
         MAX_MONEY = komodo_max_money();
 
         //printf("baseid.%d MAX_MONEY.%s %.8f\n",baseid,ASSETCHAINS_SYMBOL,(double)MAX_MONEY/SATOSHIDEN);
-        // TODO: HARDENING - replace the line with hardcoded zero as supply for non-Verus currencies with line that 
-        // uses actual supply for all currencies before next testnet reset
-        //ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL, ASSETCHAINS_SUPPLY + ASSETCHAINS_ISSUANCE, &ASSETCHAINS_MAGIC, extraptr, extralen);
-        ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL, _IsVerusActive() ? ASSETCHAINS_SUPPLY : 0,&ASSETCHAINS_MAGIC,extraptr,extralen);
+        ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL, ASSETCHAINS_SUPPLY + ASSETCHAINS_ISSUANCE, &ASSETCHAINS_MAGIC, extraptr, extralen);
 
         while ( (dirname= (char *)GetDataDir(false).string().c_str()) == 0 || dirname[0] == 0 )
         {
@@ -2162,6 +2164,7 @@ void komodo_args(char *argv0)
 						boost::this_thread::sleep(boost::posix_time::milliseconds(3000));
 						#endif
         }
+
         //fprintf(stderr,"Got datadir.(%s)\n",dirname);
         if ( ASSETCHAINS_SYMBOL[0] != 0 )
         {
@@ -2211,7 +2214,6 @@ void komodo_args(char *argv0)
             {
                 // we need to set the chain definition for this chain based on globals set above
                 obj.push_back(Pair("premine", ASSETCHAINS_SUPPLY));
-                obj.push_back(Pair("gatewayconverterissuance", ASSETCHAINS_ISSUANCE));
                 obj.push_back(Pair("name", ASSETCHAINS_SYMBOL));
 
                 obj.push_back(Pair("startblock", PBAAS_STARTBLOCK));
@@ -2233,13 +2235,15 @@ void komodo_args(char *argv0)
                 }
                 obj.push_back(Pair("eras", eras));
 
+                obj.push_back(Pair("gatewayconverterissuance", ASSETCHAINS_ISSUANCE));
+
                 // we do not have pre-allocation data here, so fake one lump sum of pre-allocation to a NULL address
                 // this will get replaced from either block 1 of our chain, or a connection to VRSC
                 if (ASSETCHAINS_SUPPLY)
                 {
                     UniValue preallocArr(UniValue::VARR);
                     UniValue preallocObj(UniValue::VOBJ);
-                    preallocObj.push_back(Pair("DestinationPending", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
+                    preallocObj.push_back(Pair("blockoneminer", ValueFromAmount((CAmount)ASSETCHAINS_SUPPLY)));
                     preallocArr.push_back(preallocObj);
                     obj.push_back(Pair("preallocations", preallocArr));
                 }
@@ -2257,7 +2261,7 @@ void komodo_args(char *argv0)
                 obj.pushKV("nodes", nodeArr);
             }
 
-            SetThisChain(obj);
+            SetThisChain(obj, nullptr);
             paramsLoaded = true;
         }
     }

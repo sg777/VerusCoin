@@ -434,12 +434,16 @@ bool SetPeerNodes(const UniValue &nodes)
 
 // adds the chain definition for this chain and nodes as well
 // this also sets up the notarization chain, if there is one
-bool SetThisChain(const UniValue &chainDefinition)
+bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef)
 {
     ConnectedChains.ThisChain() = CCurrencyDefinition(chainDefinition);
     if (!ConnectedChains.ThisChain().IsValid())
     {
         return false;
+    }
+    if (retDef)
+    {
+        *retDef = ConnectedChains.ThisChain();
     }
     SetPeerNodes(find_value(chainDefinition, "nodes"));
 
