@@ -1357,6 +1357,7 @@ void static ProcessOneShot()
 void ThreadOpenConnections()
 {
     // Connect to specific addresses
+    bool skipSeeds = false;
     if (mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0)
     {
         for (int64_t nLoop = 0;; nLoop++)
@@ -1373,6 +1374,7 @@ void ThreadOpenConnections()
             }
             MilliSleep(500);
         }
+        skipSeeds = !GetBoolArg("-forcednsseed", false);
     }
 
     // Initiate network connections
@@ -1390,7 +1392,7 @@ void ThreadOpenConnections()
         // if (addrman.size() == 0 && (GetTime() - nStart > 60)) {
         if (GetTime() - nStart > 60) {
             static bool done = false;
-            if (!done) {
+            if (!done && !skipSeeds) {
                 //LogPrintf("Adding fixed seed nodes as DNS doesn't seem to be available.\n");
                 LogPrintf("Adding fixed seed nodes.\n");
                 addrman.Add(convertSeed6(Params().FixedSeeds()), CNetAddr("127.0.0.1"));

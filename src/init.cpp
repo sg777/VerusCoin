@@ -1516,9 +1516,12 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         }
     }
 
-    for (auto &oneNode : ConnectedChains.defaultPeerNodes)
+    if (!GetBoolArg("-forcednsseed", false) && !(mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0))
     {
-        AddOneShot(oneNode.networkAddress);
+        for (auto &oneNode : ConnectedChains.defaultPeerNodes)
+        {
+            AddOneShot(oneNode.networkAddress);
+        }
     }
 
 #if ENABLE_ZMQ
