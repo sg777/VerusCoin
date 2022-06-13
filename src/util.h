@@ -72,6 +72,7 @@ void SetupEnvironment();
 bool SetupNetworking();
 
 bool _IsVerusActive();
+bool _IsVerusName(const std::string &name);
 bool _IsVerusMainnetActive();
 
 /** Return true if log accepts specified category */

@@ -410,9 +410,12 @@ bool SetPeerNodes(const UniValue &nodes)
     // set all command line parameters into mapArgs from chain definition
     vector<string> nodeStrs;
 
-    for (auto node : ConnectedChains.defaultPeerNodes)
+    if (!GetBoolArg("-forcednsseed", false) && !(mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0))
     {
-        nodeStrs.push_back(node.networkAddress);
+        for (auto node : ConnectedChains.defaultPeerNodes)
+        {
+            nodeStrs.push_back(node.networkAddress);
+        }
     }
 
     if (!(mapArgs.count("-connect") && mapMultiArgs["-connect"].size() > 0))
