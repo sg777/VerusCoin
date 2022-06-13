@@ -1708,7 +1708,7 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
 extern int64_t MAX_MONEY;
 extern int64_t MAX_SUPPLY;
 extern std::string VERUS_DEFAULT_ZADDR;
-bool SetThisChain(const UniValue &chainDefinition);
+bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef);
 
 void komodo_args(char *argv0)
 {
@@ -1938,14 +1938,19 @@ void komodo_args(char *argv0)
                 UniValue result;
                 try
                 {
+                    CCurrencyDefinition thisCurrency;
                     result = RPCCallRoot("getcurrency", params);
                     // set local parameters
                     result = find_value(result, "result");
-                    if (result.isNull() || !SetThisChain(result))
+                    if (result.isNull() || !SetThisChain(result, &thisCurrency))
                     {
                         throw error("Cannot find blockchain data");
                     }
                     name = string(ASSETCHAINS_SYMBOL);
+                    ASSETCHAINS_SUPPLY = thisCurrency.GetTotalPreallocation();
+                    ASSETCHAINS_ISSUANCE = thisCurrency.gatewayConverterIssuance;
+                    mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
+                    mapArgs["-gatewayconverterissuance"] = to_string(ASSETCHAINS_ISSUANCE);
                     paramsLoaded = true;
                 }
                 catch(const std::exception& e)
@@ -2209,7 +2214,6 @@ void komodo_args(char *argv0)
             {
                 // we need to set the chain definition for this chain based on globals set above
                 obj.push_back(Pair("premine", ASSETCHAINS_SUPPLY));
-                obj.push_back(Pair("gatewayconverterissuance", ASSETCHAINS_ISSUANCE));
                 obj.push_back(Pair("name", ASSETCHAINS_SYMBOL));
 
                 obj.push_back(Pair("startblock", PBAAS_STARTBLOCK));
@@ -2230,6 +2234,8 @@ void komodo_args(char *argv0)
                     eras.push_back(era);
                 }
                 obj.push_back(Pair("eras", eras));
+
+                obj.push_back(Pair("gatewayconverterissuance", ASSETCHAINS_ISSUANCE));
 
                 // we do not have pre-allocation data here, so fake one lump sum of pre-allocation to a NULL address
                 // this will get replaced from either block 1 of our chain, or a connection to VRSC
@@ -2255,7 +2261,7 @@ void komodo_args(char *argv0)
                 obj.pushKV("nodes", nodeArr);
             }
 
-            SetThisChain(obj);
+            SetThisChain(obj, nullptr);
             paramsLoaded = true;
         }
     }
