@@ -2851,7 +2851,9 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 printf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
                 LogPrintf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
             }
-            else if (nextLegTransfer.nFees < nextSys.GetTransactionImportFee())
+            else if (nextLegTransfer.nFees < nextSys.GetTransactionImportFee() ||
+                     (IsCurrencyExport() && nextLegTransfer.nFees < nextSys.GetCurrencyImportFee()) ||
+                     (IsIdentityExport() && nextLegTransfer.nFees < nextSys.IDImportFee()))
             {
                 LogPrintf("%s: Insufficient fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
             }
