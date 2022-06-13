@@ -1531,7 +1531,7 @@ uint16_t komodo_userpass(char *userpass, char *symbol)
     return(port);
 }
 
-uint32_t komodo_assetmagic(char *symbol,uint64_t supply,uint8_t *extraptr,int32_t extralen)
+uint32_t komodo_assetmagic(const char *symbol,uint64_t supply,uint8_t *extraptr,int32_t extralen)
 {
     std::string name(symbol);
     if (name != "VRSC")
@@ -1567,7 +1567,7 @@ uint16_t komodo_assetport(uint32_t magic,int32_t extralen)
     else return(16000 + (magic % 49500));
 }
 
-uint16_t komodo_port(char *symbol,uint64_t supply,uint32_t *magicp,uint8_t *extraptr,int32_t extralen)
+uint16_t komodo_port(const char *symbol,uint64_t supply,uint32_t *magicp,uint8_t *extraptr,int32_t extralen)
 {
     *magicp = komodo_assetmagic(symbol,supply,extraptr,extralen);
     return(komodo_assetport(*magicp,extralen));
@@ -2153,7 +2153,8 @@ void komodo_args(char *argv0)
         MAX_MONEY = komodo_max_money();
 
         //printf("baseid.%d MAX_MONEY.%s %.8f\n",baseid,ASSETCHAINS_SYMBOL,(double)MAX_MONEY/SATOSHIDEN);
-        ASSETCHAINS_P2PPORT = komodo_port(ASSETCHAINS_SYMBOL, ASSETCHAINS_SUPPLY + ASSETCHAINS_ISSUANCE, &ASSETCHAINS_MAGIC, extraptr, extralen);
+        ASSETCHAINS_P2PPORT = komodo_port(_IsVerusName(name) ? ASSETCHAINS_SYMBOL : boost::to_lower_copy(name).c_str(),
+                                          ASSETCHAINS_SUPPLY + ASSETCHAINS_ISSUANCE, &ASSETCHAINS_MAGIC, extraptr, extralen);
 
         while ( (dirname= (char *)GetDataDir(false).string().c_str()) == 0 || dirname[0] == 0 )
         {

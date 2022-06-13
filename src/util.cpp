@@ -125,6 +125,12 @@ bool _IsVerusActive()
     return normalName == "vrsc" || normalName == "vrsctest";
 }
 
+bool _IsVerusName(const std::string &name)
+{
+    std::string normalName = boost::to_lower_copy(name);
+    return normalName == "vrsc" || normalName == "vrsctest";
+}
+
 bool _IsVerusMainnetActive()
 {
     return (strcmp(ASSETCHAINS_SYMBOL, "VRSC") == 0);
