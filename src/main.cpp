@@ -732,8 +732,8 @@ void InitializePremineSupply()
     LOCK(cs_main);
     if (chainActive.Height() > 0)
     {
-        extern uint64_t ASSETCHAINS_SUPPLY;
-        extern uint64_t ASSETCHAINS_ISSUANCE;
+        extern int64_t ASSETCHAINS_SUPPLY;
+        extern int64_t ASSETCHAINS_ISSUANCE;
         ASSETCHAINS_SUPPLY = ConnectedChains.ThisChain().GetTotalPreallocation();
         ASSETCHAINS_ISSUANCE = ConnectedChains.ThisChain().gatewayConverterIssuance;
     }
@@ -2456,7 +2456,8 @@ extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 extern uint64_t ASSETCHAINS_ENDSUBSIDY[ASSETCHAINS_MAX_ERAS], ASSETCHAINS_REWARD[ASSETCHAINS_MAX_ERAS], ASSETCHAINS_HALVING[ASSETCHAINS_MAX_ERAS];
 extern uint64_t ASSETCHAINS_ERAOPTIONS[ASSETCHAINS_MAX_ERAS];
 extern uint32_t ASSETCHAINS_MAGIC;
-extern uint64_t ASSETCHAINS_STAKED,ASSETCHAINS_LINEAR,ASSETCHAINS_COMMISSION,ASSETCHAINS_SUPPLY;
+extern uint64_t ASSETCHAINS_STAKED,ASSETCHAINS_LINEAR,ASSETCHAINS_COMMISSION;
+extern int64_t ASSETCHAINS_SUPPLY;
 extern uint8_t ASSETCHAINS_PUBLIC,ASSETCHAINS_PRIVATE;
 
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
