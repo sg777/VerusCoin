@@ -473,6 +473,7 @@ bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef)
         CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
         ASSETCHAINS_SUPPLY = ConnectedChains.ThisChain().GetTotalPreallocation();
         ASSETCHAINS_ISSUANCE = ConnectedChains.ThisChain().gatewayConverterIssuance;
+        ASSETCHAINS_ERAOPTIONS[0] = ConnectedChains.ThisChain().ChainOptions();
     }
 
     auto numEras = ConnectedChains.ThisChain().rewards.size();
@@ -493,7 +494,7 @@ bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef)
             ASSETCHAINS_DECAY[j] = ASSETCHAINS_DECAY[j-1];
             ASSETCHAINS_HALVING[j] = ASSETCHAINS_HALVING[j-1];
             ASSETCHAINS_ENDSUBSIDY[j] = 0;
-            ASSETCHAINS_ERAOPTIONS[j] = 0;
+            ASSETCHAINS_ERAOPTIONS[j] = ConnectedChains.ThisChain().options;
         }
         else
         {
@@ -8508,7 +8509,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                 gatewayConverterMap["startblock"] = newChain.startBlock;
             }
 
-            gatewayConverterMap["gatewayconverterissuance"] = newChain.gatewayConverterIssuance;
+            gatewayConverterMap["gatewayconverterissuance"] = ValueFromAmount(newChain.gatewayConverterIssuance);
 
             UniValue newCurUni(UniValue::VOBJ);
             for (auto oneProp : gatewayConverterMap)
