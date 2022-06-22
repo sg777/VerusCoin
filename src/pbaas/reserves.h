@@ -163,6 +163,7 @@ public:
         REFUND = 0x800,                     // this transfer should be refunded, individual property when conversions exceed limits
         IDENTITY_EXPORT = 0x1000,           // this exports a full identity when the next cross-chain leg is processed
         CURRENCY_EXPORT = 0x2000,           // this exports a currency definition
+        ARBITRAGE_ONLY = 0x4000,            // in PBaaS V1, one additional reserve transfer from the local system may be added by the importer
     };
 
     enum EConstants
@@ -383,9 +384,38 @@ public:
         return flags & IDENTITY_EXPORT;
     }
 
+    void SetCurrencyExport(bool isExport=true)
+    {
+        if (isExport)
+        {
+            flags |= CURRENCY_EXPORT;
+        }
+        else
+        {
+            flags &= ~CURRENCY_EXPORT;
+        }
+    }
+
     bool IsCurrencyExport() const
     {
         return flags & CURRENCY_EXPORT;
+    }
+
+    void SetArbitrageOnly(bool isArbitrage=true)
+    {
+        if (isArbitrage)
+        {
+            flags |= ARBITRAGE_ONLY;
+        }
+        else
+        {
+            flags &= ~ARBITRAGE_ONLY;
+        }
+    }
+
+    bool IsArbitrageOnly() const
+    {
+        return flags & ARBITRAGE_ONLY;
     }
 
     CReserveTransfer GetRefundTransfer(bool clearCrossSystem=true) const;

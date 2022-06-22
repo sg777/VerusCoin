@@ -679,8 +679,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
 
     // make sure that every reserve transfer that SHOULD BE included (all mined in relevant blocks) IS included, no exceptions
     // verify all currency totals
-    multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
-    if (!GetChainTransfers(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd))
+    multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
+    if (!GetChainTransfersUnspentBy(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd, height))
     {
         return state.Error("Error retrieving cross chain transfers");
     }
@@ -724,6 +724,9 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         std::pair<uint256, int> transferOutput = make_pair(oneTransfer.second.first.txIn.prevout.hash, oneTransfer.second.first.txIn.prevout.n);
         if (!utxos.count(transferOutput))
         {
+            // TODO: HARDENING - the case where this could be valid is if the output was already spent in a block prior
+            // the one this transaction is in. since we don't have a reliable way to determine if the output will be spent in this
+            // block, if the block referred to is just prior to this one, we must use it for the export, not arbitrage for an import
             return state.Error("Export excludes valid reserve transfer from source block");
         }
         totalCurrencyExported += oneTransfer.second.second.TotalCurrencyOut();
