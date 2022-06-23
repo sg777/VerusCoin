@@ -173,11 +173,22 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
             in.push_back(Pair("txid", txin.prevout.hash.GetHex()));
             in.push_back(Pair("vout", (int64_t)txin.prevout.n));
             {
-                uint256 hash; CTransaction tx; CTxDestination address;
+                uint256 hash; CTransaction tx;
                 if (GetTransaction(txin.prevout.hash,tx,hash,false))
                 {
-                    if (ExtractDestination(tx.vout[txin.prevout.n].scriptPubKey, address))
-                        in.push_back(Pair("address", CBitcoinAddress(address).ToString()));
+                    txnouttype typeRet;
+                    std::vector<CTxDestination> addressRet;
+                    int nRequiredRet;
+                    if (ExtractDestinations(tx.vout[txin.prevout.n].scriptPubKey, typeRet, addressRet, nRequiredRet))
+                    {
+                        UniValue addrs(UniValue::VARR);
+                        for (auto &oneAddr : addressRet)
+                        {
+                            addrs.push_back(EncodeDestination(oneAddr));
+                        }
+                        in.push_back(Pair("addresses", addrs));
+                        in.push_back(Pair("minrequired", nRequiredRet));
+                    }
                 }
             }
             UniValue o(UniValue::VOBJ);
