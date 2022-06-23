@@ -325,6 +325,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     sysCCIOut = -1;
     evidenceOutStart = -1;
     evidenceOutEnd = -1;
+    CCurrencyDefinition::EProofProtocol hashType = CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR;
 
     CCrossChainImport sysCCITemp;
 
@@ -489,7 +490,6 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                                        ccx.sourceSystemID;
 
             std::map<uint160, CProofRoot>::iterator proofIt;
-            CCurrencyDefinition::EProofProtocol hashType = CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR;
             if (!externalSystemID.IsNull() &&
                 (proofIt = importNotarization.proofRoots.find(externalSystemID)) != importNotarization.proofRoots.end())
             {
@@ -522,6 +522,40 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             evidenceOutEnd = nextOutput - 1;
         }
     }
+
+    // if we may have an arbitrage reserve transfer, look for it
+    if (importNotarization.IsValid() &&
+        importNotarization.IsLaunchComplete() &&
+        importNotarization.currencyState.IsValid() &&
+        importNotarization.currencyState.IsFractional() &&
+        ccx.IsValid() &&
+        hashReserveTransfers != ccx.hashReserveTransfers)
+    {
+        // if we don't have an arbitrage reserve transfer, this is an error that the hashes don't match
+        // if we do, they cannot match, so get it
+        CReserveTransfer arbitrageTransfer = GetArbitrageTransfer(importTx, numImportOut, state, nHeight);
+        if (!arbitrageTransfer.IsValid())
+        {
+            return state.Error(strprintf("%s: export and import hash mismatch without valid arbitrage transfer",__func__));
+        }
+        reserveTransfers.push_back(arbitrageTransfer);
+        CNativeHashWriter nhw1 = CNativeHashWriter(hashType);
+        CNativeHashWriter nhw2 = CNativeHashWriter(hashType);
+        for (int i = 0; i < reserveTransfers.size(); i++)
+        {
+            nhw1 << reserveTransfers[i];
+            // if this is not the last, add it into the 2nd hash, which should then match the export
+            if (i + 1 < reserveTransfers.size())
+            {
+                nhw2 << reserveTransfers[i];
+            }
+        }
+        if (hashReserveTransfers != nhw1.GetHash() || ccx.hashReserveTransfers != nhw2.GetHash())
+        {
+            return state.Error(strprintf("%s: import hash of transfers does not match actual transfers with arbitrage",__func__));
+        }
+    }
+
     if (sysCCITemp.IsValid())
     {
         sysCCI = sysCCITemp;
@@ -650,6 +684,77 @@ CCurrencyValueMap CCoinbaseCurrencyState::TargetConversionPricesReverse(const ui
         }
     }
     return retVal;
+}
+
+// returns the prior import from a given import
+CReserveTransfer CCrossChainImport::GetArbitrageTransfer(const CTransaction &tx,
+                                                         int32_t outNum,
+                                                         CValidationState &state,
+                                                         uint32_t height,
+                                                         CTransaction *ppriorTx,
+                                                         int32_t *ppriorOutNum,
+                                                         uint256 *ppriorTxBlockHash) const
+{
+    // get the prior import
+    CReserveTransfer rt;
+    CCrossChainImport cci;
+    int transferCount = 0;
+    for (auto &oneIn : tx.vin)
+    {
+        CTransaction _priorTx;
+        int32_t _priorOutNum;
+        uint256 _priorTxBlockHash;
+        CTransaction &priorTx = ppriorTx ? *ppriorTx : _priorTx;
+        int32_t &priorOutNum = ppriorOutNum ? *ppriorOutNum : _priorOutNum;
+        uint256 &priorTxBlockHash = ppriorTxBlockHash ? *ppriorTxBlockHash : _priorTxBlockHash;
+
+        uint256 priorTxHash;
+        COptCCParams p;
+        if (!IsDefinitionImport() &&
+            (myGetTransaction(oneIn.prevout.hash, _priorTx, priorTxBlockHash)))
+        {
+            if (cci.IsValid() &&
+                _priorTx.vout.size() > oneIn.prevout.n &&
+                _priorTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_RESERVE_TRANSFER &&
+                p.vData.size() &&
+                (rt = CReserveTransfer(p.vData[0])).IsValid())
+            {
+                // only one allowed, even though we currently don't
+                // loop after finding the first
+                if (transferCount)
+                {
+                    rt = CReserveTransfer();
+                    break;
+                }
+                transferCount++;
+                priorTx = _priorTx;
+                priorOutNum = oneIn.prevout.n;
+                rt.SetArbitrageOnly();
+                // TODO: right now, only one reserve transfer will be used for any import,
+                // and any additional ones should be rejected as invalid spends, so ignore them here
+                break;
+            }
+            else if (!cci.IsValid() &&
+                     p.IsValid() &&
+                     p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                     p.vData.size())
+            {
+                cci = CCrossChainImport(p.vData[0]);
+            }
+            else if (cci.IsValid() &&
+                     p.IsValid() &&
+                     p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+                     p.vData.size())
+            {
+                // any reserve transfer should be after the import and before the notarization spend
+                cci = CCrossChainImport();
+                break;
+            }
+        }
+    }
+    return rt;
 }
 
 // returns the prior import from a given import

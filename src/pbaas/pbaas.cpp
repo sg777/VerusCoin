@@ -292,6 +292,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             }
             return true;
         }
+
         if (cci.IsDefinitionImport())
         {
             // TODO: HARDENING - validate this belongs on a definition and is correct
@@ -974,6 +975,7 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
         //if (!fulfilled)
         {
             CCrossChainExport ccx;
+            CCrossChainImport cci;
             int32_t primaryExportOut, nextOutput;
             CPBaaSNotarization pbn;
             std::vector<CReserveTransfer> reserveTransfers;
@@ -1022,6 +1024,29 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
                     {
                         // if we successfully got the export info and are included in the export reserve transfers, additional
                         // validation is done by the export
+                        return true;
+                    }
+                }
+                else if (exportP.IsValid() &&
+                         exportP.evalCode == EVAL_CROSSCHAIN_IMPORT && 
+                         exportP.vData.size() > 1 &&
+                         (cci = CCrossChainImport(exportP.vData[0])).IsValid() &&
+                         cci.importCurrencyID == importCurrencyID &&
+                         rt.IsConversion() &&
+                         !rt.IsPreConversion())
+                {
+                    CCrossChainImport sysCCI;
+                    CPBaaSNotarization importNotarization;
+                    int32_t sysCCIOut, importNotarizationOut, eOutStart = -1, eOutEnd = -1;
+                    std::vector<CReserveTransfer> reserveTransfers;
+                    // ensure that this spend is accounted for in the
+                    // import. if this reserve transfer is equivalent to the last retrieved by this import,
+                    // via GetImportInfo(), we consider it valid
+                    if (cci.GetImportInfo(tx, spendingFromHeight, i, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers) &&
+                        reserveTransfers.size() &&
+                        ::AsVector(reserveTransfers.back()) == ::AsVector(rt) &&
+                        cci.hashReserveTransfers != ccx.hashReserveTransfers)
+                    {
                         return true;
                     }
                 }
@@ -4366,6 +4391,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         CPBaaSNotarization newNotarization;
         uint256 transferHash;
         std::vector<CReserveTransfer> exportTransfers = oneIT.second;
+
+        // TODO: HARDENING - this is not actually hardening, but this is a place where we can
+        // provide a callout for arbitrage and potentially get an additional reserve transfer
+        // input for this import. we should also add it to the exportTransfers vector
+        // with the arbitrage flag set
+        CInputDescriptor arbitrageTransferIn;
+
         std::vector<CTxOut> newOutputs;
         CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
 
@@ -4613,6 +4645,15 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 tb.AddTransparentInput(COutPoint(lastSourceImportTxID, sourceOutputNum), 
                                        lastSourceImportTx.vout[sourceOutputNum].scriptPubKey, lastSourceImportTx.vout[sourceOutputNum].nValue);
+            }
+
+            // if we qualify to add and also have an additional reserve transfer
+            // add it as an input
+            if (lastNotarization.currencyState.IsFractional() &&
+                lastNotarization.IsLaunchComplete() &&
+                !arbitrageTransferIn.txIn.prevout.hash.IsNull())
+            {
+                tb.AddTransparentInput(arbitrageTransferIn.txIn.prevout, arbitrageTransferIn.scriptPubKey, arbitrageTransferIn.nValue);
             }
 
             if (!lastNotarizationOut.txIn.prevout.hash.IsNull())

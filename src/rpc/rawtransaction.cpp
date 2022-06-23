@@ -187,7 +187,7 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
                             addrs.push_back(EncodeDestination(oneAddr));
                         }
                         in.push_back(Pair("addresses", addrs));
-                        in.push_back(Pair("minrequired", nRequiredRet));
+                        in.push_back(Pair("minrequired", !nRequiredRet ? 1 : nRequiredRet));
                     }
                 }
             }
