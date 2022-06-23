@@ -680,6 +680,10 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     // make sure that every reserve transfer that SHOULD BE included (all mined in relevant blocks) IS included, no exceptions
     // verify all currency totals
     multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
+
+    // TODO: HARDENING - if source height start is 0 and this covers an actual range of
+    // potential transfers, we may skip enforcement of inclusion. ensure we use the correct condition
+    // and that there is no risk of missing valid transfers with the check we end up with here
     if (ccx.sourceHeightStart > 0 &&
         !GetChainTransfersUnspentBy(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd, height))
     {
