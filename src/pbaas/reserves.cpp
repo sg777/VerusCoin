@@ -3225,26 +3225,6 @@ CReserveTransfer RefundExport(const CBaseChainObject *objPtr)
     return CReserveTransfer();
 }
 
-// basic check to ensure that an arbitrage transfer follows blockchain rules
-bool CheckArbitrageTransfer(const CReserveTransfer &rt, uint32_t height)
-{
-    if (rt.IsValid() && rt.IsArbitrageOnly())
-    {
-        if (rt.HasNextLeg() || rt.IsCrossSystem() || !rt.IsConversion() || rt.IsPreConversion())
-        {
-            return false;
-        }
-        CTxDestination dest = TransferDestinationToDestination(rt.destination);
-        if (dest.which() == COptCCParams::ADDRTYPE_ID ||
-            dest.which() == COptCCParams::ADDRTYPE_PK ||
-            dest.which() == COptCCParams::ADDRTYPE_PKH)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
 // the source currency indicates the system from which the import comes, but the imports may contain additional
 // currencies that are supported in that system and are not limited to the native currency. Fees are assumed to
 // be covered by the native currency of the source or source currency, if this is a reserve conversion. That 
@@ -3781,12 +3761,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         LogPrint("reservetransfers", "%s: only one arbitrage transaction is allowed on an import for %s\n", __func__, importCurrencyDef.name.c_str());
                         return false;
                     }
-                    if (!CheckArbitrageTransfer(curTransfer, height))
-                    {
-                        printf("%s: invalid arbitrage transaction for import to %s\n", __func__, importCurrencyDef.name.c_str());
-                        LogPrint("reservetransfers", "%s: invalid arbitrage transaction for import to %s\n", __func__, importCurrencyDef.name.c_str());
-                        return false;
-                    }
                     // TODO: HARDENING - ensure that the reserve transfers coming from an export cannot contain arbitrage
                     // transfers, which may be checked on GetExportInfo. they are only allowed on imports and only one conversion.
                     // note is here, but to resolve this, add the check on getexportinfo
@@ -3903,9 +3877,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                 }
 
-                // if it's from a gateway, we need to be sure that the currency it is importing is valid for the current chain
+                // if it's from a gateway and not an arbitrage transaction, 
+                // make sure that the currency it is importing is valid for the current chain
                 // all pre-conversions
-                if (isCrossSystemImport || (importCurrencyDef.SystemOrGatewayID() != systemDestID && importCurrencyState.IsRefunding()))
+                if (!curTransfer.IsArbitrageOnly() &&
+                    (isCrossSystemImport || (importCurrencyDef.SystemOrGatewayID() != systemDestID && importCurrencyState.IsRefunding())))
                 {
                     // We may import:
                     //  fee currency
