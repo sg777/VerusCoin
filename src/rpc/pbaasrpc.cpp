@@ -2391,7 +2391,6 @@ bool GetChainTransfers(multimap<uint160, std::pair<CInputDescriptor, CReserveTra
 // NULL, only transfers to that system are returned
 bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags)
 {
-    map<std::pair<uint160, CInputDescriptor>, CReserveTransfer> descriptors;
     if (!flags)
     {
         flags = CReserveTransfer::VALID;
@@ -2415,8 +2414,6 @@ bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescripto
     {
         // This call does not include outputs that were mined in as spent at the
         // end height requested
-        std::set<std::pair<uint256, int>> preSpent;
-        std::set<std::pair<CAddressIndexKey, CAmount>> unSpent;
         for (auto it = addressIndex.begin(); it != addressIndex.end(); it++)
         {
             CTransaction ntx;
@@ -2424,17 +2421,7 @@ bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescripto
 
             if (it->first.spending)
             {
-                if (end && it->first.blockHeight < end)
-                {
-                    // get the spending transaction and determine which of the outputs to remove
-                    preSpent.insert(std::make_pair(it->first.txhash, it->first.index));
-                }
                 continue;
-            }
-            else if (preSpent.count(std::make_pair(it->first.txhash, it->first.index)))
-            {
-                // just for debugging
-                printf("%s: debug stop\n", __func__);
             }
 
             // no matter where we are getting the reserve transfers from, if they are otherwise spent
@@ -2446,7 +2433,6 @@ bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescripto
                 !spentInfo.IsNull() &&
                 spentInfo.blockHeight < unspentBy)
             {
-                printf("%s: reserve transfer is spent\n", __func__); // reserve transfer is spent
                 continue;
             }
 
@@ -2461,9 +2447,9 @@ bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescripto
                     (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID) == chainFilter) &&
                     (rt.flags & flags) == flags)
                 {
-                    descriptors.insert(std::make_pair(make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
-                                                CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index)))), 
-                                                            rt));
+                    inputDescriptors.insert(std::make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
+                                                std::make_pair(CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index))), 
+                                                               rt)));
                 }
 
                 /*

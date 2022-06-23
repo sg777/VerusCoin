@@ -680,7 +680,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     // make sure that every reserve transfer that SHOULD BE included (all mined in relevant blocks) IS included, no exceptions
     // verify all currency totals
     multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
-    if (!GetChainTransfersUnspentBy(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd, height))
+    if (ccx.sourceHeightStart > 0 &&
+        !GetChainTransfersUnspentBy(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd, height))
     {
         return state.Error("Error retrieving cross chain transfers");
     }
