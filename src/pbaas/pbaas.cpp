@@ -2163,6 +2163,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
         rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue)
     {
+        // arbitrage tranactions are determined by their context and statically setting the flags is prohibited
+        if (rt.IsArbitrageOnly())
+        {
+            return state.Error("Reserve transfers may not be statically set as arbitrage transfers " + rt.ToUniValue().write(1,2));
+        }
+
         // reserve transfers must be spendable by the export public / private key
         CCcontract_info CC;
         CCcontract_info *cp;
