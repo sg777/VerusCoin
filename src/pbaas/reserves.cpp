@@ -3762,6 +3762,15 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         LogPrint("reservetransfers", "%s: only one arbitrage transaction is allowed on an import for %s\n", __func__, importCurrencyDef.name.c_str());
                         return false;
                     }
+                    if (curTransfer.IsCurrencyExport() ||
+                        curTransfer.IsIdentityExport() ||
+                        curTransfer.IsPreConversion() ||
+                        !curTransfer.IsConversion())
+                    {
+                        printf("%s: invalid arbitrage transaction for %s\n", __func__, importCurrencyDef.name.c_str());
+                        LogPrint("reservetransfers", "%s: invalid arbitrage transaction for %s\n", __func__, importCurrencyDef.name.c_str());
+                        return false;
+                    }
                     // TODO: HARDENING - ensure that the reserve transfers coming from an export cannot contain arbitrage
                     // transfers, which may be checked on GetExportInfo. they are only allowed on imports and only one conversion.
                     // note is here, but to resolve this, add the check on getexportinfo
