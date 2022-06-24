@@ -4392,11 +4392,19 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         uint256 transferHash;
         std::vector<CReserveTransfer> exportTransfers = oneIT.second;
 
-        // TODO: HARDENING - this is not actually hardening, but this is a place where we can
+        // this is a place where we can
         // provide a callout for arbitrage and potentially get an additional reserve transfer
         // input for this import. we should also add it to the exportTransfers vector
         // with the arbitrage flag set
         CInputDescriptor arbitrageTransferIn;
+        if (LogAcceptCategory("arbitrageliquidity") &&
+            destCur.IsFractional() &&
+            lastNotarization.IsLaunchComplete() &&
+            !lastNotarization.IsRefunding())
+        {
+            // TODO: HARDENING - this is not technically hardening, but this arbitrage ability needs to be tested as part of hardening
+            // look for the largest unspent output that is not yet eligible for an export
+        }
 
         std::vector<CTxOut> newOutputs;
         CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
@@ -4651,6 +4659,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // add it as an input
             if (lastNotarization.currencyState.IsFractional() &&
                 lastNotarization.IsLaunchComplete() &&
+                !lastNotarization.IsRefunding() &&
                 !arbitrageTransferIn.txIn.prevout.hash.IsNull())
             {
                 tb.AddTransparentInput(arbitrageTransferIn.txIn.prevout, arbitrageTransferIn.scriptPubKey, arbitrageTransferIn.nValue);

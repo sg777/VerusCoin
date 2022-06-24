@@ -526,6 +526,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     // if we may have an arbitrage reserve transfer, look for it
     if (importNotarization.IsValid() &&
         importNotarization.IsLaunchComplete() &&
+        !importNotarization.IsRefunding() &&
         importNotarization.currencyState.IsValid() &&
         importNotarization.currencyState.IsFractional() &&
         ccx.IsValid() &&
