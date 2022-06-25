@@ -1751,7 +1751,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
         return false;
     }
 
-    // TODO: HARDENING - handle all gateway and PBaaS converter and reserve definition verifications
+    // TODO: HARDENING - confirm that we handle all gateway and PBaaS converter and reserve definition verifications
 
     // ensure that the currency definition follows all rules of currency definition, meaning:
     // 1) it is defined by an identity that controls the currency for the first time
@@ -1830,6 +1830,14 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
         if (!isImportDefinition)
         {
             LOCK(mempool.cs);
+
+            std::map<uint160, std::__cxx11::string> requiredDefinitions;
+            if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height, ASSETCHAINS_CHAINID, requiredDefinitions).IsValid())
+            {
+                LogPrint("currencydefinition", "%s: Currency definition in output violates current definition rules.\n%s\n", __func__, newCurrency.ToUniValue().write(1,2).c_str());
+                return state.Error("Currency definition in output violates current definition rules");
+            }
+
             for (auto &input : spendingTx.vin)
             {
                 COptCCParams p;

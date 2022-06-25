@@ -1732,4 +1732,9 @@ extern CConnectedChains ConnectedChains;
 extern uint160 ASSETCHAINS_CHAINID;
 CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainDef);
 
+CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj,
+                                                          uint32_t height,
+                                                          const uint160 systemID,
+                                                          std::map<uint160, std::string> &requiredDefinitions);
+
 #endif

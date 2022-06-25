@@ -251,10 +251,18 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
         // neither will it be impossible to adapt if only 1/64th or even less is staking, though it will take longer to get to an equilibrium.
         arith_uint256 fiftyPercentPerSatoshi = UintToArith256(uint256S("7f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"));
         uint64_t supplyDivisor = nHeight ? komodo_current_supply(nHeight) : MAX_MONEY;
+
+        // default is if 1/4th of expected max supply is staking
         supplyDivisor = ((supplyDivisor >> 2) == 0) ? 1 : supplyDivisor >> 2;
         nProofOfStakeDefault = ((arith_uint256)(fiftyPercentPerSatoshi / supplyDivisor)).GetCompact();
 
-        // the lowest equilibrium we can achieve is if 1/1024th of supply is staking, set that as the lower difficulty limit
+        // TODO: HARDENING - testnet reset replace the >> 8 below with this
+        // the lowest 50% equilibrium we can achieve is if one millionth of expected max supply is staking,
+        // set that as the lower difficulty limit
+        //supplyDivisor = ((supplyDivisor >> 16) == 0) ? 1 : supplyDivisor >> 16;
+
+        // the lowest 50% equilibrium we can achieve on this testnet is if one 1024th of expected max supply is staking,
+        // set that as the lower difficulty limit. replace this with line above at next reset for 1/millionth
         supplyDivisor = ((supplyDivisor >> 8) == 0) ? 1 : supplyDivisor >> 8;
         bnLimit = fiftyPercentPerSatoshi / supplyDivisor;
     }

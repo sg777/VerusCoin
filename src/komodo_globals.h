@@ -254,12 +254,6 @@ int64_t komodo_current_supply(uint32_t nHeight)
                 {
                     for ( int k = lastEnd; k < curEnd; k += period )
                     {
-                        // TODO: HARDENING - ensure that we don't want to switch to the more precise cur_money calculation in the PBaaS upgrade
-                        // before considering this mainnet ready
-                        /*if (_IsVerusMainnetActive())
-                        {
-                            cur_money += period * reward;
-                        } */
                         cur_money += period * reward;
 
                         // if zero, we do straight halving
