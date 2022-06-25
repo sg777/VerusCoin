@@ -1831,7 +1831,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
         {
             LOCK(mempool.cs);
 
-            std::map<uint160, std::__cxx11::string> requiredDefinitions;
+            std::map<uint160, std::string> requiredDefinitions;
             if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height, ASSETCHAINS_CHAINID, requiredDefinitions).IsValid())
             {
                 LogPrint("currencydefinition", "%s: Currency definition in output violates current definition rules.\n%s\n", __func__, newCurrency.ToUniValue().write(1,2).c_str());
